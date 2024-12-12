@@ -29,10 +29,14 @@ export function useArtifacts() {
   });
 }
 
-export function useArtifact(id: string) {
+export function useArtifact<T>(
+  id: string,
+  select?: (x: Benchmark[] | undefined) => T,
+) {
   return useQuery({
     queryKey: ["artifacts", id],
     queryFn: async () => fetchArtifact(id),
+    select,
   });
 }
 
@@ -65,4 +69,39 @@ async function fetchArtifact(id: string): Promise<Benchmark[] | undefined> {
   } else {
     return undefined;
   }
+}
+
+export function benchmarkSummary(benchmarks?: Benchmark[]) {
+  let success = 0;
+  let trivialSuccess = 0;
+  let timeout = 0;
+  let error = 0;
+  let panic = 0;
+
+  if (benchmarks !== undefined) {
+    for (const b of benchmarks) {
+      const res = b.result;
+      if ("Success" in res) {
+        if (res.Success.used_instances.length === 0) {
+          trivialSuccess += 1;
+        } else {
+          success += 1;
+        }
+      } else if ("Timeout" in res) {
+        timeout += 1;
+      } else if ("Error" in res) {
+        error += 1;
+      } else if ("Panic" in res) {
+        panic += 1;
+      }
+    }
+  }
+
+  return {
+    success,
+    trivialSuccess,
+    timeout,
+    error,
+    panic,
+  };
 }

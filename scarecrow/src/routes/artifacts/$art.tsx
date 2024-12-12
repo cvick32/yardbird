@@ -43,23 +43,43 @@ function RouteComponent() {
 
 function Status({ result }: { result: BenchmarkResult }) {
   if ("Success" in result) {
-    return (
-      <div className="bg-green-200">
-        Success!
-        <div>Used instances:</div>
-        <div className="font-mono ml-2">
-          {result.Success.used_instances.map((inst, idx) => (
-            <div key={idx}>{inst}</div>
-          ))}
+    if (result.Success.used_instances.length == 0) {
+      return (
+        <div className="bg-teal-200">
+          Trivial Success...something is wrong.
+          <div>Used instances:</div>
+          <div className="font-mono ml-2">
+            {result.Success.used_instances.map((inst, idx) => (
+              <div key={idx}>{inst}</div>
+            ))}
+          </div>
+          <div>Const instances:</div>
+          <div className="font-mono ml-2">
+            {result.Success.const_instances.map((inst, idx) => (
+              <div key={idx}>{inst}</div>
+            ))}
+          </div>
         </div>
-        <div>Const instances:</div>
-        <div className="font-mono ml-2">
-          {result.Success.const_instances.map((inst, idx) => (
-            <div key={idx}>{inst}</div>
-          ))}
+      );
+    } else {
+      return (
+        <div className="bg-green-200">
+          Success!
+          <div>Used instances:</div>
+          <div className="font-mono ml-2">
+            {result.Success.used_instances.map((inst, idx) => (
+              <div key={idx}>{inst}</div>
+            ))}
+          </div>
+          <div>Const instances:</div>
+          <div className="font-mono ml-2">
+            {result.Success.const_instances.map((inst, idx) => (
+              <div key={idx}>{inst}</div>
+            ))}
+          </div>
         </div>
-      </div>
-    );
+      );
+    }
   }
 
   if ("Timeout" in result) {
