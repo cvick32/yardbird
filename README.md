@@ -1,3 +1,7 @@
+# Benchmark Results
+
+[Scarecrow](https://scarecrow.sgt-pl.com/)
+
 # Running BMC Test
 
 `cargo run -- --filename examples/array_copy.vmt --bmc-count 0`
