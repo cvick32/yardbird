@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-
 use smt2parser::{
     concrete::{Constant, SyntaxBuilder, Term},
     vmt::smt::SMTProblem,
 };
+use std::collections::HashMap;
 use z3::{ast::Dynamic, Context, FuncDecl};
 
 pub struct FunctionDefinition<'ctx> {
@@ -13,8 +12,13 @@ pub struct FunctionDefinition<'ctx> {
 impl<'ctx> FunctionDefinition<'ctx> {
     fn apply(&self, argument_values: Vec<Dynamic<'ctx>>) -> Dynamic<'_> {
         assert!(self.domain.len() == argument_values.len());
-        let ref_args = argument_values.iter().collect::<Vec<_>>();
-        self.z3_function.apply_dynamic(&ref_args)
+        self.z3_function.apply(
+            argument_values
+                .iter()
+                .map(|x| x as _)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
     }
 
     fn new(arg_sorts: Vec<z3::Sort<'ctx>>, func_decl: FuncDecl<'ctx>) -> Self {
@@ -78,15 +82,10 @@ impl<'ctx> Z3VarContext<'ctx> {
                     .iter()
                     .map(|arg| self.rewrite_term(arg))
                     .collect::<Vec<_>>();
+
                 let function_name = qual_identifier.get_name();
-                if function_name == "+" {
-                    let add_args = argument_values
-                        .iter()
-                        .map(|x| x.as_int().unwrap())
-                        .collect::<Vec<_>>();
-                    let int_ref_args = add_args.iter().collect::<Vec<_>>();
-                    z3::ast::Int::add(self.context, &int_ref_args).into()
-                } else if self
+
+                if self
                     .function_name_to_z3_function
                     .contains_key(&function_name)
                 {
@@ -96,7 +95,7 @@ impl<'ctx> Z3VarContext<'ctx> {
                         .unwrap();
                     function_definition.apply(argument_values)
                 } else {
-                    panic!()
+                    self.call_z3_function(function_name, argument_values)
                 }
             }
             Term::Let {
@@ -148,6 +147,39 @@ impl<'ctx> Z3VarContext<'ctx> {
                     indices: _,
                 } => todo!(),
             },
+        }
+    }
+
+    /// Builds and calls the Z3 function corresponding to `function_name`. Returns
+    /// the application of the function with the given arguments.
+    fn call_z3_function(
+        &self,
+        function_name: String,
+        argument_values: Vec<Dynamic<'ctx>>,
+    ) -> Dynamic<'_> {
+        if function_name == "+" {
+            let add_args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            let int_ref_args = add_args.iter().collect::<Vec<_>>();
+            z3::ast::Int::add(self.context, &int_ref_args).into()
+        } else if function_name == "-" {
+            let add_args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            let int_ref_args = add_args.iter().collect::<Vec<_>>();
+            z3::ast::Int::sub(self.context, &int_ref_args).into()
+        } else if function_name == "*" {
+            let add_args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            let int_ref_args = add_args.iter().collect::<Vec<_>>();
+            z3::ast::Int::mul(self.context, &int_ref_args).into()
+        } else {
+            todo!("Add Z3 function: {function_name}");
         }
     }
 }

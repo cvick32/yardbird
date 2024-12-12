@@ -16,7 +16,7 @@ rand = "0.8.5"
 serde = { workspace = true }
 serde_json = { workspace = true }
 smt2parser = { path = "./smt2parser", version = "0.6.1" }
-z3 = { path = "../z3.rs/z3", version = "0.12.1" }
+z3 =  "0.12.1"
 
 [workspace.dependencies]
 clap = { version = "4.5.20" }
