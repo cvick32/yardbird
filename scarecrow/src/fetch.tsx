@@ -29,7 +29,7 @@ export function useArtifacts() {
   });
 }
 
-export function useArtifact<T>(
+export function useArtifact<T = Benchmark[] | undefined>(
   id: string,
   select?: (x: Benchmark[] | undefined) => T,
 ) {
