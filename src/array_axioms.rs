@@ -23,9 +23,10 @@ define_language! {
         ">" = Gt([Id; 2]),
         "<=" = Leq([Id; 2]),
         "<" = Lt([Id; 2]),
-        "+" = Plus([Id; 2]),
+        "mod" = Mod([Id; 2]),
+        "+" = Plus(Box<[Id]>),
         "-" = Negate(Box<[Id]>),
-        "*" = Times([Id; 2]),
+        "*" = Times(Box<[Id]>),
         Symbol(Symbol),
     }
 }

@@ -42,6 +42,7 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
             ArrayLanguage::Plus(_) => 1,
             ArrayLanguage::Negate(_) => 1,
             ArrayLanguage::Times(_) => 1,
+            ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Symbol(sym) => {
                 if sym.as_str().contains(VARIABLE_FRAME_DELIMITER) {
                     1
