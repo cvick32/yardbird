@@ -26,6 +26,7 @@ export function useArtifacts() {
   return useQuery({
     queryKey: ["artifacts"],
     queryFn: fetchArtifacts,
+    staleTime: 60 * 1000, // 1 minute
   });
 }
 
@@ -34,8 +35,9 @@ export function useArtifact<T = Benchmark[] | undefined>(
   select?: (x: Benchmark[] | undefined) => T,
 ) {
   return useQuery({
-    queryKey: ["artifacts", id],
+    queryKey: ["artifacts", `${id}`],
     queryFn: async () => fetchArtifact(id),
+    staleTime: 60 * 1000, // 1 minute
     select,
   });
 }
