@@ -26,7 +26,7 @@ export function useArtifacts() {
   return useQuery({
     queryKey: ["artifacts"],
     queryFn: fetchArtifacts,
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 0,
   });
 }
 
