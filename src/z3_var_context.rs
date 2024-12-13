@@ -158,26 +158,32 @@ impl<'ctx> Z3VarContext<'ctx> {
         argument_values: Vec<Dynamic<'ctx>>,
     ) -> Dynamic<'_> {
         if function_name == "+" {
-            let add_args = argument_values
+            let args = argument_values
                 .iter()
                 .map(|x| x.as_int().unwrap())
                 .collect::<Vec<_>>();
-            let int_ref_args = add_args.iter().collect::<Vec<_>>();
+            let int_ref_args = args.iter().collect::<Vec<_>>();
             z3::ast::Int::add(self.context, &int_ref_args).into()
         } else if function_name == "-" {
-            let add_args = argument_values
+            let args = argument_values
                 .iter()
                 .map(|x| x.as_int().unwrap())
                 .collect::<Vec<_>>();
-            let int_ref_args = add_args.iter().collect::<Vec<_>>();
+            let int_ref_args = args.iter().collect::<Vec<_>>();
             z3::ast::Int::sub(self.context, &int_ref_args).into()
         } else if function_name == "*" {
-            let add_args = argument_values
+            let args = argument_values
                 .iter()
                 .map(|x| x.as_int().unwrap())
                 .collect::<Vec<_>>();
-            let int_ref_args = add_args.iter().collect::<Vec<_>>();
+            let int_ref_args = args.iter().collect::<Vec<_>>();
             z3::ast::Int::mul(self.context, &int_ref_args).into()
+        } else if function_name == "mod" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Int::modulo(&args[0], &args[1]).into()
         } else {
             todo!("Add Z3 function: {function_name}");
         }
