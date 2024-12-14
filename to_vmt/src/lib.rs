@@ -5,6 +5,13 @@ use proc_macro::TokenStream;
 use smt2parser::{concrete::Command, get_command_from_command_string, vmt::NEXT_VARIABLE_NAME};
 use syn::{Expr, ItemFn, Pat, PatIdent, PatType, Path};
 
+#[derive(PartialEq, Eq)]
+enum ParsingState {
+    Precondition,
+    Loop,
+    Postcondition,
+}
+
 #[proc_macro_attribute]
 pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
     let dd = item.clone();
@@ -25,19 +32,54 @@ pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
     }
-    let mut assert_strings = vec![];
+    let mut parsing_state = ParsingState::Precondition;
+    let mut pre_condition_asserts = vec![];
+    let mut all_loop_asserts: Vec<Vec<String>> = vec![];
+    let mut post_condition_asserts = vec![];
     for stmt in parsed.block.stmts {
-        println!("{stmt:#?}");
         match stmt {
-            syn::Stmt::Local(_) => todo!(),
-            syn::Stmt::Item(_) => todo!(),
-            syn::Stmt::Expr(expr, semi) => todo!(),
+            syn::Stmt::Expr(expr, _) => {
+                match expr {
+                    Expr::Loop(expr_loop) => {
+                        if parsing_state == ParsingState::Precondition {
+                            // Entering the loop
+                            parsing_state = ParsingState::Loop;
+                        }
+                        let mut loop_asserts = vec![];
+                        for stmt in expr_loop.body.stmts {
+                            match stmt {
+                                syn::Stmt::Expr(expr, _) => match expr_to_smt2_string(expr) {
+                                    ExprReturn::String(smt2_string) => {
+                                        println!("{smt2_string}");
+                                        loop_asserts.push(smt2_string)
+                                    }
+                                    ExprReturn::ArrayAccess(_) => todo!(),
+                                },
+                                _ => todo!("Only handle expressions in loop body!"),
+                            }
+                        }
+                        all_loop_asserts.push(loop_asserts);
+                    }
+                    _ => todo!("Only handle raw loops in to_vmt!"),
+                }
+            }
             syn::Stmt::Macro(stmt_macro) => {
+                if parsing_state == ParsingState::Loop {
+                    // Pop out of the loop
+                    parsing_state = ParsingState::Postcondition;
+                }
                 println!("Parsing macro.");
                 let assert_string = unwrap_assert_macro_to_smtlib2_expr_string(stmt_macro);
                 println!("{assert_string}");
-                assert_strings.push(assert_string);
+                if parsing_state == ParsingState::Precondition {
+                    pre_condition_asserts.push(assert_string);
+                } else if parsing_state == ParsingState::Postcondition {
+                    post_condition_asserts.push(assert_string);
+                } else {
+                    panic!("Invalid parsing state.");
+                }
             }
+            _ => panic!("Only handle Expressions and Macros in to_vmt!"),
         }
     }
 
@@ -64,31 +106,99 @@ fn unwrap_assert_macro_to_smtlib2_expr_string(stmt_macro: syn::StmtMacro) -> Str
     // TODO: it might be better to deal with the TokenStream directly here instead of parsing?
     // Parsing is nice because we have a bit more structure.
     let parsed_expr: Expr = syn::parse2(stmt_macro.mac.tokens).unwrap();
-    expr_to_smt2_string(parsed_expr)
+    match expr_to_smt2_string(parsed_expr) {
+        ExprReturn::String(smt2_string) => smt2_string,
+        ExprReturn::ArrayAccess(_) => todo!(),
+    }
 }
 
-fn expr_to_smt2_string(expr: Expr) -> String {
+#[derive(PartialEq, Eq)]
+enum ExprReturn {
+    String(String),
+    ArrayAccess((String, String)),
+}
+
+fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
     match expr {
-        Expr::Binary(expr_binary) => {
-            let op = get_smt2_bin_op_string(expr_binary.op);
-            let lhs = expr_to_smt2_string(*expr_binary.left);
-            let rhs = expr_to_smt2_string(*expr_binary.right);
-            format!("({op} {lhs} {rhs})")
+        Expr::Assign(expr_assign) => {
+            let rhs = match expr_to_smt2_string(*expr_assign.right) {
+                ExprReturn::String(rhs_string) => rhs_string,
+                ExprReturn::ArrayAccess((array, index)) => format!("(select {array} {index})"),
+            };
+            match expr_to_smt2_string(*expr_assign.left) {
+                ExprReturn::String(lhs_string) => {
+                    ExprReturn::String(format!("(= {lhs_string}_{NEXT_VARIABLE_NAME} {rhs})"))
+                }
+                ExprReturn::ArrayAccess((array, index)) => ExprReturn::String(format!(
+                    "(= {array}_{NEXT_VARIABLE_NAME} (store {array} {index} {rhs}))"
+                )),
+            }
         }
-        Expr::Path(expr_path) => expr_path.path.segments[0].ident.to_string(),
+        Expr::Binary(expr_binary) => {
+            let lhs = match expr_to_smt2_string(*expr_binary.left) {
+                ExprReturn::String(expr_str) => expr_str,
+                ExprReturn::ArrayAccess((array, index)) => format!("(select {array} {index})"),
+            };
+            let rhs = match expr_to_smt2_string(*expr_binary.right) {
+                ExprReturn::String(expr_str) => expr_str,
+                ExprReturn::ArrayAccess((array, index)) => format!("(select {array} {index})"),
+            };
+            match get_smt2_bin_op_string(expr_binary.op) {
+                OpReturn::Single(op) => ExprReturn::String(format!("({op} {lhs} {rhs})")),
+                OpReturn::Double((outer_op, inner_op)) => {
+                    if outer_op.eq("=") {
+                        // Really, this is an assignment so we have to update next.
+                        ExprReturn::String(format!(
+                            "({outer_op} ({inner_op} {lhs}_{NEXT_VARIABLE_NAME} {rhs}))"
+                        ))
+                    } else {
+                        ExprReturn::String(format!("({outer_op} ({inner_op} {lhs} {rhs}))"))
+                    }
+                }
+            }
+        }
+        Expr::If(expr_if) => {
+            let if_str = match expr_to_smt2_string(*expr_if.cond) {
+                ExprReturn::String(expr_str) => expr_str,
+                _ => panic!("If condition cannot be an array expression!"),
+            };
+            let mut body = vec![];
+            for stmt in expr_if.then_branch.stmts {
+                match stmt {
+                    syn::Stmt::Expr(expr, _) => {
+                        let body_expr = match expr_to_smt2_string(expr) {
+                            ExprReturn::String(expr_string) => expr_string,
+                            _ => panic!("Top-level body expression cannot be array expression."),
+                        };
+                        body.push(body_expr);
+                    }
+                    _ => panic!("Only expressions allowed in if body: {stmt:?}"),
+                }
+            }
+            let body_string = body.join(" ");
+            ExprReturn::String(format!("(=> {if_str} (and {body_string}))"))
+        }
+        Expr::Index(expr_index) => {
+            let array = match expr_to_smt2_string(*expr_index.expr) {
+                ExprReturn::String(array_string) => array_string,
+                _ => panic!("Array call must be a single array.s"),
+            };
+            let index = match expr_to_smt2_string(*expr_index.index) {
+                ExprReturn::String(index_string) => index_string,
+                _ => panic!("Do not handle nested array indexes."),
+            };
+            ExprReturn::ArrayAccess((array, index))
+        }
         Expr::Lit(expr_lit) => match expr_lit.lit {
-            syn::Lit::Str(lit_str) => lit_str.value(),
-            syn::Lit::ByteStr(_) => todo!(),
-            syn::Lit::CStr(_) => todo!(),
-            syn::Lit::Byte(_) => todo!(),
-            syn::Lit::Char(_) => todo!(),
-            syn::Lit::Int(lit_int) => lit_int.to_string(),
-            syn::Lit::Float(_) => todo!(),
-            syn::Lit::Bool(lit_bool) => smt2_bool_string_from_bool(lit_bool.value),
-            syn::Lit::Verbatim(_) => todo!(),
-            _ => todo!(),
+            syn::Lit::Str(lit_str) => ExprReturn::String(lit_str.value()),
+            syn::Lit::Int(lit_int) => ExprReturn::String(lit_int.to_string()),
+            syn::Lit::Bool(lit_bool) => {
+                ExprReturn::String(smt2_bool_string_from_bool(lit_bool.value))
+            }
+            _ => todo!("Haven't implemented Rust literal: {expr_lit:?}"),
         },
-        _ => panic!("Cannot parse non-binary expressions in asserts: {expr:?}"),
+        Expr::Path(expr_path) => ExprReturn::String(expr_path.path.segments[0].ident.to_string()),
+        _ => panic!("Cannot parse expression in asserts: {expr:?}"),
     }
 }
 
@@ -99,19 +209,29 @@ fn smt2_bool_string_from_bool(value: bool) -> String {
     }
 }
 
-fn get_smt2_bin_op_string(op: syn::BinOp) -> String {
+/// Apply either a Single or Double operation. For Double, the first string is the
+/// last operation to apply, so: Double(("not", "=")) on operands a and b should
+/// evaluate to: (not (= a b)).
+enum OpReturn {
+    Single(String),
+    Double((String, String)),
+}
+
+fn get_smt2_bin_op_string(op: syn::BinOp) -> OpReturn {
     match op {
-        syn::BinOp::Add(_) => "+".into(),
-        syn::BinOp::Sub(_) => "-".into(),
-        syn::BinOp::Mul(_) => "*".into(),
-        syn::BinOp::Div(_) => "/".into(),
-        syn::BinOp::And(_) => "and".into(),
-        syn::BinOp::Or(_) => "or".into(),
-        syn::BinOp::Eq(_) => "=".into(),
-        syn::BinOp::Lt(_) => "<".into(),
-        syn::BinOp::Le(_) => "<=".into(),
-        syn::BinOp::Ge(_) => ">".into(),
-        syn::BinOp::Gt(_) => ">=".into(),
+        syn::BinOp::AddAssign(_) => OpReturn::Double(("=".into(), "+".into())),
+        syn::BinOp::Ne(_) => OpReturn::Double(("not".into(), "=".into())),
+        syn::BinOp::Add(_) => OpReturn::Single("+".into()),
+        syn::BinOp::Sub(_) => OpReturn::Single("-".into()),
+        syn::BinOp::Mul(_) => OpReturn::Single("*".into()),
+        syn::BinOp::Div(_) => OpReturn::Single("/".into()),
+        syn::BinOp::And(_) => OpReturn::Single("and".into()),
+        syn::BinOp::Or(_) => OpReturn::Single("or".into()),
+        syn::BinOp::Eq(_) => OpReturn::Single("=".into()),
+        syn::BinOp::Lt(_) => OpReturn::Single("<".into()),
+        syn::BinOp::Le(_) => OpReturn::Single("<=".into()),
+        syn::BinOp::Ge(_) => OpReturn::Single(">".into()),
+        syn::BinOp::Gt(_) => OpReturn::Single(">=".into()),
         _ => todo!("Haven't implemented binary operation: {op:?}"),
     }
 }
