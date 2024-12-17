@@ -1,7 +1,19 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { BenchmarkResult, useArtifact } from "../../fetch";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import {
+  Benchmark,
+  BenchmarkResult,
+  fetchArtifact,
+  useArtifact,
+  useArtifacts,
+} from "../../fetch";
+import { useEffect, useState } from "react";
+import { useAuth } from "../../AuthProvider";
+import { Octokit } from "@octokit/core";
 
 export const Route = createFileRoute("/artifacts/$art")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    compare: (search.compare as string) || "",
+  }),
   beforeLoad: ({ context }) => {
     if (!context.auth.isAuthenticated) {
       throw redirect({ to: "/oauth" });
@@ -12,7 +24,24 @@ export const Route = createFileRoute("/artifacts/$art")({
 
 function RouteComponent() {
   const { art } = Route.useParams();
+  const { compare } = Route.useSearch();
   const artifact = useArtifact(art);
+  const artifacts = useArtifacts();
+  const [compareAgainst, setCompareAgainst] = useState<Benchmark[] | undefined>(
+    undefined,
+  );
+  const [filter, setFilter] = useState<string>("");
+  const auth = useAuth();
+  const navigate = useNavigate({ from: Route.fullPath });
+
+  useEffect(() => {
+    if (compare !== "") {
+      const octokit = new Octokit({
+        auth: auth.token,
+      });
+      fetchArtifact(octokit, compare).then(setCompareAgainst);
+    }
+  }, [compare]);
 
   if (artifact.isPending) {
     return <div>Loading...</div>;
@@ -23,26 +52,96 @@ function RouteComponent() {
   }
 
   return (
-    <table className="border-collapse border border-slate-400">
-      <thead>
-        <tr>
-          <th className="border border-slate-300">Benchmark</th>
-          <th className="border border-slate-300">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {artifact.data.map((benchmark, idx) => (
-          <tr key={idx}>
-            <th className="border border-slate-300 text-left align-top">
-              {benchmark.example}
-            </th>
-            <th className="border border-slate-300 text-left align-top">
-              <Status result={benchmark.result} />
-            </th>
+    <div>
+      <div>
+        <label htmlFor="filter" className="mr-2 font-bold">
+          Filter:
+        </label>
+        <select
+          name="filter"
+          onChange={(ev) => {
+            setFilter(ev.target.value);
+          }}
+        >
+          <option value="">None</option>
+          <option value="success">Success</option>
+          <option value="timeout">Timeout</option>
+          <option value="error">Error</option>
+          <option value="panic">Panic</option>
+        </select>
+      </div>
+      <div>
+        <label htmlFor="compare" className="mr-2 font-bold">
+          Compare:
+        </label>
+        <select
+          name="compare"
+          onChange={(ev) => {
+            navigate({
+              search: () => ({ compare: ev.target.value.trim() }),
+            });
+          }}
+          defaultValue={compare}
+        >
+          <option value="">None</option>
+          {!!artifacts.data &&
+            artifacts.data.data.artifacts.map((art: any, idx: number) => {
+              let date = new Date(Date.parse(art.created_at));
+              let dayString = date.toLocaleDateString("en-US");
+              return (
+                <option key={idx} value={art.id}>
+                  {dayString} {`#${art.workflow_run.head_sha.slice(0, 7)}`}
+                </option>
+              );
+            })}
+        </select>
+      </div>
+      <table className="border-collapse border border-slate-400">
+        <thead>
+          <tr>
+            <th className="border border-slate-300 font-bold">Benchmark</th>
+            <th className="border border-slate-300 font-bold">Status</th>
+            {compare !== "" && !!compareAgainst && (
+              <th className="border border-slate-300 font-bold">Compare</th>
+            )}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {artifact.data
+            .map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
+            .filter(([benchmark, _]) => {
+              if (filter === "") {
+                return true;
+              } else if (filter === "success") {
+                return "Success" in benchmark.result;
+              } else if (filter === "timeout") {
+                return "Timeout" in benchmark.result;
+              } else if (filter === "error") {
+                return "Error" in benchmark.result;
+              } else if (filter === "panic") {
+                return "Panic" in benchmark.result;
+              } else {
+                return false;
+              }
+            })
+            .map(([benchmark, idx]) => (
+              <tr key={idx}>
+                <th className="border border-slate-300 text-left align-top">
+                  {benchmark.example}
+                </th>
+                <th className="border border-slate-300 text-left align-top">
+                  <Status result={benchmark.result} />
+                </th>
+                {compare != "" && !!compareAgainst && (
+                  <th className="border border-slate-300 text-left align-top">
+                    <Status result={compareAgainst[idx].result} />
+                  </th>
+                )}
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

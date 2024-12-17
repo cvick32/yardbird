@@ -69,7 +69,7 @@ async function fetchArtifacts(octokit: Octokit) {
   });
 }
 
-async function fetchArtifact(
+export async function fetchArtifact(
   octokit: Octokit,
   id: string,
 ): Promise<Benchmark[] | undefined> {

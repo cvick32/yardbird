@@ -39,6 +39,7 @@ function Index() {
               params={{
                 art: art.id,
               }}
+              search={{ compare: "" }}
               className="text-blue-500 hover:text-blue-600 hover:underline"
             >
               Results
