@@ -69,6 +69,7 @@ export function useInProgressWorkflows() {
     queryFn: async () => fetchWorkflows(octokit),
     select: (res) =>
       res.data.workflow_runs.filter((run: any) => run.status !== "completed"),
+    refetchInterval: 10 * 1000, // 10 seconds
   });
 }
 
