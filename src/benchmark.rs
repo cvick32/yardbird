@@ -9,7 +9,7 @@ use std::{
 use log::info;
 use serde::Serialize;
 
-use crate::{proof_loop, YardbirdOptions};
+use crate::{model_from_options, proof_loop, YardbirdOptions};
 
 #[derive(Debug, Serialize)]
 enum BenchResult {
@@ -55,8 +55,9 @@ pub fn run_benchmarks(options: &YardbirdOptions) -> anyhow::Result<()> {
             filename: path_string.clone(),
             ..options.clone()
         };
+        let abstract_vmt_model = model_from_options(&new_options);
         let result = run_with_timeout(
-            move || proof_loop(&new_options).ok(),
+            move || proof_loop(&new_options, abstract_vmt_model).ok(),
             Duration::from_secs(10),
         );
         bench_results.push(BenchmarkResult {

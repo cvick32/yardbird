@@ -9,7 +9,7 @@ use std::{
     thread,
     time::Duration,
 };
-use yardbird::{proof_loop, ProofLoopResult, YardbirdOptions};
+use yardbird::{model_from_options, proof_loop, ProofLoopResult, YardbirdOptions};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -120,7 +120,11 @@ where
 fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
     let proof_options = options.clone();
     println!("running: {}", options.filename);
-    let status_code = run_with_timeout(move || proof_loop(&proof_options), Duration::from_secs(10));
+    let abstract_vmt_model = model_from_options(&proof_options);
+    let status_code = run_with_timeout(
+        move || proof_loop(&proof_options, abstract_vmt_model),
+        Duration::from_secs(10),
+    );
 
     Ok(Benchmark {
         example: options.filename,

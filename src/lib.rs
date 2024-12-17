@@ -46,6 +46,18 @@ pub struct YardbirdOptions {
     pub interpolate: bool,
 }
 
+impl Default for YardbirdOptions {
+    fn default() -> Self {
+        YardbirdOptions {
+            filename: "".into(),
+            depth: 10,
+            bmc_count: 1,
+            print_vmt: false,
+            interpolate: false,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ProofLoopResult {
     pub model: VMTModel,
@@ -54,8 +66,10 @@ pub struct ProofLoopResult {
 }
 
 /// The main verification loop.
-pub fn proof_loop(options: &YardbirdOptions) -> anyhow::Result<ProofLoopResult> {
-    let mut abstract_vmt_model = model_from_options(options);
+pub fn proof_loop(
+    options: &YardbirdOptions,
+    mut vmt_model: VMTModel,
+) -> anyhow::Result<ProofLoopResult> {
     let mut used_instances = vec![];
     let mut const_instances = vec![];
     let config: Config = Config::new();
@@ -65,7 +79,7 @@ pub fn proof_loop(options: &YardbirdOptions) -> anyhow::Result<ProofLoopResult> 
         for _ in 0..10 {
             // Run max of 10 iterations for depth
             // Currently run once, this will eventually run until UNSAT
-            let smt = abstract_vmt_model.unroll(depth);
+            let smt = vmt_model.unroll(depth);
             let solver = Solver::new(&context);
             solver.from_string(smt.to_bmc());
             debug!("smt2lib program:\n{}", smt.to_bmc());
@@ -111,9 +125,9 @@ pub fn proof_loop(options: &YardbirdOptions) -> anyhow::Result<ProofLoopResult> 
                     // add all instantiations to the model,
                     // if we have already seen all instantiations, break
                     // TODO: not sure if this is correct...
-                    let no_progress = instantiations.into_iter().all(|inst| {
-                        !abstract_vmt_model.add_instantiation(inst, &mut used_instances)
-                    });
+                    let no_progress = instantiations
+                        .into_iter()
+                        .all(|inst| !vmt_model.add_instantiation(inst, &mut used_instances));
                     if no_progress {
                         return Err(anyhow!("Failed to add new instantations"));
                     }
@@ -122,7 +136,7 @@ pub fn proof_loop(options: &YardbirdOptions) -> anyhow::Result<ProofLoopResult> 
         }
     }
     Ok(ProofLoopResult {
-        model: abstract_vmt_model,
+        model: vmt_model,
         used_instances,
         const_instances,
     })
