@@ -1033,6 +1033,8 @@ dependencies = [
 name = "to_vmt"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
+ "quote",
  "smt2parser",
  "syn 2.0.90",
  "yardbird",

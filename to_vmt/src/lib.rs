@@ -1,8 +1,9 @@
 extern crate proc_macro;
-use std::fmt::{Debug, Display};
-
 use proc_macro::TokenStream;
+use quote::quote_spanned;
 use smt2parser::{concrete::Command, get_command_from_command_string, vmt::NEXT_VARIABLE_NAME};
+use std::fmt::{Debug, Display};
+use syn::spanned::Spanned;
 use syn::{Expr, ItemFn, Pat, PatIdent, PatType, Path};
 use transition_system::to_vmt_model;
 use yardbird::{proof_loop, YardbirdOptions};
@@ -17,14 +18,29 @@ enum ParsingState {
 }
 
 #[proc_macro_attribute]
-pub fn to_vmt(_attrs: TokenStream, item: TokenStream) -> TokenStream {
+pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
+    let content = to_vmt_inner(
+        proc_macro2::TokenStream::from(attrs),
+        proc_macro2::TokenStream::from(item),
+    );
+    TokenStream::from(content)
+}
+
+fn to_vmt_inner(
+    _attrs: proc_macro2::TokenStream,
+    item: proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
     let pre_item = item.clone();
-    let parsed: ItemFn = syn::parse(item).unwrap();
+    let parsed: ItemFn = syn::parse(item.into()).unwrap();
     let _function_name = parsed.sig.ident.to_string();
     let mut function_arguments = vec![];
     for input in parsed.sig.inputs {
         match input {
-            syn::FnArg::Receiver(_) => panic!("Methods cannot be cast to VMT!"),
+            syn::FnArg::Receiver(recv) => {
+                return quote_spanned! {
+                    recv.self_token.span() => compile_error!("Methods cannot be cast to VMT!");
+                }
+            }
             syn::FnArg::Typed(pat_type) => {
                 let arg = FunctionArgument::from(pat_type);
                 function_arguments.push(arg);
