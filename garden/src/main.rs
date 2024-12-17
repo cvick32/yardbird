@@ -121,11 +121,11 @@ where
 fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
     println!("running: {}", options.filename);
     let mut status_code = None;
-    for _ in 0..5 {
+    for i in 0..5 {
         let proof_options = options.clone();
         status_code = Some(run_with_timeout(
             move || proof_loop(&proof_options),
-            Duration::from_secs(10),
+            Duration::from_secs(10 + (i * 5)),
         ));
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
             println!("  retrying: {}", options.filename);
