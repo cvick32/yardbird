@@ -31,7 +31,7 @@
 
 (define-fun property () Bool (!
  (and
-(let ((a!1 (not (not (= (select a Z) (select b Z))))))
-  (=> (and (>= i n) (> Z 0) (< Z n)) (and a!1)))
+  (=> (and (>= i n) (> Z 0) (< Z n)) 
+  (= (select a Z) (select b Z)))
 ) :invar-property 0))
 
