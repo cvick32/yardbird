@@ -176,9 +176,9 @@ function Status({ result }: { result: BenchmarkResult }) {
           Trivial Success...something is wrong.
           <div>Used instances:</div>
           <div className="ml-2 font-mono">
-            {result.Success.used_instances.map((inst, idx) => (
-              <div key={idx}>{inst}</div>
-            ))}
+            {result.Success.used_instances.map((inst, idx) => {
+              return <div key={idx}>{inst}</div>;
+            })}
           </div>
           <div>Const instances:</div>
           <div className="ml-2 font-mono">
@@ -195,7 +195,7 @@ function Status({ result }: { result: BenchmarkResult }) {
           <div>Used instances:</div>
           <div className="ml-2 font-mono">
             {result.Success.used_instances.map((inst, idx) => (
-              <div key={idx}>{inst}</div>
+              <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
             ))}
           </div>
           <div>Const instances:</div>
@@ -224,4 +224,65 @@ function Status({ result }: { result: BenchmarkResult }) {
   if ("Panic" in result) {
     return <div className="bg-purple-200">{result.Panic}</div>;
   }
+}
+
+function parseSexp(str: string) {
+  let tokens = tokenize(str);
+  let index = 0;
+
+  function tokenize(str: string): string[] {
+    return str.replace(/\(/g, " ( ").replace(/\)/g, " ) ").trim().split(/\s+/);
+  }
+
+  function parse(): any[] | string {
+    let token: string = tokens[index++];
+
+    if (token === "(") {
+      let list: (string | string[])[] = [];
+      while (tokens[index] !== ")") {
+        list.push(parse());
+      }
+      index++; // Skip closing parenthesis
+      return list;
+    } else if (token === ")") {
+      throw new Error("Unexpected closing parenthesis");
+    } else {
+      return token;
+    }
+  }
+
+  return parse();
+}
+
+function prettyPrint(inst: any[] | string): string {
+  if (inst[0] === "=") {
+    return prettyPrint(inst[1]) + " = " + prettyPrint(inst[2]);
+  }
+
+  if (inst[0] === "=>") {
+    return `${prettyPrint(inst[1])} => (${prettyPrint(inst[2])})`;
+  }
+
+  if (inst[0] === "Read-Int-Int") {
+    return `(read ${prettyPrint(inst[1])} ${prettyPrint(inst[2])})`;
+  }
+
+  if (inst[0] === "Write-Int-Int") {
+    return `(write ${prettyPrint(inst[1])} ${prettyPrint(inst[2])} ${prettyPrint(inst[3])})`;
+  }
+
+  if (inst[0] === "not") {
+    if (inst[1][0] === "=") {
+      return `${prettyPrint(inst[1][1])} != ${prettyPrint(inst[1][2])}`;
+    } else {
+      return `(! (${prettyPrint(inst[1])}))`;
+    }
+  }
+
+  if (Array.isArray(inst)) {
+    const args = inst.slice(1).map((el) => prettyPrint(el));
+    return `(${inst[0]} ${args.join(" ")})`;
+  }
+
+  return inst;
 }
