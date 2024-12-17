@@ -4,6 +4,10 @@ use std::fmt::{Debug, Display};
 use proc_macro::TokenStream;
 use smt2parser::{concrete::Command, get_command_from_command_string, vmt::NEXT_VARIABLE_NAME};
 use syn::{Expr, ItemFn, Pat, PatIdent, PatType, Path};
+use transition_system::to_vmt_model;
+use yardbird::{proof_loop, YardbirdOptions};
+
+mod transition_system;
 
 #[derive(PartialEq, Eq)]
 enum ParsingState {
@@ -13,18 +17,16 @@ enum ParsingState {
 }
 
 #[proc_macro_attribute]
-pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
-    let dd = item.clone();
+pub fn to_vmt(_attrs: TokenStream, item: TokenStream) -> TokenStream {
+    let pre_item = item.clone();
     let parsed: ItemFn = syn::parse(item).unwrap();
-
-    let function_name = parsed.sig.ident.to_string();
+    let _function_name = parsed.sig.ident.to_string();
     let mut function_arguments = vec![];
     for input in parsed.sig.inputs {
         match input {
             syn::FnArg::Receiver(_) => panic!("Methods cannot be cast to VMT!"),
             syn::FnArg::Typed(pat_type) => {
                 let arg = FunctionArgument::from(pat_type);
-                println!("{}", arg);
                 arg.to_commands()
                     .iter()
                     .for_each(|command| println!("{}", command));
@@ -32,11 +34,33 @@ pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
     }
+    let (pre_condition_asserts, all_loop_asserts, post_condition_asserts) =
+        build_transition_system(*parsed.block, &function_arguments);
+    let vmt = to_vmt_model(
+        function_arguments,
+        pre_condition_asserts,
+        all_loop_asserts,
+        post_condition_asserts,
+    )
+    .abstract_array_theory();
+    let standard_options = YardbirdOptions::default();
+    // Run yardbird proof.
+    match proof_loop(&standard_options, vmt) {
+        Ok(result) => println!("Yardbird: {:#?}", result.used_instances),
+        Err(err) => println!("Yardbird failed: {err}"),
+    }
+    pre_item
+}
+
+fn build_transition_system(
+    block: syn::Block,
+    variables: &Vec<FunctionArgument>,
+) -> (Vec<String>, Vec<Vec<String>>, Vec<String>) {
     let mut parsing_state = ParsingState::Precondition;
     let mut pre_condition_asserts = vec![];
     let mut all_loop_asserts: Vec<Vec<String>> = vec![];
     let mut post_condition_asserts = vec![];
-    for stmt in parsed.block.stmts {
+    for stmt in block.stmts {
         match stmt {
             syn::Stmt::Expr(expr, _) => {
                 match expr {
@@ -48,13 +72,14 @@ pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
                         let mut loop_asserts = vec![];
                         for stmt in expr_loop.body.stmts {
                             match stmt {
-                                syn::Stmt::Expr(expr, _) => match expr_to_smt2_string(expr) {
-                                    ExprReturn::String(smt2_string) => {
-                                        println!("{smt2_string}");
-                                        loop_asserts.push(smt2_string)
+                                syn::Stmt::Expr(expr, _) => {
+                                    match expr_to_smt2_string(expr, variables) {
+                                        ExprReturn::String(smt2_string) => {
+                                            loop_asserts.push(smt2_string)
+                                        }
+                                        ExprReturn::ArrayAccess(_) => todo!(),
                                     }
-                                    ExprReturn::ArrayAccess(_) => todo!(),
-                                },
+                                }
                                 _ => todo!("Only handle expressions in loop body!"),
                             }
                         }
@@ -68,9 +93,8 @@ pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
                     // Pop out of the loop
                     parsing_state = ParsingState::Postcondition;
                 }
-                println!("Parsing macro.");
-                let assert_string = unwrap_assert_macro_to_smtlib2_expr_string(stmt_macro);
-                println!("{assert_string}");
+                let assert_string =
+                    unwrap_assert_macro_to_smtlib2_expr_string(stmt_macro, variables);
                 if parsing_state == ParsingState::Precondition {
                     pre_condition_asserts.push(assert_string);
                 } else if parsing_state == ParsingState::Postcondition {
@@ -82,31 +106,22 @@ pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
             _ => panic!("Only handle Expressions and Macros in to_vmt!"),
         }
     }
-
-    let x = format!(
-        r#"
-        fn {}() {{
-            println!("entering");
-            println!("attr tokens: {{}}", {args});
-            println!("input tokens: {{}}", {input});
-            println!("exiting");
-        }}
-    "#,
-        function_name,
-        args = attrs.into_iter().count(),
-        input = dd.into_iter().count(),
-    );
-    x.parse().expect("Generated invalid tokens")
+    (
+        pre_condition_asserts,
+        all_loop_asserts,
+        post_condition_asserts,
+    )
 }
 
-fn unwrap_assert_macro_to_smtlib2_expr_string(stmt_macro: syn::StmtMacro) -> String {
+fn unwrap_assert_macro_to_smtlib2_expr_string(
+    stmt_macro: syn::StmtMacro,
+    variables: &Vec<FunctionArgument>,
+) -> String {
     if stmt_macro.mac.path.segments[0].ident != "assert" {
         todo!("Do not handle non-assert macros in to_vmt!");
     }
-    // TODO: it might be better to deal with the TokenStream directly here instead of parsing?
-    // Parsing is nice because we have a bit more structure.
     let parsed_expr: Expr = syn::parse2(stmt_macro.mac.tokens).unwrap();
-    match expr_to_smt2_string(parsed_expr) {
+    match expr_to_smt2_string(parsed_expr, variables) {
         ExprReturn::String(smt2_string) => smt2_string,
         ExprReturn::ArrayAccess(_) => todo!(),
     }
@@ -118,14 +133,14 @@ enum ExprReturn {
     ArrayAccess((String, String)),
 }
 
-fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
+fn expr_to_smt2_string(expr: Expr, variables: &Vec<FunctionArgument>) -> ExprReturn {
     match expr {
         Expr::Assign(expr_assign) => {
-            let rhs = match expr_to_smt2_string(*expr_assign.right) {
+            let rhs = match expr_to_smt2_string(*expr_assign.right, variables) {
                 ExprReturn::String(rhs_string) => rhs_string,
                 ExprReturn::ArrayAccess((array, index)) => format!("(select {array} {index})"),
             };
-            match expr_to_smt2_string(*expr_assign.left) {
+            match expr_to_smt2_string(*expr_assign.left, variables) {
                 ExprReturn::String(lhs_string) => {
                     ExprReturn::String(format!("(= {lhs_string}_{NEXT_VARIABLE_NAME} {rhs})"))
                 }
@@ -135,11 +150,11 @@ fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
             }
         }
         Expr::Binary(expr_binary) => {
-            let lhs = match expr_to_smt2_string(*expr_binary.left) {
+            let lhs = match expr_to_smt2_string(*expr_binary.left, variables) {
                 ExprReturn::String(expr_str) => expr_str,
                 ExprReturn::ArrayAccess((array, index)) => format!("(select {array} {index})"),
             };
-            let rhs = match expr_to_smt2_string(*expr_binary.right) {
+            let rhs = match expr_to_smt2_string(*expr_binary.right, variables) {
                 ExprReturn::String(expr_str) => expr_str,
                 ExprReturn::ArrayAccess((array, index)) => format!("(select {array} {index})"),
             };
@@ -149,7 +164,7 @@ fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
                     if outer_op.eq("=") {
                         // Really, this is an assignment so we have to update next.
                         ExprReturn::String(format!(
-                            "({outer_op} ({inner_op} {lhs}_{NEXT_VARIABLE_NAME} {rhs}))"
+                            "({outer_op} {lhs}_{NEXT_VARIABLE_NAME} ({inner_op} {lhs} {rhs}))"
                         ))
                     } else {
                         ExprReturn::String(format!("({outer_op} ({inner_op} {lhs} {rhs}))"))
@@ -158,7 +173,7 @@ fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
             }
         }
         Expr::If(expr_if) => {
-            let if_str = match expr_to_smt2_string(*expr_if.cond) {
+            let if_str = match expr_to_smt2_string(*expr_if.cond, variables) {
                 ExprReturn::String(expr_str) => expr_str,
                 _ => panic!("If condition cannot be an array expression!"),
             };
@@ -166,7 +181,7 @@ fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
             for stmt in expr_if.then_branch.stmts {
                 match stmt {
                     syn::Stmt::Expr(expr, _) => {
-                        let body_expr = match expr_to_smt2_string(expr) {
+                        let body_expr = match expr_to_smt2_string(expr, variables) {
                             ExprReturn::String(expr_string) => expr_string,
                             _ => panic!("Top-level body expression cannot be array expression."),
                         };
@@ -176,14 +191,29 @@ fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
                 }
             }
             let body_string = body.join(" ");
-            ExprReturn::String(format!("(=> {if_str} (and {body_string}))"))
+            if expr_if.else_branch.is_none()
+                || else_branch_only_contains_break(*expr_if.else_branch.unwrap().1)
+            {
+                let mut frames = vec![];
+                for variable in variables {
+                    if variable.is_mutable {
+                        frames.push(variable.get_frame_expression());
+                    }
+                }
+                let frame_str = frames.join(" ");
+                ExprReturn::String(format!(
+                    "(and (=> {if_str} (and {body_string})) (=> (not {if_str}) (and {frame_str})))"
+                ))
+            } else {
+                todo!("Handle more complex expressions in else branch.")
+            }
         }
         Expr::Index(expr_index) => {
-            let array = match expr_to_smt2_string(*expr_index.expr) {
+            let array = match expr_to_smt2_string(*expr_index.expr, variables) {
                 ExprReturn::String(array_string) => array_string,
                 _ => panic!("Array call must be a single array.s"),
             };
-            let index = match expr_to_smt2_string(*expr_index.index) {
+            let index = match expr_to_smt2_string(*expr_index.index, variables) {
                 ExprReturn::String(index_string) => index_string,
                 _ => panic!("Do not handle nested array indexes."),
             };
@@ -197,8 +227,29 @@ fn expr_to_smt2_string(expr: Expr) -> ExprReturn {
             }
             _ => todo!("Haven't implemented Rust literal: {expr_lit:?}"),
         },
-        Expr::Path(expr_path) => ExprReturn::String(expr_path.path.segments[0].ident.to_string()),
+        Expr::Path(expr_path) => {
+            let var_ident = expr_path.path.segments[0].ident.to_string();
+            for variable in variables {
+                if variable.is_equal(&var_ident) {
+                    return ExprReturn::String(variable.vmt_name.clone());
+                }
+            }
+            ExprReturn::String(var_ident)
+        }
         _ => panic!("Cannot parse expression in asserts: {expr:?}"),
+    }
+}
+
+fn else_branch_only_contains_break(else_branch: Expr) -> bool {
+    match else_branch {
+        Expr::Block(expr_block) => {
+            expr_block.block.stmts.len() == 1
+                && matches!(
+                    expr_block.block.stmts[0],
+                    syn::Stmt::Expr(Expr::Break(_), _)
+                )
+        }
+        _ => panic!("Else branch must start with an Expr::Block!"),
     }
 }
 
@@ -230,8 +281,8 @@ fn get_smt2_bin_op_string(op: syn::BinOp) -> OpReturn {
         syn::BinOp::Eq(_) => OpReturn::Single("=".into()),
         syn::BinOp::Lt(_) => OpReturn::Single("<".into()),
         syn::BinOp::Le(_) => OpReturn::Single("<=".into()),
-        syn::BinOp::Ge(_) => OpReturn::Single(">".into()),
-        syn::BinOp::Gt(_) => OpReturn::Single(">=".into()),
+        syn::BinOp::Gt(_) => OpReturn::Single(">".into()),
+        syn::BinOp::Ge(_) => OpReturn::Single(">=".into()),
         _ => todo!("Haven't implemented binary operation: {op:?}"),
     }
 }
@@ -245,7 +296,8 @@ struct ArgumentType {
 
 #[derive(Debug)]
 struct FunctionArgument {
-    pub name: String,
+    pub rust_name: String,
+    pub vmt_name: String,
     pub _pattern: PatIdent,
     pub is_mutable: bool,
     pub arg_type: ArgumentType,
@@ -253,10 +305,17 @@ struct FunctionArgument {
 
 impl FunctionArgument {
     pub fn from(pat_type: PatType) -> Self {
-        let (name, _pattern, is_mutable) = get_arg_innards(*pat_type.pat);
+        let (rust_name, _pattern, is_mutable) = get_arg_innards(*pat_type.pat);
         let arg_type = ArgumentType::from(*pat_type.ty);
+        // CONVENTION: when an argument is immutable, it is uppercased.
+        let vmt_name = if is_mutable {
+            rust_name.clone()
+        } else {
+            rust_name.to_uppercase()
+        };
         FunctionArgument {
-            name,
+            rust_name,
+            vmt_name,
             _pattern,
             is_mutable,
             arg_type,
@@ -270,14 +329,14 @@ impl FunctionArgument {
     */
     pub fn to_commands(&self) -> Vec<Command> {
         let arg_type = self.arg_type.to_smt2_sort_string();
-        let cur_var = format!("(declare-fun {} () {})", self.name, arg_type);
+        let cur_var = format!("(declare-fun {} () {})", self.vmt_name, arg_type);
         let next_var = format!(
             "(declare-fun {}_{} () {})",
-            self.name, NEXT_VARIABLE_NAME, arg_type
+            self.vmt_name, NEXT_VARIABLE_NAME, arg_type
         );
         let variable_relationship = format!(
             "(define-fun .{} () {} (! {} :next {}_{}))",
-            self.name, arg_type, self.name, self.name, NEXT_VARIABLE_NAME
+            self.vmt_name, arg_type, self.vmt_name, self.vmt_name, NEXT_VARIABLE_NAME
         );
 
         vec![
@@ -286,6 +345,17 @@ impl FunctionArgument {
             get_command_from_command_string(variable_relationship.as_bytes()),
         ]
     }
+
+    fn is_equal(&self, str_value: &str) -> bool {
+        self.rust_name.eq(str_value)
+    }
+
+    fn get_frame_expression(&self) -> String {
+        format!(
+            "(= {} {}_{NEXT_VARIABLE_NAME})",
+            self.vmt_name, self.vmt_name
+        )
+    }
 }
 
 impl Display for FunctionArgument {
@@ -293,7 +363,7 @@ impl Display for FunctionArgument {
         if self.is_mutable {
             f.write_str("mut ")?;
         }
-        f.write_str(&self.name)?;
+        f.write_str(&self.rust_name)?;
         f.write_str(": ")?;
         f.write_str(format!("{}", self.arg_type).as_str())
     }

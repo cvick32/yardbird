@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, fs::File, io::Write, path::Path};
 
 use action::Action;
 use array_abstractor::ArrayAbstractor;
@@ -425,5 +425,16 @@ impl VMTModel {
         let command = format!("(assert {})", instance);
         let inst_term = get_term_from_assert_command_string(command.as_bytes());
         inst_term
+    }
+
+    pub fn write_vmt_out(&self, filename_opt: Option<String>) {
+        let filename = match filename_opt {
+            Some(fname) => fname,
+            None => "out.vmt".into(),
+        };
+        println!("creating: {filename}");
+        let mut file = File::create(filename).unwrap();
+
+        let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();
     }
 }

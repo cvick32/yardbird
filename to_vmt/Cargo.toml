@@ -6,8 +6,7 @@ edition = "2021"
 [dependencies]
 syn = "2.0.90"
 smt2parser = { path = "../smt2parser/", version = "0.6.1" }
-
-
+yardbird = { path = ".." }
 
 [lib]
 proc-macro = true
