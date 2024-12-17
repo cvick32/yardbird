@@ -18,9 +18,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootComponent() {
   return (
     <>
-      <div className="p-2 flex gap-2 bg-white">
+      <div className="flex gap-2 bg-white p-2">
         <div className="grow">
-          <Link to="/" className="[&.active]:font-bold hover:underline">
+          <Link to="/" className="hover:underline [&.active]:font-bold">
             Index
           </Link>
         </div>

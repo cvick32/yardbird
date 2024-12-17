@@ -53,13 +53,13 @@ function Status({ result }: { result: BenchmarkResult }) {
         <div className="bg-teal-200">
           Trivial Success...something is wrong.
           <div>Used instances:</div>
-          <div className="font-mono ml-2">
+          <div className="ml-2 font-mono">
             {result.Success.used_instances.map((inst, idx) => (
               <div key={idx}>{inst}</div>
             ))}
           </div>
           <div>Const instances:</div>
-          <div className="font-mono ml-2">
+          <div className="ml-2 font-mono">
             {result.Success.const_instances.map((inst, idx) => (
               <div key={idx}>{inst}</div>
             ))}
@@ -71,13 +71,13 @@ function Status({ result }: { result: BenchmarkResult }) {
         <div className="bg-green-200">
           Success!
           <div>Used instances:</div>
-          <div className="font-mono ml-2">
+          <div className="ml-2 font-mono">
             {result.Success.used_instances.map((inst, idx) => (
               <div key={idx}>{inst}</div>
             ))}
           </div>
           <div>Const instances:</div>
-          <div className="font-mono ml-2">
+          <div className="ml-2 font-mono">
             {result.Success.const_instances.map((inst, idx) => (
               <div key={idx}>{inst}</div>
             ))}

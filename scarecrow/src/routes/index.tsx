@@ -178,7 +178,7 @@ function CommitMessage({ commitSha }: { commitSha: string }) {
       {query.data === undefined ? (
         <div>...</div>
       ) : (
-        <div className="truncate w-80">{query.data.data.commit.message}</div>
+        <div className="w-80 truncate">{query.data.data.commit.message}</div>
       )}
     </Col>
   );
@@ -189,6 +189,6 @@ function Col({
   className,
 }: PropsWithChildren<{ className?: string }>) {
   return (
-    <th className={`text-left align-top pr-2 ${className}`}>{children}</th>
+    <th className={`pr-2 text-left align-top ${className}`}>{children}</th>
   );
 }
