@@ -126,7 +126,6 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
         let proof_options = options.clone();
         let abstract_vmt_model = model_from_options(&proof_options);
         status_code = Some(run_with_timeout(
-
             move || proof_loop(&proof_options, abstract_vmt_model),
             Duration::from_secs(10 + (timed_out_count * 5)),
         ));
