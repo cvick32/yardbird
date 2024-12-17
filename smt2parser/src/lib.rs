@@ -55,7 +55,7 @@ use std::{fs::File, io::BufReader, path::PathBuf};
 
 /// A minimal error type.
 pub use concrete::Error;
-use concrete::{SyntaxBuilder, Term};
+use concrete::{Command, SyntaxBuilder, Term};
 /// A position in the input.
 pub use lexer::Position;
 use vmt::{VMTError, VMTModel};
@@ -67,7 +67,7 @@ pub fn get_vmt_from_path(input: &PathBuf) -> Result<VMTModel, VMTError> {
     VMTModel::checked_from(commands)
 }
 
-pub fn get_commands(content: BufReader<File>, filename: String) -> Vec<crate::concrete::Command> {
+pub fn get_commands(content: BufReader<File>, filename: String) -> Vec<Command> {
     let command_stream = CommandStream::new(content, SyntaxBuilder, Some(filename));
     let mut commands = vec![];
     for result in command_stream {
@@ -90,9 +90,21 @@ pub fn get_term_from_assert_command_string(assert_command: &[u8]) -> Term {
     let stream = CommandStream::new(assert_command, SyntaxBuilder, None);
     let commands = stream.collect::<Result<Vec<_>, _>>().unwrap();
     match &commands[0] {
-            crate::concrete::Command::Assert { term } => term.clone(),
+            Command::Assert { term } => term.clone(),
             _ => panic!("Didn't give `get_term_from_assert_command_string` a string beginning with a command: {:?}", commands),
         }
+}
+
+/// Parses the given &[u8] as a Command. Panics if more than one Command
+/// was parsed from the input string.
+pub fn get_command_from_command_string(command: &[u8]) -> Command {
+    let stream = CommandStream::new(command, SyntaxBuilder, None);
+    let commands = stream.collect::<Result<Vec<_>, _>>().unwrap();
+    assert!(
+        commands.len() == 1,
+        "Gave `get_command_from_command_string()` more than one Command!"
+    );
+    commands[0].clone()
 }
 
 /// Parse the input data and return a stream of interpreted SMT2 commands

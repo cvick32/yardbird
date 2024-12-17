@@ -1,6 +1,6 @@
 mod snapshot_tests;
 
-use yardbird::{self, proof_loop, YardbirdOptions};
+use yardbird::{self, model_from_options, proof_loop, YardbirdOptions};
 
 macro_rules! create_integration_test {
     ($test_name:ident, $example_name:literal, $num_instances:literal) => {
@@ -13,7 +13,8 @@ macro_rules! create_integration_test {
                 print_vmt: false,
                 interpolate: false,
             };
-            let res = proof_loop(&options).unwrap();
+            let abstract_vmt_model = model_from_options(&options);
+            let res = proof_loop(&options, abstract_vmt_model).unwrap();
             assert!(
                 res.used_instances.len() == $num_instances,
                 "{} != {}",

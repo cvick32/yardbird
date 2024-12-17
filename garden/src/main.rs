@@ -10,7 +10,7 @@ use std::{
     thread,
     time::Duration,
 };
-use yardbird::{proof_loop, ProofLoopResult, YardbirdOptions};
+use yardbird::{model_from_options, proof_loop, ProofLoopResult, YardbirdOptions};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -124,8 +124,10 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
     let mut timed_out_count = 0;
     for _ in 0..5 {
         let proof_options = options.clone();
+        let abstract_vmt_model = model_from_options(&proof_options);
         status_code = Some(run_with_timeout(
-            move || proof_loop(&proof_options),
+
+            move || proof_loop(&proof_options, abstract_vmt_model),
             Duration::from_secs(10 + (timed_out_count * 5)),
         ));
         // TODO: this is really a hack to try and get around z3 model randomness

@@ -30,6 +30,8 @@ insta = "1.41.1"
 
 [workspace]
 members = [
+    "coop",
     "smt2parser",
-    "garden"
+    "garden",
+    "to_vmt",
 ]

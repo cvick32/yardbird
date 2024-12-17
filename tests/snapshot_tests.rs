@@ -5,7 +5,7 @@ use std::{
     thread,
     time::Duration,
 };
-use yardbird::{proof_loop, YardbirdOptions};
+use yardbird::{model_from_options, proof_loop, YardbirdOptions};
 
 #[derive(Debug)]
 enum BenchStatus {
@@ -48,9 +48,10 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
         print_vmt: false,
         interpolate: false,
     };
+    let abstract_vmt_model = model_from_options(&options);
     let (status, used_instantiations) = run_with_timeout(
         move || {
-            let res = proof_loop(&options).unwrap();
+            let res = proof_loop(&options, abstract_vmt_model).unwrap();
             res.used_instances
         },
         Duration::from_secs(20),
