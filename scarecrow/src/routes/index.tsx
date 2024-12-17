@@ -17,10 +17,6 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-function githubLink(sha: string) {
-  return `https://github.com/cvick32/yardbird/commit/${sha}`;
-}
-
 function Index() {
   const artifacts = useArtifacts();
   const inProgress = useInProgressWorkflows();
@@ -59,13 +55,7 @@ function Index() {
         ["Commit"],
         ({ art }) => (
           <Col key={`commit-${art.id}`}>
-            <button
-              className="text-blue-500 hover:text-blue-600 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href = githubLink(art.workflow_run.head_sha);
-              }}
-            >{`#${art.workflow_run.head_sha.slice(0, 7)}`}</button>
+            <CommitRef sha={art.workflow_run.head_sha} />
           </Col>
         ),
       ],
@@ -115,25 +105,16 @@ function Index() {
                 <Col />
                 <Col />
                 <Col>
-                  <button
+                  <a
+                    href={workflow.html_url}
                     className="text-blue-500 hover:text-blue-600 hover:underline"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.location.href = workflow.html_url;
-                    }}
                   >
                     {workflow.status}
-                  </button>
+                  </a>
                 </Col>
                 <Col>{workflow.head_branch}</Col>
                 <Col>
-                  <button
-                    className="text-blue-500 hover:text-blue-600 hover:underline"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.location.href = githubLink(workflow.head_sha);
-                    }}
-                  >{`#${workflow.head_sha.slice(0, 7)}`}</button>
+                  <CommitRef sha={workflow.head_sha} />
                 </Col>
                 <Col>
                   <div className="w-80 truncate">{workflow.display_title}</div>
@@ -223,6 +204,16 @@ function CommitMessage({ commitSha }: { commitSha: string }) {
         <div className="w-80 truncate">{query.data.data.commit.message}</div>
       )}
     </Col>
+  );
+}
+
+function CommitRef({ sha }: { sha: string }) {
+  const link = `https://github.com/cvick32/yardbird/commit/${sha}`;
+  return (
+    <a
+      href={link}
+      className="text-blue-500 hover:text-blue-600 hover:underline"
+    >{`#${sha.slice(0, 7)}`}</a>
   );
 }
 
