@@ -1,10 +1,11 @@
-use std::{fs::File, io::Write};
+use std::{cmp, fs::File, io::Write};
 
 use crate::analysis::SaturationInequalities;
 use anyhow::anyhow;
 use array_axioms::ArrayLanguage;
 use clap::Parser;
 use egg_utils::Saturate;
+use itertools::Itertools;
 use log::{debug, info};
 use smt2parser::vmt::VMTModel;
 use utils::run_smtinterpol;
@@ -80,10 +81,10 @@ pub fn proof_loop(
             // Run max of 10 iterations for depth
             // Currently run once, this will eventually run until UNSAT
             let smt = vmt_model.unroll(depth);
+            let z3_var_context = Z3VarContext::from(&context, &smt);
             let solver = Solver::new(&context);
             solver.from_string(smt.to_bmc());
             debug!("smt2lib program:\n{}", smt.to_bmc());
-            let z3_var_context = Z3VarContext::from(&context, &smt);
             // TODO: abstract this out somehow
             let mut egraph: egg::EGraph<ArrayLanguage, _> =
                 egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
@@ -110,7 +111,7 @@ pub fn proof_loop(
                 z3::SatResult::Sat => {
                     // find Array theory fact that rules out counterexample
                     let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
-                    debug!("model:\n{}", model);
+                    debug!("model:\n{}", sort_model(&model)?);
                     update_egraph_from_model(&mut egraph, &model)?;
                     update_egraph_with_non_array_function_terms(
                         &mut egraph,
@@ -121,6 +122,7 @@ pub fn proof_loop(
                     egraph.rebuild();
                     let (instantiations, const_instantiations) = egraph.saturate();
                     const_instances.extend_from_slice(&const_instantiations);
+                    log::debug!("egraph:\n{:?}", egraph.dump());
 
                     // add all instantiations to the model,
                     // if we have already seen all instantiations, break
@@ -140,6 +142,70 @@ pub fn proof_loop(
         used_instances,
         const_instances,
     })
+}
+
+fn sort_model(model: &z3::Model) -> anyhow::Result<String> {
+    let mut b = String::new();
+    for func_decl in model.iter().sorted_by(func_decl_sort) {
+        if func_decl.arity() == 0 {
+            // VARIABLE
+            // Apply no arguments to the constant so we can call get_const_interp.
+            let func_decl_ast = func_decl.apply(&[]);
+            let var_name = func_decl.name();
+            let value = model.get_const_interp(&func_decl_ast).ok_or(anyhow!(
+                "Could not find interpretation for variable: {func_decl}"
+            ))?;
+            b.push_str(&format!("{var_name} -> {value}\n"));
+        } else {
+            // FUNCTION DEF
+            let interpretation = model
+                .get_func_interp(&func_decl)
+                .ok_or(anyhow!("No function interpretation for: {func_decl}"))?;
+            // b.push_str(&format!("{interpretation}\n"))
+            for entry in interpretation.get_entries() {
+                let function_call = format!(
+                    "{} {}",
+                    func_decl.name(),
+                    entry
+                        .get_args()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                let value = entry.get_value().to_string();
+                b.push_str(&format!("{function_call} -> {value}\n"));
+            }
+        }
+    }
+    // let model_string = format!("{model}");
+    Ok(b)
+}
+
+fn func_decl_sort(a: &z3::FuncDecl, b: &z3::FuncDecl) -> cmp::Ordering {
+    let arity_cmp = a.arity().cmp(&b.arity());
+    if !matches!(arity_cmp, cmp::Ordering::Equal) {
+        return a.name().cmp(&b.name());
+    }
+
+    let a_name = a.name();
+    let b_name = b.name();
+    let a_parts = a_name.split_once("@");
+    let b_parts = b_name.split_once("@");
+
+    match (a_parts, b_parts) {
+        (None, None) => cmp::Ordering::Equal,
+        (Some(_), None) => cmp::Ordering::Greater,
+        (None, Some(_)) => cmp::Ordering::Less,
+        (Some((av, an)), Some((bv, bn))) => match av.cmp(bv) {
+            cmp::Ordering::Equal => {
+                let au32 = an.parse::<u32>().unwrap();
+                let bu32 = bn.parse::<u32>().unwrap();
+                au32.cmp(&bu32)
+            }
+            x @ (cmp::Ordering::Less | cmp::Ordering::Greater) => x,
+        },
+    }
 }
 
 /// This function adds terms into the Egraph from the SMTProblem
@@ -178,11 +244,13 @@ fn update_egraph_from_model(
             // VARIABLE
             // Apply no arguments to the constant so we can call get_const_interp.
             let func_decl_ast = func_decl.apply(&[]);
-            let var_id = egraph.add_expr(&func_decl.name().parse()?);
+            let var = func_decl.name().parse()?;
+            let var_id = egraph.add_expr(&var);
             let value = model.get_const_interp(&func_decl_ast).ok_or(anyhow!(
                 "Could not find interpretation for variable: {func_decl}"
             ))?;
-            let value_id = egraph.add_expr(&value.to_string().parse()?);
+            let expr = value.to_string().parse()?;
+            let value_id = egraph.add_expr(&expr);
             egraph.union(var_id, value_id);
         } else {
             // FUNCTION DEF
@@ -200,11 +268,14 @@ fn update_egraph_from_model(
                         .collect::<Vec<_>>()
                         .join(" ")
                 );
-                let function_id = egraph.add_expr(&function_call.parse()?);
-                let value_id = egraph.add_expr(&entry.get_value().to_string().parse()?);
+                let funcall = function_call.parse()?;
+                let expr = entry.get_value().to_string().parse()?;
+                let function_id = egraph.add_expr(&funcall);
+                let value_id = egraph.add_expr(&expr);
                 egraph.union(function_id, value_id);
             }
         }
+        egraph.rebuild();
     }
     Ok(())
 }

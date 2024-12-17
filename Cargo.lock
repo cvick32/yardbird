@@ -1200,6 +1200,7 @@ dependencies = [
  "egg",
  "env_logger 0.11.5",
  "insta",
+ "itertools",
  "log",
  "rand 0.8.5",
  "serde",

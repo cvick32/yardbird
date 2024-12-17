@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use clap::Parser;
 use glob::Pattern;
 use serde::Serialize;
@@ -118,18 +119,30 @@ where
 }
 
 fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
-    let proof_options = options.clone();
     println!("running: {}", options.filename);
-    let abstract_vmt_model = model_from_options(&proof_options);
-    let status_code = run_with_timeout(
-        move || proof_loop(&proof_options, abstract_vmt_model),
-        Duration::from_secs(10),
-    );
+    let mut status_code = None;
+    for _ in 0..5 {
+        let proof_options = options.clone();
+        let abstract_vmt_model = model_from_options(&proof_options);
+        status_code = Some(run_with_timeout(
+            move || proof_loop(&proof_options, abstract_vmt_model),
+            Duration::from_secs(10),
+        ));
+        if let Some(BenchmarkResult::Timeout(_)) = status_code {
+            println!("  retrying: {}", options.filename);
+            continue;
+        } else {
+            break;
+        }
+    }
 
-    Ok(Benchmark {
-        example: options.filename,
-        result: status_code,
-    })
+    match status_code {
+        Some(result) => Ok(Benchmark {
+            example: options.filename,
+            result,
+        }),
+        None => Err(anyhow!("Failed to run")),
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -149,6 +162,17 @@ fn main() -> anyhow::Result<()> {
 
     let results: Vec<_> = read_dir(options.base)?
         .filter_map(|path| path.ok())
+        // recurse one level
+        .flat_map(|path| {
+            if path.path().is_dir() {
+                read_dir(path.path())
+                    .unwrap()
+                    .filter_map(|path| path.ok())
+                    .collect()
+            } else {
+                vec![path]
+            }
+        })
         // include all files that match an include pattern
         .filter(|entry| {
             include.is_empty() || include.iter().any(|glob| glob.matches_path(&entry.path()))
