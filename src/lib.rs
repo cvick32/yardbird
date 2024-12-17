@@ -162,7 +162,7 @@ fn update_egraph_with_non_array_function_terms<'ctx>(
             .eval(&z3_term, false)
             .unwrap_or_else(|| panic!("Term not found in model: {term}"));
         let interp_id = egraph.add_expr(&model_interp.to_string().parse()?);
-        println!("Adding: {} = {}", term, model_interp);
+        info!("Adding: {} = {}", term, model_interp);
         egraph.union(term_id, interp_id);
     }
     Ok(())

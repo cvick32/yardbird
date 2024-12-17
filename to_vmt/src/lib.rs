@@ -27,9 +27,6 @@ pub fn to_vmt(_attrs: TokenStream, item: TokenStream) -> TokenStream {
             syn::FnArg::Receiver(_) => panic!("Methods cannot be cast to VMT!"),
             syn::FnArg::Typed(pat_type) => {
                 let arg = FunctionArgument::from(pat_type);
-                arg.to_commands()
-                    .iter()
-                    .for_each(|command| println!("{}", command));
                 function_arguments.push(arg);
             }
         }
