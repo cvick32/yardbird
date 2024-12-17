@@ -68,6 +68,7 @@ function RouteComponent() {
           <option value="timeout">Timeout</option>
           <option value="error">Error</option>
           <option value="panic">Panic</option>
+          <option value="differ">Differ</option>
         </select>
       </div>
       <div>
@@ -85,15 +86,17 @@ function RouteComponent() {
         >
           <option value="">None</option>
           {!!artifacts.data &&
-            artifacts.data.data.artifacts.map((art: any, idx: number) => {
-              let date = new Date(Date.parse(art.created_at));
-              let dayString = date.toLocaleDateString("en-US");
-              return (
-                <option key={idx} value={art.id}>
-                  {dayString} {`#${art.workflow_run.head_sha.slice(0, 7)}`}
-                </option>
-              );
-            })}
+            artifacts.data.data.artifacts
+              .filter((art: any) => `${art.id}` !== `${artifact.data.id}`)
+              .map((art: any, idx: number) => {
+                let date = new Date(Date.parse(art.created_at));
+                let dayString = date.toLocaleDateString("en-US");
+                return (
+                  <option key={idx} value={art.id}>
+                    {dayString} {`#${art.workflow_run.head_sha.slice(0, 7)}`}
+                  </option>
+                );
+              })}
         </select>
       </div>
       <table className="border-collapse border border-slate-400">
@@ -107,9 +110,9 @@ function RouteComponent() {
           </tr>
         </thead>
         <tbody>
-          {artifact.data
-            .map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
-            .filter(([benchmark, _]) => {
+          {artifact.data.benchmarks
+            ?.map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
+            .filter(([benchmark, idx]) => {
               if (filter === "") {
                 return true;
               } else if (filter === "success") {
@@ -120,6 +123,26 @@ function RouteComponent() {
                 return "Error" in benchmark.result;
               } else if (filter === "panic") {
                 return "Panic" in benchmark.result;
+              } else if (filter === "differ") {
+                return (
+                  !!compareAgainst &&
+                  !(
+                    "Success" in benchmark.result &&
+                    "Success" in compareAgainst[idx].result
+                  ) &&
+                  !(
+                    "Timeout" in benchmark.result &&
+                    "Timeout" in compareAgainst[idx].result
+                  ) &&
+                  !(
+                    "Error" in benchmark.result &&
+                    "Error" in compareAgainst[idx].result
+                  ) &&
+                  !(
+                    "Panic" in benchmark.result &&
+                    "Panic" in compareAgainst[idx].result
+                  )
+                );
               } else {
                 return false;
               }

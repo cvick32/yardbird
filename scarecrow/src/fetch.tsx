@@ -3,6 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import JSZip from "jszip";
 import { useAuth } from "./AuthProvider";
 
+export interface Artifact {
+  benchmarks: Benchmark[] | undefined;
+  id: string;
+}
+
 export interface Benchmark {
   example: string;
   result: BenchmarkResult;
@@ -31,9 +36,9 @@ export function useArtifacts() {
   });
 }
 
-export function useArtifact<T = Benchmark[] | undefined>(
+export function useArtifact<T = Artifact>(
   id: string,
-  select?: (x: Benchmark[] | undefined) => T,
+  select?: (x: Artifact) => T,
 ) {
   const auth = useAuth();
   const octokit = new Octokit({
@@ -41,7 +46,8 @@ export function useArtifact<T = Benchmark[] | undefined>(
   });
   return useQuery({
     queryKey: ["artifacts", `${id}`],
-    queryFn: async () => fetchArtifact(octokit, id),
+    queryFn: async () =>
+      fetchArtifact(octokit, id).then((benchmarks) => ({ benchmarks, id })),
     staleTime: 60 * 1000, // 1 minute
     select,
   });
@@ -128,15 +134,15 @@ async function fetchWorkflows(octokit: Octokit) {
   });
 }
 
-export function benchmarkSummary(benchmarks?: Benchmark[]) {
+export function benchmarkSummary(artifact: Artifact) {
   let success = 0;
   let trivialSuccess = 0;
   let timeout = 0;
   let error = 0;
   let panic = 0;
 
-  if (benchmarks !== undefined) {
-    for (const b of benchmarks) {
+  if (artifact.benchmarks !== undefined) {
+    for (const b of artifact.benchmarks) {
       const res = b.result;
       if ("Success" in res) {
         if (res.Success.used_instances.length === 0) {
