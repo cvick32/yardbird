@@ -127,8 +127,12 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
             move || proof_loop(&proof_options),
             Duration::from_secs(10 + (i * 5)),
         ));
+        // TODO: this is really a hack to try and get around z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
             println!("  retrying: {}", options.filename);
+            continue;
+        } else if let Some(BenchmarkResult::Error(_)) = status_code {
+            println!("  retrying error: {}", options.filename);
             continue;
         } else {
             break;

@@ -70,7 +70,7 @@ pub fn proof_loop(options: &YardbirdOptions) -> anyhow::Result<ProofLoopResult> 
             let z3_var_context = Z3VarContext::from(&context, &smt);
             let solver = Solver::new(&context);
             solver.from_string(smt.to_bmc());
-            debug!("smt2lib program:\n{}", smt.to_bmc());
+            // debug!("smt2lib program:\n{}", smt.to_bmc());
             // TODO: abstract this out somehow
             let mut egraph: egg::EGraph<ArrayLanguage, _> =
                 egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
@@ -108,7 +108,6 @@ pub fn proof_loop(options: &YardbirdOptions) -> anyhow::Result<ProofLoopResult> 
                     egraph.rebuild();
                     let (instantiations, const_instantiations) = egraph.saturate();
                     const_instances.extend_from_slice(&const_instantiations);
-                    log::debug!("egraph:\n{:?}", egraph.dump());
 
                     // add all instantiations to the model,
                     // if we have already seen all instantiations, break
@@ -216,6 +215,7 @@ fn update_egraph_with_non_array_function_terms<'ctx>(
         let interp_id = egraph.add_expr(&model_interp.to_string().parse()?);
         // println!("Adding: {} = {}", term, model_interp);
         egraph.union(term_id, interp_id);
+        egraph.rebuild();
     }
     Ok(())
 }
@@ -225,7 +225,7 @@ fn update_egraph_from_model(
     egraph: &mut egg::EGraph<ArrayLanguage, SaturationInequalities>,
     model: &z3::Model<'_>,
 ) -> anyhow::Result<()> {
-    for func_decl in model.iter() {
+    for func_decl in model.iter().sorted_by(func_decl_sort) {
         if func_decl.arity() == 0 {
             // VARIABLE
             // Apply no arguments to the constant so we can call get_const_interp.
