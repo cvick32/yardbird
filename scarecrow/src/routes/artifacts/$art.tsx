@@ -1,7 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { BenchmarkResult, useArtifact } from "../../fetch";
 
 export const Route = createFileRoute("/artifacts/$art")({
+  beforeLoad: ({ context }) => {
+    if (!context.auth.isAuthenticated) {
+      throw redirect({ to: "/oauth" });
+    }
+  },
   component: RouteComponent,
 });
 

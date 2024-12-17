@@ -8,24 +8,40 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { createFileRoute } from '@tanstack/react-router'
-
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as VerifyImport } from './routes/verify'
+import { Route as OauthImport } from './routes/oauth'
+import { Route as LogoutImport } from './routes/logout'
+import { Route as IndexImport } from './routes/index'
 import { Route as ArtifactsArtImport } from './routes/artifacts/$art'
-
-// Create Virtual Routes
-
-const IndexLazyImport = createFileRoute('/')()
 
 // Create/Update Routes
 
-const IndexLazyRoute = IndexLazyImport.update({
+const VerifyRoute = VerifyImport.update({
+  id: '/verify',
+  path: '/verify',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const OauthRoute = OauthImport.update({
+  id: '/oauth',
+  path: '/oauth',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const LogoutRoute = LogoutImport.update({
+  id: '/logout',
+  path: '/logout',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const IndexRoute = IndexImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRoute,
-} as any).lazy(() => import('./routes/index.lazy').then((d) => d.Route))
+} as any)
 
 const ArtifactsArtRoute = ArtifactsArtImport.update({
   id: '/artifacts/$art',
@@ -41,7 +57,28 @@ declare module '@tanstack/react-router' {
       id: '/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexLazyImport
+      preLoaderRoute: typeof IndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/logout': {
+      id: '/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof LogoutImport
+      parentRoute: typeof rootRoute
+    }
+    '/oauth': {
+      id: '/oauth'
+      path: '/oauth'
+      fullPath: '/oauth'
+      preLoaderRoute: typeof OauthImport
+      parentRoute: typeof rootRoute
+    }
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyImport
       parentRoute: typeof rootRoute
     }
     '/artifacts/$art': {
@@ -57,37 +94,52 @@ declare module '@tanstack/react-router' {
 // Create and export the route tree
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexLazyRoute
+  '/': typeof IndexRoute
+  '/logout': typeof LogoutRoute
+  '/oauth': typeof OauthRoute
+  '/verify': typeof VerifyRoute
   '/artifacts/$art': typeof ArtifactsArtRoute
 }
 
 export interface FileRoutesByTo {
-  '/': typeof IndexLazyRoute
+  '/': typeof IndexRoute
+  '/logout': typeof LogoutRoute
+  '/oauth': typeof OauthRoute
+  '/verify': typeof VerifyRoute
   '/artifacts/$art': typeof ArtifactsArtRoute
 }
 
 export interface FileRoutesById {
   __root__: typeof rootRoute
-  '/': typeof IndexLazyRoute
+  '/': typeof IndexRoute
+  '/logout': typeof LogoutRoute
+  '/oauth': typeof OauthRoute
+  '/verify': typeof VerifyRoute
   '/artifacts/$art': typeof ArtifactsArtRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/artifacts/$art'
+  fullPaths: '/' | '/logout' | '/oauth' | '/verify' | '/artifacts/$art'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/artifacts/$art'
-  id: '__root__' | '/' | '/artifacts/$art'
+  to: '/' | '/logout' | '/oauth' | '/verify' | '/artifacts/$art'
+  id: '__root__' | '/' | '/logout' | '/oauth' | '/verify' | '/artifacts/$art'
   fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
-  IndexLazyRoute: typeof IndexLazyRoute
+  IndexRoute: typeof IndexRoute
+  LogoutRoute: typeof LogoutRoute
+  OauthRoute: typeof OauthRoute
+  VerifyRoute: typeof VerifyRoute
   ArtifactsArtRoute: typeof ArtifactsArtRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexLazyRoute: IndexLazyRoute,
+  IndexRoute: IndexRoute,
+  LogoutRoute: LogoutRoute,
+  OauthRoute: OauthRoute,
+  VerifyRoute: VerifyRoute,
   ArtifactsArtRoute: ArtifactsArtRoute,
 }
 
@@ -102,11 +154,23 @@ export const routeTree = rootRoute
       "filePath": "__root.tsx",
       "children": [
         "/",
+        "/logout",
+        "/oauth",
+        "/verify",
         "/artifacts/$art"
       ]
     },
     "/": {
-      "filePath": "index.lazy.tsx"
+      "filePath": "index.tsx"
+    },
+    "/logout": {
+      "filePath": "logout.tsx"
+    },
+    "/oauth": {
+      "filePath": "oauth.tsx"
+    },
+    "/verify": {
+      "filePath": "verify.tsx"
     },
     "/artifacts/$art": {
       "filePath": "artifacts/$art.tsx"

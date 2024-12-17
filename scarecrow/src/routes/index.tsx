@@ -1,8 +1,18 @@
-import { createLazyFileRoute, Link } from "@tanstack/react-router";
-import { benchmarkSummary, useArtifact, useArtifacts } from "../fetch";
-import { PropsWithChildren, ReactElement, useMemo } from "react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import {
+  benchmarkSummary,
+  useArtifact,
+  useArtifacts,
+  useCommitMessage,
+} from "../fetch";
+import { Fragment, PropsWithChildren, ReactElement, useMemo } from "react";
 
-export const Route = createLazyFileRoute("/")({
+export const Route = createFileRoute("/")({
+  beforeLoad: ({ context }) => {
+    if (!context.auth.isAuthenticated) {
+      throw redirect({ to: "/oauth" });
+    }
+  },
   component: Index,
 });
 
@@ -18,12 +28,12 @@ function Index() {
       [["Date", "Time"], DateCol],
       [
         ["Success", "Trivial", "Timeout", "Error", "Panic", "Total"],
-        ({ art }) => <Stats key={"stats"} id={art.id as string} />,
+        ({ art }) => <Stats key={`stats-${art.id}`} id={art.id as string} />,
       ],
       [
         ["Results"],
         ({ art }) => (
-          <Col key={"results"}>
+          <Col key={`results-${art.id}`}>
             <Link
               to="/artifacts/$art"
               params={{
@@ -38,12 +48,14 @@ function Index() {
       ],
       [
         ["Branch"],
-        ({ art }) => <Col key="branch">{art.workflow_run.head_branch}</Col>,
+        ({ art }) => (
+          <Col key={`branch-${art.id}`}>{art.workflow_run.head_branch}</Col>
+        ),
       ],
       [
         ["Commit"],
         ({ art }) => (
-          <Col key={"commit"}>
+          <Col key={`commit-${art.id}`}>
             <button
               className="text-blue-500 hover:text-blue-600 hover:underline"
               onClick={(e) => {
@@ -54,16 +66,27 @@ function Index() {
           </Col>
         ),
       ],
+      [
+        ["Message"],
+        ({ art }) => {
+          return (
+            <CommitMessage
+              key={`message-${art.id}`}
+              commitSha={art.workflow_run.head_sha}
+            />
+          );
+        },
+      ],
     ],
     [],
   );
 
   if (!artifacts.data) {
-    return <div>Loading</div>;
+    return <div>Loading...</div>;
   }
 
   return (
-    <table>
+    <table className="max-w-60">
       <thead>
         <tr>
           {table
@@ -93,10 +116,10 @@ function DateCol({ art }: { art: any }) {
   let timeString = date.toLocaleTimeString("en-US");
 
   return (
-    <>
-      <Col key={"day"}>{dayString}</Col>
-      <Col key={"time"}>{timeString}</Col>
-    </>
+    <Fragment key={`day-time-${art.id}`}>
+      <Col className="whitespace-nowrap">{dayString}</Col>
+      <Col className="whitespace-nowrap">{timeString}</Col>
+    </Fragment>
   );
 }
 
@@ -106,12 +129,12 @@ function Stats({ id }: { id: string }) {
   if (stats.data === undefined) {
     return (
       <>
-        <Col key={0} />
-        <Col key={1} />
-        <Col key={2} />
-        <Col key={3} />
-        <Col key={4} />
-        <Col key={5} />
+        <Col key={`0-${id}`} />
+        <Col key={`1-${id}`} />
+        <Col key={`2-${id}`} />
+        <Col key={`3-${id}`} />
+        <Col key={`4-${id}`} />
+        <Col key={`5-${id}`} />
       </>
     );
   }
@@ -125,25 +148,39 @@ function Stats({ id }: { id: string }) {
 
   return (
     <>
-      <Col key={0} className="text-green-600">
+      <Col key={`0-${id}`} className="text-green-600">
         {stats.data.success}
       </Col>
-      <Col key={1} className="text-teal-600">
+      <Col key={`1-${id}`} className="text-teal-600">
         {stats.data.trivialSuccess}
       </Col>
-      <Col key={2} className="text-orange-600">
+      <Col key={`2-${id}`} className="text-orange-600">
         {stats.data.timeout}
       </Col>
-      <Col key={3} className="text-red-600">
+      <Col key={`3-${id}`} className="text-red-600">
         {stats.data.error}
       </Col>
-      <Col key={4} className="text-purple-600">
+      <Col key={`4-${id}`} className="text-purple-600">
         {stats.data.panic}
       </Col>
-      <Col key={5} className="text-purple-600">
+      <Col key={`5-${id}`} className="text-purple-600">
         {total}
       </Col>
     </>
+  );
+}
+
+function CommitMessage({ commitSha }: { commitSha: string }) {
+  const query = useCommitMessage(commitSha);
+
+  return (
+    <Col className="truncate">
+      {query.data === undefined ? (
+        <div>...</div>
+      ) : (
+        <div className="truncate w-80">{query.data.data.commit.message}</div>
+      )}
+    </Col>
   );
 }
 
