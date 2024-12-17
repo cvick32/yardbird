@@ -89,71 +89,66 @@ function Index() {
   }
 
   return (
-    <div>
-      {!!inProgress.data &&
-        JSON.stringify(
-          inProgress.data.map((workflow: any) => [
-            workflow.run_started_at,
-            workflow.status,
-            workflow.conclusion,
-            workflow.head_branch,
-            workflow.head_sha,
-            workflow.display_title,
-          ]),
-        )}
-      <table className="max-w-60">
-        <thead>
-          <tr>
-            {table
-              .map(([h, _]) => h)
-              .flat()
-              .map((h) => (
-                <Col key={h} className="font-bold">
-                  {h}
+    <table className="max-w-60">
+      <thead>
+        <tr>
+          {table
+            .map(([h, _]) => h)
+            .flat()
+            .map((h) => (
+              <Col key={h} className="font-bold">
+                {h}
+              </Col>
+            ))}
+        </tr>
+      </thead>
+      <tbody>
+        {!!inProgress.data && (
+          <tr className="hover:bg-gray-200" key={"in-progress-workflow"}>
+            {inProgress.data.map((workflow: any, idx: number) => (
+              <Fragment key={`workflow-${idx}`}>
+                <DateCol art={workflow} />
+                <Col />
+                <Col />
+                <Col />
+                <Col />
+                <Col />
+                <Col />
+                <Col>
+                  <button
+                    className="text-blue-500 hover:text-blue-600 hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.location.href = workflow.html_url;
+                    }}
+                  >
+                    {workflow.status}
+                  </button>
                 </Col>
-              ))}
+                <Col>{workflow.head_branch}</Col>
+                <Col>
+                  <button
+                    className="text-blue-500 hover:text-blue-600 hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.location.href = githubLink(workflow.head_sha);
+                    }}
+                  >{`#${workflow.head_sha.slice(0, 7)}`}</button>
+                </Col>
+                <Col>
+                  <div className="w-80 truncate">{workflow.display_title}</div>
+                </Col>
+              </Fragment>
+            ))}
           </tr>
-        </thead>
-        <tbody>
-          {!!inProgress.data && (
-            <tr className="hover:bg-gray-200" key={"in-progress-workflow"}>
-              {inProgress.data.map((workflow: any, idx: number) => (
-                <Fragment key={`workflow-${idx}`}>
-                  <DateCol art={workflow} />
-                  <Col />
-                  <Col />
-                  <Col />
-                  <Col />
-                  <Col />
-                  <Col />
-                  <Col>{workflow.status}</Col>
-                  <Col>{workflow.head_branch}</Col>
-                  <Col>
-                    <button
-                      className="text-blue-500 hover:text-blue-600 hover:underline"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.href = githubLink(workflow.head_sha);
-                      }}
-                    >{`#${workflow.head_sha.slice(0, 7)}`}</button>
-                  </Col>
-                  <Col>
-                    <div className="w-80 truncate">
-                      {workflow.display_title}
-                    </div>
-                  </Col>
-                </Fragment>
-              ))}
-            </tr>
-          )}
-          {artifacts.data.data.artifacts.map((art: any, idx: number) => (
-            <tr className="hover:bg-gray-200" key={idx}>
-              {table.map(([_, elem]) => elem({ art }))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        )}
+        {artifacts.data.data.artifacts.map((art: any, idx: number) => (
+          <tr className="hover:bg-gray-200" key={idx}>
+            {table.map(([_, elem]) => elem({ art }))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

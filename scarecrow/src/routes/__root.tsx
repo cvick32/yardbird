@@ -25,7 +25,17 @@ function RootComponent() {
           </Link>
         </div>
         <div>
-          <Link to="/logout">Log Out</Link>
+          <a
+            href="https://github.com/cvick32/yardbird"
+            className="hover:underline [&.active]:font-bold"
+          >
+            Repo
+          </a>
+        </div>
+        <div>
+          <Link to="/logout" className="hover:underline [&.active]:font-bold">
+            Log Out
+          </Link>
         </div>
       </div>
       <hr />
