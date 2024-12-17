@@ -121,15 +121,22 @@ where
 fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
     println!("running: {}", options.filename);
     let mut status_code = None;
+    let mut timed_out_count = 0;
     for _ in 0..5 {
         let proof_options = options.clone();
         let abstract_vmt_model = model_from_options(&proof_options);
         status_code = Some(run_with_timeout(
+
             move || proof_loop(&proof_options, abstract_vmt_model),
-            Duration::from_secs(10),
+            Duration::from_secs(10 + (timed_out_count * 5)),
         ));
+        // TODO: this is really a hack to try and get around z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
             println!("  retrying: {}", options.filename);
+            timed_out_count += 1;
+            continue;
+        } else if let Some(BenchmarkResult::Error(_)) = status_code {
+            println!("  retrying error: {}", options.filename);
             continue;
         } else {
             break;

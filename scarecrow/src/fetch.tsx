@@ -1,10 +1,7 @@
 import { Octokit } from "@octokit/core";
 import { useQuery } from "@tanstack/react-query";
 import JSZip from "jszip";
-
-const octokit = new Octokit({
-  auth: `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`,
-});
+import { useAuth } from "./AuthProvider";
 
 export interface Benchmark {
   example: string;
@@ -23,9 +20,13 @@ export interface Success {
 }
 
 export function useArtifacts() {
+  const auth = useAuth();
+  const octokit = new Octokit({
+    auth: auth.token,
+  });
   return useQuery({
     queryKey: ["artifacts"],
-    queryFn: fetchArtifacts,
+    queryFn: async () => fetchArtifacts(octokit),
     staleTime: 0,
   });
 }
@@ -34,15 +35,45 @@ export function useArtifact<T = Benchmark[] | undefined>(
   id: string,
   select?: (x: Benchmark[] | undefined) => T,
 ) {
+  const auth = useAuth();
+  const octokit = new Octokit({
+    auth: auth.token,
+  });
   return useQuery({
     queryKey: ["artifacts", `${id}`],
-    queryFn: async () => fetchArtifact(id),
+    queryFn: async () => fetchArtifact(octokit, id),
     staleTime: 60 * 1000, // 1 minute
     select,
   });
 }
 
-async function fetchArtifacts() {
+export function useCommitMessage(commitSha: string) {
+  const auth = useAuth();
+  const octokit = new Octokit({
+    auth: auth.token,
+  });
+  return useQuery({
+    queryKey: ["commit", `${commitSha}`],
+    queryFn: async () => fetchGitCommitMessage(octokit, commitSha),
+    staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+export function useInProgressWorkflows() {
+  const auth = useAuth();
+  const octokit = new Octokit({
+    auth: auth.token,
+  });
+  return useQuery({
+    queryKey: ["workflows"],
+    queryFn: async () => fetchWorkflows(octokit),
+    select: (res) =>
+      res.data.workflow_runs.filter((run: any) => run.status !== "completed"),
+    refetchInterval: 10 * 1000, // 10 seconds
+  });
+}
+
+async function fetchArtifacts(octokit: Octokit) {
   return octokit.request("GET /repos/{owner}/{repo}/actions/artifacts/", {
     owner: "cvick32",
     repo: "yardbird",
@@ -52,7 +83,10 @@ async function fetchArtifacts() {
   });
 }
 
-async function fetchArtifact(id: string): Promise<Benchmark[] | undefined> {
+export async function fetchArtifact(
+  octokit: Octokit,
+  id: string,
+): Promise<Benchmark[] | undefined> {
   let res = await octokit.request(
     `GET /repos/{owner}/{repo}/actions/artifacts/${id}/zip`,
     {
@@ -71,6 +105,27 @@ async function fetchArtifact(id: string): Promise<Benchmark[] | undefined> {
   } else {
     return undefined;
   }
+}
+
+async function fetchGitCommitMessage(octokit: Octokit, sha: string) {
+  return octokit.request("GET /repos/{owner}/{repo}/commits/{ref}", {
+    owner: "cvick32",
+    repo: "yardbird",
+    ref: sha,
+    headers: {
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+}
+
+async function fetchWorkflows(octokit: Octokit) {
+  return octokit.request("GET /repos/{owner}/{repo}/actions/runs?per_page=1", {
+    owner: "cvick32",
+    repo: "yardbird",
+    headers: {
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
 }
 
 export function benchmarkSummary(benchmarks?: Benchmark[]) {
