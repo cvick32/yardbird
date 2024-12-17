@@ -1,0 +1,8 @@
+[package]
+name = "coop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+yardbird = { path = ".." }
+to_vmt = { path = "../to_vmt" }

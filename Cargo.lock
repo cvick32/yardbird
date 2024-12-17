@@ -266,6 +266,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 
 [[package]]
+name = "coop"
+version = "0.1.0"
+dependencies = [
+ "to_vmt",
+ "yardbird",
+]
+
+[[package]]
 name = "egg"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1027,6 +1035,7 @@ version = "0.1.0"
 dependencies = [
  "smt2parser",
  "syn 2.0.90",
+ "yardbird",
 ]
 
 [[package]]
@@ -1196,7 +1205,6 @@ dependencies = [
  "serde",
  "serde_json",
  "smt2parser",
- "to_vmt",
  "z3",
 ]
 
