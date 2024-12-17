@@ -59,6 +59,19 @@ export function useCommitMessage(commitSha: string) {
   });
 }
 
+export function useInProgressWorkflows() {
+  const auth = useAuth();
+  const octokit = new Octokit({
+    auth: auth.token,
+  });
+  return useQuery({
+    queryKey: ["workflows"],
+    queryFn: async () => fetchWorkflows(octokit),
+    select: (res) =>
+      res.data.workflow_runs.filter((run: any) => run.status !== "completed"),
+  });
+}
+
 async function fetchArtifacts(octokit: Octokit) {
   return octokit.request("GET /repos/{owner}/{repo}/actions/artifacts/", {
     owner: "cvick32",
@@ -98,6 +111,16 @@ async function fetchGitCommitMessage(octokit: Octokit, sha: string) {
     owner: "cvick32",
     repo: "yardbird",
     ref: sha,
+    headers: {
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+}
+
+async function fetchWorkflows(octokit: Octokit) {
+  return octokit.request("GET /repos/{owner}/{repo}/actions/runs?per_page=1", {
+    owner: "cvick32",
+    repo: "yardbird",
     headers: {
       "X-GitHub-Api-Version": "2022-11-28",
     },
