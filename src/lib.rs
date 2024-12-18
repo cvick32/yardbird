@@ -74,7 +74,7 @@ pub fn proof_loop(
     let mut const_instances = vec![];
     let config: Config = Config::new();
     let context: Context = Context::new(&config);
-    for depth in 0..options.depth {
+    for depth in 0..50 {
         info!("STARTING BMC FOR DEPTH {}", depth);
         for _ in 0..10 {
             // Run max of 10 iterations for depth
@@ -96,7 +96,10 @@ pub fn proof_loop(
                     if options.interpolate {
                         let interpolants = run_smtinterpol(smt);
                         match interpolants {
-                            Ok(_interps) => (),
+                            Ok(interps) => {
+                                // println!("{:#?}", interps);
+                                ()
+                            }
                             Err(err) => println!("Error when computing interpolants: {err}"),
                         }
                     }
