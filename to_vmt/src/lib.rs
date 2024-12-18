@@ -1,14 +1,62 @@
 extern crate proc_macro;
+use darling::ast::NestedMeta;
+use darling::FromMeta;
 use proc_macro::TokenStream;
 use quote::quote_spanned;
 use smt2parser::{concrete::Command, get_command_from_command_string, vmt::NEXT_VARIABLE_NAME};
 use std::fmt::{Debug, Display};
+use std::panic;
+use std::time::Duration;
 use syn::spanned::Spanned;
 use syn::{Expr, ItemFn, Pat, PatIdent, PatType, Path};
 use transition_system::to_vmt_model;
-use yardbird::{proof_loop, YardbirdOptions};
 
+mod run_yardbird;
 mod transition_system;
+
+#[derive(Debug, FromMeta)]
+struct ToVMTArgs {
+    #[darling(default)]
+    timeout: Option<u16>,
+    prover: Option<String>,
+}
+impl ToVMTArgs {
+    fn from(attrs: TokenStream) -> Self {
+        let attr_args = match NestedMeta::parse_meta_list(attrs.into()) {
+            Ok(v) => v,
+            Err(e) => {
+                panic!("Error during attribute parsing: {e}");
+            }
+        };
+        match ToVMTArgs::from_list(&attr_args) {
+            Ok(v) => v,
+            Err(e) => {
+                panic!("Error building ToVMTArgs from_list(): {e}");
+            }
+        }
+    }
+
+    pub fn run_yardbird(&self) -> bool {
+        self.prover
+            .clone()
+            .is_some_and(|prover| prover == "yardbird")
+    }
+
+    pub fn get_timeout(&self) -> Duration {
+        if self.timeout.is_none() {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_secs(self.timeout.unwrap().into())
+        }
+    }
+}
+
+#[proc_macro_attribute]
+pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
+    let macro_args = ToVMTArgs::from(attrs);
+    let content = to_vmt_inner(macro_args, proc_macro2::TokenStream::from(item));
+    TokenStream::from(content)
+}
 
 #[derive(PartialEq, Eq)]
 enum ParsingState {
@@ -17,19 +65,7 @@ enum ParsingState {
     Postcondition,
 }
 
-#[proc_macro_attribute]
-pub fn to_vmt(attrs: TokenStream, item: TokenStream) -> TokenStream {
-    let content = to_vmt_inner(
-        proc_macro2::TokenStream::from(attrs),
-        proc_macro2::TokenStream::from(item),
-    );
-    TokenStream::from(content)
-}
-
-fn to_vmt_inner(
-    _attrs: proc_macro2::TokenStream,
-    item: proc_macro2::TokenStream,
-) -> proc_macro2::TokenStream {
+fn to_vmt_inner(macro_args: ToVMTArgs, item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let pre_item = item.clone();
     let parsed: ItemFn = syn::parse(item.into()).unwrap();
     let _function_name = parsed.sig.ident.to_string();
@@ -56,11 +92,9 @@ fn to_vmt_inner(
         post_condition_asserts,
     )
     .abstract_array_theory();
-    let standard_options = YardbirdOptions::default();
-    // Run yardbird proof.
-    match proof_loop(&standard_options, vmt) {
-        Ok(result) => println!("Yardbird: {:#?}", result.used_instances),
-        Err(err) => println!("Yardbird failed: {err}"),
+
+    if macro_args.run_yardbird() {
+        run_yardbird::run_yardbird(macro_args, vmt);
     }
     pre_item
 }
