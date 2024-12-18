@@ -185,9 +185,7 @@ function Stats({ id }: { id: string }) {
       <Col key={`4-${id}`} className="text-purple-600">
         {stats.data.panic}
       </Col>
-      <Col key={`5-${id}`} className="text-purple-600">
-        {total}
-      </Col>
+      <Col key={`5-${id}`}>{total}</Col>
     </>
   );
 }
