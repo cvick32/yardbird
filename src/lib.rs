@@ -4,6 +4,7 @@ use crate::analysis::SaturationInequalities;
 use anyhow::anyhow;
 use array_axioms::ArrayLanguage;
 use clap::Parser;
+use cost::BestVariableSubstitution;
 use egg_utils::Saturate;
 use itertools::Itertools;
 use log::{debug, info};
@@ -119,7 +120,10 @@ pub fn proof_loop(
                         &model,
                     )?;
                     egraph.rebuild();
-                    let (instantiations, const_instantiations) = egraph.saturate();
+                    let cost_fn = BestVariableSubstitution {
+                        current_frame_number: depth as u32,
+                    };
+                    let (instantiations, const_instantiations) = egraph.saturate(cost_fn);
                     const_instances.extend_from_slice(&const_instantiations);
 
                     // add all instantiations to the model,

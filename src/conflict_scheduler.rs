@@ -5,8 +5,7 @@ use log::{debug, info};
 
 use crate::egg_utils::{DefaultCostFunction, RecExprRoot};
 
-#[derive(Clone)]
-pub struct ConflictScheduler<S> {
+pub struct ConflictScheduler<S, CF> {
     inner: S,
     /// TODO: use RecExpr instead of String
     /// Keep track of rule instantiations that caused conflicts. We use an
@@ -15,14 +14,16 @@ pub struct ConflictScheduler<S> {
     /// need to use interior mutability.
     instantiations: Rc<RefCell<Vec<String>>>,
     instantiations_w_constants: Rc<RefCell<Vec<String>>>,
+    cost_fn: CF,
 }
 
-impl<S> ConflictScheduler<S> {
-    pub fn new(scheduler: S) -> Self {
+impl<S, CF> ConflictScheduler<S, CF> {
+    pub fn new(scheduler: S, cost_fn: CF) -> Self {
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
             instantiations_w_constants: Rc::new(RefCell::new(vec![])),
+            cost_fn,
         }
     }
 
@@ -35,11 +36,12 @@ impl<S> ConflictScheduler<S> {
     }
 }
 
-impl<S, L, N> egg::RewriteScheduler<L, N> for ConflictScheduler<S>
+impl<S, L, N> egg::RewriteScheduler<L, N> for ConflictScheduler<S, <L as DefaultCostFunction>::CF>
 where
     S: egg::RewriteScheduler<L, N>,
     L: egg::Language + DefaultCostFunction<Cost = u32> + std::fmt::Display,
     N: egg::Analysis<L>,
+    <L as DefaultCostFunction>::CF: Clone,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
         self.inner.can_stop(iteration)
@@ -64,7 +66,7 @@ where
         debug!("======>");
         debug!("applying {}", rewrite.name);
 
-        let extractor = egg::Extractor::new(egraph, L::cost_function());
+        let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
 
         for m in &matches {
             if let Some(cow_ast) = &m.ast {
@@ -96,7 +98,7 @@ where
                         let instantiation = if rewrite.name.as_str() == "write-does-not-overwrite" {
                             let idx1 = subst.get("?c".parse().unwrap()).unwrap();
                             let idx2 = subst.get("?idx".parse().unwrap()).unwrap();
-                            let extractor = egg::Extractor::new(egraph, L::cost_function());
+                            let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
                             let (_, expr1) = extractor.find_best(*idx1);
                             let (_, expr2) = extractor.find_best(*idx2);
                             format!(
@@ -107,7 +109,7 @@ where
                             format!("(= {} {})", new_lhs, new_rhs)
                         };
 
-                        let cost = L::cost_function().cost_rec(&new_rhs);
+                        let cost = self.cost_fn.cost_rec(&new_rhs);
                         if cost >= 100 {
                             debug!("rejecting because of cost");
                             self.instantiations_w_constants

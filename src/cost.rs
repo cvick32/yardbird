@@ -5,7 +5,10 @@ use crate::array_axioms::ArrayLanguage;
 
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
-pub struct BestVariableSubstitution;
+#[derive(Clone)]
+pub struct BestVariableSubstitution {
+    pub current_frame_number: u32,
+}
 
 impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
     type Cost = u32;
@@ -44,8 +47,10 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
             ArrayLanguage::Times(_) => 1,
             ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Symbol(sym) => {
-                if sym.as_str().contains(VARIABLE_FRAME_DELIMITER) {
-                    1
+                if let Some((_name, frame_number)) =
+                    sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
+                {
+                    self.current_frame_number - frame_number.parse::<u32>().unwrap()
                 } else {
                     // TODO: extend language to uninterpreted sort constants to
                     // constants instead of symbols.
