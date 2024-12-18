@@ -2,9 +2,15 @@ import {
   Link,
   Outlet,
   createRootRouteWithContext,
+  useMatch,
 } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { AuthContext } from "../AuthProvider";
+import { FaCrow, FaDoorOpen, FaGithub } from "react-icons/fa6";
+import { useArtifact, useArtifacts } from "../fetch";
+import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { CommitMessage, CommitRef } from ".";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -18,22 +24,33 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootComponent() {
   return (
     <>
-      <div className="flex gap-2 bg-white p-2">
-        <div className="grow">
-          <Link to="/" className="hover:underline [&.active]:font-bold">
-            Index
+      <div className="sticky top-0 z-20 flex items-center gap-4 border-b border-slate-300 bg-slate-100 p-2 px-4">
+        <div>
+          <Link
+            to="/"
+            className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
+          >
+            <FaCrow />
+            Artifacts
           </Link>
         </div>
+        <Breadcrumbs />
+        <div className="grow"></div>
         <div>
           <a
             href="https://github.com/cvick32/yardbird"
-            className="hover:underline [&.active]:font-bold"
+            className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
           >
+            <FaGithub />
             Repo
           </a>
         </div>
         <div>
-          <Link to="/logout" className="hover:underline [&.active]:font-bold">
+          <Link
+            to="/logout"
+            className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
+          >
+            <FaDoorOpen />
             Log Out
           </Link>
         </div>
@@ -43,5 +60,89 @@ function RootComponent() {
         <Outlet />
       </div>
     </>
+  );
+}
+
+function Breadcrumbs() {
+  const artifactMatch = useMatch({
+    from: "/artifacts/$art",
+    shouldThrow: false,
+  });
+
+  const artifact = useArtifact(artifactMatch?.params.art);
+  const artifacts = useArtifacts();
+  const navigate = useNavigate({ from: "/artifacts/$art" });
+  const [filterVal, setFilterVal] = useState<string>(
+    artifactMatch?.search.filter ?? "",
+  );
+
+  if (!artifactMatch || !artifact.data) {
+    return undefined;
+  }
+
+  return (
+    <div className="flex flex-row items-center gap-2 text-sm">
+      <label htmlFor="compare" className="font-bold">
+        Compare against:
+      </label>
+      <select
+        name="compare"
+        id="compare"
+        onChange={(ev) => {
+          const compare = ev.target.value.trim();
+          const filter =
+            compare === "" && filterVal === "differ" ? "" : filterVal;
+          setFilterVal(filter);
+          navigate({
+            search: () => ({
+              compare,
+              filter,
+            }),
+          });
+        }}
+        defaultValue={artifactMatch.search.compare}
+      >
+        <option value="">None</option>
+        {!!artifacts.data &&
+          artifacts.data.data.artifacts
+            .filter((art: any) => `${art.id}` !== `${artifact.data.id}`)
+            .map((art: any, idx: number) => {
+              let date = new Date(Date.parse(art.created_at));
+              let dayString = date.toLocaleDateString("en-US");
+              return (
+                <option key={idx} value={art.id}>
+                  {dayString} {`#${art.workflow_run.head_sha.slice(0, 7)}`}
+                </option>
+              );
+            })}
+      </select>
+      <label htmlFor="filter" className="font-bold">
+        Filter:
+      </label>
+      <select
+        name="filter"
+        id="filter"
+        onChange={(ev) => {
+          const filter = ev.target.value.trim();
+          setFilterVal(filter);
+          navigate({
+            search: () => ({
+              compare: artifactMatch.search.compare,
+              filter,
+            }),
+          });
+        }}
+        value={filterVal}
+      >
+        <option value="">None</option>
+        <option value="success">Success</option>
+        <option value="timeout">Timeout</option>
+        <option value="error">Error</option>
+        <option value="panic">Panic</option>
+        <option value="differ">Differ</option>
+      </select>
+      <CommitRef sha={artifact.data.commitSha} />
+      <CommitMessage sha={artifact.data.commitSha} />
+    </div>
   );
 }

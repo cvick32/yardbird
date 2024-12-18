@@ -37,7 +37,7 @@ function Index() {
               params={{
                 art: art.id,
               }}
-              search={{ compare: "" }}
+              search={{ compare: "", filter: "" }}
               className="text-blue-500 hover:text-blue-600 hover:underline"
             >
               Results
@@ -63,10 +63,9 @@ function Index() {
         ["Message"],
         ({ art }) => {
           return (
-            <CommitMessage
-              key={`message-${art.id}`}
-              commitSha={art.workflow_run.head_sha}
-            />
+            <Col key={`message-${art.id}`}>
+              <CommitMessage sha={art.workflow_run.head_sha} />
+            </Col>
           );
         },
       ],
@@ -193,21 +192,17 @@ function Stats({ id }: { id: string }) {
   );
 }
 
-function CommitMessage({ commitSha }: { commitSha: string }) {
-  const query = useCommitMessage(commitSha);
+export function CommitMessage({ sha }: { sha: string }) {
+  const query = useCommitMessage(sha);
 
-  return (
-    <Col className="truncate">
-      {query.data === undefined ? (
-        <div>...</div>
-      ) : (
-        <div className="w-80 truncate">{query.data.data.commit.message}</div>
-      )}
-    </Col>
-  );
+  if (!query.data) {
+    return <div>...</div>;
+  }
+
+  return <div className="w-80 truncate">{query.data.data.commit.message}</div>;
 }
 
-function CommitRef({ sha }: { sha: string }) {
+export function CommitRef({ sha }: { sha: string }) {
   const link = `https://github.com/cvick32/yardbird/commit/${sha}`;
   return (
     <a
