@@ -63,6 +63,9 @@ where
     ) -> usize {
         debug!("======>");
         debug!("applying {}", rewrite.name);
+
+        let extractor = egg::Extractor::new(egraph, L::cost_function());
+
         for m in &matches {
             if let Some(cow_ast) = &m.ast {
                 let subst = &m.substs[0];
@@ -73,11 +76,12 @@ where
 
                 // construct a new term by instantiating variables in the pattern ast with terms
                 // from the substitution.
-                let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(ast, egraph, subst));
+                let new_lhs: egg::RecExpr<_> =
+                    unpatternify(reify_pattern_ast(ast, egraph, subst, &extractor));
 
                 if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
                     let new_rhs: egg::RecExpr<_> =
-                        unpatternify(reify_pattern_ast(applier_ast, egraph, subst));
+                        unpatternify(reify_pattern_ast(applier_ast, egraph, subst, &extractor));
 
                     let rhs_eclass = egraph.lookup_expr(&new_rhs);
                     // the eclass that we would have inserted from this pattern
@@ -135,6 +139,7 @@ fn reify_pattern_ast<L, N>(
     pattern: &egg::PatternAst<L>,
     egraph: &egg::EGraph<L, N>,
     subst: &egg::Subst,
+    extractor: &egg::Extractor<<L as DefaultCostFunction>::CF, L, N>,
 ) -> egg::PatternAst<L>
 where
     L: egg::Language + DefaultCostFunction + std::fmt::Display,
@@ -146,7 +151,7 @@ where
             x @ egg::ENodeOrVar::ENode(_) => vec![x.clone()].into(),
             egg::ENodeOrVar::Var(var) => {
                 let eclass = &egraph[*subst.get(*var).unwrap()];
-                find_best_variable_substitution(egraph, eclass)
+                find_best_variable_substitution(eclass, extractor)
             }
         }
     } else {
@@ -158,12 +163,17 @@ where
                     if x.is_leaf() {
                         vec![x].into()
                     } else {
-                        reify_pattern_ast(&x.build_recexpr(|id| pattern[id].clone()), egraph, subst)
+                        reify_pattern_ast(
+                            &x.build_recexpr(|id| pattern[id].clone()),
+                            egraph,
+                            subst,
+                            extractor,
+                        )
                     }
                 }
                 egg::ENodeOrVar::Var(var) => {
                     let eclass = &egraph[*subst.get(var).unwrap()];
-                    find_best_variable_substitution(egraph, eclass)
+                    find_best_variable_substitution(eclass, extractor)
                 }
             })
     }
@@ -183,19 +193,14 @@ fn unpatternify<L: egg::Language + std::fmt::Display>(
         .into()
 }
 
-/// TODO: This function should iterate over the nodes in the eclass and choose the variable
-/// that has the highest score w.r.t some ranking function. I know there's some notion of
-/// ranking that's built into egg, so maybe we can pre-compute this inside the EClass itself
-/// and just return `max()` here.
 fn find_best_variable_substitution<L, N>(
-    egraph: &egg::EGraph<L, N>,
     eclass: &egg::EClass<L, <N as Analysis<L>>::Data>,
+    extractor: &egg::Extractor<<L as DefaultCostFunction>::CF, L, N>,
 ) -> egg::PatternAst<L>
 where
     L: egg::Language + DefaultCostFunction + std::fmt::Display,
     N: egg::Analysis<L>,
 {
-    let extractor = egg::Extractor::new(egraph, L::cost_function());
     let (cost, expr) = extractor.find_best(eclass.id);
     debug!(
         "    extraction: {} -> {} (cost: {cost:?})",
@@ -210,6 +215,4 @@ where
         .map(egg::ENodeOrVar::ENode)
         .collect::<Vec<_>>()
         .into()
-
-    //  }
 }

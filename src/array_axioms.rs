@@ -56,8 +56,9 @@ where
 
 impl DefaultCostFunction for ArrayLanguage {
     type Cost = u32;
+    type CF = BestVariableSubstitution;
 
-    fn cost_function() -> impl egg::CostFunction<Self, Cost = Self::Cost> {
+    fn cost_function() -> Self::CF {
         BestVariableSubstitution
     }
 }

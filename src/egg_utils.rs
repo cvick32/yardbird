@@ -7,7 +7,8 @@ pub trait Saturate {
 
 pub trait DefaultCostFunction: egg::Language {
     type Cost: PartialOrd + std::fmt::Debug + Clone;
-    fn cost_function() -> impl egg::CostFunction<Self, Cost = Self::Cost>;
+    type CF: egg::CostFunction<Self, Cost = Self::Cost>;
+    fn cost_function() -> Self::CF;
 }
 
 pub trait RecExprRoot<L> {
