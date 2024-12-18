@@ -9,6 +9,7 @@ smt2parser = { path = "../smt2parser/", version = "0.6.1" }
 yardbird = { path = ".." }
 quote = "1.0.37"
 proc-macro2 = "1.0.92"
+darling = "0.20.10"
 
 [lib]
 proc-macro = true

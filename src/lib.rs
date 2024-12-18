@@ -14,7 +14,6 @@ use z3_var_context::Z3VarContext;
 
 pub mod analysis;
 pub mod array_axioms;
-pub mod benchmark;
 pub mod conflict_scheduler;
 mod cost;
 mod egg_utils;

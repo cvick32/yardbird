@@ -1,6 +1,6 @@
 use to_vmt::to_vmt;
 
-#[to_vmt]
+#[to_vmt(prover = "yardbird", timeout = 60)]
 fn array_copy(a: Vec<usize>, mut b: Vec<usize>, mut i: usize, n: usize, z: usize) {
     assert!(i == 0);
     loop {
