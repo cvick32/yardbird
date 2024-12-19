@@ -135,7 +135,10 @@ function Index() {
 function DateCol({ art }: { art: any }) {
   let date = new Date(Date.parse(art.created_at));
   let dayString = date.toLocaleDateString("en-US");
-  let timeString = date.toLocaleTimeString("en-US");
+  let timeString = date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return (
     <Fragment key={`day-time-${art.id}`}>
