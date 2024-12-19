@@ -77,20 +77,16 @@ pub fn proof_loop(
     let context: Context = Context::new(&config);
     for depth in 0..options.depth {
         info!("STARTING BMC FOR DEPTH {}", depth);
-        for _ in 0..10 {
+        for i in 0..10 {
+            info!("  inner loop iteration: {i}");
             // Run max of 10 iterations for depth
             // Currently run once, this will eventually run until UNSAT
             let smt = vmt_model.unroll(depth);
             let z3_var_context = Z3VarContext::from(&context, &smt);
             let solver = Solver::new(&context);
             solver.from_string(smt.to_bmc());
-            // debug!("smt2lib program:\n{}", smt.to_bmc());
-            // TODO: abstract this out somehow
-            let mut egraph: egg::EGraph<ArrayLanguage, _> =
-                egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-            for term in smt.get_assert_terms() {
-                egraph.add_expr(&term.parse()?);
-            }
+            debug!("smt2lib program:\n{}", smt.to_bmc());
+
             match solver.check() {
                 z3::SatResult::Unsat => {
                     info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", depth);
@@ -112,6 +108,12 @@ pub fn proof_loop(
                     // find Array theory fact that rules out counterexample
                     let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
                     debug!("model:\n{}", sort_model(&model)?);
+                    // TODO: abstract this out somehow
+                    let mut egraph: egg::EGraph<ArrayLanguage, _> =
+                        egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
+                    for term in smt.get_assert_terms() {
+                        egraph.add_expr(&term.parse()?);
+                    }
                     update_egraph_from_model(&mut egraph, &model)?;
                     update_egraph_with_non_array_function_terms(
                         &mut egraph,
@@ -119,6 +121,7 @@ pub fn proof_loop(
                         &z3_var_context,
                         &model,
                     )?;
+                    // TODO: union in the instantiations that we have already found
                     egraph.rebuild();
                     let cost_fn = BestVariableSubstitution {
                         current_frame_number: depth as u32,
@@ -178,6 +181,11 @@ fn sort_model(model: &z3::Model) -> anyhow::Result<String> {
                 let value = entry.get_value().to_string();
                 b.push_str(&format!("{function_call} -> {value}\n"));
             }
+            b.push_str(&format!(
+                "{} else -> {}\n",
+                func_decl.name(),
+                interpretation.get_else()
+            ))
         }
     }
     // let model_string = format!("{model}");
@@ -230,7 +238,7 @@ fn update_egraph_with_non_array_function_terms<'ctx>(
             .eval(&z3_term, false)
             .unwrap_or_else(|| panic!("Term not found in model: {term}"));
         let interp_id = egraph.add_expr(&model_interp.to_string().parse()?);
-        info!("Adding: {} = {}", term, model_interp);
+        debug!("Adding: {} = {}", term, model_interp);
         egraph.union(term_id, interp_id);
         egraph.rebuild();
     }
