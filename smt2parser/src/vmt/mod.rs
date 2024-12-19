@@ -147,13 +147,11 @@ impl VMTModel {
 
     /// Clones the current model, rewrites all usages of Arrays into uninterpreted functions
     /// and returns the abstracted VMTModel.
+    /// TODO: only works for Array Int Int, need to extend to other theories.
     pub fn abstract_array_theory(&self) -> VMTModel {
         let mut array_types: HashMap<String, String> = HashMap::new();
         array_types.insert("Int".to_string(), "Int".to_string());
-        let mut abstractor = ArrayAbstractor {
-            visitor: SyntaxBuilder,
-            array_types,
-        };
+        let mut abstractor = ArrayAbstractor::default();
         let mut abstracted_commands = vec![];
         for command in self.as_commands() {
             abstracted_commands.push(command.accept(&mut abstractor).unwrap());
@@ -436,5 +434,22 @@ impl VMTModel {
         let mut file = File::create(filename).unwrap();
 
         let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();
+    }
+}
+
+mod test {
+    #[allow(unused_imports)]
+    use super::*;
+
+    #[test]
+    fn test_double_abstract() {
+        let vmt_model = VMTModel::from_path("./examples/array_copy.vmt").unwrap();
+        let abstracted_model = vmt_model.abstract_array_theory();
+        let abstracted_abstracted_model = abstracted_model.abstract_array_theory();
+
+        assert_eq!(
+            abstracted_model.as_vmt_string(),
+            abstracted_abstracted_model.as_vmt_string(),
+        );
     }
 }
