@@ -96,10 +96,7 @@ pub fn proof_loop(
                     if options.interpolate {
                         let interpolants = run_smtinterpol(smt);
                         match interpolants {
-                            Ok(interps) => {
-                                // println!("{:#?}", interps);
-                                ()
-                            }
+                            Ok(_interps) => println!("{:#?}", _interps),
                             Err(err) => println!("Error when computing interpolants: {err}"),
                         }
                     }

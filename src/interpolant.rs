@@ -1,9 +1,10 @@
+use std::fmt::Debug;
+
 use egg::*;
 use smt2parser::{
     concrete::{SyntaxBuilder, Term},
     vmt::numbered_to_symbolic::NumberedToSymbolic,
 };
-use std::fmt::Debug;
 
 pub struct Interpolant {
     _original_term: Term,
