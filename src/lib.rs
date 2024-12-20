@@ -10,6 +10,7 @@ use itertools::Itertools;
 use log::{debug, info};
 use smt2parser::vmt::VMTModel;
 use utils::run_smtinterpol;
+use z3::{Config, Context, Solver};
 use z3_var_context::Z3VarContext;
 
 pub mod analysis;
@@ -44,6 +45,10 @@ pub struct YardbirdOptions {
     /// Run SMTInterpol when BMC depth is UNSAT
     #[arg(short, long, default_value_t = false)]
     pub interpolate: bool,
+
+    /// Run concrete BMC in z3.
+    #[arg(short, default_value_t = false)]
+    pub z3: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -54,6 +59,20 @@ impl Default for YardbirdOptions {
             bmc_count: 1,
             print_vmt: false,
             interpolate: false,
+            z3: false,
+        }
+    }
+}
+
+impl YardbirdOptions {
+    pub fn from_filename(filename: String) -> Self {
+        YardbirdOptions {
+            filename,
+            depth: 10,
+            bmc_count: 1,
+            print_vmt: false,
+            interpolate: false,
+            z3: false,
         }
     }
 }
@@ -63,6 +82,7 @@ pub struct ProofLoopResult {
     pub model: VMTModel,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
+    pub counterexample: bool,
 }
 
 #[derive(Debug)]
@@ -76,11 +96,12 @@ pub struct Driver<'a> {
 
 impl<'a> Driver<'a> {
     pub fn new(options: &'a YardbirdOptions, config: &z3::Config, vmt_model: VMTModel) -> Self {
+        let abstract_vmt_model = vmt_model.abstract_array_theory();
         Self {
             used_instances: vec![],
             const_instances: vec![],
             context: z3::Context::new(config),
-            vmt_model,
+            vmt_model: abstract_vmt_model,
             options,
         }
     }
@@ -112,6 +133,7 @@ impl<'a> Driver<'a> {
             model: self.vmt_model,
             used_instances: self.used_instances,
             const_instances: self.const_instances,
+            counterexample: false,
         })
     }
 
@@ -179,6 +201,57 @@ impl<'a> Driver<'a> {
             }
         }
     }
+}
+
+/// Given a VMTModel, BMC to the specified depth. Return when either the
+/// depth has been exhausted or a counterexample is found.
+pub fn concrete_z3_bmc(
+    options: &YardbirdOptions,
+    vmt_model: VMTModel,
+) -> anyhow::Result<ProofLoopResult> {
+    let config: Config = Config::new();
+    let context: Context = Context::new(&config);
+    for depth in 0..options.depth {
+        info!("STARTING CONCRETE BMC FOR DEPTH {}", depth);
+        let smt = vmt_model.unroll(depth);
+        let solver = Solver::new(&context);
+        solver.from_string(smt.to_bmc());
+        debug!("smt2lib program:\n{}", smt.to_bmc());
+        match solver.check() {
+            z3::SatResult::Unsat => {
+                info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", depth);
+                if options.interpolate {
+                    let interpolants = run_smtinterpol(smt);
+                    match interpolants {
+                        Ok(_interps) => (),
+                        Err(err) => println!("Error when computing interpolants: {err}"),
+                    }
+                }
+            }
+            z3::SatResult::Unknown => {
+                // CV: I've seen Z3 return unknown then re-run Z3 and gotten SAT or UNSAT.
+                // This might be a place to retry at least once before panicking.
+                panic!("Z3 RETURNED UNKNOWN!");
+            }
+            z3::SatResult::Sat => {
+                println!("Concrete Counterexample Found!");
+                let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+                println!("{}", sort_model(&model)?);
+                return Ok(ProofLoopResult {
+                    model: vmt_model,
+                    used_instances: vec![],
+                    const_instances: vec![],
+                    counterexample: true,
+                });
+            }
+        }
+    }
+    Ok(ProofLoopResult {
+        model: vmt_model,
+        used_instances: vec![],
+        const_instances: vec![],
+        counterexample: false,
+    })
 }
 
 fn sort_model(model: &z3::Model) -> anyhow::Result<String> {
@@ -324,11 +397,10 @@ fn update_egraph_from_model(
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
-    let concrete_vmt_model = VMTModel::from_path(&options.filename).unwrap();
-    let abstract_vmt_model = concrete_vmt_model.abstract_array_theory();
+    let vmt_model = VMTModel::from_path(&options.filename).unwrap();
     if options.print_vmt {
         let mut output = File::create("original.vmt").unwrap();
-        let _ = output.write(abstract_vmt_model.as_vmt_string().as_bytes());
+        let _ = output.write(vmt_model.as_vmt_string().as_bytes());
     }
-    abstract_vmt_model
+    vmt_model
 }

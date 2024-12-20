@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use num::{BigUint, Zero};
 
@@ -10,8 +10,18 @@ use crate::concrete::{Command, Identifier, QualIdentifier, Sort, Symbol, SyntaxB
 #[derive(Clone)]
 pub struct ArrayAbstractor {
     pub visitor: SyntaxBuilder,
-    pub array_types: HashMap<String, String>,
+    array_types: HashSet<(String, String)>,
 }
+
+impl Default for ArrayAbstractor {
+    fn default() -> Self {
+        Self {
+            visitor: SyntaxBuilder,
+            array_types: HashSet::new(),
+        }
+    }
+}
+
 impl ArrayAbstractor {
     pub(crate) fn get_array_type_definitions(&self) -> Vec<Command> {
         let mut commands = vec![];
@@ -77,12 +87,17 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
             crate::concrete::Sort::Simple { identifier: _ } => sort,
             crate::concrete::Sort::Parameterized {
                 identifier,
-                parameters: _,
+                parameters,
             } => {
                 if identifier.to_string() == "Array" {
+                    // TODO: also need to have a better way of finding Sort names.
+                    let (index_type, value_type) =
+                        (parameters[0].to_string(), parameters[1].to_string());
+                    self.array_types
+                        .insert((index_type.clone(), value_type.clone()));
                     crate::concrete::Sort::Simple {
                         identifier: Identifier::Simple {
-                            symbol: Symbol("Array-Int-Int".to_string()),
+                            symbol: Symbol(format!("Array-{}-{}", index_type, value_type)),
                         },
                     }
                 } else {
@@ -97,6 +112,9 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         })
     }
 
+    /// TODO: here's where the real problem of adding different theories comes in.
+    /// Need to check the types of the arguments before getting the name of the
+    /// identifier...
     fn visit_application(
         &mut self,
         qual_identifier: <Self::V as crate::visitors::Smt2Visitor>::QualIdentifier,

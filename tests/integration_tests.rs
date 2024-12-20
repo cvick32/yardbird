@@ -1,20 +1,15 @@
 mod snapshot_tests;
 
-use yardbird::{self, model_from_options, proof_loop, YardbirdOptions};
+use yardbird::{self, model_from_options, Driver, YardbirdOptions};
 
 macro_rules! create_integration_test {
     ($test_name:ident, $example_name:literal, $num_instances:literal) => {
         #[test]
         fn $test_name() {
-            let options = YardbirdOptions {
-                filename: $example_name.into(),
-                depth: 10,
-                bmc_count: 2,
-                print_vmt: false,
-                interpolate: false,
-            };
-            let abstract_vmt_model = model_from_options(&options);
-            let res = proof_loop(&options, abstract_vmt_model).unwrap();
+            let options = YardbirdOptions::from_filename($example_name.into());
+            let vmt_model = model_from_options(&options);
+            let driver = Driver::new(&options, &z3::Config::new(), vmt_model);
+            let res = driver.check_to_depth(options.depth, 10).unwrap();
             assert!(
                 res.used_instances.len() == $num_instances,
                 "{} != {}",

@@ -5,7 +5,7 @@ use std::{
     thread,
     time::Duration,
 };
-use yardbird::{model_from_options, proof_loop, YardbirdOptions};
+use yardbird::{model_from_options, Driver, YardbirdOptions};
 
 #[derive(Debug)]
 enum BenchStatus {
@@ -41,17 +41,12 @@ struct BenchmarkResult {
 }
 
 fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
-    let options = YardbirdOptions {
-        filename: filename.as_ref().to_string_lossy().to_string(),
-        depth: 10,
-        bmc_count: 2,
-        print_vmt: false,
-        interpolate: false,
-    };
-    let abstract_vmt_model = model_from_options(&options);
+    let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
+    let vmt_model = model_from_options(&options);
     let (status, used_instantiations) = run_with_timeout(
         move || {
-            let res = proof_loop(&options, abstract_vmt_model).unwrap();
+            let driver = Driver::new(&options, &z3::Config::new(), vmt_model);
+            let res = driver.check_to_depth(options.depth, 10).unwrap();
             res.used_instances
         },
         Duration::from_secs(20),

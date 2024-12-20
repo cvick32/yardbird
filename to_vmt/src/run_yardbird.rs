@@ -35,7 +35,7 @@ impl From<ProofLoopResult> for ProofResult {
     }
 }
 
-pub fn run_yardbird(macro_args: ToVMTArgs, vmt: VMTModel) {
+pub fn run_yardbird(macro_args: &ToVMTArgs, vmt: VMTModel) {
     let standard_options = YardbirdOptions::default();
     // Run yardbird proof.
     let status_code = Some(run_with_timeout(
