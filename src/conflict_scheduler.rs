@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use egg::{Analysis, CostFunction, Language};
+use egg::{Analysis, Language};
 use log::{debug, info};
 
-use crate::egg_utils::{DefaultCostFunction, RecExprRoot};
+use crate::egg_utils::RecExprRoot;
 
 pub struct ConflictScheduler<S, CF> {
     inner: S,
@@ -36,12 +36,12 @@ impl<S, CF> ConflictScheduler<S, CF> {
     }
 }
 
-impl<S, L, N> egg::RewriteScheduler<L, N> for ConflictScheduler<S, <L as DefaultCostFunction>::CF>
+impl<S, L, N, CF> egg::RewriteScheduler<L, N> for ConflictScheduler<S, CF>
 where
     S: egg::RewriteScheduler<L, N>,
-    L: egg::Language + DefaultCostFunction<Cost = u32> + std::fmt::Display,
+    L: egg::Language + std::fmt::Display,
+    CF: egg::CostFunction<L, Cost = u32> + Clone,
     N: egg::Analysis<L>,
-    <L as DefaultCostFunction>::CF: Clone,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
         self.inner.can_stop(iteration)
@@ -137,15 +137,16 @@ where
 /// fresh, so that the ids work out correctly. For patterns, we call
 /// `find_best_variable_substitution` which uses egraph extraction to find the best
 /// term.
-fn reify_pattern_ast<L, N>(
+fn reify_pattern_ast<L, N, CF>(
     pattern: &egg::PatternAst<L>,
     egraph: &egg::EGraph<L, N>,
     subst: &egg::Subst,
-    extractor: &egg::Extractor<<L as DefaultCostFunction>::CF, L, N>,
+    extractor: &egg::Extractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
-    L: egg::Language + DefaultCostFunction + std::fmt::Display,
+    L: egg::Language + std::fmt::Display,
     N: egg::Analysis<L>,
+    CF: egg::CostFunction<L>,
 {
     if pattern.as_ref().len() == 1 {
         let node = &pattern.as_ref()[0];
@@ -195,13 +196,14 @@ fn unpatternify<L: egg::Language + std::fmt::Display>(
         .into()
 }
 
-fn find_best_variable_substitution<L, N>(
+fn find_best_variable_substitution<L, N, CF>(
     eclass: &egg::EClass<L, <N as Analysis<L>>::Data>,
-    extractor: &egg::Extractor<<L as DefaultCostFunction>::CF, L, N>,
+    extractor: &egg::Extractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
-    L: egg::Language + DefaultCostFunction + std::fmt::Display,
+    L: egg::Language + std::fmt::Display,
     N: egg::Analysis<L>,
+    CF: egg::CostFunction<L>,
 {
     let (cost, expr) = extractor.find_best(eclass.id);
     debug!(
@@ -209,7 +211,7 @@ where
         eclass.id,
         expr.pretty(80)
     );
-    //if L::cost_function().compare(cost, 4) {
+
     // wrap everything in an ENodeOrVar so that it still counts as an egg::PatternAst
     expr.as_ref()
         .iter()

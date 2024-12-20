@@ -3,9 +3,7 @@ use std::rc::Rc;
 use egg::*;
 
 use crate::{
-    conflict_scheduler::ConflictScheduler,
-    cost::BestVariableSubstitution,
-    egg_utils::{DefaultCostFunction, Saturate},
+    conflict_scheduler::ConflictScheduler, cost::BestVariableSubstitution, egg_utils::Saturate,
 };
 
 define_language! {
@@ -51,17 +49,6 @@ where
             Rc::into_inner(instantiations).unwrap().into_inner(),
             Rc::into_inner(const_instantiations).unwrap().into_inner(),
         )
-    }
-}
-
-impl DefaultCostFunction for ArrayLanguage {
-    type Cost = u32;
-    type CF = BestVariableSubstitution;
-
-    fn cost_function() -> Self::CF {
-        BestVariableSubstitution {
-            current_frame_number: 0,
-        }
     }
 }
 

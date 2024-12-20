@@ -7,12 +7,6 @@ pub trait Saturate {
     fn saturate(&mut self, cost_fn: BestVariableSubstitution) -> Self::Ret;
 }
 
-pub trait DefaultCostFunction: egg::Language {
-    type Cost: PartialOrd + std::fmt::Debug + Clone;
-    type CF: egg::CostFunction<Self, Cost = Self::Cost>;
-    fn cost_function() -> Self::CF;
-}
-
 pub trait RecExprRoot<L> {
     fn root(&self) -> &L;
 }
