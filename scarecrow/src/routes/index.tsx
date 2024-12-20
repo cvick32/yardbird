@@ -72,7 +72,7 @@ function Index() {
                 {timeString}
               </span>
             </div>
-            <Stats id={art.id} className="w-[75px]" />
+            <Stats id={art.id} className="min-w-[75px]" />
             <div className="flex flex-row gap-2 md:gap-0">
               <div className="group hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
                 <span className="group-hover:bg-slate-200">
@@ -113,14 +113,15 @@ function Stats({ id, className }: { id: string; className?: string }) {
 
   if (stats.data === undefined) {
     return (
-      <>
-        <div key={`0-${id}`} />
-        <div key={`1-${id}`} />
-        <div key={`2-${id}`} />
-        <div key={`3-${id}`} />
-        <div key={`4-${id}`} />
-        <div key={`5-${id}`} />
-      </>
+      <FlexGrid className={className}>
+        <div key={`0-${id}`}>-</div>
+        <div key={`1-${id}`}>-</div>
+        <div key={`2-${id}`}>-</div>
+        <div key={`3-${id}`}>-</div>
+        <div key={`4-${id}`}>-</div>
+        <div key={`5-${id}`}>-</div>
+        <div key={`6-${id}`}>Results</div>
+      </FlexGrid>
     );
   }
 
@@ -133,22 +134,22 @@ function Stats({ id, className }: { id: string; className?: string }) {
 
   return (
     <FlexGrid className={className}>
-      <div key={`0-${id}`} className="w-[70px] text-green-600">
+      <div key={`0-${id}`} className={`text-green-600`}>
         {stats.data.success}
       </div>
-      <div key={`1-${id}`} className="w-[70px] text-teal-600">
+      <div key={`1-${id}`} className={`text-teal-600`}>
         {stats.data.trivialSuccess}
       </div>
-      <div key={`2-${id}`} className="w-[70px] text-orange-600">
+      <div key={`2-${id}`} className={`text-orange-600`}>
         {stats.data.timeout}
       </div>
-      <div key={`3-${id}`} className="w-[70px] text-red-600">
+      <div key={`3-${id}`} className={`text-red-600`}>
         {stats.data.error}
       </div>
-      <div key={`4-${id}`} className="w-[70px] text-purple-600">
+      <div key={`4-${id}`} className={`text-purple-600`}>
         {stats.data.panic}
       </div>
-      <div key={`5-${id}`} className="w-[70px]">
+      <div key={`5-${id}`} className={``}>
         {total}
       </div>
       <Link
