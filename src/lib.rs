@@ -59,6 +59,20 @@ impl Default for YardbirdOptions {
             bmc_count: 1,
             print_vmt: false,
             interpolate: false,
+            z3: false,
+        }
+    }
+}
+
+impl YardbirdOptions {
+    pub fn from_filename(filename: String) -> Self {
+        YardbirdOptions {
+            filename,
+            depth: 10,
+            bmc_count: 1,
+            print_vmt: false,
+            interpolate: false,
+            z3: false,
         }
     }
 }
