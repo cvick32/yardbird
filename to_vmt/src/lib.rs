@@ -19,7 +19,9 @@ struct ToVMTArgs {
     #[darling(default)]
     timeout: Option<u16>,
     prover: Option<String>,
+    print_vmt: Option<bool>,
 }
+
 impl ToVMTArgs {
     fn from(attrs: TokenStream) -> Self {
         let attr_args = match NestedMeta::parse_meta_list(attrs.into()) {
@@ -68,7 +70,7 @@ enum ParsingState {
 fn to_vmt_inner(macro_args: ToVMTArgs, item: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
     let pre_item = item.clone();
     let parsed: ItemFn = syn::parse(item.into()).unwrap();
-    let _function_name = parsed.sig.ident.to_string();
+    let function_name = parsed.sig.ident.to_string();
     let mut function_arguments = vec![];
     for input in parsed.sig.inputs {
         match input {
@@ -90,11 +92,16 @@ fn to_vmt_inner(macro_args: ToVMTArgs, item: proc_macro2::TokenStream) -> proc_m
         pre_condition_asserts,
         all_loop_asserts,
         post_condition_asserts,
-    )
-    .abstract_array_theory();
+    );
 
     if macro_args.run_yardbird() {
-        run_yardbird::run_yardbird(macro_args, vmt);
+        run_yardbird::run_yardbird(&macro_args, vmt.clone());
+    }
+    if macro_args
+        .print_vmt
+        .is_some_and(|should_print| should_print)
+    {
+        vmt.write_vmt_out(Some(format!("{function_name}.vmt")));
     }
     pre_item
 }
