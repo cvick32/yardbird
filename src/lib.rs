@@ -45,6 +45,10 @@ pub struct YardbirdOptions {
     /// Run SMTInterpol when BMC depth is UNSAT
     #[arg(short, long, default_value_t = false)]
     pub interpolate: bool,
+
+    /// Run concrete BMC in z3.
+    #[arg(short, default_value_t = false)]
+    pub z3: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -147,6 +151,58 @@ pub fn proof_loop(
         model: abstract_vmt_model,
         used_instances,
         const_instances,
+        counterexample: false,
+    })
+}
+
+/// Given a VMTModel, BMC to the specified depth. Return when either the
+/// depth has been exhausted or a counterexample is found.
+pub fn concrete_z3_bmc(
+    options: &YardbirdOptions,
+    vmt_model: VMTModel,
+) -> anyhow::Result<ProofLoopResult> {
+    let config: Config = Config::new();
+    let context: Context = Context::new(&config);
+    for depth in 0..options.depth {
+        info!("STARTING CONCRETE BMC FOR DEPTH {}", depth);
+        let smt = vmt_model.unroll(depth);
+        let solver = Solver::new(&context);
+        solver.from_string(smt.to_bmc());
+        debug!("smt2lib program:\n{}", smt.to_bmc());
+        match solver.check() {
+            z3::SatResult::Unsat => {
+                info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", depth);
+                if options.interpolate {
+                    let interpolants = run_smtinterpol(smt);
+                    match interpolants {
+                        Ok(_interps) => (),
+                        Err(err) => println!("Error when computing interpolants: {err}"),
+                    }
+                }
+            }
+            z3::SatResult::Unknown => {
+                // CV: I've seen Z3 return unknown then re-run Z3 and gotten SAT or UNSAT.
+                // This might be a place to retry at least once before panicking.
+                panic!("Z3 RETURNED UNKNOWN!");
+            }
+            z3::SatResult::Sat => {
+                println!("Concrete Counterexample Found!");
+                let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+                println!("{}", sort_model(&model)?);
+                return Ok(ProofLoopResult {
+                    model: vmt_model,
+                    used_instances: vec![],
+                    const_instances: vec![],
+                    counterexample: true,
+                });
+            }
+        }
+    }
+    Ok(ProofLoopResult {
+        model: vmt_model,
+        used_instances: vec![],
+        const_instances: vec![],
+        counterexample: false,
     })
 }
 
