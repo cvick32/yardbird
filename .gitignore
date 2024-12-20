@@ -1,3 +1,5 @@
 /target
 .cargo/
 /tests/snapshots/*.new
+*.rej
+/profile.json
