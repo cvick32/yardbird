@@ -193,6 +193,7 @@ fn main() -> anyhow::Result<()> {
                 bmc_count: 10,
                 print_vmt: false,
                 interpolate: false,
+                z3: false,
             };
             run_single(yardbird_options)
         })

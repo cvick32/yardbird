@@ -69,8 +69,9 @@ pub struct ProofLoopResult {
 /// The main verification loop.
 pub fn proof_loop(
     options: &YardbirdOptions,
-    mut vmt_model: VMTModel,
+    vmt_model: VMTModel,
 ) -> anyhow::Result<ProofLoopResult> {
+    let mut abstract_vmt_model = vmt_model.abstract_array_theory();
     let mut used_instances = vec![];
     let mut const_instances = vec![];
     let config: Config = Config::new();
@@ -81,7 +82,7 @@ pub fn proof_loop(
             info!("  inner loop iteration: {i}");
             // Run max of 10 iterations for depth
             // Currently run once, this will eventually run until UNSAT
-            let smt = vmt_model.unroll(depth);
+            let smt = abstract_vmt_model.unroll(depth);
             let z3_var_context = Z3VarContext::from(&context, &smt);
             let solver = Solver::new(&context);
             solver.from_string(smt.to_bmc());
@@ -132,9 +133,9 @@ pub fn proof_loop(
                     // add all instantiations to the model,
                     // if we have already seen all instantiations, break
                     // TODO: not sure if this is correct...
-                    let no_progress = instantiations
-                        .into_iter()
-                        .all(|inst| !vmt_model.add_instantiation(inst, &mut used_instances));
+                    let no_progress = instantiations.into_iter().all(|inst| {
+                        !abstract_vmt_model.add_instantiation(inst, &mut used_instances)
+                    });
                     if no_progress {
                         return Err(anyhow!("Failed to add new instantations"));
                     }
@@ -143,7 +144,7 @@ pub fn proof_loop(
         }
     }
     Ok(ProofLoopResult {
-        model: vmt_model,
+        model: abstract_vmt_model,
         used_instances,
         const_instances,
     })
@@ -292,11 +293,10 @@ fn update_egraph_from_model(
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
-    let concrete_vmt_model = VMTModel::from_path(&options.filename).unwrap();
-    let abstract_vmt_model = concrete_vmt_model.abstract_array_theory();
+    let vmt_model = VMTModel::from_path(&options.filename).unwrap();
     if options.print_vmt {
         let mut output = File::create("original.vmt").unwrap();
-        let _ = output.write(abstract_vmt_model.as_vmt_string().as_bytes());
+        let _ = output.write(vmt_model.as_vmt_string().as_bytes());
     }
-    abstract_vmt_model
+    vmt_model
 }
