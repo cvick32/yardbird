@@ -87,7 +87,11 @@ impl<'a> Driver<'a> {
 
     /// Perform BMC up to `target_depth`, while refining the model with array instantiations
     /// up to `n_refines` times per depth.
-    pub fn check_to_depth(&mut self, target_depth: u8, n_refines: u32) -> anyhow::Result<()> {
+    pub fn check_to_depth(
+        mut self,
+        target_depth: u8,
+        n_refines: u32,
+    ) -> anyhow::Result<ProofLoopResult> {
         for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
             'refine: for i in 0..n_refines {
@@ -104,7 +108,11 @@ impl<'a> Driver<'a> {
             }
         }
 
-        Ok(())
+        Ok(ProofLoopResult {
+            model: self.vmt_model,
+            used_instances: self.used_instances,
+            const_instances: self.const_instances,
+        })
     }
 
     fn refine_model(&mut self, depth: u8) -> anyhow::Result<z3::SatResult> {

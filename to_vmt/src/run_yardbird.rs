@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::{panic, thread};
 
 use smt2parser::vmt::VMTModel;
-use yardbird::{proof_loop, ProofLoopResult, YardbirdOptions};
+use yardbird::{Driver, ProofLoopResult, YardbirdOptions};
 
 use crate::ToVMTArgs;
 
@@ -39,7 +39,10 @@ pub fn run_yardbird(macro_args: ToVMTArgs, vmt: VMTModel) {
     let standard_options = YardbirdOptions::default();
     // Run yardbird proof.
     let status_code = Some(run_with_timeout(
-        move || proof_loop(&standard_options, vmt),
+        move || {
+            let driver = Driver::new(&standard_options, &z3::Config::new(), vmt);
+            driver.check_to_depth(standard_options.depth, 10)
+        },
         macro_args.get_timeout(),
     ));
 
