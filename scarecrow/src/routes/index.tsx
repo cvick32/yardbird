@@ -4,15 +4,9 @@ import {
   useArtifact,
   useArtifacts,
   useCommitMessage,
-  useInProgressWorkflows,
+  // useInProgressWorkflows,
 } from "../fetch";
-import {
-  Fragment,
-  PropsWithChildren,
-  ReactElement,
-  useMemo,
-  Children,
-} from "react";
+import { PropsWithChildren, Children } from "react";
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
@@ -25,7 +19,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const artifacts = useArtifacts();
-  const inProgress = useInProgressWorkflows();
+  // const inProgress = useInProgressWorkflows();
 
   if (!artifacts.data) {
     return <div>Loading...</div>;
