@@ -62,7 +62,7 @@ function Index() {
         });
         return (
           <div
-            className="my-1 flex flex-row flex-wrap gap-x-2 rounded-md border p-1 hover:bg-slate-200"
+            className="my-1 flex flex-row flex-wrap gap-x-2 rounded-md border p-1 hover:bg-slate-200 md:flex-nowrap"
             key={idx}
           >
             <div
@@ -80,8 +80,10 @@ function Index() {
             </div>
             <Stats id={art.id} className="w-[75px]" />
             <div className="flex flex-row gap-2 md:gap-0">
-              <div className="md:w-[100px] md:truncate">
-                {art.workflow_run.head_branch}
+              <div className="group hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+                <span className="group-hover:bg-slate-200">
+                  {art.workflow_run.head_branch}
+                </span>
               </div>
               <div className="w-[80px]">
                 <CommitRef sha={art.workflow_run.head_sha} />
