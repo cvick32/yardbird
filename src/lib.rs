@@ -82,6 +82,7 @@ pub struct ProofLoopResult {
     pub model: VMTModel,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
+    pub counterexample: bool,
 }
 
 /// The main verification loop.
