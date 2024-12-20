@@ -10,6 +10,7 @@ use itertools::Itertools;
 use log::{debug, info};
 use smt2parser::vmt::VMTModel;
 use utils::run_smtinterpol;
+use z3::{Config, Context, Solver};
 use z3_var_context::Z3VarContext;
 
 pub mod analysis;
@@ -127,11 +128,12 @@ impl<'a> Driver<'a> {
                 }
             }
         }
-      
+
         Ok(ProofLoopResult {
             model: self.vmt_model,
             used_instances: self.used_instances,
             const_instances: self.const_instances,
+            counterexample: false,
         })
     }
 
@@ -199,6 +201,7 @@ impl<'a> Driver<'a> {
             }
         }
     }
+}
 
 /// Given a VMTModel, BMC to the specified depth. Return when either the
 /// depth has been exhausted or a counterexample is found.

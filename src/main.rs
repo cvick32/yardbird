@@ -12,10 +12,10 @@ fn main() -> anyhow::Result<()> {
     } else {
         let driver = Driver::new(&options, &z3::Config::new(), vmt_model);
         let res = driver.check_to_depth(options.depth, 10)?;
-        info!("NEEDED INSTANTIATIONS: {:#?}", result.used_instances);
+        info!("NEEDED INSTANTIATIONS: {:#?}", res.used_instances);
         if options.print_vmt {
             let mut output = File::create("instantiated.vmt").unwrap();
-            let _ = output.write(result.model.as_vmt_string().as_bytes());
+            let _ = output.write(res.model.as_vmt_string().as_bytes());
         }
     }
     Ok(())
