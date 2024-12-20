@@ -1,7 +1,7 @@
 use clap::Parser;
 use log::info;
 use std::{fs::File, io::Write};
-use yardbird::{concrete_z3_bmc, logger, model_from_options, proof_loop, YardbirdOptions};
+use yardbird::{concrete_z3_bmc, logger, model_from_options, Driver, YardbirdOptions};
 
 fn main() -> anyhow::Result<()> {
     logger::init_logger();
@@ -10,13 +10,13 @@ fn main() -> anyhow::Result<()> {
     if options.z3 {
         let _ = concrete_z3_bmc(&options, vmt_model);
     } else {
-        let result = proof_loop(&options, vmt_model)?;
+        let driver = Driver::new(&options, &z3::Config::new(), vmt_model);
+        let res = driver.check_to_depth(options.depth, 10)?;
         info!("NEEDED INSTANTIATIONS: {:#?}", result.used_instances);
         if options.print_vmt {
             let mut output = File::create("instantiated.vmt").unwrap();
             let _ = output.write(result.model.as_vmt_string().as_bytes());
         }
     }
-
     Ok(())
 }
