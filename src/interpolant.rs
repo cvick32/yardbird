@@ -1,33 +1,21 @@
 use std::fmt::Debug;
 
 use egg::*;
-use smt2parser::{
-    concrete::{SyntaxBuilder, Term},
-    vmt::numbered_to_symbolic::NumberedToSymbolic,
-};
+use smt2parser::{concrete::Term, get_term_from_term_string};
 
 pub struct Interpolant {
-    _original_term: Term,
-    _new_term: Term,
-    simplified_term: String,
-    interpolant_number: usize,
+    pub _original_term: Term,
+    pub simplified_term: Term,
+    pub interpolant_number: usize,
 }
 
 impl Interpolant {
     pub fn from(term: &Term, interpolant_number: usize) -> Self {
-        let mut builder = NumberedToSymbolic {
-            visitor: SyntaxBuilder,
-            step: interpolant_number,
-        };
-        let new_term = term.clone().accept(&mut builder).unwrap();
-        let simplified_term = simplify_smtinterpol_interpolant(new_term.to_string());
-        //println!("{}: {}", interpolant_number, new_term);
-
+        let simplified = simplify_smtinterpol_interpolant(term.to_string());
         Interpolant {
             _original_term: term.clone(),
-            _new_term: new_term,
             interpolant_number,
-            simplified_term,
+            simplified_term: get_term_from_term_string(&simplified),
         }
     }
 }
@@ -98,6 +86,8 @@ fn interpolant_rewrites() -> Vec<Rewrite<ArrayInterpolantLanguage, ()>> {
         rewrite!("def-eq"; "(= ?a ?a)" => "true"),
         rewrite!("def-lt"; "(< ?a ?a)" => "false"),
         rewrite!("def-gt"; "(> ?a ?a)" => "false"),
+        rewrite!("def-lte"; "(<= ?a ?a)" => "true"),
+        rewrite!("def-gte"; "(>= ?a ?a)" => "true"),
         rewrite!("constant-array"; "(Read-Int-Int (ConstArr-Int-Int ?a) ?b)" => "?a"),
         rewrite!("read-after-write"; "(Read-Int-Int (Write-Int-Int ?a ?idx ?val) ?idx)" => "?val"),
         rewrite!(
