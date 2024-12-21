@@ -8,6 +8,7 @@ use crate::array_axioms::ArrayLanguage;
 #[derive(Clone)]
 pub struct BestVariableSubstitution {
     pub current_frame_number: u32,
+    pub property_terms: Vec<String>,
 }
 
 impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
@@ -47,6 +48,10 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
             ArrayLanguage::Times(_) => 1,
             ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Symbol(sym) => {
+                let symbol_str = sym.as_str();
+                if self.property_terms.contains(&symbol_str.to_string()) {
+                    return 0;
+                }
                 if let Some((_name, frame_number)) =
                     sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
                 {
