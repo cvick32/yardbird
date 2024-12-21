@@ -29,6 +29,7 @@ pub mod canonicalize_boolean;
 mod frame_num_getter;
 mod instantiator;
 pub mod numbered_to_symbolic;
+mod property_subterms;
 pub mod smt;
 mod smtinterpol_utils;
 pub mod term_extractor;

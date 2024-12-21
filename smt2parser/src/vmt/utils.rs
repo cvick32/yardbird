@@ -1,8 +1,22 @@
 use std::collections::HashMap;
 
-use crate::concrete::{Command, Identifier, Term};
+use crate::concrete::{Command, Identifier, QualIdentifier, Symbol, Term};
 
 use super::{action::Action, axiom::Axiom, variable::Variable};
+
+static BOOLEAN_CONNECTIVES: [&str; 3] = ["and", "or", "=>"];
+
+pub fn simple_identifier_with_name(name: &str) -> QualIdentifier {
+    crate::concrete::QualIdentifier::Simple {
+        identifier: Identifier::Simple {
+            symbol: Symbol(name.to_string()),
+        },
+    }
+}
+
+pub fn is_boolean_connective(qual_identifier: &QualIdentifier) -> bool {
+    BOOLEAN_CONNECTIVES.contains(&qual_identifier.get_name().as_str())
+}
 
 /// Only call this method if you're sure that the given Term is or should be
 /// an `and` Application. It will panic if not.
