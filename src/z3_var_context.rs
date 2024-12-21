@@ -3,7 +3,10 @@ use smt2parser::{
     vmt::smt::SMTProblem,
 };
 use std::collections::HashMap;
-use z3::{ast::Dynamic, Context, FuncDecl};
+use z3::{
+    ast::{Ast, Dynamic},
+    Context, FuncDecl,
+};
 
 pub struct FunctionDefinition<'ctx> {
     z3_function: FuncDecl<'ctx>,
@@ -56,7 +59,7 @@ impl<'ctx> Z3VarContext<'ctx> {
     /// This is for the extra terms that we want to add to the egraph after the variable
     /// interpretations and Array function interpretations.
     pub(crate) fn rewrite_term(&'ctx self, term: &smt2parser::concrete::Term) -> Dynamic<'ctx> {
-        let dd: Dynamic = match term {
+        match term {
             Term::Constant(constant) => match constant {
                 Constant::Numeral(big_uint) => {
                     z3::ast::Int::from_u64(self.context, big_uint.try_into().unwrap()).into()
@@ -70,8 +73,12 @@ impl<'ctx> Z3VarContext<'ctx> {
                 let var_name = symbol.get_name();
                 if self.var_name_to_z3_term.contains_key(&var_name) {
                     self.var_name_to_z3_term.get(&var_name).unwrap().clone()
+                } else if var_name == "true" {
+                    z3::ast::Bool::from_bool(self.context, true).into()
+                } else if var_name == "false" {
+                    z3::ast::Bool::from_bool(self.context, false).into()
                 } else {
-                    panic!()
+                    panic!("Could not find symbol {} in Z3VarContext.", var_name);
                 }
             }
             Term::Application {
@@ -109,8 +116,7 @@ impl<'ctx> Z3VarContext<'ctx> {
                 term: _,
                 attributes: _,
             } => todo!(),
-        };
-        dd
+        }
     }
 
     fn get_z3_sort(&self, smt2_sort: &smt2parser::concrete::Sort) -> z3::Sort<'ctx> {
@@ -184,6 +190,64 @@ impl<'ctx> Z3VarContext<'ctx> {
                 .map(|x| x.as_int().unwrap())
                 .collect::<Vec<_>>();
             z3::ast::Int::modulo(&args[0], &args[1]).into()
+        } else if function_name == "<=" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Int::le(&args[0], &args[1]).into()
+        } else if function_name == "<" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Int::lt(&args[0], &args[1]).into()
+        } else if function_name == ">=" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Int::ge(&args[0], &args[1]).into()
+        } else if function_name == ">" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_int().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Int::gt(&args[0], &args[1]).into()
+        } else if function_name == "=" {
+            argument_values[0]._eq(&argument_values[1]).into()
+        } else if function_name == "=>" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_bool().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Bool::implies(&args[0], &args[1]).into()
+        } else if function_name == "and" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_bool().unwrap())
+                .collect::<Vec<_>>();
+            let ref_args = args.iter().collect::<Vec<_>>();
+            z3::ast::Bool::and(self.context, &ref_args).into()
+        } else if function_name == "or" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_bool().unwrap())
+                .collect::<Vec<_>>();
+            let ref_args = args.iter().collect::<Vec<_>>();
+            z3::ast::Bool::or(self.context, &ref_args).into()
+        } else if function_name == "ite" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_bool().unwrap())
+                .collect::<Vec<_>>();
+            args[0].ite(&args[1], &args[2]).into()
+        } else if function_name == "not" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_bool().unwrap())
+                .collect::<Vec<_>>();
+            z3::ast::Bool::not(&args[0]).into()
         } else {
             todo!("Add Z3 function: {function_name}");
         }
