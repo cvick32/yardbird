@@ -368,7 +368,7 @@ impl VMTModel {
         } else {
             instances.push(rewritten_term.to_string());
         }
-        debug!("rewritten: {}", rewritten_term);
+        info!("USED INSTANCE: {}", rewritten_term);
         self.initial_condition = self
             .add_instantiation_to_condition(rewritten_term.clone(), self.initial_condition.clone());
         self.transition_condition =
