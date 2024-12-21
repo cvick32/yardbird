@@ -126,7 +126,7 @@ impl<'a> Driver<'a> {
                     z3::SatResult::Sat => continue 'refine,
                     z3::SatResult::Unknown => todo!(),
                 }
-            } 
+            }
         }
         Ok(ProofLoopResult {
             model: self.vmt_model,
@@ -154,29 +154,26 @@ impl<'a> Driver<'a> {
                 if self.options.interpolate {
                     let interpolants = run_smtinterpol(smt);
                     match interpolants {
-                            Ok(interps) => {
-                                for interp in interps {
-                                    let z3_interp =
-                                        z3_var_context.rewrite_term(&interp.simplified_term);
-                                    let z3_interp_str = z3_interp.to_string();
-                                    let simple = z3_interp.simplify();
-                                    info!(
-                                        "Reduced Z3 interpolant length from {} to {} -- {}%",
-                                        z3_interp_str.len(),
-                                        simple.to_string().len(),
-                                        ((simple.to_string().len() as f64
-                                            - z3_interp_str.len() as f64)
-                                            / z3_interp_str.len() as f64)
-                                            * 100.0
-                                    );
-                                    println!(
-                                        "Interpolant {}: {}",
-                                        interp.interpolant_number, simple
-                                    );
-                                }
+                        Ok(interps) => {
+                            for interp in interps {
+                                let z3_interp =
+                                    z3_var_context.rewrite_term(&interp.simplified_term);
+                                let z3_interp_str = z3_interp.to_string();
+                                let simple = z3_interp.simplify();
+                                info!(
+                                    "Reduced Z3 interpolant length from {} to {} -- {}%",
+                                    z3_interp_str.len(),
+                                    simple.to_string().len(),
+                                    ((simple.to_string().len() as f64
+                                        - z3_interp_str.len() as f64)
+                                        / z3_interp_str.len() as f64)
+                                        * 100.0
+                                );
+                                println!("Interpolant {}: {}", interp.interpolant_number, simple);
                             }
-                            Err(err) => println!("Error when computing interpolants: {err}"),
                         }
+                        Err(err) => println!("Error when computing interpolants: {err}"),
+                    }
                 }
                 Ok(res)
             }
