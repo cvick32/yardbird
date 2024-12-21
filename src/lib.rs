@@ -9,7 +9,7 @@ use itertools::Itertools;
 use log::{debug, info};
 use smt2parser::vmt::VMTModel;
 use utils::run_smtinterpol;
-use z3::{Config, Context, Solver};
+use z3::{ast::Ast, Config, Context, Solver};
 use z3_var_context::Z3VarContext;
 
 pub mod analysis;
@@ -74,7 +74,7 @@ pub fn proof_loop(
     let mut const_instances = vec![];
     let config: Config = Config::new();
     let context: Context = Context::new(&config);
-    for depth in 0..50 {
+    for depth in 0..options.depth {
         info!("STARTING BMC FOR DEPTH {}", depth);
         for _ in 0..10 {
             // Run max of 10 iterations for depth
@@ -96,7 +96,27 @@ pub fn proof_loop(
                     if options.interpolate {
                         let interpolants = run_smtinterpol(smt);
                         match interpolants {
-                            Ok(_interps) => println!("{:#?}", _interps),
+                            Ok(interps) => {
+                                for interp in interps {
+                                    let z3_interp =
+                                        z3_var_context.rewrite_term(&interp.simplified_term);
+                                    let z3_interp_str = z3_interp.to_string();
+                                    let simple = z3_interp.simplify();
+                                    info!(
+                                        "Reduced Z3 interpolant length from {} to {} -- {}%",
+                                        z3_interp_str.len(),
+                                        simple.to_string().len(),
+                                        ((simple.to_string().len() as f64
+                                            - z3_interp_str.len() as f64)
+                                            / z3_interp_str.len() as f64)
+                                            * 100.0
+                                    );
+                                    println!(
+                                        "Interpolant {}: {}",
+                                        interp.interpolant_number, simple
+                                    );
+                                }
+                            }
                             Err(err) => println!("Error when computing interpolants: {err}"),
                         }
                     }
