@@ -175,7 +175,6 @@ impl SMTProblem {
     }
 
     pub fn get_property_terms(&self) -> Vec<String> {
-        println!("{}", self.property_assertion.clone().unwrap());
         let mut subterms = PropertySubterms::default();
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
