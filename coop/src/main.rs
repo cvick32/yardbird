@@ -60,4 +60,5 @@ fn array_split_12(mut a: Vec<usize>, mut i: usize, mut y: usize, n: usize, z: us
 fn main() {
     array_copy(vec![0, 0, 0], vec![1, 1, 1], 0, 3, 2);
     array_copy_buggy(vec![0, 0, 0], vec![1, 1, 1], 0, 3, 2);
+    array_split_12(vec![0, 0, 0], 0, 1000, 600, 550);
 }
