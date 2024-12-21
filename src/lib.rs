@@ -183,19 +183,20 @@ impl<'a> Driver<'a> {
                 panic!("Z3 RETURNED UNKNOWN!");
             }
             res @ z3::SatResult::Sat => {
-                // find Array theory fact that rules out counterexample
+                // find Array theory fact(s) that rules out counterexample
                 let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
                 debug!("model:\n{}", sort_model(&model)?);
                 update_egraph_from_model(&mut egraph, &model)?;
                 update_egraph_with_non_array_function_terms(
                     &mut egraph,
-                    smt,
+                    &smt,
                     &z3_var_context,
                     &model,
                 )?;
                 egraph.rebuild();
                 let cost_fn = BestVariableSubstitution {
                     current_frame_number: depth as u32,
+                    property_terms: smt.get_property_terms(),
                 };
                 let (instantiations, const_instantiations) = egraph.saturate(cost_fn);
                 self.const_instances
@@ -348,7 +349,7 @@ fn func_decl_sort(a: &z3::FuncDecl, b: &z3::FuncDecl) -> cmp::Ordering {
 /// them in for constants.
 fn update_egraph_with_non_array_function_terms<'ctx>(
     egraph: &mut egg::EGraph<ArrayLanguage, SaturationInequalities>,
-    smt: smt2parser::vmt::smt::SMTProblem,
+    smt: &smt2parser::vmt::smt::SMTProblem,
     z3_var_context: &'ctx Z3VarContext<'ctx>,
     model: &z3::Model<'ctx>,
 ) -> anyhow::Result<()> {

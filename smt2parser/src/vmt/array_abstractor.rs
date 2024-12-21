@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use num::{BigUint, Zero};
 
-use crate::concrete::{Command, Identifier, QualIdentifier, Sort, Symbol, SyntaxBuilder, Term};
+use crate::concrete::{Command, Identifier, Sort, Symbol, SyntaxBuilder, Term};
+
+use super::utils::simple_identifier_with_name;
 
 /// Rewrites Commands to use uninterpreted functions instead of explicit Arrays.
 /// Currently turns all Arrays into Arr-Int-Int, but will be extended to arbitrary
@@ -145,13 +147,5 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
             qual_identifier: new_identifier,
             arguments,
         })
-    }
-}
-
-fn simple_identifier_with_name(name: &str) -> QualIdentifier {
-    crate::concrete::QualIdentifier::Simple {
-        identifier: Identifier::Simple {
-            symbol: Symbol(name.to_string()),
-        },
     }
 }

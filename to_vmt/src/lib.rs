@@ -325,6 +325,7 @@ enum OpReturn {
 fn get_smt2_bin_op_string(op: syn::BinOp) -> OpReturn {
     match op {
         syn::BinOp::AddAssign(_) => OpReturn::Double(("=".into(), "+".into())),
+        syn::BinOp::SubAssign(_) => OpReturn::Double(("=".into(), "-".into())),
         syn::BinOp::Ne(_) => OpReturn::Double(("not".into(), "=".into())),
         syn::BinOp::Add(_) => OpReturn::Single("+".into()),
         syn::BinOp::Sub(_) => OpReturn::Single("-".into()),

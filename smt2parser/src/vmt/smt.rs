@@ -1,9 +1,12 @@
 use crate::{
     concrete::{Command, Term},
     let_extract::LetExtract,
-    vmt::smtinterpol_utils::{
-        assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
-        get_interpolant_command,
+    vmt::{
+        property_subterms::PropertySubterms,
+        smtinterpol_utils::{
+            assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
+            get_interpolant_command,
+        },
     },
 };
 
@@ -169,6 +172,17 @@ impl SMTProblem {
             "{}\n{}\n{}\n{}\n{}",
             sort_names, function_definitions, defs, init_and_trans_asserts, property_assert
         )
+    }
+
+    pub fn get_property_terms(&self) -> Vec<String> {
+        let mut subterms = PropertySubterms::default();
+        let prop = self.property_assertion.clone().unwrap();
+        let _ = prop.accept_term_visitor(&mut subterms);
+        subterms
+            .subterms
+            .iter()
+            .map(|term| term.to_string())
+            .collect::<Vec<_>>()
     }
 
     pub fn to_smtinterpol(&self) -> String {
