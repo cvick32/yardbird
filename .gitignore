@@ -1,5 +1,6 @@
 /target
 .cargo/
 /tests/snapshots/*.new
+interpolant-out.smt2
 *.rej
 /profile.json

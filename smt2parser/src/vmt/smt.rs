@@ -1,7 +1,7 @@
 use crate::{
     concrete::{Command, Term},
     let_extract::LetExtract,
-    vmt::utils::{
+    vmt::smtinterpol_utils::{
         assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
         get_interpolant_command,
     },

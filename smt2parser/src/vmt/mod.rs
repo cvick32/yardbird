@@ -25,11 +25,12 @@ mod action;
 mod array_abstractor;
 mod axiom;
 mod bmc;
-mod canonicalize_boolean;
+pub mod canonicalize_boolean;
 mod frame_num_getter;
 mod instantiator;
 pub mod numbered_to_symbolic;
 pub mod smt;
+mod smtinterpol_utils;
 pub mod term_extractor;
 mod utils;
 pub mod variable;
@@ -367,7 +368,7 @@ impl VMTModel {
         } else {
             instances.push(rewritten_term.to_string());
         }
-        debug!("rewritten: {}", rewritten_term);
+        info!("USED INSTANCE: {}", rewritten_term);
         self.initial_condition = self
             .add_instantiation_to_condition(rewritten_term.clone(), self.initial_condition.clone());
         self.transition_condition =
