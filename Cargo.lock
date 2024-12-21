@@ -401,6 +401,7 @@ dependencies = [
  "serde",
  "serde_json",
  "yardbird",
+ "z3",
 ]
 
 [[package]]
@@ -1086,6 +1087,7 @@ dependencies = [
  "smt2parser",
  "syn 2.0.90",
  "yardbird",
+ "z3",
 ]
 
 [[package]]

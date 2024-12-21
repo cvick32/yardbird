@@ -1,12 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
-use egg::{Analysis, CostFunction, Language};
+use egg::{Analysis, Language};
 use log::{debug, info};
 
-use crate::egg_utils::{DefaultCostFunction, RecExprRoot};
+use crate::egg_utils::RecExprRoot;
 
-#[derive(Clone)]
-pub struct ConflictScheduler<S> {
+pub struct ConflictScheduler<S, CF> {
     inner: S,
     /// TODO: use RecExpr instead of String
     /// Keep track of rule instantiations that caused conflicts. We use an
@@ -15,14 +14,16 @@ pub struct ConflictScheduler<S> {
     /// need to use interior mutability.
     instantiations: Rc<RefCell<Vec<String>>>,
     instantiations_w_constants: Rc<RefCell<Vec<String>>>,
+    cost_fn: CF,
 }
 
-impl<S> ConflictScheduler<S> {
-    pub fn new(scheduler: S) -> Self {
+impl<S, CF> ConflictScheduler<S, CF> {
+    pub fn new(scheduler: S, cost_fn: CF) -> Self {
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
             instantiations_w_constants: Rc::new(RefCell::new(vec![])),
+            cost_fn,
         }
     }
 
@@ -35,10 +36,11 @@ impl<S> ConflictScheduler<S> {
     }
 }
 
-impl<S, L, N> egg::RewriteScheduler<L, N> for ConflictScheduler<S>
+impl<S, L, N, CF> egg::RewriteScheduler<L, N> for ConflictScheduler<S, CF>
 where
     S: egg::RewriteScheduler<L, N>,
-    L: egg::Language + DefaultCostFunction<Cost = u32> + std::fmt::Display,
+    L: egg::Language + std::fmt::Display,
+    CF: egg::CostFunction<L, Cost = u32> + Clone,
     N: egg::Analysis<L>,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
@@ -63,6 +65,9 @@ where
     ) -> usize {
         debug!("======>");
         debug!("applying {}", rewrite.name);
+
+        let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
+
         for m in &matches {
             if let Some(cow_ast) = &m.ast {
                 let subst = &m.substs[0];
@@ -73,11 +78,12 @@ where
 
                 // construct a new term by instantiating variables in the pattern ast with terms
                 // from the substitution.
-                let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(ast, egraph, subst));
+                let new_lhs: egg::RecExpr<_> =
+                    unpatternify(reify_pattern_ast(ast, egraph, subst, &extractor));
 
                 if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
                     let new_rhs: egg::RecExpr<_> =
-                        unpatternify(reify_pattern_ast(applier_ast, egraph, subst));
+                        unpatternify(reify_pattern_ast(applier_ast, egraph, subst, &extractor));
 
                     let rhs_eclass = egraph.lookup_expr(&new_rhs);
                     // the eclass that we would have inserted from this pattern
@@ -92,7 +98,7 @@ where
                         let instantiation = if rewrite.name.as_str() == "write-does-not-overwrite" {
                             let idx1 = subst.get("?c".parse().unwrap()).unwrap();
                             let idx2 = subst.get("?idx".parse().unwrap()).unwrap();
-                            let extractor = egg::Extractor::new(egraph, L::cost_function());
+                            let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
                             let (_, expr1) = extractor.find_best(*idx1);
                             let (_, expr2) = extractor.find_best(*idx2);
                             format!(
@@ -103,7 +109,7 @@ where
                             format!("(= {} {})", new_lhs, new_rhs)
                         };
 
-                        let cost = L::cost_function().cost_rec(&new_rhs);
+                        let cost = self.cost_fn.cost_rec(&new_rhs);
                         if cost >= 100 {
                             debug!("rejecting because of cost");
                             self.instantiations_w_constants
@@ -131,14 +137,16 @@ where
 /// fresh, so that the ids work out correctly. For patterns, we call
 /// `find_best_variable_substitution` which uses egraph extraction to find the best
 /// term.
-fn reify_pattern_ast<L, N>(
+fn reify_pattern_ast<L, N, CF>(
     pattern: &egg::PatternAst<L>,
     egraph: &egg::EGraph<L, N>,
     subst: &egg::Subst,
+    extractor: &egg::Extractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
-    L: egg::Language + DefaultCostFunction + std::fmt::Display,
+    L: egg::Language + std::fmt::Display,
     N: egg::Analysis<L>,
+    CF: egg::CostFunction<L>,
 {
     if pattern.as_ref().len() == 1 {
         let node = &pattern.as_ref()[0];
@@ -146,7 +154,7 @@ where
             x @ egg::ENodeOrVar::ENode(_) => vec![x.clone()].into(),
             egg::ENodeOrVar::Var(var) => {
                 let eclass = &egraph[*subst.get(*var).unwrap()];
-                find_best_variable_substitution(egraph, eclass)
+                find_best_variable_substitution(eclass, extractor)
             }
         }
     } else {
@@ -158,12 +166,17 @@ where
                     if x.is_leaf() {
                         vec![x].into()
                     } else {
-                        reify_pattern_ast(&x.build_recexpr(|id| pattern[id].clone()), egraph, subst)
+                        reify_pattern_ast(
+                            &x.build_recexpr(|id| pattern[id].clone()),
+                            egraph,
+                            subst,
+                            extractor,
+                        )
                     }
                 }
                 egg::ENodeOrVar::Var(var) => {
                     let eclass = &egraph[*subst.get(var).unwrap()];
-                    find_best_variable_substitution(egraph, eclass)
+                    find_best_variable_substitution(eclass, extractor)
                 }
             })
     }
@@ -183,26 +196,22 @@ fn unpatternify<L: egg::Language + std::fmt::Display>(
         .into()
 }
 
-/// TODO: This function should iterate over the nodes in the eclass and choose the variable
-/// that has the highest score w.r.t some ranking function. I know there's some notion of
-/// ranking that's built into egg, so maybe we can pre-compute this inside the EClass itself
-/// and just return `max()` here.
-fn find_best_variable_substitution<L, N>(
-    egraph: &egg::EGraph<L, N>,
+fn find_best_variable_substitution<L, N, CF>(
     eclass: &egg::EClass<L, <N as Analysis<L>>::Data>,
+    extractor: &egg::Extractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
-    L: egg::Language + DefaultCostFunction + std::fmt::Display,
+    L: egg::Language + std::fmt::Display,
     N: egg::Analysis<L>,
+    CF: egg::CostFunction<L>,
 {
-    let extractor = egg::Extractor::new(egraph, L::cost_function());
     let (cost, expr) = extractor.find_best(eclass.id);
     debug!(
         "    extraction: {} -> {} (cost: {cost:?})",
         eclass.id,
         expr.pretty(80)
     );
-    //if L::cost_function().compare(cost, 4) {
+
     // wrap everything in an ENodeOrVar so that it still counts as an egg::PatternAst
     expr.as_ref()
         .iter()
@@ -210,6 +219,4 @@ where
         .map(egg::ENodeOrVar::ENode)
         .collect::<Vec<_>>()
         .into()
-
-    //  }
 }

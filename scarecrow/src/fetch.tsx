@@ -6,6 +6,7 @@ import { useAuth } from "./AuthProvider";
 export interface Artifact {
   benchmarks: Benchmark[] | undefined;
   id: string;
+  commitSha: string;
 }
 
 export interface Benchmark {
@@ -37,8 +38,9 @@ export function useArtifacts() {
 }
 
 export function useArtifact<T = Artifact>(
-  id: string,
+  id?: string,
   select?: (x: Artifact) => T,
+  enabled: boolean = true,
 ) {
   const auth = useAuth();
   const octokit = new Octokit({
@@ -46,10 +48,10 @@ export function useArtifact<T = Artifact>(
   });
   return useQuery({
     queryKey: ["artifacts", `${id}`],
-    queryFn: async () =>
-      fetchArtifact(octokit, id).then((benchmarks) => ({ benchmarks, id })),
+    queryFn: async () => fetchArtifact(octokit, id!),
     staleTime: 60 * 1000, // 1 minute
     select,
+    enabled: enabled && !!id,
   });
 }
 
@@ -89,12 +91,20 @@ async function fetchArtifacts(octokit: Octokit) {
   });
 }
 
-export async function fetchArtifact(
-  octokit: Octokit,
-  id: string,
-): Promise<Benchmark[] | undefined> {
+export async function fetchArtifact(octokit: Octokit, id: string) {
   let res = await octokit.request(
     `GET /repos/{owner}/{repo}/actions/artifacts/${id}/zip`,
+    {
+      owner: "cvick32",
+      repo: "yardbird",
+      headers: {
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    },
+  );
+
+  let artifactInfo = await octokit.request(
+    `GET /repos/{owner}/{repo}/actions/artifacts/${id}`,
     {
       owner: "cvick32",
       repo: "yardbird",
@@ -107,9 +117,17 @@ export async function fetchArtifact(
   const z = await JSZip.loadAsync(res.data);
   const garden = await z.file("garden.json")?.async("string");
   if (garden) {
-    return JSON.parse(garden) as Benchmark[];
+    return {
+      benchmarks: JSON.parse(garden) as Benchmark[],
+      id,
+      commitSha: artifactInfo.data.workflow_run.head_sha,
+    };
   } else {
-    return undefined;
+    return {
+      benchmarks: undefined,
+      id,
+      commitSha: artifactInfo.data.workflow_run.head_sha,
+    };
   }
 }
 

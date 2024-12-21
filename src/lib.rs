@@ -4,6 +4,7 @@ use crate::analysis::SaturationInequalities;
 use anyhow::anyhow;
 use array_axioms::ArrayLanguage;
 use clap::Parser;
+use cost::BestVariableSubstitution;
 use egg_utils::Saturate;
 use itertools::Itertools;
 use log::{debug, info};
@@ -44,6 +45,10 @@ pub struct YardbirdOptions {
     /// Run SMTInterpol when BMC depth is UNSAT
     #[arg(short, long, default_value_t = false)]
     pub interpolate: bool,
+
+    /// Run concrete BMC in z3.
+    #[arg(short, default_value_t = false)]
+    pub z3: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -54,6 +59,20 @@ impl Default for YardbirdOptions {
             bmc_count: 1,
             print_vmt: false,
             interpolate: false,
+            z3: false,
+        }
+    }
+}
+
+impl YardbirdOptions {
+    pub fn from_filename(filename: String) -> Self {
+        YardbirdOptions {
+            filename,
+            depth: 10,
+            bmc_count: 1,
+            print_vmt: false,
+            interpolate: false,
+            z3: false,
         }
     }
 }
@@ -63,39 +82,78 @@ pub struct ProofLoopResult {
     pub model: VMTModel,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
+    pub counterexample: bool,
 }
 
-/// The main verification loop.
-pub fn proof_loop(
-    options: &YardbirdOptions,
-    mut vmt_model: VMTModel,
-) -> anyhow::Result<ProofLoopResult> {
-    let mut used_instances = vec![];
-    let mut const_instances = vec![];
-    let config: Config = Config::new();
-    let context: Context = Context::new(&config);
-    for depth in 0..options.depth {
-        info!("STARTING BMC FOR DEPTH {}", depth);
-        for _ in 0..10 {
-            // Run max of 10 iterations for depth
-            // Currently run once, this will eventually run until UNSAT
-            let smt = vmt_model.unroll(depth);
-            let z3_var_context = Z3VarContext::from(&context, &smt);
-            let solver = Solver::new(&context);
-            solver.from_string(smt.to_bmc());
-            // debug!("smt2lib program:\n{}", smt.to_bmc());
-            // TODO: abstract this out somehow
-            let mut egraph: egg::EGraph<ArrayLanguage, _> =
-                egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-            for term in smt.get_assert_terms() {
-                egraph.add_expr(&term.parse()?);
-            }
-            match solver.check() {
-                z3::SatResult::Unsat => {
-                    info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", depth);
-                    if options.interpolate {
-                        let interpolants = run_smtinterpol(smt);
-                        match interpolants {
+#[derive(Debug)]
+pub struct Driver<'a> {
+    pub used_instances: Vec<String>,
+    pub const_instances: Vec<String>,
+    context: z3::Context,
+    pub vmt_model: VMTModel,
+    options: &'a YardbirdOptions,
+}
+
+impl<'a> Driver<'a> {
+    pub fn new(options: &'a YardbirdOptions, config: &z3::Config, vmt_model: VMTModel) -> Self {
+        let abstract_vmt_model = vmt_model.abstract_array_theory();
+        Self {
+            used_instances: vec![],
+            const_instances: vec![],
+            context: z3::Context::new(config),
+            vmt_model: abstract_vmt_model,
+            options,
+        }
+    }
+
+    /// Perform BMC up to `target_depth`, while refining the model with array instantiations
+    /// up to `n_refines` times per depth.
+    pub fn check_to_depth(
+        mut self,
+        target_depth: u8,
+        n_refines: u32,
+    ) -> anyhow::Result<ProofLoopResult> {
+        for depth in 0..target_depth {
+            info!("STARTING BMC FOR DEPTH {depth}");
+            'refine: for i in 0..n_refines {
+                info!("  refining loop: {i}/{n_refines}");
+                // TODO: find a way to write this more clearly
+                match self.refine_model(depth)? {
+                    z3::SatResult::Unsat => break 'refine,
+                    z3::SatResult::Sat if i == n_refines - 1 => {
+                        return Err(anyhow!("Failed to rule out counter-examples"))
+                    }
+                    z3::SatResult::Sat => continue 'refine,
+                    z3::SatResult::Unknown => todo!(),
+                }
+            } 
+        }
+        Ok(ProofLoopResult {
+            model: self.vmt_model,
+            used_instances: self.used_instances,
+            const_instances: self.const_instances,
+            counterexample: false,
+        })
+    }
+
+    fn refine_model(&mut self, depth: u8) -> anyhow::Result<z3::SatResult> {
+        let smt = self.vmt_model.unroll(depth);
+        let z3_var_context = Z3VarContext::from(&self.context, &smt);
+        let solver = z3::Solver::new(&self.context);
+        solver.from_string(smt.to_bmc());
+        // debug!("smt2lib program:\n{}", smt.to_bmc());
+        // TODO: abstract this out somehow
+        let mut egraph: egg::EGraph<ArrayLanguage, _> =
+            egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
+        for term in smt.get_assert_terms() {
+            egraph.add_expr(&term.parse()?);
+        }
+        match solver.check() {
+            res @ z3::SatResult::Unsat => {
+                info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", depth);
+                if self.options.interpolate {
+                    let interpolants = run_smtinterpol(smt);
+                    match interpolants {
                             Ok(interps) => {
                                 for interp in interps {
                                     let z3_interp =
@@ -119,46 +177,99 @@ pub fn proof_loop(
                             }
                             Err(err) => println!("Error when computing interpolants: {err}"),
                         }
-                    }
-                    break;
                 }
-                z3::SatResult::Unknown => {
-                    // CV: I've seen Z3 return unknown then re-run Z3 and gotten SAT or UNSAT.
-                    // This might be a place to retry at least once before panicking.
-                    panic!("Z3 RETURNED UNKNOWN!");
-                }
-                z3::SatResult::Sat => {
-                    // find Array theory fact that rules out counterexample
-                    let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
-                    debug!("model:\n{}", sort_model(&model)?);
-                    update_egraph_from_model(&mut egraph, &model)?;
-                    update_egraph_with_non_array_function_terms(
-                        &mut egraph,
-                        smt,
-                        &z3_var_context,
-                        &model,
-                    )?;
-                    egraph.rebuild();
-                    let (instantiations, const_instantiations) = egraph.saturate();
-                    const_instances.extend_from_slice(&const_instantiations);
+                Ok(res)
+            }
+            z3::SatResult::Unknown => {
+                // CV: I've seen Z3 return unknown then re-run Z3 and gotten SAT or UNSAT.
+                // This might be a place to retry at least once before panicking.
+                panic!("Z3 RETURNED UNKNOWN!");
+            }
+            res @ z3::SatResult::Sat => {
+                // find Array theory fact that rules out counterexample
+                let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+                debug!("model:\n{}", sort_model(&model)?);
+                update_egraph_from_model(&mut egraph, &model)?;
+                update_egraph_with_non_array_function_terms(
+                    &mut egraph,
+                    smt,
+                    &z3_var_context,
+                    &model,
+                )?;
+                egraph.rebuild();
+                let cost_fn = BestVariableSubstitution {
+                    current_frame_number: depth as u32,
+                };
+                let (instantiations, const_instantiations) = egraph.saturate(cost_fn);
+                self.const_instances
+                    .extend_from_slice(&const_instantiations);
 
-                    // add all instantiations to the model,
-                    // if we have already seen all instantiations, break
-                    // TODO: not sure if this is correct...
-                    let no_progress = instantiations
-                        .into_iter()
-                        .all(|inst| !vmt_model.add_instantiation(inst, &mut used_instances));
-                    if no_progress {
-                        return Err(anyhow!("Failed to add new instantations"));
+                // add all instantiations to the model,
+                // if we have already seen all instantiations, break
+                // TODO: not sure if this is correct...
+                let no_progress = instantiations.into_iter().all(|inst| {
+                    !self
+                        .vmt_model
+                        .add_instantiation(inst, &mut self.used_instances)
+                });
+                if no_progress {
+                    Err(anyhow!("Failed to add new instantations"))
+                } else {
+                    Ok(res)
+                }
+            }
+        }
+    }
+}
+
+/// Given a VMTModel, BMC to the specified depth. Return when either the
+/// depth has been exhausted or a counterexample is found.
+pub fn concrete_z3_bmc(
+    options: &YardbirdOptions,
+    vmt_model: VMTModel,
+) -> anyhow::Result<ProofLoopResult> {
+    let config: Config = Config::new();
+    let context: Context = Context::new(&config);
+    for depth in 0..options.depth {
+        info!("STARTING CONCRETE BMC FOR DEPTH {}", depth);
+        let smt = vmt_model.unroll(depth);
+        let solver = Solver::new(&context);
+        solver.from_string(smt.to_bmc());
+        debug!("smt2lib program:\n{}", smt.to_bmc());
+        match solver.check() {
+            z3::SatResult::Unsat => {
+                info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", depth);
+                if options.interpolate {
+                    let interpolants = run_smtinterpol(smt);
+                    match interpolants {
+                        Ok(_interps) => (),
+                        Err(err) => println!("Error when computing interpolants: {err}"),
                     }
                 }
+            }
+            z3::SatResult::Unknown => {
+                // CV: I've seen Z3 return unknown then re-run Z3 and gotten SAT or UNSAT.
+                // This might be a place to retry at least once before panicking.
+                panic!("Z3 RETURNED UNKNOWN!");
+            }
+            z3::SatResult::Sat => {
+                println!("Concrete Counterexample Found!");
+                let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+                println!("{}", sort_model(&model)?);
+                return Ok(ProofLoopResult {
+                    model: vmt_model,
+                    used_instances: vec![],
+                    const_instances: vec![],
+                    counterexample: true,
+                });
             }
         }
     }
     Ok(ProofLoopResult {
         model: vmt_model,
-        used_instances,
-        const_instances,
+        used_instances: vec![],
+        const_instances: vec![],
+        counterexample: false,
     })
 }
 
@@ -194,6 +305,11 @@ fn sort_model(model: &z3::Model) -> anyhow::Result<String> {
                 let value = entry.get_value().to_string();
                 b.push_str(&format!("{function_call} -> {value}\n"));
             }
+            b.push_str(&format!(
+                "{} else -> {}\n",
+                func_decl.name(),
+                interpretation.get_else()
+            ))
         }
     }
     // let model_string = format!("{model}");
@@ -246,7 +362,7 @@ fn update_egraph_with_non_array_function_terms<'ctx>(
             .eval(&z3_term, false)
             .unwrap_or_else(|| panic!("Term not found in model: {term}"));
         let interp_id = egraph.add_expr(&model_interp.to_string().parse()?);
-        info!("Adding: {} = {}", term, model_interp);
+        debug!("Adding: {} = {}", term, model_interp);
         egraph.union(term_id, interp_id);
         egraph.rebuild();
     }
@@ -300,11 +416,10 @@ fn update_egraph_from_model(
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
-    let concrete_vmt_model = VMTModel::from_path(&options.filename).unwrap();
-    let abstract_vmt_model = concrete_vmt_model.abstract_array_theory();
+    let vmt_model = VMTModel::from_path(&options.filename).unwrap();
     if options.print_vmt {
         let mut output = File::create("original.vmt").unwrap();
-        let _ = output.write(abstract_vmt_model.as_vmt_string().as_bytes());
+        let _ = output.write(vmt_model.as_vmt_string().as_bytes());
     }
-    abstract_vmt_model
+    vmt_model
 }
