@@ -197,6 +197,7 @@ fn main() -> anyhow::Result<()> {
                 print_vmt: false,
                 interpolate: false,
                 z3: false,
+                interactive: false,
             };
             run_single(yardbird_options)
         })
