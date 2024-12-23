@@ -1,12 +1,19 @@
 use clap::Parser;
 use log::info;
 use std::{fs::File, io::Write};
-use yardbird::{concrete_z3_bmc, logger, model_from_options, Driver, YardbirdOptions};
+use yardbird::{concrete_z3_bmc, logger, model_from_options, repl::Repl, Driver, YardbirdOptions};
 
 fn main() -> anyhow::Result<()> {
     logger::init_logger();
     let options = YardbirdOptions::parse();
     let vmt_model = model_from_options(&options);
+
+    if options.interactive {
+        let repl = Repl::new(&options, &z3::Config::new(), vmt_model);
+        repl.start(options.depth, 10)?;
+        return Ok(());
+    }
+
     if options.z3 {
         let _ = concrete_z3_bmc(&options, vmt_model);
     } else {

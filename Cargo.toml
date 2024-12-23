@@ -9,6 +9,7 @@ edition = "2021"
 anstyle = "1.0.10"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+dialoguer = "0.11.0"
 egg = "0.9.5"
 env_logger = "0.11.5"
 itertools = "0.13.0"

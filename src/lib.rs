@@ -20,6 +20,7 @@ mod cost;
 mod egg_utils;
 mod interpolant;
 pub mod logger;
+pub mod repl;
 mod utils;
 mod z3_var_context;
 
@@ -49,6 +50,10 @@ pub struct YardbirdOptions {
     /// Run concrete BMC in z3.
     #[arg(short, default_value_t = false)]
     pub z3: bool,
+
+    /// Interactive mode.
+    #[arg(long, default_value_t = false)]
+    pub interactive: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -60,6 +65,7 @@ impl Default for YardbirdOptions {
             print_vmt: false,
             interpolate: false,
             z3: false,
+            interactive: false,
         }
     }
 }
@@ -68,11 +74,7 @@ impl YardbirdOptions {
     pub fn from_filename(filename: String) -> Self {
         YardbirdOptions {
             filename,
-            depth: 10,
-            bmc_count: 1,
-            print_vmt: false,
-            interpolate: false,
-            z3: false,
+            ..Default::default()
         }
     }
 }
@@ -271,7 +273,7 @@ pub fn concrete_z3_bmc(
     })
 }
 
-fn sort_model(model: &z3::Model) -> anyhow::Result<String> {
+pub fn sort_model(model: &z3::Model) -> anyhow::Result<String> {
     let mut b = String::new();
     for func_decl in model.iter().sorted_by(func_decl_sort) {
         if func_decl.arity() == 0 {
@@ -347,7 +349,7 @@ fn func_decl_sort(a: &z3::FuncDecl, b: &z3::FuncDecl) -> cmp::Ordering {
 /// constant nor a direct application of an Array function. We
 /// still want these terms in the Egraph so that we can substitute
 /// them in for constants.
-fn update_egraph_with_non_array_function_terms<'ctx>(
+pub fn update_egraph_with_non_array_function_terms<'ctx>(
     egraph: &mut egg::EGraph<ArrayLanguage, SaturationInequalities>,
     smt: &smt2parser::vmt::smt::SMTProblem,
     z3_var_context: &'ctx Z3VarContext<'ctx>,
@@ -368,7 +370,7 @@ fn update_egraph_with_non_array_function_terms<'ctx>(
 }
 
 /// Add variable and Array function interpretations into the egraph.
-fn update_egraph_from_model(
+pub fn update_egraph_from_model(
     egraph: &mut egg::EGraph<ArrayLanguage, SaturationInequalities>,
     model: &z3::Model<'_>,
 ) -> anyhow::Result<()> {
