@@ -62,13 +62,13 @@ impl<'a> ModelExt for z3::Model<'a> {
 
 pub struct FuncDeclOrd<'ctx>(pub z3::FuncDecl<'ctx>);
 
-impl<'ctx> PartialOrd for FuncDeclOrd<'ctx> {
+impl PartialOrd for FuncDeclOrd<'_> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<'ctx> Ord for FuncDeclOrd<'ctx> {
+impl Ord for FuncDeclOrd<'_> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         let arity_cmp = self.0.arity().cmp(&other.0.arity());
         if !matches!(arity_cmp, cmp::Ordering::Equal) {
@@ -96,13 +96,13 @@ impl<'ctx> Ord for FuncDeclOrd<'ctx> {
     }
 }
 
-impl<'ctx> PartialEq for FuncDeclOrd<'ctx> {
+impl PartialEq for FuncDeclOrd<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.0.name() == other.0.name()
     }
 }
 
-impl<'ctx> Eq for FuncDeclOrd<'ctx> {}
+impl Eq for FuncDeclOrd<'_> {}
 
 fn func_decl_cmp(a: &z3::FuncDecl, b: &z3::FuncDecl) -> cmp::Ordering {
     let arity_cmp = a.arity().cmp(&b.arity());

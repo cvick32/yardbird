@@ -10,7 +10,10 @@ use std::{
     thread,
     time::Duration,
 };
-use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
+use yardbird::{
+    model_from_options, strategies::Abstract, Driver, DriverExtensions, ProofLoopResult, Strategy,
+    YardbirdOptions,
+};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -127,8 +130,14 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
         let abstract_vmt_model = model_from_options(&proof_options);
         status_code = Some(run_with_timeout(
             move || {
-                let driver = Driver::new(&proof_options, &z3::Config::new(), abstract_vmt_model);
-                driver.check_to_depth(proof_options.depth, 10)
+                let mut driver =
+                    Driver::new(&proof_options, &z3::Config::new(), abstract_vmt_model);
+                let mut exts = DriverExtensions::default();
+                driver.check_strategy(
+                    proof_options.depth,
+                    Box::new(Abstract::default()),
+                    &mut exts,
+                )
             },
             Duration::from_secs(10 + (timed_out_count * 5)),
         ));
@@ -196,8 +205,8 @@ fn main() -> anyhow::Result<()> {
                 bmc_count: 10,
                 print_vmt: false,
                 interpolate: false,
-                z3: false,
                 interactive: false,
+                strategy: Strategy::Abstract,
             };
             run_single(yardbird_options)
         })
