@@ -34,6 +34,14 @@ impl<'a> Driver<'a> {
         }
     }
 
+    /// The main control flow of the proof loop.
+    ///
+    /// We loop up until the `target_depth`. For each of these BMC loops, we loop up to
+    /// `n_refines` times. Each time, we unroll the `vmt_model` up to the current depth,
+    /// ask the solver if we have any counter-examples this loop, and then continue.
+    ///
+    /// The `ProofStrategy` specified by `stat` defines what we do in the case of the
+    /// model returning `Unsat`, `Unknown`, and `Sat`.
     pub fn check_strategy<'ctx, S>(
         &'a mut self,
         target_depth: u8,
