@@ -9,6 +9,12 @@ pub enum ProofAction {
     Stop,
 }
 
+/// Describes how to respond to the solver returning `unsat`, `unknown`, or `sat` at
+/// each depth of the proof loop.
+///
+/// Additionally, we can setup any per-refinement loop state with `setup` and do any
+/// finalizing steps with `finish`. The `result` method describes how to construct a
+/// `ProofLoopResult` from `self`.
 pub trait ProofStrategy<'ctx, S> {
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model
@@ -47,6 +53,10 @@ pub trait ProofStrategy<'ctx, S> {
     fn result(&mut self) -> ProofLoopResult;
 }
 
+/// Allows easy modification of some other proof strategy. These methods corrrespond
+/// to methods on `ProofStrategy` and get run before the underlying method on
+/// `ProofStrategy`. Good for additional processing / adding some kind of interface
+/// to a proof strategy.
 pub trait ProofStrategyExt<'ctx, S> {
     #[allow(unused_variables)]
     fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {

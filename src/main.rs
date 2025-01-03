@@ -21,6 +21,7 @@ fn main() -> anyhow::Result<()> {
         yardbird::Strategy::Concrete => Box::new(ConcreteZ3::default()),
     };
 
+    // build up set of extensions based on command line options
     let mut extensions = DriverExtensions::default();
     if options.interactive {
         extensions.add_extension(Repl);
