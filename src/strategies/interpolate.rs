@@ -1,12 +1,10 @@
-use log::info;
+use log::{debug, info, warn};
 use z3::ast::Ast;
 
 use crate::utils::run_smtinterpol;
 
-use super::{AbstractRefinementState, ProofAction, ProofStrategyExt};
+use super::{AbstractRefinementState, ProofStrategyExt};
 
-/// TODO: this should be abstract over proving strategies, so that we can
-/// use interpolants when we can use either an Abstract or Concrete strategy
 pub struct Interpolating;
 
 impl ProofStrategyExt<'_, AbstractRefinementState<'_>> for Interpolating {
@@ -14,7 +12,7 @@ impl ProofStrategyExt<'_, AbstractRefinementState<'_>> for Interpolating {
         &mut self,
         state: &mut AbstractRefinementState<'_>,
         _solver: &z3::Solver,
-    ) -> anyhow::Result<ProofAction> {
+    ) -> anyhow::Result<()> {
         let interpolants = run_smtinterpol(&state.smt);
         match interpolants {
             Ok(interps) => {
@@ -30,11 +28,11 @@ impl ProofStrategyExt<'_, AbstractRefinementState<'_>> for Interpolating {
                             / z3_interp_str.len() as f64)
                             * 100.0
                     );
-                    println!("Interpolant {}: {}", interp.interpolant_number, simple);
+                    debug!("Interpolant {}: {}", interp.interpolant_number, simple);
                 }
             }
-            Err(err) => println!("Error when computing interpolants: {err}"),
+            Err(err) => warn!("Error when computing interpolants: {err}"),
         }
-        Ok(ProofAction::Continue)
+        Ok(())
     }
 }

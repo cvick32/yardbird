@@ -49,18 +49,18 @@ pub trait ProofStrategy<'ctx, S> {
 
 pub trait ProofStrategyExt<'ctx, S> {
     #[allow(unused_variables)]
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
-        Ok(ProofAction::Continue)
+    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+        Ok(())
     }
 
     #[allow(unused_variables)]
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
-        Ok(ProofAction::Continue)
+    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+        Ok(())
     }
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
-        Ok(ProofAction::Continue)
+    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+        Ok(())
     }
 
     #[allow(unused_variables)]
