@@ -12,7 +12,6 @@ mod driver;
 mod egg_utils;
 mod interpolant;
 pub mod logger;
-pub mod repl;
 pub mod strategies;
 mod utils;
 pub mod z3_ext;
