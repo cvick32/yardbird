@@ -4,8 +4,7 @@ use clap::Parser;
 use log::info;
 use yardbird::{
     logger, model_from_options,
-    repl::Repl,
-    strategies::{Abstract, ConcreteZ3, Interpolating, ProofStrategy},
+    strategies::{Abstract, ConcreteZ3, Interpolating, ProofStrategy, Repl},
     Driver, DriverExtensions, YardbirdOptions,
 };
 
