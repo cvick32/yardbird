@@ -8,7 +8,7 @@ use std::{
 
 static INTERPOLANT_FILENAME: &str = "interpolant-out.smt2";
 
-pub fn run_smtinterpol(smt_problem: SMTProblem) -> Result<Vec<Interpolant>, Error> {
+pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Error> {
     let interpolant_problem = smt_problem.to_smtinterpol();
     let mut temp_file = File::create(INTERPOLANT_FILENAME)?;
     writeln!(temp_file, "{interpolant_problem}")?;
