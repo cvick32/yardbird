@@ -106,27 +106,27 @@ impl<'ctx, S> DriverExtensions<'ctx, S> {
 }
 
 impl<'ctx, S> ProofStrategyExt<'ctx, S> for DriverExtensions<'ctx, S> {
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
+    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
             ext.unsat(state, solver)?;
         }
 
-        Ok(ProofAction::Continue)
+        Ok(())
     }
 
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
+    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
             ext.sat(state, solver)?;
         }
 
-        Ok(ProofAction::Continue)
+        Ok(())
     }
 
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
+    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
             ext.unknown(state, solver)?;
         }
-        Ok(ProofAction::Continue)
+        Ok(())
     }
 
     fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> anyhow::Result<()> {
