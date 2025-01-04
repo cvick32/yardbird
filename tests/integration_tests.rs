@@ -3,7 +3,7 @@ mod snapshot_tests;
 use yardbird::{
     self, model_from_options,
     strategies::{Abstract, ProofStrategy},
-    Driver, DriverExtensions, YardbirdOptions,
+    Driver, YardbirdOptions,
 };
 
 macro_rules! create_integration_test {
@@ -12,12 +12,10 @@ macro_rules! create_integration_test {
         fn $test_name() {
             let options = YardbirdOptions::from_filename($example_name.into());
             let vmt_model = model_from_options(&options);
-            let mut driver = Driver::new(&options, &z3::Config::new(), vmt_model);
+            let ctx = z3::Context::new(&z3::Config::new());
+            let mut driver = Driver::new(&ctx, vmt_model);
             let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::default());
-            let mut extensions = DriverExtensions::default();
-            let res = driver
-                .check_strategy(options.depth, strat, &mut extensions)
-                .unwrap();
+            let res = driver.check_strategy(options.depth, strat).unwrap();
             assert!(
                 res.used_instances.len() == $num_instances,
                 "{} != {}",

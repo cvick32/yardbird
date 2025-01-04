@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
-pub use driver::{Driver, DriverExtensions, ProofLoopResult};
+pub use driver::{Driver, ProofLoopResult};
 use smt2parser::vmt::VMTModel;
 
 pub mod analysis;

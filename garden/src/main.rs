@@ -11,8 +11,7 @@ use std::{
     time::Duration,
 };
 use yardbird::{
-    model_from_options, strategies::Abstract, Driver, DriverExtensions, ProofLoopResult, Strategy,
-    YardbirdOptions,
+    model_from_options, strategies::Abstract, Driver, ProofLoopResult, Strategy, YardbirdOptions,
 };
 
 #[derive(Parser, Debug, Clone)]
@@ -130,14 +129,9 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
         let abstract_vmt_model = model_from_options(&proof_options);
         status_code = Some(run_with_timeout(
             move || {
-                let mut driver =
-                    Driver::new(&proof_options, &z3::Config::new(), abstract_vmt_model);
-                let mut exts = DriverExtensions::default();
-                driver.check_strategy(
-                    proof_options.depth,
-                    Box::new(Abstract::default()),
-                    &mut exts,
-                )
+                let ctx = z3::Context::new(&z3::Config::new());
+                let mut driver = Driver::new(&ctx, abstract_vmt_model);
+                driver.check_strategy(proof_options.depth, Box::new(Abstract::default()))
             },
             Duration::from_secs(10 + (timed_out_count * 5)),
         ));

@@ -1,10 +1,7 @@
 use log::info;
 use smt2parser::vmt::VMTModel;
 
-use crate::{
-    strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
-    YardbirdOptions,
-};
+use crate::strategies::{ProofAction, ProofStrategy, ProofStrategyExt};
 
 #[derive(Debug)]
 pub struct ProofLoopResult {
@@ -15,23 +12,28 @@ pub struct ProofLoopResult {
 }
 
 #[derive(Debug)]
-pub struct Driver<'a> {
+pub struct Driver<'ctx, S> {
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
-    context: z3::Context,
     pub vmt_model: VMTModel,
-    _options: &'a YardbirdOptions,
+    context: &'ctx z3::Context,
+    extensions: DriverExtensions<'ctx, S>,
 }
 
-impl<'a> Driver<'a> {
-    pub fn new(options: &'a YardbirdOptions, config: &z3::Config, vmt_model: VMTModel) -> Self {
+impl<'ctx, S> Driver<'ctx, S> {
+    pub fn new(context: &'ctx z3::Context, vmt_model: VMTModel) -> Self {
         Self {
             used_instances: vec![],
             const_instances: vec![],
-            context: z3::Context::new(config),
             vmt_model,
-            _options: options,
+            context,
+            extensions: DriverExtensions::default(),
         }
+    }
+
+    pub fn add_extension(&mut self, ext: impl ProofStrategyExt<S> + 'ctx) -> &mut Self {
+        self.extensions.add_extension(ext);
+        self
     }
 
     /// The main control flow of the proof loop.
@@ -42,15 +44,11 @@ impl<'a> Driver<'a> {
     ///
     /// The `ProofStrategy` specified by `stat` defines what we do in the case of the
     /// model returning `Unsat`, `Unknown`, and `Sat`.
-    pub fn check_strategy<'ctx, S>(
-        &'a mut self,
+    pub fn check_strategy(
+        &mut self,
         target_depth: u8,
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
-        extensions: &mut DriverExtensions<'ctx, S>,
-    ) -> anyhow::Result<ProofLoopResult>
-    where
-        'a: 'ctx,
-    {
+    ) -> anyhow::Result<ProofLoopResult> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
@@ -60,30 +58,30 @@ impl<'a> Driver<'a> {
                 info!("  refining loop: {i}/{n_refines}");
 
                 let smt = self.vmt_model.unroll(depth);
-                let solver = z3::Solver::new(&self.context);
+                let solver = z3::Solver::new(self.context);
                 solver.from_string(smt.to_bmc());
 
-                let mut state = strat.setup(&self.context, smt, depth)?;
+                let mut state = strat.setup(self.context, smt, depth)?;
 
                 let sat_result = solver.check();
                 let action = match sat_result {
                     z3::SatResult::Unsat => {
-                        extensions.unsat(&mut state, &solver)?;
+                        self.extensions.unsat(&mut state, &solver)?;
                         strat.unsat(&mut state, &solver)?
                     }
                     z3::SatResult::Unknown => {
-                        extensions.unknown(&mut state, &solver)?;
+                        self.extensions.unknown(&mut state, &solver)?;
                         strat.unknown(&mut state, &solver)?
                     }
                     z3::SatResult::Sat => {
-                        extensions.sat(&mut state, &solver)?;
+                        self.extensions.sat(&mut state, &solver)?;
                         strat.sat(&mut state, &solver)?
                     }
                 };
 
                 match action {
                     ProofAction::Continue => {
-                        extensions.finish(&mut self.vmt_model, &mut state)?;
+                        self.extensions.finish(&mut self.vmt_model, &mut state)?;
                         strat.finish(&mut self.vmt_model, state)?
                     }
                     ProofAction::NextDepth => break 'refine,
@@ -96,8 +94,14 @@ impl<'a> Driver<'a> {
     }
 }
 
-pub struct DriverExtensions<'ctx, S> {
-    extensions: Vec<Box<dyn ProofStrategyExt<'ctx, S> + 'ctx>>,
+struct DriverExtensions<'ctx, S> {
+    extensions: Vec<Box<dyn ProofStrategyExt<S> + 'ctx>>,
+}
+
+impl<S> std::fmt::Debug for DriverExtensions<'_, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[<exts..>]")
+    }
 }
 
 impl<S> Default for DriverExtensions<'_, S> {
@@ -107,13 +111,13 @@ impl<S> Default for DriverExtensions<'_, S> {
 }
 
 impl<'ctx, S> DriverExtensions<'ctx, S> {
-    pub fn add_extension(&mut self, ext: impl ProofStrategyExt<'ctx, S> + 'ctx) -> &mut Self {
+    pub fn add_extension(&mut self, ext: impl ProofStrategyExt<S> + 'ctx) -> &mut Self {
         self.extensions.push(Box::new(ext));
         self
     }
 }
 
-impl<'ctx, S> ProofStrategyExt<'ctx, S> for DriverExtensions<'ctx, S> {
+impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
     fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
             ext.unsat(state, solver)?;
