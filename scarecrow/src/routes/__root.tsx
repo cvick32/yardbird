@@ -24,7 +24,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootComponent() {
   return (
     <>
-      <div className="sticky top-0 z-20 flex items-center gap-4 border-b border-slate-300 bg-slate-100 p-2 px-4">
+      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-4 border-b border-slate-300 bg-slate-100 p-2 px-4 md:flex-nowrap">
         <div>
           <Link
             to="/"
@@ -70,6 +70,7 @@ function Breadcrumbs() {
   });
 
   const artifact = useArtifact(artifactMatch?.params.art);
+  const compareArtifact = useArtifact(artifactMatch?.search.compare);
   const artifacts = useArtifacts();
   const navigate = useNavigate({ from: "/artifacts/$art" });
   const [filterVal, setFilterVal] = useState<string>(
@@ -81,9 +82,9 @@ function Breadcrumbs() {
   }
 
   return (
-    <div className="flex flex-row items-center gap-2 text-sm">
+    <div className="order-last flex flex-row flex-wrap items-center gap-2 text-sm md:order-none md:flex-nowrap">
       <label htmlFor="compare" className="font-bold">
-        Compare against:
+        Compare:
       </label>
       <select
         name="compare"
@@ -141,8 +142,17 @@ function Breadcrumbs() {
         <option value="panic">Panic</option>
         <option value="differ">Differ</option>
       </select>
-      <CommitRef sha={artifact.data.commitSha} />
-      <CommitMessage sha={artifact.data.commitSha} />
+      <div className="flex flex-row flex-wrap gap-2 md:flex-nowrap">
+        <CommitRef sha={artifact.data.commitSha} />
+        <CommitMessage sha={artifact.data.commitSha} />
+        {!!compareArtifact.data && (
+          <div className="flex flex-row gap-2">
+            <span>{"->"}</span>
+            <CommitRef sha={compareArtifact.data.commitSha} />
+            <CommitMessage sha={compareArtifact.data.commitSha} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

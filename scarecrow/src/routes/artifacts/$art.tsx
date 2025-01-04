@@ -30,23 +30,23 @@ function RouteComponent() {
 
   return (
     <div>
-      <table className="relative border-collapse border border-slate-400">
+      <table className="relative">
         <thead>
-          <tr>
-            <th className="sticky top-[44px] z-10 border border-slate-300 bg-slate-300 font-bold">
+          <tr className="divide-x divide-slate-400">
+            <th className="sticky top-[45px] z-10 bg-slate-300 font-bold">
               Benchmark
             </th>
-            <th className="sticky top-[44px] z-10 border border-slate-300 bg-slate-300 font-bold">
+            <th className="sticky top-[45px] z-10 bg-slate-300 font-bold">
               Status
             </th>
             {compare !== "" && !!compareAgainst && (
-              <th className="sticky top-[44px] z-30 border border-slate-300 bg-slate-300 font-bold">
+              <th className="sticky top-[44px] z-30 bg-slate-300 font-bold">
                 Compare
               </th>
             )}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-300">
           {artifact.data.benchmarks
             ?.map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
             .filter(([benchmark, idx]) => {
@@ -87,16 +87,14 @@ function RouteComponent() {
             })
             .map(([benchmark, idx]) => (
               <tr key={idx}>
-                <td className="border border-slate-300 text-left align-top">
-                  {benchmark.example}
-                </td>
-                <td className="border border-slate-300 text-left align-top">
+                <td className="text-left align-top">{benchmark.example}</td>
+                <td className="text-left align-top">
                   <Status result={benchmark.result} />
                 </td>
                 {compare != "" &&
                   !!compareAgainst.data &&
                   !!compareAgainst.data.benchmarks && (
-                    <td className="border border-slate-300 text-left align-top">
+                    <td className="text-left align-top">
                       <Status
                         result={compareAgainst.data.benchmarks[idx].result}
                       />
