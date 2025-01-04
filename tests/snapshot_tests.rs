@@ -5,7 +5,11 @@ use std::{
     thread,
     time::Duration,
 };
-use yardbird::{model_from_options, Driver, YardbirdOptions};
+use yardbird::{
+    self, model_from_options,
+    strategies::{Abstract, ProofStrategy},
+    Driver, DriverExtensions, YardbirdOptions,
+};
 
 #[derive(Debug)]
 enum BenchStatus {
@@ -45,8 +49,12 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     let vmt_model = model_from_options(&options);
     let (status, used_instantiations) = run_with_timeout(
         move || {
-            let driver = Driver::new(&options, &z3::Config::new(), vmt_model);
-            let res = driver.check_to_depth(options.depth, 10).unwrap();
+            let mut driver = Driver::new(&options, &z3::Config::new(), vmt_model);
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::default());
+            let mut extensions = DriverExtensions::default();
+            let res = driver
+                .check_strategy(options.depth, strat, &mut extensions)
+                .unwrap();
             res.used_instances
         },
         Duration::from_secs(20),
