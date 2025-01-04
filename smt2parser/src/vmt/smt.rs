@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     concrete::{Command, Term},
     let_extract::LetExtract,
@@ -115,7 +117,7 @@ impl SMTProblem {
         assert_terms
     }
 
-    pub fn get_eq_terms(&self) -> Vec<Term> {
+    pub fn get_eq_terms(&self) -> HashSet<Term> {
         let mut let_extract = LetExtract::default();
         let mut assert_terms = self
             .init_and_trans_assertions
