@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     // build up set of extensions based on command line options
-    if options.interactive {
+    if options.repl {
         driver.add_extension(Repl);
     }
 

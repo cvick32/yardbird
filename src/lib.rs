@@ -45,7 +45,7 @@ pub struct YardbirdOptions {
 
     /// Interactive mode.
     #[arg(long, default_value_t = false)]
-    pub interactive: bool,
+    pub repl: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -57,7 +57,7 @@ impl Default for YardbirdOptions {
             print_vmt: false,
             interpolate: false,
             strategy: Strategy::Abstract,
-            interactive: false,
+            repl: false,
         }
     }
 }

@@ -199,7 +199,7 @@ fn main() -> anyhow::Result<()> {
                 bmc_count: 10,
                 print_vmt: false,
                 interpolate: false,
-                interactive: false,
+                repl: false,
                 strategy: Strategy::Abstract,
             };
             run_single(yardbird_options)
