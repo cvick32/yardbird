@@ -2,7 +2,10 @@ use std::mem;
 
 use anyhow::anyhow;
 use log::{debug, info};
-use smt2parser::vmt::{smt::SMTProblem, VMTModel};
+use smt2parser::{
+    get_term_from_term_string,
+    vmt::{smt::SMTProblem, VMTModel},
+};
 
 use crate::{
     analysis::SaturationInequalities, array_axioms::ArrayLanguage, cost::BestVariableSubstitution,
@@ -19,44 +22,36 @@ pub struct Abstract {
 }
 
 /// State for the inner refinement looop
-pub struct AbstractRefinementState<'ctx> {
+pub struct AbstractRefinementState {
     pub smt: SMTProblem,
     pub depth: u8,
     pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
     pub instantiations: Vec<String>,
     pub const_instantiations: Vec<String>,
-    pub z3_var_context: Z3VarContext<'ctx>,
 }
 
-impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for Abstract {
+impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for Abstract {
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model.abstract_array_theory()
     }
 
-    fn setup(
-        &mut self,
-        context: &'ctx z3::Context,
-        smt: SMTProblem,
-        depth: u8,
-    ) -> anyhow::Result<AbstractRefinementState<'ctx>> {
+    fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
             egraph.add_expr(&term.parse()?);
         }
-        let z3_var_context = Z3VarContext::from(context, &smt);
         Ok(AbstractRefinementState {
             smt,
             depth,
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
-            z3_var_context,
         })
     }
 
     fn unsat(
         &mut self,
-        state: &mut AbstractRefinementState<'ctx>,
+        state: &mut AbstractRefinementState,
         _solver: &z3::Solver,
     ) -> anyhow::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
@@ -65,28 +60,33 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for Abstract {
 
     fn sat(
         &mut self,
-        state: &mut AbstractRefinementState<'ctx>,
+        state: &mut AbstractRefinementState,
         solver: &z3::Solver,
+        z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<ProofAction> {
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
         debug!("model:\n{}", model.dump_sorted()?);
         state.update_from_model(&model)?;
-        state.update_with_non_array_function_terms(&model)?;
+        state.update_with_non_array_function_terms(&model, z3_var_context)?;
         state.egraph.rebuild();
         let cost_fn = BestVariableSubstitution {
             current_frame_number: state.depth as u32,
             property_terms: state.smt.get_property_terms(),
         };
-        let (inst, const_inst) = state.egraph.saturate(cost_fn);
-        state.instantiations.extend_from_slice(&inst);
-        state.const_instantiations.extend_from_slice(&const_inst);
+        let (insts, const_insts) = state.egraph.saturate(cost_fn);
+        for inst in &insts {
+            get_term_from_term_string(inst);
+        }
+
+        state.instantiations.extend_from_slice(&insts);
+        state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)
     }
 
     fn finish(
         &mut self,
         model: &mut VMTModel,
-        state: AbstractRefinementState<'ctx>,
+        state: AbstractRefinementState,
     ) -> anyhow::Result<()> {
         self.const_instantiations
             .extend_from_slice(&state.const_instantiations);
@@ -111,7 +111,7 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for Abstract {
     }
 }
 
-impl AbstractRefinementState<'_> {
+impl AbstractRefinementState {
     fn update_from_model(&mut self, model: &z3::Model<'_>) -> anyhow::Result<()> {
         for func_decl in model.sorted_iter() {
             if func_decl.arity() == 0 {
@@ -157,10 +157,11 @@ impl AbstractRefinementState<'_> {
     pub fn update_with_non_array_function_terms(
         &mut self,
         model: &z3::Model,
+        z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<()> {
         for term in self.smt.get_eq_terms() {
             let term_id = self.egraph.add_expr(&term.to_string().parse()?);
-            let z3_term = self.z3_var_context.rewrite_term(&term);
+            let z3_term = z3_var_context.rewrite_term(&term);
             let model_interp = model
                 .eval(&z3_term, false)
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));

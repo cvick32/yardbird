@@ -3,6 +3,7 @@ use smt2parser::vmt::VMTModel;
 
 use crate::{
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
+    z3_var_context::Z3VarContext,
     YardbirdOptions,
 };
 
@@ -61,14 +62,15 @@ impl<'a> Driver<'a> {
 
                 let smt = self.vmt_model.unroll(depth);
                 let solver = z3::Solver::new(&self.context);
+                let z3_var_context = Z3VarContext::from(&self.context, &smt);
                 solver.from_string(smt.to_bmc());
 
-                let mut state = strat.setup(&self.context, smt, depth)?;
+                let mut state = strat.setup(smt, depth)?;
 
                 let sat_result = solver.check();
                 let action = match sat_result {
                     z3::SatResult::Unsat => {
-                        extensions.unsat(&mut state, &solver)?;
+                        extensions.unsat(&mut state, &solver, &z3_var_context)?;
                         strat.unsat(&mut state, &solver)?
                     }
                     z3::SatResult::Unknown => {
@@ -77,7 +79,7 @@ impl<'a> Driver<'a> {
                     }
                     z3::SatResult::Sat => {
                         extensions.sat(&mut state, &solver)?;
-                        strat.sat(&mut state, &solver)?
+                        strat.sat(&mut state, &solver, &z3_var_context)?
                     }
                 };
 
@@ -114,9 +116,14 @@ impl<'ctx, S> DriverExtensions<'ctx, S> {
 }
 
 impl<'ctx, S> ProofStrategyExt<'ctx, S> for DriverExtensions<'ctx, S> {
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unsat(
+        &mut self,
+        state: &mut S,
+        solver: &z3::Solver,
+        z3_var_context: &Z3VarContext,
+    ) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
-            ext.unsat(state, solver)?;
+            ext.unsat(state, solver, z3_var_context)?;
         }
 
         Ok(())
