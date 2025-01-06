@@ -62,8 +62,8 @@ impl<'ctx, S> Driver<'ctx, S> {
                 info!("  refining loop: {i}/{n_refines}");
 
                 let smt = self.vmt_model.unroll(depth);
-                let solver = z3::Solver::new(&self.context);
-                let z3_var_context = Z3VarContext::from(&self.context, &smt);
+                let solver = z3::Solver::new(self.context);
+                let z3_var_context = Z3VarContext::from(self.context, &smt);
                 solver.from_string(smt.to_bmc());
 
                 let mut state = strat.setup(smt, depth)?;
