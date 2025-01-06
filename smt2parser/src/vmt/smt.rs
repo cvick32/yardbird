@@ -49,7 +49,12 @@ impl SMTProblem {
     }
 
     pub fn add_assertion(&mut self, condition: &Term, mut builder: BMCBuilder) {
-        let rewritten_condition = match condition {
+        let mut let_extract = LetExtract::default();
+        let no_let_condition = condition
+            .clone()
+            .accept_term_visitor(&mut let_extract)
+            .unwrap();
+        let rewritten_condition = match no_let_condition {
             Term::Attributes {
                 term,
                 attributes: _,
@@ -64,7 +69,13 @@ impl SMTProblem {
 
     /// Need to assert the negation of the property given in the VMTModel for BMC.
     pub fn add_property_assertion(&mut self, condition: &Term, mut builder: BMCBuilder) {
-        let rewritten_property = match condition {
+        let mut let_extract = LetExtract::default();
+        let no_let_condition = condition
+            .clone()
+            .accept_term_visitor(&mut let_extract)
+            .unwrap();
+        println!("{} => {}", condition, no_let_condition);
+        let rewritten_property = match no_let_condition {
             Term::Attributes {
                 term,
                 attributes: _,
@@ -93,48 +104,18 @@ impl SMTProblem {
         }
     }
 
-    pub fn get_assert_terms(&self) -> Vec<String> {
-        let mut let_extract = LetExtract::default();
-        let mut assert_terms = self
-            .init_and_trans_assertions
-            .iter()
-            .map(|term| {
-                term.clone()
-                    .accept_term_visitor(&mut let_extract)
-                    .unwrap()
-                    .to_string()
-            })
-            .collect::<Vec<String>>();
+    pub fn get_assert_terms(&self) -> Vec<Term> {
+        let mut assert_terms = self.init_and_trans_assertions.clone();
         if self.property_assertion.is_some() {
-            let extracted = self
-                .property_assertion
-                .clone()
-                .unwrap()
-                .accept_term_visitor(&mut let_extract)
-                .unwrap();
-            assert_terms.push(extracted.to_string());
+            assert_terms.push(self.property_assertion.clone().unwrap())
         }
         assert_terms
     }
 
     pub fn get_eq_terms(&self) -> HashSet<Term> {
-        let mut let_extract = LetExtract::default();
-        let mut assert_terms = self
-            .init_and_trans_assertions
-            .iter()
-            .map(|term| term.clone().accept_term_visitor(&mut let_extract).unwrap())
-            .collect::<Vec<_>>();
-        if self.property_assertion.is_some() {
-            let extracted = self
-                .property_assertion
-                .clone()
-                .unwrap()
-                .accept_term_visitor(&mut let_extract)
-                .unwrap();
-            assert_terms.push(extracted);
-        }
         let mut term_extractor = TermExtractor::default();
-        let _ = assert_terms
+        let _ = self
+            .get_assert_terms()
             .iter()
             .map(|x| x.clone().accept(&mut term_extractor))
             .collect::<Vec<_>>();
