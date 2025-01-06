@@ -5,7 +5,7 @@ use crate::strategies::{AbstractRefinementState, ProofStrategyExt};
 
 pub struct Repl;
 
-impl<'ctx> ProofStrategyExt<AbstractRefinementState> for Repl {
+impl ProofStrategyExt<AbstractRefinementState> for Repl {
     fn finish(
         &mut self,
         _model: &mut VMTModel,

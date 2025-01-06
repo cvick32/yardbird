@@ -4,7 +4,6 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     z3_var_context::Z3VarContext,
-    YardbirdOptions,
 };
 
 #[derive(Debug)]
