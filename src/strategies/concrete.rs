@@ -11,7 +11,7 @@ pub struct ConcreteZ3 {
     model: Option<VMTModel>,
 }
 
-impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for ConcreteZ3 {
+impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     fn n_refines(&mut self) -> u32 {
         1
     }

@@ -122,7 +122,7 @@ impl<'ctx, S> DriverExtensions<'ctx, S> {
     }
 }
 
-impl<'ctx, S> ProofStrategyExt<S> for DriverExtensions<'ctx, S> {
+impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
     fn unsat(
         &mut self,
         state: &mut S,

@@ -83,7 +83,7 @@ pub struct AbstractRefinementState {
     pub const_instantiations: Vec<String>,
 }
 
-impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for Abstract {
+impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model.abstract_array_theory()
     }
