@@ -113,9 +113,13 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Let
         arguments: Vec<Self::T>,
     ) -> Result<Self::T, Self::E> {
         if self.scope.is_empty() {
+            let new_arguments = arguments
+                .iter()
+                .map(|arg| arg.clone().accept_term_visitor(self).unwrap())
+                .collect::<Vec<_>>();
             Ok(Term::Application {
                 qual_identifier,
-                arguments,
+                arguments: new_arguments,
             })
         } else {
             let new_arguments = arguments
@@ -155,7 +159,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Let
         if self.scope.is_empty() {
             Ok(Term::Forall {
                 vars,
-                term: Box::new(term),
+                term: Box::new(term.accept_term_visitor(self).unwrap()),
             })
         } else {
             let new_term = self.substitute_scoped_symbols(term);
@@ -174,7 +178,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Let
         if self.scope.is_empty() {
             Ok(Term::Exists {
                 vars,
-                term: Box::new(term),
+                term: Box::new(term.accept_term_visitor(self).unwrap()),
             })
         } else {
             let new_term = self.substitute_scoped_symbols(term);
@@ -214,7 +218,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Let
     ) -> Result<Self::T, Self::E> {
         if self.scope.is_empty() {
             Ok(Term::Attributes {
-                term: Box::new(term),
+                term: Box::new(term.accept_term_visitor(self).unwrap()),
                 attributes,
             })
         } else {
@@ -278,4 +282,5 @@ mod test {
         b"(assert (let ((a!1 2)) (let ((a!2 3)) (+ a!1 a!2))))",
         "(+ 2 3)"
     );
+    create_let_test!(test_tiling_pr5, b"(assert (! (and (let ((a!1 (and (not (<= i (* 1 CC))) (>= Z 0) (< Z (* 5 CC)))) (a!2 (not (or (<= minval (select a Z)) (= (select a Z) 0))))) (=> a!1 (and (not a!2))))) :prop))", "(! (and (=> (and (not (<= i (* 1 CC))) (>= Z 0) (< Z (* 5 CC))) (and (not (not (or (<= minval (select a Z)) (= (select a Z) 0))))))) :prop)");
 }

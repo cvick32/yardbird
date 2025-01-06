@@ -32,7 +32,6 @@ mod instantiator;
 pub mod numbered_to_symbolic;
 pub mod smt;
 mod smtinterpol_utils;
-pub mod term_extractor;
 mod utils;
 pub mod variable;
 
@@ -354,7 +353,7 @@ impl VMTModel {
         let mut frame_getter = FrameNumGetter::new();
         instance_term.clone().accept(&mut frame_getter).unwrap();
         if frame_getter.frame_nums.len() > 2 || frame_getter.max_min_difference() > 1 {
-            debug!("NEED TO INSTANTIATE WITH PROPHECY: {instance_term}");
+            println!("NEED TO INSTANTIATE WITH PROPHECY: {instance_term}");
             return false;
         }
         let mut instantiator = Instantiator {
