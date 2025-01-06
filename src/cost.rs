@@ -7,7 +7,8 @@ use crate::array_axioms::ArrayLanguage;
 /// instantiating a rule violation with concrete terms.
 #[derive(Clone)]
 pub struct BestVariableSubstitution {
-    pub current_frame_number: u32,
+    pub current_bmc_depth: u32,
+    pub transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
 }
 

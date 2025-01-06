@@ -9,11 +9,11 @@ use crate::{
 use super::utils::is_boolean_connective;
 
 #[derive(Clone, Debug, Default)]
-pub struct PropertySubterms {
+pub struct ArrayProgramSubterms {
     pub subterms: HashSet<Term>,
 }
 
-impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for PropertySubterms {
+impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for ArrayProgramSubterms {
     type T = Term;
     type E = Error;
 
