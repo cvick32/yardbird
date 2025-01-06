@@ -42,8 +42,8 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
             // rewrites that use `Write`. When we change it to 10, we automatically
             // rule out these very specific chains of Writes and are able to
             // generate a single instance that generalizes immediately.
-            ArrayLanguage::Write(_) => 100,
-            ArrayLanguage::Read(_) => 100,
+            ArrayLanguage::Write(_) => 1,
+            ArrayLanguage::Read(_) => 1,
             ArrayLanguage::And(_) => 1,
             ArrayLanguage::Not(_) => 1,
             ArrayLanguage::Or(_) => 1,

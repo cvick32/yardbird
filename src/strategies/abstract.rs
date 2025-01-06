@@ -11,7 +11,7 @@ use z3::Model;
 
 use crate::{
     analysis::SaturationInequalities, array_axioms::ArrayLanguage, cost::BestVariableSubstitution,
-    egg_utils::Saturate, z3_ext::ModelExt, z3_var_context::Z3VarContext, ProofLoopResult,
+    egg_utils::Saturate, z3_var_context::Z3VarContext, ProofLoopResult,
 };
 
 use super::{ProofAction, ProofStrategy};
@@ -23,7 +23,7 @@ pub struct Abstract {
     const_instantiations: Vec<String>,
 }
 impl Abstract {
-    fn check_found_instantiations(
+    fn _check_found_instantiations(
         &self,
         z3_var_context: &Z3VarContext,
         model: &Model,
@@ -91,7 +91,7 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for Abstract {
     fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
-            egraph.add_expr(&term.parse()?);
+            egraph.add_expr(&term.to_string().parse()?);
         }
         Ok(AbstractRefinementState {
             smt,
@@ -118,9 +118,7 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for Abstract {
         z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<ProofAction> {
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
-        println!("model:\n{}", model.dump_sorted()?);
-        state.update_from_model(&model)?;
-        state.update_with_non_array_function_terms(&model, z3_var_context)?;
+        state.update_with_subterms(&model, z3_var_context)?;
         state.egraph.rebuild();
         let cost_fn = BestVariableSubstitution {
             current_bmc_depth: state.depth as u32,
@@ -198,68 +196,25 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for Abstract {
 }
 
 impl AbstractRefinementState {
-    fn update_from_model(&mut self, model: &z3::Model<'_>) -> anyhow::Result<()> {
-        for func_decl in model.sorted_iter() {
-            if func_decl.arity() == 0 {
-                // VARIABLE
-                // Apply no arguments to the constant so we can call get_const_interp.
-                let func_decl_ast = func_decl.apply(&[]);
-                let var = func_decl.name().parse()?;
-                let var_id = self.egraph.add_expr(&var);
-                let value = model.get_const_interp(&func_decl_ast).ok_or(anyhow!(
-                    "Could not find interpretation for variable: {func_decl}"
-                ))?;
-                let expr = value.to_string().parse()?;
-                let value_id = self.egraph.add_expr(&expr);
-                self.egraph.union(var_id, value_id);
-            } else {
-                // FUNCTION DEF
-                let interpretation = model
-                    .get_func_interp(&func_decl)
-                    .ok_or(anyhow!("No function interpretation for: {func_decl}"))?;
-                for entry in interpretation.get_entries() {
-                    let function_call = format!(
-                        "({} {})",
-                        func_decl.name(),
-                        entry
-                            .get_args()
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    );
-                    let funcall = function_call.parse()?;
-                    let expr = entry.get_value().to_string().parse()?;
-                    let function_id = self.egraph.add_expr(&funcall);
-                    let value_id = self.egraph.add_expr(&expr);
-                    self.egraph.union(function_id, value_id);
-                }
-            }
-            self.egraph.rebuild();
-        }
-        Ok(())
-    }
-
-    pub fn update_with_non_array_function_terms(
+    pub fn update_with_subterms(
         &mut self,
         model: &z3::Model,
         z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<()> {
-        for term in self.smt.get_eq_terms() {
+        for term in self.smt.get_all_subterms() {
             let term_id = self.egraph.add_expr(&term.to_string().parse()?);
             let z3_term = z3_var_context.rewrite_term(&term);
             let model_interp = model
                 .eval(&z3_term, false)
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));
             let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
-            println!("Adding: {} = {}", term, model_interp);
             self.egraph.union(term_id, interp_id);
             self.egraph.rebuild();
         }
         Ok(())
     }
 
-    fn add_true_instantiation(
+    fn _add_true_instantiation(
         &mut self,
         lhs: smt2parser::concrete::Term,
         rhs: smt2parser::concrete::Term,
