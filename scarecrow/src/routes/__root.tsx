@@ -11,6 +11,7 @@ import { useArtifact, useArtifacts } from "../fetch";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { CommitMessage, CommitRef } from ".";
+import { useMediaQuery } from "usehooks-ts";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -22,10 +23,23 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootComponent() {
+  const largeScreen = useMediaQuery("(min-width: 768px)");
+
   return (
     <>
-      <div className="sticky top-0 z-20 flex flex-wrap items-center gap-4 border-b border-slate-300 bg-slate-100 p-2 px-4 md:flex-nowrap">
-        <div>
+      {largeScreen ? <LargeHeader /> : <SmallHeader />}
+      <div className="m-2">
+        <Outlet />
+      </div>
+    </>
+  );
+}
+
+function LargeHeader() {
+  return (
+    <div className="sticky top-0 z-20 h-[75px] border-b border-slate-300 bg-slate-100 p-2 px-4">
+      <div className="mb-2 flex flex-wrap flex-nowrap items-center gap-4">
+        <div className="flex flex-row items-center gap-2">
           <Link
             to="/"
             className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
@@ -33,8 +47,9 @@ function RootComponent() {
             <FaCrow />
             Artifacts
           </Link>
+          <CompareSelect />
+          <FilterSelect />
         </div>
-        <Breadcrumbs />
         <div className="grow"></div>
         <div>
           <a
@@ -48,41 +63,80 @@ function RootComponent() {
         <div>
           <Link
             to="/logout"
-            className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
+            className="flex flex-row flex-nowrap items-center gap-1 text-nowrap text-lg hover:underline [&.active]:font-bold"
           >
             <FaDoorOpen />
             Log Out
           </Link>
         </div>
       </div>
-      <hr />
-      <div className="m-2">
-        <Outlet />
+      <div className="grow">
+        <CompareCommits />
       </div>
-    </>
+    </div>
   );
 }
 
-function Breadcrumbs() {
+function SmallHeader() {
+  return (
+    <div className="sticky top-0 z-20 border-b border-slate-300 bg-slate-100 p-2 px-4">
+      <div className="mb-2 flex flex-wrap flex-nowrap items-center gap-4">
+        <div className="flex flex-row items-center gap-2">
+          <Link
+            to="/"
+            className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
+          >
+            <FaCrow />
+            Artifacts
+          </Link>
+        </div>
+        <div className="grow"></div>
+        <div>
+          <a
+            href="https://github.com/cvick32/yardbird"
+            className="flex flex-row items-center gap-1 text-lg hover:underline [&.active]:font-bold"
+          >
+            <FaGithub />
+            Repo
+          </a>
+        </div>
+        <div>
+          <Link
+            to="/logout"
+            className="flex flex-row flex-nowrap items-center gap-1 text-nowrap text-lg hover:underline [&.active]:font-bold"
+          >
+            <FaDoorOpen />
+            Log Out
+          </Link>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <CompareSelect />
+        <FilterSelect />
+      </div>
+    </div>
+  );
+}
+
+function CompareSelect() {
   const artifactMatch = useMatch({
     from: "/artifacts/$art",
     shouldThrow: false,
   });
 
   const artifact = useArtifact(artifactMatch?.params.art);
-  const compareArtifact = useArtifact(artifactMatch?.search.compare);
   const artifacts = useArtifacts();
   const navigate = useNavigate({ from: "/artifacts/$art" });
   const [filterVal, setFilterVal] = useState<string>(
     artifactMatch?.search.filter ?? "",
   );
 
-  if (!artifactMatch || !artifact.data) {
+  if (artifactMatch === undefined || !artifact.data) {
     return undefined;
   }
 
   return (
-    <div className="order-last flex flex-row flex-wrap items-center gap-2 text-sm md:order-none md:flex-nowrap">
+    <div className="flex flex-row flex-nowrap gap-2">
       <label htmlFor="compare" className="font-bold">
         Compare:
       </label>
@@ -117,6 +171,28 @@ function Breadcrumbs() {
               );
             })}
       </select>
+    </div>
+  );
+}
+
+function FilterSelect() {
+  const artifactMatch = useMatch({
+    from: "/artifacts/$art",
+    shouldThrow: false,
+  });
+
+  const artifact = useArtifact(artifactMatch?.params.art);
+  const navigate = useNavigate({ from: "/artifacts/$art" });
+  const [filterVal, setFilterVal] = useState<string>(
+    artifactMatch?.search.filter ?? "",
+  );
+
+  if (!artifactMatch || !artifact.data) {
+    return undefined;
+  }
+
+  return (
+    <div className="flex flex-row flex-nowrap gap-2">
       <label htmlFor="filter" className="font-bold">
         Filter:
       </label>
@@ -142,17 +218,38 @@ function Breadcrumbs() {
         <option value="panic">Panic</option>
         <option value="differ">Differ</option>
       </select>
-      <div className="flex flex-row flex-wrap gap-2 md:flex-nowrap">
+    </div>
+  );
+}
+
+function CompareCommits() {
+  const artifactMatch = useMatch({
+    from: "/artifacts/$art",
+    shouldThrow: false,
+  });
+
+  const artifact = useArtifact(artifactMatch?.params.art);
+  const compareArtifact = useArtifact(artifactMatch?.search.compare);
+
+  if (!artifactMatch || !artifact.data) {
+    return undefined;
+  }
+
+  return (
+    <div className="flex flex-row items-center gap-2 text-sm">
+      <span className="flex flex-row gap-2 truncate">
         <CommitRef sha={artifact.data.commitSha} />
         <CommitMessage sha={artifact.data.commitSha} />
-        {!!compareArtifact.data && (
-          <div className="flex flex-row gap-2">
-            <span>{"->"}</span>
+      </span>
+      {!!compareArtifact.data && (
+        <>
+          <span>{"->"}</span>
+          <div className="flex flex-row gap-2 truncate">
             <CommitRef sha={compareArtifact.data.commitSha} />
             <CommitMessage sha={compareArtifact.data.commitSha} />
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

@@ -33,14 +33,14 @@ function RouteComponent() {
       <table className="relative">
         <thead>
           <tr className="divide-x divide-slate-400">
-            <th className="sticky top-[45px] z-10 bg-slate-300 font-bold">
+            <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
               Benchmark
             </th>
-            <th className="sticky top-[45px] z-10 bg-slate-300 font-bold">
+            <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
               Status
             </th>
             {compare !== "" && !!compareAgainst && (
-              <th className="sticky top-[44px] z-30 bg-slate-300 font-bold">
+              <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
                 Compare
               </th>
             )}
@@ -96,7 +96,7 @@ function RouteComponent() {
                   !!compareAgainst.data.benchmarks && (
                     <td className="text-left align-top">
                       <Status
-                        result={compareAgainst.data.benchmarks[idx].result}
+                        result={compareAgainst.data.benchmarks[idx]?.result}
                       />
                     </td>
                   )}
@@ -108,7 +108,11 @@ function RouteComponent() {
   );
 }
 
-function Status({ result }: { result: BenchmarkResult }) {
+function Status({ result }: { result?: BenchmarkResult }) {
+  if (result === undefined) {
+    return undefined;
+  }
+
   if ("Success" in result) {
     if (result.Success.used_instances.length == 0) {
       return (
