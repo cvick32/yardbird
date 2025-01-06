@@ -171,7 +171,16 @@ export function CommitMessage({ sha }: { sha: string }) {
     return <div>...</div>;
   }
 
-  return <div className="truncate">{query.data.data.commit.message}</div>;
+  let message = query.data.data.commit.message;
+  if (message.includes("\n")) {
+    message = message.split("\n")[0];
+  }
+
+  return (
+    <div className="truncate">
+      {query.data.data.commit.message.split("\n")[0]}
+    </div>
+  );
 }
 
 export function CommitRef({ sha }: { sha: string }) {
