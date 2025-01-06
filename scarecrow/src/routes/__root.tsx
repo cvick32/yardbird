@@ -11,7 +11,7 @@ import { useArtifact, useArtifacts } from "../fetch";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { CommitMessage, CommitRef } from ".";
-import { useMediaQuery } from "usehooks-ts";
+import { useIsLargeScreen } from "../useIsLargeScreen";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -23,11 +23,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 function RootComponent() {
-  const largeScreen = useMediaQuery("(min-width: 768px)");
+  // render a different header based on screen width
+  const isLargeScreen = useIsLargeScreen();
 
   return (
     <>
-      {largeScreen ? <LargeHeader /> : <SmallHeader />}
+      {isLargeScreen ? <LargeHeader /> : <SmallHeader />}
       <div className="m-2">
         <Outlet />
       </div>
