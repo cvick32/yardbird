@@ -19,13 +19,22 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
-        // TODO: fiddle with the cost function to get what we want.
-        //       right now all I am doing is preferring everything else
-        //       over Nums
         let op_cost = match enode {
-            // Scale cost of term w.r.t size of constant. This will only work when we want
-            // small values like adding one or something.
-            ArrayLanguage::Num(_) => 100, //u32::try_from(*num).ok().unwrap(),
+            ArrayLanguage::Num(num) => {
+                let num_string = num.to_string();
+                let in_trans = self.transition_system_terms.contains(&num_string);
+                let in_prop = self.property_terms.contains(&num_string);
+                if in_trans {
+                    // If the constant is just in the transition system, we assign a low cost.
+                    1
+                } else if in_prop {
+                    // If the constant is just property term, we assign a lower cost.
+                    0
+                } else {
+                    // Otherwise, 100.
+                    100
+                }
+            }
             ArrayLanguage::ConstArr(_) => 0,
             // NOTE: try changing the value of Write from 0 to 10 for
             // `array_init_var.vmt`. Notice that when we allow Write terms
@@ -49,14 +58,20 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
             ArrayLanguage::Times(_) => 1,
             ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Symbol(sym) => {
-                let symbol_str = sym.as_str();
-                if self.property_terms.contains(&symbol_str.to_string()) {
+                let symbol_str = sym.as_str().to_string();
+                let in_trans = self.transition_system_terms.contains(&symbol_str);
+                let in_prop = self.property_terms.contains(&symbol_str);
+
+                if in_trans && in_prop {
+                    // Prefer terms that are in both the transition system and property
                     return 0;
                 }
+
                 if let Some((_name, frame_number)) =
                     sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
                 {
-                    self.current_frame_number - frame_number.parse::<u32>().unwrap()
+                    // Prefer terms that are close to the property check.
+                    self.current_bmc_depth - frame_number.parse::<u32>().unwrap()
                 } else {
                     // TODO: extend language to uninterpreted sort constants to
                     // constants instead of symbols.
