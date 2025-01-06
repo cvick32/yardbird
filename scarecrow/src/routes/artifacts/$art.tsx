@@ -1,5 +1,14 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Benchmark, BenchmarkResult, useArtifact } from "../../fetch";
+import {
+  Benchmark,
+  BenchmarkResult,
+  isError,
+  isPanic,
+  isSuccess,
+  isTimeout,
+  isTrivial,
+  useArtifact,
+} from "../../fetch";
 
 export const Route = createFileRoute("/artifacts/$art")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -53,32 +62,38 @@ function RouteComponent() {
               if (filter === "") {
                 return true;
               } else if (filter === "success") {
-                return "Success" in benchmark.result;
+                return isSuccess(benchmark.result);
+              } else if (filter === "trivial") {
+                return isTrivial(benchmark.result);
               } else if (filter === "timeout") {
-                return "Timeout" in benchmark.result;
+                return isTimeout(benchmark.result);
               } else if (filter === "error") {
-                return "Error" in benchmark.result;
+                return isError(benchmark.result);
               } else if (filter === "panic") {
-                return "Panic" in benchmark.result;
+                return isPanic(benchmark.result);
               } else if (filter === "differ") {
                 return (
                   !!compareAgainst.data &&
                   !!compareAgainst.data.benchmarks &&
                   !(
-                    "Success" in benchmark.result &&
-                    "Success" in compareAgainst.data.benchmarks[idx].result
+                    isSuccess(benchmark.result) &&
+                    isSuccess(compareAgainst.data.benchmarks[idx].result)
                   ) &&
                   !(
-                    "Timeout" in benchmark.result &&
-                    "Timeout" in compareAgainst.data.benchmarks[idx].result
+                    isTrivial(benchmark.result) &&
+                    isTrivial(compareAgainst.data.benchmarks[idx].result)
                   ) &&
                   !(
-                    "Error" in benchmark.result &&
-                    "Error" in compareAgainst.data.benchmarks[idx].result
+                    isTimeout(benchmark.result) &&
+                    isTimeout(compareAgainst.data.benchmarks[idx].result)
                   ) &&
                   !(
-                    "Panic" in benchmark.result &&
-                    "Panic" in compareAgainst.data.benchmarks[idx].result
+                    isError(benchmark.result) &&
+                    isError(compareAgainst.data.benchmarks[idx].result)
+                  ) &&
+                  !(
+                    isPanic(benchmark.result) &&
+                    isPanic(compareAgainst.data.benchmarks[idx].result)
                   )
                 );
               } else {
@@ -116,21 +131,7 @@ function Status({ result }: { result?: BenchmarkResult }) {
   if ("Success" in result) {
     if (result.Success.used_instances.length == 0) {
       return (
-        <div className="bg-teal-200">
-          Trivial Success...something is wrong.
-          <div>Used instances:</div>
-          <div className="ml-2 font-mono">
-            {result.Success.used_instances.map((inst, idx) => {
-              return <div key={idx}>{inst}</div>;
-            })}
-          </div>
-          <div>Const instances:</div>
-          <div className="ml-2 font-mono">
-            {result.Success.const_instances.map((inst, idx) => (
-              <div key={idx}>{inst}</div>
-            ))}
-          </div>
-        </div>
+        <div className="bg-teal-200">Trivial Success...something is wrong.</div>
       );
     } else {
       return (
