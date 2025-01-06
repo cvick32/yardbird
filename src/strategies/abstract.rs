@@ -171,7 +171,6 @@ impl AbstractRefinementState {
         z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<()> {
         for term in self.smt.get_all_subterms() {
-            println!("{term}");
             let term_id = self.egraph.add_expr(&term.to_string().parse()?);
             let z3_term = z3_var_context.rewrite_term(&term);
             let model_interp = model

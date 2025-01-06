@@ -32,7 +32,6 @@ mod instantiator;
 pub mod numbered_to_symbolic;
 pub mod smt;
 mod smtinterpol_utils;
-pub mod term_extractor;
 mod utils;
 pub mod variable;
 

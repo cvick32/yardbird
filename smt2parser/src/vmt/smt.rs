@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{
     concrete::{Command, Term},
     let_extract::LetExtract,
@@ -11,7 +9,7 @@ use crate::{
 
 use super::{
     action::Action, array_program_subterms::ArrayProgramSubterms, bmc::BMCBuilder,
-    term_extractor::TermExtractor, variable::Variable,
+    variable::Variable,
 };
 
 static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
@@ -109,16 +107,6 @@ impl SMTProblem {
             assert_terms.push(self.property_assertion.clone().unwrap())
         }
         assert_terms
-    }
-
-    pub fn get_eq_terms(&self) -> HashSet<Term> {
-        let mut term_extractor = TermExtractor::default();
-        let _ = self
-            .get_assert_terms()
-            .iter()
-            .map(|x| x.clone().accept(&mut term_extractor))
-            .collect::<Vec<_>>();
-        term_extractor.terms
     }
 
     pub fn to_bmc(&self) -> String {
