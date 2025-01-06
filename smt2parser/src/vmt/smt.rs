@@ -1,16 +1,16 @@
 use crate::{
     concrete::{Command, Term},
     let_extract::LetExtract,
-    vmt::{
-        property_subterms::PropertySubterms,
-        smtinterpol_utils::{
-            assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
-            get_interpolant_command,
-        },
+    vmt::smtinterpol_utils::{
+        assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
+        get_interpolant_command,
     },
 };
 
-use super::{action::Action, bmc::BMCBuilder, term_extractor::TermExtractor, variable::Variable};
+use super::{
+    action::Action, array_program_subterms::ArrayProgramSubterms, bmc::BMCBuilder,
+    term_extractor::TermExtractor, variable::Variable,
+};
 
 static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
 
@@ -174,10 +174,22 @@ impl SMTProblem {
         )
     }
 
-    pub fn get_property_terms(&self) -> Vec<String> {
-        let mut subterms = PropertySubterms::default();
+    pub fn get_property_subterms(&self) -> Vec<String> {
+        let mut subterms = ArrayProgramSubterms::default();
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
+        subterms
+            .subterms
+            .iter()
+            .map(|term| term.to_string())
+            .collect::<Vec<_>>()
+    }
+
+    pub fn get_transition_system_subterms(&self) -> Vec<String> {
+        let mut subterms = ArrayProgramSubterms::default();
+        for trans_assert in &self.init_and_trans_assertions {
+            let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
+        }
         subterms
             .subterms
             .iter()

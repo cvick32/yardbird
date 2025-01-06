@@ -74,8 +74,9 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for Abstract {
         state.update_with_non_array_function_terms(&model)?;
         state.egraph.rebuild();
         let cost_fn = BestVariableSubstitution {
-            current_frame_number: state.depth as u32,
-            property_terms: state.smt.get_property_terms(),
+            current_bmc_depth: state.depth as u32,
+            transition_system_terms: state.smt.get_transition_system_subterms(),
+            property_terms: state.smt.get_property_subterms(),
         };
         let (inst, const_inst) = state.egraph.saturate(cost_fn);
         state.instantiations.extend_from_slice(&inst);
