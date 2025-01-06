@@ -40,6 +40,9 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Arr
         qual_identifier: QualIdentifier,
         arguments: Vec<Self::T>,
     ) -> Result<Self::T, Self::E> {
+        for argument in &arguments {
+            let _ = argument.clone().accept_term_visitor(self);
+        }
         let app = Term::Application {
             qual_identifier: qual_identifier.clone(),
             arguments,
@@ -55,6 +58,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Arr
         var_bindings: Vec<(Symbol, Self::T)>,
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
+        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Let {
             var_bindings,
             term: Box::new(term),
@@ -66,6 +70,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Arr
         vars: Vec<(Symbol, Sort)>,
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
+        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Forall {
             vars,
             term: Box::new(term),
@@ -77,6 +82,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Arr
         vars: Vec<(Symbol, Sort)>,
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
+        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Exists {
             vars,
             term: Box::new(term),
@@ -102,6 +108,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Arr
             crate::concrete::AttributeValue<Constant, Symbol, SExpr>,
         )>,
     ) -> Result<Self::T, Self::E> {
+        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Attributes {
             term: Box::new(term),
             attributes,
