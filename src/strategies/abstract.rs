@@ -46,7 +46,7 @@ impl Abstract {
                     } else if qual_identifier.get_name().eq("=>") {
                         match &arguments[1] {
                             Term::Application {
-                                qual_identifier,
+                                qual_identifier: _,
                                 arguments,
                             } => (arguments[0].clone(), arguments[1].clone()),
                             _ => panic!(),
@@ -126,37 +126,6 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState> for Abstract {
             property_terms: state.smt.get_property_subterms(),
         };
         let (insts, const_insts) = state.egraph.saturate(cost_fn);
-
-        /*
-        let mut full_false_insts = vec![];
-        let mut full_const_insts = vec![];
-        let mut i = 0;
-        loop {
-            if i > 15 {
-                break;
-            }
-            state.egraph.rebuild();
-            let cost_fn = BestVariableSubstitution {
-                current_frame_number: state.depth as u32,
-                property_terms: state.smt.get_property_terms(),
-            };
-            let (insts, const_insts) = state.egraph.saturate(cost_fn);
-            let (false_insts, true_insts) =
-                self.check_found_instantiations(z3_var_context, &model, insts);
-            if false_insts.is_empty() {
-                for (lhs, rhs) in true_insts {
-                    println!("Add: {} = {}", lhs, rhs);
-                    state.add_true_instantiation(lhs, rhs)?;
-                }
-            } else {
-                full_false_insts.extend_from_slice(&false_insts);
-                full_const_insts.extend_from_slice(&const_insts);
-                break;
-            }
-            i += 1;
-        }
-        println!("ACTUALLY FALSE INSTS: {:#?}", full_false_insts);
-        */
         state.instantiations.extend_from_slice(&insts);
         state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)
@@ -202,6 +171,7 @@ impl AbstractRefinementState {
         z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<()> {
         for term in self.smt.get_all_subterms() {
+            println!("{term}");
             let term_id = self.egraph.add_expr(&term.to_string().parse()?);
             let z3_term = z3_var_context.rewrite_term(&term);
             let model_interp = model
@@ -227,3 +197,34 @@ impl AbstractRefinementState {
         Ok(())
     }
 }
+
+/* let mut full_false_insts = vec![];
+let mut full_const_insts = vec![];
+let mut i = 0;
+loop {
+    if i > 15 {
+        break;
+    }
+    state.egraph.rebuild();
+    let cost_fn = BestVariableSubstitution {
+        current_bmc_depth: state.depth as u32,
+        transition_system_terms: state.smt.get_transition_system_subterms(),
+        property_terms: state.smt.get_property_subterms(),
+    };
+
+    let (insts, const_insts) = state.egraph.saturate(cost_fn);
+    let (false_insts, true_insts) =
+        self._check_found_instantiations(z3_var_context, &model, insts);
+    if false_insts.is_empty() {
+        for (lhs, rhs) in true_insts {
+            println!("Add: {} = {}", lhs, rhs);
+            state._add_true_instantiation(lhs, rhs)?;
+        }
+    } else {
+        full_false_insts.extend_from_slice(&false_insts);
+        full_const_insts.extend_from_slice(&const_insts);
+        break;
+    }
+    i += 1;
+}
+println!("ACTUALLY FALSE INSTS: {:#?}", full_false_insts); */

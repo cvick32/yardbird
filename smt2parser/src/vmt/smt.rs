@@ -74,7 +74,6 @@ impl SMTProblem {
             .clone()
             .accept_term_visitor(&mut let_extract)
             .unwrap();
-        println!("{} => {}", condition, no_let_condition);
         let rewritten_property = match no_let_condition {
             Term::Attributes {
                 term,
@@ -183,7 +182,6 @@ impl SMTProblem {
     pub fn get_all_subterms(&self) -> Vec<Term> {
         let mut subterms = ArrayProgramSubterms::default();
         for trans_assert in &self.init_and_trans_assertions {
-            println!("{}", trans_assert);
             let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
         }
         let prop = self.property_assertion.clone().unwrap();
