@@ -5,7 +5,7 @@ use log::info;
 use yardbird::{
     logger, model_from_options,
     strategies::{Abstract, ConcreteZ3, Interpolating, ProofStrategy, Repl},
-    Driver, DriverExtensions, YardbirdOptions,
+    Driver, YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -13,7 +13,9 @@ fn main() -> anyhow::Result<()> {
     let options = YardbirdOptions::parse();
     let vmt_model = model_from_options(&options);
 
-    let mut driver = Driver::new(&options, &z3::Config::new(), vmt_model);
+    let cfg = z3::Config::new();
+    let context = z3::Context::new(&cfg);
+    let mut driver = Driver::new(&context, vmt_model);
 
     // build the strategy
     let strat: Box<dyn ProofStrategy<_>> = match options.strategy {
@@ -22,16 +24,15 @@ fn main() -> anyhow::Result<()> {
     };
 
     // build up set of extensions based on command line options
-    let mut extensions = DriverExtensions::default();
-    if options.interactive {
-        extensions.add_extension(Repl);
+    if options.repl {
+        driver.add_extension(Repl);
     }
 
     if options.interpolate {
-        extensions.add_extension(Interpolating);
+        driver.add_extension(Interpolating);
     }
 
-    let res = driver.check_strategy(options.depth, strat, &mut extensions)?;
+    let res = driver.check_strategy(options.depth, strat)?;
 
     info!("NEEDED INSTANTIATIONS: {:#?}", res.used_instances);
     if options.print_vmt {

@@ -57,7 +57,7 @@ pub trait ProofStrategy<'ctx, S> {
 /// to methods on `ProofStrategy` and get run before the underlying method on
 /// `ProofStrategy`. Good for additional processing / adding some kind of interface
 /// to a proof strategy.
-pub trait ProofStrategyExt<'ctx, S> {
+pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
     fn unsat(
         &mut self,

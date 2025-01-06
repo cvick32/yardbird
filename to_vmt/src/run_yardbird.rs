@@ -4,7 +4,7 @@ use std::{panic, thread};
 
 use smt2parser::vmt::VMTModel;
 use yardbird::strategies::Abstract;
-use yardbird::{Driver, DriverExtensions, ProofLoopResult, YardbirdOptions};
+use yardbird::{Driver, ProofLoopResult, YardbirdOptions};
 
 use crate::ToVMTArgs;
 
@@ -41,13 +41,9 @@ pub fn run_yardbird(macro_args: &ToVMTArgs, vmt: VMTModel) {
     // Run yardbird proof.
     let status_code = Some(run_with_timeout(
         move || {
-            let mut driver = Driver::new(&standard_options, &z3::Config::new(), vmt);
-            let mut exts = DriverExtensions::default();
-            driver.check_strategy(
-                standard_options.depth,
-                Box::new(Abstract::default()),
-                &mut exts,
-            )
+            let ctx = z3::Context::new(&z3::Config::new());
+            let mut driver = Driver::new(&ctx, vmt);
+            driver.check_strategy(standard_options.depth, Box::new(Abstract::default()))
         },
         macro_args.get_timeout(),
     ));

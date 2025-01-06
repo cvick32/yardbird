@@ -7,7 +7,7 @@ use super::{AbstractRefinementState, ProofStrategyExt};
 
 pub struct Interpolating;
 
-impl ProofStrategyExt<'_, AbstractRefinementState> for Interpolating {
+impl ProofStrategyExt<AbstractRefinementState> for Interpolating {
     fn unsat(
         &mut self,
         state: &mut AbstractRefinementState,
