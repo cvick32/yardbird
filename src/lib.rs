@@ -10,6 +10,7 @@ pub mod conflict_scheduler;
 mod cost_functions;
 mod driver;
 mod egg_utils;
+mod extractor;
 mod interpolant;
 pub mod logger;
 pub mod strategies;

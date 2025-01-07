@@ -19,23 +19,6 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
-        println!("Cost of: {enode:?}");
-        let maybe_cost = match enode {
-            ArrayLanguage::ConstArr(_) => Some(0),
-            // NOTE: try changing the value of Write from 0 to 10 for
-            // `array_init_var.vmt`. Notice that when we allow Write terms
-            // to be used in axiom instantiations we end up with a chain of
-            // rewrites that use `Write`. When we change it to 10, we automatically
-            // rule out these very specific chains of Writes and are able to
-            // generate a single instance that generalizes immediately.
-            ArrayLanguage::Write(_) => Some(1),
-            ArrayLanguage::Read(_) => Some(1),
-            _ => None,
-        };
-        if let Some(cost) = maybe_cost {
-            return cost;
-        }
-
         let op_cost = match enode {
             ArrayLanguage::Num(num) => {
                 let num_string = num.to_string();
