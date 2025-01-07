@@ -1,5 +1,14 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Benchmark, BenchmarkResult, useArtifact } from "../../fetch";
+import {
+  Benchmark,
+  BenchmarkResult,
+  isError,
+  isPanic,
+  isSuccess,
+  isTimeout,
+  isTrivial,
+  useArtifact,
+} from "../../fetch";
 
 export const Route = createFileRoute("/artifacts/$art")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -30,55 +39,61 @@ function RouteComponent() {
 
   return (
     <div>
-      <table className="relative border-collapse border border-slate-400">
+      <table className="relative">
         <thead>
-          <tr>
-            <th className="sticky top-[44px] z-10 border border-slate-300 bg-slate-300 font-bold">
+          <tr className="divide-x divide-slate-400">
+            <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
               Benchmark
             </th>
-            <th className="sticky top-[44px] z-10 border border-slate-300 bg-slate-300 font-bold">
+            <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
               Status
             </th>
             {compare !== "" && !!compareAgainst && (
-              <th className="sticky top-[44px] z-30 border border-slate-300 bg-slate-300 font-bold">
+              <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
                 Compare
               </th>
             )}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-300">
           {artifact.data.benchmarks
             ?.map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
             .filter(([benchmark, idx]) => {
               if (filter === "") {
                 return true;
               } else if (filter === "success") {
-                return "Success" in benchmark.result;
+                return isSuccess(benchmark.result);
+              } else if (filter === "trivial") {
+                return isTrivial(benchmark.result);
               } else if (filter === "timeout") {
-                return "Timeout" in benchmark.result;
+                return isTimeout(benchmark.result);
               } else if (filter === "error") {
-                return "Error" in benchmark.result;
+                return isError(benchmark.result);
               } else if (filter === "panic") {
-                return "Panic" in benchmark.result;
+                return isPanic(benchmark.result);
               } else if (filter === "differ") {
                 return (
                   !!compareAgainst.data &&
                   !!compareAgainst.data.benchmarks &&
                   !(
-                    "Success" in benchmark.result &&
-                    "Success" in compareAgainst.data.benchmarks[idx].result
+                    isSuccess(benchmark.result) &&
+                    isSuccess(compareAgainst.data.benchmarks[idx].result)
                   ) &&
                   !(
-                    "Timeout" in benchmark.result &&
-                    "Timeout" in compareAgainst.data.benchmarks[idx].result
+                    isTrivial(benchmark.result) &&
+                    isTrivial(compareAgainst.data.benchmarks[idx].result)
                   ) &&
                   !(
-                    "Error" in benchmark.result &&
-                    "Error" in compareAgainst.data.benchmarks[idx].result
+                    isTimeout(benchmark.result) &&
+                    isTimeout(compareAgainst.data.benchmarks[idx].result)
                   ) &&
                   !(
-                    "Panic" in benchmark.result &&
-                    "Panic" in compareAgainst.data.benchmarks[idx].result
+                    isError(benchmark.result) &&
+                    isError(compareAgainst.data.benchmarks[idx].result)
+                  ) &&
+                  !(
+                    isPanic(benchmark.result) &&
+                    isPanic(compareAgainst.data.benchmarks[idx].result)
                   )
                 );
               } else {
@@ -87,18 +102,16 @@ function RouteComponent() {
             })
             .map(([benchmark, idx]) => (
               <tr key={idx}>
-                <td className="border border-slate-300 text-left align-top">
-                  {benchmark.example}
-                </td>
-                <td className="border border-slate-300 text-left align-top">
+                <td className="text-left align-top">{benchmark.example}</td>
+                <td className="text-left align-top">
                   <Status result={benchmark.result} />
                 </td>
                 {compare != "" &&
                   !!compareAgainst.data &&
                   !!compareAgainst.data.benchmarks && (
-                    <td className="border border-slate-300 text-left align-top">
+                    <td className="text-left align-top">
                       <Status
-                        result={compareAgainst.data.benchmarks[idx].result}
+                        result={compareAgainst.data.benchmarks[idx]?.result}
                       />
                     </td>
                   )}
@@ -110,25 +123,15 @@ function RouteComponent() {
   );
 }
 
-function Status({ result }: { result: BenchmarkResult }) {
+function Status({ result }: { result?: BenchmarkResult }) {
+  if (result === undefined) {
+    return undefined;
+  }
+
   if ("Success" in result) {
     if (result.Success.used_instances.length == 0) {
       return (
-        <div className="bg-teal-200">
-          Trivial Success...something is wrong.
-          <div>Used instances:</div>
-          <div className="ml-2 font-mono">
-            {result.Success.used_instances.map((inst, idx) => {
-              return <div key={idx}>{inst}</div>;
-            })}
-          </div>
-          <div>Const instances:</div>
-          <div className="ml-2 font-mono">
-            {result.Success.const_instances.map((inst, idx) => (
-              <div key={idx}>{inst}</div>
-            ))}
-          </div>
-        </div>
+        <div className="bg-teal-200">Trivial Success...something is wrong.</div>
       );
     } else {
       return (
