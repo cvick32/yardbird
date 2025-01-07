@@ -3,15 +3,13 @@ use crate::{
     let_extract::LetExtract,
     vmt::smtinterpol_utils::{
         assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
-        get_interpolant_command,
+        get_interpolant_command, SMT_INTERPOL_OPTIONS,
     },
 };
 
 use super::{
     action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms, variable::Variable,
 };
-
-static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
 
 #[derive(Default)]
 pub struct SMTProblem {

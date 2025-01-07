@@ -3,6 +3,8 @@ use num::range;
 
 use crate::{concrete::Term, vmt::canonicalize_boolean::CanonicalizeBooleanFunctions};
 
+pub static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
+
 static INTERPOLANT_NAMES: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z",
