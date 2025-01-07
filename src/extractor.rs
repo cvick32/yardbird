@@ -17,7 +17,7 @@ pub struct Extractor<'a, CF: CostFunction<L>, L: Language, N: Analysis<L>> {
     cost_function: CF,
     costs: HashMap<Id, (CF::Cost, L)>,
     egraph: &'a EGraph<L, N>,
-    term_map: HashMap<Id, egg::RecExpr<L>>,
+    term_map: HashMap<Id, Vec<egg::RecExpr<L>>>,
 }
 
 impl<'a, CF, L, N> Extractor<'a, CF, L, N>
@@ -39,13 +39,16 @@ where
         _property_terms: &'a [String],
     ) -> Self {
         let costs = HashMap::default();
-        let mut term_map = HashMap::new();
+        let mut term_map: HashMap<Id, Vec<egg::RecExpr<L>>> = HashMap::new();
         for string_term in transition_system_terms {
-            println!("{string_term}");
+            //println!("{string_term}");
             let term: egg::RecExpr<L> = string_term.parse().unwrap();
             match egraph.lookup_expr(&term) {
                 // TODO: might want to keep track of all terms that match this node
-                Some(expr) => term_map.insert(expr, term),
+                Some(expr) => term_map
+                    .entry(expr)
+                    .and_modify(|v: &mut _| v.push(term.clone()))
+                    .or_insert_with(|| vec![term]),
                 None => todo!(),
             };
         }
@@ -57,9 +60,12 @@ where
         //     };
         // }
 
-        term_map
-            .iter()
-            .for_each(|(id, term)| println!("{id} -> {}", term.pretty(80)));
+        term_map.iter().for_each(|(id, terms)| {
+            println!("{id}");
+            for t in terms {
+                println!(" -> {}", t.pretty(80))
+            }
+        });
 
         let mut extractor = Extractor {
             costs,
@@ -73,9 +79,16 @@ where
     }
 
     pub fn extract(&self, eclass: Id) -> RecExpr<L> {
-        let (_cost, root) = self.costs[&self.egraph.find(eclass)].clone();
+        if let Some(terms) = self.term_map.get(&self.egraph.find(eclass)) {
+            // TODO: do something smarter than just grabbing the first one
+            terms[0].clone()
+        } else {
+            self.find_best_node(eclass)
+                .join_recexprs(|id| self.find_best_term(id))
+        }
+        // let root = self.find_best_term(self.egraph.find(eclass));
 
-        root.join_recexprs(|id| self.find_best_term(id))
+        // root.join_recexprs(|id| self.find_best_term(id))
     }
 
     /// Find the cheapest (lowest cost) represented `RecExpr` in the
@@ -88,8 +101,9 @@ where
 
     /// Find the cheapest e-node in the given e-class.
     pub fn find_best_term(&self, eclass: Id) -> RecExpr<L> {
-        if let Some(term) = self.term_map.get(&eclass) {
-            term.clone()
+        if let Some(terms) = self.term_map.get(&eclass) {
+            // TODO: do something smarter than just grabbing the first one
+            terms[0].clone()
         } else {
             self.find_best_node(eclass)
                 .join_recexprs(|id| self.find_best_term(id))

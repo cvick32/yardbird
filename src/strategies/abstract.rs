@@ -10,8 +10,9 @@ use smt2parser::{
 use z3::Model;
 
 use crate::{
-    analysis::SaturationInequalities, array_axioms::ArrayLanguage, cost::BestVariableSubstitution,
-    egg_utils::Saturate, z3_var_context::Z3VarContext, ProofLoopResult,
+    analysis::SaturationInequalities, array_axioms::ArrayLanguage,
+    cost_functions::symbol_cost::BestSymbolSubstitution, egg_utils::Saturate,
+    z3_var_context::Z3VarContext, ProofLoopResult,
 };
 
 use super::{ProofAction, ProofStrategy};
@@ -120,7 +121,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
         state.update_with_subterms(&model, z3_var_context)?;
         state.egraph.rebuild();
-        let cost_fn = BestVariableSubstitution {
+        let cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
             transition_system_terms: state.smt.get_transition_system_subterms(),
             property_terms: state.smt.get_property_subterms(),
