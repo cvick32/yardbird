@@ -4,7 +4,7 @@ use crate::concrete::{Command, Identifier, QualIdentifier, Symbol, Term};
 
 use super::{action::Action, axiom::Axiom, variable::Variable};
 
-static BOOLEAN_CONNECTIVES: [&str; 3] = ["and", "or", "=>"];
+static BOOLEAN_CONNECTIVES: [&str; 4] = ["and", "or", "=>", "="];
 
 pub fn simple_identifier_with_name(name: &str) -> QualIdentifier {
     crate::concrete::QualIdentifier::Simple {
