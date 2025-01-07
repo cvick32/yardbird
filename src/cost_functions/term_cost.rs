@@ -34,7 +34,7 @@ impl egg::CostFunction<ArrayLanguage> for BestTermSubstitution {
                 }
             }
             ArrayLanguage::ConstArr(_) => 0,
-            ArrayLanguage::Write(write) => {
+            ArrayLanguage::Write(_) => {
                 println!("{enode:?}");
                 4
             }

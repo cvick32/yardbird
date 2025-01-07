@@ -79,7 +79,7 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for Abstract {
             transition_system_terms: state.smt.get_transition_system_subterms(),
             property_terms: state.smt.get_property_subterms(),
         };
-        let (inst, const_inst) = state.egraph.saturate(cost_fn);
+        let (inst, const_inst) = state.egraph.saturate_symbol(cost_fn);
         state.instantiations.extend_from_slice(&inst);
         state.const_instantiations.extend_from_slice(&const_inst);
         Ok(ProofAction::Continue)

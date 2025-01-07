@@ -28,7 +28,7 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
             // rewrites that use `Write`. When we change it to 10, we automatically
             // rule out these very specific chains of Writes and are able to
             // generate a single instance that generalizes immediately.
-            ArrayLanguage::Write(write) => Some(1),
+            ArrayLanguage::Write(_) => Some(1),
             ArrayLanguage::Read(_) => Some(1),
             _ => None,
         };
