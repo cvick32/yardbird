@@ -43,7 +43,7 @@ pub fn run_yardbird(macro_args: &ToVMTArgs, vmt: VMTModel) {
         move || {
             let ctx = z3::Context::new(&z3::Config::new());
             let mut driver = Driver::new(&ctx, vmt);
-            driver.check_strategy(standard_options.depth, Box::new(Abstract::default()))
+            driver.check_strategy(standard_options.depth, Box::new(Abstract::new(10)))
         },
         macro_args.get_timeout(),
     ));

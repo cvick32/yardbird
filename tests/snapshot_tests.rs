@@ -51,7 +51,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
         move || {
             let ctx = z3::Context::new(&z3::Config::new());
             let mut driver = Driver::new(&ctx, vmt_model);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::default());
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(10));
             let res = driver.check_strategy(options.depth, strat).unwrap();
             res.used_instances
         },

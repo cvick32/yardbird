@@ -11,7 +11,7 @@ use super::{
     action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms, variable::Variable,
 };
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct SMTProblem {
     sorts: Vec<Command>,
     variable_definitions: Vec<Command>,

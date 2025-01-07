@@ -14,6 +14,7 @@ use variable::Variable;
 
 use crate::{
     concrete::{self, Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term},
+    constant_abstraction::ConstantAbstractor,
     get_term_from_assert_command_string, CommandStream,
 };
 
@@ -160,6 +161,41 @@ impl VMTModel {
         let mut array_definitions = abstractor.get_array_type_definitions();
         array_definitions.extend(abstracted_commands);
         VMTModel::checked_from(array_definitions).unwrap()
+    }
+
+    pub fn abstract_constants_over(mut self, depth: u8) -> Self {
+        let mut constant_abstactor = ConstantAbstractor::new(depth);
+        self.initial_condition = self
+            .initial_condition
+            .accept(&mut constant_abstactor)
+            .unwrap();
+        self.transition_condition = self
+            .transition_condition
+            .accept(&mut constant_abstactor)
+            .unwrap();
+        self.property_condition = self
+            .property_condition
+            .accept(&mut constant_abstactor)
+            .unwrap();
+
+        self.state_variables
+            .append(&mut constant_abstactor.variables());
+        self.transition_condition =
+            constant_abstactor.transition_properties(self.transition_condition);
+        self.property_condition = constant_abstactor.invariant_properties(self.property_condition);
+        // println!(
+        //     "decl:\n  {}",
+        //     self.state_variables
+        //         .iter()
+        //         .map(|x| format!("{} -> {} [{}]", x.current, x.next, x.relationship))
+        //         .collect::<Vec<_>>()
+        //         .join("  \n")
+        // );
+        // println!("init: {}", self.initial_condition);
+        // println!("tran: {}", self.transition_condition);
+        // println!("prop: {}", self.property_condition);
+
+        self
     }
 
     pub fn unroll(&self, length: u8) -> SMTProblem {

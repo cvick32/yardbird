@@ -131,7 +131,7 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
             move || {
                 let ctx = z3::Context::new(&z3::Config::new());
                 let mut driver = Driver::new(&ctx, abstract_vmt_model);
-                driver.check_strategy(proof_options.depth, Box::new(Abstract::default()))
+                driver.check_strategy(proof_options.depth, Box::new(Abstract::new(options.depth)))
             },
             Duration::from_secs(10 + (timed_out_count * 5)),
         ));

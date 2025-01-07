@@ -21,8 +21,17 @@ use super::{ProofAction, ProofStrategy};
 pub struct Abstract {
     used_instantiations: Vec<String>,
     const_instantiations: Vec<String>,
+    bmc_depth: u8,
 }
+
 impl Abstract {
+    pub fn new(bmc_depth: u8) -> Self {
+        Self {
+            bmc_depth,
+            ..Default::default()
+        }
+    }
+
     fn _check_found_instantiations(
         &self,
         z3_var_context: &Z3VarContext,
@@ -85,7 +94,9 @@ pub struct AbstractRefinementState {
 
 impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        model.abstract_array_theory()
+        model
+            .abstract_array_theory()
+            .abstract_constants_over(self.bmc_depth)
     }
 
     fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {

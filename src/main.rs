@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
 
     // build the strategy
     let strat: Box<dyn ProofStrategy<_>> = match options.strategy {
-        yardbird::Strategy::Abstract => Box::new(Abstract::default()),
+        yardbird::Strategy::Abstract => Box::new(Abstract::new(options.depth)),
         yardbird::Strategy::Concrete => Box::new(ConcreteZ3::default()),
     };
 
