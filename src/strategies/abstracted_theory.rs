@@ -5,8 +5,9 @@ use log::{debug, info};
 use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
 use crate::{
-    analysis::SaturationInequalities, array_axioms::ArrayLanguage, cost::BestVariableSubstitution,
-    egg_utils::Saturate, z3_ext::ModelExt, z3_var_context::Z3VarContext, ProofLoopResult,
+    analysis::SaturationInequalities, array_axioms::ArrayLanguage,
+    cost_functions::symbol_cost::BestSymbolSubstitution, egg_utils::Saturate, z3_ext::ModelExt,
+    z3_var_context::Z3VarContext, ProofLoopResult,
 };
 
 use super::{ProofAction, ProofStrategy};
@@ -73,7 +74,7 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for Abstract {
         state.update_from_model(&model)?;
         state.update_with_non_array_function_terms(&model)?;
         state.egraph.rebuild();
-        let cost_fn = BestVariableSubstitution {
+        let cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
             transition_system_terms: state.smt.get_transition_system_subterms(),
             property_terms: state.smt.get_property_subterms(),

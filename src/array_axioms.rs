@@ -3,7 +3,8 @@ use std::rc::Rc;
 use egg::*;
 
 use crate::{
-    conflict_scheduler::ConflictScheduler, cost::BestVariableSubstitution, egg_utils::Saturate,
+    conflict_scheduler::ConflictScheduler, cost_functions::symbol_cost::BestSymbolSubstitution,
+    egg_utils::Saturate,
 };
 
 define_language! {
@@ -34,7 +35,7 @@ where
     N: Analysis<ArrayLanguage> + Default + 'static,
 {
     type Ret = (Vec<String>, Vec<String>);
-    fn saturate(&mut self, cost_fn: BestVariableSubstitution) -> (Vec<String>, Vec<String>) {
+    fn saturate(&mut self, cost_fn: B) -> (Vec<String>, Vec<String>) {
         let egraph = std::mem::take(self);
         let scheduler = ConflictScheduler::new(BackoffScheduler::default(), cost_fn);
         let instantiations = scheduler.instantiations();

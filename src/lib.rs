@@ -7,7 +7,7 @@ use smt2parser::vmt::VMTModel;
 pub mod analysis;
 pub mod array_axioms;
 pub mod conflict_scheduler;
-mod cost;
+mod cost_functions;
 mod driver;
 mod egg_utils;
 mod interpolant;

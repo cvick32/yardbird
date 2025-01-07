@@ -3,16 +3,14 @@ use smt2parser::vmt::VARIABLE_FRAME_DELIMITER;
 
 use crate::array_axioms::ArrayLanguage;
 
-/// Cost function describing how to extract terms from an eclass while we are
-/// instantiating a rule violation with concrete terms.
 #[derive(Clone)]
-pub struct BestVariableSubstitution {
+pub struct BestTermSubstitution {
     pub current_bmc_depth: u32,
     pub transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
 }
 
-impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
+impl egg::CostFunction<ArrayLanguage> for BestTermSubstitution {
     type Cost = u32;
 
     fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
@@ -36,13 +34,10 @@ impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
                 }
             }
             ArrayLanguage::ConstArr(_) => 0,
-            // NOTE: try changing the value of Write from 0 to 10 for
-            // `array_init_var.vmt`. Notice that when we allow Write terms
-            // to be used in axiom instantiations we end up with a chain of
-            // rewrites that use `Write`. When we change it to 10, we automatically
-            // rule out these very specific chains of Writes and are able to
-            // generate a single instance that generalizes immediately.
-            ArrayLanguage::Write(_) => 1,
+            ArrayLanguage::Write(write) => {
+                println!("{enode:?}");
+                4
+            }
             ArrayLanguage::Read(_) => 1,
             ArrayLanguage::And(_) => 1,
             ArrayLanguage::Not(_) => 1,
