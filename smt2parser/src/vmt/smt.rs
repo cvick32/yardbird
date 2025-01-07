@@ -8,8 +8,7 @@ use crate::{
 };
 
 use super::{
-    action::Action, array_program_subterms::ArrayProgramSubterms, bmc::BMCBuilder,
-    variable::Variable,
+    action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms, variable::Variable,
 };
 
 static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
@@ -145,7 +144,7 @@ impl SMTProblem {
     }
 
     pub fn get_property_subterms(&self) -> Vec<String> {
-        let mut subterms = ArrayProgramSubterms::default();
+        let mut subterms = NonBooleanSubterms::default();
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
         subterms
@@ -156,7 +155,7 @@ impl SMTProblem {
     }
 
     pub fn get_transition_system_subterms(&self) -> Vec<String> {
-        let mut subterms = ArrayProgramSubterms::default();
+        let mut subterms = NonBooleanSubterms::default();
         for trans_assert in &self.init_and_trans_assertions {
             let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
         }
@@ -168,7 +167,7 @@ impl SMTProblem {
     }
 
     pub fn get_all_subterms(&self) -> Vec<Term> {
-        let mut subterms = ArrayProgramSubterms::default();
+        let mut subterms = NonBooleanSubterms::default();
         for trans_assert in &self.init_and_trans_assertions {
             let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
         }

@@ -23,12 +23,12 @@ static INITIAL_ATTRIBUTE: &str = "init";
 
 mod action;
 mod array_abstractor;
-mod array_program_subterms;
 mod axiom;
 mod bmc;
 pub mod canonicalize_boolean;
 mod frame_num_getter;
 mod instantiator;
+mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 pub mod smt;
 mod smtinterpol_utils;
