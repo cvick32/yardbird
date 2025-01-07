@@ -25,6 +25,34 @@ export interface Success {
   const_instances: string[];
 }
 
+export function isSuccess(result: BenchmarkResult) {
+  if ("Success" in result) {
+    return result.Success.used_instances.length !== 0;
+  } else {
+    return false;
+  }
+}
+
+export function isTrivial(result: BenchmarkResult) {
+  if ("Success" in result) {
+    return result.Success.used_instances.length === 0;
+  } else {
+    return false;
+  }
+}
+
+export function isTimeout(result: BenchmarkResult) {
+  return "Timeout" in result;
+}
+
+export function isError(result: BenchmarkResult) {
+  return "Error" in result;
+}
+
+export function isPanic(result: BenchmarkResult) {
+  return "Panic" in result;
+}
+
 export function useArtifacts() {
   const auth = useAuth();
   const octokit = new Octokit({

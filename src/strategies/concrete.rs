@@ -4,39 +4,31 @@ use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
 use crate::{z3_ext::ModelExt, z3_var_context::Z3VarContext, ProofLoopResult};
 
-use super::{abstracted_theory::AbstractRefinementState, ProofAction, ProofStrategy};
+use super::{r#abstract::AbstractRefinementState, ProofAction, ProofStrategy};
 
 #[derive(Default)]
 pub struct ConcreteZ3 {
     model: Option<VMTModel>,
 }
 
-impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for ConcreteZ3 {
+impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     fn n_refines(&mut self) -> u32 {
         1
     }
 
-    fn setup(
-        &mut self,
-        context: &'ctx z3::Context,
-        smt: SMTProblem,
-        depth: u8,
-    ) -> anyhow::Result<AbstractRefinementState<'ctx>> {
-        // TODO: would be nice to not have to do this here
-        let z3_var_context = Z3VarContext::from(context, &smt);
+    fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {
         Ok(AbstractRefinementState {
             smt,
             depth,
             egraph: egg::EGraph::default(),
             instantiations: vec![],
             const_instantiations: vec![],
-            z3_var_context,
         })
     }
 
     fn unsat(
         &mut self,
-        state: &mut AbstractRefinementState<'ctx>,
+        state: &mut AbstractRefinementState,
         _solver: &z3::Solver,
     ) -> anyhow::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
@@ -45,8 +37,9 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for ConcreteZ3 {
 
     fn sat(
         &mut self,
-        state: &mut AbstractRefinementState<'ctx>,
+        state: &mut AbstractRefinementState,
         solver: &z3::Solver,
+        _z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
@@ -57,15 +50,15 @@ impl<'ctx> ProofStrategy<'ctx, AbstractRefinementState<'ctx>> for ConcreteZ3 {
     fn finish(
         &mut self,
         model: &mut VMTModel,
-        _state: AbstractRefinementState<'ctx>,
+        _state: AbstractRefinementState,
     ) -> anyhow::Result<()> {
         self.model = Some(model.clone());
         Ok(())
     }
 
-    fn result(&mut self) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
         ProofLoopResult {
-            model: None,
+            model: Some(vmt_model),
             used_instances: vec![],
             const_instances: vec![],
             counterexample: true,

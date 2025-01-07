@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
-use crate::ProofLoopResult;
+use crate::{z3_var_context::Z3VarContext, ProofLoopResult};
 
 pub enum ProofAction {
     Continue,
@@ -24,16 +24,16 @@ pub trait ProofStrategy<'ctx, S> {
         10
     }
 
-    fn setup(
-        &mut self,
-        context: &'ctx z3::Context,
-        smt: SMTProblem,
-        depth: u8,
-    ) -> anyhow::Result<S>;
+    fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<S>;
 
     fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction>;
 
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction>;
+    fn sat(
+        &mut self,
+        state: &mut S,
+        solver: &z3::Solver,
+        z3_var_context: &Z3VarContext,
+    ) -> anyhow::Result<ProofAction>;
 
     #[allow(unused_variables)]
     fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
@@ -50,7 +50,7 @@ pub trait ProofStrategy<'ctx, S> {
         Ok(())
     }
 
-    fn result(&mut self) -> ProofLoopResult;
+    fn result(&mut self, model: VMTModel) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond
@@ -59,7 +59,12 @@ pub trait ProofStrategy<'ctx, S> {
 /// to a proof strategy.
 pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unsat(
+        &mut self,
+        state: &mut S,
+        solver: &z3::Solver,
+        z3_var_context: &Z3VarContext,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 

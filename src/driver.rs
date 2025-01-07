@@ -1,7 +1,10 @@
 use log::info;
 use smt2parser::vmt::VMTModel;
 
-use crate::strategies::{ProofAction, ProofStrategy, ProofStrategyExt};
+use crate::{
+    strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
+    z3_var_context::Z3VarContext,
+};
 
 #[derive(Debug)]
 pub struct ProofLoopResult {
@@ -59,14 +62,16 @@ impl<'ctx, S> Driver<'ctx, S> {
 
                 let smt = self.vmt_model.unroll(depth);
                 let solver = z3::Solver::new(self.context);
+                let z3_var_context = Z3VarContext::from(self.context, &smt);
                 solver.from_string(smt.to_bmc());
 
-                let mut state = strat.setup(self.context, smt, depth)?;
+                let mut state = strat.setup(smt, depth)?;
 
                 let sat_result = solver.check();
                 let action = match sat_result {
                     z3::SatResult::Unsat => {
-                        self.extensions.unsat(&mut state, &solver)?;
+                        self.extensions
+                            .unsat(&mut state, &solver, &z3_var_context)?;
                         strat.unsat(&mut state, &solver)?
                     }
                     z3::SatResult::Unknown => {
@@ -75,7 +80,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                     }
                     z3::SatResult::Sat => {
                         self.extensions.sat(&mut state, &solver)?;
-                        strat.sat(&mut state, &solver)?
+                        strat.sat(&mut state, &solver, &z3_var_context)?
                     }
                 };
 
@@ -90,7 +95,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             }
         }
 
-        Ok(strat.result())
+        Ok(strat.result(self.vmt_model.clone()))
     }
 }
 
@@ -118,9 +123,14 @@ impl<'ctx, S> DriverExtensions<'ctx, S> {
 }
 
 impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unsat(
+        &mut self,
+        state: &mut S,
+        solver: &z3::Solver,
+        z3_var_context: &Z3VarContext,
+    ) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
-            ext.unsat(state, solver)?;
+            ext.unsat(state, solver, z3_var_context)?;
         }
 
         Ok(())

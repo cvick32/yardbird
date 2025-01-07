@@ -3,16 +3,13 @@ use crate::{
     let_extract::LetExtract,
     vmt::smtinterpol_utils::{
         assert_negation, assert_negation_interpolant, assert_term, assert_term_interpolant,
-        get_interpolant_command,
+        get_interpolant_command, SMT_INTERPOL_OPTIONS,
     },
 };
 
 use super::{
-    action::Action, array_program_subterms::ArrayProgramSubterms, bmc::BMCBuilder,
-    term_extractor::TermExtractor, variable::Variable,
+    action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms, variable::Variable,
 };
-
-static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
 
 #[derive(Default)]
 pub struct SMTProblem {
@@ -47,7 +44,12 @@ impl SMTProblem {
     }
 
     pub fn add_assertion(&mut self, condition: &Term, mut builder: BMCBuilder) {
-        let rewritten_condition = match condition {
+        let mut let_extract = LetExtract::default();
+        let no_let_condition = condition
+            .clone()
+            .accept_term_visitor(&mut let_extract)
+            .unwrap();
+        let rewritten_condition = match no_let_condition {
             Term::Attributes {
                 term,
                 attributes: _,
@@ -62,7 +64,12 @@ impl SMTProblem {
 
     /// Need to assert the negation of the property given in the VMTModel for BMC.
     pub fn add_property_assertion(&mut self, condition: &Term, mut builder: BMCBuilder) {
-        let rewritten_property = match condition {
+        let mut let_extract = LetExtract::default();
+        let no_let_condition = condition
+            .clone()
+            .accept_term_visitor(&mut let_extract)
+            .unwrap();
+        let rewritten_property = match no_let_condition {
             Term::Attributes {
                 term,
                 attributes: _,
@@ -91,52 +98,12 @@ impl SMTProblem {
         }
     }
 
-    pub fn get_assert_terms(&self) -> Vec<String> {
-        let mut let_extract = LetExtract::default();
-        let mut assert_terms = self
-            .init_and_trans_assertions
-            .iter()
-            .map(|term| {
-                term.clone()
-                    .accept_term_visitor(&mut let_extract)
-                    .unwrap()
-                    .to_string()
-            })
-            .collect::<Vec<String>>();
+    pub fn get_assert_terms(&self) -> Vec<Term> {
+        let mut assert_terms = self.init_and_trans_assertions.clone();
         if self.property_assertion.is_some() {
-            let extracted = self
-                .property_assertion
-                .clone()
-                .unwrap()
-                .accept_term_visitor(&mut let_extract)
-                .unwrap();
-            assert_terms.push(extracted.to_string());
+            assert_terms.push(self.property_assertion.clone().unwrap())
         }
         assert_terms
-    }
-
-    pub fn get_eq_terms(&self) -> Vec<Term> {
-        let mut let_extract = LetExtract::default();
-        let mut assert_terms = self
-            .init_and_trans_assertions
-            .iter()
-            .map(|term| term.clone().accept_term_visitor(&mut let_extract).unwrap())
-            .collect::<Vec<_>>();
-        if self.property_assertion.is_some() {
-            let extracted = self
-                .property_assertion
-                .clone()
-                .unwrap()
-                .accept_term_visitor(&mut let_extract)
-                .unwrap();
-            assert_terms.push(extracted);
-        }
-        let mut term_extractor = TermExtractor::default();
-        let _ = assert_terms
-            .iter()
-            .map(|x| x.clone().accept(&mut term_extractor))
-            .collect::<Vec<_>>();
-        term_extractor.terms
     }
 
     pub fn to_bmc(&self) -> String {
@@ -175,7 +142,7 @@ impl SMTProblem {
     }
 
     pub fn get_property_subterms(&self) -> Vec<String> {
-        let mut subterms = ArrayProgramSubterms::default();
+        let mut subterms = NonBooleanSubterms::default();
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
         subterms
@@ -186,7 +153,7 @@ impl SMTProblem {
     }
 
     pub fn get_transition_system_subterms(&self) -> Vec<String> {
-        let mut subterms = ArrayProgramSubterms::default();
+        let mut subterms = NonBooleanSubterms::default();
         for trans_assert in &self.init_and_trans_assertions {
             let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
         }
@@ -195,6 +162,16 @@ impl SMTProblem {
             .iter()
             .map(|term| term.to_string())
             .collect::<Vec<_>>()
+    }
+
+    pub fn get_all_subterms(&self) -> Vec<Term> {
+        let mut subterms = NonBooleanSubterms::default();
+        for trans_assert in &self.init_and_trans_assertions {
+            let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
+        }
+        let prop = self.property_assertion.clone().unwrap();
+        let _ = prop.accept_term_visitor(&mut subterms);
+        subterms.subterms.into_iter().collect::<Vec<_>>()
     }
 
     pub fn to_smtinterpol(&self) -> String {

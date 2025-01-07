@@ -5,11 +5,11 @@ use crate::strategies::{AbstractRefinementState, ProofStrategyExt};
 
 pub struct Repl;
 
-impl ProofStrategyExt<AbstractRefinementState<'_>> for Repl {
+impl ProofStrategyExt<AbstractRefinementState> for Repl {
     fn finish(
         &mut self,
         _model: &mut VMTModel,
-        state: &mut AbstractRefinementState<'_>,
+        state: &mut AbstractRefinementState,
     ) -> anyhow::Result<()> {
         if state.instantiations.is_empty() {
             return Ok(());

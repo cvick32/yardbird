@@ -4,9 +4,9 @@ import {
   useArtifact,
   useArtifacts,
   useCommitMessage,
-  useInProgressWorkflows,
+  // useInProgressWorkflows,
 } from "../fetch";
-import { Fragment, PropsWithChildren, ReactElement, useMemo } from "react";
+import { PropsWithChildren, Children } from "react";
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
@@ -19,145 +19,109 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const artifacts = useArtifacts();
-  const inProgress = useInProgressWorkflows();
-
-  const table: [string[], (props: { art: any }) => ReactElement][] = useMemo(
-    () => [
-      [["Date", "Time"], DateCol],
-      [
-        ["Success", "Trivial", "Timeout", "Error", "Panic", "Total"],
-        ({ art }) => <Stats key={`stats-${art.id}`} id={art.id as string} />,
-      ],
-      [
-        ["Results"],
-        ({ art }) => (
-          <Col key={`results-${art.id}`}>
-            <Link
-              to="/artifacts/$art"
-              params={{
-                art: art.id,
-              }}
-              search={{ compare: "", filter: "" }}
-              className="text-blue-500 hover:text-blue-600 hover:underline"
-            >
-              Results
-            </Link>
-          </Col>
-        ),
-      ],
-      [
-        ["Branch"],
-        ({ art }) => (
-          <Col key={`branch-${art.id}`}>{art.workflow_run.head_branch}</Col>
-        ),
-      ],
-      [
-        ["Commit"],
-        ({ art }) => (
-          <Col key={`commit-${art.id}`}>
-            <CommitRef sha={art.workflow_run.head_sha} />
-          </Col>
-        ),
-      ],
-      [
-        ["Message"],
-        ({ art }) => {
-          return (
-            <Col key={`message-${art.id}`}>
-              <CommitMessage sha={art.workflow_run.head_sha} />
-            </Col>
-          );
-        },
-      ],
-    ],
-    [],
-  );
+  // const inProgress = useInProgressWorkflows();
 
   if (!artifacts.data) {
     return <div>Loading...</div>;
   }
 
   return (
-    <table className="max-w-60">
-      <thead>
-        <tr>
-          {table
-            .map(([h, _]) => h)
-            .flat()
-            .map((h) => (
-              <Col key={h} className="font-bold">
-                {h}
-              </Col>
-            ))}
-        </tr>
-      </thead>
-      <tbody>
-        {!!inProgress.data && (
-          <tr className="hover:bg-gray-200" key={"in-progress-workflow"}>
-            {inProgress.data.map((workflow: any, idx: number) => (
-              <Fragment key={`workflow-${idx}`}>
-                <DateCol art={workflow} />
-                <Col />
-                <Col />
-                <Col />
-                <Col />
-                <Col />
-                <Col />
-                <Col>
-                  <a
-                    href={workflow.html_url}
-                    className="text-blue-500 hover:text-blue-600 hover:underline"
-                  >
-                    {workflow.status}
-                  </a>
-                </Col>
-                <Col>{workflow.head_branch}</Col>
-                <Col>
-                  <CommitRef sha={workflow.head_sha} />
-                </Col>
-                <Col>
-                  <div className="w-80 truncate">{workflow.display_title}</div>
-                </Col>
-              </Fragment>
-            ))}
-          </tr>
-        )}
-        {artifacts.data.data.artifacts.map((art: any, idx: number) => (
-          <tr className="hover:bg-gray-200" key={idx}>
-            {table.map(([_, elem]) => elem({ art }))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div>
+      <div className="sticky top-[45px] my-1 flex flex-row flex-wrap gap-x-2 bg-slate-200 p-1">
+        <div
+          className={[
+            "flex w-full flex-grow flex-row gap-2 text-sm",
+            "md:w-fit md:grow-0 md:gap-0 md:text-base",
+          ].join(" ")}
+        >
+          <span className="font-bold md:w-[90px]"></span>
+          <span className="font-bold md:w-[80px]"></span>
+        </div>
+        <FlexGrid className="w-[75px] font-bold">
+          <>Success</>
+          <>Trivial</>
+          <>Timeout</>
+          <>Error</>
+          <>Panic</>
+          <>Total</>
+          <></>
+        </FlexGrid>
+      </div>
+      {artifacts.data.data.artifacts.map((art: any, idx: number) => {
+        let date = new Date(Date.parse(art.created_at));
+        let dayString = date.toLocaleDateString("en-US");
+        let timeString = date.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return (
+          <div
+            className="my-1 flex flex-row flex-wrap gap-x-2 rounded-md border p-1 hover:bg-slate-200 md:flex-nowrap"
+            key={idx}
+          >
+            <div
+              className={[
+                "flex w-full flex-grow flex-row gap-2 text-sm",
+                "md:w-fit md:grow-0 md:gap-0 md:text-base",
+              ].join(" ")}
+            >
+              <span className="text-slate-500 md:w-[90px] md:text-black">
+                {dayString}
+              </span>
+              <span className="text-slate-500 md:w-[80px] md:text-black">
+                {timeString}
+              </span>
+            </div>
+            <Stats id={art.id} className="min-w-[75px]" />
+            <div className="flex flex-row gap-2 md:gap-0">
+              <div className="group hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+                <span className="group-hover:bg-slate-200">
+                  {art.workflow_run.head_branch}
+                </span>
+              </div>
+              <div className="w-[80px]">
+                <CommitRef sha={art.workflow_run.head_sha} />
+              </div>
+            </div>
+            <div className="w-full truncate md:w-fit">
+              <CommitMessage sha={art.workflow_run.head_sha} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
-function DateCol({ art }: { art: any }) {
-  let date = new Date(Date.parse(art.created_at));
-  let dayString = date.toLocaleDateString("en-US");
-  let timeString = date.toLocaleTimeString("en-US");
-
+function FlexGrid({
+  children,
+  className,
+}: PropsWithChildren<{ className?: string }>) {
   return (
-    <Fragment key={`day-time-${art.id}`}>
-      <Col className="whitespace-nowrap">{dayString}</Col>
-      <Col className="whitespace-nowrap">{timeString}</Col>
-    </Fragment>
+    <div className="ml-2 flex w-full flex-grow flex-row md:ml-0 md:w-fit md:grow-0">
+      {Children.map(children, (elem, idx) => (
+        <div key={idx} className={`truncate ${className ?? ""}`}>
+          {elem}
+        </div>
+      ))}
+    </div>
   );
 }
 
-function Stats({ id }: { id: string }) {
-  let stats = useArtifact(id, benchmarkSummary);
+function Stats({ id, className }: { id: string; className?: string }) {
+  let stats = useArtifact(`${id}`, benchmarkSummary);
 
   if (stats.data === undefined) {
     return (
-      <>
-        <Col key={`0-${id}`} />
-        <Col key={`1-${id}`} />
-        <Col key={`2-${id}`} />
-        <Col key={`3-${id}`} />
-        <Col key={`4-${id}`} />
-        <Col key={`5-${id}`} />
-      </>
+      <FlexGrid className={className}>
+        <div key={`0-${id}`}>-</div>
+        <div key={`1-${id}`}>-</div>
+        <div key={`2-${id}`}>-</div>
+        <div key={`3-${id}`}>-</div>
+        <div key={`4-${id}`}>-</div>
+        <div key={`5-${id}`}>-</div>
+        <div key={`6-${id}`}>Results</div>
+      </FlexGrid>
     );
   }
 
@@ -169,26 +133,34 @@ function Stats({ id }: { id: string }) {
     stats.data.panic;
 
   return (
-    <>
-      <Col key={`0-${id}`} className="text-green-600">
+    <FlexGrid className={className}>
+      <div key={`0-${id}`} className={`text-green-600`}>
         {stats.data.success}
-      </Col>
-      <Col key={`1-${id}`} className="text-teal-600">
+      </div>
+      <div key={`1-${id}`} className={`text-teal-600`}>
         {stats.data.trivialSuccess}
-      </Col>
-      <Col key={`2-${id}`} className="text-orange-600">
+      </div>
+      <div key={`2-${id}`} className={`text-orange-600`}>
         {stats.data.timeout}
-      </Col>
-      <Col key={`3-${id}`} className="text-red-600">
+      </div>
+      <div key={`3-${id}`} className={`text-red-600`}>
         {stats.data.error}
-      </Col>
-      <Col key={`4-${id}`} className="text-purple-600">
+      </div>
+      <div key={`4-${id}`} className={`text-purple-600`}>
         {stats.data.panic}
-      </Col>
-      <Col key={`5-${id}`} className="text-purple-600">
+      </div>
+      <div key={`5-${id}`} className={``}>
         {total}
-      </Col>
-    </>
+      </div>
+      <Link
+        to="/artifacts/$art"
+        params={{ art: id }}
+        search={{ compare: "", filter: "" }}
+        className="text-blue-500 hover:text-blue-600 hover:underline"
+      >
+        Results
+      </Link>
+    </FlexGrid>
   );
 }
 
@@ -199,7 +171,16 @@ export function CommitMessage({ sha }: { sha: string }) {
     return <div>...</div>;
   }
 
-  return <div className="w-80 truncate">{query.data.data.commit.message}</div>;
+  let message = query.data.data.commit.message;
+  if (message.includes("\n")) {
+    message = message.split("\n")[0];
+  }
+
+  return (
+    <div className="truncate">
+      {query.data.data.commit.message.split("\n")[0]}
+    </div>
+  );
 }
 
 export function CommitRef({ sha }: { sha: string }) {
@@ -209,14 +190,5 @@ export function CommitRef({ sha }: { sha: string }) {
       href={link}
       className="text-blue-500 hover:text-blue-600 hover:underline"
     >{`#${sha.slice(0, 7)}`}</a>
-  );
-}
-
-function Col({
-  children,
-  className,
-}: PropsWithChildren<{ className?: string }>) {
-  return (
-    <th className={`pr-2 text-left align-top ${className}`}>{children}</th>
   );
 }
