@@ -2,6 +2,7 @@ import {
   Link,
   Outlet,
   createRootRouteWithContext,
+  useLocation,
   useMatch,
 } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
@@ -37,8 +38,15 @@ function RootComponent() {
 }
 
 function LargeHeader() {
+  const location = useLocation();
+
   return (
-    <div className="sticky top-0 z-20 h-[75px] border-b border-slate-300 bg-slate-100 p-2 px-4">
+    <div
+      className={[
+        `sticky top-0 z-20 border-b border-slate-300 bg-slate-100 p-2 px-4`,
+        location.pathname !== "/" ? "h-[75px]" : "h-[45px]",
+      ].join(" ")}
+    >
       <div className="mb-2 flex flex-wrap flex-nowrap items-center gap-4">
         <div className="flex flex-row items-center gap-2">
           <Link
