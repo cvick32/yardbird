@@ -50,7 +50,7 @@ pub trait ProofStrategy<'ctx, S> {
         Ok(())
     }
 
-    fn result(&mut self) -> ProofLoopResult;
+    fn result(&mut self, model: VMTModel) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond

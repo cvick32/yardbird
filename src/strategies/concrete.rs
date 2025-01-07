@@ -56,9 +56,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         Ok(())
     }
 
-    fn result(&mut self) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
         ProofLoopResult {
-            model: None,
+            model: Some(vmt_model),
             used_instances: vec![],
             const_instances: vec![],
             counterexample: true,

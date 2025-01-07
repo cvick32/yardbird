@@ -154,9 +154,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         }
     }
 
-    fn result(&mut self) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
         ProofLoopResult {
-            model: None,
+            model: Some(vmt_model),
             used_instances: mem::take(&mut self.used_instantiations),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,

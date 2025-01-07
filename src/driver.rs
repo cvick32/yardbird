@@ -95,7 +95,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             }
         }
 
-        Ok(strat.result())
+        Ok(strat.result(self.vmt_model.clone()))
     }
 }
 
