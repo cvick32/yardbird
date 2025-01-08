@@ -42,16 +42,10 @@ function RouteComponent() {
       <table className="relative">
         <thead>
           <tr className="divide-x divide-slate-400">
-            <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
-              Benchmark
-            </th>
-            <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
-              Status
-            </th>
+            <th className={`bg-slate-300 font-bold`}>Benchmark</th>
+            <th className={`z-[1000] bg-slate-300 font-bold`}>Status</th>
             {compare !== "" && !!compareAgainst && (
-              <th className="sticky top-[75px] z-10 bg-slate-300 font-bold">
-                Compare
-              </th>
+              <th className={`z-[1000] bg-slate-300 font-bold`}>Compare</th>
             )}
           </tr>
         </thead>

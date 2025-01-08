@@ -29,7 +29,9 @@ function RootComponent() {
 
   return (
     <>
-      {isLargeScreen ? <LargeHeader /> : <SmallHeader />}
+      <div className="sticky top-0 z-[110] border-b border-slate-300 bg-slate-100 px-4">
+        {isLargeScreen ? <LargeHeader /> : <SmallHeader />}
+      </div>
       <div className="m-2">
         <Outlet />
       </div>
@@ -39,15 +41,11 @@ function RootComponent() {
 
 function LargeHeader() {
   const location = useLocation();
+  const isArtifactPage = location.pathname.includes("artifacts");
 
   return (
-    <div
-      className={[
-        `sticky top-0 z-20 border-b border-slate-300 bg-slate-100 p-2 px-4`,
-        location.pathname !== "/" ? "h-[75px]" : "h-[45px]",
-      ].join(" ")}
-    >
-      <div className="mb-2 flex flex-wrap flex-nowrap items-center gap-4">
+    <>
+      <div className="flex flex-wrap flex-nowrap items-center gap-4 p-2">
         <div className="flex flex-row items-center gap-2">
           <Link
             to="/"
@@ -56,8 +54,12 @@ function LargeHeader() {
             <FaCrow />
             Artifacts
           </Link>
-          <CompareSelect />
-          <FilterSelect />
+          {isArtifactPage && (
+            <>
+              <CompareSelect />
+              <FilterSelect />
+            </>
+          )}
         </div>
         <div className="grow"></div>
         <div>
@@ -79,17 +81,21 @@ function LargeHeader() {
           </Link>
         </div>
       </div>
-      <div className="grow">
-        <CompareCommits />
-      </div>
-    </div>
+      {isArtifactPage && (
+        <div className="mb-2 grow">
+          <CompareCommits />
+        </div>
+      )}
+    </>
   );
 }
 
 function SmallHeader() {
+  const location = useLocation();
+
   return (
-    <div className="sticky top-0 z-20 border-b border-slate-300 bg-slate-100 p-2 px-4">
-      <div className="mb-2 flex flex-wrap flex-nowrap items-center gap-4">
+    <>
+      <div className="flex flex-wrap flex-nowrap items-center gap-4 p-2">
         <div className="flex flex-row items-center gap-2">
           <Link
             to="/"
@@ -119,11 +125,13 @@ function SmallHeader() {
           </Link>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <CompareSelect />
-        <FilterSelect />
-      </div>
-    </div>
+      {location.pathname.includes("artifacts") && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          <CompareSelect />
+          <FilterSelect />
+        </div>
+      )}
+    </>
   );
 }
 

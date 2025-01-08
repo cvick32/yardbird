@@ -4,9 +4,10 @@ import {
   useArtifact,
   useArtifacts,
   useCommitMessage,
-  // useInProgressWorkflows,
+  useInProgressWorkflows,
 } from "../fetch";
 import { PropsWithChildren, Children } from "react";
+import { GoGitBranch } from "react-icons/go";
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const artifacts = useArtifacts();
-  // const inProgress = useInProgressWorkflows();
+  const inProgress = useInProgressWorkflows();
 
   if (!artifacts.data) {
     return <div>Loading...</div>;
@@ -27,7 +28,7 @@ function Index() {
 
   return (
     <div>
-      <div className="sticky top-[45px] my-1 flex flex-row flex-wrap gap-x-2 bg-slate-200 p-1">
+      <div className="sticky top-[45px] z-[100] my-1 flex flex-row flex-wrap gap-x-2 bg-slate-200 p-1">
         <div
           className={[
             "flex w-full flex-grow flex-row gap-2 text-sm",
@@ -47,6 +48,63 @@ function Index() {
           <></>
         </FlexGrid>
       </div>
+      {!!inProgress.data &&
+        inProgress.data.map((workflow: any, idx: number) => {
+          let date = new Date(Date.parse(workflow.created_at));
+          let dayString = date.toLocaleDateString("en-US");
+          let timeString = date.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          return (
+            <div
+              className="my-1 flex flex-row flex-wrap gap-x-2 rounded-md border p-1 hover:bg-slate-200 md:flex-nowrap"
+              key={idx}
+            >
+              <div
+                className={[
+                  "flex w-full flex-grow flex-row gap-2 text-sm",
+                  "md:w-fit md:grow-0 md:gap-0 md:text-base",
+                ].join(" ")}
+              >
+                <span className="text-slate-500 md:w-[90px] md:text-black">
+                  {dayString}
+                </span>
+                <span className="text-slate-500 md:w-[80px] md:text-black">
+                  {timeString}
+                </span>
+              </div>
+              <FlexGrid className="w-[75px]">
+                <div key={`0-${idx}`}>-</div>
+                <div key={`1-${idx}`}>-</div>
+                <div key={`2-${idx}`}>-</div>
+                <div key={`3-${idx}`}>-</div>
+                <div key={`4-${idx}`}>-</div>
+                <div key={`5-${idx}`}>-</div>
+              </FlexGrid>
+              <a
+                href={workflow.html_url}
+                className="text-blue-500 hover:text-blue-600 hover:underline"
+              >
+                {workflow.status}
+              </a>
+              <div className="flex flex-row gap-2 md:gap-0">
+                <div className="group flex flex-row items-center gap-1 hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+                  <GoGitBranch size="14" className="shrink-0" />
+                  <span className="group-hover:bg-slate-200">
+                    {workflow.head_branch}
+                  </span>
+                </div>
+                <div className="flex flex-row items-center">
+                  <CommitRef sha={workflow.head_sha} />
+                </div>
+              </div>
+              <div className="w-full truncate md:w-fit">
+                <CommitMessage sha={workflow.display_title} />
+              </div>
+            </div>
+          );
+        })}
       {artifacts.data.data.artifacts.map((art: any, idx: number) => {
         let date = new Date(Date.parse(art.created_at));
         let dayString = date.toLocaleDateString("en-US");
@@ -72,14 +130,23 @@ function Index() {
                 {timeString}
               </span>
             </div>
-            <Stats id={art.id} className="min-w-[75px]" />
+            <Stats id={art.id} className="w-[75px]" />
+            <Link
+              to="/artifacts/$art"
+              params={{ art: art.id }}
+              search={{ compare: "", filter: "" }}
+              className="text-blue-500 hover:text-blue-600 hover:underline"
+            >
+              Results
+            </Link>
             <div className="flex flex-row gap-2 md:gap-0">
-              <div className="group hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+              <div className="group flex flex-row items-center gap-1 hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+                <GoGitBranch size="14" className="shrink-0" />
                 <span className="group-hover:bg-slate-200">
                   {art.workflow_run.head_branch}
                 </span>
               </div>
-              <div className="w-[80px]">
+              <div className="flex flex-row items-center">
                 <CommitRef sha={art.workflow_run.head_sha} />
               </div>
             </div>
@@ -120,7 +187,6 @@ function Stats({ id, className }: { id: string; className?: string }) {
         <div key={`3-${id}`}>-</div>
         <div key={`4-${id}`}>-</div>
         <div key={`5-${id}`}>-</div>
-        <div key={`6-${id}`}>Results</div>
       </FlexGrid>
     );
   }
@@ -134,32 +200,24 @@ function Stats({ id, className }: { id: string; className?: string }) {
 
   return (
     <FlexGrid className={className}>
-      <div key={`0-${id}`} className={`text-green-600`}>
+      <div key={`0-${id}`} className={`font-bold text-green-600`}>
         {stats.data.success}
       </div>
-      <div key={`1-${id}`} className={`text-teal-600`}>
+      <div key={`1-${id}`} className={`font-bold text-teal-600`}>
         {stats.data.trivialSuccess}
       </div>
-      <div key={`2-${id}`} className={`text-orange-600`}>
+      <div key={`2-${id}`} className={`font-bold text-orange-600`}>
         {stats.data.timeout}
       </div>
-      <div key={`3-${id}`} className={`text-red-600`}>
+      <div key={`3-${id}`} className={`font-bold text-red-600`}>
         {stats.data.error}
       </div>
-      <div key={`4-${id}`} className={`text-purple-600`}>
+      <div key={`4-${id}`} className={`font-bold text-purple-600`}>
         {stats.data.panic}
       </div>
-      <div key={`5-${id}`} className={``}>
+      <div key={`5-${id}`} className="font-bold">
         {total}
       </div>
-      <Link
-        to="/artifacts/$art"
-        params={{ art: id }}
-        search={{ compare: "", filter: "" }}
-        className="text-blue-500 hover:text-blue-600 hover:underline"
-      >
-        Results
-      </Link>
     </FlexGrid>
   );
 }
@@ -175,10 +233,14 @@ export function CommitMessage({ sha }: { sha: string }) {
   if (message.includes("\n")) {
     message = message.split("\n")[0];
   }
+  const tagPattern = /\[.*\]/;
+  const tag = message.match(tagPattern);
+  message = message.replace(tagPattern, "");
 
   return (
     <div className="truncate">
-      {query.data.data.commit.message.split("\n")[0]}
+      <span className="font-mono text-sm">{tag}</span>
+      {message}
     </div>
   );
 }
