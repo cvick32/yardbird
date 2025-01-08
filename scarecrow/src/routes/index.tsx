@@ -8,6 +8,8 @@ import {
 } from "../fetch";
 import { PropsWithChildren, Children } from "react";
 import { GoGitBranch } from "react-icons/go";
+import { FaCircle, FaSpinner } from "react-icons/fa6";
+import { PiSpinner } from "react-icons/pi";
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
@@ -82,12 +84,10 @@ function Index() {
                 <div key={`4-${idx}`}>-</div>
                 <div key={`5-${idx}`}>-</div>
               </FlexGrid>
-              <a
+              <WorkflowStatus
                 href={workflow.html_url}
-                className="text-blue-500 hover:text-blue-600 hover:underline"
-              >
-                {workflow.status}
-              </a>
+                status={workflow.status}
+              />
               <div className="flex flex-row gap-2 md:gap-0">
                 <div className="group flex flex-row items-center gap-1 hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
                   <GoGitBranch size="14" className="shrink-0" />
@@ -100,7 +100,7 @@ function Index() {
                 </div>
               </div>
               <div className="w-full truncate md:w-fit">
-                <CommitMessage sha={workflow.display_title} />
+                <div>{workflow.display_title}</div>
               </div>
             </div>
           );
@@ -252,5 +252,33 @@ export function CommitRef({ sha }: { sha: string }) {
       href={link}
       className="text-blue-500 hover:text-blue-600 hover:underline"
     >{`#${sha.slice(0, 7)}`}</a>
+  );
+}
+
+function WorkflowStatus({ status, href }: { status: string; href: string }) {
+  // Can be one of: completed, action_required, cancelled, failure, neutral, skipped, stale, success, timed_out, in_progress, queued, requested, waiting, pending
+
+  let message = status;
+  let spinner = undefined;
+  if (status === "completed") {
+    message = "done";
+  } else if (status === "in_progress") {
+    message = "wip";
+    spinner = (
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-75"></span>
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={href}
+      className="flex w-[54.45px] flex-row items-center gap-2 text-blue-500 hover:text-blue-600 hover:underline"
+    >
+      {spinner}
+      {message}
+    </a>
   );
 }
