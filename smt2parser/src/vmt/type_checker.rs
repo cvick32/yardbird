@@ -68,32 +68,6 @@ impl TypeChecker {
                     id if id.contains("Write") || id == "store" => self.check(&arguments[0]),
                     _ => Err(TypeError::UnknownIdentifier(ident.to_string())),
                 }
-                // getting the type from the string is a bit hacky, but will have to do for now
-                // todo!()
-                // let mut ident = qual_identifier.to_string();
-                // if ident.starts_with("|") {
-                //     ident = ident
-                //         .strip_prefix("|")
-                //         .unwrap()
-                //         .strip_suffix("|")
-                //         .unwrap()
-                //         .to_string();
-                // }
-                // println!("raw: {}", ident);
-                // let (_rest, return_type) = ident
-                //     .rsplit_once("-")
-                //     .ok_or(TypeError::MalformedType(ident.to_string()))?;
-                // println!("ret: {return_type}");
-                // if return_type.starts_with("(") {
-                //     Ok(return_type
-                //         .strip_prefix("(")
-                //         .unwrap()
-                //         .strip_suffix(")")
-                //         .unwrap()
-                //         .replace(" ", "-"))
-                // } else {
-                //     Ok(return_type.to_string())
-                // }
             }
             Term::Let {
                 var_bindings: _,
