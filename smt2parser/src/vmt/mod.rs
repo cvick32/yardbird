@@ -33,6 +33,7 @@ mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 pub mod smt;
 mod smtinterpol_utils;
+mod type_checker;
 mod utils;
 pub mod variable;
 
@@ -159,8 +160,11 @@ impl VMTModel {
             abstracted_commands.push(command.accept(&mut abstractor).unwrap());
         }
         let mut array_definitions = abstractor.get_array_type_definitions();
+        println!("defs: {array_definitions:#?}");
         array_definitions.extend(abstracted_commands);
-        VMTModel::checked_from(array_definitions).unwrap()
+        let x = VMTModel::checked_from(array_definitions).unwrap();
+        println!("{}", x.as_vmt_string());
+        x
     }
 
     pub fn abstract_constants_over(mut self, depth: u8) -> Self {
@@ -183,17 +187,6 @@ impl VMTModel {
         self.transition_condition =
             constant_abstactor.transition_properties(self.transition_condition);
         self.property_condition = constant_abstactor.invariant_properties(self.property_condition);
-        // println!(
-        //     "decl:\n  {}",
-        //     self.state_variables
-        //         .iter()
-        //         .map(|x| format!("{} -> {} [{}]", x.current, x.next, x.relationship))
-        //         .collect::<Vec<_>>()
-        //         .join("  \n")
-        // );
-        // println!("init: {}", self.initial_condition);
-        // println!("tran: {}", self.transition_condition);
-        // println!("prop: {}", self.property_condition);
 
         self
     }

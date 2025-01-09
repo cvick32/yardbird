@@ -1,73 +1,70 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use num::{BigUint, Zero};
 
 use crate::concrete::{Command, Identifier, Sort, Symbol, SyntaxBuilder, Term};
 
-use super::utils::simple_identifier_with_name;
+use super::{type_checker::TypeChecker, utils::simple_identifier_with_name};
 
 /// Rewrites Commands to use uninterpreted functions instead of explicit Arrays.
 /// Currently turns all Arrays into Arr-Int-Int, but will be extended to arbitrary
 /// Arrays later.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ArrayAbstractor {
     pub visitor: SyntaxBuilder,
-    array_types: HashSet<(String, String)>,
-}
-
-impl Default for ArrayAbstractor {
-    fn default() -> Self {
-        Self {
-            visitor: SyntaxBuilder,
-            array_types: HashSet::new(),
-        }
-    }
+    /// maps array names -> array + index types
+    array_types: HashMap<String, (String, String)>,
+    checker: TypeChecker,
 }
 
 impl ArrayAbstractor {
     pub(crate) fn get_array_type_definitions(&self) -> Vec<Command> {
-        let mut commands = vec![];
-        for (index, value) in &self.array_types {
-            let arr_sort = Sort::Simple {
-                identifier: Identifier::Simple {
+        println!("{:#?}", self.array_types);
+        self.array_types
+            .values()
+            .flat_map(|(index, value)| {
+                let arr_sort = Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol(format!("Array-{}-{}", index, value)),
+                    },
+                };
+                let index_sort = Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol(index.to_string()),
+                    },
+                };
+                let value_sort = Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol(value.to_string()),
+                    },
+                };
+                let sort_definition = Command::DeclareSort {
                     symbol: Symbol(format!("Array-{}-{}", index, value)),
-                },
-            };
-            let index_sort = Sort::Simple {
-                identifier: Identifier::Simple {
-                    symbol: Symbol(index.to_string()),
-                },
-            };
-            let value_sort = Sort::Simple {
-                identifier: Identifier::Simple {
-                    symbol: Symbol(value.to_string()),
-                },
-            };
-            let sort_definition = Command::DeclareSort {
-                symbol: Symbol(format!("Array-{}-{}", index, value)),
-                arity: BigUint::zero(),
-            };
-            let read_definition: Command = Command::DeclareFun {
-                symbol: Symbol(format!("Read-{}-{}", index, value)),
-                parameters: vec![arr_sort.clone(), index_sort.clone()],
-                sort: value_sort.clone(),
-            };
-            let write_definition: Command = Command::DeclareFun {
-                symbol: Symbol(format!("Write-{}-{}", index, value)),
-                parameters: vec![arr_sort.clone(), index_sort.clone(), value_sort.clone()],
-                sort: arr_sort.clone(),
-            };
-            let constarr_definition: Command = Command::DeclareFun {
-                symbol: Symbol(format!("ConstArr-{}-{}", index, value)),
-                parameters: vec![value_sort],
-                sort: arr_sort,
-            };
-            commands.push(sort_definition);
-            commands.push(constarr_definition);
-            commands.push(read_definition);
-            commands.push(write_definition);
-        }
-        commands
+                    arity: BigUint::zero(),
+                };
+                let read_definition: Command = Command::DeclareFun {
+                    symbol: Symbol(format!("Read-{}-{}", index, value)),
+                    parameters: vec![arr_sort.clone(), index_sort.clone()],
+                    sort: value_sort.clone(),
+                };
+                let write_definition: Command = Command::DeclareFun {
+                    symbol: Symbol(format!("Write-{}-{}", index, value)),
+                    parameters: vec![arr_sort.clone(), index_sort.clone(), value_sort.clone()],
+                    sort: arr_sort.clone(),
+                };
+                let constarr_definition: Command = Command::DeclareFun {
+                    symbol: Symbol(format!("ConstArr-{}-{}", index, value)),
+                    parameters: vec![value_sort],
+                    sort: arr_sort,
+                };
+                vec![
+                    sort_definition,
+                    constarr_definition,
+                    read_definition,
+                    write_definition,
+                ]
+            })
+            .collect()
     }
 }
 
@@ -96,7 +93,11 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
                     let (index_type, value_type) =
                         (parameters[0].to_string(), parameters[1].to_string());
                     self.array_types
-                        .insert((index_type.clone(), value_type.clone()));
+                        .insert(symbol.0.clone(), (index_type.clone(), value_type.clone()));
+                    self.checker.add_var(
+                        symbol.0.clone(),
+                        format!("{}-{}", index_type.clone(), value_type.clone()),
+                    );
                     crate::concrete::Sort::Simple {
                         identifier: Identifier::Simple {
                             symbol: Symbol(format!("Array-{}-{}", index_type, value_type)),
@@ -125,7 +126,13 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         let new_identifier = match qual_identifier.clone() {
             crate::concrete::QualIdentifier::Simple { identifier } => {
                 if identifier.to_string() == "select" {
-                    simple_identifier_with_name("Read-Int-Int")
+                    println!("args: {qual_identifier} {arguments:#?}");
+                    let type_name = self.checker.check(&arguments[0]).unwrap();
+                    println!("type context: {:#?}", self.checker);
+                    println!("type: {type_name}");
+                    let (index, value) = &self.array_types[&arguments[0].to_string()];
+                    simple_identifier_with_name(&format!("Read-{index}-{value}"))
+                    // simple_identifier_with_name("Read-Int-Int")
                 } else if identifier.to_string() == "store" {
                     simple_identifier_with_name("Write-Int-Int")
                 } else {
