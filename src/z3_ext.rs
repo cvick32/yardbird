@@ -11,7 +11,7 @@ pub trait ModelExt {
     fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl>;
 }
 
-impl<'a> ModelExt for z3::Model<'a> {
+impl ModelExt for z3::Model<'_> {
     fn dump_sorted(&self) -> anyhow::Result<String> {
         let mut b = String::new();
         for func_decl in self.iter().sorted_by(func_decl_cmp) {
