@@ -33,7 +33,6 @@
   (=> (and (> (select a i) (select a j)) (< j N) (= pc 2)) a!1))
 (let ((a!1 (and (not (> (select a i) (select a j))) (< j N) (= pc 2))))
   (=> a!1 (= a a_next)))
-(=> (and (not (< j N)) (= pc 2)) (= a a_next))
 (let ((a!1 (and (= pc 2) (not (not (< j N))))))
   (=> a!1 (= a a_next)))
 (=> (and (< i N) (= pc 1)) (= (+ i 1) i_next))
@@ -52,18 +51,15 @@
 (=> (and (not (< j N)) (= pc 2)) (= 1 pc_next))
 (let ((a!1 (and (= pc 2) (not (not (< j N))))))
   (=> a!1 (= pc pc_next)))
-(=> (and (< i N) (= pc 1)) (= ZZ ZZ_next))
-(=> (and (< j N) (= pc 2)) (= ZZ ZZ_next))
-(=> (and (not (< j N)) (= pc 2)) (= ZZ ZZ_next))
-(let ((a!1 (and (= pc 2) (not (not (< j N))))))
-  (=> a!1 (= ZZ ZZ_next)))
+(=> (and (not (< j N)) (= pc 2)) (= a a_next))
+(= ZZ ZZ_next)
 (= Z Z_next)
 (or (= pc 1) (= pc 2))
 ) :trans true))
 
 (define-fun property () Bool (!
  (and
-(let ((a!1 (not (not (<= (select a Z) (select a Z))))))
-  (=> (and (= pc 1) (not (< i N)) (> Z 0) (< Z N) (< Z Z) (< Z N)) (and a!1)))
+  (=> (and (= pc 1) (not (< i N)) (> Z 0) (< Z N) (< Z ZZ) (< Z N) (< ZZ N) (> ZZ 0)) 
+  (<= (select a Z) (select a ZZ)))
 ) :invar-property 0))
 
