@@ -1,8 +1,8 @@
 use std::{collections::HashMap, fmt::Display};
 
-use crate::concrete::Term;
+use crate::concrete::{Identifier, Sort, Symbol, Term};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TypeError {
     UnknownIdentifier(String),
     MalformedType(String),
@@ -21,18 +21,28 @@ impl std::error::Error for TypeError {}
 
 pub type Result<T> = std::result::Result<T, TypeError>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VmtType {
+    Array {
+        index: Box<VmtType>,
+        value: Box<VmtType>,
+    },
+    Int,
+    Unknown(String),
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct TypeChecker {
     /// Maps variables names to type names
-    context: HashMap<String, String>,
+    context: HashMap<String, VmtType>,
 }
 
 impl TypeChecker {
-    pub fn add_var(&mut self, var_name: String, type_name: String) {
-        self.context.insert(var_name, type_name);
+    pub fn insert(&mut self, var_name: impl ToString, vmt_type: impl Into<VmtType>) {
+        self.context.insert(var_name.to_string(), vmt_type.into());
     }
 
-    pub fn check(&self, term: &Term) -> Result<String> {
+    pub fn check(&self, term: &Term) -> Result<VmtType> {
         match term {
             Term::Constant(_) => todo!(),
             Term::QualIdentifier(ident) => self
@@ -42,33 +52,48 @@ impl TypeChecker {
                 .ok_or(TypeError::UnknownIdentifier(ident.to_string())),
             Term::Application {
                 qual_identifier,
-                arguments: _,
+                arguments,
             } => {
+                let ident = qual_identifier.to_string();
+                match ident.as_str() {
+                    id if id.contains("Read") || id == "select" => {
+                        let array = &arguments[0];
+                        let _index = &arguments[1];
+                        if let VmtType::Array { value, .. } = self.check(array)? {
+                            Ok(*value)
+                        } else {
+                            Err(TypeError::MalformedType("".to_string()))
+                        }
+                    }
+                    id if id.contains("Write") || id == "store" => self.check(&arguments[0]),
+                    _ => Err(TypeError::UnknownIdentifier(ident.to_string())),
+                }
                 // getting the type from the string is a bit hacky, but will have to do for now
-                let mut ident = qual_identifier.to_string();
-                if ident.starts_with("|") {
-                    ident = ident
-                        .strip_prefix("|")
-                        .unwrap()
-                        .strip_suffix("|")
-                        .unwrap()
-                        .to_string();
-                }
-                println!("raw: {}", ident);
-                let (_rest, return_type) = ident
-                    .rsplit_once("-")
-                    .ok_or(TypeError::MalformedType(ident.to_string()))?;
-                println!("ret: {return_type}");
-                if return_type.starts_with("(") {
-                    Ok(return_type
-                        .strip_prefix("(")
-                        .unwrap()
-                        .strip_suffix(")")
-                        .unwrap()
-                        .replace(" ", "-"))
-                } else {
-                    Ok(return_type.to_string())
-                }
+                // todo!()
+                // let mut ident = qual_identifier.to_string();
+                // if ident.starts_with("|") {
+                //     ident = ident
+                //         .strip_prefix("|")
+                //         .unwrap()
+                //         .strip_suffix("|")
+                //         .unwrap()
+                //         .to_string();
+                // }
+                // println!("raw: {}", ident);
+                // let (_rest, return_type) = ident
+                //     .rsplit_once("-")
+                //     .ok_or(TypeError::MalformedType(ident.to_string()))?;
+                // println!("ret: {return_type}");
+                // if return_type.starts_with("(") {
+                //     Ok(return_type
+                //         .strip_prefix("(")
+                //         .unwrap()
+                //         .strip_suffix(")")
+                //         .unwrap()
+                //         .replace(" ", "-"))
+                // } else {
+                //     Ok(return_type.to_string())
+                // }
             }
             Term::Let {
                 var_bindings: _,
@@ -81,6 +106,66 @@ impl TypeChecker {
                 term: _,
                 attributes: _,
             } => todo!(),
+        }
+    }
+}
+
+impl From<Sort> for VmtType {
+    fn from(value: Sort) -> Self {
+        match value {
+            Sort::Simple { identifier } => {
+                let ident = identifier.to_string();
+                match ident.as_str() {
+                    "Int" => VmtType::Int,
+                    _ => VmtType::Unknown(ident),
+                }
+            }
+            Sort::Parameterized {
+                identifier,
+                mut parameters,
+            } if identifier.to_string() == "Array" && parameters.len() == 2 => {
+                let index = parameters.pop().unwrap();
+                let value = parameters.pop().unwrap();
+                VmtType::Array {
+                    index: Box::new(value.into()),
+                    value: Box::new(index.into()),
+                }
+            }
+            x => VmtType::Unknown(x.to_string()),
+        }
+    }
+}
+
+impl VmtType {
+    pub fn to_abstract_sort(&self) -> Sort {
+        Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol(self.to_abstract_string()),
+            },
+        }
+    }
+
+    pub fn to_abstract_string(&self) -> String {
+        match self {
+            VmtType::Array { index, value } => format!(
+                "Array-{}-{}",
+                index.to_abstract_string(),
+                if value.is_complex() {
+                    format!("({})", value.to_abstract_string())
+                } else {
+                    value.to_abstract_string()
+                }
+            ),
+            VmtType::Int => "Int".to_string(),
+            VmtType::Unknown(x) => x.to_string(),
+        }
+    }
+
+    pub fn is_complex(&self) -> bool {
+        match self {
+            VmtType::Array { .. } => true,
+            VmtType::Int => false,
+            VmtType::Unknown(_) => false,
         }
     }
 }

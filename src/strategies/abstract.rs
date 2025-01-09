@@ -94,9 +94,11 @@ pub struct AbstractRefinementState {
 
 impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        model
+        let x = model
             .abstract_array_theory()
-            .abstract_constants_over(self.bmc_depth)
+            .abstract_constants_over(self.bmc_depth);
+        println!("{}", x.as_vmt_string());
+        x
     }
 
     fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {

@@ -6,7 +6,7 @@ use super::{action::Action, axiom::Axiom, variable::Variable};
 
 static BOOLEAN_CONNECTIVES: [&str; 4] = ["and", "or", "=>", "="];
 
-pub fn simple_identifier_with_name(name: &str) -> QualIdentifier {
+pub fn simple_identifier_with_name(name: impl ToString) -> QualIdentifier {
     crate::concrete::QualIdentifier::Simple {
         identifier: Identifier::Simple {
             symbol: Symbol(name.to_string()),

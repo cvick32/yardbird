@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use num::{BigUint, Zero};
 
-use crate::concrete::{Command, Identifier, Sort, Symbol, SyntaxBuilder, Term};
+use crate::{
+    concrete::{Command, Identifier, Sort, Symbol, SyntaxBuilder, Term},
+    vmt::type_checker::VmtType,
+};
 
 use super::{type_checker::TypeChecker, utils::simple_identifier_with_name};
 
@@ -82,77 +85,148 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         parameters: Vec<<Self::V as crate::visitors::Smt2Visitor>::Sort>,
         sort: <Self::V as crate::visitors::Smt2Visitor>::Sort,
     ) -> Result<<Self::V as crate::visitors::Smt2Visitor>::Command, Self::Error> {
-        let new_sort = match sort.clone() {
-            crate::concrete::Sort::Simple { identifier: _ } => sort,
-            crate::concrete::Sort::Parameterized {
-                identifier,
-                parameters,
-            } => {
-                if identifier.to_string() == "Array" {
-                    // TODO: also need to have a better way of finding Sort names.
-                    let (index_type, value_type) =
-                        (parameters[0].to_string(), parameters[1].to_string());
-                    self.array_types
-                        .insert(symbol.0.clone(), (index_type.clone(), value_type.clone()));
-                    self.checker.add_var(
-                        symbol.0.clone(),
-                        format!("{}-{}", index_type.clone(), value_type.clone()),
-                    );
-                    crate::concrete::Sort::Simple {
-                        identifier: Identifier::Simple {
-                            symbol: Symbol(format!("Array-{}-{}", index_type, value_type)),
-                        },
-                    }
-                } else {
-                    sort
-                }
-            }
-        };
+        let vmt_type: VmtType = sort.into();
+        let new_sort = vmt_type.to_abstract_sort();
+        self.checker.insert(&symbol, vmt_type);
         Ok(Command::DeclareFun {
             symbol,
             parameters,
             sort: new_sort,
         })
+        // let new_sort = match sort.clone() {
+        //     crate::concrete::Sort::Simple { identifier: _ } => sort,
+        //     crate::concrete::Sort::Parameterized {
+        //         identifier,
+        //         parameters,
+        //     } => {
+        //         if identifier.to_string() == "Array" {
+        //             // TODO: also need to have a better way of finding Sort names.
+        //             let (index_type, value_type) =
+        //                 (parameters[0].to_string(), parameters[1].to_string());
+        //             self.array_types
+        //                 .insert(symbol.0.clone(), (index_type.clone(), value_type.clone()));
+        //             self.checker.insert(
+        //                 symbol.0.clone(),
+        //                 format!("{}-{}", index_type.clone(), value_type.clone()),
+        //             );
+        //             crate::concrete::Sort::Simple {
+        //                 identifier: Identifier::Simple {
+        //                     symbol: Symbol(format!("Array-{}-{}", index_type, value_type)),
+        //                 },
+        //             }
+        //         } else {
+        //             sort
+        //         }
+        //     }
+        // };
+        // Ok(Command::DeclareFun {
+        //     symbol,
+        //     parameters,
+        //     sort: new_sort,
+        // })
     }
 
-    /// TODO: here's where the real problem of adding different theories comes in.
-    /// Need to check the types of the arguments before getting the name of the
-    /// identifier...
+    fn visit_define_fun(
+        &mut self,
+        mut sig: crate::concrete::FunctionDec<
+            <Self::V as crate::visitors::Smt2Visitor>::Symbol,
+            <Self::V as crate::visitors::Smt2Visitor>::Sort,
+        >,
+        term: <Self::V as crate::visitors::Smt2Visitor>::Term,
+    ) -> Result<<Self::V as crate::visitors::Smt2Visitor>::Command, Self::Error> {
+        sig.result = VmtType::from(sig.result.clone()).to_abstract_sort();
+        Ok(Command::DefineFun { sig, term })
+    }
+
     fn visit_application(
         &mut self,
         qual_identifier: <Self::V as crate::visitors::Smt2Visitor>::QualIdentifier,
         arguments: Vec<<Self::V as crate::visitors::Smt2Visitor>::Term>,
     ) -> Result<<Self::V as crate::visitors::Smt2Visitor>::Term, Self::Error> {
-        let new_identifier = match qual_identifier.clone() {
-            crate::concrete::QualIdentifier::Simple { identifier } => {
-                if identifier.to_string() == "select" {
-                    println!("args: {qual_identifier} {arguments:#?}");
-                    let type_name = self.checker.check(&arguments[0]).unwrap();
-                    println!("type context: {:#?}", self.checker);
-                    println!("type: {type_name}");
-                    let (index, value) = &self.array_types[&arguments[0].to_string()];
-                    simple_identifier_with_name(&format!("Read-{index}-{value}"))
-                    // simple_identifier_with_name("Read-Int-Int")
-                } else if identifier.to_string() == "store" {
-                    simple_identifier_with_name("Write-Int-Int")
+        let ident = qual_identifier.to_string();
+        match ident.as_str() {
+            "select" => {
+                let array = &arguments[0];
+                let index = &arguments[1];
+                assert_eq!(self.checker.check(index), Ok(VmtType::Int));
+                if let Ok(VmtType::Array { index, value }) = self.checker.check(array) {
+                    Ok(Term::Application {
+                        qual_identifier: simple_identifier_with_name(format!(
+                            "Read-{}-{}",
+                            index.to_abstract_string(),
+                            value.to_abstract_string()
+                        )),
+                        arguments,
+                    })
                 } else {
-                    qual_identifier
+                    panic!()
                 }
             }
-            crate::concrete::QualIdentifier::Sorted {
-                identifier,
-                sort: _,
-            } => {
-                if identifier.to_string() == "const" {
-                    simple_identifier_with_name("ConstArr-Int-Int")
+            "store" => {
+                let array = &arguments[0];
+                let index = &arguments[1];
+                let _value = &arguments[2];
+                assert_eq!(self.checker.check(index), Ok(VmtType::Int));
+                println!("{:#?}", self.checker);
+                println!("{arguments:#?}");
+                if let Ok(VmtType::Array { index, value }) = self.checker.check(array) {
+                    Ok(Term::Application {
+                        qual_identifier: simple_identifier_with_name(format!(
+                            "Write-{}-{}",
+                            index.to_abstract_string(),
+                            value.to_abstract_string()
+                        )),
+                        arguments,
+                    })
                 } else {
-                    qual_identifier
+                    panic!()
                 }
             }
-        };
-        Ok(Term::Application {
-            qual_identifier: new_identifier,
-            arguments,
-        })
+            _ => Ok(Term::Application {
+                qual_identifier,
+                arguments,
+            }),
+        }
     }
+
+    // /// TODO: here's where the real problem of adding different theories comes in.
+    // /// Need to check the types of the arguments before getting the name of the
+    // /// identifier...
+    // fn visit_application(
+    //     &mut self,
+    //     qual_identifier: <Self::V as crate::visitors::Smt2Visitor>::QualIdentifier,
+    //     arguments: Vec<<Self::V as crate::visitors::Smt2Visitor>::Term>,
+    // ) -> Result<<Self::V as crate::visitors::Smt2Visitor>::Term, Self::Error> {
+    //     println!("type context: {:#?}", self.checker);
+    //     let new_identifier = match qual_identifier.clone() {
+    //         crate::concrete::QualIdentifier::Simple { identifier } => {
+    //             if identifier.to_string() == "select" {
+    //                 println!("args: {qual_identifier} {arguments:#?}");
+    //                 let type_name = self.checker.check(&arguments[0]).unwrap();
+    //                 // println!("type: {type_name}");
+    //                 let (index, value) = &self.array_types[&arguments[0].to_string()];
+    //                 simple_identifier_with_name(&format!("Read-{index}-{value}"))
+    //                 // simple_identifier_with_name("Read-Int-Int")
+    //             } else if identifier.to_string() == "store" {
+    //                 simple_identifier_with_name("Write-Int-Int")
+    //             } else {
+    //                 qual_identifier
+    //             }
+    //         }
+    //         crate::concrete::QualIdentifier::Sorted {
+    //             identifier,
+    //             sort: _,
+    //         } => {
+    //             if identifier.to_string() == "const" {
+    //                 simple_identifier_with_name("ConstArr-Int-Int")
+    //             } else {
+    //                 qual_identifier
+    //             }
+    //         }
+    //     };
+    //     Ok(Term::Application {
+    //         qual_identifier: new_identifier,
+    //         arguments,
+    //     })
+    // }
 }
