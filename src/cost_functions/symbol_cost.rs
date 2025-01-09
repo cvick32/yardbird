@@ -6,13 +6,13 @@ use crate::array_axioms::ArrayLanguage;
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
 #[derive(Clone)]
-pub struct BestVariableSubstitution {
+pub struct BestSymbolSubstitution {
     pub current_bmc_depth: u32,
     pub transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
 }
 
-impl egg::CostFunction<ArrayLanguage> for BestVariableSubstitution {
+impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
     type Cost = u32;
 
     fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost

@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use egg::{Analysis, Language};
 use log::{debug, info};
 
-use crate::egg_utils::RecExprRoot;
+use crate::{egg_utils::RecExprRoot, extractor::TermExtractor};
 
 pub struct ConflictScheduler<S, CF> {
     inner: S,
@@ -15,15 +15,24 @@ pub struct ConflictScheduler<S, CF> {
     instantiations: Rc<RefCell<Vec<String>>>,
     instantiations_w_constants: Rc<RefCell<Vec<String>>>,
     cost_fn: CF,
+    transition_system_terms: Vec<String>,
+    property_terms: Vec<String>,
 }
 
 impl<S, CF> ConflictScheduler<S, CF> {
-    pub fn new(scheduler: S, cost_fn: CF) -> Self {
+    pub fn new(
+        scheduler: S,
+        cost_fn: CF,
+        transition_system_terms: Vec<String>,
+        property_terms: Vec<String>,
+    ) -> Self {
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
             instantiations_w_constants: Rc::new(RefCell::new(vec![])),
             cost_fn,
+            transition_system_terms,
+            property_terms,
         }
     }
 
@@ -39,7 +48,7 @@ impl<S, CF> ConflictScheduler<S, CF> {
 impl<S, L, N, CF> egg::RewriteScheduler<L, N> for ConflictScheduler<S, CF>
 where
     S: egg::RewriteScheduler<L, N>,
-    L: egg::Language + std::fmt::Display,
+    L: egg::Language + std::fmt::Display + egg::FromOp,
     CF: egg::CostFunction<L, Cost = u32> + Clone,
     N: egg::Analysis<L>,
 {
@@ -66,15 +75,24 @@ where
         debug!("======>");
         debug!("applying {}", rewrite.name);
 
-        let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
+        let extractor = TermExtractor::new(
+            egraph,
+            self.cost_fn.clone(),
+            &self.transition_system_terms,
+            &self.property_terms,
+        );
 
         for m in &matches {
             if let Some(cow_ast) = &m.ast {
+                // TODO: do something smarter than just the first subst?
                 let subst = &m.substs[0];
                 debug!("cur sub: {:?}", subst);
 
                 // transform &Cow<T> -> &T
                 let ast = cow_ast.as_ref();
+                println!("Current Instantiation: {}", ast.pretty(80));
+                println!("Number of subs: {}", m.substs.len());
+                println!("Current Sub: {:?}", subst);
 
                 // construct a new term by instantiating variables in the pattern ast with terms
                 // from the substitution.
@@ -141,12 +159,13 @@ fn reify_pattern_ast<L, N, CF>(
     pattern: &egg::PatternAst<L>,
     egraph: &egg::EGraph<L, N>,
     subst: &egg::Subst,
-    extractor: &egg::Extractor<CF, L, N>,
+    extractor: &TermExtractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
-    L: egg::Language + std::fmt::Display,
+    L: egg::Language + std::fmt::Display + egg::FromOp,
     N: egg::Analysis<L>,
     CF: egg::CostFunction<L>,
+    <CF as egg::CostFunction<L>>::Cost: Ord,
 {
     if pattern.as_ref().len() == 1 {
         let node = &pattern.as_ref()[0];
@@ -198,19 +217,16 @@ fn unpatternify<L: egg::Language + std::fmt::Display>(
 
 fn find_best_variable_substitution<L, N, CF>(
     eclass: &egg::EClass<L, <N as Analysis<L>>::Data>,
-    extractor: &egg::Extractor<CF, L, N>,
+    extractor: &TermExtractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
-    L: egg::Language + std::fmt::Display,
+    L: egg::Language + std::fmt::Display + egg::FromOp,
     N: egg::Analysis<L>,
     CF: egg::CostFunction<L>,
+    <CF as egg::CostFunction<L>>::Cost: Ord,
 {
-    let (cost, expr) = extractor.find_best(eclass.id);
-    debug!(
-        "    extraction: {} -> {} (cost: {cost:?})",
-        eclass.id,
-        expr.pretty(80)
-    );
+    let expr = extractor.extract(eclass.id);
+    debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));
 
     // wrap everything in an ENodeOrVar so that it still counts as an egg::PatternAst
     expr.as_ref()

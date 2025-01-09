@@ -1,7 +1,7 @@
-use std::fmt::Debug;
-
 use egg::*;
+use log::info;
 use smt2parser::{concrete::Term, get_term_from_term_string};
+use std::fmt::Debug;
 
 pub struct Interpolant {
     pub _original_term: Term,
@@ -42,8 +42,8 @@ fn simplify_smtinterpol_interpolant(interpolant: String) -> String {
     // use an Extractor to pick the best element of the root eclass
     let extractor = Extractor::new(&runner.egraph, AstSize);
     let (_, best) = extractor.find_best(root);
-    println!(
-        "Reduced interpolant length from {} to {} -- {}%",
+    info!(
+        "Reduced SMTInterpol interpolant length from {} to {} -- {}%",
         interpolant.len(),
         best.to_string().len(),
         ((best.to_string().len() as f64 - interpolant.len() as f64) / interpolant.len() as f64)
