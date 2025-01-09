@@ -86,13 +86,11 @@ where
             if let Some(cow_ast) = &m.ast {
                 // TODO: do something smarter than just the first subst?
                 let subst = &m.substs[0];
-                debug!("cur sub: {:?}", subst);
 
                 // transform &Cow<T> -> &T
                 let ast = cow_ast.as_ref();
-                println!("Current Instantiation: {}", ast.pretty(80));
-                println!("Number of subs: {}", m.substs.len());
-                println!("Current Sub: {:?}", subst);
+                info!("Number of subs: {}", m.substs.len());
+                info!("Current Sub: {:?}", subst);
 
                 // construct a new term by instantiating variables in the pattern ast with terms
                 // from the substitution.

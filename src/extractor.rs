@@ -42,13 +42,6 @@ where
             exprs.sort_by_key(|expr| cost_function.cost_rec(expr));
         }
 
-        term_map.iter().for_each(|(id, terms)| {
-            println!("{id}");
-            for t in terms {
-                println!(" -> {}", t.pretty(80))
-            }
-        });
-
         let extractor = egg::Extractor::new(egraph, cost_function);
 
         Self {
