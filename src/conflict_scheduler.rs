@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use egg::{Analysis, Language};
 use log::{debug, info};
 
-use crate::{egg_utils::RecExprRoot, extractor::Extractor};
+use crate::{egg_utils::RecExprRoot, extractor::TermExtractor};
 
 pub struct ConflictScheduler<S, CF> {
     inner: S,
@@ -75,7 +75,7 @@ where
         debug!("======>");
         debug!("applying {}", rewrite.name);
 
-        let extractor = Extractor::new(
+        let extractor = TermExtractor::new(
             egraph,
             self.cost_fn.clone(),
             &self.transition_system_terms,
@@ -159,12 +159,13 @@ fn reify_pattern_ast<L, N, CF>(
     pattern: &egg::PatternAst<L>,
     egraph: &egg::EGraph<L, N>,
     subst: &egg::Subst,
-    extractor: &Extractor<CF, L, N>,
+    extractor: &TermExtractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
     L: egg::Language + std::fmt::Display + egg::FromOp,
     N: egg::Analysis<L>,
     CF: egg::CostFunction<L>,
+    <CF as egg::CostFunction<L>>::Cost: Ord,
 {
     if pattern.as_ref().len() == 1 {
         let node = &pattern.as_ref()[0];
@@ -216,12 +217,13 @@ fn unpatternify<L: egg::Language + std::fmt::Display>(
 
 fn find_best_variable_substitution<L, N, CF>(
     eclass: &egg::EClass<L, <N as Analysis<L>>::Data>,
-    extractor: &Extractor<CF, L, N>,
+    extractor: &TermExtractor<CF, L, N>,
 ) -> egg::PatternAst<L>
 where
     L: egg::Language + std::fmt::Display + egg::FromOp,
     N: egg::Analysis<L>,
     CF: egg::CostFunction<L>,
+    <CF as egg::CostFunction<L>>::Cost: Ord,
 {
     let expr = extractor.extract(eclass.id);
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));
