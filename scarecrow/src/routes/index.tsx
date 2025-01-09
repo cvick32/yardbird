@@ -8,8 +8,6 @@ import {
 } from "../fetch";
 import { PropsWithChildren, Children } from "react";
 import { GoGitBranch } from "react-icons/go";
-import { FaCircle, FaSpinner } from "react-icons/fa6";
-import { PiSpinner } from "react-icons/pi";
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
