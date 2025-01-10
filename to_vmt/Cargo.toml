@@ -11,6 +11,7 @@ quote = "1.0.37"
 proc-macro2 = "1.0.92"
 darling = "0.20.10"
 z3 = { workspace = true }
+pretty = "0.12.3"
 
 [lib]
 proc-macro = true

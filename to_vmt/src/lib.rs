@@ -11,8 +11,10 @@ use syn::spanned::Spanned;
 use syn::{Expr, ItemFn, Pat, PatIdent, PatType, Path};
 use transition_system::to_vmt_model;
 
+mod pretty_printer;
 mod run_yardbird;
 mod transition_system;
+mod vmtil;
 
 #[derive(Debug, FromMeta)]
 struct ToVMTArgs {

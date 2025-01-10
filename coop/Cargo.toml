@@ -3,6 +3,10 @@ name = "coop"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+to_vmt = []
+# default = ["to_vmt"]
+
 [dependencies]
 yardbird = { path = ".." }
 to_vmt = { path = "../to_vmt" }
