@@ -36,4 +36,6 @@ members = [
     "smt2parser",
     "garden",
     "to_vmt",
+    "to_vmt/vmt_macros",
+    "to_vmt/vmtil"
 ]

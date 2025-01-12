@@ -8,5 +8,5 @@ to_vmt = []
 # default = ["to_vmt"]
 
 [dependencies]
-yardbird = { path = ".." }
+# yardbird = { path = ".." }
 to_vmt = { path = "../to_vmt" }

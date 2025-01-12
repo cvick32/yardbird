@@ -43,11 +43,26 @@ impl ToDoc for Expr {
 impl ToDoc for BooleanExpr {
     fn to_doc(&self) -> Doc {
         match self {
-            BooleanExpr::Forall { quantified, expr } => Doc::text("(")
+            BooleanExpr::Forall {
+                quantified,
+                bound,
+                expr,
+            } => Doc::text("(")
                 .append("forall")
                 .append(Doc::space())
                 .append(quantified)
                 .append(Doc::space())
+                .append(
+                    bound
+                        .as_ref()
+                        .map(|b| {
+                            Doc::text("<")
+                                .append(Doc::space())
+                                .append(b)
+                                .append(Doc::space())
+                        })
+                        .unwrap_or_else(Doc::nil),
+                )
                 .append(".")
                 .append(Doc::space())
                 .append(expr.to_doc())
@@ -73,7 +88,9 @@ impl ToDoc for BooleanExpr {
                 .append(
                     Doc::line()
                         .append(Doc::intersperse(
-                            vec.iter().map(|ex| ex.to_doc()),
+                            vec.iter()
+                                .filter(|ex| !matches!(ex, BooleanExpr::True))
+                                .map(|ex| ex.to_doc()),
                             Doc::line(),
                         ))
                         .nest(2)
@@ -86,6 +103,7 @@ impl ToDoc for BooleanExpr {
                 .append(boolean_expr.to_doc())
                 .append(")")
                 .group(),
+            BooleanExpr::True => Doc::text("true"),
         }
     }
 }
