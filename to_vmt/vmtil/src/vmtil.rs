@@ -2,11 +2,11 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use smt2parser::vmt::VMTModel;
+use smt2parser::{concrete, vmt::VMTModel, CommandStream};
 
 use crate::{
     context::{BuildContextual, Context},
-    pretty_printer::ToDoc,
+    pretty_printer::{ToDoc, VmtCommands},
 };
 
 #[derive(Default, Debug)]
@@ -40,49 +40,11 @@ impl VmtilBuilder {
         self
     }
 
-    // pub fn for_loop(
-    //     mut self,
-    //     loop_var: impl ToString,
-    //     lower_bound: impl Into<Expr>,
-    //     upper_bound: impl Into<Expr>,
-    //     body: impl Into<Stmt>,
-    // ) -> Self {
-    //     let loop_var = loop_var.to_string();
-    //     self = self.var_mut(loop_var.clone());
-    //     self.initial_conditions
-    //         .push(BooleanExpr::binop("=", loop_var.clone(), lower_bound));
-    //     let loop_translation = Stmt::loop_stmt(Stmt::Block {
-    //         stmts: vec![Stmt::if_stmt(
-    //             BooleanExpr::binop("<", loop_var.clone(), upper_bound),
-    //             Stmt::Block {
-    //                 stmts: vec![
-    //                     body.into(),
-    //                     Stmt::assign(loop_var.clone(), Expr::arith_binop("+", loop_var, "1")),
-    //                 ],
-    //             },
-    //             Some(Stmt::Break),
-    //         )],
-    //     });
-    //     self.stmt(loop_translation)
-    // }
-
     pub fn post_condition(&mut self, boolean_stmt: BooleanExpr) -> &mut Self {
-        if let BooleanExpr::Forall {
-            quantified,
-            bound,
-            expr,
-        } = boolean_stmt
-        {
+        if let BooleanExpr::Forall { quantified, expr } = boolean_stmt {
             self.var_immut(quantified.clone());
             self.property_preconditions
                 .push(BooleanExpr::binop("<", "0", quantified.clone()));
-            if let Some(bound) = bound {
-                self.property_preconditions.push(BooleanExpr::binop(
-                    "<",
-                    quantified.clone(),
-                    bound,
-                ));
-            }
             self.property.push(*expr);
         } else {
             self.property.push(boolean_stmt);
@@ -91,8 +53,17 @@ impl VmtilBuilder {
     }
 
     pub fn build_model(self) -> VMTModel {
-        println!("{self}");
-        todo!()
+        let vmt_string = format!("{self}");
+        let command_stream =
+            CommandStream::new(vmt_string.as_bytes(), concrete::SyntaxBuilder, None);
+
+        VMTModel::checked_from(
+            command_stream
+                .into_iter()
+                .collect::<Result<Vec<_>, concrete::Error>>()
+                .unwrap(),
+        )
+        .unwrap()
     }
 }
 
@@ -237,9 +208,9 @@ pub enum BooleanExpr {
     True,
     Forall {
         quantified: String,
-        bound: Option<String>,
         expr: Box<BooleanExpr>,
     },
+    Var(String),
     Binop {
         op: String,
         lhs: Expr,
@@ -250,14 +221,9 @@ pub enum BooleanExpr {
 }
 
 impl BooleanExpr {
-    pub fn forall(
-        quantified: impl ToString,
-        bound: Option<impl ToString>,
-        expr: impl Into<BooleanExpr>,
-    ) -> Self {
+    pub fn forall(quantified: impl ToString, expr: impl Into<BooleanExpr>) -> Self {
         Self::Forall {
             quantified: quantified.to_string(),
-            bound: bound.map(|x| x.to_string()),
             expr: Box::new(expr.into()),
         }
     }
@@ -299,7 +265,7 @@ impl BuildContextual for Stmt {
                 upper_bound,
                 body,
             } => {
-                builder.var_mut(loop_var.clone());
+                builder.var_immut(loop_var.clone());
                 builder.initial_conditions.push(BooleanExpr::binop(
                     "=",
                     loop_var.clone(),
@@ -389,37 +355,90 @@ impl BuildContextual for Stmt {
 
 impl std::fmt::Display for VmtilBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Initial:")?;
-        writeln!(
-            f,
-            "{}",
-            BooleanExpr::Conjunction(self.initial_conditions.clone())
+        for var in self.variables.iter().chain(self.immutable_variables.iter()) {
+            writeln!(
+                f,
+                "{}",
+                VmtCommands::DeclareFun {
+                    variable: var.to_string(),
+                    arguments: vec![],
+                    output_type: vec!["Array".to_string(), "Int".to_string(), "Int".to_string()]
+                }
                 .to_doc()
                 .pretty(80)
-        )?;
-        writeln!(f, "Transition:")?;
-        writeln!(
-            f,
-            "{}",
-            BooleanExpr::Conjunction(self.transition_conditions.clone())
+            )?;
+            writeln!(
+                f,
+                "{}",
+                VmtCommands::DeclareFun {
+                    variable: format!("{}_next", var),
+                    arguments: vec![],
+                    output_type: vec!["Array".to_string(), "Int".to_string(), "Int".to_string()]
+                }
                 .to_doc()
                 .pretty(80)
-        )?;
-        writeln!(f, "Property:")?;
+            )?;
+            writeln!(
+                f,
+                "{}",
+                VmtCommands::DefineFun {
+                    variable: format!(".{var}"),
+                    arguments: vec![],
+                    output_type: vec!["Array".to_string(), "Int".to_string(), "Int".to_string()],
+                    definition: BooleanExpr::Var(var.to_string()),
+                    flags: vec![(":next".to_string(), format!("{var}_next"))]
+                }
+                .to_doc()
+                .pretty(80)
+            )?;
+        }
         writeln!(
             f,
             "{}",
-            BooleanExpr::binop(
-                "=>",
-                BooleanExpr::Conjunction(self.property_preconditions.clone()),
-                BooleanExpr::Conjunction(self.property.clone())
-            )
+            VmtCommands::DefineFun {
+                variable: "init".to_string(),
+                arguments: vec![],
+                output_type: vec!["Bool".to_string()],
+                definition: BooleanExpr::Conjunction(self.initial_conditions.clone()),
+                flags: vec![(":init".to_string(), "true".to_string())]
+            }
+            .to_doc()
+            .pretty(80)
+        )?;
+        writeln!(
+            f,
+            "{}",
+            VmtCommands::DefineFun {
+                variable: "trans".to_string(),
+                arguments: vec![],
+                output_type: vec!["Bool".to_string()],
+                definition: BooleanExpr::Conjunction(self.transition_conditions.clone()),
+                flags: vec![(":trans".to_string(), "true".to_string())]
+            }
+            .to_doc()
+            .pretty(80)
+        )?;
+        writeln!(
+            f,
+            "{}",
+            VmtCommands::DefineFun {
+                variable: "prop".to_string(),
+                arguments: vec![],
+                output_type: vec!["Bool".to_string()],
+                definition: BooleanExpr::binop(
+                    "=>",
+                    BooleanExpr::Conjunction(self.property_preconditions.clone()),
+                    BooleanExpr::Conjunction(self.property.clone())
+                ),
+                flags: vec![(":invar-property".to_string(), "0".to_string())]
+            }
             .to_doc()
             .pretty(80)
         )?;
         Ok(())
     }
 }
+
 impl quote::ToTokens for Stmt {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         match self {
@@ -495,7 +514,7 @@ impl quote::ToTokens for Expr {
                 ::to_vmt::vmtil::Expr::Var(#var.to_string())
             }),
             Expr::Boolean(boolean_expr) => tokens.extend(quote! {
-                ::to_vmt::vmtil::Expr::Boolean(#boolean_expr)
+                ::to_vmt::vmtil::Expr::Boolean(Box::new(#boolean_expr))
             }),
             Expr::ArithBinop { op, lhs, rhs } => tokens.extend(quote! {
                 ::to_vmt::vmtil::Expr::ArithBinop {
@@ -514,20 +533,18 @@ impl quote::ToTokens for BooleanExpr {
             BooleanExpr::True => tokens.extend(quote! {
                 ::to_vmt::vmtil::BooleanExpr::True
             }),
-            BooleanExpr::Forall {
-                quantified,
-                bound,
-                expr,
-            } => tokens.extend(quote! {
+            BooleanExpr::Forall { quantified, expr } => tokens.extend(quote! {
                 ::to_vmt::vmtil::BooleanExpr::Forall {
-                    quantified: #quantified,
-                    bound: #bound,
-                    expr: #expr
+                    quantified: #quantified.to_string(),
+                    expr: Box::new(#expr)
                 }
+            }),
+            BooleanExpr::Var(var) => tokens.extend(quote! {
+                ::to_vmt::vmtil::BooleanExpr::Var(#var.to_string())
             }),
             BooleanExpr::Binop { op, lhs, rhs } => tokens.extend(quote! {
                 ::to_vmt::vmtil::BooleanExpr::Binop {
-                    op: #op,
+                    op: #op.to_string(),
                     lhs: #lhs,
                     rhs: #rhs
                 }
@@ -561,7 +578,6 @@ mod tests {
             ))
             .post_condition(BooleanExpr::forall(
                 "Z",
-                Some("N"),
                 BooleanExpr::binop("=", Expr::select("a", "Z"), Expr::select("b", "Z")),
             ));
         println!("{builder}");

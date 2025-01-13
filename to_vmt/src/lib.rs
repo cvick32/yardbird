@@ -18,7 +18,7 @@
 // pub mod vmtil;
 
 pub use smt2parser::vmt::VMTModel;
-pub use vmt_macros::to_vmt2;
+pub use vmt_macros::ensures;
 pub use vmtil;
 
 // #[derive(Debug, FromMeta)]

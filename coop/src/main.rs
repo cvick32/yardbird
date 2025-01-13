@@ -1,27 +1,10 @@
-use to_vmt::to_vmt2;
-
 #[allow(clippy::manual_memcpy)]
-// #[to_vmt::ensures(|z| a[z] == b[z])]
-#[to_vmt2]
+#[to_vmt::ensures(|z| (z < N).implies(a[z] == b[z]))]
 fn array_copy_nice(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
     for i in 0..n {
         b[i] = a[i];
     }
 }
-
-// fn __to_vmt_build_model_array_copy_nice() -> VMTModel {
-//     VmtilBuilder::default()
-//         .var_immut("A")
-//         .var_immut("N")
-//         .var_mut("b")
-//         .for_loop("i", "0", "N", Stmt::store("b", "i", Expr::select("A", "i")))
-//         .post_condition(BooleanExpr::forall(
-//             "Z",
-//             Some("N"),
-//             BooleanExpr::binop("=", Expr::select("a", "Z"), Expr::select("b", "Z")),
-//         ))
-//         .build_model()
-// }
 
 fn main() {
     let model = __to_vmt_build_model_array_copy_nice();

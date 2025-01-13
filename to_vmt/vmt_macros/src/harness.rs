@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-pub fn translate_to_vmtil(fn_item: TokenStream) -> TokenStream {
+pub fn translate_to_vmtil(ensures_clause: TokenStream, fn_item: TokenStream) -> TokenStream {
     let syn::ItemFn {
         attrs,
         vis: _,
@@ -26,6 +26,7 @@ pub fn translate_to_vmtil(fn_item: TokenStream) -> TokenStream {
         None
     });
 
+    let parsed_ensures_clause = parse_ensures(ensures_clause);
     let parsed_block = parse_block(*block);
 
     quote! {
@@ -33,10 +34,24 @@ pub fn translate_to_vmtil(fn_item: TokenStream) -> TokenStream {
         #(#attrs)* fn #new_ident () -> ::to_vmt::VMTModel {
             let mut builder = ::to_vmt::vmtil::VmtilBuilder::default();
             builder #(#fn_arguments)*;
+            builder #parsed_ensures_clause;
             builder #parsed_block;
 
             builder.build_model()
         }
+    }
+}
+
+fn parse_ensures(clause: TokenStream) -> TokenStream {
+    let syn::ExprClosure { inputs, body, .. } = syn::parse2(clause).unwrap();
+    if let Some(syn::Pat::Ident(ident)) = inputs.first() {
+        let body = parse_boolean_expr(*body);
+        let forall = vmtil::BooleanExpr::forall(ident.ident.to_string().to_uppercase(), body);
+        quote! {
+            .post_condition( #forall )
+        }
+    } else {
+        todo!("Only support forall over a single variable")
     }
 }
 
@@ -115,7 +130,47 @@ fn parse_expr(expr: syn::Expr) -> vmtil::Expr {
             }
             _ => todo!("expr index"),
         },
+        syn::Expr::Path(path) => vmtil::Expr::Var(path_string(&path)),
         expr => todo!("unsupported expr: {expr:#?}"),
+    }
+}
+
+fn parse_boolean_expr(expr: syn::Expr) -> vmtil::BooleanExpr {
+    match expr {
+        syn::Expr::MethodCall(syn::ExprMethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        }) if method == "implies" => vmtil::BooleanExpr::binop(
+            "=>",
+            parse_boolean_expr(*receiver),
+            vmtil::BooleanExpr::Conjunction(args.into_iter().map(parse_boolean_expr).collect()),
+        ),
+        syn::Expr::Paren(syn::ExprParen { expr, .. }) => parse_boolean_expr(*expr),
+        syn::Expr::Binary(syn::ExprBinary {
+            left, op, right, ..
+        }) => {
+            vmtil::BooleanExpr::binop(syn_binop_string(op), parse_expr(*left), parse_expr(*right))
+        }
+        expr => todo!("unsupported boolean expr: {expr:#?}"),
+    }
+}
+
+fn syn_binop_string(binop: syn::BinOp) -> &'static str {
+    match binop {
+        syn::BinOp::Add(_) => "+",
+        syn::BinOp::Sub(_) => "-",
+        syn::BinOp::Mul(_) => "*",
+        syn::BinOp::Div(_) => "/",
+        syn::BinOp::Rem(_) => "&",
+        syn::BinOp::Eq(_) => "=",
+        syn::BinOp::Lt(_) => "<",
+        syn::BinOp::Le(_) => "<=",
+        syn::BinOp::Ne(_) => "!=",
+        syn::BinOp::Ge(_) => ">=",
+        syn::BinOp::Gt(_) => ">",
+        _ => todo!(),
     }
 }
 
