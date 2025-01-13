@@ -3,6 +3,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 
 mod harness;
+mod verify;
 
 #[proc_macro_attribute]
 pub fn ensures(attrs: TokenStream, item: TokenStream) -> TokenStream {
@@ -13,4 +14,11 @@ pub fn ensures(attrs: TokenStream, item: TokenStream) -> TokenStream {
         #model_generator
     };
     TokenStream::from(doubled)
+}
+
+#[proc_macro]
+pub fn check_to_depth(item: TokenStream) -> TokenStream {
+    verify::check_to_depth(item.into()).into()
+    // let item = proc_macro2::TokenStream::from(item);
+    // todo!("{item:#?}")
 }

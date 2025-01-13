@@ -2,13 +2,28 @@ use pretty::RcDoc;
 
 use crate::{
     vmtil::{BooleanExpr, Expr},
-    Stmt,
+    Type,
 };
 
 pub type Doc<'a> = RcDoc<'a, ()>;
 
 pub trait ToDoc {
     fn to_doc(&self) -> Doc;
+}
+
+impl ToDoc for Type {
+    fn to_doc(&self) -> Doc {
+        match self {
+            Type::Int => Doc::text("Int"),
+            Type::Array { index, value } => Doc::text("(")
+                .append("Array")
+                .append(Doc::space())
+                .append(index.to_doc())
+                .append(Doc::space())
+                .append(value.to_doc())
+                .append(")"),
+        }
+    }
 }
 
 impl ToDoc for Expr {

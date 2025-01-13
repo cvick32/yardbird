@@ -1,5 +1,7 @@
 //! The VMT Intermediate language for building up VMT programs from Rust source
 
+use std::collections::HashMap;
+
 use proc_macro2::TokenStream;
 use quote::quote;
 use smt2parser::{concrete, vmt::VMTModel, CommandStream};
@@ -13,6 +15,7 @@ use crate::{
 pub struct VmtilBuilder {
     variables: Vec<String>,
     immutable_variables: Vec<String>,
+    type_context: HashMap<String, Type>,
     initial_conditions: Vec<BooleanExpr>,
     transition_conditions: Vec<BooleanExpr>,
     property_preconditions: Vec<BooleanExpr>,
@@ -20,16 +23,20 @@ pub struct VmtilBuilder {
 }
 
 impl VmtilBuilder {
-    pub fn var_immut(&mut self, var_name: impl ToString) -> &mut Self {
+    pub fn var_immut(&mut self, var_name: impl ToString, type_name: impl Into<Type>) -> &mut Self {
         self.variables.push(var_name.to_string());
+        self.type_context
+            .insert(var_name.to_string(), type_name.into());
         let next_var = format!("{}_next", var_name.to_string());
         self.transition_conditions
             .push(BooleanExpr::binop("=", var_name, next_var));
         self
     }
 
-    pub fn var_mut(&mut self, var_name: impl ToString) -> &mut Self {
+    pub fn var_mut(&mut self, var_name: impl ToString, type_name: impl Into<Type>) -> &mut Self {
         self.immutable_variables.push(var_name.to_string());
+        self.type_context
+            .insert(var_name.to_string(), type_name.into());
         self
     }
 
@@ -42,7 +49,7 @@ impl VmtilBuilder {
 
     pub fn post_condition(&mut self, boolean_stmt: BooleanExpr) -> &mut Self {
         if let BooleanExpr::Forall { quantified, expr } = boolean_stmt {
-            self.var_immut(quantified.clone());
+            self.var_immut(quantified.clone(), Type::Int);
             self.property_preconditions
                 .push(BooleanExpr::binop("<", "0", quantified.clone()));
             self.property.push(*expr);
@@ -65,6 +72,12 @@ impl VmtilBuilder {
         )
         .unwrap()
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum Type {
+    Int,
+    Array { index: Box<Type>, value: Box<Type> },
 }
 
 #[derive(Clone, Debug)]
@@ -265,7 +278,7 @@ impl BuildContextual for Stmt {
                 upper_bound,
                 body,
             } => {
-                builder.var_immut(loop_var.clone());
+                builder.var_mut(loop_var.clone(), Type::Int);
                 builder.initial_conditions.push(BooleanExpr::binop(
                     "=",
                     loop_var.clone(),
@@ -567,9 +580,21 @@ mod tests {
     fn play_array_copy() {
         let mut builder = VmtilBuilder::default();
         builder
-            .var_immut("A")
-            .var_immut("N")
-            .var_mut("b")
+            .var_immut(
+                "A",
+                Type::Array {
+                    index: Box::new(Type::Int),
+                    value: Box::new(Type::Int),
+                },
+            )
+            .var_immut("N", Type::Int)
+            .var_mut(
+                "b",
+                Type::Array {
+                    index: Box::new(Type::Int),
+                    value: Box::new(Type::Int),
+                },
+            )
             .stmt(Stmt::for_loop(
                 "i",
                 "0",

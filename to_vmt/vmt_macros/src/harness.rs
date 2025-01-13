@@ -12,13 +12,15 @@ pub fn translate_to_vmtil(ensures_clause: TokenStream, fn_item: TokenStream) -> 
     let new_ident = format_ident!("__to_vmt_build_model_{}", sig.ident);
 
     let fn_arguments = sig.inputs.iter().filter_map(|arg| {
-        if let syn::FnArg::Typed(syn::PatType { pat, ty: _, .. }) = arg {
+        if let syn::FnArg::Typed(syn::PatType { pat, ty, .. }) = arg {
             if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
                 if pat_ident.mutability.is_some() {
                     let ident_name = &pat_ident.ident.to_string();
+                    // let type_name = parse_type(ty);
                     return Some(quote! { .var_mut( #ident_name ) });
                 } else {
                     let ident_name = &pat_ident.ident.to_string().to_uppercase();
+                    // let type_name = parse_type(ty);
                     return Some(quote! { .var_immut( #ident_name ) });
                 }
             }
@@ -64,6 +66,15 @@ fn parse_block(block: syn::Block) -> TokenStream {
         #(#stmts)*
     }
 }
+
+fn parse_type(ty: &syn::Type) -> vmtil::Type {
+    match ty {
+        syn::Type::Path(syn::TypePath { path, .. }) => todo!(),
+        x => todo!("Type Parsing for {x:#?}"),
+    }
+}
+
+// fn parse_type_ident(path: &syn::Path) -> vmtil::Type {}
 
 fn parse_stmt(stmt: syn::Stmt) -> vmtil::Stmt {
     match stmt {

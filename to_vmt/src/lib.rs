@@ -18,8 +18,20 @@
 // pub mod vmtil;
 
 pub use smt2parser::vmt::VMTModel;
-pub use vmt_macros::ensures;
+pub use vmt_macros::{check_to_depth, ensures};
 pub use vmtil;
+use yardbird::{strategies::Abstract, Driver};
+
+pub fn run_model(depth: u8, model: VMTModel) {
+    println!("{}", model.as_vmt_string());
+    let cfg = z3::Config::new();
+    let context = z3::Context::new(&cfg);
+    let mut driver = Driver::new(&context, model);
+
+    let strat = Box::new(Abstract::new(depth));
+
+    println!("{:?}", driver.check_strategy(depth, strat));
+}
 
 // #[derive(Debug, FromMeta)]
 // struct ToVMTArgs {
