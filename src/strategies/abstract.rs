@@ -130,6 +130,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<ProofAction> {
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+        debug!("counter example:\n{model}");
         state.update_with_subterms(&model, z3_var_context)?;
         state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {

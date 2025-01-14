@@ -93,13 +93,19 @@ fn main() {}
 
 #[cfg(test)]
 mod verify {
+    use log::Level;
+
     use super::*;
 
     to_vmt::generate_test!(array_copy, depth = 20);
     to_vmt::generate_test!(array_copy_buggy, should_fail = true);
     to_vmt::generate_test!(array_copy_raw_loop);
     to_vmt::generate_test!(array_split_12);
-    to_vmt::generate_test!(array_partial_init);
+    to_vmt::generate_test!(
+        array_partial_init,
+        logger = Some(Level::Debug),
+        debug_vmt = true
+    );
 }
 
 // #[cfg(feature = "to_vmt")]

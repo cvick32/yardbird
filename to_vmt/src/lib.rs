@@ -27,6 +27,7 @@ pub struct RunModelArgs {
     pub depth: u8,
     pub debug_vmt: bool,
     pub should_fail: bool,
+    pub logger: Option<log::Level>,
 }
 
 impl Default for RunModelArgs {
@@ -36,6 +37,7 @@ impl Default for RunModelArgs {
             depth: 10,
             debug_vmt: false,
             should_fail: false,
+            logger: None,
         }
     }
 }
@@ -46,8 +48,13 @@ pub fn run_model(
         depth,
         debug_vmt,
         should_fail,
+        logger,
     }: RunModelArgs,
 ) -> bool {
+    if let Some(level) = logger {
+        yardbird::logger::init_logger(level);
+    }
+
     let model = builder.build_model(debug_vmt);
     let cfg = z3::Config::new();
     let context = z3::Context::new(&cfg);

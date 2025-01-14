@@ -13,3 +13,4 @@ smt2parser = { path = "../smt2parser" }
 z3 = { workspace = true }
 vmt_macros = { path = "vmt_macros" }
 vmtil = { path = "vmtil" }
+log = "0.4.25"

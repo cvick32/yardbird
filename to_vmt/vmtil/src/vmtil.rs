@@ -794,7 +794,7 @@ mod tests {
                 BooleanExpr::binop("=", Expr::select("a", "Z"), Expr::select("b", "Z")),
             ));
         println!("{builder}");
-        let model = builder.build_model();
+        let model = builder.build_model(false);
         println!("{}", model.as_vmt_string());
         assert_eq!(model.as_vmt_string(), "")
     }
