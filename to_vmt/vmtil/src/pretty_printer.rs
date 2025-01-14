@@ -15,6 +15,7 @@ impl ToDoc for Type {
     fn to_doc(&self) -> Doc {
         match self {
             Type::Int => Doc::text("Int"),
+            Type::Bool => Doc::text("Bool"),
             Type::Array { index, value } => Doc::text("(")
                 .append("Array")
                 .append(Doc::space())
@@ -46,6 +47,7 @@ impl ToDoc for Expr {
                 .append(index)
                 .append(")"),
             Expr::Var(var) => Doc::text(var),
+            Expr::Lit(lit) => Doc::text(lit),
             Expr::Boolean(boolean_expr) => boolean_expr.to_doc(),
             Expr::ArithBinop { op, lhs, rhs } => Doc::text("(")
                 .append(op)
@@ -71,6 +73,7 @@ impl ToDoc for BooleanExpr {
                 .append(expr.to_doc())
                 .append(")"),
             BooleanExpr::Var(var) => Doc::text(var),
+            BooleanExpr::Lit(lit) => Doc::text(lit),
             BooleanExpr::Binop { op, lhs, rhs } if op == "=>" => Doc::text("(")
                 .append(op)
                 .append(Doc::space().append(lhs.to_doc()))
@@ -86,7 +89,6 @@ impl ToDoc for BooleanExpr {
                 .append(")")
                 .group(),
             BooleanExpr::Conjunction(vec) if vec.is_empty() => Doc::text("true"),
-            BooleanExpr::Conjunction(vec) if vec.len() == 1 => vec[0].to_doc(),
             BooleanExpr::Conjunction(vec) => Doc::text("(")
                 .append("and")
                 .append(
@@ -117,13 +119,13 @@ pub enum VmtCommands {
     DeclareFun {
         variable: String,
         // TODO: use something other than strings at some point
-        arguments: Vec<String>,
-        output_type: Vec<String>,
+        arguments: Vec<Type>,
+        output_type: Type,
     },
     DefineFun {
         variable: String,
-        arguments: Vec<String>,
-        output_type: Vec<String>,
+        arguments: Vec<Type>,
+        output_type: Type,
         definition: BooleanExpr,
         flags: Vec<(String, String)>,
     },
@@ -145,14 +147,17 @@ impl ToDoc for VmtCommands {
                     Doc::text("(")
                         .append(
                             Doc::nil()
-                                .append(Doc::intersperse(arguments.iter(), Doc::line()))
+                                .append(Doc::intersperse(
+                                    arguments.iter().map(|arg| arg.to_doc()),
+                                    Doc::line(),
+                                ))
                                 .nest(1)
                                 .group(),
                         )
                         .append(")"),
                 )
                 .append(Doc::space())
-                .append(format_output_type(output_type))
+                .append(output_type.to_doc())
                 .append(")"),
             VmtCommands::DefineFun {
                 variable,
@@ -169,14 +174,17 @@ impl ToDoc for VmtCommands {
                     Doc::text("(")
                         .append(
                             Doc::nil()
-                                .append(Doc::intersperse(arguments.iter(), Doc::line()))
+                                .append(Doc::intersperse(
+                                    arguments.iter().map(|arg| arg.to_doc()),
+                                    Doc::line(),
+                                ))
                                 .nest(1)
                                 .group(),
                         )
                         .append(")"),
                 )
                 .append(Doc::space())
-                .append(format_output_type(output_type))
+                .append(output_type.to_doc())
                 .append(Doc::space())
                 .append(
                     Doc::text("(")
@@ -204,19 +212,19 @@ impl ToDoc for VmtCommands {
     }
 }
 
-fn format_output_type(output_type: &[String]) -> Doc {
-    if output_type.is_empty() {
-        Doc::nil()
-    } else if output_type.len() == 1 {
-        Doc::text(&output_type[0])
-    } else {
-        Doc::text("(")
-            .append(
-                Doc::nil()
-                    .append(Doc::intersperse(output_type.iter(), Doc::line()))
-                    .nest(1)
-                    .group(),
-            )
-            .append(")")
-    }
-}
+// fn format_output_type(output_type: &[String]) -> Doc {
+//     if output_type.is_empty() {
+//         Doc::nil()
+//     } else if output_type.len() == 1 {
+//         Doc::text(&output_type[0])
+//     } else {
+//         Doc::text("(")
+//             .append(
+//                 Doc::nil()
+//                     .append(Doc::intersperse(output_type.iter(), Doc::line()))
+//                     .nest(1)
+//                     .group(),
+//             )
+//             .append(")")
+//     }
+// }

@@ -30,7 +30,12 @@ pub fn run_model(depth: u8, model: VMTModel) {
 
     let strat = Box::new(Abstract::new(depth));
 
-    println!("{:?}", driver.check_strategy(depth, strat));
+    println!(
+        "{:#?}",
+        driver
+            .check_strategy(depth, strat)
+            .map(|res| res.used_instances)
+    );
 }
 
 // #[derive(Debug, FromMeta)]

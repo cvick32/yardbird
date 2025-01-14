@@ -1,5 +1,5 @@
 #[allow(clippy::manual_memcpy)]
-#[to_vmt::ensures(|z| (z < N).implies(a[z] == b[z]))]
+#[to_vmt::ensures(|z| (z < n).implies(a[z] == b[z]))]
 fn array_copy_nice(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
     for i in 0..n {
         b[i] = a[i];
@@ -7,8 +7,9 @@ fn array_copy_nice(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
 }
 
 fn main() {
-    let model = __to_vmt_build_model_array_copy_nice();
-    println!("{}", model.as_vmt_string());
+    // let model = __to_vmt_build_model_array_copy_nice();
+    // println!("{}", model.as_vmt_string());
+    to_vmt::check_to_depth!(10, array_copy_nice);
 
     // array_copy_nice(vec![0, 0], vec![1, 1], 2);
 }
