@@ -94,9 +94,7 @@ impl ToDoc for BooleanExpr {
                 .append(
                     Doc::line()
                         .append(Doc::intersperse(
-                            vec.iter()
-                                .filter(|ex| !matches!(ex, BooleanExpr::True))
-                                .map(|ex| ex.to_doc()),
+                            vec.iter().map(|ex| ex.to_doc()),
                             Doc::line(),
                         ))
                         .nest(2)

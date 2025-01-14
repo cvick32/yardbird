@@ -18,24 +18,49 @@
 // pub mod vmtil;
 
 pub use smt2parser::vmt::VMTModel;
-pub use vmt_macros::{check_to_depth, ensures};
+pub use vmt_macros::{ensures, generate_test};
 pub use vmtil;
 use yardbird::{strategies::Abstract, Driver};
 
-pub fn run_model(depth: u8, model: VMTModel) {
-    println!("{}", model.as_vmt_string());
+pub struct RunModelArgs {
+    pub builder: vmtil::VmtilBuilder,
+    pub depth: u8,
+    pub debug_vmt: bool,
+    pub should_fail: bool,
+}
+
+impl Default for RunModelArgs {
+    fn default() -> Self {
+        Self {
+            builder: vmtil::VmtilBuilder::default(),
+            depth: 10,
+            debug_vmt: false,
+            should_fail: false,
+        }
+    }
+}
+
+pub fn run_model(
+    RunModelArgs {
+        builder,
+        depth,
+        debug_vmt,
+        should_fail,
+    }: RunModelArgs,
+) -> bool {
+    let model = builder.build_model(debug_vmt);
     let cfg = z3::Config::new();
     let context = z3::Context::new(&cfg);
     let mut driver = Driver::new(&context, model);
 
     let strat = Box::new(Abstract::new(depth));
 
-    println!(
-        "{:#?}",
-        driver
-            .check_strategy(depth, strat)
-            .map(|res| res.used_instances)
-    );
+    if let Ok(res) = driver.check_strategy(depth, strat) {
+        println!("Instances: {:#?}", res.used_instances);
+        !res.used_instances.is_empty() && !debug_vmt && !should_fail
+    } else {
+        should_fail && !debug_vmt
+    }
 }
 
 // #[derive(Debug, FromMeta)]

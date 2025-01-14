@@ -17,8 +17,6 @@ pub fn ensures(attrs: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn check_to_depth(item: TokenStream) -> TokenStream {
+pub fn generate_test(item: TokenStream) -> TokenStream {
     verify::check_to_depth(item.into()).into()
-    // let item = proc_macro2::TokenStream::from(item);
-    // todo!("{item:#?}")
 }

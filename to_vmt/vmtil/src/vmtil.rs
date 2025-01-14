@@ -11,7 +11,7 @@ use crate::{
     pretty_printer::{ToDoc, VmtCommands},
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct VmtilBuilder {
     variables: Vec<String>,
     immutable_variables: Vec<String>,
@@ -40,10 +40,27 @@ impl VmtilBuilder {
         self
     }
 
+    /// TODO: right now we really only support a single stmt, we will need something like a PC
+    /// to do this properly I think
     pub fn stmt(&mut self, stmt: impl BuildContextual) -> &mut Self {
         let mut context = Context::default();
         let cond = stmt.extend(&mut context, self);
         self.transition_conditions.push(cond);
+        self
+    }
+
+    /// TODO: A hack until we have proper multi-statement support
+    pub fn local_binding(
+        &mut self,
+        var_name: impl ToString,
+        type_name: impl Into<Type>,
+        expr: impl Into<Expr>,
+    ) -> &mut Self {
+        self.variables.push(var_name.to_string());
+        self.type_context
+            .insert(var_name.to_string(), type_name.into());
+        self.initial_conditions
+            .push(BooleanExpr::binop("=", var_name.to_string(), expr));
         self
     }
 
@@ -62,7 +79,7 @@ impl VmtilBuilder {
         self
     }
 
-    pub fn build_model(mut self) -> VMTModel {
+    pub fn build_model(mut self, dump_vmt: bool) -> VMTModel {
         // correct the case of variables according to their mutability
         self.initial_conditions = mem::take(&mut self.initial_conditions)
             .into_iter()
@@ -82,6 +99,9 @@ impl VmtilBuilder {
             .collect();
 
         let vmt_string = format!("{self}");
+        if dump_vmt {
+            println!("{}", vmt_string)
+        }
         let command_stream =
             CommandStream::new(vmt_string.as_bytes(), concrete::SyntaxBuilder, None);
 
@@ -95,19 +115,19 @@ impl VmtilBuilder {
     }
 
     fn rewrite(&self, var: String) -> String {
-        let (var, suffix) = if let Some(base) = var.strip_suffix("_next") {
+        let (base, suffix) = if let Some(base) = var.strip_suffix("_next") {
             (base.to_string(), "_next")
         } else {
-            (var, "")
+            (var.clone(), "")
         };
 
-        if self.variables.contains(&var) {
-            format!("{}{suffix}", var.to_lowercase())
-        } else if self.immutable_variables.contains(&var) {
-            format!("{}{suffix}", var.to_uppercase())
+        if self.variables.contains(&base) {
+            format!("{}{suffix}", base.to_lowercase())
+        } else if self.immutable_variables.contains(&base) {
+            format!("{}{suffix}", base.to_uppercase())
         } else {
             panic!(
-                "Unknown variable: mut {:?} immut {:?} {var}",
+                "Unknown variable: mut {:?} immut {:?} {base}",
                 self.variables, self.immutable_variables
             )
         }
@@ -625,7 +645,7 @@ impl quote::ToTokens for Stmt {
             }),
             Stmt::Assign { var, rhs } => tokens.extend(quote! {
                 ::to_vmt::vmtil::Stmt::Assign {
-                    var: #var,
+                    var: #var.to_string(),
                     rhs: #rhs
                 }
             }),
@@ -652,13 +672,19 @@ impl quote::ToTokens for Stmt {
                 condition,
                 true_branch,
                 false_branch,
-            } => tokens.extend(quote! {
-                ::to_vmt::vmtil::Stmt::If {
-                    condition: #condition,
-                    true_branch: #true_branch,
-                    false_branch: #false_branch
-                }
-            }),
+            } => {
+                let false_tokens = false_branch
+                    .as_ref()
+                    .map(|stmt| quote!(Some(Box::new(#stmt))))
+                    .unwrap_or_else(|| quote!(None));
+                tokens.extend(quote! {
+                    ::to_vmt::vmtil::Stmt::If {
+                        condition: #condition,
+                        true_branch: Box::new(#true_branch),
+                        false_branch: #false_tokens
+                    }
+                })
+            }
         }
     }
 }
@@ -691,8 +717,8 @@ impl quote::ToTokens for Expr {
             Expr::ArithBinop { op, lhs, rhs } => tokens.extend(quote! {
                 ::to_vmt::vmtil::Expr::ArithBinop {
                     op: #op.to_string(),
-                    lhs: #lhs,
-                    rhs: #rhs
+                    lhs: Box::new(#lhs),
+                    rhs: Box::new(#rhs)
                 }
             }),
         }

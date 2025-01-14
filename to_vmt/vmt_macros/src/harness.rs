@@ -33,13 +33,13 @@ pub fn translate_to_vmtil(ensures_clause: TokenStream, fn_item: TokenStream) -> 
 
     quote! {
         #[allow(unused)]
-        #(#attrs)* fn #new_ident () -> ::to_vmt::VMTModel {
+        #(#attrs)* fn #new_ident () -> ::to_vmt::vmtil::VmtilBuilder {
             let mut builder = ::to_vmt::vmtil::VmtilBuilder::default();
             builder #(#fn_arguments)*;
             builder #parsed_ensures_clause;
             builder #parsed_block;
 
-            builder.build_model()
+            builder
         }
     }
 }
@@ -59,8 +59,12 @@ fn parse_ensures(clause: TokenStream) -> TokenStream {
 
 fn parse_block(block: syn::Block) -> TokenStream {
     let stmts = block.stmts.into_iter().map(|st| {
-        let stmt = parse_stmt(st);
-        quote! { .stmt(#stmt) }
+        if let syn::Stmt::Local(local) = st {
+            parse_local(local)
+        } else {
+            let stmt = parse_stmt(st);
+            quote! { .stmt(#stmt) }
+        }
     });
     quote! {
         #(#stmts)*
@@ -100,7 +104,7 @@ fn parse_type(ty: &syn::Type) -> vmtil::Type {
 
 fn parse_stmt(stmt: syn::Stmt) -> vmtil::Stmt {
     match stmt {
-        syn::Stmt::Local(_local) => todo!("local"),
+        syn::Stmt::Local(_) => todo!("local"),
         syn::Stmt::Item(_item) => todo!("item"),
         syn::Stmt::Expr(syn::Expr::Assign(syn::ExprAssign { left, right, .. }), _) => match *left {
             syn::Expr::Index(syn::ExprIndex { expr, index, .. }) => match (*expr, *index) {
@@ -112,6 +116,22 @@ fn parse_stmt(stmt: syn::Stmt) -> vmtil::Stmt {
                 _ => todo!("index"),
             },
             _ => todo!("index"),
+        },
+        syn::Stmt::Expr(
+            syn::Expr::Binary(syn::ExprBinary {
+                left, op, right, ..
+            }),
+            _,
+        ) => match *left {
+            syn::Expr::Path(syn::PatPath { path, .. }) => vmtil::Stmt::assign(
+                path_string(&path),
+                vmtil::Expr::arith_binop(
+                    syn_binop_string(op),
+                    path_string(&path),
+                    parse_expr(*right),
+                ),
+            ),
+            _ => todo!("hi"),
         },
         syn::Stmt::Expr(
             syn::Expr::ForLoop(syn::ExprForLoop {
@@ -149,12 +169,58 @@ fn parse_stmt(stmt: syn::Stmt) -> vmtil::Stmt {
             }
             todo!("Only support ranges for now: {expr:#?}")
         }
+        syn::Stmt::Expr(syn::Expr::Loop(syn::ExprLoop { body, .. }), _) => {
+            vmtil::Stmt::loop_stmt(vmtil::Stmt::Block {
+                stmts: body.stmts.into_iter().map(parse_stmt).collect(),
+            })
+        }
+        syn::Stmt::Expr(syn::Expr::Break(_), _) => vmtil::Stmt::Break,
+        syn::Stmt::Expr(
+            syn::Expr::If(syn::ExprIf {
+                cond,
+                then_branch,
+                else_branch,
+                ..
+            }),
+            _,
+        ) => vmtil::Stmt::if_stmt(
+            parse_boolean_expr(*cond),
+            vmtil::Stmt::Block {
+                stmts: then_branch.stmts.into_iter().map(parse_stmt).collect(),
+            },
+            else_branch.map(|(_, else_branch)| -> vmtil::Stmt {
+                match *else_branch {
+                    syn::Expr::Block(syn::ExprBlock { block, .. }) => vmtil::Stmt::Block {
+                        stmts: block.stmts.into_iter().map(parse_stmt).collect(),
+                    },
+                    _ => todo!("unsupported else block"),
+                }
+            }),
+        ),
         syn::Stmt::Expr(expr, _semi) => todo!("unsupported expr stmt: {expr:#?}"),
         syn::Stmt::Macro(_stmt_macro) => todo!("macro"),
     }
 }
 
-// TODO: make this return an expr, I guess we should match the Rust grammar more
+/// TODO: hack until we have proper multi statement support
+fn parse_local(local: syn::Local) -> TokenStream {
+    let syn::Local { pat, init, .. } = local;
+    match (pat, init) {
+        (syn::Pat::Type(syn::PatType { pat, ty, .. }), Some(syn::LocalInit { expr, .. })) => {
+            match *pat {
+                syn::Pat::Ident(syn::PatIdent { ident, .. }) => {
+                    let var = ident.to_string();
+                    let ty = parse_type(&ty);
+                    let expr = parse_expr(*expr);
+                    quote!(.local_binding(#var, #ty, #expr))
+                }
+                _ => todo!("local"),
+            }
+        }
+        _ => todo!("unsupported local expression"),
+    }
+}
+
 fn parse_expr(expr: syn::Expr) -> vmtil::Expr {
     match expr {
         syn::Expr::Index(syn::ExprIndex { expr, index, .. }) => match (*expr, *index) {
@@ -164,6 +230,13 @@ fn parse_expr(expr: syn::Expr) -> vmtil::Expr {
             _ => todo!("expr index"),
         },
         syn::Expr::Path(path) => vmtil::Expr::Var(path_string(&path.path)),
+        syn::Expr::Lit(syn::PatLit { lit, .. }) => match lit {
+            syn::Lit::Int(lit_int) => vmtil::Expr::Lit(lit_int.to_string()),
+            x => todo!("unsupported literal: {x:#?}"),
+        },
+        syn::Expr::Binary(syn::ExprBinary {
+            left, op, right, ..
+        }) => vmtil::Expr::arith_binop(syn_binop_string(op), parse_expr(*left), parse_expr(*right)),
         expr => todo!("unsupported expr: {expr:#?}"),
     }
 }
@@ -193,17 +266,23 @@ fn parse_boolean_expr(expr: syn::Expr) -> vmtil::BooleanExpr {
 fn syn_binop_string(binop: syn::BinOp) -> &'static str {
     match binop {
         syn::BinOp::Add(_) => "+",
+        syn::BinOp::AddAssign(_) => "+",
         syn::BinOp::Sub(_) => "-",
+        syn::BinOp::SubAssign(_) => "-",
         syn::BinOp::Mul(_) => "*",
+        syn::BinOp::MulAssign(_) => "*",
         syn::BinOp::Div(_) => "/",
+        syn::BinOp::DivAssign(_) => "/",
         syn::BinOp::Rem(_) => "&",
+        syn::BinOp::RemAssign(_) => "&",
         syn::BinOp::Eq(_) => "=",
         syn::BinOp::Lt(_) => "<",
         syn::BinOp::Le(_) => "<=",
         syn::BinOp::Ne(_) => "!=",
         syn::BinOp::Ge(_) => ">=",
         syn::BinOp::Gt(_) => ">",
-        _ => todo!(),
+        syn::BinOp::And(_) => "and",
+        x => todo!("binop: {x:#?}"),
     }
 }
 

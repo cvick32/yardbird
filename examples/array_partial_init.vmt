@@ -26,23 +26,24 @@
 (= j 0)
 ) :init true))
 
-(define-fun trans-conditions () Bool (!
- (and
-(let ((a!1 (=> (not (= (select a i) (select b i))) (= c c_next))))
-  (and (=> (= (select a i) (select b i)) (= (store c j i) c_next)) a!1))
-(< i N)
-(= (+ i 1) i_next)
-(let ((a!1 (=> (not (= (select a i) (select b i))) (= j j_next))))
-  (and (=> (= (select a i) (select b i)) (= (+ j 1) j_next)) a!1))
-(= a a_next)
-(= b b_next)
-(= N N_next)
-(= Z Z_next)
-) :trans true))
+(define-fun trans-conditions () Bool
+            (!
+             (and
+              (let ((a!1 (=> (not (= (select a i) (select b i))) (= c c_next))))
+                (and (=> (= (select a i) (select b i)) (= (store c j i) c_next)) a!1))
+              (< i N)
+              (= (+ i 1) i_next)
+              (let ((a!1 (=> (not (= (select a i) (select b i))) (= j j_next))))
+                (and (=> (= (select a i) (select b i)) (= (+ j 1) j_next)) a!1))
+              (= a a_next)
+              (= b b_next)
+              (= N N_next)
+              (= Z Z_next)
+              ) :trans true))
 
 (define-fun property () Bool (!
  (and
 (let ((a!1 (not (not (>= (select c Z) Z)))))
-  (=> (and (>= i N) (>= Z 0) (< Z j)) (and a!1)))
+  (=> (and (>= i N) (< 0 Z) (< Z j)) (and a!1)))
 ) :invar-property 0))
 

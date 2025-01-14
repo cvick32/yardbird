@@ -1,26 +1,105 @@
+#![allow(unused)]
+
 #[allow(clippy::manual_memcpy)]
 #[to_vmt::ensures(|z| (z < n).implies(a[z] == b[z]))]
-fn array_copy_nice(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
+fn array_copy(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
     for i in 0..n {
         b[i] = a[i];
     }
 }
 
-fn main() {
-    // let model = __to_vmt_build_model_array_copy_nice();
-    // println!("{}", model.as_vmt_string());
-    to_vmt::check_to_depth!(10, array_copy_nice);
-
-    // array_copy_nice(vec![0, 0], vec![1, 1], 2);
+#[allow(clippy::manual_memcpy)]
+#[to_vmt::ensures(|z| (z < n).implies(a[z] == b[z]))]
+fn array_copy_raw_loop(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
+    let mut i: usize = 0;
+    loop {
+        if i < n {
+            b[i] = a[i];
+            i += 1;
+        } else {
+            break;
+        }
+    }
 }
 
+#[allow(clippy::needless_range_loop)]
+#[to_vmt::ensures(|z| (z < n).implies(a[z] == b[z]))]
+fn array_copy_buggy(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
+    for i in 0..n {
+        b[i] = 10000;
+    }
+}
+
+#[allow(clippy::needless_range_loop)]
+#[to_vmt::ensures(|z| (500 <= z && z < n).implies(2 * z == a[z]))]
+fn array_split_12(mut a: Vec<usize>, n: usize) {
+    let mut y: usize = 1000;
+    for i in 0..n {
+        a[i] = i + y;
+        if i < 500 {
+            y -= 1;
+        } else {
+            y += 1;
+        }
+    }
+}
+
+#[allow(clippy::absurd_extreme_comparisons)]
+#[allow(unused_comparisons)]
+// #[to_vmt(prover = "yardbird", timeout = 60, print_vmt = false)]
+#[to_vmt::ensures(|z| (z < j).implies(c[z] >= z))]
+pub fn array_partial_init(a: Vec<usize>, b: Vec<usize>, mut c: Vec<usize>, n: usize) {
+    let mut j: usize = 0;
+    for i in 0..n {
+        if a[i] == b[i] {
+            c[j] = i;
+            j += 1;
+        }
+    }
+}
+
+//     #[allow(clippy::absurd_extreme_comparisons)]
+//     #[allow(unused_comparisons)]
+//     #[to_vmt(prover = "yardbird", timeout = 60, print_vmt = false)]
+//     pub fn array_partial_init(
+//         a: Vec<usize>,
+//         b: Vec<usize>,
+//         mut c: Vec<usize>,
+//         mut i: usize,
+//         mut j: usize,
+//         n: usize,
+//         z: usize,
+//     ) {
+//         assert!(i == 0);
+//         assert!(j == 0);
+//         loop {
+//             if i < n {
+//                 if a[i] == b[i] {
+//                     c[i] = i;
+//                     j += 1;
+//                 }
+//                 i += 1;
+//             } else {
+//                 break;
+//             }
+//         }
+//         assert!(z >= 0);
+//         assert!(z < j);
+//         assert!(i >= n);
+//         assert!(c[z] >= z);
+//     }
+
+fn main() {}
+
+#[cfg(test)]
 mod verify {
     use super::*;
 
-    // #[to_vmt::bmc(depth = 10, check = array_copy_nice)]
-    fn verify_array_copy_nice() {
-        array_copy_nice(vec![0, 0], vec![1, 1], 2);
-    }
+    to_vmt::generate_test!(array_copy, depth = 20);
+    to_vmt::generate_test!(array_copy_buggy, should_fail = true);
+    to_vmt::generate_test!(array_copy_raw_loop);
+    to_vmt::generate_test!(array_split_12);
+    to_vmt::generate_test!(array_partial_init);
 }
 
 // #[cfg(feature = "to_vmt")]
@@ -70,59 +149,6 @@ mod verify {
 //         assert!(a[z] == b[z]);
 //     }
 
-//     // #[to_vmt(prover = "yardbird", timeout = 60, print_vmt = false)]
-//     pub fn array_split_12(mut a: Vec<usize>, mut i: usize, mut y: usize, n: usize, z: usize) {
-//         assert!(i == 0);
-//         assert!(y == 1000);
-//         loop {
-//             if i < n {
-//                 a[i] = i + y;
-//                 i += 1;
-//                 if i < 500 {
-//                     y -= 1;
-//                 } else {
-//                     y += 1;
-//                 }
-//             } else {
-//                 break;
-//             }
-//         }
-//         assert!(i >= n);
-//         assert!(z < n);
-//         assert!(z >= 500);
-//         assert!((2 * z) == a[z]);
-//     }
-
-//     #[allow(clippy::absurd_extreme_comparisons)]
-//     #[allow(unused_comparisons)]
-//     #[to_vmt(prover = "yardbird", timeout = 60, print_vmt = false)]
-//     pub fn array_partial_init(
-//         a: Vec<usize>,
-//         b: Vec<usize>,
-//         mut c: Vec<usize>,
-//         mut i: usize,
-//         mut j: usize,
-//         n: usize,
-//         z: usize,
-//     ) {
-//         assert!(i == 0);
-//         assert!(j == 0);
-//         loop {
-//             if i < n {
-//                 if a[i] == b[i] {
-//                     c[i] = i;
-//                     j += 1;
-//                 }
-//                 i += 1;
-//             } else {
-//                 break;
-//             }
-//         }
-//         assert!(z >= 0);
-//         assert!(z < j);
-//         assert!(i >= n);
-//         assert!(c[z] >= z);
-//     }
 // }
 
 // fn main() {
