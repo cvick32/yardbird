@@ -7,12 +7,13 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { AuthContext } from "../AuthProvider";
-import { FaCrow, FaDoorOpen, FaGithub } from "react-icons/fa6";
+import { FaCrow, FaDoorOpen, FaGithub, FaUpload } from "react-icons/fa6";
 import { useArtifact, useArtifacts } from "../fetch";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { CommitMessage, CommitRef } from ".";
 import { useIsLargeScreen } from "../useIsLargeScreen";
+import { useFiles } from "../FileProvider";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -42,6 +43,7 @@ function RootComponent() {
 function LargeHeader() {
   const location = useLocation();
   const isArtifactPage = location.pathname.includes("artifacts");
+  const { setFiles } = useFiles();
 
   return (
     <>
@@ -62,6 +64,25 @@ function LargeHeader() {
           )}
         </div>
         <div className="grow"></div>
+        {!isArtifactPage && (
+          <div className="tetxt-lg flex flex-row items-center gap-1 hover:underline">
+            <FaUpload />
+            <label htmlFor="file-upload" className="cursor-pointer">
+              Upload
+              <input
+                type="file"
+                id="file-upload"
+                className="sr-only"
+                accept=".json"
+                onChange={(ev) => {
+                  if (!!ev.target.files) {
+                    setFiles([...ev.target.files]);
+                  }
+                }}
+              />
+            </label>
+          </div>
+        )}
         <div>
           <a
             href="https://github.com/cvick32/yardbird"

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
+  Artifact,
   benchmarkSummary,
   useArtifact,
   useArtifacts,
@@ -8,6 +9,8 @@ import {
 } from "../fetch";
 import { PropsWithChildren, Children } from "react";
 import { GoGitBranch } from "react-icons/go";
+import { useFiles } from "../FileProvider";
+import { FaPencilAlt } from "react-icons/fa";
 
 export const Route = createFileRoute("/")({
   beforeLoad: ({ context }) => {
@@ -21,6 +24,9 @@ export const Route = createFileRoute("/")({
 function Index() {
   const artifacts = useArtifacts();
   const inProgress = useInProgressWorkflows();
+  const { files, deleteFile } = useFiles();
+
+  console.log(files);
 
   if (!artifacts.data) {
     return <div>Loading...</div>;
@@ -103,6 +109,57 @@ function Index() {
             </div>
           );
         })}
+      {[...files.entries()].map(
+        ([id, artifact]: [string, Artifact], idx: number) => {
+          // let date = new Date(Date.parse(art.created_at));
+          // let dayString = date.toLocaleDateString("en-US");
+          // let timeString = date.toLocaleTimeString("en-US", {
+          //   hour: "2-digit",
+          //   minute: "2-digit",
+          // });
+          return (
+            <div
+              className="my-1 flex flex-row flex-wrap gap-x-2 rounded-md border p-1 hover:bg-slate-200 md:flex-nowrap"
+              key={idx}
+            >
+              <div
+                className={[
+                  "flex w-full flex-grow flex-row gap-2 text-sm",
+                  "md:w-fit md:grow-0 md:gap-0 md:text-base",
+                ].join(" ")}
+              >
+                <span className="text-slate-500 md:w-[90px] md:text-black"></span>
+                <span className="text-slate-500 md:w-[80px] md:text-black"></span>
+              </div>
+              <Stats id={id} className="w-[75px]" />
+              <Link
+                to="/artifacts/$art"
+                params={{ art: id }}
+                search={{ compare: "", filter: "" }}
+                className="text-blue-500 hover:text-blue-600 hover:underline"
+              >
+                Results
+              </Link>
+              <div className="flex flex-row gap-2 md:gap-0">
+                <div className="group flex flex-row items-center gap-1 hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+                  <FaPencilAlt size="12" className="shrink-0" />
+                  <span className="group-hover:bg-slate-200">local</span>
+                </div>
+                <div>{artifact.id.substring(6)}</div>
+              </div>
+              <div className="grow"></div>
+              <div>
+                <button
+                  className="rounded-md bg-red-500 px-2 text-white"
+                  onClick={() => deleteFile(artifact.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          );
+        },
+      )}
       {artifacts.data.data.artifacts.map((art: any, idx: number) => {
         let date = new Date(Date.parse(art.created_at));
         let dayString = date.toLocaleDateString("en-US");
