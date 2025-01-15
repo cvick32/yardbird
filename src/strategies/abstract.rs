@@ -137,6 +137,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             current_bmc_depth: state.depth as u32,
             transition_system_terms: state.smt.get_transition_system_subterms(),
             property_terms: state.smt.get_property_subterms(),
+            reads_writes: state.smt.get_reads_and_writes(),
         };
         let (insts, const_insts) = state.egraph.saturate(cost_fn);
         state.instantiations.extend_from_slice(&insts);
