@@ -14,7 +14,7 @@ pub struct ConflictScheduler<S, CF> {
     /// need to use interior mutability.
     instantiations: Rc<RefCell<Vec<String>>>,
     instantiations_w_constants: Rc<RefCell<Vec<String>>>,
-    cost_fn: CF,
+    pub cost_fn: CF,
     transition_system_terms: Vec<String>,
     property_terms: Vec<String>,
 }
@@ -85,54 +85,56 @@ where
         for m in &matches {
             if let Some(cow_ast) = &m.ast {
                 // TODO: do something smarter than just the first subst?
-                let subst = &m.substs[0];
-
-                // transform &Cow<T> -> &T
-                let ast = cow_ast.as_ref();
                 info!("Number of subs: {}", m.substs.len());
-                info!("Current Sub: {:?}", subst);
+                for subst in &m.substs {
+                    // transform &Cow<T> -> &T
+                    let ast = cow_ast.as_ref();
+                    info!("Current Sub: {:?}", subst);
 
-                // construct a new term by instantiating variables in the pattern ast with terms
-                // from the substitution.
-                let new_lhs: egg::RecExpr<_> =
-                    unpatternify(reify_pattern_ast(ast, egraph, subst, &extractor));
+                    // construct a new term by instantiating variables in the pattern ast with terms
+                    // from the substitution.
+                    let new_lhs: egg::RecExpr<_> =
+                        unpatternify(reify_pattern_ast(ast, egraph, subst, &extractor));
 
-                if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
-                    let new_rhs: egg::RecExpr<_> =
-                        unpatternify(reify_pattern_ast(applier_ast, egraph, subst, &extractor));
+                    if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
+                        let new_rhs: egg::RecExpr<_> =
+                            unpatternify(reify_pattern_ast(applier_ast, egraph, subst, &extractor));
 
-                    let rhs_eclass = egraph.lookup_expr(&new_rhs);
-                    // the eclass that we would have inserted from this pattern
-                    // would cause a union from `rhs_eclass` to `eclass`. This means it
-                    // is creating an equality that wouldn't otherwise be in the
-                    // e-graph. This is a conflict, so we record the rule instantiation
-                    // here.
-                    if Some(m.eclass) != rhs_eclass {
-                        info!("FOUND VIOLATION");
-                        info!("{} => {}", new_lhs.pretty(80), new_rhs.pretty(80));
+                        let rhs_eclass = egraph.lookup_expr(&new_rhs);
+                        // the eclass that we would have inserted from this pattern
+                        // would cause a union from `rhs_eclass` to `eclass`. This means it
+                        // is creating an equality that wouldn't otherwise be in the
+                        // e-graph. This is a conflict, so we record the rule instantiation
+                        // here.
+                        if Some(m.eclass) != rhs_eclass {
+                            info!("FOUND VIOLATION");
+                            info!("{} => {}", new_lhs.pretty(80), new_rhs.pretty(80));
 
-                        let instantiation = if rewrite.name.as_str() == "write-does-not-overwrite" {
-                            let idx1 = subst.get("?c".parse().unwrap()).unwrap();
-                            let idx2 = subst.get("?idx".parse().unwrap()).unwrap();
-                            let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
-                            let (_, expr1) = extractor.find_best(*idx1);
-                            let (_, expr2) = extractor.find_best(*idx2);
-                            format!(
-                                "(=> (not (= {} {})) (= {} {}))",
-                                expr1, expr2, new_lhs, new_rhs
-                            )
-                        } else {
-                            format!("(= {} {})", new_lhs, new_rhs)
-                        };
+                            let instantiation = if rewrite.name.as_str()
+                                == "write-does-not-overwrite"
+                            {
+                                let idx1 = subst.get("?c".parse().unwrap()).unwrap();
+                                let idx2 = subst.get("?idx".parse().unwrap()).unwrap();
+                                let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
+                                let (_, expr1) = extractor.find_best(*idx1);
+                                let (_, expr2) = extractor.find_best(*idx2);
+                                format!(
+                                    "(=> (not (= {} {})) (= {} {}))",
+                                    expr1, expr2, new_lhs, new_rhs
+                                )
+                            } else {
+                                format!("(= {} {})", new_lhs, new_rhs)
+                            };
 
-                        let cost = self.cost_fn.cost_rec(&new_rhs);
-                        if cost >= 100 {
-                            debug!("rejecting because of cost");
-                            self.instantiations_w_constants
-                                .borrow_mut()
-                                .push(instantiation);
-                        } else {
-                            self.instantiations.borrow_mut().push(instantiation);
+                            let cost = self.cost_fn.cost_rec(&new_rhs);
+                            if cost >= 100 {
+                                debug!("rejecting because of cost");
+                                self.instantiations_w_constants
+                                    .borrow_mut()
+                                    .push(instantiation);
+                            } else {
+                                self.instantiations.borrow_mut().push(instantiation);
+                            }
                         }
                     }
                 }
