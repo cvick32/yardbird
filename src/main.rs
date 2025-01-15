@@ -4,7 +4,7 @@ use clap::Parser;
 use log::info;
 use yardbird::{
     logger, model_from_options,
-    strategies::{Abstract, ConcreteZ3, Interpolating, ProofStrategy, Repl},
+    strategies::{Abstract, AbstractOnlyBest, ConcreteZ3, Interpolating, ProofStrategy, Repl},
     Driver, YardbirdOptions,
 };
 
@@ -20,6 +20,7 @@ fn main() -> anyhow::Result<()> {
     // build the strategy
     let strat: Box<dyn ProofStrategy<_>> = match options.strategy {
         yardbird::Strategy::Abstract => Box::new(Abstract::new(options.depth)),
+        yardbird::Strategy::AbstractOnlyBest => Box::new(AbstractOnlyBest::new(options.depth)),
         yardbird::Strategy::Concrete => Box::new(ConcreteZ3::default()),
     };
 

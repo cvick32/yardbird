@@ -51,7 +51,9 @@ where
             .with_egraph(egraph)
             .with_scheduler(scheduler)
             .run(&array_axioms());
+
         *self = std::mem::take(&mut runner.egraph);
+
         drop(runner);
         (
             Rc::into_inner(instantiations).unwrap().into_inner(),
