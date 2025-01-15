@@ -112,25 +112,14 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Let
         qual_identifier: QualIdentifier,
         arguments: Vec<Self::T>,
     ) -> Result<Self::T, Self::E> {
-        if self.scope.is_empty() {
-            let new_arguments = arguments
-                .iter()
-                .map(|arg| arg.clone().accept_term_visitor(self).unwrap())
-                .collect::<Vec<_>>();
-            Ok(Term::Application {
-                qual_identifier,
-                arguments: new_arguments,
-            })
-        } else {
-            let new_arguments = arguments
-                .iter()
-                .map(|arg| self.substitute_scoped_symbols(arg.clone()))
-                .collect::<Vec<_>>();
-            Ok(Term::Application {
-                qual_identifier,
-                arguments: new_arguments,
-            })
-        }
+        let new_arguments = arguments
+            .iter()
+            .map(|arg| self.substitute_scoped_symbols(arg.clone()))
+            .collect::<Vec<_>>();
+        Ok(Term::Application {
+            qual_identifier,
+            arguments: new_arguments,
+        })
     }
 
     fn visit_let(
@@ -140,8 +129,8 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Let
     ) -> Result<Self::T, Self::E> {
         for (var, term) in &var_bindings {
             // Pop on the scope
-            let new_term = self.substitute_scoped_symbols(term.clone());
-            self.scope.insert(var.clone(), new_term);
+            let var_term = self.substitute_scoped_symbols(term.clone());
+            self.scope.insert(var.clone(), var_term);
         }
         let new_term = self.substitute_scoped_symbols(term);
         for (var, _) in &var_bindings {
@@ -282,5 +271,10 @@ mod test {
         b"(assert (let ((a!1 2)) (let ((a!2 3)) (+ a!1 a!2))))",
         "(+ 2 3)"
     );
-    create_let_test!(test_tiling_pr5, b"(assert (! (and (let ((a!1 (and (not (<= i (* 1 CC))) (>= Z 0) (< Z (* 5 CC)))) (a!2 (not (or (<= minval (select a Z)) (= (select a Z) 0))))) (=> a!1 (and (not a!2))))) :prop))", "(! (and (=> (and (not (<= i (* 1 CC))) (>= Z 0) (< Z (* 5 CC))) (and (not (not (or (<= minval (select a Z)) (= (select a Z) 0))))))) :prop)");
+    create_let_test!(test_attribute, b"(assert (! (and (let ((a!1 (and (not (<= i (* 1 CC))) (>= Z 0) (< Z (* 5 CC)))) (a!2 (not (or (<= minval (select a Z)) (= (select a Z) 0))))) (=> a!1 (and (not a!2))))) :prop))", "(! (and (=> (and (not (<= i (* 1 CC))) (>= Z 0) (< Z (* 5 CC))) (and (not (not (or (<= minval (select a Z)) (= (select a Z) 0))))))) :prop)");
+    create_let_test!(
+        test_let_of_let,
+        b"(assert (let ((a!1 (let ((a!2 3)) a!2))) a!1))",
+        "3"
+    );
 }
