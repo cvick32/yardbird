@@ -9,7 +9,7 @@ use yardbird::{
 };
 
 fn main() -> anyhow::Result<()> {
-    logger::init_logger();
+    logger::init_logger(log::Level::Info);
     let options = YardbirdOptions::parse();
     let vmt_model = model_from_options(&options);
 

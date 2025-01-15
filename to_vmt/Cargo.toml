@@ -4,13 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-syn = "2.0.90"
-smt2parser = { path = "../smt2parser/", version = "0.6.1" }
-yardbird = { path = ".." }
-quote = "1.0.37"
+log = "0.4.25"
 proc-macro2 = "1.0.92"
-darling = "0.20.10"
+quote = "1.0.37"
+smt2parser = { workspace = true }
+syn = "2.0.90"
+vmt_macros = { path = "vmt_macros" }
+vmtil = { path = "vmtil" }
+yardbird = { path = ".." }
 z3 = { workspace = true }
-
-[lib]
-proc-macro = true
