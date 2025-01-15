@@ -1,8 +1,8 @@
-use harness::translate_to_vmtil;
+use ensures::translate_to_vmtil;
 use proc_macro::TokenStream;
 use quote::quote;
 
-mod harness;
+mod ensures;
 mod verify;
 
 #[proc_macro_attribute]

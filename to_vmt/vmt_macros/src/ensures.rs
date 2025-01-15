@@ -100,8 +100,6 @@ fn parse_type(ty: &syn::Type) -> vmtil::Type {
     }
 }
 
-// fn parse_type_ident(path: &syn::Path) -> vmtil::Type {}
-
 fn parse_stmt(stmt: syn::Stmt) -> vmtil::Stmt {
     match stmt {
         syn::Stmt::Local(_) => todo!("local"),

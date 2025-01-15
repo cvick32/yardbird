@@ -116,7 +116,6 @@ impl ToDoc for BooleanExpr {
 pub enum VmtCommands {
     DeclareFun {
         variable: String,
-        // TODO: use something other than strings at some point
         arguments: Vec<Type>,
         output_type: Type,
     },
@@ -209,20 +208,3 @@ impl ToDoc for VmtCommands {
         }
     }
 }
-
-// fn format_output_type(output_type: &[String]) -> Doc {
-//     if output_type.is_empty() {
-//         Doc::nil()
-//     } else if output_type.len() == 1 {
-//         Doc::text(&output_type[0])
-//     } else {
-//         Doc::text("(")
-//             .append(
-//                 Doc::nil()
-//                     .append(Doc::intersperse(output_type.iter(), Doc::line()))
-//                     .nest(1)
-//                     .group(),
-//             )
-//             .append(")")
-//     }
-// }
