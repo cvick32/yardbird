@@ -41,15 +41,27 @@ function RouteComponent() {
     <div>
       <table className="relative">
         <thead>
-          <tr className="divide-x divide-slate-400">
-            <th className={`bg-slate-300 font-bold`}>Benchmark</th>
-            <th className={`z-[1000] bg-slate-300 font-bold`}>Status</th>
+          <tr className="divide-x divide-slate-400 dark:divide-slate-600">
+            <th
+              className={`bg-slate-300 font-bold dark:bg-slate-700 dark:text-white`}
+            >
+              Benchmark
+            </th>
+            <th
+              className={`z-[1000] bg-slate-300 font-bold dark:bg-slate-700 dark:text-white`}
+            >
+              Status
+            </th>
             {compare !== "" && !!compareAgainst && (
-              <th className={`z-[1000] bg-slate-300 font-bold`}>Compare</th>
+              <th
+                className={`z-[1000] bg-slate-300 font-bold dark:bg-slate-700 dark:text-white`}
+              >
+                Compare
+              </th>
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-300">
+        <tbody className="divide-y divide-slate-400 dark:divide-slate-600">
           {artifact.data.benchmarks
             ?.map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
             .filter(([benchmark, idx]) => {
@@ -95,7 +107,7 @@ function RouteComponent() {
               }
             })
             .map(([benchmark, idx]) => (
-              <tr key={idx}>
+              <tr key={idx} className="text-black dark:text-white">
                 <td className="text-left align-top">{benchmark.example}</td>
                 <td className="text-left align-top">
                   <Status result={benchmark.result} />
@@ -125,11 +137,13 @@ function Status({ result }: { result?: BenchmarkResult }) {
   if ("Success" in result) {
     if (result.Success.used_instances.length == 0) {
       return (
-        <div className="bg-teal-200">Trivial Success...something is wrong.</div>
+        <div className="bg-teal-200 dark:bg-teal-700">
+          Trivial Success...something is wrong.
+        </div>
       );
     } else {
       return (
-        <div className="bg-green-200">
+        <div className="bg-green-200 dark:bg-green-800">
           Success!
           <div>Used instances:</div>
           <div className="ml-2 font-mono">
@@ -150,18 +164,20 @@ function Status({ result }: { result?: BenchmarkResult }) {
 
   if ("Timeout" in result) {
     return (
-      <div className="bg-orange-200">
+      <div className="bg-orange-200 dark:bg-orange-700">
         Timed out after {result.Timeout / 1000}s
       </div>
     );
   }
 
   if ("Error" in result) {
-    return <div className="bg-red-200">{result.Error}</div>;
+    return <div className="bg-red-200 dark:bg-red-800">{result.Error}</div>;
   }
 
   if ("Panic" in result) {
-    return <div className="bg-purple-200">{result.Panic}</div>;
+    return (
+      <div className="bg-purple-200 dark:bg-purple-800">{result.Panic}</div>
+    );
   }
 }
 

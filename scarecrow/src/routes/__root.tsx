@@ -30,10 +30,10 @@ function RootComponent() {
 
   return (
     <>
-      <div className="sticky top-0 z-[110] border-b border-slate-300 bg-slate-100 px-4">
+      <div className="sticky top-0 z-[110] border-b border-slate-300 bg-slate-100 px-4 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
         {isLargeScreen ? <LargeHeader /> : <SmallHeader />}
       </div>
-      <div className="m-2">
+      <div className="p-2 dark:bg-slate-800">
         <Outlet />
       </div>
     </>
@@ -181,6 +181,7 @@ function CompareSelect() {
       <select
         name="compare"
         id="compare"
+        className="dark:bg-slate-800"
         onChange={(ev) => {
           const compare = ev.target.value.trim();
           const filter =
@@ -237,6 +238,7 @@ function FilterSelect() {
       <select
         name="filter"
         id="filter"
+        className="dark:bg-slate-800"
         onChange={(ev) => {
           const filter = ev.target.value.trim();
           setFilterVal(filter);

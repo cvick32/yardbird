@@ -195,7 +195,7 @@ async function fetchGitCommitMessage(octokit: Octokit, sha: string) {
 }
 
 async function fetchWorkflows(octokit: Octokit) {
-  return octokit.request("GET /repos/{owner}/{repo}/actions/runs?per_page=1", {
+  return octokit.request("GET /repos/{owner}/{repo}/actions/runs?per_page=2", {
     owner: "cvick32",
     repo: "yardbird",
     headers: {
