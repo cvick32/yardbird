@@ -162,10 +162,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .into_iter()
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         if no_progress && const_progress {
-            Err(anyhow!(
-                "Failed to add new instantations.\nUsed: {:#?}",
-                self.used_instantiations
-            ))
+            Err(anyhow!("Failed to add new instantations."))
         } else {
             Ok(())
         }
@@ -177,6 +174,17 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             used_instances: mem::take(&mut self.used_instantiations),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
+            result_type: crate::driver::ProofLoopResultType::Success,
+        }
+    }
+
+    fn no_progress_result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+        ProofLoopResult {
+            model: Some(vmt_model),
+            used_instances: mem::take(&mut self.used_instantiations),
+            const_instances: mem::take(&mut self.const_instantiations),
+            counterexample: false,
+            result_type: crate::driver::ProofLoopResultType::NoProgress,
         }
     }
 }

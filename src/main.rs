@@ -5,7 +5,7 @@ use log::info;
 use yardbird::{
     logger, model_from_options,
     strategies::{Abstract, AbstractOnlyBest, ConcreteZ3, Interpolating, ProofStrategy, Repl},
-    Driver, YardbirdOptions,
+    Driver, ProofLoopResultType, YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -35,7 +35,17 @@ fn main() -> anyhow::Result<()> {
 
     let res = driver.check_strategy(options.depth, strat)?;
 
-    info!("NEEDED INSTANTIATIONS: {:#?}", res.used_instances);
+    match res.result_type {
+        ProofLoopResultType::Success => {
+            info!("SUCCESSFUL BMC!");
+            info!("NEEDED INSTANTIATIONS: {:#?}", res.used_instances);
+        }
+        ProofLoopResultType::NoProgress => {
+            info!("NO PROGRESS!");
+            info!("USED INSTANTIATIONS: {:#?}", res.used_instances);
+        }
+    }
+
     if options.print_vmt {
         if let Some(model) = res.model {
             let mut output = File::create("instantiated.vmt").unwrap();

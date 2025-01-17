@@ -119,6 +119,17 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             used_instances: mem::take(&mut self.used_instantiations),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
+            result_type: crate::driver::ProofLoopResultType::Success,
+        }
+    }
+
+    fn no_progress_result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+        ProofLoopResult {
+            model: Some(vmt_model),
+            used_instances: mem::take(&mut self.used_instantiations),
+            const_instances: mem::take(&mut self.const_instantiations),
+            counterexample: false,
+            result_type: crate::driver::ProofLoopResultType::NoProgress,
         }
     }
 }
