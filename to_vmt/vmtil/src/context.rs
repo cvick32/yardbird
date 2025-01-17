@@ -74,6 +74,18 @@ impl Context {
                 .as_slice()
         })
     }
+
+    // TODO: is this function needed, if we add frame conditions
+    // for all mutable variables?
+    pub fn get_written_vars(&self) -> Option<HashSet<String>> {
+        self.current_scope.map(|scope| {
+            self.scopes[scope.0]
+                .as_ref()
+                .expect("Scope didn't exist!")
+                .written_vars
+                .clone()
+        })
+    }
 }
 
 impl Scope {

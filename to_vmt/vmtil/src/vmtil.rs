@@ -224,7 +224,18 @@ impl BuildContextual for Stmt {
                         .property_preconditions
                         .push(BooleanExpr::Conjunction(facts.to_vec()));
                 }
-                BooleanExpr::True
+                let mut frame_conditions = vec![];
+                // TODO: MAYBE change this to use scoped written to variables instead of all mutable.
+                // we think that this will always work, but we're unsure if adding only the written
+                // to set of variables will be correct in all cases.
+                for variable in &builder.variables {
+                    frame_conditions.push(BooleanExpr::binop(
+                        "=",
+                        variable,
+                        format!("{}_next", variable),
+                    ));
+                }
+                BooleanExpr::Conjunction(frame_conditions)
             }
             Stmt::If {
                 condition,
