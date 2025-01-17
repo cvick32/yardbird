@@ -11,7 +11,8 @@ use std::{
     time::Duration,
 };
 use yardbird::{
-    model_from_options, strategies::Abstract, Driver, ProofLoopResult, Strategy, YardbirdOptions,
+    model_from_options, strategies::Abstract, Driver, ProofLoopResult, ProofLoopResultType,
+    Strategy, YardbirdOptions,
 };
 
 #[derive(Parser, Debug, Clone)]
@@ -47,6 +48,7 @@ struct Options {
 
 #[derive(Debug, Serialize)]
 struct SerializableProofResult {
+    pub result_type: ProofLoopResultType,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
 }
@@ -54,6 +56,7 @@ struct SerializableProofResult {
 impl From<ProofLoopResult> for SerializableProofResult {
     fn from(value: ProofLoopResult) -> Self {
         SerializableProofResult {
+            result_type: value.result_type,
             used_instances: value.used_instances,
             const_instances: value.const_instances,
         }
@@ -63,6 +66,7 @@ impl From<ProofLoopResult> for SerializableProofResult {
 #[derive(Debug, Serialize)]
 enum BenchmarkResult {
     Success(SerializableProofResult),
+    NoProgress(SerializableProofResult),
     Timeout(u128),
     Error(String),
     Panic(String),
@@ -111,7 +115,13 @@ where
 
     match rx.recv_timeout(timeout) {
         Ok(TimeoutFnResult::Ok(res)) => match res {
-            Ok(proof_result) => BenchmarkResult::Success(proof_result.into()),
+            Ok(proof_result) => {
+                let result: SerializableProofResult = proof_result.into();
+                match result.result_type {
+                    ProofLoopResultType::Success => BenchmarkResult::Success(result),
+                    ProofLoopResultType::NoProgress => BenchmarkResult::NoProgress(result),
+                }
+            }
             Err(err) => BenchmarkResult::Error(format!("{err}")),
         },
         Ok(TimeoutFnResult::Panic(msg)) => BenchmarkResult::Panic(msg),
@@ -142,6 +152,9 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
             continue;
         } else if let Some(BenchmarkResult::Error(_)) = status_code {
             println!("  retrying error: {}", options.filename);
+            continue;
+        } else if let Some(BenchmarkResult::NoProgress(_)) = status_code {
+            println!("  retrying no progress: {}", options.filename);
             continue;
         } else {
             break;

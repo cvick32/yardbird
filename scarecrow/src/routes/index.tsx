@@ -46,6 +46,7 @@ function Index() {
         </div>
         <FlexGrid className="w-[75px] font-bold">
           <>Success</>
+          <>No Progress</>
           <>Trivial</>
           <>Timeout</>
           <>Error</>
@@ -249,12 +250,14 @@ function Stats({ id, className }: { id: string; className?: string }) {
         <div key={`3-${id}`}>-</div>
         <div key={`4-${id}`}>-</div>
         <div key={`5-${id}`}>-</div>
+        <div key={`6-${id}`}>-</div>
       </FlexGrid>
     );
   }
 
   const total =
     stats.data.success +
+    stats.data.noProgress +
     stats.data.trivialSuccess +
     stats.data.timeout +
     stats.data.error +
@@ -270,29 +273,36 @@ function Stats({ id, className }: { id: string; className?: string }) {
       </div>
       <div
         key={`1-${id}`}
+        className={`font-bold text-pink-600 dark:text-pink-500`}
+      >
+        {stats.data.noProgress}
+      </div>
+
+      <div
+        key={`2-${id}`}
         className={`font-bold text-teal-600 dark:text-teal-500`}
       >
         {stats.data.trivialSuccess}
       </div>
       <div
-        key={`2-${id}`}
+        key={`3-${id}`}
         className={`font-bold text-orange-600 dark:text-orange-500`}
       >
         {stats.data.timeout}
       </div>
       <div
-        key={`3-${id}`}
+        key={`4-${id}`}
         className={`font-bold text-red-600 dark:text-red-500`}
       >
         {stats.data.error}
       </div>
       <div
-        key={`4-${id}`}
+        key={`5-${id}`}
         className={`font-bold text-purple-600 dark:text-purple-500`}
       >
         {stats.data.panic}
       </div>
-      <div key={`5-${id}`} className="font-bold text-black dark:text-gray-300">
+      <div key={`6-${id}`} className="font-bold text-black dark:text-gray-300">
         {total}
       </div>
     </FlexGrid>

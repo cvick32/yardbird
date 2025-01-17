@@ -62,6 +62,17 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             used_instances: vec![],
             const_instances: vec![],
             counterexample: true,
+            result_type: crate::driver::ProofLoopResultType::Success,
+        }
+    }
+
+    fn no_progress_result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+        ProofLoopResult {
+            model: Some(vmt_model),
+            used_instances: vec![],
+            const_instances: vec![],
+            counterexample: true,
+            result_type: crate::driver::ProofLoopResultType::NoProgress,
         }
     }
 }

@@ -1,4 +1,5 @@
 use log::info;
+use serde::Serialize;
 use smt2parser::vmt::VMTModel;
 
 use crate::{
@@ -6,12 +7,19 @@ use crate::{
     z3_var_context::Z3VarContext,
 };
 
+#[derive(Debug, Serialize)]
+pub enum ProofLoopResultType {
+    Success,
+    NoProgress,
+}
+
 #[derive(Debug)]
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
     pub counterexample: bool,
+    pub result_type: ProofLoopResultType,
 }
 
 #[derive(Debug)]
@@ -87,7 +95,10 @@ impl<'ctx, S> Driver<'ctx, S> {
                 match action {
                     ProofAction::Continue => {
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
-                        strat.finish(&mut self.vmt_model, state)?
+                        match strat.finish(&mut self.vmt_model, state) {
+                            Ok(_) => (),
+                            Err(_) => return Ok(strat.no_progress_result(self.vmt_model.clone())), // Assume this is no progress
+                        }
                     }
                     ProofAction::NextDepth => break 'refine,
                     ProofAction::Stop => todo!(),

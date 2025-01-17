@@ -64,14 +64,16 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
                 let in_trans = self.transition_system_terms.contains(&symbol_str);
                 let in_prop = self.property_terms.contains(&symbol_str);
 
-                if in_trans && in_prop {
-                    // Prefer terms that are in both the transition system and property
-                    return 0;
-                }
-
-                if let Some((_name, frame_number)) =
+                if let Some((name, frame_number)) =
                     sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
                 {
+                    if name == "pc" {
+                        // Never instantiate with the program counter.
+                        return 10000;
+                    } else if in_trans && in_prop {
+                        // Prefer terms that are in both the transition system and property
+                        return 0;
+                    }
                     // Prefer terms that are close to the property check.
                     match frame_number.parse::<u32>() {
                         Ok(n) => self.current_bmc_depth - n,

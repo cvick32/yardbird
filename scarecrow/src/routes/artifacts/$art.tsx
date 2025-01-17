@@ -3,6 +3,7 @@ import {
   Benchmark,
   BenchmarkResult,
   isError,
+  isNoProgress,
   isPanic,
   isSuccess,
   isTimeout,
@@ -69,6 +70,8 @@ function RouteComponent() {
                 return true;
               } else if (filter === "success") {
                 return isSuccess(benchmark.result);
+              } else if (filter === "noProgress") {
+                return isNoProgress(benchmark.result);
               } else if (filter === "trivial") {
                 return isTrivial(benchmark.result);
               } else if (filter === "timeout") {
@@ -85,6 +88,10 @@ function RouteComponent() {
                     isSuccess(benchmark.result) &&
                     isSuccess(compareAgainst.data.benchmarks[idx].result)
                   ) &&
+                  !(
+                    isNoProgress(benchmark.result) &&
+                    isNoProgress(compareAgainst.data.benchmarks[idx].result))
+                  &&
                   !(
                     isTrivial(benchmark.result) &&
                     isTrivial(compareAgainst.data.benchmarks[idx].result)
@@ -160,6 +167,26 @@ function Status({ result }: { result?: BenchmarkResult }) {
         </div>
       );
     }
+  }
+
+  if ("NoProgress" in result) {
+    return (
+      <div className="bg-pink-200 dark:bg-pink-800">
+        No Progress!
+        <div>Used instances:</div>
+        <div className="ml-2 font-mono">
+          {result.NoProgress.used_instances.map((inst, idx) => (
+            <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
+          ))}
+        </div>
+        <div>Const instances:</div>
+        <div className="ml-2 font-mono">
+          {result.NoProgress.const_instances.map((inst, idx) => (
+            <div key={idx}>{inst}</div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if ("Timeout" in result) {

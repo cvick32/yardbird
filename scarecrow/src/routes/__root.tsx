@@ -253,6 +253,7 @@ function FilterSelect() {
       >
         <option value="">None</option>
         <option value="success">Success</option>
+        <option value="noProgress">No Progress</option>
         <option value="trivial">Trivial</option>
         <option value="timeout">Timeout</option>
         <option value="error">Error</option>

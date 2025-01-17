@@ -16,12 +16,13 @@ export interface Benchmark {
 }
 
 export type BenchmarkResult =
-  | { Success: Success }
+  | { Success: ProofLoopResult }
+  | { NoProgress: ProofLoopResult }
   | { Timeout: number }
   | { Error: String }
   | { Panic: String };
 
-export interface Success {
+export interface ProofLoopResult {
   used_instances: string[];
   const_instances: string[];
 }
@@ -32,6 +33,10 @@ export function isSuccess(result: BenchmarkResult) {
   } else {
     return false;
   }
+}
+
+export function isNoProgress(result: BenchmarkResult) {
+  return "NoProgress" in result;
 }
 
 export function isTrivial(result: BenchmarkResult) {
@@ -215,6 +220,7 @@ export async function readFile(file: File): Promise<Artifact> {
 
 export function benchmarkSummary(artifact: Artifact) {
   let success = 0;
+  let noProgress = 0;
   let trivialSuccess = 0;
   let timeout = 0;
   let error = 0;
@@ -229,6 +235,8 @@ export function benchmarkSummary(artifact: Artifact) {
         } else {
           success += 1;
         }
+      } else if ("NoProgress" in res) {
+        noProgress += 1;
       } else if ("Timeout" in res) {
         timeout += 1;
       } else if ("Error" in res) {
@@ -241,6 +249,7 @@ export function benchmarkSummary(artifact: Artifact) {
 
   return {
     success,
+    noProgress,
     trivialSuccess,
     timeout,
     error,

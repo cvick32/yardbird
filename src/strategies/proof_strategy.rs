@@ -51,6 +51,8 @@ pub trait ProofStrategy<'ctx, S> {
     }
 
     fn result(&mut self, model: VMTModel) -> ProofLoopResult;
+
+    fn no_progress_result(&mut self, model: VMTModel) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond
