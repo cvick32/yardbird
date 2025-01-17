@@ -43,7 +43,7 @@ function RootComponent() {
 function LargeHeader() {
   const location = useLocation();
   const isArtifactPage = location.pathname.includes("artifacts");
-  const { setFiles } = useFiles();
+  const { addFiles } = useFiles();
 
   return (
     <>
@@ -76,7 +76,7 @@ function LargeHeader() {
                 accept=".json"
                 onChange={(ev) => {
                   if (!!ev.target.files) {
-                    setFiles([...ev.target.files]);
+                    addFiles([...ev.target.files]);
                   }
                 }}
               />

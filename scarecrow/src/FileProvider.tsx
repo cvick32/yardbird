@@ -47,13 +47,16 @@ export function useFiles() {
     throw new Error("useFiles must be used within an FileProvider");
   }
 
-  const setFiles = (files: File[]) => {
+  const addFiles = (files: File[]) => {
     Promise.allSettled(files.map((f) => readFile(f))).then((art_prom) => {
       const artifacts = art_prom
         .filter((prom) => prom.status === "fulfilled")
         .map((prom) => prom.value);
+      artifacts.forEach((art) => {
+        context.files.set(art.id, art);
+      });
       dispatch({
-        files: new Map(artifacts.map((art) => [art.id, art])),
+        files: new Map(context.files),
       });
     });
   };
@@ -65,7 +68,7 @@ export function useFiles() {
     });
   };
 
-  return { files: context.files, setFiles, deleteFile };
+  return { files: context.files, addFiles, deleteFile };
 }
 
 function fileReducer(_oldFiles: FileContext, newFiles: FileContext) {
