@@ -158,8 +158,8 @@ function Index() {
                   <CommitRef sha={workflow.head_sha} />
                 </div>
               </div>
-              <div className="w-full truncate text-black md:w-fit dark:text-white">
-                <div>{workflow.display_title}</div>
+              <div className="w-full truncate md:w-fit">
+                <RawCommitMessage message={workflow.display_title} />
               </div>
             </div>
           );
@@ -306,7 +306,10 @@ export function CommitMessage({ sha }: { sha: string }) {
     return <div>...</div>;
   }
 
-  let message = query.data.data.commit.message;
+  return <RawCommitMessage message={query.data.data.commit.message} />;
+}
+
+function RawCommitMessage({ message }: { message: string }) {
   if (message.includes("\n")) {
     message = message.split("\n")[0];
   }

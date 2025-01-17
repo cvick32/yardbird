@@ -279,8 +279,14 @@ function CompareCommits() {
   return (
     <div className="flex flex-row items-center gap-2 text-sm">
       <span className="flex flex-row gap-2 truncate">
-        <CommitRef sha={artifact.data.commitSha} />
-        <CommitMessage sha={artifact.data.commitSha} />
+        {artifact.data.commitSha === "" ? (
+          <span>{artifact.data.id.substring(6)}</span>
+        ) : (
+          <>
+            <CommitRef sha={artifact.data.commitSha} />
+            <CommitMessage sha={artifact.data.commitSha} />
+          </>
+        )}
       </span>
       {!!compareArtifact.data && (
         <>
