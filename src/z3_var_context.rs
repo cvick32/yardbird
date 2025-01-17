@@ -184,6 +184,12 @@ impl<'ctx> Z3VarContext<'ctx> {
                 .collect::<Vec<_>>();
             let int_ref_args = args.iter().collect::<Vec<_>>();
             z3::ast::Int::mul(self.context, &int_ref_args).into()
+        } else if function_name == "/" {
+            let args = argument_values
+                .iter()
+                .map(|x| x.as_int().expect("Not an int"))
+                .collect::<Vec<_>>();
+            z3::ast::Int::div(&args[0], &args[1]).into()
         } else if function_name == "mod" {
             let args = argument_values
                 .iter()

@@ -26,6 +26,7 @@ define_language! {
         "+" = Plus(Box<[Id]>),
         "-" = Negate(Box<[Id]>),
         "*" = Times(Box<[Id]>),
+        "/" = Div([Id; 2]),
         Symbol(Symbol),
     }
 }
