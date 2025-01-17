@@ -57,6 +57,7 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
             ArrayLanguage::Negate(_) => 1,
             ArrayLanguage::Times(_) => 1,
             ArrayLanguage::Mod(_) => 1,
+            ArrayLanguage::Div(_) => 1,
             ArrayLanguage::Symbol(sym) => {
                 let symbol_str = sym.as_str().to_string();
                 let in_trans = self.transition_system_terms.contains(&symbol_str);
