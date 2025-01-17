@@ -3,6 +3,7 @@ import {
   Benchmark,
   BenchmarkResult,
   isError,
+  isNoProgress,
   isPanic,
   isSuccess,
   isTimeout,
@@ -15,11 +16,7 @@ export const Route = createFileRoute("/artifacts/$art")({
     compare: (search.compare as string) || "",
     filter: (search.filter as string) || "",
   }),
-  beforeLoad: ({ context }) => {
-    if (!context.auth.isAuthenticated) {
-      throw redirect({ to: "/oauth" });
-    }
-  },
+
   component: RouteComponent,
 });
 
@@ -28,10 +25,6 @@ function RouteComponent() {
   const { compare, filter } = Route.useSearch();
   const artifact = useArtifact(art);
   const compareAgainst = useArtifact(compare);
-
-  if (artifact.isPending) {
-    return <div>Loading...</div>;
-  }
 
   if (!artifact.data || artifact.isError) {
     return <div>Error! {JSON.stringify(artifact.error)}</div>;
@@ -69,6 +62,8 @@ function RouteComponent() {
                 return true;
               } else if (filter === "success") {
                 return isSuccess(benchmark.result);
+              } else if (filter === "noProgress") {
+                return isNoProgress(benchmark.result);
               } else if (filter === "trivial") {
                 return isTrivial(benchmark.result);
               } else if (filter === "timeout") {
@@ -85,6 +80,10 @@ function RouteComponent() {
                     isSuccess(benchmark.result) &&
                     isSuccess(compareAgainst.data.benchmarks[idx].result)
                   ) &&
+                  !(
+                    isNoProgress(benchmark.result) &&
+                    isNoProgress(compareAgainst.data.benchmarks[idx].result))
+                  &&
                   !(
                     isTrivial(benchmark.result) &&
                     isTrivial(compareAgainst.data.benchmarks[idx].result)
@@ -160,6 +159,26 @@ function Status({ result }: { result?: BenchmarkResult }) {
         </div>
       );
     }
+  }
+
+  if ("NoProgress" in result) {
+    return (
+      <div className="bg-pink-200 dark:bg-pink-800">
+        No Progress!
+        <div>Used instances:</div>
+        <div className="ml-2 font-mono">
+          {result.NoProgress.used_instances.map((inst, idx) => (
+            <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
+          ))}
+        </div>
+        <div>Const instances:</div>
+        <div className="ml-2 font-mono">
+          {result.NoProgress.const_instances.map((inst, idx) => (
+            <div key={idx}>{inst}</div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if ("Timeout" in result) {
