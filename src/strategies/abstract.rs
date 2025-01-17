@@ -162,7 +162,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .into_iter()
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         if no_progress && const_progress {
-            Err(anyhow!("Failed to add new instantations"))
+            Err(anyhow!(
+                "Failed to add new instantations.\nUsed: {:#?}",
+                self.used_instantiations
+            ))
         } else {
             Ok(())
         }
