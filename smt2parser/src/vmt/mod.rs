@@ -18,6 +18,8 @@ use crate::{
     get_term_from_assert_command_string, CommandStream,
 };
 
+pub use reads_and_write::ReadsAndWrites;
+
 static PROPERTY_ATTRIBUTE: &str = "invar-property";
 static TRANSITION_ATTRIBUTE: &str = "trans";
 static INITIAL_ATTRIBUTE: &str = "init";
@@ -31,6 +33,7 @@ mod frame_num_getter;
 mod instantiator;
 mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
+mod reads_and_write;
 pub mod smt;
 mod smtinterpol_utils;
 mod utils;

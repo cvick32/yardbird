@@ -8,10 +8,11 @@ use crate::{
 };
 
 use super::{
-    action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms, variable::Variable,
+    action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms,
+    reads_and_write::ReadsAndWrites, variable::Variable,
 };
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct SMTProblem {
     sorts: Vec<Command>,
     variable_definitions: Vec<Command>,
@@ -172,6 +173,16 @@ impl SMTProblem {
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
         subterms.subterms.into_iter().collect::<Vec<_>>()
+    }
+
+    pub fn get_reads_and_writes(&self) -> ReadsAndWrites {
+        let mut reads_and_writes = ReadsAndWrites::default();
+        for trans_assert in &self.init_and_trans_assertions {
+            _ = trans_assert
+                .clone()
+                .accept_term_visitor(&mut reads_and_writes);
+        }
+        reads_and_writes
     }
 
     pub fn to_smtinterpol(&self) -> String {

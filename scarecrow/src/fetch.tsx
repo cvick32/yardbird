@@ -2,6 +2,7 @@ import { Octokit } from "@octokit/core";
 import { useQuery } from "@tanstack/react-query";
 import JSZip from "jszip";
 import { useAuth } from "./AuthProvider";
+import { useFiles } from "./FileProvider";
 
 export interface Artifact {
   benchmarks: Benchmark[] | undefined;
@@ -74,13 +75,30 @@ export function useArtifact<T = Artifact>(
   const octokit = new Octokit({
     auth: auth.token,
   });
-  return useQuery({
-    queryKey: ["artifacts", `${id}`],
-    queryFn: async () => fetchArtifact(octokit, id!),
-    staleTime: 60 * 1000, // 1 minute
-    select,
-    enabled: enabled && !!id,
-  });
+  const { files } = useFiles();
+
+  if (id?.startsWith("local:")) {
+    return useQuery({
+      queryKey: ["artifacts", `${id}`],
+      queryFn: () =>
+        files.get(id) ?? {
+          benchmarks: [],
+          id: "",
+          commitSha: "",
+        },
+      staleTime: 60 * 1000, // 1 minute
+      select,
+      enabled: enabled && !!id,
+    });
+  } else {
+    return useQuery({
+      queryKey: ["artifacts", `${id}`],
+      queryFn: async () => fetchArtifact(octokit, id!),
+      staleTime: 60 * 1000, // 1 minute
+      select,
+      enabled: enabled && !!id,
+    });
+  }
 }
 
 export function useCommitMessage(commitSha: string) {
@@ -90,7 +108,13 @@ export function useCommitMessage(commitSha: string) {
   });
   return useQuery({
     queryKey: ["commit", `${commitSha}`],
-    queryFn: async () => fetchGitCommitMessage(octokit, commitSha),
+    queryFn: async () => {
+      if (commitSha === "") {
+        return "";
+      } else {
+        return fetchGitCommitMessage(octokit, commitSha);
+      }
+    },
     staleTime: 60 * 1000, // 1 minute
   });
 }
@@ -171,13 +195,22 @@ async function fetchGitCommitMessage(octokit: Octokit, sha: string) {
 }
 
 async function fetchWorkflows(octokit: Octokit) {
-  return octokit.request("GET /repos/{owner}/{repo}/actions/runs?per_page=1", {
+  return octokit.request("GET /repos/{owner}/{repo}/actions/runs?per_page=2", {
     owner: "cvick32",
     repo: "yardbird",
     headers: {
       "X-GitHub-Api-Version": "2022-11-28",
     },
   });
+}
+
+export async function readFile(file: File): Promise<Artifact> {
+  const text = await file.text();
+  return {
+    benchmarks: JSON.parse(text),
+    id: `local:${file.name}`,
+    commitSha: "",
+  };
 }
 
 export function benchmarkSummary(artifact: Artifact) {

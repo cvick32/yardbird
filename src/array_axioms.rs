@@ -31,6 +31,47 @@ define_language! {
     }
 }
 
+pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
+pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
+
+impl ArrayLanguage {
+    pub fn read(array: ArrayExpr, index: ArrayExpr) -> ArrayExpr {
+        let mut expr = egg::RecExpr::default();
+        let a = expr.add(ArrayLanguage::Symbol("a".into()));
+        let i = expr.add(ArrayLanguage::Symbol("i".into()));
+        let write = expr.add(ArrayLanguage::Read([a, i]));
+
+        expr[write].join_recexprs(|id| {
+            if id == a {
+                array.clone()
+            } else if id == i {
+                index.clone()
+            } else {
+                panic!()
+            }
+        })
+    }
+    pub fn write(array: ArrayExpr, index: ArrayExpr, value: ArrayExpr) -> ArrayExpr {
+        let mut expr = egg::RecExpr::default();
+        let a = expr.add(ArrayLanguage::Symbol("a".into()));
+        let i = expr.add(ArrayLanguage::Symbol("i".into()));
+        let v = expr.add(ArrayLanguage::Symbol("v".into()));
+        let write = expr.add(ArrayLanguage::Write([a, i, v]));
+
+        expr[write].join_recexprs(|id| {
+            if id == a {
+                array.clone()
+            } else if id == i {
+                index.clone()
+            } else if id == v {
+                value.clone()
+            } else {
+                panic!()
+            }
+        })
+    }
+}
+
 impl<N> Saturate for EGraph<ArrayLanguage, N>
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
@@ -40,11 +81,14 @@ where
         let egraph = std::mem::take(self);
         let trans_terms = cost_fn.transition_system_terms.clone();
         let prop_terms = cost_fn.property_terms.clone();
+        let reads_writes = cost_fn.reads_writes.clone();
+        // println!("reads and writes: {reads_writes:#?}");
         let scheduler = ConflictScheduler::new(
             BackoffScheduler::default(),
             cost_fn,
             trans_terms,
             prop_terms,
+            reads_writes,
         );
         let instantiations = scheduler.instantiations();
         let const_instantiations = scheduler.instantiations_w_constants();
@@ -52,7 +96,9 @@ where
             .with_egraph(egraph)
             .with_scheduler(scheduler)
             .run(&array_axioms());
+
         *self = std::mem::take(&mut runner.egraph);
+
         drop(runner);
         (
             Rc::into_inner(instantiations).unwrap().into_inner(),

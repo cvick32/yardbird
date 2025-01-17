@@ -86,5 +86,6 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 #[clap(rename_all = "kebab_case")]
 pub enum Strategy {
     Abstract,
+    AbstractOnlyBest,
     Concrete,
 }

@@ -1,5 +1,5 @@
 use egg::Language;
-use smt2parser::vmt::VARIABLE_FRAME_DELIMITER;
+use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::array_axioms::ArrayLanguage;
 
@@ -10,6 +10,7 @@ pub struct BestSymbolSubstitution {
     pub current_bmc_depth: u32,
     pub transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
+    pub reads_writes: ReadsAndWrites,
 }
 
 impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
@@ -72,7 +73,10 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
                     sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
                 {
                     // Prefer terms that are close to the property check.
-                    self.current_bmc_depth - frame_number.parse::<u32>().unwrap()
+                    match frame_number.parse::<u32>() {
+                        Ok(n) => self.current_bmc_depth - n,
+                        Err(_) => panic!("Couldn't parse `{frame_number}`"),
+                    }
                 } else {
                     // TODO: extend language to uninterpreted sort constants to
                     // constants instead of symbols.

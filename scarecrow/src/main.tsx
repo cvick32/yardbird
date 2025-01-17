@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "./AuthProvider";
 
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
+import { FileProvider } from "./FileProvider";
 
 // Create a new router instance
 const router = createRouter({
@@ -36,8 +37,10 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <App />
-        <ReactQueryDevtools initialIsOpen={false} />
+        <FileProvider>
+          <App />
+          <ReactQueryDevtools initialIsOpen={false} />
+        </FileProvider>
       </AuthProvider>
     </QueryClientProvider>
   </StrictMode>,

@@ -7,12 +7,13 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
 import { AuthContext } from "../AuthProvider";
-import { FaCrow, FaDoorOpen, FaGithub } from "react-icons/fa6";
+import { FaCrow, FaDoorOpen, FaGithub, FaUpload } from "react-icons/fa6";
 import { useArtifact, useArtifacts } from "../fetch";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { CommitMessage, CommitRef } from ".";
 import { useIsLargeScreen } from "../useIsLargeScreen";
+import { useFiles } from "../FileProvider";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -29,10 +30,10 @@ function RootComponent() {
 
   return (
     <>
-      <div className="sticky top-0 z-[110] border-b border-slate-300 bg-slate-100 px-4">
+      <div className="sticky top-0 z-[110] border-b border-slate-300 bg-slate-100 px-4 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
         {isLargeScreen ? <LargeHeader /> : <SmallHeader />}
       </div>
-      <div className="m-2">
+      <div className="p-2 dark:bg-slate-800">
         <Outlet />
       </div>
     </>
@@ -42,6 +43,7 @@ function RootComponent() {
 function LargeHeader() {
   const location = useLocation();
   const isArtifactPage = location.pathname.includes("artifacts");
+  const { setFiles } = useFiles();
 
   return (
     <>
@@ -62,6 +64,25 @@ function LargeHeader() {
           )}
         </div>
         <div className="grow"></div>
+        {!isArtifactPage && (
+          <div className="tetxt-lg flex flex-row items-center gap-1 hover:underline">
+            <FaUpload />
+            <label htmlFor="file-upload" className="cursor-pointer">
+              Upload
+              <input
+                type="file"
+                id="file-upload"
+                className="sr-only"
+                accept=".json"
+                onChange={(ev) => {
+                  if (!!ev.target.files) {
+                    setFiles([...ev.target.files]);
+                  }
+                }}
+              />
+            </label>
+          </div>
+        )}
         <div>
           <a
             href="https://github.com/cvick32/yardbird"
@@ -160,6 +181,7 @@ function CompareSelect() {
       <select
         name="compare"
         id="compare"
+        className="dark:bg-slate-800"
         onChange={(ev) => {
           const compare = ev.target.value.trim();
           const filter =
@@ -216,6 +238,7 @@ function FilterSelect() {
       <select
         name="filter"
         id="filter"
+        className="dark:bg-slate-800"
         onChange={(ev) => {
           const filter = ev.target.value.trim();
           setFilterVal(filter);
@@ -256,8 +279,14 @@ function CompareCommits() {
   return (
     <div className="flex flex-row items-center gap-2 text-sm">
       <span className="flex flex-row gap-2 truncate">
-        <CommitRef sha={artifact.data.commitSha} />
-        <CommitMessage sha={artifact.data.commitSha} />
+        {artifact.data.commitSha === "" ? (
+          <span>{artifact.data.id.substring(6)}</span>
+        ) : (
+          <>
+            <CommitRef sha={artifact.data.commitSha} />
+            <CommitMessage sha={artifact.data.commitSha} />
+          </>
+        )}
       </span>
       {!!compareArtifact.data && (
         <>
