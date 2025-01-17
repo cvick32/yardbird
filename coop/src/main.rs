@@ -44,6 +44,20 @@ fn array_split_12(mut a: Vec<usize>, n: usize) {
     }
 }
 
+#[allow(clippy::needless_range_loop)]
+#[to_vmt::ensures(|z| (c / 2 <= z && z < n && c > z).implies(2 * z == a[z]))]
+fn array_split_12_abstract(mut a: Vec<usize>, c: usize, n: usize) {
+    let mut y: usize = c;
+    for i in 0..n {
+        a[i] = i + y;
+        if i < c / 2 {
+            y -= 1;
+        } else {
+            y += 1;
+        }
+    }
+}
+
 #[allow(clippy::absurd_extreme_comparisons)]
 #[allow(unused_comparisons)]
 #[to_vmt::ensures(|z| (z < j && j <= n).implies(c[z] >= z))]
@@ -68,10 +82,6 @@ mod verify {
     to_vmt::generate_test!(array_copy, depth = 20);
     to_vmt::generate_test!(array_copy_buggy, should_fail = true);
     to_vmt::generate_test!(array_copy_raw_loop);
-    to_vmt::generate_test!(array_split_12);
-    to_vmt::generate_test!(
-        array_partial_init,
-        logger = Some(Level::Debug),
-        debug_vmt = true
-    );
+    to_vmt::generate_test!(array_split_12, debug_vmt = true);
+    to_vmt::generate_test!(array_partial_init);
 }
