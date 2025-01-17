@@ -18,6 +18,17 @@ pub struct ReadsAndWrites {
 }
 
 impl ReadsAndWrites {
+    pub fn read_array<A>(&self, array: A) -> impl Iterator<Item = String> + use<'_, A>
+    where
+        A: ToString,
+    {
+        let needle = array.to_string();
+        self.reads_from
+            .iter()
+            .filter(move |(a, _i)| &needle == a)
+            .map(|(_a, i)| i.to_string())
+    }
+
     /// Given an array, return all indicies written to
     pub fn write_array<A>(&self, array: A) -> impl Iterator<Item = String> + use<'_, A>
     where

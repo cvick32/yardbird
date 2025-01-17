@@ -124,21 +124,17 @@ where
                             info!("FOUND VIOLATION");
                             info!("{} => {}", new_lhs.pretty(80), new_rhs.pretty(80));
 
-                            let instantiation = if rewrite.name.as_str()
-                                == "write-does-not-overwrite"
-                            {
-                                let idx1 = subst.get("?c".parse().unwrap()).unwrap();
-                                let idx2 = subst.get("?idx".parse().unwrap()).unwrap();
-                                let extractor = egg::Extractor::new(egraph, self.cost_fn.clone());
-                                let (_, expr1) = extractor.find_best(*idx1);
-                                let (_, expr2) = extractor.find_best(*idx2);
-                                format!(
-                                    "(=> (not (= {} {})) (= {} {}))",
-                                    expr1, expr2, new_lhs, new_rhs
-                                )
-                            } else {
-                                format!("(= {} {})", new_lhs, new_rhs)
-                            };
+                            let instantiation =
+                                if rewrite.name.as_str() == "write-does-not-overwrite" {
+                                    let expr1 = memo[&"?c".parse::<egg::Var>().unwrap()].clone();
+                                    let expr2 = memo[&"?idx".parse::<egg::Var>().unwrap()].clone();
+                                    format!(
+                                        "(=> (not (= {} {})) (= {} {}))",
+                                        expr1, expr2, new_lhs, new_rhs
+                                    )
+                                } else {
+                                    format!("(= {} {})", new_lhs, new_rhs)
+                                };
 
                             let cost = self.cost_fn.cost_rec(&new_rhs);
                             if cost >= 100 {
@@ -217,11 +213,9 @@ where
                                     .nodes
                                     .iter()
                                     .flat_map(|node| {
-                                        // println!("{node:?}");
                                         extractor
                                             .reads_and_writes
                                             .write_array(node)
-                                            // .inspect(|pos| println!("pos: {pos}"))
                                             // only keep items contained in index eclass
                                             .flat_map(|idx| idx.parse())
                                             .filter(|idx| {
@@ -260,6 +254,38 @@ where
                                             memo,
                                         )
                                     }
+                                }
+                            }
+                            _ => todo!(),
+                        }
+                    }
+                    E::ENode(ArrayLanguage::Read([array, index])) => {
+                        match (&pattern[array], &pattern[index]) {
+                            (E::Var(array), E::Var(index)) => {
+                                let array_ecls = &egraph[*subst.get(*array).unwrap()];
+                                let index_ecls = &egraph[*subst.get(*index).unwrap()];
+
+                                if let Some((array_node, index_node)) = array_ecls
+                                    .nodes
+                                    .iter()
+                                    .flat_map(|node| {
+                                        extractor
+                                            .reads_and_writes
+                                            .read_array(node)
+                                            .flat_map(|idx| idx.parse())
+                                            .filter(|idx| {
+                                                egraph_contains_at(egraph, idx, index_ecls.id)
+                                            })
+                                            .map(|idx| (node.clone(), idx))
+                                    })
+                                    .next()
+                                {
+                                    let array_expr = egg::RecExpr::from(vec![array_node]);
+                                    memo.insert(*array, patternify(&array_expr));
+                                    memo.insert(*index, patternify(&index_node));
+                                    patternify(&ArrayLanguage::read(array_expr, index_node))
+                                } else {
+                                    todo!()
                                 }
                             }
                             _ => todo!(),

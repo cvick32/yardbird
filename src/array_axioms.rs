@@ -34,6 +34,22 @@ pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
 
 impl ArrayLanguage {
+    pub fn read(array: ArrayExpr, index: ArrayExpr) -> ArrayExpr {
+        let mut expr = egg::RecExpr::default();
+        let a = expr.add(ArrayLanguage::Symbol("a".into()));
+        let i = expr.add(ArrayLanguage::Symbol("i".into()));
+        let write = expr.add(ArrayLanguage::Read([a, i]));
+
+        expr[write].join_recexprs(|id| {
+            if id == a {
+                array.clone()
+            } else if id == i {
+                index.clone()
+            } else {
+                panic!()
+            }
+        })
+    }
     pub fn write(array: ArrayExpr, index: ArrayExpr, value: ArrayExpr) -> ArrayExpr {
         let mut expr = egg::RecExpr::default();
         let a = expr.add(ArrayLanguage::Symbol("a".into()));
