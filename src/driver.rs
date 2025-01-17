@@ -1,4 +1,5 @@
 use log::info;
+use serde::Serialize;
 use smt2parser::vmt::VMTModel;
 
 use crate::{
@@ -6,7 +7,7 @@ use crate::{
     z3_var_context::Z3VarContext,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum ProofLoopResultType {
     Success,
     NoProgress,
