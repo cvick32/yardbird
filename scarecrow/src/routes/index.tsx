@@ -13,7 +13,11 @@ import { useFiles } from "../FileProvider";
 import { FaPencilAlt } from "react-icons/fa";
 
 export const Route = createFileRoute("/")({
-
+  beforeLoad: ({ context }) => {
+    if (!context.auth.isAuthenticated) {
+      throw redirect({ to: "/oauth" });
+    }
+  },
   component: Index,
 });
 
@@ -21,6 +25,12 @@ function Index() {
   const artifacts = useArtifacts();
   const inProgress = useInProgressWorkflows();
   const { files, deleteFile } = useFiles();
+
+  console.log(files);
+
+  if (!artifacts.data) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div>
@@ -155,7 +165,60 @@ function Index() {
             </div>
           );
         })}
-
+      {artifacts.data.data.artifacts.map((art: any, idx: number) => {
+        let date = new Date(Date.parse(art.created_at));
+        let dayString = date.toLocaleDateString("en-US");
+        let timeString = date.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return (
+          <div
+            className="my-1 flex flex-row flex-wrap gap-x-2 rounded-md border p-1 hover:bg-slate-200 md:flex-nowrap dark:border-slate-700 dark:hover:bg-slate-900"
+            key={idx}
+          >
+            <div
+              className={[
+                "flex w-full flex-grow flex-row gap-2 text-sm",
+                "md:w-fit md:grow-0 md:gap-0 md:text-base",
+              ].join(" ")}
+            >
+              <span className="text-slate-500 md:w-[90px] md:text-black dark:md:text-white">
+                {dayString}
+              </span>
+              <span className="text-slate-500 md:w-[80px] md:text-black dark:md:text-white">
+                {timeString}
+              </span>
+            </div>
+            <Stats id={art.id} className="w-[75px]" />
+            <Link
+              to="/artifacts/$art"
+              params={{ art: art.id }}
+              search={{ compare: "", filter: "" }}
+              className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
+            >
+              Results
+            </Link>
+            <div className="flex flex-row gap-2 md:gap-0">
+              <div className="group flex flex-row items-center gap-1 hover:z-20 hover:overflow-visible md:w-[100px] md:truncate">
+                <GoGitBranch
+                  size="14"
+                  className="shrink-0 text-black dark:text-white"
+                />
+                <span className="text-black group-hover:bg-slate-200 dark:text-white dark:group-hover:bg-slate-900">
+                  {art.workflow_run.head_branch}
+                </span>
+              </div>
+              <div className="flex flex-row items-center">
+                <CommitRef sha={art.workflow_run.head_sha} />
+              </div>
+            </div>
+            <div className="w-full truncate md:w-fit">
+              <CommitMessage sha={art.workflow_run.head_sha} />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

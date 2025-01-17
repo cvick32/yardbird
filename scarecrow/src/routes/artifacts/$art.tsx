@@ -16,7 +16,11 @@ export const Route = createFileRoute("/artifacts/$art")({
     compare: (search.compare as string) || "",
     filter: (search.filter as string) || "",
   }),
-
+  beforeLoad: ({ context }) => {
+    if (!context.auth.isAuthenticated) {
+      throw redirect({ to: "/oauth" });
+    }
+  },
   component: RouteComponent,
 });
 
@@ -25,6 +29,10 @@ function RouteComponent() {
   const { compare, filter } = Route.useSearch();
   const artifact = useArtifact(art);
   const compareAgainst = useArtifact(compare);
+
+  if (artifact.isPending) {
+    return <div>Loading...</div>;
+  }
 
   if (!artifact.data || artifact.isError) {
     return <div>Error! {JSON.stringify(artifact.error)}</div>;
