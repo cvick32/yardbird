@@ -181,7 +181,9 @@ export function useInProgressWorkflows() {
     queryKey: ["workflows"],
     queryFn: async () => fetchWorkflows(octokit),
     select: (res) =>
-      res.data.workflow_runs.filter((run: any) => run.status !== "completed"),
+      res.data.workflow_runs.filter(
+        (run: any) => run.status !== "completed" && run.name === "Garden",
+      ),
     refetchInterval: 10 * 1000, // 10 seconds
   });
 }
