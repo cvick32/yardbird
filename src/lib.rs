@@ -2,7 +2,9 @@ use std::{fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
 pub use driver::{Driver, ProofLoopResult, ProofLoopResultType};
+use serde::Serialize;
 use smt2parser::vmt::VMTModel;
+use strategies::{Abstract, AbstractOnlyBest, AbstractRefinementState, ConcreteZ3, ProofStrategy};
 
 pub mod analysis;
 pub mod array_axioms;
@@ -70,6 +72,14 @@ impl YardbirdOptions {
             ..Default::default()
         }
     }
+
+    pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
+        match self.strategy {
+            Strategy::Abstract => Box::new(Abstract::new(self.depth)),
+            Strategy::AbstractOnlyBest => Box::new(AbstractOnlyBest::new(self.depth)),
+            Strategy::Concrete => Box::new(ConcreteZ3::default()),
+        }
+    }
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
@@ -82,8 +92,9 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 }
 
 /// Describes the proving strategies available.
-#[derive(Clone, Debug, ValueEnum)]
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize)]
 #[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     Abstract,
     AbstractOnlyBest,

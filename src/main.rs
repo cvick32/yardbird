@@ -4,7 +4,7 @@ use clap::Parser;
 use log::info;
 use yardbird::{
     logger, model_from_options,
-    strategies::{Abstract, AbstractOnlyBest, ConcreteZ3, Interpolating, ProofStrategy, Repl},
+    strategies::{Interpolating, Repl},
     Driver, ProofLoopResultType, YardbirdOptions,
 };
 
@@ -18,11 +18,7 @@ fn main() -> anyhow::Result<()> {
     let mut driver = Driver::new(&context, vmt_model);
 
     // build the strategy
-    let strat: Box<dyn ProofStrategy<_>> = match options.strategy {
-        yardbird::Strategy::Abstract => Box::new(Abstract::new(options.depth)),
-        yardbird::Strategy::AbstractOnlyBest => Box::new(AbstractOnlyBest::new(options.depth)),
-        yardbird::Strategy::Concrete => Box::new(ConcreteZ3::default()),
-    };
+    let strat = options.build_strategy();
 
     // build up set of extensions based on command line options
     if options.repl {

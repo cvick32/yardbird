@@ -12,34 +12,57 @@ export interface Artifact {
 
 export interface Benchmark {
   example: string;
-  result: BenchmarkResult;
+  result: BenchmarkResult | StrategyResult[];
 }
 
 export type BenchmarkResult =
   | { Success: ProofLoopResult }
   | { NoProgress: ProofLoopResult }
   | { Timeout: number }
-  | { Error: String }
-  | { Panic: String };
+  | { Error: string }
+  | { Panic: string };
+
+export interface StrategyResult {
+  strategy: string;
+  result: BenchmarkResult;
+  run_time: number;
+  depth: number;
+}
 
 export interface ProofLoopResult {
   used_instances: string[];
   const_instances: string[];
 }
 
-export function isSuccess(result: BenchmarkResult) {
+export function getResult(
+  benchmark?: Benchmark,
+  strat?: string,
+): BenchmarkResult | undefined {
+  if (benchmark === undefined) return undefined;
+
+  const needle = strat ?? "abstract";
+  if (Array.isArray(benchmark.result)) {
+    return benchmark.result.find((res) => res.strategy === needle)?.result;
+  } else {
+    return benchmark.result;
+  }
+}
+
+export function isSuccess(result: BenchmarkResult | StrategyResult[]) {
   if ("Success" in result) {
     return result.Success.used_instances.length !== 0;
+  } else if (Array.isArray(result)) {
+    return false;
   } else {
     return false;
   }
 }
 
-export function isNoProgress(result: BenchmarkResult) {
+export function isNoProgress(result: BenchmarkResult | StrategyResult[]) {
   return "NoProgress" in result;
 }
 
-export function isTrivial(result: BenchmarkResult) {
+export function isTrivial(result: BenchmarkResult | StrategyResult[]) {
   if ("Success" in result) {
     return result.Success.used_instances.length === 0;
   } else {
@@ -47,15 +70,15 @@ export function isTrivial(result: BenchmarkResult) {
   }
 }
 
-export function isTimeout(result: BenchmarkResult) {
+export function isTimeout(result: BenchmarkResult | StrategyResult[]) {
   return "Timeout" in result;
 }
 
-export function isError(result: BenchmarkResult) {
+export function isError(result: BenchmarkResult | StrategyResult[]) {
   return "Error" in result;
 }
 
-export function isPanic(result: BenchmarkResult) {
+export function isPanic(result: BenchmarkResult | StrategyResult[]) {
   return "Panic" in result;
 }
 
@@ -251,8 +274,10 @@ export function benchmarkSummary(artifact: Artifact) {
 
   if (artifact.benchmarks !== undefined) {
     for (const b of artifact.benchmarks) {
-      const res = b.result;
-      if ("Success" in res) {
+      const res = getResult(b);
+      if (res === undefined) {
+        continue;
+      } else if ("Success" in res) {
         if (res.Success.used_instances.length === 0) {
           trivialSuccess += 1;
         } else {

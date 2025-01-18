@@ -8,12 +8,9 @@ use std::{
     path::PathBuf,
     sync::mpsc::{self, RecvTimeoutError},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
-use yardbird::{
-    model_from_options, strategies::Abstract, Driver, ProofLoopResult, ProofLoopResultType,
-    Strategy, YardbirdOptions,
-};
+use yardbird::{model_from_options, Driver, ProofLoopResult, ProofLoopResultType, YardbirdOptions};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -44,6 +41,13 @@ struct Options {
     /// Should we write out pretty json?
     #[arg(short, long)]
     pub pretty: bool,
+
+    /// Strategy to run benchmarks with
+    #[arg(long)]
+    pub strategy: Vec<yardbird::Strategy>,
+
+    #[arg(long, default_value_t = 2)]
+    pub retry: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,7 +79,15 @@ enum BenchmarkResult {
 #[derive(Debug, Serialize)]
 struct Benchmark {
     example: String,
+    result: Vec<StrategyResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct StrategyResult {
+    strategy: yardbird::Strategy,
     result: BenchmarkResult,
+    run_time: u128,
+    depth: u8,
 }
 
 enum TimeoutFnResult<T> {
@@ -130,31 +142,42 @@ where
     }
 }
 
-fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
-    println!("running: {}", options.filename);
+fn run_single(options: YardbirdOptions, retry: usize) -> anyhow::Result<StrategyResult> {
     let mut status_code = None;
     let mut timed_out_count = 0;
-    for _ in 0..5 {
+    let mut run_time = Duration::default();
+    // don't retry for the concrete strategy
+    let retry = if matches!(options.strategy, yardbird::Strategy::Concrete) {
+        1
+    } else {
+        retry
+    };
+    for _ in 0..retry {
         let proof_options = options.clone();
         let abstract_vmt_model = model_from_options(&proof_options);
+        let now = Instant::now();
+        let filename = options.filename.to_string();
+        let options = options.clone();
         status_code = Some(run_with_timeout(
             move || {
                 let ctx = z3::Context::new(&z3::Config::new());
                 let mut driver = Driver::new(&ctx, abstract_vmt_model);
-                driver.check_strategy(proof_options.depth, Box::new(Abstract::new(options.depth)))
+                let strategy = options.build_strategy();
+                driver.check_strategy(proof_options.depth, strategy)
             },
             Duration::from_secs(10 + (timed_out_count * 5)),
         ));
-        // TODO: this is really a hack to try and get around z3 model randomness
+        run_time = now.elapsed();
+        // TODO: this is really a hack to try and mitigate z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
-            println!("  retrying: {}", options.filename);
+            println!("  retrying: {}", filename);
             timed_out_count += 1;
             continue;
         } else if let Some(BenchmarkResult::Error(_)) = status_code {
-            println!("  retrying error: {}", options.filename);
+            println!("  retrying error: {}", filename);
             continue;
         } else if let Some(BenchmarkResult::NoProgress(_)) = status_code {
-            println!("  retrying no progress: {}", options.filename);
+            println!("  retrying no progress: {}", filename);
             continue;
         } else {
             break;
@@ -162,9 +185,11 @@ fn run_single(options: YardbirdOptions) -> anyhow::Result<Benchmark> {
     }
 
     match status_code {
-        Some(result) => Ok(Benchmark {
-            example: options.filename,
+        Some(result) => Ok(StrategyResult {
+            strategy: options.strategy,
             result,
+            run_time: run_time.as_millis(),
+            depth: options.depth,
         }),
         None => Err(anyhow!("Failed to run")),
     }
@@ -185,7 +210,7 @@ fn main() -> anyhow::Result<()> {
         .map(|skip| Pattern::new(skip))
         .collect::<Result<_, _>>()?;
 
-    let results: Vec<_> = read_dir(options.base)?
+    let benchmarks: Vec<_> = read_dir(options.base)?
         .filter_map(|path| path.ok())
         // recurse one level
         .flat_map(|path| {
@@ -205,19 +230,36 @@ fn main() -> anyhow::Result<()> {
         // and exlude all the ones matching a skip pattern
         .filter(|entry| !exclude.iter().any(|glob| glob.matches_path(&entry.path())))
         .map(|entry| entry.path().to_string_lossy().to_string())
-        .map(|filename| {
-            let yardbird_options = YardbirdOptions {
-                filename,
-                depth: options.depth,
-                bmc_count: 10,
-                print_vmt: false,
-                interpolate: false,
-                repl: false,
-                strategy: Strategy::Abstract,
-            };
-            run_single(yardbird_options)
+        .collect();
+    let results: Vec<_> = benchmarks
+        .iter()
+        .enumerate()
+        .map(|(idx, filename)| {
+            println!("[{}/{}] {filename}", idx + 1, benchmarks.len());
+            Ok(Benchmark {
+                example: filename.clone(),
+                result: options
+                    .strategy
+                    .iter()
+                    .map(|strat| {
+                        println!("  using strat: {strat:?}");
+                        run_single(
+                            YardbirdOptions {
+                                filename: filename.clone(),
+                                depth: options.depth,
+                                bmc_count: 10,
+                                print_vmt: false,
+                                interpolate: false,
+                                repl: false,
+                                strategy: *strat,
+                            },
+                            options.retry,
+                        )
+                    })
+                    .collect::<anyhow::Result<_>>()?,
+            })
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<anyhow::Result<_>>()?;
 
     if let Some(output) = options.output {
         let file = OpenOptions::new()

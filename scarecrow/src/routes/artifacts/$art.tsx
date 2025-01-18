@@ -2,6 +2,7 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
   Benchmark,
   BenchmarkResult,
+  getResult,
   isError,
   isNoProgress,
   isPanic,
@@ -126,14 +127,14 @@ function RouteComponent() {
                   </Link>
                 </td>
                 <td className="text-left align-top">
-                  <Status result={benchmark.result} />
+                  <Status result={getResult(benchmark)} />
                 </td>
                 {compare != "" &&
                   !!compareAgainst.data &&
                   !!compareAgainst.data.benchmarks && (
                     <td className="text-left align-top">
                       <Status
-                        result={compareAgainst.data.benchmarks[idx]?.result}
+                        result={getResult(compareAgainst.data.benchmarks[idx])}
                       />
                     </td>
                   )}
