@@ -31,7 +31,7 @@ function RouteComponent() {
   const compareAgainst = useArtifact(compare);
 
   if (artifact.isPending) {
-    return <div>Loading...</div>;
+    return <div>Loading Artifacts...</div>;
   }
 
   if (!artifact.data || artifact.isError) {
@@ -90,8 +90,8 @@ function RouteComponent() {
                   ) &&
                   !(
                     isNoProgress(benchmark.result) &&
-                    isNoProgress(compareAgainst.data.benchmarks[idx].result))
-                  &&
+                    isNoProgress(compareAgainst.data.benchmarks[idx].result)
+                  ) &&
                   !(
                     isTrivial(benchmark.result) &&
                     isTrivial(compareAgainst.data.benchmarks[idx].result)
@@ -115,11 +115,16 @@ function RouteComponent() {
             })
             .map(([benchmark, idx]) => (
               <tr key={idx} className="text-black dark:text-white">
-                <td className="text-left align-top"><Link
-                  to="/problem/$problem"
-                  params={{ problem: benchmark.example }}
-                  search={{ idx: idx.toString(), artifact: art }}
-                  className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500">{benchmark.example}</Link></td>
+                <td className="text-left align-top">
+                  <Link
+                    to="/problem/$problem"
+                    params={{ problem: benchmark.example }}
+                    search={{ idx: idx, art: art }}
+                    className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
+                  >
+                    {benchmark.example}
+                  </Link>
+                </td>
                 <td className="text-left align-top">
                   <Status result={benchmark.result} />
                 </td>

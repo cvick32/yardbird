@@ -29,7 +29,7 @@ function Index() {
   console.log(files);
 
   if (!artifacts.data) {
-    return <div>Loading...</div>;
+    return <div>Loading All Artifacts...</div>;
   }
 
   return (
