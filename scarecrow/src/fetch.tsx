@@ -48,6 +48,19 @@ export function getResult(
   }
 }
 
+export function getRuntime(
+  benchmark?: Benchmark,
+  strat?: string,
+): number | undefined {
+  if (benchmark === undefined) return undefined;
+  const needle = strat ?? "abstract";
+  if (Array.isArray(benchmark.result)) {
+    return benchmark.result.find((res) => res.strategy === needle)?.run_time;
+  } else {
+    return undefined;
+  }
+}
+
 export function isSuccess(result: BenchmarkResult | StrategyResult[]) {
   if ("Success" in result) {
     return result.Success.used_instances.length !== 0;

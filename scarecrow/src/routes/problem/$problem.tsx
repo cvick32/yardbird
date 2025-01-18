@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Benchmark, useArtifact, useProblem } from "../../fetch";
+import { Benchmark, getResult, useArtifact, useProblem } from "../../fetch";
 import { useState } from "react";
 
 export const Route = createFileRoute("/problem/$problem")({
@@ -87,7 +87,12 @@ function RouteComponent() {
 }
 
 function Instances({ benchmark }: { benchmark: Benchmark }) {
-  if ("Success" in benchmark.result) {
+  const result = getResult(benchmark);
+  if (result === undefined) {
+    return undefined;
+  }
+
+  if ("Success" in result) {
     return (
       <>
         <div className="self-start pl-5 text-lg font-bold">Used Instances:</div>
@@ -97,17 +102,17 @@ function Instances({ benchmark }: { benchmark: Benchmark }) {
           readOnly={true}
           className="grow-0 whitespace-pre-line bg-[#FDF6E3] font-mono"
         >
-          {benchmark.result.Success.used_instances.join("\n\n")}
+          {result.Success.used_instances.join("\n\n")}
         </textarea>
       </>
     );
   }
-  if ("NoProgress" in benchmark.result) {
+  if ("NoProgress" in result) {
     return (
       <>
         <div>Used Instances:</div>
         <div>
-          {benchmark.result.NoProgress.used_instances.map((inst, idx) => (
+          {result.NoProgress.used_instances.map((inst, idx) => (
             <div key={idx}>{inst}</div>
           ))}
         </div>

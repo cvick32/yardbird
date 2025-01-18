@@ -4,5 +4,6 @@
 interpolant-out.smt2
 *.rej
 /profile.json
+/*.json
 info.sh
 debug.sh

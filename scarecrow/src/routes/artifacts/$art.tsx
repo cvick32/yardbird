@@ -3,6 +3,7 @@ import {
   Benchmark,
   BenchmarkResult,
   getResult,
+  getRuntime,
   isError,
   isNoProgress,
   isPanic,
@@ -11,6 +12,8 @@ import {
   isTrivial,
   useArtifact,
 } from "../../fetch";
+import { useState } from "react";
+import { FaCaretDown, FaCaretRight } from "react-icons/fa6";
 
 export const Route = createFileRoute("/artifacts/$art")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -63,7 +66,7 @@ function RouteComponent() {
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-400 dark:divide-slate-600">
+        <tbody className="divide-y divide-slate-300 dark:divide-slate-700">
           {artifact.data.benchmarks
             ?.map((benchmark, idx) => [benchmark, idx] as [Benchmark, number])
             .filter(([benchmark, idx]) => {
@@ -115,30 +118,7 @@ function RouteComponent() {
               }
             })
             .map(([benchmark, idx]) => (
-              <tr key={idx} className="text-black dark:text-white">
-                <td className="text-left align-top">
-                  <Link
-                    to="/problem/$problem"
-                    params={{ problem: benchmark.example }}
-                    search={{ idx: idx, art: art }}
-                    className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
-                  >
-                    {benchmark.example}
-                  </Link>
-                </td>
-                <td className="text-left align-top">
-                  <Status result={getResult(benchmark)} />
-                </td>
-                {compare != "" &&
-                  !!compareAgainst.data &&
-                  !!compareAgainst.data.benchmarks && (
-                    <td className="text-left align-top">
-                      <Status
-                        result={getResult(compareAgainst.data.benchmarks[idx])}
-                      />
-                    </td>
-                  )}
-              </tr>
+              <Row benchmark={benchmark} index={idx} />
             ))}
         </tbody>
       </table>
@@ -146,7 +126,99 @@ function RouteComponent() {
   );
 }
 
-function Status({ result }: { result?: BenchmarkResult }) {
+function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
+  const [showInstances, setShowInstances] = useState(false);
+  const { art } = Route.useParams();
+  const { compare } = Route.useSearch();
+  const compareAgainst = useArtifact(compare);
+  const benchResult = getResult(benchmark);
+  const benchmarkSuccess =
+    benchResult !== undefined &&
+    (("Success" in benchResult &&
+      benchResult.Success.used_instances.length !== 0) ||
+      ("NoProgress" in benchResult &&
+        benchResult.NoProgress.used_instances.length !== 0));
+
+  const compareResult = getResult(compareAgainst.data?.benchmarks?.[index]);
+  const compareSuccess =
+    compare !== "" &&
+    compareResult !== undefined &&
+    (("Success" in compareResult &&
+      compareResult.Success.used_instances.length !== 0) ||
+      ("NoProgress" in compareResult &&
+        compareResult.NoProgress.used_instances.length !== 0));
+  const isSuccess = benchmarkSuccess || compareSuccess;
+
+  return (
+    <tr className="divide-x divide-slate-300 text-black dark:divide-slate-700 dark:text-white">
+      <td className="px-2 text-left align-top">
+        <button
+          className="flex w-full flex-row items-center gap-1"
+          onClick={() => {
+            if (isSuccess) {
+              setShowInstances(!showInstances);
+            }
+          }}
+        >
+          <div className="w-4">
+            {isSuccess && (showInstances ? <FaCaretDown /> : <FaCaretRight />)}
+          </div>
+
+          {benchmark.example}
+        </button>
+        <div className="ml-5 flex flex-row items-center gap-1">
+          <Link
+            to="/problem/$problem"
+            params={{ problem: benchmark.example }}
+            search={{ idx: index, art }}
+            className="text-sm text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
+          >
+            Details
+          </Link>
+
+          {!!getRuntime(benchmark) && (
+            <>
+              <span className="text-sm">{getRuntime(benchmark)}ms</span>
+              {compare !== "" &&
+                !!compareAgainst.data &&
+                !!compareAgainst.data.benchmarks &&
+                !!getRuntime(compareAgainst.data.benchmarks[index]) && (
+                  <>
+                    <span className="text-sm">
+                      - {getRuntime(compareAgainst.data.benchmarks[index])}ms
+                    </span>
+                    <span className="text-sm">
+                      ={" "}
+                      {getRuntime(benchmark)! -
+                        getRuntime(compareAgainst.data.benchmarks[index])!}
+                      ms
+                    </span>
+                  </>
+                )}
+            </>
+          )}
+        </div>
+      </td>
+      <Status result={getResult(benchmark)} showInstances={showInstances} />
+      {compare !== "" &&
+        !!compareAgainst.data &&
+        !!compareAgainst.data.benchmarks && (
+          <Status
+            result={getResult(compareAgainst.data.benchmarks[index])}
+            showInstances={showInstances}
+          />
+        )}
+    </tr>
+  );
+}
+
+function Status({
+  result,
+  showInstances,
+}: {
+  result?: BenchmarkResult;
+  showInstances: boolean;
+}) {
   if (result === undefined) {
     return undefined;
   }
@@ -154,66 +226,74 @@ function Status({ result }: { result?: BenchmarkResult }) {
   if ("Success" in result) {
     if (result.Success.used_instances.length == 0) {
       return (
-        <div className="bg-teal-200 dark:bg-teal-700">
+        <td className="m-0 bg-teal-200 px-2 text-left dark:bg-teal-700">
           Trivial Success...something is wrong.
-        </div>
+        </td>
       );
     } else {
       return (
-        <div className="bg-green-200 dark:bg-green-800">
+        <td className="m-0 bg-green-200 px-2 text-left dark:bg-green-800">
           Success!
-          <div>Used instances:</div>
-          <div className="ml-2 font-mono">
-            {result.Success.used_instances.map((inst, idx) => (
-              <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
-            ))}
-          </div>
-          <div>Const instances:</div>
-          <div className="ml-2 font-mono">
-            {result.Success.const_instances.map((inst, idx) => (
-              <div key={idx}>{inst}</div>
-            ))}
-          </div>
-        </div>
+          {showInstances && (
+            <>
+              <div>Used instances:</div>
+              <div className="ml-2 font-mono">
+                {result.Success.used_instances.map((inst, idx) => (
+                  <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
+                ))}
+              </div>
+            </>
+          )}
+        </td>
       );
     }
   }
 
   if ("NoProgress" in result) {
     return (
-      <div className="bg-pink-200 dark:bg-pink-800">
+      <td className="m-0 bg-pink-200 px-2 text-left dark:bg-pink-800">
         No Progress!
-        <div>Used instances:</div>
-        <div className="ml-2 font-mono">
-          {result.NoProgress.used_instances.map((inst, idx) => (
-            <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
-          ))}
-        </div>
-        <div>Const instances:</div>
-        <div className="ml-2 font-mono">
-          {result.NoProgress.const_instances.map((inst, idx) => (
-            <div key={idx}>{inst}</div>
-          ))}
-        </div>
-      </div>
+        {showInstances && (
+          <>
+            <div>Used instances:</div>
+            <div className="ml-2 font-mono">
+              {result.NoProgress.used_instances.map((inst, idx) => (
+                <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
+              ))}
+            </div>
+            <div>Const instances:</div>
+            <div className="ml-2 font-mono">
+              {result.NoProgress.const_instances.map((inst, idx) => (
+                <div key={idx}>{inst}</div>
+              ))}
+            </div>
+          </>
+        )}
+      </td>
     );
   }
 
   if ("Timeout" in result) {
     return (
-      <div className="bg-orange-200 dark:bg-orange-700">
+      <td className="m-0 bg-orange-200 px-2 text-left dark:bg-orange-700">
         Timed out after {result.Timeout / 1000}s
-      </div>
+      </td>
     );
   }
 
   if ("Error" in result) {
-    return <div className="bg-red-200 dark:bg-red-800">{result.Error}</div>;
+    return (
+      <td className="m-0 bg-red-200 px-2 text-left dark:bg-red-800">
+        {result.Error}
+      </td>
+    );
   }
 
   if ("Panic" in result) {
     return (
-      <div className="bg-purple-200 dark:bg-purple-800">{result.Panic}</div>
+      <td className="m-0 bg-purple-200 px-2 text-left dark:bg-purple-800">
+        {result.Panic}
+      </td>
     );
   }
 }
