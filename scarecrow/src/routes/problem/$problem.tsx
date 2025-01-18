@@ -21,8 +21,7 @@ function RouteComponent() {
   const [encoding, setEncoding] = useState("VMT");
   const artifact = useArtifact(art);
   let vmt_query = useProblem(problem);
-  console.log(vmt_query.isPending);
-  console.log(artifact.isPending);
+
   if (vmt_query.isPending || artifact.isPending) {
     return <div>Loading Problem...</div>;
   }
