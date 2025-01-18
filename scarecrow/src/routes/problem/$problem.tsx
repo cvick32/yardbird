@@ -5,7 +5,7 @@ import { useState } from "react";
 export const Route = createFileRoute("/problem/$problem")({
   validateSearch: (search: Record<string, unknown>) => ({
     idx: search.idx || 0,
-    art: (search.artifact as string) || "",
+    art: (search.art as string) || "",
   }),
   beforeLoad: ({ context }) => {
     if (!context.auth.isAuthenticated) {
