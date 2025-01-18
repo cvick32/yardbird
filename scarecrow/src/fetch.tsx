@@ -209,7 +209,6 @@ async function fetchProblem(octokit: Octokit, problemName: string) {
       "X-GitHub-Api-Version": "2022-11-28",
     },
   });
-
 }
 
 async function fetchGitCommitMessage(octokit: Octokit, sha: string) {
