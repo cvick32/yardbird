@@ -71,6 +71,18 @@ export function useArtifacts() {
   });
 }
 
+export function useProblem(problemName: string) {
+  const auth = useAuth();
+  const octokit = new Octokit({
+    auth: auth.token,
+  });
+  return useQuery({
+    queryKey: ["problem", `${problemName}`],
+    queryFn: async () => fetchProblem(octokit, problemName),
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useArtifact<T = Artifact>(
   id?: string,
   select?: (x: Artifact) => T,
@@ -186,6 +198,18 @@ export async function fetchArtifact(octokit: Octokit, id: string) {
       commitSha: artifactInfo.data.workflow_run.head_sha,
     };
   }
+}
+
+async function fetchProblem(octokit: Octokit, problemName: string) {
+  return octokit.request("GET /repos/{owner}/{repo}/contents/{path}", {
+    owner: "cvick32",
+    repo: "yardbird",
+    path: problemName,
+    headers: {
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+
 }
 
 async function fetchGitCommitMessage(octokit: Octokit, sha: string) {
