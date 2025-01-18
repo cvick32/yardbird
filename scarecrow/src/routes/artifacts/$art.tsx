@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
   Benchmark,
   BenchmarkResult,
@@ -115,7 +115,11 @@ function RouteComponent() {
             })
             .map(([benchmark, idx]) => (
               <tr key={idx} className="text-black dark:text-white">
-                <td className="text-left align-top">{benchmark.example}</td>
+                <td className="text-left align-top"><Link
+                  to="/problem/$problem"
+                  params={{ problem: benchmark.example }}
+                  search={{ idx: idx.toString(), artifact: art }}
+                  className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500">{benchmark.example}</Link></td>
                 <td className="text-left align-top">
                   <Status result={benchmark.result} />
                 </td>

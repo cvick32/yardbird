@@ -10,129 +10,166 @@
 
 // Import Routes
 
-import { Route as rootRoute } from "./routes/__root";
-import { Route as VerifyImport } from "./routes/verify";
-import { Route as OauthImport } from "./routes/oauth";
-import { Route as LogoutImport } from "./routes/logout";
-import { Route as IndexImport } from "./routes/index";
-import { Route as ArtifactsArtImport } from "./routes/artifacts/$art";
+import { Route as rootRoute } from './routes/__root'
+import { Route as VerifyImport } from './routes/verify'
+import { Route as OauthImport } from './routes/oauth'
+import { Route as LogoutImport } from './routes/logout'
+import { Route as IndexImport } from './routes/index'
+import { Route as ProblemProblemImport } from './routes/problem/$problem'
+import { Route as ArtifactsArtImport } from './routes/artifacts/$art'
 
 // Create/Update Routes
 
 const VerifyRoute = VerifyImport.update({
-  id: "/verify",
-  path: "/verify",
+  id: '/verify',
+  path: '/verify',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const OauthRoute = OauthImport.update({
-  id: "/oauth",
-  path: "/oauth",
+  id: '/oauth',
+  path: '/oauth',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const LogoutRoute = LogoutImport.update({
-  id: "/logout",
-  path: "/logout",
+  id: '/logout',
+  path: '/logout',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 const IndexRoute = IndexImport.update({
-  id: "/",
-  path: "/",
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
+
+const ProblemProblemRoute = ProblemProblemImport.update({
+  id: '/problem/$problem',
+  path: '/problem/$problem',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const ArtifactsArtRoute = ArtifactsArtImport.update({
-  id: "/artifacts/$art",
-  path: "/artifacts/$art",
+  id: '/artifacts/$art',
+  path: '/artifacts/$art',
   getParentRoute: () => rootRoute,
-} as any);
+} as any)
 
 // Populate the FileRoutesByPath interface
 
-declare module "@tanstack/react-router" {
+declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof IndexImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/logout": {
-      id: "/logout";
-      path: "/logout";
-      fullPath: "/logout";
-      preLoaderRoute: typeof LogoutImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/oauth": {
-      id: "/oauth";
-      path: "/oauth";
-      fullPath: "/oauth";
-      preLoaderRoute: typeof OauthImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/verify": {
-      id: "/verify";
-      path: "/verify";
-      fullPath: "/verify";
-      preLoaderRoute: typeof VerifyImport;
-      parentRoute: typeof rootRoute;
-    };
-    "/artifacts/$art": {
-      id: "/artifacts/$art";
-      path: "/artifacts/$art";
-      fullPath: "/artifacts/$art";
-      preLoaderRoute: typeof ArtifactsArtImport;
-      parentRoute: typeof rootRoute;
-    };
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexImport
+      parentRoute: typeof rootRoute
+    }
+    '/logout': {
+      id: '/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof LogoutImport
+      parentRoute: typeof rootRoute
+    }
+    '/oauth': {
+      id: '/oauth'
+      path: '/oauth'
+      fullPath: '/oauth'
+      preLoaderRoute: typeof OauthImport
+      parentRoute: typeof rootRoute
+    }
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyImport
+      parentRoute: typeof rootRoute
+    }
+    '/artifacts/$art': {
+      id: '/artifacts/$art'
+      path: '/artifacts/$art'
+      fullPath: '/artifacts/$art'
+      preLoaderRoute: typeof ArtifactsArtImport
+      parentRoute: typeof rootRoute
+    }
+    '/problem/$problem': {
+      id: '/problem/$problem'
+      path: '/problem/$problem'
+      fullPath: '/problem/$problem'
+      preLoaderRoute: typeof ProblemProblemImport
+      parentRoute: typeof rootRoute
+    }
   }
 }
 
 // Create and export the route tree
 
 export interface FileRoutesByFullPath {
-  "/": typeof IndexRoute;
-  "/logout": typeof LogoutRoute;
-  "/oauth": typeof OauthRoute;
-  "/verify": typeof VerifyRoute;
-  "/artifacts/$art": typeof ArtifactsArtRoute;
+  '/': typeof IndexRoute
+  '/logout': typeof LogoutRoute
+  '/oauth': typeof OauthRoute
+  '/verify': typeof VerifyRoute
+  '/artifacts/$art': typeof ArtifactsArtRoute
+  '/problem/$problem': typeof ProblemProblemRoute
 }
 
 export interface FileRoutesByTo {
-  "/": typeof IndexRoute;
-  "/logout": typeof LogoutRoute;
-  "/oauth": typeof OauthRoute;
-  "/verify": typeof VerifyRoute;
-  "/artifacts/$art": typeof ArtifactsArtRoute;
+  '/': typeof IndexRoute
+  '/logout': typeof LogoutRoute
+  '/oauth': typeof OauthRoute
+  '/verify': typeof VerifyRoute
+  '/artifacts/$art': typeof ArtifactsArtRoute
+  '/problem/$problem': typeof ProblemProblemRoute
 }
 
 export interface FileRoutesById {
-  __root__: typeof rootRoute;
-  "/": typeof IndexRoute;
-  "/logout": typeof LogoutRoute;
-  "/oauth": typeof OauthRoute;
-  "/verify": typeof VerifyRoute;
-  "/artifacts/$art": typeof ArtifactsArtRoute;
+  __root__: typeof rootRoute
+  '/': typeof IndexRoute
+  '/logout': typeof LogoutRoute
+  '/oauth': typeof OauthRoute
+  '/verify': typeof VerifyRoute
+  '/artifacts/$art': typeof ArtifactsArtRoute
+  '/problem/$problem': typeof ProblemProblemRoute
 }
 
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/logout" | "/oauth" | "/verify" | "/artifacts/$art";
-  fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/logout" | "/oauth" | "/verify" | "/artifacts/$art";
-  id: "__root__" | "/" | "/logout" | "/oauth" | "/verify" | "/artifacts/$art";
-  fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths:
+  | '/'
+  | '/logout'
+  | '/oauth'
+  | '/verify'
+  | '/artifacts/$art'
+  | '/problem/$problem'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+  | '/'
+  | '/logout'
+  | '/oauth'
+  | '/verify'
+  | '/artifacts/$art'
+  | '/problem/$problem'
+  id:
+  | '__root__'
+  | '/'
+  | '/logout'
+  | '/oauth'
+  | '/verify'
+  | '/artifacts/$art'
+  | '/problem/$problem'
+  fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  LogoutRoute: typeof LogoutRoute;
-  OauthRoute: typeof OauthRoute;
-  VerifyRoute: typeof VerifyRoute;
-  ArtifactsArtRoute: typeof ArtifactsArtRoute;
+  IndexRoute: typeof IndexRoute
+  LogoutRoute: typeof LogoutRoute
+  OauthRoute: typeof OauthRoute
+  VerifyRoute: typeof VerifyRoute
+  ArtifactsArtRoute: typeof ArtifactsArtRoute
+  ProblemProblemRoute: typeof ProblemProblemRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -141,11 +178,12 @@ const rootRouteChildren: RootRouteChildren = {
   OauthRoute: OauthRoute,
   VerifyRoute: VerifyRoute,
   ArtifactsArtRoute: ArtifactsArtRoute,
-};
+  ProblemProblemRoute: ProblemProblemRoute,
+}
 
 export const routeTree = rootRoute
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()
 
 /* ROUTE_MANIFEST_START
 {
@@ -157,7 +195,8 @@ export const routeTree = rootRoute
         "/logout",
         "/oauth",
         "/verify",
-        "/artifacts/$art"
+        "/artifacts/$art",
+        "/problem/$problem"
       ]
     },
     "/": {
@@ -174,6 +213,9 @@ export const routeTree = rootRoute
     },
     "/artifacts/$art": {
       "filePath": "artifacts/$art.tsx"
+    },
+    "/problem/$problem": {
+      "filePath": "problem/$problem.tsx"
     }
   }
 }
