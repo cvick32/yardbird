@@ -2,12 +2,7 @@ use std::mem;
 
 use anyhow::anyhow;
 use log::{debug, info};
-use smt2parser::{
-    concrete::Term,
-    get_term_from_term_string,
-    vmt::{smt::SMTProblem, VMTModel},
-};
-use z3::Model;
+use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
 use crate::{
     analysis::SaturationInequalities, array_axioms::ArrayLanguage,
@@ -31,56 +26,6 @@ impl Abstract {
             bmc_depth,
             ..Default::default()
         }
-    }
-
-    fn _check_found_instantiations(
-        &self,
-        z3_var_context: &Z3VarContext,
-        model: &Model,
-        insts: Vec<String>,
-    ) -> (Vec<String>, Vec<(Term, Term)>) {
-        let mut true_insts = vec![];
-        let mut false_insts = vec![];
-        for inst in &insts {
-            let term = get_term_from_term_string(inst);
-            let z3_term = z3_var_context.rewrite_term(&term);
-
-            println!("{term}");
-            let (lhs, rhs) = match term {
-                smt2parser::concrete::Term::Application {
-                    qual_identifier,
-                    arguments,
-                } => {
-                    if qual_identifier.get_name().eq("=") {
-                        (arguments[0].clone(), arguments[1].clone())
-                    } else if qual_identifier.get_name().eq("=>") {
-                        match &arguments[1] {
-                            Term::Application {
-                                qual_identifier: _,
-                                arguments,
-                            } => (arguments[0].clone(), arguments[1].clone()),
-                            _ => panic!(),
-                        }
-                    } else {
-                        panic!("must be equality or implies");
-                    }
-                }
-                _ => panic!("Must be equality!"),
-            };
-            // TODO: we need to interrupt here if we find any true instantiations, add them to the
-            // egraph, and saturate again.... that's pretty annoying.
-            match model.eval(&z3_term, false) {
-                Some(truth) => {
-                    if !truth.as_bool().unwrap().as_bool().unwrap() {
-                        false_insts.push(inst.clone());
-                    } else {
-                        true_insts.push((lhs, rhs));
-                    }
-                }
-                None => todo!(),
-            }
-        }
-        (false_insts, true_insts)
     }
 }
 
@@ -206,21 +151,9 @@ impl AbstractRefinementState {
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));
             let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
             self.egraph.union(term_id, interp_id);
+
             self.egraph.rebuild();
         }
-        Ok(())
-    }
-
-    fn _add_true_instantiation(
-        &mut self,
-        lhs: smt2parser::concrete::Term,
-        rhs: smt2parser::concrete::Term,
-    ) -> anyhow::Result<()> {
-        let lhs_id = self.egraph.add_expr(&lhs.to_string().parse()?);
-        let rhs_id = self.egraph.add_expr(&rhs.to_string().parse()?);
-        debug!("Adding: {} = {}", lhs, rhs);
-        self.egraph.union(lhs_id, rhs_id);
-        self.egraph.rebuild();
         Ok(())
     }
 }
