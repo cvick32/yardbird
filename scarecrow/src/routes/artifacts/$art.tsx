@@ -226,20 +226,22 @@ function Status({
   if ("Success" in result) {
     if (result.Success.used_instances.length == 0) {
       return (
-        <td className="m-0 bg-teal-200 px-2 text-left dark:bg-teal-700">
+        <td className="m-0 bg-teal-200 px-2 text-left align-top dark:bg-teal-700">
           Trivial Success...something is wrong.
         </td>
       );
     } else {
       return (
-        <td className="m-0 bg-green-200 px-2 text-left dark:bg-green-800">
+        <td className="m-0 bg-green-200 px-2 text-left align-top dark:bg-green-800">
           Success!
           {showInstances && (
             <>
               <div>Used instances:</div>
-              <div className="ml-2 font-mono">
+              <div className="ml-2 max-w-[32vw] overflow-scroll font-mono">
                 {result.Success.used_instances.map((inst, idx) => (
-                  <div key={idx}>{prettyPrint(parseSexp(inst))}</div>
+                  <div key={idx} className="text-nowrap">
+                    {prettyPrint(parseSexp(inst))}
+                  </div>
                 ))}
               </div>
             </>
@@ -251,7 +253,7 @@ function Status({
 
   if ("NoProgress" in result) {
     return (
-      <td className="m-0 bg-pink-200 px-2 text-left dark:bg-pink-800">
+      <td className="m-0 bg-pink-200 px-2 text-left align-top dark:bg-pink-800">
         No Progress!
         {showInstances && (
           <>
@@ -275,7 +277,7 @@ function Status({
 
   if ("Timeout" in result) {
     return (
-      <td className="m-0 bg-orange-200 px-2 text-left dark:bg-orange-700">
+      <td className="m-0 bg-orange-200 px-2 text-left align-top dark:bg-orange-700">
         Timed out after {result.Timeout / 1000}s
       </td>
     );
@@ -283,7 +285,7 @@ function Status({
 
   if ("Error" in result) {
     return (
-      <td className="m-0 bg-red-200 px-2 text-left dark:bg-red-800">
+      <td className="m-0 bg-red-200 px-2 text-left align-top dark:bg-red-800">
         {result.Error}
       </td>
     );
@@ -291,7 +293,7 @@ function Status({
 
   if ("Panic" in result) {
     return (
-      <td className="m-0 bg-purple-200 px-2 text-left dark:bg-purple-800">
+      <td className="m-0 bg-purple-200 px-2 text-left align-top dark:bg-purple-800">
         {result.Panic}
       </td>
     );

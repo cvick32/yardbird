@@ -140,6 +140,7 @@ function Index() {
                 <div key={`3-${idx}`}>-</div>
                 <div key={`4-${idx}`}>-</div>
                 <div key={`5-${idx}`}>-</div>
+                <div key={`6-${idx}`}>-</div>
               </FlexGrid>
               <WorkflowStatus
                 href={workflow.html_url}
@@ -190,7 +191,10 @@ function Index() {
                 {timeString}
               </span>
             </div>
-            <Stats id={art.id} className="w-[75px]" />
+            <Stats
+              id={art.id}
+              className="w-[75px] text-black dark:text-white"
+            />
             <Link
               to="/artifacts/$art"
               params={{ art: art.id }}
