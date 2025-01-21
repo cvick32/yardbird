@@ -224,8 +224,10 @@ export async function fetchArtifact(octokit: Octokit, id: string) {
   const z = await JSZip.loadAsync(res.data);
   const garden = await z.file("garden.json")?.async("string");
   if (garden) {
+    const benchmarks = JSON.parse(garden) as Benchmark[];
+    benchmarks.sort((a, b) => (a.example < b.example ? -1 : 1));
     return {
-      benchmarks: JSON.parse(garden) as Benchmark[],
+      benchmarks,
       id,
       commitSha: artifactInfo.data.workflow_run.head_sha,
     };
