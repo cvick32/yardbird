@@ -4,12 +4,7 @@ import {
   BenchmarkResult,
   getResult,
   getRuntime,
-  isError,
-  isNoProgress,
-  isPanic,
-  isSuccess,
-  isTimeout,
-  isTrivial,
+  getStatus,
   useArtifact,
 } from "../../fetch";
 import { useState } from "react";
@@ -19,6 +14,7 @@ export const Route = createFileRoute("/artifacts/$art")({
   validateSearch: (search: Record<string, unknown>) => ({
     compare: (search.compare as string) || "",
     filter: (search.filter as string) || "",
+    expand: (search.expand as boolean) || false,
   }),
   beforeLoad: ({ context }) => {
     if (!context.auth.isAuthenticated) {
@@ -72,49 +68,13 @@ function RouteComponent() {
             .filter(([benchmark, idx]) => {
               if (filter === "") {
                 return true;
-              } else if (filter === "success") {
-                return isSuccess(benchmark.result);
-              } else if (filter === "noProgress") {
-                return isNoProgress(benchmark.result);
-              } else if (filter === "trivial") {
-                return isTrivial(benchmark.result);
-              } else if (filter === "timeout") {
-                return isTimeout(benchmark.result);
-              } else if (filter === "error") {
-                return isError(benchmark.result);
-              } else if (filter === "panic") {
-                return isPanic(benchmark.result);
               } else if (filter === "differ") {
                 return (
-                  !!compareAgainst.data &&
-                  !!compareAgainst.data.benchmarks &&
-                  !(
-                    isSuccess(benchmark.result) &&
-                    isSuccess(compareAgainst.data.benchmarks[idx].result)
-                  ) &&
-                  !(
-                    isNoProgress(benchmark.result) &&
-                    isNoProgress(compareAgainst.data.benchmarks[idx].result)
-                  ) &&
-                  !(
-                    isTrivial(benchmark.result) &&
-                    isTrivial(compareAgainst.data.benchmarks[idx].result)
-                  ) &&
-                  !(
-                    isTimeout(benchmark.result) &&
-                    isTimeout(compareAgainst.data.benchmarks[idx].result)
-                  ) &&
-                  !(
-                    isError(benchmark.result) &&
-                    isError(compareAgainst.data.benchmarks[idx].result)
-                  ) &&
-                  !(
-                    isPanic(benchmark.result) &&
-                    isPanic(compareAgainst.data.benchmarks[idx].result)
-                  )
+                  getStatus(getResult(benchmark)) !=
+                  getStatus(getResult(compareAgainst?.data?.benchmarks?.[idx]))
                 );
               } else {
-                return false;
+                return getStatus(getResult(benchmark)) === filter;
               }
             })
             .map(([benchmark, idx]) => (
@@ -129,7 +89,7 @@ function RouteComponent() {
 function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
   const [showInstances, setShowInstances] = useState(false);
   const { art } = Route.useParams();
-  const { compare } = Route.useSearch();
+  const { compare, expand } = Route.useSearch();
   const compareAgainst = useArtifact(compare);
   const benchResult = getResult(benchmark);
   const benchmarkSuccess =
@@ -161,51 +121,40 @@ function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
           }}
         >
           <div className="w-4">
-            {isSuccess && (showInstances ? <FaCaretDown /> : <FaCaretRight />)}
+            {isSuccess &&
+              (showInstances || expand ? <FaCaretDown /> : <FaCaretRight />)}
           </div>
 
           {benchmark.example}
         </button>
         <div className="ml-5 flex flex-row items-center gap-1">
           <Link
-            to="/problem/$problem"
-            params={{ problem: benchmark.example }}
-            search={{ idx: index, art }}
+            to="/artifacts/$art/$problem"
+            params={{
+              art: art,
+              problem: benchmark.example.replaceAll("/", "--"),
+            }}
             className="text-sm text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
           >
             Details
           </Link>
 
-          {!!getRuntime(benchmark) && (
-            <>
-              <span className="text-sm">{getRuntime(benchmark)}ms</span>
-              {compare !== "" &&
-                !!compareAgainst.data &&
-                !!compareAgainst.data.benchmarks &&
-                !!getRuntime(compareAgainst.data.benchmarks[index]) && (
-                  <>
-                    <span className="text-sm">
-                      - {getRuntime(compareAgainst.data.benchmarks[index])}ms
-                    </span>
-                    <span className="text-sm">
-                      ={" "}
-                      {getRuntime(benchmark)! -
-                        getRuntime(compareAgainst.data.benchmarks[index])!}
-                      ms
-                    </span>
-                  </>
-                )}
-            </>
-          )}
+          <Runtime
+            benchmark={benchmark}
+            compare={compareAgainst?.data?.benchmarks?.[index]}
+          />
         </div>
       </td>
-      <Status result={getResult(benchmark)} showInstances={showInstances} />
+      <Status
+        result={getResult(benchmark)}
+        showInstances={showInstances || expand}
+      />
       {compare !== "" &&
         !!compareAgainst.data &&
         !!compareAgainst.data.benchmarks && (
           <Status
             result={getResult(compareAgainst.data.benchmarks[index])}
-            showInstances={showInstances}
+            showInstances={showInstances || expand}
           />
         )}
     </tr>
@@ -297,6 +246,46 @@ function Status({
         {result.Panic}
       </td>
     );
+  }
+}
+
+function Runtime({
+  benchmark,
+  compare,
+}: {
+  benchmark: Benchmark;
+  compare?: Benchmark;
+}) {
+  const abstractRuntime = getRuntime(benchmark, "abstract");
+  const concreteRuntime = getRuntime(benchmark, "concrete");
+  const compareRuntime = getRuntime(compare);
+
+  if (abstractRuntime === undefined || concreteRuntime === undefined) {
+    return undefined;
+  }
+
+  const diff = concreteRuntime - abstractRuntime;
+
+  if (compareRuntime !== undefined) {
+    return <span className="text-sm">compare</span>;
+  } else {
+    if (diff > 0) {
+      return (
+        <>
+          <span className="text-sm text-green-700 dark:text-green-300">
+            +{concreteRuntime - abstractRuntime}ms
+          </span>
+        </>
+      );
+    } else {
+      return (
+        <>
+          <span className="text-sm text-red-500">
+            {concreteRuntime - abstractRuntime}ms
+          </span>
+        </>
+      );
+    }
   }
 }
 

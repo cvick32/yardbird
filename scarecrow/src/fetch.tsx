@@ -36,13 +36,12 @@ export interface ProofLoopResult {
 
 export function getResult(
   benchmark?: Benchmark,
-  strat?: string,
+  strat: string = "abstract",
 ): BenchmarkResult | undefined {
   if (benchmark === undefined) return undefined;
 
-  const needle = strat ?? "abstract";
   if (Array.isArray(benchmark.result)) {
-    return benchmark.result.find((res) => res.strategy === needle)?.result;
+    return benchmark.result.find((res) => res.strategy === strat)?.result;
   } else {
     return benchmark.result;
   }
@@ -50,49 +49,105 @@ export function getResult(
 
 export function getRuntime(
   benchmark?: Benchmark,
-  strat?: string,
+  strat: string = "abstract",
 ): number | undefined {
   if (benchmark === undefined) return undefined;
-  const needle = strat ?? "abstract";
   if (Array.isArray(benchmark.result)) {
-    return benchmark.result.find((res) => res.strategy === needle)?.run_time;
+    return benchmark.result.find((res) => res.strategy === strat)?.run_time;
   } else {
     return undefined;
   }
 }
 
-export function isSuccess(result: BenchmarkResult | StrategyResult[]) {
-  if ("Success" in result) {
-    return result.Success.used_instances.length !== 0;
+export function getStatus(result?: BenchmarkResult): string {
+  if (result === undefined) {
+    return "";
+  } else if ("Success" in result) {
+    if (result.Success.used_instances.length > 0) {
+      return "success";
+    } else {
+      return "trivial";
+    }
+  } else if ("NoProgress" in result) {
+    return "no-progress";
+  } else if ("Timeout" in result) {
+    return "timeout";
+  } else if ("Error" in result) {
+    return "error";
+  } else if ("Panic" in result) {
+    return "panic";
+  } else {
+    return "nyi";
+  }
+}
+
+function benchmarkVariant(
+  test: (res: BenchmarkResult) => boolean,
+  result?: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  console.log("bv", result);
+  if (result === undefined) {
+    return false;
   } else if (Array.isArray(result)) {
-    return false;
+    return benchmarkVariant(
+      test,
+      result.find((res) => res.strategy === strat)?.result,
+      strat,
+    );
   } else {
-    return false;
+    return test(result);
   }
 }
 
-export function isNoProgress(result: BenchmarkResult | StrategyResult[]) {
-  return "NoProgress" in result;
+export function isSuccess(
+  result?: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant(
+    (res) => "Success" in res && res.Success.used_instances.length > 0,
+    result,
+    strat,
+  );
 }
 
-export function isTrivial(result: BenchmarkResult | StrategyResult[]) {
-  if ("Success" in result) {
-    return result.Success.used_instances.length === 0;
-  } else {
-    return false;
-  }
+export function isNoProgress(
+  result?: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant((res) => "NoProgress" in res, result, strat);
 }
 
-export function isTimeout(result: BenchmarkResult | StrategyResult[]) {
-  return "Timeout" in result;
+export function isTrivial(
+  result?: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant(
+    (res) => "Success" in res && res.Success.used_instances.length === 0,
+    result,
+    strat,
+  );
 }
 
-export function isError(result: BenchmarkResult | StrategyResult[]) {
-  return "Error" in result;
+export function isTimeout(
+  result?: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant((res) => "Timeout" in res, result, strat);
 }
 
-export function isPanic(result: BenchmarkResult | StrategyResult[]) {
-  return "Panic" in result;
+export function isError(
+  result: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant((res) => "Error" in res, result, strat);
+}
+
+export function isPanic(
+  result: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant((res) => "Panic" in res, result, strat);
 }
 
 export function useArtifacts() {
@@ -130,7 +185,7 @@ export function useArtifact<T = Artifact>(
   });
   const { files } = useFiles();
 
-  if (id?.startsWith("local:")) {
+  if (id?.toString().startsWith("local:")) {
     return useQuery({
       queryKey: ["artifacts", `${id}`],
       queryFn: () =>

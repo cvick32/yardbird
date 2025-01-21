@@ -15,8 +15,8 @@ import { Route as VerifyImport } from './routes/verify'
 import { Route as OauthImport } from './routes/oauth'
 import { Route as LogoutImport } from './routes/logout'
 import { Route as IndexImport } from './routes/index'
-import { Route as ProblemProblemImport } from './routes/problem/$problem'
 import { Route as ArtifactsArtImport } from './routes/artifacts/$art'
+import { Route as ArtifactsArtProblemImport } from './routes/artifacts/$art_.$problem_'
 
 // Create/Update Routes
 
@@ -44,15 +44,15 @@ const IndexRoute = IndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
-const ProblemProblemRoute = ProblemProblemImport.update({
-  id: '/problem/$problem',
-  path: '/problem/$problem',
-  getParentRoute: () => rootRoute,
-} as any)
-
 const ArtifactsArtRoute = ArtifactsArtImport.update({
   id: '/artifacts/$art',
   path: '/artifacts/$art',
+  getParentRoute: () => rootRoute,
+} as any)
+
+const ArtifactsArtProblemRoute = ArtifactsArtProblemImport.update({
+  id: '/artifacts/$art_/$problem_',
+  path: '/artifacts/$art/$problem',
   getParentRoute: () => rootRoute,
 } as any)
 
@@ -95,11 +95,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtifactsArtImport
       parentRoute: typeof rootRoute
     }
-    '/problem/$problem': {
-      id: '/problem/$problem'
-      path: '/problem/$problem'
-      fullPath: '/problem/$problem'
-      preLoaderRoute: typeof ProblemProblemImport
+    '/artifacts/$art_/$problem_': {
+      id: '/artifacts/$art_/$problem_'
+      path: '/artifacts/$art/$problem'
+      fullPath: '/artifacts/$art/$problem'
+      preLoaderRoute: typeof ArtifactsArtProblemImport
       parentRoute: typeof rootRoute
     }
   }
@@ -113,7 +113,7 @@ export interface FileRoutesByFullPath {
   '/oauth': typeof OauthRoute
   '/verify': typeof VerifyRoute
   '/artifacts/$art': typeof ArtifactsArtRoute
-  '/problem/$problem': typeof ProblemProblemRoute
+  '/artifacts/$art/$problem': typeof ArtifactsArtProblemRoute
 }
 
 export interface FileRoutesByTo {
@@ -122,7 +122,7 @@ export interface FileRoutesByTo {
   '/oauth': typeof OauthRoute
   '/verify': typeof VerifyRoute
   '/artifacts/$art': typeof ArtifactsArtRoute
-  '/problem/$problem': typeof ProblemProblemRoute
+  '/artifacts/$art/$problem': typeof ArtifactsArtProblemRoute
 }
 
 export interface FileRoutesById {
@@ -132,34 +132,34 @@ export interface FileRoutesById {
   '/oauth': typeof OauthRoute
   '/verify': typeof VerifyRoute
   '/artifacts/$art': typeof ArtifactsArtRoute
-  '/problem/$problem': typeof ProblemProblemRoute
+  '/artifacts/$art_/$problem_': typeof ArtifactsArtProblemRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-  | '/'
-  | '/logout'
-  | '/oauth'
-  | '/verify'
-  | '/artifacts/$art'
-  | '/problem/$problem'
+    | '/'
+    | '/logout'
+    | '/oauth'
+    | '/verify'
+    | '/artifacts/$art'
+    | '/artifacts/$art/$problem'
   fileRoutesByTo: FileRoutesByTo
   to:
-  | '/'
-  | '/logout'
-  | '/oauth'
-  | '/verify'
-  | '/artifacts/$art'
-  | '/problem/$problem'
+    | '/'
+    | '/logout'
+    | '/oauth'
+    | '/verify'
+    | '/artifacts/$art'
+    | '/artifacts/$art/$problem'
   id:
-  | '__root__'
-  | '/'
-  | '/logout'
-  | '/oauth'
-  | '/verify'
-  | '/artifacts/$art'
-  | '/problem/$problem'
+    | '__root__'
+    | '/'
+    | '/logout'
+    | '/oauth'
+    | '/verify'
+    | '/artifacts/$art'
+    | '/artifacts/$art_/$problem_'
   fileRoutesById: FileRoutesById
 }
 
@@ -169,7 +169,7 @@ export interface RootRouteChildren {
   OauthRoute: typeof OauthRoute
   VerifyRoute: typeof VerifyRoute
   ArtifactsArtRoute: typeof ArtifactsArtRoute
-  ProblemProblemRoute: typeof ProblemProblemRoute
+  ArtifactsArtProblemRoute: typeof ArtifactsArtProblemRoute
 }
 
 const rootRouteChildren: RootRouteChildren = {
@@ -178,7 +178,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthRoute: OauthRoute,
   VerifyRoute: VerifyRoute,
   ArtifactsArtRoute: ArtifactsArtRoute,
-  ProblemProblemRoute: ProblemProblemRoute,
+  ArtifactsArtProblemRoute: ArtifactsArtProblemRoute,
 }
 
 export const routeTree = rootRoute
@@ -196,7 +196,7 @@ export const routeTree = rootRoute
         "/oauth",
         "/verify",
         "/artifacts/$art",
-        "/problem/$problem"
+        "/artifacts/$art_/$problem_"
       ]
     },
     "/": {
@@ -214,8 +214,8 @@ export const routeTree = rootRoute
     "/artifacts/$art": {
       "filePath": "artifacts/$art.tsx"
     },
-    "/problem/$problem": {
-      "filePath": "problem/$problem.tsx"
+    "/artifacts/$art_/$problem_": {
+      "filePath": "artifacts/$art_.$problem_.tsx"
     }
   }
 }

@@ -75,7 +75,7 @@ function Index() {
               <Link
                 to="/artifacts/$art"
                 params={{ art: id }}
-                search={{ compare: "", filter: "" }}
+                search={{ compare: "", filter: "", expand: false }}
                 className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
               >
                 Results
@@ -198,7 +198,7 @@ function Index() {
             <Link
               to="/artifacts/$art"
               params={{ art: art.id }}
-              search={{ compare: "", filter: "" }}
+              search={{ compare: "", filter: "", expand: false }}
               className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
             >
               Results
