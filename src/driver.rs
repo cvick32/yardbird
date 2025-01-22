@@ -1,5 +1,4 @@
 use log::info;
-use serde::Serialize;
 use smt2parser::vmt::VMTModel;
 
 use crate::{
@@ -7,19 +6,12 @@ use crate::{
     z3_var_context::Z3VarContext,
 };
 
-#[derive(Debug, Serialize)]
-pub enum ProofLoopResultType {
-    Success,
-    NoProgress,
-}
-
 #[derive(Debug)]
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
     pub counterexample: bool,
-    pub result_type: ProofLoopResultType,
 }
 
 #[derive(Debug)]
@@ -30,6 +22,32 @@ pub struct Driver<'ctx, S> {
     context: &'ctx z3::Context,
     extensions: DriverExtensions<'ctx, S>,
 }
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Found counter-example")]
+    Counterexample,
+
+    #[error("No progress at depth {depth}\nUsed Instantiations:\n{instantiations:#?}")]
+    NoProgress {
+        depth: u8,
+        instantiations: Vec<String>,
+    },
+
+    #[error("Hit refinement limit of {n_refines} at depth {depth}")]
+    TooManyRefinements { n_refines: u32, depth: u8 },
+
+    #[error("Error: {0}")]
+    Anyhow(#[from] anyhow::Error),
+
+    #[error("Solver returned unknown: {0:?}")]
+    SolverUnknown(Option<String>),
+
+    #[error("Unable to parse into e-graph: {0}")]
+    RecExpr(#[from] egg::RecExprParseError<egg::FromOpError>),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl<'ctx, S> Driver<'ctx, S> {
     pub fn new(context: &'ctx z3::Context, vmt_model: VMTModel) -> Self {
@@ -59,14 +77,14 @@ impl<'ctx, S> Driver<'ctx, S> {
         &mut self,
         target_depth: u8,
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
-    ) -> anyhow::Result<ProofLoopResult> {
+    ) -> Result<ProofLoopResult> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
-        for depth in 0..target_depth {
+        'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
-            'refine: for i in 0..n_refines {
-                info!("  refining loop: {i}/{n_refines}");
+            for i in 0..n_refines {
+                info!("  refining loop: {}/{n_refines}", i + 1);
 
                 let smt = self.vmt_model.unroll(depth);
                 let solver = z3::Solver::new(self.context);
@@ -95,15 +113,13 @@ impl<'ctx, S> Driver<'ctx, S> {
                 match action {
                     ProofAction::Continue => {
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
-                        match strat.finish(&mut self.vmt_model, state) {
-                            Ok(_) => (),
-                            Err(_) => return Ok(strat.no_progress_result(self.vmt_model.clone())), // Assume this is no progress
-                        }
+                        strat.finish(&mut self.vmt_model, state)?;
                     }
-                    ProofAction::NextDepth => break 'refine,
-                    ProofAction::Stop => todo!(),
+                    ProofAction::NextDepth => continue 'bmc,
+                    ProofAction::Stop => return Err(Error::Counterexample),
                 }
             }
+            return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
         Ok(strat.result(self.vmt_model.clone()))

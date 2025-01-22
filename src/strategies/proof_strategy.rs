@@ -1,7 +1,10 @@
-use anyhow::anyhow;
 use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
-use crate::{z3_var_context::Z3VarContext, ProofLoopResult};
+use crate::{
+    driver::{self, Error},
+    z3_var_context::Z3VarContext,
+    ProofLoopResult,
+};
 
 pub enum ProofAction {
     Continue,
@@ -24,35 +27,28 @@ pub trait ProofStrategy<'ctx, S> {
         10
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<S>;
+    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<S>;
 
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction>;
+    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<ProofAction>;
 
     fn sat(
         &mut self,
         state: &mut S,
         solver: &z3::Solver,
         z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<ProofAction>;
+    ) -> driver::Result<ProofAction>;
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<ProofAction> {
-        Err(anyhow!(
-            "{}",
-            solver
-                .get_reason_unknown()
-                .unwrap_or("Solver returned unknown!".to_string())
-        ))
+    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<ProofAction> {
+        Err(Error::SolverUnknown(solver.get_reason_unknown()))
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, model: &mut VMTModel, state: S) -> anyhow::Result<()> {
+    fn finish(&mut self, model: &mut VMTModel, state: S) -> driver::Result<()> {
         Ok(())
     }
 
     fn result(&mut self, model: VMTModel) -> ProofLoopResult;
-
-    fn no_progress_result(&mut self, model: VMTModel) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond

@@ -10,7 +10,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use yardbird::{model_from_options, Driver, ProofLoopResult, ProofLoopResultType, YardbirdOptions};
+use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -52,7 +52,6 @@ struct Options {
 
 #[derive(Debug, Serialize)]
 struct SerializableProofResult {
-    pub result_type: ProofLoopResultType,
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
 }
@@ -60,7 +59,6 @@ struct SerializableProofResult {
 impl From<ProofLoopResult> for SerializableProofResult {
     fn from(value: ProofLoopResult) -> Self {
         SerializableProofResult {
-            result_type: value.result_type,
             used_instances: value.used_instances,
             const_instances: value.const_instances,
         }
@@ -90,18 +88,16 @@ struct StrategyResult {
     depth: u8,
 }
 
-enum TimeoutFnResult<T> {
-    Ok(T),
+enum TimeoutFnResult {
+    Ok(yardbird::Result<ProofLoopResult>),
     Panic(String),
 }
 
-fn run_with_timeout<F, T, E>(f: F, timeout: Duration) -> BenchmarkResult
+fn run_with_timeout<F>(f: F, timeout: Duration) -> BenchmarkResult
 where
-    F: FnOnce() -> Result<T, E> + Send + std::panic::UnwindSafe + 'static,
-    T: Send + std::fmt::Debug + Into<SerializableProofResult> + 'static,
-    E: Send + std::fmt::Display + 'static,
+    F: FnOnce() -> yardbird::Result<ProofLoopResult> + Send + std::panic::UnwindSafe + 'static,
 {
-    let (tx, rx) = mpsc::channel::<TimeoutFnResult<Result<T, E>>>();
+    let (tx, rx) = mpsc::channel::<TimeoutFnResult>();
     let _ = thread::spawn(move || {
         // remove the default panic hook that prints the message
         panic::set_hook(Box::new(|_| {}));
@@ -127,12 +123,12 @@ where
 
     match rx.recv_timeout(timeout) {
         Ok(TimeoutFnResult::Ok(res)) => match res {
-            Ok(proof_result) => {
-                let result: SerializableProofResult = proof_result.into();
-                match result.result_type {
-                    ProofLoopResultType::Success => BenchmarkResult::Success(result),
-                    ProofLoopResultType::NoProgress => BenchmarkResult::NoProgress(result),
-                }
+            Ok(proof_result) => BenchmarkResult::Success(proof_result.into()),
+            Err(yardbird::Error::NoProgress { instantiations, .. }) => {
+                BenchmarkResult::NoProgress(SerializableProofResult {
+                    used_instances: instantiations,
+                    const_instances: vec![],
+                })
             }
             Err(err) => BenchmarkResult::Error(format!("{err}")),
         },
@@ -165,7 +161,7 @@ fn run_single(options: YardbirdOptions, retry: usize) -> anyhow::Result<Strategy
                 let strategy = options.build_strategy();
                 driver.check_strategy(proof_options.depth, strategy)
             },
-            Duration::from_secs(10 + (timed_out_count * 5)),
+            Duration::from_secs(20 + (timed_out_count * 5)),
         ));
         run_time = now.elapsed();
         // TODO: this is really a hack to try and mitigate z3 model randomness

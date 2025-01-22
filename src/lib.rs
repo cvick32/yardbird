@@ -1,7 +1,9 @@
+#![warn(clippy::print_stdout)]
+
 use std::{fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
-pub use driver::{Driver, ProofLoopResult, ProofLoopResultType};
+pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::Serialize;
 use smt2parser::vmt::VMTModel;
 use strategies::{Abstract, AbstractOnlyBest, AbstractRefinementState, ConcreteZ3, ProofStrategy};

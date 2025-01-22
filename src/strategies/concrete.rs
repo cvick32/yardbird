@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use log::info;
 use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
-use crate::{z3_ext::ModelExt, z3_var_context::Z3VarContext, ProofLoopResult};
+use crate::{driver, z3_ext::ModelExt, z3_var_context::Z3VarContext, ProofLoopResult};
 
 use super::{r#abstract::AbstractRefinementState, ProofAction, ProofStrategy};
 
@@ -16,7 +16,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         1
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {
+    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         Ok(AbstractRefinementState {
             smt,
             depth,
@@ -30,9 +30,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         &mut self,
         state: &mut AbstractRefinementState,
         _solver: &z3::Solver,
-    ) -> anyhow::Result<ProofAction> {
+    ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
-        Ok(ProofAction::Continue)
+        Ok(ProofAction::NextDepth)
     }
 
     fn sat(
@@ -40,10 +40,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         state: &mut AbstractRefinementState,
         solver: &z3::Solver,
         _z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<ProofAction> {
+    ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
-        info!("{}", model.dump_sorted()?);
+        info!("Counterexample:\n{}", model.dump_sorted()?);
         Ok(ProofAction::Stop)
     }
 
@@ -51,7 +51,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         &mut self,
         model: &mut VMTModel,
         _state: AbstractRefinementState,
-    ) -> anyhow::Result<()> {
+    ) -> driver::Result<()> {
         self.model = Some(model.clone());
         Ok(())
     }
@@ -62,17 +62,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             used_instances: vec![],
             const_instances: vec![],
             counterexample: true,
-            result_type: crate::driver::ProofLoopResultType::Success,
-        }
-    }
-
-    fn no_progress_result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
-        ProofLoopResult {
-            model: Some(vmt_model),
-            used_instances: vec![],
-            const_instances: vec![],
-            counterexample: true,
-            result_type: crate::driver::ProofLoopResultType::NoProgress,
         }
     }
 }

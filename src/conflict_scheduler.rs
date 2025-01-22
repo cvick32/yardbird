@@ -121,8 +121,11 @@ where
                         // e-graph. This is a conflict, so we record the rule instantiation
                         // here.
                         if Some(m.eclass) != rhs_eclass {
-                            info!("FOUND VIOLATION");
-                            info!("{} => {}", new_lhs.pretty(80), new_rhs.pretty(80));
+                            info!(
+                                "FOUND VIOLATION: \n{} => {}",
+                                new_lhs.pretty(80),
+                                new_rhs.pretty(80)
+                            );
 
                             let instantiation =
                                 if rewrite.name.as_str() == "write-does-not-overwrite" {

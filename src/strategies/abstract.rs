@@ -5,9 +5,13 @@ use log::{debug, info};
 use smt2parser::vmt::{smt::SMTProblem, VMTModel};
 
 use crate::{
-    analysis::SaturationInequalities, array_axioms::ArrayLanguage,
-    cost_functions::symbol_cost::BestSymbolSubstitution, egg_utils::Saturate,
-    z3_var_context::Z3VarContext, ProofLoopResult,
+    analysis::SaturationInequalities,
+    array_axioms::ArrayLanguage,
+    cost_functions::symbol_cost::BestSymbolSubstitution,
+    driver::{self, Error},
+    egg_utils::Saturate,
+    z3_var_context::Z3VarContext,
+    ProofLoopResult,
 };
 
 use super::{ProofAction, ProofStrategy};
@@ -45,7 +49,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {
+    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
             // TODO: we don't want to add instantiations
@@ -66,7 +70,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         &mut self,
         state: &mut AbstractRefinementState,
         _solver: &z3::Solver,
-    ) -> anyhow::Result<ProofAction> {
+    ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
     }
@@ -76,7 +80,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         state: &mut AbstractRefinementState,
         solver: &z3::Solver,
         z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<ProofAction> {
+    ) -> driver::Result<ProofAction> {
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
         debug!("counter example:\n{model}");
         state.update_with_subterms(&model, z3_var_context)?;
@@ -97,7 +101,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         &mut self,
         model: &mut VMTModel,
         state: AbstractRefinementState,
-    ) -> anyhow::Result<()> {
+    ) -> driver::Result<()> {
         self.const_instantiations
             .extend_from_slice(&state.const_instantiations);
 
@@ -110,7 +114,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .into_iter()
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         if no_progress && const_progress {
-            Err(anyhow!("Failed to add new instantations."))
+            Err(Error::NoProgress {
+                depth: state.depth,
+                instantiations: self.used_instantiations.clone(),
+            })
         } else {
             Ok(())
         }
@@ -122,17 +129,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             used_instances: mem::take(&mut self.used_instantiations),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
-            result_type: crate::driver::ProofLoopResultType::Success,
-        }
-    }
-
-    fn no_progress_result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
-        ProofLoopResult {
-            model: Some(vmt_model),
-            used_instances: mem::take(&mut self.used_instantiations),
-            const_instances: mem::take(&mut self.const_instantiations),
-            counterexample: false,
-            result_type: crate::driver::ProofLoopResultType::NoProgress,
         }
     }
 }
