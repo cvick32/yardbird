@@ -4,8 +4,6 @@ use action::Action;
 use array_abstractor::ArrayAbstractor;
 use axiom::Axiom;
 use bmc::BMCBuilder;
-use frame_num_getter::FrameNumGetter;
-use instantiator::QuantifiedInstantiator;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
@@ -15,9 +13,10 @@ use variable::Variable;
 use crate::{
     concrete::{self, Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term},
     constant_abstraction::ConstantAbstractor,
-    get_term_from_assert_command_string, CommandStream,
+    CommandStream,
 };
 
+pub use instantiator::{Instantiator, QuantifiedInstantiator};
 pub use reads_and_write::ReadsAndWrites;
 
 static PROPERTY_ATTRIBUTE: &str = "invar-property";
@@ -388,27 +387,18 @@ impl VMTModel {
             .collect()
     }
 
-    pub fn add_instantiation(&mut self, inst: String, instances: &mut Vec<String>) -> bool {
-        let instance_term = self.get_instance_term(inst);
-        let frame_getter = FrameNumGetter::new(instance_term.clone());
-        // let mut instantiator = Instantiator {
-        //     visitor: SyntaxBuilder,
-        //     current_to_next_variables: self.get_current_to_next_varible_names(),
-        //     frames: frame_getter,
-        // };
-        // let rewritten_term = instance_term.clone().accept(&mut instantiator).unwrap();
-        let rewritten_term = QuantifiedInstantiator::rewrite(instance_term, frame_getter);
-        if instances.contains(&rewritten_term.to_string()) {
-            debug!("ALREADY SEEN {} in {:?}", rewritten_term, instances);
+    pub fn add_instantiation(&mut self, term: Term, instances: &mut Vec<String>) -> bool {
+        if instances.contains(&term.to_string()) {
+            debug!("ALREADY SEEN {} in {:?}", term, instances);
             return false;
         } else {
-            instances.push(rewritten_term.to_string());
+            instances.push(term.to_string());
         }
-        info!("USED INSTANCE: {}", rewritten_term);
-        self.initial_condition = self
-            .add_instantiation_to_condition(rewritten_term.clone(), self.initial_condition.clone());
+        debug!("USED INSTANCE: {}", term);
+        self.initial_condition =
+            self.add_instantiation_to_condition(term.clone(), self.initial_condition.clone());
         self.transition_condition =
-            self.add_instantiation_to_condition(rewritten_term, self.transition_condition.clone());
+            self.add_instantiation_to_condition(term, self.transition_condition.clone());
         true
     }
 
@@ -454,12 +444,6 @@ impl VMTModel {
             }),
             attributes,
         }
-    }
-
-    fn get_instance_term(&self, instance: String) -> Term {
-        let command = format!("(assert {})", instance);
-        let inst_term = get_term_from_assert_command_string(command.as_bytes());
-        inst_term
     }
 
     pub fn write_vmt_out(&self, filename_opt: Option<String>) {

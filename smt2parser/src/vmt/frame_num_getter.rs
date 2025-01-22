@@ -51,12 +51,7 @@ impl FrameNumGetter {
 
     #[allow(unused)]
     pub(crate) fn needs_prophecy(&self) -> bool {
-        if self.frame_map.len() <= 2 && self.max_min_difference() >= 1 {
-            true
-        } else {
-            log::info!("NEED TO INSTANTIATE WITH PROPHECY: {}", self.instance_term);
-            false
-        }
+        self.max_min_difference() > 1
     }
 }
 
@@ -70,17 +65,11 @@ impl crate::rewriter::Rewriter for FrameNumGetter {
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
         if let Some((var_name, time_str)) = s.0.split_once(VARIABLE_FRAME_DELIMITER) {
-            if var_is_immutable(var_name) {
-                // Don't add time step to frame_nums because immutable variables always
-                // have the same value.
-                Ok(s)
-            } else {
+            if !var_is_immutable(var_name) {
                 let time = time_str.parse().unwrap();
                 self.frame_map.insert((var_name.to_string(), time));
-                Ok(s)
             }
-        } else {
-            Ok(s)
         }
+        Ok(s)
     }
 }

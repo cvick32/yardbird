@@ -2,7 +2,10 @@ use std::mem;
 
 use anyhow::anyhow;
 use log::{debug, info};
-use smt2parser::vmt::{smt::SMTProblem, VMTModel};
+use smt2parser::{
+    concrete::Term,
+    vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel},
+};
 
 use crate::{
     analysis::SaturationInequalities,
@@ -97,6 +100,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         Ok(ProofAction::Continue)
     }
 
+    #[allow(clippy::unnecessary_fold)]
     fn finish(
         &mut self,
         model: &mut VMTModel,
@@ -105,22 +109,38 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         self.const_instantiations
             .extend_from_slice(&state.const_instantiations);
 
-        let no_progress = state
+        let terms: Vec<Term> = state
             .instantiations
             .into_iter()
-            .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
-        let const_progress = state
-            .const_instantiations
+            // .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
+            .flat_map(|inst| inst.parse())
+            .collect();
+
+        // first try without quantifiers
+        let no_progress = terms
+            .clone()
             .into_iter()
-            .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
-        if no_progress && const_progress {
-            Err(Error::NoProgress {
-                depth: state.depth,
-                instantiations: self.used_instantiations.clone(),
-            })
-        } else {
-            Ok(())
+            .flat_map(QuantifiedInstantiator::rewrite_no_prophecy)
+            .map(|term| !model.add_instantiation(term, &mut self.used_instantiations))
+            .fold(true, |a, b| a && b);
+
+        // if that didn't work, try with quantifiers
+        if no_progress {
+            let no_quant_progress = terms
+                .into_iter()
+                .map(QuantifiedInstantiator::rewrite_quantified)
+                .map(|term| !model.add_instantiation(term, &mut self.used_instantiations))
+                .fold(true, |a, b| a && b);
+
+            if no_quant_progress {
+                return Err(Error::NoProgress {
+                    depth: state.depth,
+                    instantiations: self.used_instantiations.clone(),
+                });
+            }
         }
+
+        Ok(())
     }
 
     fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {

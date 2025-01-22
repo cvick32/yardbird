@@ -3,13 +3,15 @@
 
 //! A concrete syntax tree together with building functions (aka parser visitors) and SEXP-printing functions.
 
+use std::str::FromStr;
+
 use crate::{
     lexer,
     visitors::{
-        CommandVisitor, ConstantVisitor, KeywordVisitor, QualIdentifierVisitor, SExprVisitor,
+        self, CommandVisitor, ConstantVisitor, KeywordVisitor, QualIdentifierVisitor, SExprVisitor,
         Smt2Visitor, SortVisitor, SymbolKind, SymbolVisitor, TermVisitor,
     },
-    Binary, Decimal, Hexadecimal, Numeral, Position,
+    Binary, CommandStream, Decimal, Hexadecimal, Numeral, Position,
 };
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -119,6 +121,21 @@ pub enum Term<
         term: Box<Self>,
         attributes: Vec<(Keyword, AttributeValue<Constant, Symbol, SExpr>)>,
     },
+}
+
+impl FromStr for Term {
+    type Err = <SyntaxBuilder as visitors::Smt2Visitor>::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let command = format!("(assert {s})");
+        let mut stream = CommandStream::new(command.as_bytes(), SyntaxBuilder, None);
+        if let Some(command) = stream.next() {
+            if let Command::Assert { term } = command? {
+                return Ok(term);
+            }
+        }
+        unreachable!()
+    }
 }
 
 /// Concrete syntax for a command.

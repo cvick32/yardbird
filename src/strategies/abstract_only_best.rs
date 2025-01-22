@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use egg::CostFunction;
 use itertools::Itertools;
 use log::info;
-use smt2parser::vmt::{smt::SMTProblem, VMTModel};
+use smt2parser::vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel};
 
 use crate::{
     analysis::SaturationInequalities, array_axioms::ArrayLanguage,
@@ -41,7 +41,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
     fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
-            egraph.add_expr(&term.to_string().parse()?);
+            if let Ok(parsed) = &term.to_string().parse() {
+                egraph.add_expr(parsed);
+            }
         }
         Ok(AbstractRefinementState {
             smt,
@@ -101,10 +103,15 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         let no_progress = state
             .instantiations
             .into_iter()
+            // .inspect(|x| println!("x: {x}"))
+            .flat_map(|inst| inst.parse())
+            .map(QuantifiedInstantiator::rewrite_quantified)
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         let const_progress = state
             .const_instantiations
             .into_iter()
+            .flat_map(|inst| inst.parse())
+            .map(QuantifiedInstantiator::rewrite_quantified)
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         if no_progress && const_progress {
             Err(Error::NoProgress {
