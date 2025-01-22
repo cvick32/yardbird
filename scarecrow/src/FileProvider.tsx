@@ -51,7 +51,13 @@ export function useFiles() {
     Promise.allSettled(files.map((f) => readFile(f))).then((art_prom) => {
       const artifacts = art_prom
         .filter((prom) => prom.status === "fulfilled")
-        .map((prom) => prom.value);
+        .map((prom) => prom.value)
+        .map((artifact) => ({
+          ...artifact,
+          benchmarks: artifact.benchmarks?.toSorted((a, b) =>
+            a.example < b.example ? -1 : 1,
+          ),
+        }));
       artifacts.forEach((art) => {
         context.files.set(art.id, art);
       });
