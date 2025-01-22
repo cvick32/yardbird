@@ -40,6 +40,7 @@ function RouteComponent() {
 
   return (
     <div>
+      <TimeSummary />
       <table className="relative">
         <thead>
           <tr className="divide-x divide-slate-400 dark:divide-slate-600">
@@ -82,6 +83,49 @@ function RouteComponent() {
             ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function TimeSummary() {
+  const { art } = Route.useParams();
+  const { filter } = Route.useSearch();
+  const geomean = useArtifact(art, (artifact) => {
+    const speedups = artifact.benchmarks
+      ?.filter(
+        (benchmark) =>
+          filter === "" || getStatus(getResult(benchmark)) === filter,
+      )
+      .flatMap((bench) => {
+        const abstract = getRuntime(bench, "abstract");
+        const concrete = getRuntime(bench, "concrete");
+        if (!!abstract && !!concrete) {
+          return [concrete / abstract];
+        } else {
+          return [];
+        }
+      });
+    return (
+      speedups &&
+      Math.pow(
+        speedups.reduce((a, b) => a * b),
+        1 / speedups.length,
+      )
+    );
+  });
+
+  if (!geomean.data) return undefined;
+
+  return (
+    <div className="text-black dark:text-white">
+      Average speedup (geomean concrete / abstract):{" "}
+      {geomean.data > 1.0 ? (
+        <span className="text-green-700 dark:text-green-300">
+          {geomean.data.toFixed(2)}× faster
+        </span>
+      ) : (
+        <span className="text-red-500">{geomean.data.toFixed(2)}× slower</span>
+      )}
     </div>
   );
 }
