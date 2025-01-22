@@ -376,3 +376,27 @@ export function benchmarkSummary(artifact: Artifact) {
     panic,
   };
 }
+
+export function selectGeomean(filter: string = "", artifact: Artifact) {
+  const speedups = artifact.benchmarks
+    ?.filter(
+      (benchmark) =>
+        filter === "" || getStatus(getResult(benchmark)) === filter,
+    )
+    .flatMap((bench) => {
+      const abstract = getRuntime(bench, "abstract");
+      const concrete = getRuntime(bench, "concrete");
+      if (!!abstract && !!concrete) {
+        return [concrete / abstract];
+      } else {
+        return [];
+      }
+    });
+  return (
+    speedups &&
+    Math.pow(
+      speedups.reduce((a, b) => a * b),
+      1 / speedups.length,
+    )
+  );
+}

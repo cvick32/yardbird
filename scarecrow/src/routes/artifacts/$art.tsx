@@ -5,6 +5,7 @@ import {
   getResult,
   getRuntime,
   getStatus,
+  selectGeomean,
   useArtifact,
 } from "../../fetch";
 import { useState } from "react";
@@ -90,29 +91,9 @@ function RouteComponent() {
 function TimeSummary() {
   const { art } = Route.useParams();
   const { filter } = Route.useSearch();
-  const geomean = useArtifact(art, (artifact) => {
-    const speedups = artifact.benchmarks
-      ?.filter(
-        (benchmark) =>
-          filter === "" || getStatus(getResult(benchmark)) === filter,
-      )
-      .flatMap((bench) => {
-        const abstract = getRuntime(bench, "abstract");
-        const concrete = getRuntime(bench, "concrete");
-        if (!!abstract && !!concrete) {
-          return [concrete / abstract];
-        } else {
-          return [];
-        }
-      });
-    return (
-      speedups &&
-      Math.pow(
-        speedups.reduce((a, b) => a * b),
-        1 / speedups.length,
-      )
-    );
-  });
+  const geomean = useArtifact(art, (artifact) =>
+    selectGeomean(filter, artifact),
+  );
 
   if (!geomean.data) return undefined;
 
