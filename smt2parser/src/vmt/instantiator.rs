@@ -59,8 +59,6 @@ impl QuantifiedInstantiator {
     pub fn rewrite(term: Term, frames: FrameNumGetter) -> Term {
         let min_frame_number = frames.min();
         let mut quantified = BTreeSet::new();
-        println!("rewriting {term}");
-        // println!("{frames:#?}");
         let subst = frames
             .frame_map
             .into_iter()

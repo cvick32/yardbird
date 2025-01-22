@@ -5,7 +5,7 @@ use array_abstractor::ArrayAbstractor;
 use axiom::Axiom;
 use bmc::BMCBuilder;
 use frame_num_getter::FrameNumGetter;
-use instantiator::{Instantiator, QuantifiedInstantiator};
+use instantiator::QuantifiedInstantiator;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
@@ -375,6 +375,7 @@ impl VMTModel {
             .collect()
     }
 
+    #[allow(unused)]
     fn get_current_to_next_varible_names(&self) -> HashMap<String, String> {
         self.state_variables
             .iter()

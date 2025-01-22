@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::{
     concrete::{Symbol, SyntaxBuilder, Term},
@@ -49,6 +49,7 @@ impl FrameNumGetter {
         *self.frame_map.iter().map(|(_, frame)| frame).max().unwrap()
     }
 
+    #[allow(unused)]
     pub(crate) fn needs_prophecy(&self) -> bool {
         if self.frame_map.len() <= 2 && self.max_min_difference() >= 1 {
             true
