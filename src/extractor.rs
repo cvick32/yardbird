@@ -38,7 +38,7 @@ where
                     .entry(expr)
                     .and_modify(|v: &mut _| v.push(term.clone()))
                     .or_insert_with(|| vec![term]),
-                None => todo!(),
+                None => continue,
             };
         }
 

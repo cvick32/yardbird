@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
-    concrete::{Symbol, SyntaxBuilder},
+    concrete::{Symbol, SyntaxBuilder, Term},
     vmt::{variable::var_is_immutable, VARIABLE_FRAME_DELIMITER},
 };
 
@@ -13,25 +13,48 @@ use crate::{
 ///
 /// TODO: Using the Rewriter may not be the best choice here because it rebuilds the term.
 /// But, using the TermVisitor like in LetExtract is more cumbersome.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug)]
 pub struct FrameNumGetter {
     pub visitor: SyntaxBuilder,
-    pub frame_nums: BTreeSet<usize>,
+    pub instance_term: Term,
+    pub frame_map: BTreeSet<(String, usize)>,
 }
 
 impl FrameNumGetter {
-    pub fn new() -> Self {
-        FrameNumGetter {
+    pub fn new(instance_term: Term) -> Self {
+        let mut frame_getter = FrameNumGetter {
             visitor: SyntaxBuilder,
-            frame_nums: BTreeSet::new(),
-        }
+            instance_term: instance_term.clone(),
+            frame_map: BTreeSet::new(),
+        };
+
+        instance_term.accept(&mut frame_getter).unwrap();
+
+        frame_getter
     }
 
     pub(crate) fn max_min_difference(&self) -> usize {
-        if self.frame_nums.len() < 2 {
+        if self.frame_map.len() < 2 {
             0
         } else {
-            self.frame_nums.last().unwrap() - self.frame_nums.first().unwrap()
+            self.max() - self.min()
+        }
+    }
+
+    pub(crate) fn min(&self) -> usize {
+        *self.frame_map.iter().map(|(_, frame)| frame).min().unwrap()
+    }
+
+    pub(crate) fn max(&self) -> usize {
+        *self.frame_map.iter().map(|(_, frame)| frame).max().unwrap()
+    }
+
+    pub(crate) fn needs_prophecy(&self) -> bool {
+        if self.frame_map.len() <= 2 && self.max_min_difference() >= 1 {
+            true
+        } else {
+            log::info!("NEED TO INSTANTIATE WITH PROPHECY: {}", self.instance_term);
+            false
         }
     }
 }
@@ -45,21 +68,18 @@ impl crate::rewriter::Rewriter for FrameNumGetter {
     }
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
-        let symbol_split = s.0.split(VARIABLE_FRAME_DELIMITER).collect::<Vec<_>>();
-        if symbol_split.len() == 1 {
-            // Symbol is not a variable
-            Ok(s)
-        } else {
-            let (var_name, time_str) = (symbol_split[0], symbol_split[1]);
+        if let Some((var_name, time_str)) = s.0.split_once(VARIABLE_FRAME_DELIMITER) {
             if var_is_immutable(var_name) {
                 // Don't add time step to frame_nums because immutable variables always
                 // have the same value.
                 Ok(s)
             } else {
                 let time = time_str.parse().unwrap();
-                self.frame_nums.insert(time);
+                self.frame_map.insert((var_name.to_string(), time));
                 Ok(s)
             }
+        } else {
+            Ok(s)
         }
     }
 }

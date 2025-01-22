@@ -5,7 +5,7 @@ use array_abstractor::ArrayAbstractor;
 use axiom::Axiom;
 use bmc::BMCBuilder;
 use frame_num_getter::FrameNumGetter;
-use instantiator::Instantiator;
+use instantiator::{Instantiator, QuantifiedInstantiator};
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
@@ -389,18 +389,14 @@ impl VMTModel {
 
     pub fn add_instantiation(&mut self, inst: String, instances: &mut Vec<String>) -> bool {
         let instance_term = self.get_instance_term(inst);
-        let mut frame_getter = FrameNumGetter::new();
-        instance_term.clone().accept(&mut frame_getter).unwrap();
-        if frame_getter.frame_nums.len() > 2 || frame_getter.max_min_difference() > 1 {
-            info!("NEED TO INSTANTIATE WITH PROPHECY: {instance_term}");
-            return false;
-        }
-        let mut instantiator = Instantiator {
-            visitor: SyntaxBuilder,
-            current_to_next_variables: self.get_current_to_next_varible_names(),
-            frames: frame_getter.frame_nums,
-        };
-        let rewritten_term = instance_term.clone().accept(&mut instantiator).unwrap();
+        let frame_getter = FrameNumGetter::new(instance_term.clone());
+        // let mut instantiator = Instantiator {
+        //     visitor: SyntaxBuilder,
+        //     current_to_next_variables: self.get_current_to_next_varible_names(),
+        //     frames: frame_getter,
+        // };
+        // let rewritten_term = instance_term.clone().accept(&mut instantiator).unwrap();
+        let rewritten_term = QuantifiedInstantiator::rewrite(instance_term, frame_getter);
         if instances.contains(&rewritten_term.to_string()) {
             debug!("ALREADY SEEN {} in {:?}", rewritten_term, instances);
             return false;

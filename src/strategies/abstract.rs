@@ -103,7 +103,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     fn setup(&mut self, smt: SMTProblem, depth: u8) -> anyhow::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
-            egraph.add_expr(&term.to_string().parse()?);
+            // TODO: we don't want to add instantiations
+            if let Ok(parsed) = &term.to_string().parse() {
+                egraph.add_expr(parsed);
+            }
         }
         Ok(AbstractRefinementState {
             smt,

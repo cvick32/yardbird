@@ -168,6 +168,10 @@ impl SMTProblem {
     pub fn get_all_subterms(&self) -> Vec<Term> {
         let mut subterms = NonBooleanSubterms::default();
         for trans_assert in &self.init_and_trans_assertions {
+            // TODO: this is a hack until we track instantiations separately
+            if trans_assert.to_string().contains("forall") {
+                continue;
+            }
             let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
         }
         let prop = self.property_assertion.clone().unwrap();
