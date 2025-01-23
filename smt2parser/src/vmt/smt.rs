@@ -45,11 +45,7 @@ impl SMTProblem {
     }
 
     pub fn add_assertion(&mut self, condition: &Term, builder: &mut BMCBuilder) {
-        let mut let_extract = LetExtract::default();
-        let no_let_condition = condition
-            .clone()
-            .accept_term_visitor(&mut let_extract)
-            .unwrap();
+        let no_let_condition = LetExtract::substitute(condition.clone());
         let rewritten_condition = match no_let_condition {
             Term::Attributes {
                 term,
@@ -65,11 +61,7 @@ impl SMTProblem {
 
     /// Need to assert the negation of the property given in the VMTModel for BMC.
     pub fn add_property_assertion(&mut self, condition: &Term, builder: &mut BMCBuilder) {
-        let mut let_extract = LetExtract::default();
-        let no_let_condition = condition
-            .clone()
-            .accept_term_visitor(&mut let_extract)
-            .unwrap();
+        let no_let_condition = LetExtract::substitute(condition.clone());
         let rewritten_property = match no_let_condition {
             Term::Attributes {
                 term,
