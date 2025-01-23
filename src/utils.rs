@@ -33,8 +33,7 @@ pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Err
     interpolants.insert_str(1, "and ");
     // Format it to `assert` call so smt2parser can handle it.
     let term = get_term_from_term_string(&interpolants);
-    let mut let_extract = LetExtract::default();
-    let sequent_interpolant = term.clone().accept_term_visitor(&mut let_extract).unwrap();
+    let sequent_interpolant = LetExtract::substitute(term.clone());
     // Interpolants will now be the arguments to the `and` term created above.
     log::debug!("----------------------------------------");
     let interpolants = match sequent_interpolant {
