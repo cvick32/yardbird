@@ -209,20 +209,20 @@ impl VMTModel {
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
-        smt_problem.add_assertion(&self.initial_condition, builder.clone());
+        smt_problem.add_assertion(&self.initial_condition, &mut builder);
         for _ in 0..length {
             // Must add variable definitions for each variable at each time step.
             smt_problem.add_variable_definitions(
                 &self.state_variables,
                 &self.actions,
-                builder.clone(),
+                &mut builder,
             );
-            smt_problem.add_assertion(&self.transition_condition, builder.clone());
+            smt_problem.add_assertion(&self.transition_condition, &mut builder);
             builder.add_step();
         }
         // Don't forget the variable definitions at time `length`.
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, builder.clone());
-        smt_problem.add_property_assertion(&self.property_condition, builder.clone());
+        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_property_assertion(&self.property_condition, &mut builder);
         assert!(
             smt_problem.init_and_trans_length() == (length + 1).into(),
             "Unrolling gives incorrect number of steps {} for length {}.",
@@ -233,15 +233,15 @@ impl VMTModel {
     }
 
     pub fn get_initial_term(&self) -> SMTProblem {
-        let builder = BMCBuilder {
+        let mut builder = BMCBuilder {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
             step: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, builder.clone());
-        smt_problem.add_assertion(&self.initial_condition, builder.clone());
+        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_assertion(&self.initial_condition, &mut builder);
         smt_problem
     }
 
@@ -259,26 +259,26 @@ impl VMTModel {
             smt_problem.add_variable_definitions(
                 &self.state_variables,
                 &self.actions,
-                builder.clone(),
+                &mut builder,
             );
-            smt_problem.add_assertion(&self.transition_condition, builder.clone());
+            smt_problem.add_assertion(&self.transition_condition, &mut builder);
             builder.add_step();
         }
         // Don't forget the variable definitions at time `length`.
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, builder.clone());
+        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
         smt_problem
     }
 
     pub fn get_property_term(&self) -> SMTProblem {
-        let builder = BMCBuilder {
+        let mut builder = BMCBuilder {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
             step: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, builder.clone());
-        smt_problem.add_property_assertion(&self.property_condition, builder.clone());
+        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_property_assertion(&self.property_condition, &mut builder);
         smt_problem
     }
 
