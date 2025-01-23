@@ -87,7 +87,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
         debug!("counter example:\n{model}");
         state.update_with_subterms(&model, z3_var_context)?;
-        state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
             transition_system_terms: state.smt.get_transition_system_subterms(),
@@ -167,9 +166,8 @@ impl AbstractRefinementState {
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));
             let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
             self.egraph.union(term_id, interp_id);
-
-            self.egraph.rebuild();
         }
+        self.egraph.rebuild();
         Ok(())
     }
 }
