@@ -1,16 +1,17 @@
 use std::collections::HashMap;
 
-use crate::{
-    concrete::{Constant, Keyword, QualIdentifier, SExpr, Sort, Symbol, Term},
-    visitors::TermVisitor,
-    Error,
-};
+use crate::concrete::{QualIdentifier, Symbol, Term};
 
 #[derive(Clone, Debug, Default)]
 pub struct LetExtract {
     pub scope: HashMap<Symbol, Term>,
 }
 impl LetExtract {
+    pub fn substitute(term: Term) -> Term {
+        let mut extractor = Self::default();
+        extractor.substitute_scoped_symbols(term)
+    }
+
     fn substitute_scoped_symbols(&mut self, term: Term) -> Term {
         match term {
             Term::Constant(constant) => Term::Constant(constant),
@@ -85,137 +86,22 @@ impl LetExtract {
                 }
             }
             Term::Let { var_bindings, term } => {
-                let let_term = Term::Let { var_bindings, term };
-                let_term.accept_term_visitor(self).unwrap()
+                let to_remove: Vec<_> = var_bindings
+                    .into_iter()
+                    .map(|(var, term)| {
+                        // Push onto the scope
+                        let var_term = self.substitute_scoped_symbols(term);
+                        self.scope.insert(var.clone(), var_term);
+                        var
+                    })
+                    .collect();
+                let new_term = self.substitute_scoped_symbols(*term);
+                for var in to_remove {
+                    // Pop off the scope
+                    self.scope.remove(&var);
+                }
+                new_term
             }
-        }
-    }
-}
-
-impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for LetExtract {
-    type T = Term;
-    type E = Error;
-
-    fn visit_constant(&mut self, constant: Constant) -> Result<Self::T, Self::E> {
-        Ok(Term::Constant(constant))
-    }
-
-    fn visit_qual_identifier(
-        &mut self,
-        qual_identifier: QualIdentifier,
-    ) -> Result<Self::T, Self::E> {
-        Ok(Term::QualIdentifier(qual_identifier))
-    }
-
-    fn visit_application(
-        &mut self,
-        qual_identifier: QualIdentifier,
-        arguments: Vec<Self::T>,
-    ) -> Result<Self::T, Self::E> {
-        let new_arguments = arguments
-            .iter()
-            .map(|arg| self.substitute_scoped_symbols(arg.clone()))
-            .collect::<Vec<_>>();
-        Ok(Term::Application {
-            qual_identifier,
-            arguments: new_arguments,
-        })
-    }
-
-    fn visit_let(
-        &mut self,
-        var_bindings: Vec<(Symbol, Self::T)>,
-        term: Self::T,
-    ) -> Result<Self::T, Self::E> {
-        for (var, term) in &var_bindings {
-            // Pop on the scope
-            let var_term = self.substitute_scoped_symbols(term.clone());
-            self.scope.insert(var.clone(), var_term);
-        }
-        let new_term = self.substitute_scoped_symbols(term);
-        for (var, _) in &var_bindings {
-            // Pop off the scope
-            self.scope.remove(var);
-        }
-        Ok(new_term)
-    }
-
-    fn visit_forall(
-        &mut self,
-        vars: Vec<(Symbol, Sort)>,
-        term: Self::T,
-    ) -> Result<Self::T, Self::E> {
-        if self.scope.is_empty() {
-            Ok(Term::Forall {
-                vars,
-                term: Box::new(term.accept_term_visitor(self).unwrap()),
-            })
-        } else {
-            let new_term = self.substitute_scoped_symbols(term);
-            Ok(Term::Forall {
-                vars,
-                term: Box::new(new_term),
-            })
-        }
-    }
-
-    fn visit_exists(
-        &mut self,
-        vars: Vec<(Symbol, Sort)>,
-        term: Self::T,
-    ) -> Result<Self::T, Self::E> {
-        if self.scope.is_empty() {
-            Ok(Term::Exists {
-                vars,
-                term: Box::new(term.accept_term_visitor(self).unwrap()),
-            })
-        } else {
-            let new_term = self.substitute_scoped_symbols(term);
-            Ok(Term::Exists {
-                vars,
-                term: Box::new(new_term),
-            })
-        }
-    }
-
-    fn visit_match(
-        &mut self,
-        term: Self::T,
-        cases: Vec<(Vec<Symbol>, Self::T)>,
-    ) -> Result<Self::T, Self::E> {
-        if self.scope.is_empty() {
-            Ok(Term::Match {
-                term: Box::new(term),
-                cases,
-            })
-        } else {
-            let new_term = self.substitute_scoped_symbols(term);
-            Ok(Term::Match {
-                term: Box::new(new_term),
-                cases,
-            })
-        }
-    }
-
-    fn visit_attributes(
-        &mut self,
-        term: Self::T,
-        attributes: Vec<(
-            Keyword,
-            crate::concrete::AttributeValue<Constant, Symbol, SExpr>,
-        )>,
-    ) -> Result<Self::T, Self::E> {
-        if self.scope.is_empty() {
-            Ok(Term::Attributes {
-                term: Box::new(term.accept_term_visitor(self).unwrap()),
-                attributes,
-            })
-        } else {
-            let new_term = self.substitute_scoped_symbols(term);
-            Ok(Term::Attributes {
-                term: Box::new(new_term),
-                attributes,
-            })
         }
     }
 }
@@ -235,8 +121,7 @@ mod test {
             #[test]
             fn $test_name() {
                 let term = get_term_from_assert_command_string($test_term);
-                let mut let_extract = LetExtract::default();
-                let new_term = term.clone().accept_term_visitor(&mut let_extract).unwrap();
+                let new_term = LetExtract::substitute(term);
                 assert!(
                     new_term.to_string() == $should_be,
                     "{} != {}",
