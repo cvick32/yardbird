@@ -35,7 +35,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         &mut self,
         qual_identifier: QualIdentifier,
     ) -> Result<Self::T, Self::E> {
-        let qi = Term::QualIdentifier(qual_identifier.clone());
+        let qi = Term::QualIdentifier(qual_identifier);
         self.subterms.insert(qi.clone());
         Ok(qi)
     }
@@ -46,9 +46,6 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         qual_identifier: QualIdentifier,
         arguments: Vec<Self::T>,
     ) -> Result<Self::T, Self::E> {
-        for argument in &arguments {
-            let _ = argument.clone().accept_term_visitor(self);
-        }
         let app = Term::Application {
             qual_identifier: qual_identifier.clone(),
             arguments,
@@ -64,10 +61,6 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         var_bindings: Vec<(Symbol, Self::T)>,
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
-        for (_, binding_term) in &var_bindings {
-            let _ = binding_term.clone().accept_term_visitor(self);
-        }
-        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Let {
             var_bindings,
             term: Box::new(term),
@@ -79,7 +72,6 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         vars: Vec<(Symbol, Sort)>,
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
-        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Forall {
             vars,
             term: Box::new(term),
@@ -91,7 +83,6 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         vars: Vec<(Symbol, Sort)>,
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
-        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Exists {
             vars,
             term: Box::new(term),
@@ -103,9 +94,6 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         term: Self::T,
         cases: Vec<(Vec<Symbol>, Self::T)>,
     ) -> Result<Self::T, Self::E> {
-        for (_, match_term) in &cases {
-            let _ = match_term.clone().accept_term_visitor(self);
-        }
         Ok(Term::Match {
             term: Box::new(term),
             cases,
@@ -120,7 +108,6 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
             crate::concrete::AttributeValue<Constant, Symbol, SExpr>,
         )>,
     ) -> Result<Self::T, Self::E> {
-        let _ = term.clone().accept_term_visitor(self);
         Ok(Term::Attributes {
             term: Box::new(term),
             attributes,
