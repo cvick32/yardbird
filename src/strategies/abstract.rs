@@ -9,7 +9,7 @@ use smt2parser::{
 
 use crate::{
     analysis::SaturationInequalities,
-    array_axioms::ArrayLanguage,
+    array_axioms::{translate_term, ArrayLanguage},
     cost_functions::symbol_cost::BestSymbolSubstitution,
     driver::{self, Error},
     egg_utils::Saturate,
@@ -56,7 +56,8 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
             // TODO: we don't want to add instantiations
-            if let Ok(parsed) = &term.to_string().parse() {
+            if let Some(parsed) = &translate_term(term) {
+                // if let Ok(parsed) = &term.to_string().parse() {
                 egraph.add_expr(parsed);
             }
         }
@@ -160,11 +161,13 @@ impl AbstractRefinementState {
         z3_var_context: &Z3VarContext,
     ) -> anyhow::Result<()> {
         for term in self.smt.get_all_subterms() {
-            let term_id = self.egraph.add_expr(&term.to_string().parse()?);
             let z3_term = z3_var_context.rewrite_term(&term);
             let model_interp = model
                 .eval(&z3_term, false)
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));
+
+            // let term_id = self.egraph.add_expr(&term.to_string().parse()?);
+            let term_id = self.egraph.add_expr(&translate_term(term).unwrap());
             let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
             self.egraph.union(term_id, interp_id);
         }

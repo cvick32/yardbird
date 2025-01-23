@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use egg::*;
+use smt2parser::concrete::Term;
 
 use crate::{
     conflict_scheduler::ConflictScheduler, cost_functions::symbol_cost::BestSymbolSubstitution,
@@ -210,6 +211,150 @@ where
     fn get_pattern_ast(&self) -> Option<&PatternAst<L>> {
         self.searcher.get_pattern_ast()
     }
+}
+
+/// Expermiental transformation from Term directly to egg::RecExpr,
+/// so that we can skip using strings as an intermediate representation
+pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
+    fn inner(term: Term, expr: &mut egg::RecExpr<ArrayLanguage>) -> Option<egg::Id> {
+        match term {
+            Term::Constant(c) => Some(expr.add(ArrayLanguage::Symbol(c.to_string().into()))),
+            Term::QualIdentifier(qi) => {
+                Some(expr.add(ArrayLanguage::Symbol(qi.to_string().into())))
+            }
+            Term::Application {
+                qual_identifier,
+                mut arguments,
+            } => match qual_identifier.get_name().as_str() {
+                "ConstArr-Int-Int" => {
+                    assert!(arguments.len() == 1);
+                    let arg_id = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::ConstArr([arg_id])))
+                }
+                "Write-Int-Int" => {
+                    assert!(arguments.len() == 3);
+                    // args popped in reverse order
+                    let val = inner(arguments.pop().unwrap(), expr)?;
+                    let idx = inner(arguments.pop().unwrap(), expr)?;
+                    let arr = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Write([arr, idx, val])))
+                }
+                "Read-Int-Int" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let idx = inner(arguments.pop().unwrap(), expr)?;
+                    let arr = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Read([arr, idx])))
+                }
+                "and" => {
+                    let arg_ids = arguments
+                        .into_iter()
+                        .map(|arg| inner(arg, expr))
+                        .collect::<Option<_>>()?;
+                    Some(expr.add(ArrayLanguage::And(arg_ids)))
+                }
+                "not" => {
+                    assert!(arguments.len() == 1);
+                    let arg_id = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Not(arg_id)))
+                }
+                "or" => {
+                    let arg_ids = arguments
+                        .into_iter()
+                        .map(|arg| inner(arg, expr))
+                        .collect::<Option<_>>()?;
+                    Some(expr.add(ArrayLanguage::Or(arg_ids)))
+                }
+                "=>" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Implies([lhs, rhs])))
+                }
+                "=" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Eq([lhs, rhs])))
+                }
+                ">=" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Geq([lhs, rhs])))
+                }
+                ">" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Gt([lhs, rhs])))
+                }
+                "<=" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Leq([lhs, rhs])))
+                }
+                "<" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Lt([lhs, rhs])))
+                }
+                "mod" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Mod([lhs, rhs])))
+                }
+                "+" => {
+                    let arg_ids = arguments
+                        .into_iter()
+                        .map(|arg| inner(arg, expr))
+                        .collect::<Option<_>>()?;
+                    Some(expr.add(ArrayLanguage::Plus(arg_ids)))
+                }
+                "-" => {
+                    let arg_ids = arguments
+                        .into_iter()
+                        .map(|arg| inner(arg, expr))
+                        .collect::<Option<_>>()?;
+                    Some(expr.add(ArrayLanguage::Negate(arg_ids)))
+                }
+                "*" => {
+                    let arg_ids = arguments
+                        .into_iter()
+                        .map(|arg| inner(arg, expr))
+                        .collect::<Option<_>>()?;
+                    Some(expr.add(ArrayLanguage::Times(arg_ids)))
+                }
+                "/" => {
+                    assert!(arguments.len() == 2);
+                    // args popped in reverse order
+                    let rhs = inner(arguments.pop().unwrap(), expr)?;
+                    let lhs = inner(arguments.pop().unwrap(), expr)?;
+                    Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
+                }
+                x => todo!("Unsupported operator: {x}"),
+            },
+            Term::Forall { .. } => None,
+            x @ (Term::Let { .. }
+            | Term::Exists { .. }
+            | Term::Match { .. }
+            | Term::Attributes { .. }) => todo!("{x}"),
+        }
+    }
+
+    let mut expr = egg::RecExpr::default();
+    inner(term, &mut expr)?;
+    Some(expr)
 }
 
 #[cfg(test)]
