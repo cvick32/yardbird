@@ -3,11 +3,13 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use egg::{Analysis, Language};
 use itertools::Itertools;
 use log::{debug, info};
-use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{array_axioms::ArrayLanguage, egg_utils::RecExprRoot, extractor::TermExtractor};
 
-pub struct ConflictScheduler<S, CF> {
+pub struct ConflictScheduler<S, CF>
+where
+    CF: egg::CostFunction<ArrayLanguage> + Clone,
+{
     inner: S,
     /// TODO: use RecExpr instead of String
     /// Keep track of rule instantiations that caused conflicts. We use an
@@ -17,27 +19,20 @@ pub struct ConflictScheduler<S, CF> {
     instantiations: Rc<RefCell<Vec<String>>>,
     instantiations_w_constants: Rc<RefCell<Vec<String>>>,
     pub cost_fn: CF,
-    transition_system_terms: Vec<String>,
-    property_terms: Vec<String>,
-    reads_writes: ReadsAndWrites,
+    extractor: TermExtractor<CF>,
 }
 
-impl<S, CF> ConflictScheduler<S, CF> {
-    pub fn new(
-        scheduler: S,
-        cost_fn: CF,
-        transition_system_terms: Vec<String>,
-        property_terms: Vec<String>,
-        reads_writes: ReadsAndWrites,
-    ) -> Self {
+impl<S, CF> ConflictScheduler<S, CF>
+where
+    CF: egg::CostFunction<ArrayLanguage> + Clone,
+{
+    pub fn new(scheduler: S, cost_fn: CF, extractor: TermExtractor<CF>) -> Self {
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
             instantiations_w_constants: Rc::new(RefCell::new(vec![])),
             cost_fn,
-            transition_system_terms,
-            property_terms,
-            reads_writes,
+            extractor,
         }
     }
 
@@ -79,14 +74,6 @@ where
         debug!("======>");
         debug!("applying {}", rewrite.name);
 
-        let extractor = TermExtractor::new(
-            egraph,
-            self.cost_fn.clone(),
-            &self.transition_system_terms,
-            &self.property_terms,
-            &self.reads_writes,
-        );
-
         for m in &matches {
             if let Some(searcher_ast) = &m.ast {
                 // TODO: do something smarter than just the first subst?
@@ -102,7 +89,7 @@ where
                             searcher_ast.as_ref(),
                             egraph,
                             subst,
-                            &extractor,
+                            &self.extractor,
                             &mut memo,
                         ));
 
@@ -110,7 +97,7 @@ where
                             applier_ast,
                             egraph,
                             subst,
-                            &extractor,
+                            &self.extractor,
                             &mut memo,
                         ));
 
@@ -172,12 +159,12 @@ fn reify_pattern_ast<N, CF>(
     pattern: &egg::PatternAst<ArrayLanguage>,
     egraph: &egg::EGraph<ArrayLanguage, N>,
     subst: &egg::Subst,
-    extractor: &TermExtractor<CF, N>,
+    extractor: &TermExtractor<CF>,
     memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
-    CF: egg::CostFunction<ArrayLanguage>,
+    CF: egg::CostFunction<ArrayLanguage> + Clone,
     <CF as egg::CostFunction<ArrayLanguage>>::Cost: Ord,
 {
     match pattern.as_ref() {
@@ -191,7 +178,7 @@ where
                         expr.clone()
                     } else {
                         let eclass = &egraph[*subst.get(*var).unwrap()];
-                        let expr = find_best_variable_substitution(eclass, extractor);
+                        let expr = find_best_variable_substitution(egraph, eclass, extractor);
                         memo.insert(*var, expr.clone());
                         expr
                     }
@@ -312,7 +299,7 @@ where
                             expr.clone()
                         } else {
                             let eclass = &egraph[*subst.get(var).unwrap()];
-                            let expr = find_best_variable_substitution(eclass, extractor);
+                            let expr = find_best_variable_substitution(egraph, eclass, extractor);
                             memo.insert(var, expr.clone());
                             expr
                         }
@@ -385,15 +372,16 @@ fn unpatternify(pattern: egg::PatternAst<ArrayLanguage>) -> egg::RecExpr<ArrayLa
 }
 
 fn find_best_variable_substitution<N, CF>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
     eclass: &egg::EClass<ArrayLanguage, <N as Analysis<ArrayLanguage>>::Data>,
-    extractor: &TermExtractor<CF, N>,
+    extractor: &TermExtractor<CF>,
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
-    CF: egg::CostFunction<ArrayLanguage>,
+    CF: egg::CostFunction<ArrayLanguage> + Clone,
     <CF as egg::CostFunction<ArrayLanguage>>::Cost: Ord,
 {
-    let expr = extractor.extract(eclass.id);
+    let expr = extractor.extract(egraph, eclass.id);
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));
 
     // wrap everything in an ENodeOrVar so that it still counts as an egg::PatternAst

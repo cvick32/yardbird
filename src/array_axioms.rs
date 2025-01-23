@@ -4,7 +4,7 @@ use egg::*;
 
 use crate::{
     conflict_scheduler::ConflictScheduler, cost_functions::symbol_cost::BestSymbolSubstitution,
-    egg_utils::Saturate,
+    egg_utils::Saturate, extractor::TermExtractor,
 };
 
 define_language! {
@@ -82,13 +82,10 @@ where
         let trans_terms = cost_fn.transition_system_terms.clone();
         let prop_terms = cost_fn.property_terms.clone();
         let reads_writes = cost_fn.reads_writes.clone();
-        // println!("reads and writes: {reads_writes:#?}");
         let scheduler = ConflictScheduler::new(
             BackoffScheduler::default(),
-            cost_fn,
-            trans_terms,
-            prop_terms,
-            reads_writes,
+            cost_fn.clone(),
+            TermExtractor::new(&egraph, cost_fn, &trans_terms, &prop_terms, reads_writes),
         );
         let instantiations = scheduler.instantiations();
         let const_instantiations = scheduler.instantiations_w_constants();
