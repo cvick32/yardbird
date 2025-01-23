@@ -16,6 +16,7 @@ export const Route = createFileRoute("/artifacts/$art")({
     compare: (search.compare as string) || "",
     filter: (search.filter as string) || "",
     expand: (search.expand as boolean) || false,
+    strategy: (search.strategy as string) || "abstract",
   }),
   beforeLoad: ({ context }) => {
     if (!context.auth.isAuthenticated) {
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/artifacts/$art")({
 
 function RouteComponent() {
   const { art } = Route.useParams();
-  const { compare, filter } = Route.useSearch();
+  const { compare, filter, strategy } = Route.useSearch();
   const artifact = useArtifact(art);
   const compareAgainst = useArtifact(compare);
 
@@ -72,11 +73,16 @@ function RouteComponent() {
                 return true;
               } else if (filter === "differ") {
                 return (
-                  getStatus(getResult(benchmark)) !=
-                  getStatus(getResult(compareAgainst?.data?.benchmarks?.[idx]))
+                  getStatus(getResult(benchmark, strategy)) !=
+                  getStatus(
+                    getResult(
+                      compareAgainst?.data?.benchmarks?.[idx],
+                      strategy,
+                    ),
+                  )
                 );
               } else {
-                return getStatus(getResult(benchmark)) === filter;
+                return getStatus(getResult(benchmark, strategy)) === filter;
               }
             })
             .map(([benchmark, idx]) => (
@@ -114,9 +120,9 @@ function TimeSummary() {
 function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
   const [showInstances, setShowInstances] = useState(false);
   const { art } = Route.useParams();
-  const { compare, expand } = Route.useSearch();
+  const { compare, expand, strategy } = Route.useSearch();
   const compareAgainst = useArtifact(compare);
-  const benchResult = getResult(benchmark);
+  const benchResult = getResult(benchmark, strategy);
   const benchmarkSuccess =
     benchResult !== undefined &&
     (("Success" in benchResult &&
@@ -124,7 +130,10 @@ function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
       ("NoProgress" in benchResult &&
         benchResult.NoProgress.used_instances.length !== 0));
 
-  const compareResult = getResult(compareAgainst.data?.benchmarks?.[index]);
+  const compareResult = getResult(
+    compareAgainst.data?.benchmarks?.[index],
+    strategy,
+  );
   const compareSuccess =
     compare !== "" &&
     compareResult !== undefined &&
@@ -171,14 +180,14 @@ function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
         </div>
       </td>
       <Status
-        result={getResult(benchmark)}
+        result={getResult(benchmark, strategy)}
         showInstances={showInstances || expand}
       />
       {compare !== "" &&
         !!compareAgainst.data &&
         !!compareAgainst.data.benchmarks && (
           <Status
-            result={getResult(compareAgainst.data.benchmarks[index])}
+            result={getResult(compareAgainst.data.benchmarks[index], strategy)}
             showInstances={showInstances || expand}
           />
         )}

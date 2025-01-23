@@ -47,12 +47,10 @@ function Index() {
         </div>
         <FlexGrid className="font-bold">
           <>Success</>
-          <>No Progress</>
-          <>Trivial</>
+          <>Stuck</>
           <>Failures</>
           <>Total</>
           <>Speedup</>
-          <></>
         </FlexGrid>
       </div>
       {[...files.entries()].map(
@@ -64,7 +62,12 @@ function Index() {
               link=<Link
                 to="/artifacts/$art"
                 params={{ art: id }}
-                search={{ compare: "", filter: "", expand: false }}
+                search={{
+                  compare: "",
+                  filter: "",
+                  expand: false,
+                  strategy: "abstract",
+                }}
                 className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
               >
                 Results
@@ -105,14 +108,7 @@ function Index() {
               key={idx}
               day={dayString}
               time={timeString}
-              stats=<FlexGrid className="dark:text-white">
-                <div key={`0-${idx}`}>-</div>
-                <div key={`1-${idx}`}>-</div>
-                <div key={`2-${idx}`}>-</div>
-                <div key={`3-${idx}`}>-</div>
-                <div key={`4-${idx}`}>-</div>
-                <div key={`5-${idx}`}>-</div>
-              </FlexGrid>
+              stats=<LoadingGrid />
               link=<WorkflowStatus
                 href={workflow.html_url}
                 status={workflow.status}
@@ -139,7 +135,12 @@ function Index() {
             link=<Link
               to="/artifacts/$art"
               params={{ art: art.id }}
-              search={{ compare: "", filter: "", expand: false }}
+              search={{
+                compare: "",
+                filter: "",
+                expand: false,
+                strategy: "abstract",
+              }}
               className="text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
             >
               Results
@@ -227,6 +228,18 @@ function FlexGrid({
   );
 }
 
+function LoadingGrid() {
+  return (
+    <FlexGrid className="text-black dark:text-white">
+      <div>-</div>
+      <div>-</div>
+      <div>-</div>
+      <div>-</div>
+      <div>-</div>
+    </FlexGrid>
+  );
+}
+
 function Stats({ id }: { id: string }) {
   let stats = useArtifact(`${id}`, benchmarkSummary);
   let geomean = useArtifact(`${id}`, (artifact) =>
@@ -234,16 +247,7 @@ function Stats({ id }: { id: string }) {
   );
 
   if (stats.data === undefined) {
-    return (
-      <FlexGrid className="text-black dark:text-white">
-        <div key={`0-${id}`}>-</div>
-        <div key={`1-${id}`}>-</div>
-        <div key={`2-${id}`}>-</div>
-        <div key={`3-${id}`}>-</div>
-        <div key={`4-${id}`}>-</div>
-        <div key={`5-${id}`}>-</div>
-      </FlexGrid>
-    );
+    return <LoadingGrid />;
   }
 
   const total =
@@ -256,24 +260,20 @@ function Stats({ id }: { id: string }) {
 
   return (
     <FlexGrid className="text-black dark:text-white">
-      <div
-        key={`0-${id}`}
-        className="font-bold text-green-600 dark:text-green-500"
-      >
-        {stats.data.success}
+      <div key={`0-${id}`} className="flex flex-row gap-[2px] font-bold">
+        <span className="text-green-600 dark:text-green-500">
+          {stats.data.success}
+        </span>
+        /
+        <span className="text-teal-600 dark:text-teal-500">
+          {stats.data.trivialSuccess}
+        </span>
       </div>
       <div
         key={`1-${id}`}
         className="font-bold text-pink-600 dark:text-pink-500"
       >
         {stats.data.noProgress}
-      </div>
-
-      <div
-        key={`2-${id}`}
-        className="font-bold text-teal-600 dark:text-teal-500"
-      >
-        {stats.data.trivialSuccess}
       </div>
       <div key={`3-${id}`} className="flex flex-row gap-[2px] font-bold">
         <span className="text-orange-600 dark:text-orange-500">
@@ -295,8 +295,8 @@ function Stats({ id }: { id: string }) {
         <div
           className={
             geomean.data > 1.0
-              ? "text-green-700 dark:text-green-300"
-              : "text-red-500"
+              ? "font-bold text-green-700 dark:text-green-300"
+              : "font-bold text-red-500"
           }
         >
           {geomean.data.toFixed(2)}×
