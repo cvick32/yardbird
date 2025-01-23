@@ -26,7 +26,7 @@ impl crate::rewriter::Rewriter for BMCBuilder {
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
         if self.current_variables.contains(&s.0) {
-            Ok(Symbol(format!("{}@{}", s.0, &self.step.to_string())))
+            Ok(Symbol(format!("{}@{}", s.0, &self.step)))
         } else if self.next_variables.contains_key(&s.0) {
             let next = self.step + 1;
             let current_variable_name = self.next_variables.get(&s.0).unwrap();

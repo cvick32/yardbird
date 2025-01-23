@@ -44,7 +44,7 @@ impl SMTProblem {
         self.function_definitions.clone()
     }
 
-    pub fn add_assertion(&mut self, condition: &Term, mut builder: BMCBuilder) {
+    pub fn add_assertion(&mut self, condition: &Term, builder: &mut BMCBuilder) {
         let mut let_extract = LetExtract::default();
         let no_let_condition = condition
             .clone()
@@ -54,7 +54,7 @@ impl SMTProblem {
             Term::Attributes {
                 term,
                 attributes: _,
-            } => term.clone().accept(&mut builder).unwrap(),
+            } => term.clone().accept(builder).unwrap(),
             _ => panic!(
                 "{}",
                 "Assertion must be a Term::Atrributes! One of {{init, trans, invar-prop}}"
@@ -64,7 +64,7 @@ impl SMTProblem {
     }
 
     /// Need to assert the negation of the property given in the VMTModel for BMC.
-    pub fn add_property_assertion(&mut self, condition: &Term, mut builder: BMCBuilder) {
+    pub fn add_property_assertion(&mut self, condition: &Term, builder: &mut BMCBuilder) {
         let mut let_extract = LetExtract::default();
         let no_let_condition = condition
             .clone()
@@ -74,7 +74,7 @@ impl SMTProblem {
             Term::Attributes {
                 term,
                 attributes: _,
-            } => term.clone().accept(&mut builder).unwrap(),
+            } => term.clone().accept(builder).unwrap(),
             _ => panic!(
                 "{}",
                 "Assertion must be a Term::Atrributes! One of {{init, trans, invar-prop}}"
@@ -87,14 +87,14 @@ impl SMTProblem {
         &mut self,
         state_variables: &Vec<Variable>,
         actions: &Vec<Action>,
-        mut builder: BMCBuilder,
+        builder: &mut BMCBuilder,
     ) {
         for state_variable in state_variables {
-            let definition_at_time = state_variable.current.clone().accept(&mut builder).unwrap();
+            let definition_at_time = state_variable.current.clone().accept(builder).unwrap();
             self.variable_definitions.push(definition_at_time);
         }
         for action in actions {
-            let action_at_time = action.action.clone().accept(&mut builder).unwrap();
+            let action_at_time = action.action.clone().accept(builder).unwrap();
             self.variable_definitions.push(action_at_time);
         }
     }
