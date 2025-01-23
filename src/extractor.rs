@@ -5,30 +5,30 @@ use smt2parser::vmt::ReadsAndWrites;
 
 use crate::array_axioms::ArrayLanguage;
 
-pub struct TermExtractor<'a, CF, N>
+pub struct TermExtractor<CF>
 where
     CF: egg::CostFunction<ArrayLanguage>,
-    N: egg::Analysis<ArrayLanguage>,
 {
-    egraph: &'a egg::EGraph<ArrayLanguage, N>,
-    extractor: egg::Extractor<'a, CF, ArrayLanguage, N>,
     term_map: HashMap<egg::Id, Vec<egg::RecExpr<ArrayLanguage>>>,
-    pub reads_and_writes: &'a ReadsAndWrites,
+    cost_function: CF,
+    pub reads_and_writes: ReadsAndWrites,
 }
 
-impl<'a, CF, N> TermExtractor<'a, CF, N>
+impl<CF> TermExtractor<CF>
 where
-    CF: egg::CostFunction<ArrayLanguage>,
-    N: egg::Analysis<ArrayLanguage>,
+    CF: egg::CostFunction<ArrayLanguage> + Clone,
     <CF as egg::CostFunction<ArrayLanguage>>::Cost: Ord,
 {
-    pub fn new(
-        egraph: &'a egg::EGraph<ArrayLanguage, N>,
+    pub fn new<N>(
+        egraph: &egg::EGraph<ArrayLanguage, N>,
         mut cost_function: CF,
-        transition_system_terms: &'a [String],
-        _property_terms: &'a [String],
-        reads_and_writes: &'a ReadsAndWrites,
-    ) -> Self {
+        transition_system_terms: &[String],
+        _property_terms: &[String],
+        reads_and_writes: ReadsAndWrites,
+    ) -> Self
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
         let mut term_map: HashMap<egg::Id, Vec<egg::RecExpr<ArrayLanguage>>> = HashMap::new();
         for string_term in transition_system_terms {
             let term: egg::RecExpr<ArrayLanguage> = string_term.parse().unwrap();
@@ -47,28 +47,33 @@ where
             exprs.sort_by_key(|expr| cost_function.cost_rec(expr));
         }
 
-        let extractor = egg::Extractor::new(egraph, cost_function);
-
         Self {
-            egraph,
-            extractor,
             term_map,
+            cost_function,
             reads_and_writes,
         }
     }
 
-    pub fn extract(&self, eclass: egg::Id) -> egg::RecExpr<ArrayLanguage> {
+    pub fn extract<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+    ) -> egg::RecExpr<ArrayLanguage>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
         // let is_potential_read = self.egraph[eclass]
         //     .parents()
         //     .any(|(node, _parent_id)| matches!(node, ArrayLanguage::Read(_)));
 
-        if let Some(terms) = self.term_map.get(&self.egraph.find(eclass)) {
+        if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
             log::debug!("term exists: {eclass} -> {}", terms[0]);
             terms[0].clone()
         } else {
-            let node = self.extractor.find_best_node(eclass);
+            let extractor = egg::Extractor::new(egraph, self.cost_function.clone());
+            let node = extractor.find_best_node(eclass);
             log::debug!("recursing: {eclass} -> {node}");
-            node.join_recexprs(|id| self.extract(id))
+            node.join_recexprs(|id| self.extract(egraph, id))
         }
     }
 }
