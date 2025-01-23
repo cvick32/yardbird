@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::concrete::{QualIdentifier, Symbol, Term};
+use crate::concrete::{Identifier, QualIdentifier, Symbol, Term};
 
 #[derive(Clone, Debug, Default)]
 pub struct LetExtract {
@@ -16,21 +16,21 @@ impl LetExtract {
         match term {
             Term::Constant(constant) => Term::Constant(constant),
             Term::QualIdentifier(q_id) => {
-                let symbol: Symbol = match q_id.clone() {
+                let symbol: &Symbol = match &q_id {
                     QualIdentifier::Simple { identifier } => match identifier {
-                        crate::concrete::Identifier::Simple { symbol } => symbol,
-                        crate::concrete::Identifier::Indexed { symbol, indices: _ } => symbol,
+                        Identifier::Simple { symbol } => symbol,
+                        Identifier::Indexed { symbol, indices: _ } => symbol,
                     },
                     QualIdentifier::Sorted {
                         identifier,
                         sort: _,
                     } => match identifier {
-                        crate::concrete::Identifier::Simple { symbol } => symbol,
-                        crate::concrete::Identifier::Indexed { symbol, indices: _ } => symbol,
+                        Identifier::Simple { symbol } => symbol,
+                        Identifier::Indexed { symbol, indices: _ } => symbol,
                     },
                 };
-                if self.scope.contains_key(&symbol) {
-                    self.scope.get(&symbol).unwrap().clone()
+                if self.scope.contains_key(symbol) {
+                    self.scope.get(symbol).unwrap().clone()
                 } else {
                     Term::QualIdentifier(q_id)
                 }
@@ -40,8 +40,8 @@ impl LetExtract {
                 arguments,
             } => {
                 let new_arguments = arguments
-                    .iter()
-                    .map(|arg| self.substitute_scoped_symbols(arg.clone()))
+                    .into_iter()
+                    .map(|arg| self.substitute_scoped_symbols(arg))
                     .collect::<Vec<_>>();
                 Term::Application {
                     qual_identifier,
@@ -65,12 +65,9 @@ impl LetExtract {
             Term::Match { term, cases } => {
                 let new_term = self.substitute_scoped_symbols(*term);
                 let new_cases = cases
-                    .iter()
+                    .into_iter()
                     .map(|(match_symbols, case)| {
-                        (
-                            match_symbols.clone(),
-                            self.substitute_scoped_symbols(case.clone()),
-                        )
+                        (match_symbols, self.substitute_scoped_symbols(case))
                     })
                     .collect::<Vec<_>>();
                 Term::Match {
