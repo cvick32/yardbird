@@ -33,6 +33,11 @@ z3 =  "0.12.1"
 insta = "1.41.1"
 criterion = { version = "0.5", features = ["html_reports"] }
 
+[[bin]]
+name = "yardbird"
+path = "src/main.rs"
+bench = false
+
 [[bench]]
 name = "vmt"
 harness = false
