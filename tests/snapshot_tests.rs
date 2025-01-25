@@ -60,7 +60,10 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     BenchmarkResult {
         example_name: filename.as_ref().to_string_lossy().to_string(),
         status,
-        used_instantiations,
+        used_instantiations: used_instantiations
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
     }
 }
 

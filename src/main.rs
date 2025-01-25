@@ -1,6 +1,7 @@
 use std::{fs::File, io::Write};
 
 use clap::Parser;
+use itertools::Itertools;
 use log::info;
 use yardbird::{
     logger, model_from_options,
@@ -32,7 +33,13 @@ fn main() -> anyhow::Result<()> {
     let res = driver.check_strategy(options.depth, strat)?;
 
     info!("SUCCESSFUL BMC!");
-    info!("NEEDED INSTANTIATIONS: {:#?}", res.used_instances);
+    info!(
+        "NEEDED INSTANTIATIONS:\n{}",
+        res.used_instances
+            .iter()
+            .map(|inst| format!(" - {inst}"))
+            .join("\n")
+    );
 
     if options.print_vmt {
         if let Some(model) = res.model {

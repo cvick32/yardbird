@@ -9,7 +9,7 @@ use smt2parser::{
 
 use crate::{
     analysis::SaturationInequalities,
-    array_axioms::{translate_term, ArrayLanguage},
+    array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
     cost_functions::symbol_cost::BestSymbolSubstitution,
     driver::{self, Error},
     egg_utils::Saturate,
@@ -22,8 +22,8 @@ use super::{ProofAction, ProofStrategy};
 /// Global state carried across different BMC depths
 #[derive(Default)]
 pub struct Abstract {
-    used_instantiations: Vec<String>,
-    const_instantiations: Vec<String>,
+    used_instantiations: Vec<Term>,
+    const_instantiations: Vec<Term>,
     bmc_depth: u8,
 }
 
@@ -41,8 +41,8 @@ pub struct AbstractRefinementState {
     pub smt: SMTProblem,
     pub depth: u8,
     pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
-    pub instantiations: Vec<String>,
-    pub const_instantiations: Vec<String>,
+    pub instantiations: Vec<ArrayExpr>,
+    pub const_instantiations: Vec<ArrayExpr>,
 }
 
 impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
@@ -108,13 +108,13 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         state: AbstractRefinementState,
     ) -> driver::Result<()> {
         self.const_instantiations
-            .extend_from_slice(&state.const_instantiations);
+            .extend(state.const_instantiations.into_iter().map(expr_to_term));
 
         let terms: Vec<Term> = state
             .instantiations
             .into_iter()
             // .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
-            .flat_map(|inst| inst.parse())
+            .map(expr_to_term)
             .collect();
 
         // first try without quantifiers

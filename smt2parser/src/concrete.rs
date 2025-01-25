@@ -68,6 +68,14 @@ pub enum QualIdentifier<Identifier = self::Identifier, Sort = self::Sort> {
 }
 
 impl QualIdentifier {
+    pub fn simple(name: impl ToString) -> Self {
+        Self::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol(name.to_string()),
+            },
+        }
+    }
+
     pub fn get_name(&self) -> String {
         match self {
             crate::concrete::QualIdentifier::Simple { identifier } => match identifier {

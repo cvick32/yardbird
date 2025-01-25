@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use egg::*;
-use smt2parser::concrete::Term;
+use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
     conflict_scheduler::ConflictScheduler, cost_functions::symbol_cost::BestSymbolSubstitution,
@@ -10,7 +10,7 @@ use crate::{
 
 define_language! {
     pub enum ArrayLanguage {
-        Num(i64),
+        Num(u64),
         "ConstArr-Int-Int" = ConstArr([Id; 1]),
         "Write-Int-Int" = Write([Id; 3]),
         "Read-Int-Int" = Read([Id; 2]),
@@ -36,6 +36,50 @@ pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
 
 impl ArrayLanguage {
+    pub fn equals(lhs: &ArrayExpr, rhs: &ArrayExpr) -> ArrayExpr {
+        let mut expr = egg::RecExpr::default();
+        let lhs_placeholder = expr.add(ArrayLanguage::Symbol("lhs".into()));
+        let rhs_placeholder = expr.add(ArrayLanguage::Symbol("rhs".into()));
+        let equals = expr.add(ArrayLanguage::Eq([lhs_placeholder, rhs_placeholder]));
+
+        expr[equals].join_recexprs(|id| {
+            if id == lhs_placeholder {
+                lhs.clone()
+            } else if id == rhs_placeholder {
+                rhs.clone()
+            } else {
+                unreachable!()
+            }
+        })
+    }
+
+    pub fn not_implies(not_clause: &ArrayExpr, other: &ArrayExpr) -> ArrayExpr {
+        let mut not_expr = egg::RecExpr::default();
+        let n = not_expr.add(ArrayLanguage::Symbol("n".into()));
+        let not = not_expr.add(ArrayLanguage::Not(n));
+
+        let mut expr = egg::RecExpr::default();
+        let x = expr.add(ArrayLanguage::Symbol("x".into()));
+        let o = expr.add(ArrayLanguage::Symbol("o".into()));
+        let implies = expr.add(ArrayLanguage::Implies([x, o]));
+
+        expr[implies].join_recexprs(|id| {
+            if id == x {
+                not_expr[not].join_recexprs(|id| {
+                    if id == n {
+                        not_clause.clone()
+                    } else {
+                        unreachable!()
+                    }
+                })
+            } else if id == o {
+                other.clone()
+            } else {
+                unreachable!()
+            }
+        })
+    }
+
     pub fn read(array: ArrayExpr, index: ArrayExpr) -> ArrayExpr {
         let mut expr = egg::RecExpr::default();
         let a = expr.add(ArrayLanguage::Symbol("a".into()));
@@ -52,6 +96,7 @@ impl ArrayLanguage {
             }
         })
     }
+
     pub fn write(array: ArrayExpr, index: ArrayExpr, value: ArrayExpr) -> ArrayExpr {
         let mut expr = egg::RecExpr::default();
         let a = expr.add(ArrayLanguage::Symbol("a".into()));
@@ -77,8 +122,8 @@ impl<N> Saturate for EGraph<ArrayLanguage, N>
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
 {
-    type Ret = (Vec<String>, Vec<String>);
-    fn saturate(&mut self, cost_fn: BestSymbolSubstitution) -> (Vec<String>, Vec<String>) {
+    type Ret = (Vec<ArrayExpr>, Vec<ArrayExpr>);
+    fn saturate(&mut self, cost_fn: BestSymbolSubstitution) -> Self::Ret {
         let egraph = std::mem::take(self);
         let trans_terms = cost_fn.transition_system_terms.clone();
         let prop_terms = cost_fn.property_terms.clone();
@@ -355,6 +400,85 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
     let mut expr = egg::RecExpr::default();
     inner(term, &mut expr)?;
     Some(expr)
+}
+
+pub fn expr_to_term(expr: ArrayExpr) -> Term {
+    fn inner(expr: &ArrayExpr, id: egg::Id) -> Term {
+        match &expr[id] {
+            ArrayLanguage::Num(num) => Term::Constant(Constant::Numeral((*num).into())),
+            ArrayLanguage::ConstArr([x]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("ConstArr-Int-Int"),
+                arguments: vec![inner(expr, *x)],
+            },
+            ArrayLanguage::Write([arr, idx, val]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("Write-Int-Int"),
+                arguments: vec![inner(expr, *arr), inner(expr, *idx), inner(expr, *val)],
+            },
+            ArrayLanguage::Read([arr, idx]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+                arguments: vec![inner(expr, *arr), inner(expr, *idx)],
+            },
+            ArrayLanguage::And(ids) => Term::Application {
+                qual_identifier: QualIdentifier::simple("and"),
+                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
+            },
+            ArrayLanguage::Not(id) => Term::Application {
+                qual_identifier: QualIdentifier::simple("not"),
+                arguments: vec![inner(expr, *id)],
+            },
+            ArrayLanguage::Or(ids) => Term::Application {
+                qual_identifier: QualIdentifier::simple("or"),
+                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
+            },
+            ArrayLanguage::Implies([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("=>"),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Eq([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("="),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Geq([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple(">="),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Gt([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple(">"),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Leq([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("<="),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Lt([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("<"),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Mod([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("mod"),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Plus(ids) => Term::Application {
+                qual_identifier: QualIdentifier::simple("+"),
+                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
+            },
+            ArrayLanguage::Negate(ids) => Term::Application {
+                qual_identifier: QualIdentifier::simple("-"),
+                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
+            },
+            ArrayLanguage::Times(ids) => Term::Application {
+                qual_identifier: QualIdentifier::simple("*"),
+                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
+            },
+            ArrayLanguage::Div([lhs, rhs]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("/"),
+                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
+            },
+            ArrayLanguage::Symbol(sym) => Term::QualIdentifier(QualIdentifier::simple(sym)),
+        }
+    }
+
+    inner(&expr, egg::Id::from(expr.as_ref().len() - 1))
 }
 
 #[cfg(test)]

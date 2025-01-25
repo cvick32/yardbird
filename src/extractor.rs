@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::array_axioms::ArrayLanguage;
+use crate::array_axioms::{ArrayExpr, ArrayLanguage};
 
 pub struct TermExtractor<CF>
 where
     CF: egg::CostFunction<ArrayLanguage>,
 {
-    term_map: HashMap<egg::Id, Vec<(egg::RecExpr<ArrayLanguage>, CF::Cost)>>,
+    term_map: HashMap<egg::Id, Vec<(ArrayExpr, CF::Cost)>>,
     cost_function: CF,
     pub reads_and_writes: ReadsAndWrites,
 }
