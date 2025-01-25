@@ -59,8 +59,16 @@ struct SerializableProofResult {
 impl From<ProofLoopResult> for SerializableProofResult {
     fn from(value: ProofLoopResult) -> Self {
         SerializableProofResult {
-            used_instances: value.used_instances,
-            const_instances: value.const_instances,
+            used_instances: value
+                .used_instances
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            const_instances: value
+                .const_instances
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
         }
     }
 }
@@ -126,7 +134,7 @@ where
             Ok(proof_result) => BenchmarkResult::Success(proof_result.into()),
             Err(yardbird::Error::NoProgress { instantiations, .. }) => {
                 BenchmarkResult::NoProgress(SerializableProofResult {
-                    used_instances: instantiations,
+                    used_instances: instantiations.iter().map(ToString::to_string).collect(),
                     const_instances: vec![],
                 })
             }

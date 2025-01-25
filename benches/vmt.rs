@@ -23,9 +23,9 @@ fn bench(c: &mut Criterion) {
     group.bench_function("array_double_inverse", |b| {
         b.iter(|| run("examples/array_double_inverse.vmt", 10))
     });
-    group.bench_function("array_doub_access_init_const", |b| {
-        b.iter(|| run("examples/array_doub_access_init_const.vmt", 10))
-    });
+    // group.bench_function("array_doub_access_init_const", |b| {
+    //     b.iter(|| run("examples/array_doub_access_init_const.vmt", 10))
+    // });
     group.sampling_mode(SamplingMode::Flat);
     group.finish();
 }
