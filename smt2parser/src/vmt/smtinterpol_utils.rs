@@ -57,7 +57,7 @@ fn get_interpolant_name(i: usize) -> String {
     if i <= 25 {
         INTERPOLANT_NAMES[i].into()
     } else {
-        println!("{}", u8::MAX);
+        log::info!("{}", u8::MAX);
         let rest = i - 26;
         INTERPOLANT_NAMES[0].to_owned() + &get_interpolant_name(rest)
     }

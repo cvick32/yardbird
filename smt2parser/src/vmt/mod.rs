@@ -451,7 +451,7 @@ impl VMTModel {
             Some(fname) => fname,
             None => "out.vmt".into(),
         };
-        println!("creating: {filename}");
+        log::info!("creating: {filename}");
         let mut file = File::create(filename).unwrap();
 
         let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();
