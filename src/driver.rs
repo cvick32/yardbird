@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use log::info;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
@@ -28,7 +29,13 @@ pub enum Error {
     #[error("Found counter-example")]
     Counterexample,
 
-    #[error("No progress at depth {depth}\nUsed Instantiations:\n{instantiations:#?}")]
+    #[error(
+        "No progress at depth {depth}\nUsed Instantiations:\n{insts}",
+        insts = instantiations
+            .iter()
+            .map(|inst| format!(" - {inst}"))
+            .join("\n")
+    )]
     NoProgress {
         depth: u8,
         instantiations: Vec<Term>,
