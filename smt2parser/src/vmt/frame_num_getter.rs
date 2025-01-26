@@ -42,11 +42,21 @@ impl FrameNumGetter {
     }
 
     pub(crate) fn min(&self) -> usize {
-        *self.frame_map.iter().map(|(_, frame)| frame).min().unwrap()
+        self.frame_map
+            .iter()
+            .map(|(_, frame)| frame)
+            .min()
+            .copied()
+            .unwrap_or_default()
     }
 
     pub(crate) fn max(&self) -> usize {
-        *self.frame_map.iter().map(|(_, frame)| frame).max().unwrap()
+        self.frame_map
+            .iter()
+            .map(|(_, frame)| frame)
+            .max()
+            .copied()
+            .unwrap_or_default()
     }
 
     #[allow(unused)]
