@@ -11,27 +11,30 @@
 (declare-fun Z_next () Int)
 (define-fun .Z () Int (! Z :next Z_next))
 
-(define-fun init-conditions () Bool (!
- (and
-(= a ((as const (Array Int Int)) 1))
-(= i 0)
-) :init true))
+(define-fun init-conditions () Bool
+            (!
+             (and
+              (= a ((as const (Array Int Int)) 1))
+              (= i 0))
+             :init true))
 
-(define-fun trans-conditions () Bool (!
- (and
-(let ((a!1 (store a i (+ (select a i) (select a (- i 1)))))
-      (a!3 (not (<= (select a (- i 1)) 10))))
-(let ((a!2 (=> (<= (select a (- i 1)) 10) (= a!1 a_next))))
-  (and a!2 (=> a!3 (= (store a i 100) a_next)))))
-(< i N)
-(= (+ i 1) i_next)
-(= N N_next)
-(= Z Z_next)
-) :trans true))
+(define-fun trans-conditions () Bool
+            (!
+             (and
+              (=> (<= (select a (- i 1)) 10)
+                  (= (store a i (+ (select a i) (select a (- i 1)))) a_next))
+              (=> (not (<= (select a (- i 1)) 10))
+                  (= (store a i 100) a_next))
+              (< i N)
+              (= (+ i 1) i_next)
+              (= N N_next)
+              (= Z Z_next))
+             :trans true))
 
-(define-fun property () Bool (!
- (and
-(let ((a!1 (not (not (= (select a Z) 100)))))
-  (=> (and (>= i N) (>= Z 10) (< Z N)) (and a!1)))
-) :invar-property 0))
+(define-fun property () Bool
+            (!
+             (and
+              (=> (and (>= i N) (>= Z 10) (< Z N))
+                  (and (= (select a Z) 100))))
+             :invar-property 0))
 
