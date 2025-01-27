@@ -172,7 +172,7 @@ where
     ]
 }
 
-fn not_equal<N>(
+pub fn not_equal<N>(
     index_0: &'static str,
     index_1: &'static str,
 ) -> impl Fn(&EGraph<ArrayLanguage, N>, Id, &Subst) -> bool
@@ -185,13 +185,13 @@ where
 }
 
 /// An `egg::Searcher` that only returns search results that pass a provided condition
-struct ConditionalSearcher<S, C> {
+pub struct ConditionalSearcher<S, C> {
     searcher: S,
     condition: C,
 }
 
 impl<S, C> ConditionalSearcher<S, C> {
-    fn new(searcher: S, condition: C) -> Self {
+    pub fn new(searcher: S, condition: C) -> Self {
         Self {
             searcher,
             condition,
