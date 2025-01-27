@@ -256,6 +256,7 @@ fn main() -> anyhow::Result<()> {
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
+                                minify: false,
                             },
                             options.retry,
                         )

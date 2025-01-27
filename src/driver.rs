@@ -88,8 +88,8 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
-        'bmc: for depth in 0..target_depth {
-            info!("STARTING BMC FOR DEPTH {depth}");
+        'bmc: for depth in 1..target_depth {
+            info!("==== STARTING BMC FOR DEPTH {depth} ====");
             for i in 0..n_refines {
                 info!("  refining loop: {}/{n_refines}", i + 1);
 

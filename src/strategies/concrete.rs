@@ -17,13 +17,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     }
 
     fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
-        Ok(AbstractRefinementState {
-            smt,
-            depth,
-            egraph: egg::EGraph::default(),
-            instantiations: vec![],
-            const_instantiations: vec![],
-        })
+        Ok(AbstractRefinementState::new(smt, depth))
     }
 
     fn unsat(
@@ -61,7 +55,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             model: Some(vmt_model),
             used_instances: vec![],
             const_instances: vec![],
-            counterexample: true,
+            counterexample: false,
         }
     }
 }

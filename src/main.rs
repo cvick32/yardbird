@@ -5,7 +5,7 @@ use itertools::Itertools;
 use log::info;
 use yardbird::{
     logger, model_from_options,
-    strategies::{Interpolating, Repl},
+    strategies::{Interpolating, Minify, Repl},
     Driver, YardbirdOptions,
 };
 
@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
 
     let cfg = z3::Config::new();
     let context = z3::Context::new(&cfg);
-    let mut driver = Driver::new(&context, vmt_model);
+    let mut driver = Driver::new(&context, vmt_model.clone());
 
     // build the strategy
     let strat = options.build_strategy();
@@ -34,12 +34,21 @@ fn main() -> anyhow::Result<()> {
 
     info!("SUCCESSFUL BMC!");
     info!(
-        "NEEDED INSTANTIATIONS:\n{}",
+        "USED INSTANTIATIONS:\n{}",
         res.used_instances
             .iter()
             .map(|inst| format!(" - {inst}"))
             .join("\n")
     );
+
+    if options.minify {
+        log::set_max_level(log::LevelFilter::Off);
+        let necessary = Minify::minify(vmt_model.clone(), res.used_instances, options.depth);
+        println!(
+            "Necessary:\n{}",
+            necessary.iter().map(|inst| format!(" - {inst}")).join("\n")
+        );
+    }
 
     if options.print_vmt {
         if let Some(model) = res.model {

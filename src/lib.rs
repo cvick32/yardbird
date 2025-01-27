@@ -51,6 +51,10 @@ pub struct YardbirdOptions {
     /// Interactive mode.
     #[arg(long, default_value_t = false)]
     pub repl: bool,
+
+    /// Minify set of instantiations on successful run
+    #[arg(long, default_value_t = false)]
+    pub minify: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -63,6 +67,7 @@ impl Default for YardbirdOptions {
             interpolate: false,
             strategy: Strategy::Abstract,
             repl: false,
+            minify: false,
         }
     }
 }

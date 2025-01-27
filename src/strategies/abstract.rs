@@ -110,12 +110,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         self.const_instantiations
             .extend(state.const_instantiations.into_iter().map(expr_to_term));
 
-        let terms: Vec<Term> = state
-            .instantiations
-            .into_iter()
-            // .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
-            .map(expr_to_term)
-            .collect();
+        let terms: Vec<Term> = state.instantiations.into_iter().map(expr_to_term).collect();
 
         // first try without quantifiers
         let no_progress = terms
@@ -155,6 +150,16 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
 }
 
 impl AbstractRefinementState {
+    pub fn new(smt: SMTProblem, depth: u8) -> Self {
+        Self {
+            smt,
+            depth,
+            egraph: egg::EGraph::default(),
+            instantiations: vec![],
+            const_instantiations: vec![],
+        }
+    }
+
     pub fn update_with_subterms(
         &mut self,
         model: &z3::Model,
