@@ -10,8 +10,8 @@ use yardbird::{
 };
 
 fn main() -> anyhow::Result<()> {
-    logger::init_logger(log::Level::Info);
     let options = YardbirdOptions::parse();
+    logger::init_logger(log::Level::Info, options.line_numbers);
     let vmt_model = model_from_options(&options);
 
     let cfg = z3::Config::new();

@@ -252,10 +252,8 @@ fn main() -> anyhow::Result<()> {
                                 filename: filename.clone(),
                                 depth: options.depth,
                                 bmc_count: 10,
-                                print_vmt: false,
-                                interpolate: false,
-                                repl: false,
                                 strategy: *strat,
+                                ..Default::default()
                             },
                             options.retry,
                         )

@@ -16,19 +16,28 @@ fn file_info(record: &log::Record) -> Option<String> {
     }
 }
 
-pub fn init_logger(level: log::Level) {
+pub fn init_logger(level: log::Level, line_numbers: bool) {
     env_logger::Builder::from_env(
         Env::default().filter_or("RUST_LOG", format!("{level},egg=off,z3=off")),
     )
-    .format(|buf, record| {
+    .format(move |buf, record| {
         let style = buf.default_level_style(record.level());
         let file_info = file_info(record).unwrap_or_default();
-        writeln!(
-            buf,
-            "[{style}{}{style:#}{file_info}] {}",
-            record.level(),
-            record.args()
-        )
+        if line_numbers {
+            writeln!(
+                buf,
+                "[{style}{}{style:#}{file_info}] {}",
+                record.level(),
+                record.args()
+            )
+        } else {
+            writeln!(
+                buf,
+                "[{style}{}{style:#}] {}",
+                record.level(),
+                record.args()
+            )
+        }
     })
     .init();
 }

@@ -51,6 +51,9 @@ pub struct YardbirdOptions {
     /// Interactive mode.
     #[arg(long, default_value_t = false)]
     pub repl: bool,
+    /// Show line number in log
+    #[arg(long, default_value_t = false)]
+    pub line_numbers: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -63,6 +66,7 @@ impl Default for YardbirdOptions {
             interpolate: false,
             strategy: Strategy::Abstract,
             repl: false,
+            line_numbers: false,
         }
     }
 }

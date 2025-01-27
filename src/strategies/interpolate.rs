@@ -1,7 +1,7 @@
 use log::{debug, info, warn};
 use z3::ast::Ast;
 
-use crate::{utils::run_smtinterpol, z3_var_context::Z3VarContext};
+use crate::{driver, utils::run_smtinterpol, z3_var_context::Z3VarContext};
 
 use super::{AbstractRefinementState, ProofStrategyExt};
 
@@ -13,7 +13,7 @@ impl ProofStrategyExt<AbstractRefinementState> for Interpolating {
         state: &mut AbstractRefinementState,
         _solver: &z3::Solver,
         z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<()> {
+    ) -> driver::Result<()> {
         let interpolants = run_smtinterpol(&state.smt);
         match interpolants {
             Ok(interps) => {
