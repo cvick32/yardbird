@@ -83,6 +83,15 @@ impl<'ctx, S> Driver<'ctx, S> {
     pub fn check_strategy(
         &mut self,
         target_depth: u8,
+        strat: Box<dyn ProofStrategy<'ctx, S>>,
+    ) -> Result<ProofLoopResult> {
+        let res = self.internal_check_strategy(target_depth, strat);
+        self.extensions.on_termination(res)
+    }
+
+    fn internal_check_strategy(
+        &mut self,
+        target_depth: u8,
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
     ) -> Result<ProofLoopResult> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
@@ -162,7 +171,7 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
         state: &mut S,
         solver: &z3::Solver,
         z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         for ext in &mut self.extensions {
             ext.unsat(state, solver, z3_var_context)?;
         }
@@ -170,7 +179,7 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
         Ok(())
     }
 
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> Result<()> {
         for ext in &mut self.extensions {
             ext.sat(state, solver)?;
         }
@@ -178,17 +187,23 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
         Ok(())
     }
 
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> Result<()> {
         for ext in &mut self.extensions {
             ext.unknown(state, solver)?;
         }
         Ok(())
     }
 
-    fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> anyhow::Result<()> {
+    fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> Result<()> {
         for ext in &mut self.extensions {
             ext.finish(model, state)?;
         }
         Ok(())
+    }
+
+    fn on_termination(&mut self, result: Result<ProofLoopResult>) -> Result<ProofLoopResult> {
+        self.extensions
+            .iter_mut()
+            .fold(result, |acc, ext| ext.on_termination(acc))
     }
 }

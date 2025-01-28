@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
 
     // build up set of extensions based on command line options
     if options.repl {
-        driver.add_extension(Repl);
+        driver.add_extension(Repl::default());
     }
 
     if options.interpolate {

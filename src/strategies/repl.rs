@@ -1,5 +1,6 @@
 use std::iter;
 
+use anyhow::anyhow;
 use dialoguer::{
     theme::{ColorfulTheme, SimpleTheme},
     MultiSelect, Select,
@@ -15,13 +16,19 @@ use smt2parser::vmt::VMTModel;
 
 use crate::{
     array_axioms::{not_equal, ArrayExpr, ArrayLanguage, ArrayPattern, ConditionalSearcher},
+    driver,
     strategies::{AbstractRefinementState, ProofStrategyExt},
+    ProofLoopResult,
 };
 
-pub struct Repl;
+#[derive(Default)]
+pub struct Repl {
+    continue_until_fail: bool,
+}
 
 enum Action {
     Continue,
+    ContinueUntilFail,
     Filter,
     Custom,
     Query,
@@ -29,6 +36,7 @@ enum Action {
 
 const ACTIONS: &[Action] = &[
     Action::Continue,
+    Action::ContinueUntilFail,
     Action::Filter,
     Action::Custom,
     Action::Query,
@@ -38,6 +46,7 @@ impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Action::Continue => write!(f, "Continue as normal"),
+            Action::ContinueUntilFail => write!(f, "Continue until fail"),
             Action::Filter => write!(f, "Filter instantiations"),
             Action::Custom => write!(f, "Enter custom instantiations"),
             Action::Query => write!(f, "Query egraph"),
@@ -94,7 +103,11 @@ impl ProofStrategyExt<AbstractRefinementState> for Repl {
         &mut self,
         _model: &mut VMTModel,
         state: &mut AbstractRefinementState,
-    ) -> anyhow::Result<()> {
+    ) -> driver::Result<()> {
+        if self.continue_until_fail {
+            return Ok(());
+        }
+
         println!("Found instantiations:");
         for (i, inst) in state.instantiations.iter().enumerate() {
             let index_str = format!("[{i}] ");
@@ -102,7 +115,7 @@ impl ProofStrategyExt<AbstractRefinementState> for Repl {
             println!("{index_str}{}", inst.pretty(80).split("\n").join(&spacing))
         }
 
-        let mut rl = Editor::new()?;
+        let mut rl = Editor::new().map_err(|e| anyhow!("{e}"))?;
         rl.set_helper(Some(ReplHelper::default()));
 
         let action = Select::with_theme(&ColorfulTheme::default())
@@ -114,6 +127,10 @@ impl ProofStrategyExt<AbstractRefinementState> for Repl {
 
         match ACTIONS[action] {
             Action::Continue => Ok(()),
+            Action::ContinueUntilFail => {
+                self.continue_until_fail = true;
+                Ok(())
+            }
             Action::Filter => {
                 if state.instantiations.is_empty() {
                     return Ok(());
@@ -150,6 +167,22 @@ impl ProofStrategyExt<AbstractRefinementState> for Repl {
                 }
             },
         }
+    }
+
+    fn on_termination(
+        &mut self,
+        result: driver::Result<ProofLoopResult>,
+    ) -> driver::Result<ProofLoopResult> {
+        // Ok, I will probably want to do some things here:
+        //  - maybe have an option to just retry from the start
+        //  - maybe query the final egraph
+        //  - examine currently found instantiations
+        //
+        // Ultimately the thing that I want is to be able to answer the question of why we
+        // didn't find some instantiation. Why do we sometimes find the necessary
+        // instantiation, and other times not. The idea is to have things in the repl that
+        // let us explore this question.
+        result
     }
 }
 

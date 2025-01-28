@@ -62,22 +62,29 @@ pub trait ProofStrategyExt<S> {
         state: &mut S,
         solver: &z3::Solver,
         z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<()> {
+    ) -> driver::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> anyhow::Result<()> {
+    fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> driver::Result<()> {
         Ok(())
+    }
+
+    fn on_termination(
+        &mut self,
+        result: driver::Result<ProofLoopResult>,
+    ) -> driver::Result<ProofLoopResult> {
+        result
     }
 }
