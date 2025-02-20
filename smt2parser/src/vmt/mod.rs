@@ -387,12 +387,12 @@ impl VMTModel {
             .collect()
     }
 
-    pub fn add_instantiation(&mut self, term: Term, instances: &mut Vec<String>) -> bool {
-        if instances.contains(&term.to_string()) {
+    pub fn add_instantiation(&mut self, term: Term, instances: &mut Vec<Term>) -> bool {
+        if instances.contains(&term) {
             debug!("ALREADY SEEN {} in {:?}", term, instances);
             return false;
         } else {
-            instances.push(term.to_string());
+            instances.push(term.clone());
         }
         debug!("USED INSTANCE: {}", term);
         self.initial_condition =
@@ -451,7 +451,7 @@ impl VMTModel {
             Some(fname) => fname,
             None => "out.vmt".into(),
         };
-        println!("creating: {filename}");
+        log::info!("creating: {filename}");
         let mut file = File::create(filename).unwrap();
 
         let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();

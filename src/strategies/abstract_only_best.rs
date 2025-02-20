@@ -4,12 +4,19 @@ use anyhow::anyhow;
 use egg::CostFunction;
 use itertools::Itertools;
 use log::info;
-use smt2parser::vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel};
+use smt2parser::{
+    concrete::Term,
+    vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel},
+};
 
 use crate::{
-    analysis::SaturationInequalities, array_axioms::ArrayLanguage,
-    cost_functions::symbol_cost::BestSymbolSubstitution, driver, egg_utils::Saturate,
-    z3_var_context::Z3VarContext, Error, ProofLoopResult,
+    analysis::SaturationInequalities,
+    array_axioms::{expr_to_term, ArrayExpr},
+    cost_functions::symbol_cost::BestSymbolSubstitution,
+    driver,
+    egg_utils::Saturate,
+    z3_var_context::Z3VarContext,
+    Error, ProofLoopResult,
 };
 
 use super::{AbstractRefinementState, ProofAction, ProofStrategy};
@@ -17,8 +24,8 @@ use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 /// Global state carried across different BMC depths
 #[derive(Default)]
 pub struct AbstractOnlyBest {
-    used_instantiations: Vec<String>,
-    const_instantiations: Vec<String>,
+    used_instantiations: Vec<Term>,
+    const_instantiations: Vec<Term>,
     bmc_depth: u8,
 }
 
@@ -79,11 +86,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             reads_writes: state.smt.get_reads_and_writes(),
         };
         let (insts, const_insts) = state.egraph.saturate(cost_fn.clone());
-        let insts: Vec<String> = insts
+        let insts: Vec<ArrayExpr> = insts
             .into_iter()
-            .map(|inst| inst.parse::<egg::RecExpr<ArrayLanguage>>().unwrap())
             .sorted_by_key(|rec_expr| cost_fn.cost_rec(rec_expr))
-            .map(|rec_expr| rec_expr.to_string())
             .collect();
         if let Some(inst) = insts.first() {
             state.instantiations.push(inst.clone());
@@ -98,19 +103,19 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         state: AbstractRefinementState,
     ) -> driver::Result<()> {
         self.const_instantiations
-            .extend_from_slice(&state.const_instantiations);
+            .extend(state.const_instantiations.iter().cloned().map(expr_to_term));
 
         let no_progress = state
             .instantiations
             .into_iter()
             // .inspect(|x| println!("x: {x}"))
-            .flat_map(|inst| inst.parse())
+            .map(expr_to_term)
             .map(QuantifiedInstantiator::rewrite_quantified)
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         let const_progress = state
             .const_instantiations
             .into_iter()
-            .flat_map(|inst| inst.parse())
+            .map(expr_to_term)
             .map(QuantifiedInstantiator::rewrite_quantified)
             .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
         if no_progress && const_progress {

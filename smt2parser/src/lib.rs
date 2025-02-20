@@ -26,6 +26,7 @@
 //! ```
 
 #![forbid(unsafe_code)]
+#![warn(clippy::print_stdout)]
 
 #[macro_use]
 extern crate pomelo;

@@ -24,7 +24,7 @@ impl ProofStrategyExt<AbstractRefinementState> for Repl {
         // replace instantiations with instantiations from selection
         state.instantiations = selection
             .into_iter()
-            .map(|i| state.instantiations[i].to_string())
+            .map(|i| state.instantiations[i].clone())
             .collect();
 
         Ok(())

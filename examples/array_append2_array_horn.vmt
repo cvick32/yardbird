@@ -1,9 +1,9 @@
-(declare-fun A () (Array Int Int))
-(declare-fun A_next () (Array Int Int))
-(define-fun .A () (Array Int Int) (! A :next A_next))
-(declare-fun I () Int)
-(declare-fun I_next () Int)
-(define-fun .I () Int (! I :next I_next))
+(declare-fun a () (Array Int Int))
+(declare-fun a_next () (Array Int Int))
+(define-fun .a () (Array Int Int) (! a :next a_next))
+(declare-fun i () Int)
+(declare-fun i_next () Int)
+(define-fun .i () Int (! i :next i_next))
 (declare-fun W () Int)
 (declare-fun W_next () Int)
 (define-fun .W () Int (! W :next W_next))
@@ -29,30 +29,32 @@
 (declare-fun Z_next () Int)
 (define-fun .Z () Int (! Z :next Z_next))
 
-(define-fun init-conditions () Bool (!
- (and
-(= I N)
-) :init true))
+(define-fun init-conditions () Bool
+            (!
+             (and
+              (= i N))
+             :init true))
 
-(define-fun trans-conditions () Bool (!
- (and
-(= (store A I W) A_next)
-(= (+ I 1) I_next)
-(< I (+ N M))
-(= W (select B (- I N)))
-(= B B_next)
-(= K K_next)
-(= M M_next)
-(= N N_next)
-(= P P_next)
-(= Q Q_next)
-(= Z Z_next)
-) :trans true))
+(define-fun trans-conditions () Bool
+            (!
+             (and
+              (= (store a i W) a_next)
+              (= (+ i 1) i_next)
+              (< i (+ N M))
+              (= W (select B (- i N)))
+              (= B B_next)
+              (= K K_next)
+              (= M M_next)
+              (= N N_next)
+              (= P P_next)
+              (= Q Q_next)
+              (= Z Z_next))
+             :trans true))
 
-(define-fun property () Bool (!
- (and
-(let ((a!1 (and (< K (+ N M)) (>= K N) (not (< I (+ N M)))))
-      (a!2 (not (= (select A K) (select B (- K N))))))
-  (=> a!1 (and (not a!2))))
-) :invar-property 0))
+(define-fun property () Bool
+            (!
+             (and
+              (=> (and (< K (+ N M)) (>= K N) (not (< i (+ N M))))
+                  (and (= (select a K) (select B (- K N))))))
+             :invar-property 0))
 

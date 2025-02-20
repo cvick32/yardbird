@@ -1,5 +1,6 @@
+use itertools::Itertools;
 use log::info;
-use smt2parser::vmt::VMTModel;
+use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
@@ -9,15 +10,15 @@ use crate::{
 #[derive(Debug)]
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
-    pub used_instances: Vec<String>,
-    pub const_instances: Vec<String>,
+    pub used_instances: Vec<Term>,
+    pub const_instances: Vec<Term>,
     pub counterexample: bool,
 }
 
 #[derive(Debug)]
 pub struct Driver<'ctx, S> {
-    pub used_instances: Vec<String>,
-    pub const_instances: Vec<String>,
+    pub used_instances: Vec<Term>,
+    pub const_instances: Vec<Term>,
     pub vmt_model: VMTModel,
     context: &'ctx z3::Context,
     extensions: DriverExtensions<'ctx, S>,
@@ -28,10 +29,16 @@ pub enum Error {
     #[error("Found counter-example")]
     Counterexample,
 
-    #[error("No progress at depth {depth}\nUsed Instantiations:\n{instantiations:#?}")]
+    #[error(
+        "No progress at depth {depth}\nUsed Instantiations:\n{insts}",
+        insts = instantiations
+            .iter()
+            .map(|inst| format!(" - {inst}"))
+            .join("\n")
+    )]
     NoProgress {
         depth: u8,
-        instantiations: Vec<String>,
+        instantiations: Vec<Term>,
     },
 
     #[error("Hit refinement limit of {n_refines} at depth {depth}")]

@@ -220,6 +220,7 @@ function ExpandToggle() {
               compare: artifactMatch?.search.compare ?? "",
               filter: artifactMatch?.search.filter ?? "",
               expand: !artifactMatch?.search.expand,
+              strategy: "abstract",
             },
           })
         }
@@ -254,6 +255,7 @@ function BackLink() {
                 compare: "",
                 filter: "",
                 expand: false,
+                strategy: "abstract",
               }}
               className="flex flex-row items-center gap-1 text-lg text-blue-500 hover:text-blue-600 hover:underline dark:text-blue-400 dark:hover:text-blue-500"
             >

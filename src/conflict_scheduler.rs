@@ -4,7 +4,11 @@ use egg::{Analysis, Language};
 use itertools::Itertools;
 use log::{debug, info};
 
-use crate::{array_axioms::ArrayLanguage, egg_utils::RecExprRoot, extractor::TermExtractor};
+use crate::{
+    array_axioms::{ArrayExpr, ArrayLanguage},
+    egg_utils::RecExprRoot,
+    extractor::TermExtractor,
+};
 
 pub struct ConflictScheduler<S, CF>
 where
@@ -16,8 +20,8 @@ where
     /// `Rc<RefCell<...>>` here because the scheduler isn't public on `egg::Runner`. So
     /// in order to be able to get data out of the scheduler after a saturation run, we
     /// need to use interior mutability.
-    instantiations: Rc<RefCell<Vec<String>>>,
-    instantiations_w_constants: Rc<RefCell<Vec<String>>>,
+    instantiations: Rc<RefCell<Vec<ArrayExpr>>>,
+    instantiations_w_constants: Rc<RefCell<Vec<ArrayExpr>>>,
     pub cost_fn: CF,
     extractor: TermExtractor<CF>,
 }
@@ -36,11 +40,11 @@ where
         }
     }
 
-    pub fn instantiations(&self) -> Rc<RefCell<Vec<String>>> {
+    pub fn instantiations(&self) -> Rc<RefCell<Vec<ArrayExpr>>> {
         Rc::clone(&self.instantiations)
     }
 
-    pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<String>>> {
+    pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ArrayExpr>>> {
         Rc::clone(&self.instantiations_w_constants)
     }
 }
@@ -114,16 +118,20 @@ where
                                 new_rhs.pretty(80)
                             );
 
-                            let instantiation =
+                            let instantiation: ArrayExpr =
                                 if rewrite.name.as_str() == "write-does-not-overwrite" {
-                                    let expr1 = memo[&"?c".parse::<egg::Var>().unwrap()].clone();
-                                    let expr2 = memo[&"?idx".parse::<egg::Var>().unwrap()].clone();
-                                    format!(
-                                        "(=> (not (= {} {})) (= {} {}))",
-                                        expr1, expr2, new_lhs, new_rhs
+                                    let expr1 = &memo[&"?c".parse::<egg::Var>().unwrap()];
+                                    let expr2 = &memo[&"?idx".parse::<egg::Var>().unwrap()];
+                                    // construct: (=> (not (= {} {})) (= {} {}))
+                                    ArrayLanguage::not_implies(
+                                        &ArrayLanguage::equals(
+                                            &unpatternify(expr1.clone()),
+                                            &unpatternify(expr2.clone()),
+                                        ),
+                                        &ArrayLanguage::equals(&new_lhs, &new_rhs),
                                     )
                                 } else {
-                                    format!("(= {} {})", new_lhs, new_rhs)
+                                    ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
 
                             let cost = self.cost_fn.cost_rec(&new_rhs);
