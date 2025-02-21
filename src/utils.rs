@@ -8,6 +8,19 @@ use std::{
 
 static INTERPOLANT_FILENAME: &str = "interpolant-out.smt2";
 
+pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to execute command: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
 pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Error> {
     let interpolant_problem = smt_problem.to_smtinterpol();
     let mut temp_file = File::create(INTERPOLANT_FILENAME)?;

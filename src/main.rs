@@ -4,7 +4,7 @@ use clap::Parser;
 use itertools::Itertools;
 use log::info;
 use yardbird::{
-    logger, model_from_options,
+    ic3ia, logger, model_from_options,
     strategies::{Interpolating, Repl},
     Driver, YardbirdOptions,
 };
@@ -41,8 +41,16 @@ fn main() -> anyhow::Result<()> {
             .join("\n")
     );
 
-    if options.print_vmt {
-        if let Some(model) = res.model {
+    if let Some(model) = res.model {
+        if options.invoke_ic3ia {
+            let result = ic3ia::call_ic3ia(model.clone());
+            match result {
+                Ok(s) => log::info!("  ... IC3IA OK, output \n{s}\n"),
+                Err(s) => log::info!(" ... IC3IA ERROR, output\n{s}\n"),
+            }
+        }
+
+        if options.print_vmt {
             let mut output = File::create("instantiated.vmt").unwrap();
             let _ = output.write(model.as_vmt_string().as_bytes());
         }

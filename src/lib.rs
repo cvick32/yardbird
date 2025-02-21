@@ -21,6 +21,7 @@ pub mod strategies;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;
+pub mod ic3ia;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -51,6 +52,10 @@ pub struct YardbirdOptions {
     /// Interactive mode.
     #[arg(long, default_value_t = false)]
     pub repl: bool,
+
+    // Invoke IC3IA
+    #[arg(long, default_value_t = false)]
+    pub invoke_ic3ia : bool,
 }
 
 impl Default for YardbirdOptions {
@@ -63,6 +68,7 @@ impl Default for YardbirdOptions {
             interpolate: false,
             strategy: Strategy::Abstract,
             repl: false,
+            invoke_ic3ia: false,
         }
     }
 }
