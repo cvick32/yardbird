@@ -1,10 +1,12 @@
 mod r#abstract;
+mod abstract_inductive_check;
 mod abstract_only_best;
 mod concrete;
 mod interpolate;
 mod proof_strategy;
 mod repl;
 
+pub use abstract_inductive_check::AbstractInductiveCheck;
 pub use abstract_only_best::AbstractOnlyBest;
 pub use concrete::ConcreteZ3;
 pub use interpolate::Interpolating;

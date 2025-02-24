@@ -6,7 +6,10 @@ use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::Serialize;
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, AbstractOnlyBest, AbstractRefinementState, ConcreteZ3, ProofStrategy};
+use strategies::{
+    Abstract, AbstractInductiveCheck, AbstractOnlyBest, AbstractRefinementState, ConcreteZ3,
+    ProofStrategy,
+};
 
 pub mod analysis;
 pub mod array_axioms;
@@ -34,10 +37,6 @@ pub struct YardbirdOptions {
     #[arg(short, long, default_value_t = 10)]
     pub depth: u8,
 
-    /// How many times BMC should be UNSAT until we check with an invariant generator.
-    #[arg(short, long, default_value_t = 1)]
-    pub bmc_count: usize,
-
     /// Output VMT files before and after instantiation.
     #[arg(short, long, default_value_t = false)]
     pub print_vmt: bool,
@@ -63,7 +62,6 @@ impl Default for YardbirdOptions {
         YardbirdOptions {
             filename: "".into(),
             depth: 10,
-            bmc_count: 1,
             print_vmt: false,
             interpolate: false,
             strategy: Strategy::Abstract,
@@ -84,6 +82,7 @@ impl YardbirdOptions {
     pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
         match self.strategy {
             Strategy::Abstract => Box::new(Abstract::new(self.depth)),
+            Strategy::AbstractInductiveCheck => Box::new(AbstractInductiveCheck::new(self.depth)),
             Strategy::AbstractOnlyBest => Box::new(AbstractOnlyBest::new(self.depth)),
             Strategy::Concrete => Box::new(ConcreteZ3::default()),
         }
@@ -105,6 +104,7 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     Abstract,
+    AbstractInductiveCheck,
     AbstractOnlyBest,
     Concrete,
 }

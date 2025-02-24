@@ -51,10 +51,7 @@ impl SMTProblem {
                 term,
                 attributes: _,
             } => term.clone().accept(builder).unwrap(),
-            _ => panic!(
-                "{}",
-                "Assertion must be a Term::Atrributes! One of {{init, trans, invar-prop}}"
-            ),
+            _ => no_let_condition.clone().accept(builder).unwrap(),
         };
         self.init_and_trans_assertions.push(rewritten_condition);
     }
@@ -99,7 +96,7 @@ impl SMTProblem {
         assert_terms
     }
 
-    pub fn to_bmc(&self) -> String {
+    pub fn to_bmc(&self, assert_property_negation: bool) -> String {
         let sort_names = self
             .sorts
             .iter()
@@ -125,7 +122,13 @@ impl SMTProblem {
             .collect::<Vec<String>>()
             .join("\n");
         let property_assert = match &self.property_assertion {
-            Some(prop) => assert_negation(prop),
+            Some(prop) => {
+                if assert_property_negation {
+                    assert_negation(prop)
+                } else {
+                    assert_term(prop)
+                }
+            }
             None => String::new(),
         };
         format!(

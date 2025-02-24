@@ -11,7 +11,9 @@ use utils::{get_and_terms, get_transition_system_component, get_variables_action
 use variable::Variable;
 
 use crate::{
-    concrete::{self, Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term},
+    concrete::{
+        self, Command, FunctionDec, Identifier, QualIdentifier, Sort, Symbol, SyntaxBuilder, Term,
+    },
     constant_abstraction::ConstantAbstractor,
     CommandStream,
 };
@@ -455,6 +457,70 @@ impl VMTModel {
         let mut file = File::create(filename).unwrap();
 
         let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();
+    }
+
+    /// Return the initiation check for the property.
+    pub fn initiation_check(&self) -> SMTProblem {
+        let mut builder = BMCBuilder {
+            visitor: SyntaxBuilder,
+            current_variables: self.get_all_current_variable_names(),
+            next_variables: self.get_next_to_current_varible_names(),
+            step: 0,
+        };
+        let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
+        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        let initiation = Term::Application {
+            qual_identifier: QualIdentifier::Simple {
+                identifier: Identifier::Simple {
+                    symbol: Symbol("=>".into()),
+                },
+            },
+            arguments: vec![
+                self.initial_condition.clone(),
+                self.property_condition.clone(),
+            ],
+        };
+        smt_problem.add_assertion(&initiation, &mut builder);
+        smt_problem
+    }
+
+    /// Return the consectution check for the property.
+    pub fn consecution_check(&self) -> SMTProblem {
+        let mut builder = BMCBuilder {
+            visitor: SyntaxBuilder,
+            current_variables: self.get_all_current_variable_names(),
+            next_variables: self.get_next_to_current_varible_names(),
+            step: 0,
+        };
+        let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
+
+        let lhs_consecution = Term::Application {
+            qual_identifier: QualIdentifier::Simple {
+                identifier: Identifier::Simple {
+                    symbol: Symbol("and".into()),
+                },
+            },
+            arguments: vec![
+                self.transition_condition.clone(),
+                self.property_condition.clone(),
+            ],
+        };
+        //smt_problem.add_assertion(&lhs_consecution, &mut builder);
+        builder.add_step();
+
+        let consecution = Term::Application {
+            qual_identifier: QualIdentifier::Simple {
+                identifier: Identifier::Simple {
+                    symbol: Symbol("=>".into()),
+                },
+            },
+            arguments: vec![lhs_consecution.clone(), self.property_condition.clone()],
+        };
+
+        // Don't forget the variable definitions at time `length`.
+        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_assertion(&consecution, &mut builder);
+        smt_problem
     }
 }
 

@@ -251,7 +251,6 @@ fn main() -> anyhow::Result<()> {
                             YardbirdOptions {
                                 filename: filename.clone(),
                                 depth: options.depth,
-                                bmc_count: 10,
                                 print_vmt: false,
                                 interpolate: false,
                                 repl: false,

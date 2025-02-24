@@ -96,7 +96,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 let smt = self.vmt_model.unroll(depth);
                 let solver = z3::Solver::new(self.context);
                 let z3_var_context = Z3VarContext::from(self.context, &smt);
-                solver.from_string(smt.to_bmc());
+                solver.from_string(smt.to_bmc(true));
 
                 let mut state = strat.setup(smt, depth)?;
 
