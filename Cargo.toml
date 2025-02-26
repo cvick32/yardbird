@@ -15,6 +15,7 @@ env_logger = "0.11.5"
 itertools = "0.13.0"
 log = "0.4.22"
 rand = "0.8.5"
+rerun = "0.22.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 smt2parser = { workspace = true }

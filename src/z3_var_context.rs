@@ -102,7 +102,7 @@ impl<'ctx> Z3VarContext<'ctx> {
                         .unwrap();
                     function_definition.apply(argument_values)
                 } else {
-                    self.call_z3_function(function_name, argument_values)
+                    self.call_z3_function(function_name.as_str(), argument_values)
                 }
             }
             Term::Let {
