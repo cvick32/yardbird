@@ -160,102 +160,117 @@ impl<'ctx> Z3VarContext<'ctx> {
     /// the application of the function with the given arguments.
     fn call_z3_function(
         &self,
-        function_name: String,
+        function_name: &str,
         argument_values: Vec<Dynamic<'ctx>>,
     ) -> Dynamic<'_> {
-        if function_name == "+" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::add(self.context, &int_ref_args).into()
-        } else if function_name == "-" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::sub(self.context, &int_ref_args).into()
-        } else if function_name == "*" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::mul(self.context, &int_ref_args).into()
-        } else if function_name == "/" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::div(&args[0], &args[1]).into()
-        } else if function_name == "mod" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::modulo(&args[0], &args[1]).into()
-        } else if function_name == "<=" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::le(&args[0], &args[1]).into()
-        } else if function_name == "<" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::lt(&args[0], &args[1]).into()
-        } else if function_name == ">=" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::ge(&args[0], &args[1]).into()
-        } else if function_name == ">" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::gt(&args[0], &args[1]).into()
-        } else if function_name == "=" {
-            argument_values[0]._eq(&argument_values[1]).into()
-        } else if function_name == "=>" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_bool().expect("Not a bool"))
-                .collect::<Vec<_>>();
-            z3::ast::Bool::implies(&args[0], &args[1]).into()
-        } else if function_name == "and" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_bool().expect("Not a bool"))
-                .collect::<Vec<_>>();
-            let ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Bool::and(self.context, &ref_args).into()
-        } else if function_name == "or" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_bool().expect("Not a bool"))
-                .collect::<Vec<_>>();
-            let ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Bool::or(self.context, &ref_args).into()
-        } else if function_name == "ite" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_bool().expect("Not a bool"))
-                .collect::<Vec<_>>();
-            args[0].ite(&args[1], &args[2]).into()
-        } else if function_name == "not" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_bool().expect("Not a bool"))
-                .collect::<Vec<_>>();
-            z3::ast::Bool::not(&args[0]).into()
-        } else {
-            todo!("Add Z3 function: {function_name}");
+        match function_name {
+            "+" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                let int_ref_args = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::add(self.context, &int_ref_args).into()
+            }
+            "-" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                let int_ref_args = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::sub(self.context, &int_ref_args).into()
+            }
+            "*" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                let int_ref_args = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::mul(self.context, &int_ref_args).into()
+            }
+            "/" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                z3::ast::Int::div(&args[0], &args[1]).into()
+            }
+            "mod" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                z3::ast::Int::modulo(&args[0], &args[1]).into()
+            }
+            "<=" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                z3::ast::Int::le(&args[0], &args[1]).into()
+            }
+            "<" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                z3::ast::Int::lt(&args[0], &args[1]).into()
+            }
+            ">=" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                z3::ast::Int::ge(&args[0], &args[1]).into()
+            }
+            ">" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_int().expect("Not an int"))
+                    .collect::<Vec<_>>();
+                z3::ast::Int::gt(&args[0], &args[1]).into()
+            }
+            "=" => argument_values[0]._eq(&argument_values[1]).into(),
+            "=>" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_bool().expect("Not a bool"))
+                    .collect::<Vec<_>>();
+                z3::ast::Bool::implies(&args[0], &args[1]).into()
+            }
+            "and" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_bool().expect("Not a bool"))
+                    .collect::<Vec<_>>();
+                let ref_args = args.iter().collect::<Vec<_>>();
+                z3::ast::Bool::and(self.context, &ref_args).into()
+            }
+            "or" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_bool().expect("Not a bool"))
+                    .collect::<Vec<_>>();
+                let ref_args = args.iter().collect::<Vec<_>>();
+                z3::ast::Bool::or(self.context, &ref_args).into()
+            }
+            "ite" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_bool().expect("Not a bool"))
+                    .collect::<Vec<_>>();
+                args[0].ite(&args[1], &args[2]).into()
+            }
+            "not" => {
+                let args = argument_values
+                    .iter()
+                    .map(|x| x.as_bool().expect("Not a bool"))
+                    .collect::<Vec<_>>();
+                z3::ast::Bool::not(&args[0]).into()
+            }
+            _ => {
+                todo!("Add Z3 function: {function_name}");
+            }
         }
     }
 }
