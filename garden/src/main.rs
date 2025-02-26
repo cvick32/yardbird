@@ -256,6 +256,7 @@ fn main() -> anyhow::Result<()> {
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
+                                invoke_ic3ia: false,
                             },
                             options.retry,
                         )
