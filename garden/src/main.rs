@@ -10,7 +10,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
+use yardbird::{ic3ia, model_from_options, Driver, ProofLoopResult, YardbirdOptions};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -24,7 +24,7 @@ struct Options {
 
     /// Timeout for each benchmark
     #[arg(short, long, default_value_t = 30)]
-    pub timeout: usize,
+    pub timeout: u64,
 
     /// Benchmarks to include.
     #[arg(short, long)]
@@ -37,6 +37,10 @@ struct Options {
     /// Optionally a file to output results to.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// After BMC, call ic3ia.
+    #[arg(long, default_value_t = false)]
+    pub invoke_ic3ia: bool,
 
     /// Should we write out pretty json?
     #[arg(short, long)]
@@ -54,6 +58,7 @@ struct Options {
 struct SerializableProofResult {
     pub used_instances: Vec<String>,
     pub const_instances: Vec<String>,
+    pub ic3ia_out: String,
 }
 
 impl From<ProofLoopResult> for SerializableProofResult {
@@ -69,6 +74,7 @@ impl From<ProofLoopResult> for SerializableProofResult {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
+            ic3ia_out: value.ic3ia_result,
         }
     }
 }
@@ -136,6 +142,7 @@ where
                 BenchmarkResult::NoProgress(SerializableProofResult {
                     used_instances: instantiations.iter().map(ToString::to_string).collect(),
                     const_instances: vec![],
+                    ic3ia_out: "Couldn't finish eliminating abstract counterexamples".into(),
                 })
             }
             Err(err) => BenchmarkResult::Error(format!("{err}")),
@@ -146,7 +153,11 @@ where
     }
 }
 
-fn run_single(options: YardbirdOptions, retry: usize) -> anyhow::Result<StrategyResult> {
+fn run_single(
+    options: YardbirdOptions,
+    timeout: u64,
+    retry: usize,
+) -> anyhow::Result<StrategyResult> {
     let mut status_code = None;
     let mut timed_out_count = 0;
     let mut run_time = Duration::default();
@@ -167,9 +178,17 @@ fn run_single(options: YardbirdOptions, retry: usize) -> anyhow::Result<Strategy
                 let ctx = z3::Context::new(&z3::Config::new());
                 let mut driver = Driver::new(&ctx, abstract_vmt_model);
                 let strategy = options.build_strategy();
-                driver.check_strategy(proof_options.depth, strategy)
+                let result = driver.check_strategy(proof_options.depth, strategy);
+                if options.invoke_ic3ia {
+                    let mut strat_result = result.unwrap().clone();
+                    strat_result.ic3ia_result =
+                        ic3ia::call_ic3ia(strat_result.model.clone().unwrap()).unwrap();
+                    Ok(strat_result.clone())
+                } else {
+                    result
+                }
             },
-            Duration::from_secs(20 + (timed_out_count * 5)),
+            Duration::from_secs(timeout + (timed_out_count * 5)),
         ));
         run_time = now.elapsed();
         // TODO: this is really a hack to try and mitigate z3 model randomness
@@ -256,8 +275,9 @@ fn main() -> anyhow::Result<()> {
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
-                                invoke_ic3ia: false,
+                                invoke_ic3ia: options.invoke_ic3ia,
                             },
+                            options.timeout,
                             options.retry,
                         )
                     })

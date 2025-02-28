@@ -134,6 +134,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             used_instances: mem::take(&mut self.used_instantiations),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
+            ic3ia_result: "".into(),
         }
     }
 }

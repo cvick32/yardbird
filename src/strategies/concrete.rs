@@ -62,6 +62,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             used_instances: vec![],
             const_instances: vec![],
             counterexample: true,
+            ic3ia_result: "".into(),
         }
     }
 }

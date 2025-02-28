@@ -7,12 +7,13 @@ use crate::{
     z3_var_context::Z3VarContext,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
     pub used_instances: Vec<Term>,
     pub const_instances: Vec<Term>,
     pub counterexample: bool,
+    pub ic3ia_result: String,
 }
 
 #[derive(Debug)]
