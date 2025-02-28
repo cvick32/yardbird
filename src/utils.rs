@@ -5,6 +5,7 @@ use std::{
     io::{Error, Write},
     process::Command,
 };
+use z3::ast::{Ast, Dynamic};
 
 static INTERPOLANT_FILENAME: &str = "interpolant-out.smt2";
 
@@ -61,4 +62,23 @@ pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Err
         _ => panic!("Sequent interpolant is not `and` application."),
     };
     Ok(interpolants)
+}
+
+pub fn _interpolant_formula_to_2_d_points(
+    interpolant_formula: &Dynamic<'_>,
+    x: f32,
+    y: f32,
+) -> Vec<(f32, f32)> {
+    if !interpolant_formula.is_app() {
+        vec![(x + 1.0, y)]
+    } else {
+        let args = interpolant_formula.children();
+        let mut counter = y;
+        args.iter()
+            .flat_map(|arg| {
+                counter += 1.0;
+                _interpolant_formula_to_2_d_points(arg, x, counter)
+            })
+            .collect::<Vec<(f32, f32)>>()
+    }
 }
