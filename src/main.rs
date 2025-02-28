@@ -45,8 +45,8 @@ fn main() -> anyhow::Result<()> {
         if options.invoke_ic3ia {
             let result = ic3ia::call_ic3ia(model.clone());
             match result {
-                Ok(s) => log::info!("  ... IC3IA OK, output \n{s}\n"),
-                Err(s) => log::info!(" ... IC3IA ERROR, output\n{s}\n"),
+                Ok(s) => log::info!("IC3IA OK:\n{s}\n"),
+                Err(s) => log::info!("IC3IA ERROR:\n{s}\n"),
             }
         }
 
