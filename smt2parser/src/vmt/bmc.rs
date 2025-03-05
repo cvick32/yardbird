@@ -20,6 +20,10 @@ impl BMCBuilder {
         }
     }
 
+    pub fn set_step(&mut self, depth: u8) {
+        self.step = depth;
+    }
+
     pub fn add_step(&mut self) {
         self.step += 1;
     }

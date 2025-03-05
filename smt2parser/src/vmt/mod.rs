@@ -13,6 +13,7 @@ use variable::Variable;
 use crate::{
     concrete::{self, Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term},
     constant_abstraction::ConstantAbstractor,
+    let_extract::LetExtract,
     CommandStream,
 };
 
@@ -232,16 +233,26 @@ impl VMTModel {
         smt_problem
     }
 
-    pub fn get_initial_condition(&self) -> Term {
-        self.initial_condition.clone()
+    pub fn get_initial_condition_for_yardbird(&self) -> Term {
+        self.unwrap_attributes(&self.initial_condition)
     }
 
-    pub fn get_trans_condition(&self) -> Term {
-        self.transition_condition.clone()
+    pub fn get_trans_condition_for_yardbird(&self) -> Term {
+        self.unwrap_attributes(&self.transition_condition)
     }
 
-    pub fn get_property(&self) -> Term {
-        self.property_condition.clone()
+    pub fn get_property_for_yardbird(&self) -> Term {
+        self.unwrap_attributes(&self.property_condition)
+    }
+
+    fn unwrap_attributes(&self, attribute_term: &Term) -> Term {
+        match attribute_term {
+            Term::Attributes {
+                term,
+                attributes: _,
+            } => LetExtract::substitute(*term.clone()),
+            _ => panic!("Ill-formatted VMT condition: {}", self.initial_condition),
+        }
     }
 
     pub fn get_initial_term(&self) -> SMTProblem {

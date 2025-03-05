@@ -26,11 +26,12 @@ impl<'ctx> SMTProblem<'ctx> {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let mut smt = SMTProblem {
-            init_assertion: vmt_model.get_initial_condition(),
-            trans_assertion: vmt_model.get_trans_condition(),
+            init_assertion: vmt_model.get_initial_condition_for_yardbird(),
+            trans_assertion: vmt_model.get_trans_condition_for_yardbird(),
             instantiations: vec![],
             subterms: vec![],
-            property_assertion: vmt_model.get_property(),
+            depth: 0,
+            property_assertion: vmt_model.get_property_for_yardbird(),
             bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
             variables: vmt_model.get_state_holding_variables(),
             solver: z3::Solver::new(context),
