@@ -15,6 +15,7 @@ pub struct SMTProblem<'ctx> {
     bmc_builder: BMCBuilder,
     init_assertion: Term,
     trans_assertion: Term,
+    depth: u8,
     instantiations: Vec<Term>,
     subterms: Vec<Term>,
     property_assertion: Term,
@@ -37,14 +38,22 @@ impl<'ctx> SMTProblem<'ctx> {
             solver: z3::Solver::new(context),
             z3_var_context: Z3VarContext::new(context),
         };
-        // Add in initial 0-step variables.
-        smt.add_z3_variables();
-        smt.add_assertion();
+
+        // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.
+        for variable in &smt.variables {
+            let bmc_variable = variable
+                .current
+                .clone()
+                .accept(&mut smt.bmc_builder)
+                .unwrap();
+            let _ = bmc_variable.accept(&mut smt.z3_var_context);
+        }
         smt
     }
 
     /// Adds in all variables at the current depth that is recorded in self.bmc_builder.
     fn add_z3_variables(&mut self) {
+        self.bmc_builder.set_step(self.depth + 1);
         for variable in &self.variables {
             let bmc_variable = variable
                 .current
@@ -55,12 +64,13 @@ impl<'ctx> SMTProblem<'ctx> {
         }
     }
 
-    pub fn get_model(&self) -> z3::Model {
-        self.solver.get_model().unwrap()
+    pub fn get_model(&self) -> Option<z3::Model> {
+        self.solver.get_model()
     }
 
     fn add_assertion(&mut self) {
-        if self.bmc_builder.step == 0 {
+        self.bmc_builder.set_step(self.depth);
+        if self.depth == 0 {
             let init = self
                 .init_assertion
                 .clone()
@@ -68,15 +78,14 @@ impl<'ctx> SMTProblem<'ctx> {
                 .unwrap();
             let z3_init = self.z3_var_context.rewrite_term(&init);
             self.solver.assert(&z3_init.as_bool().unwrap());
-        } else {
-            let trans = self
-                .trans_assertion
-                .clone()
-                .accept(&mut self.bmc_builder)
-                .unwrap();
-            let z3_trans = self.z3_var_context.rewrite_term(&trans);
-            self.solver.assert(&z3_trans.as_bool().unwrap());
         }
+        let trans = self
+            .trans_assertion
+            .clone()
+            .accept(&mut self.bmc_builder)
+            .unwrap();
+        let z3_trans = self.z3_var_context.rewrite_term(&trans);
+        self.solver.assert(&z3_trans.as_bool().unwrap());
     }
 
     // All instantiations have been added self.current_depth number of times when
@@ -84,14 +93,14 @@ impl<'ctx> SMTProblem<'ctx> {
     // one more time.
     pub(crate) fn unroll_once(&mut self, depth: u8) {
         // Set new depth.
-        self.bmc_builder.add_step();
+        self.depth = depth;
         // Add new variables to Z3VarContext for depth.
         self.add_z3_variables();
 
         // Popping old property off.
         self.solver.pop(1);
 
-        // Add assertion for depth.
+        // Add assertion for current depth.
         self.add_assertion();
 
         // Add instantiations for depth.
@@ -100,6 +109,7 @@ impl<'ctx> SMTProblem<'ctx> {
 
         // Push property back on top of the solver.
         self.push_property();
+        self.bmc_builder.set_step(depth);
     }
 
     pub(crate) fn add_instantiations(&mut self, instantiations: Vec<Term>) {
@@ -111,19 +121,21 @@ impl<'ctx> SMTProblem<'ctx> {
         self.push_property();
     }
 
-    pub(crate) fn check(&self) -> z3::SatResult {
+    pub(crate) fn check(&mut self) -> z3::SatResult {
         self.solver.check()
     }
 
     fn push_property(&mut self) {
+        self.bmc_builder.set_step(self.depth + 1);
         self.solver.push();
         let prop = self
             .property_assertion
             .clone()
             .accept(&mut self.bmc_builder)
             .unwrap();
-        let z3_prop = self.z3_var_context.rewrite_term(&prop);
-        self.solver.assert(&z3_prop.as_bool().unwrap());
+        let z3_prop_negated =
+            z3::ast::Bool::not(&self.z3_var_context.rewrite_term(&prop).as_bool().unwrap());
+        self.solver.assert(&z3_prop_negated);
     }
 
     fn unroll_instantiation(&self, inst: &Term) {
@@ -155,6 +167,10 @@ impl<'ctx> SMTProblem<'ctx> {
     }
 
     pub(crate) fn get_all_subterms(&self) -> Vec<Term> {
+        todo!()
+    }
+
+    pub(crate) fn to_smtinterpol(&self) -> String {
         todo!()
     }
 }
