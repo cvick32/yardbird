@@ -26,7 +26,7 @@ static INITIAL_ATTRIBUTE: &str = "init";
 mod action;
 mod array_abstractor;
 mod axiom;
-mod bmc;
+pub mod bmc;
 pub mod canonicalize_boolean;
 mod frame_num_getter;
 mod instantiator;
@@ -232,6 +232,18 @@ impl VMTModel {
         smt_problem
     }
 
+    pub fn get_initial_condition(&self) -> Term {
+        self.initial_condition.clone()
+    }
+
+    pub fn get_trans_condition(&self) -> Term {
+        self.transition_condition.clone()
+    }
+
+    pub fn get_property(&self) -> Term {
+        self.property_condition.clone()
+    }
+
     pub fn get_initial_term(&self) -> SMTProblem {
         let mut builder = BMCBuilder {
             visitor: SyntaxBuilder,
@@ -347,7 +359,7 @@ impl VMTModel {
             .join("\n")
     }
 
-    fn get_all_current_variable_names(&self) -> Vec<String> {
+    pub fn get_all_current_variable_names(&self) -> Vec<String> {
         let mut state_variable_names: Vec<String> = self
             .state_variables
             .iter()
@@ -362,7 +374,7 @@ impl VMTModel {
         state_variable_names
     }
 
-    fn get_next_to_current_varible_names(&self) -> HashMap<String, String> {
+    pub fn get_next_to_current_varible_names(&self) -> HashMap<String, String> {
         self.state_variables
             .iter()
             .map(|var| {

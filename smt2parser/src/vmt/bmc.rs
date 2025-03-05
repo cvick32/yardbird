@@ -11,6 +11,15 @@ pub struct BMCBuilder {
 }
 
 impl BMCBuilder {
+    pub fn new(current_variables: Vec<String>, next_variables: HashMap<String, String>) -> Self {
+        BMCBuilder {
+            visitor: SyntaxBuilder,
+            current_variables,
+            next_variables,
+            step: 0,
+        }
+    }
+
     pub fn add_step(&mut self) {
         self.step += 1;
     }
