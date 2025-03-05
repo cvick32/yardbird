@@ -40,13 +40,17 @@ pub struct Z3VarContext<'ctx> {
 }
 
 impl<'ctx> Z3VarContext<'ctx> {
-    pub fn from(context: &'ctx Context, smt: &SMTProblem) -> Self {
-        let mut var_context = Z3VarContext {
+    pub(crate) fn new(context: &'ctx Context) -> Self {
+        Z3VarContext {
             builder: SyntaxBuilder,
             context,
             var_name_to_z3_term: HashMap::new(),
             function_name_to_z3_function: HashMap::new(),
-        };
+        }
+    }
+
+    pub fn from(context: &'ctx Context, smt: &SMTProblem) -> Self {
+        let mut var_context = Z3VarContext::new(context);
         for var_def in smt.get_variable_definitions() {
             let _ = var_def.accept(&mut var_context);
         }
@@ -254,6 +258,15 @@ impl<'ctx> Z3VarContext<'ctx> {
                 .map(|x| x.as_bool().expect("Not a bool"))
                 .collect::<Vec<_>>();
             z3::ast::Bool::not(&args[0]).into()
+        } else if function_name == "select" {
+            let arr = argument_values[0].as_array().expect("Not an array");
+            let idx = argument_values[1].clone();
+            z3::ast::Array::select(&arr, &idx)
+        } else if function_name == "store" {
+            let arr = argument_values[0].as_array().expect("Not an array");
+            let idx = argument_values[1].clone();
+            let val = argument_values[2].clone();
+            z3::ast::Array::store(&arr, &idx, &val).into()
         } else {
             todo!("Add Z3 function: {function_name}");
         }

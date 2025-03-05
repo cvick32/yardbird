@@ -4,12 +4,12 @@ use anyhow::anyhow;
 use egg::CostFunction;
 use itertools::Itertools;
 use log::info;
-use smt2parser::vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel};
+use smt2parser::vmt::{QuantifiedInstantiator, VMTModel};
 
 use crate::{
     analysis::SaturationInequalities, array_axioms::ArrayLanguage,
     cost_functions::symbol_cost::BestSymbolSubstitution, driver, egg_utils::Saturate,
-    z3_var_context::Z3VarContext, Error, ProofLoopResult,
+    smt_problem::SMTProblem, Error, ProofLoopResult,
 };
 
 use super::{AbstractRefinementState, ProofAction, ProofStrategy};
@@ -38,7 +38,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
             if let Ok(parsed) = &term.to_string().parse() {
@@ -46,7 +46,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             }
         }
         Ok(AbstractRefinementState {
-            smt,
             depth,
             egraph,
             instantiations: vec![],
@@ -57,7 +56,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
     fn unsat(
         &mut self,
         state: &mut AbstractRefinementState,
-        _solver: &z3::Solver,
+        _solver: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -66,17 +65,16 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
     fn sat(
         &mut self,
         state: &mut AbstractRefinementState,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
+        smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
-        let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
-        state.update_with_subterms(&model, z3_var_context)?;
+        let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
+        state.update_with_subterms(&model, smt)?;
         state.egraph.rebuild();
         let mut cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
-            transition_system_terms: state.smt.get_transition_system_subterms(),
-            property_terms: state.smt.get_property_subterms(),
-            reads_writes: state.smt.get_reads_and_writes(),
+            transition_system_terms: smt.get_transition_system_subterms(),
+            property_terms: smt.get_property_subterms(),
+            reads_writes: smt.get_reads_and_writes(),
         };
         let (insts, const_insts) = state.egraph.saturate(cost_fn.clone());
         let insts: Vec<String> = insts

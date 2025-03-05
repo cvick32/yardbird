@@ -1,8 +1,8 @@
-use smt2parser::vmt::{smt::SMTProblem, VMTModel};
+use smt2parser::vmt::VMTModel;
 
 use crate::{
     driver::{self, Error},
-    z3_var_context::Z3VarContext,
+    smt_problem::SMTProblem,
     ProofLoopResult,
 };
 
@@ -27,20 +27,15 @@ pub trait ProofStrategy<'ctx, S> {
         10
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<S>;
+    fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<S>;
 
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<ProofAction>;
+    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
 
-    fn sat(
-        &mut self,
-        state: &mut S,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
-    ) -> driver::Result<ProofAction>;
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<ProofAction> {
-        Err(Error::SolverUnknown(solver.get_reason_unknown()))
+    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction> {
+        Err(Error::SolverUnknown(smt.get_reason_unknown()))
     }
 
     #[allow(unused_variables)]
@@ -57,22 +52,17 @@ pub trait ProofStrategy<'ctx, S> {
 /// to a proof strategy.
 pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
-    fn unsat(
-        &mut self,
-        state: &mut S,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<()> {
+    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         Ok(())
     }
 

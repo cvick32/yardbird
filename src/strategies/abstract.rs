@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use log::{debug, info};
 use smt2parser::{
     concrete::Term,
-    vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel},
+    vmt::{QuantifiedInstantiator, VMTModel},
 };
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
     cost_functions::symbol_cost::BestSymbolSubstitution,
     driver::{self, Error},
     egg_utils::Saturate,
-    z3_var_context::Z3VarContext,
+    smt_problem::SMTProblem,
     ProofLoopResult,
 };
 
@@ -38,7 +38,6 @@ impl Abstract {
 
 /// State for the inner refinement looop
 pub struct AbstractRefinementState {
-    pub smt: SMTProblem,
     pub depth: u8,
     pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
     pub instantiations: Vec<String>,
@@ -52,7 +51,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term in smt.get_assert_terms() {
             // TODO: we don't want to add instantiations
@@ -61,7 +60,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             }
         }
         Ok(AbstractRefinementState {
-            smt,
             depth,
             egraph,
             instantiations: vec![],
@@ -72,7 +70,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     fn unsat(
         &mut self,
         state: &mut AbstractRefinementState,
-        _solver: &z3::Solver,
+        _solver: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -81,18 +79,17 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     fn sat(
         &mut self,
         state: &mut AbstractRefinementState,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
+        smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
-        let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+        let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
         debug!("counter example:\n{model}");
-        state.update_with_subterms(&model, z3_var_context)?;
+        state.update_with_subterms(&model, smt)?;
         // state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
-            transition_system_terms: state.smt.get_transition_system_subterms(),
-            property_terms: state.smt.get_property_subterms(),
-            reads_writes: state.smt.get_reads_and_writes(),
+            transition_system_terms: smt.get_transition_system_subterms(),
+            property_terms: smt.get_property_subterms(),
+            reads_writes: smt.get_reads_and_writes(),
         };
         let (insts, const_insts) = state.egraph.saturate(cost_fn);
         state.instantiations.extend_from_slice(&insts);
@@ -157,11 +154,11 @@ impl AbstractRefinementState {
     pub fn update_with_subterms(
         &mut self,
         model: &z3::Model,
-        z3_var_context: &Z3VarContext,
+        smt: &SMTProblem,
     ) -> anyhow::Result<()> {
-        for term in self.smt.get_all_subterms() {
+        for term in smt.get_all_subterms() {
             let term_id = self.egraph.add_expr(&term.to_string().parse()?);
-            let z3_term = z3_var_context.rewrite_term(&term);
+            let z3_term = smt.rewrite_term(&term);
             let model_interp = model
                 .eval(&z3_term, false)
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));

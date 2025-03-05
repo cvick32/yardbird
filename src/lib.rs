@@ -17,6 +17,7 @@ mod egg_utils;
 mod extractor;
 mod interpolant;
 pub mod logger;
+mod smt_problem;
 pub mod strategies;
 mod utils;
 pub mod z3_ext;

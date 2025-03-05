@@ -1,10 +1,10 @@
 use anyhow::anyhow;
 use log::info;
-use smt2parser::vmt::{smt::SMTProblem, VMTModel};
+use smt2parser::vmt::VMTModel;
 
-use crate::{driver, z3_ext::ModelExt, z3_var_context::Z3VarContext, ProofLoopResult};
+use crate::{driver, smt_problem::SMTProblem, z3_ext::ModelExt, ProofLoopResult};
 
-use super::{r#abstract::AbstractRefinementState, ProofAction, ProofStrategy};
+use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 
 #[derive(Default)]
 pub struct ConcreteZ3 {
@@ -16,9 +16,8 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         1
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         Ok(AbstractRefinementState {
-            smt,
             depth,
             egraph: egg::EGraph::default(),
             instantiations: vec![],
@@ -26,23 +25,13 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         })
     }
 
-    fn unsat(
-        &mut self,
-        state: &mut AbstractRefinementState,
-        _solver: &z3::Solver,
-    ) -> driver::Result<ProofAction> {
-        info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
-        Ok(ProofAction::NextDepth)
-    }
-
     fn sat(
         &mut self,
         state: &mut AbstractRefinementState,
-        solver: &z3::Solver,
-        _z3_var_context: &Z3VarContext,
+        smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
-        let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
+        let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
         info!("Counterexample:\n{}", model.dump_sorted()?);
         Ok(ProofAction::Stop)
     }
@@ -63,5 +52,14 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             const_instances: vec![],
             counterexample: true,
         }
+    }
+
+    fn unsat(
+        &mut self,
+        state: &mut AbstractRefinementState,
+        _smt: &SMTProblem,
+    ) -> driver::Result<ProofAction> {
+        info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
+        Ok(ProofAction::NextDepth)
     }
 }
