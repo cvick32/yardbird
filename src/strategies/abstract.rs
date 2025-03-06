@@ -53,14 +53,15 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
 
     fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-        for term in smt.get_assert_terms() {
+        /* for term_string in smt.get_assert_strings() {
             // TODO: we don't want to add instantiations
-            if let Ok(parsed) = &term.to_string().parse() {
+            if let Ok(parsed) = &term_string.parse() {
                 egraph.add_expr(parsed);
             }
-        }
+        } */
+
         Ok(AbstractRefinementState {
-            depth,
+            depth: depth + 1,
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
@@ -82,7 +83,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
-        debug!("counter example:\n{model}");
+        println!("counter example:\n{model}");
         state.update_with_subterms(&model, smt)?;
         // state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {
@@ -102,6 +103,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         &mut self,
         model: &mut VMTModel,
         state: AbstractRefinementState,
+        smt: &mut SMTProblem,
     ) -> driver::Result<()> {
         self.const_instantiations
             .extend_from_slice(&state.const_instantiations);
@@ -109,20 +111,19 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         let terms: Vec<Term> = state
             .instantiations
             .into_iter()
-            // .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
             .flat_map(|inst| inst.parse())
             .collect();
 
         // first try without quantifiers
-        let no_progress = terms
+        let _ = terms
             .clone()
             .into_iter()
             .flat_map(QuantifiedInstantiator::rewrite_no_prophecy)
-            .map(|term| !model.add_instantiation(term, &mut self.used_instantiations))
-            .fold(true, |a, b| a && b);
+            .map(|term| !smt.add_instantiation(term))
+            .fold(true, |acc, used_instantiation| acc && used_instantiation);
 
         // if that didn't work, try with quantifiers
-        if no_progress {
+        /* if no_progress {
             let no_quant_progress = terms
                 .into_iter()
                 .map(QuantifiedInstantiator::rewrite_quantified)
@@ -135,7 +136,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
                     instantiations: self.used_instantiations.clone(),
                 });
             }
-        }
+        } */
 
         Ok(())
     }
@@ -148,6 +149,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             counterexample: false,
         }
     }
+
+    fn abstract_array_theory(&self) -> bool {
+        true
+    }
 }
 
 impl AbstractRefinementState {
@@ -158,7 +163,7 @@ impl AbstractRefinementState {
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
             let term_id = self.egraph.add_expr(&term.to_string().parse()?);
-            let z3_term = smt.rewrite_term(&term);
+            let z3_term = smt.rewrite_term(term);
             let model_interp = model
                 .eval(&z3_term, false)
                 .unwrap_or_else(|| panic!("Term not found in model: {term}"));

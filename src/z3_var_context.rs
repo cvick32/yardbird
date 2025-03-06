@@ -1,10 +1,7 @@
-use smt2parser::{
-    concrete::{Constant, SyntaxBuilder, Term},
-    vmt::smt::SMTProblem,
-};
+use smt2parser::concrete::{Constant, SyntaxBuilder, Term};
 use std::collections::HashMap;
 use z3::{
-    ast::{Ast, Dynamic},
+    ast::{Ast, Bool, Dynamic},
     Context, FuncDecl,
 };
 
@@ -47,17 +44,6 @@ impl<'ctx> Z3VarContext<'ctx> {
             var_name_to_z3_term: HashMap::new(),
             function_name_to_z3_function: HashMap::new(),
         }
-    }
-
-    pub fn from(context: &'ctx Context, smt: &SMTProblem) -> Self {
-        let mut var_context = Z3VarContext::new(context);
-        for var_def in smt.get_variable_definitions() {
-            let _ = var_def.accept(&mut var_context);
-        }
-        for function_def in smt.get_function_definitions() {
-            let _ = function_def.accept(&mut var_context);
-        }
-        var_context
     }
 
     /// This is for the extra terms that we want to add to the egraph after the variable
@@ -270,6 +256,11 @@ impl<'ctx> Z3VarContext<'ctx> {
         } else {
             todo!("Add Z3 function: {function_name}");
         }
+    }
+
+    pub(crate) fn make_and(&self, all_z3_insts: Vec<Bool<'ctx>>) -> z3::ast::Bool<'_> {
+        let inst_ref_args = all_z3_insts.iter().collect::<Vec<_>>();
+        z3::ast::Bool::and(&self.context, &inst_ref_args)
     }
 }
 

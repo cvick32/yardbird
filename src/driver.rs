@@ -81,7 +81,8 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
-        let mut smt_problem = crate::smt_problem::SMTProblem::new(&self.vmt_model, self.context);
+        let mut smt_problem =
+            crate::smt_problem::SMTProblem::new(&self.vmt_model, self.context, &strat);
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
@@ -93,12 +94,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                 //let z3_var_context = Z3VarContext::from(self.context, &smt);
                 //solver.from_string(smt.to_bmc());
 
-                // START
-                smt_problem.unroll_once(depth);
-                // END
+                smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
 
-                //let sat_result = solver.check();
                 let action = match smt_problem.check() {
                     z3::SatResult::Unsat => {
                         self.extensions.unsat(&mut state, &smt_problem)?;
@@ -117,7 +115,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 match action {
                     ProofAction::Continue => {
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
-                        strat.finish(&mut self.vmt_model, state)?;
+                        strat.finish(&mut self.vmt_model, state, &mut smt_problem)?;
                     }
                     ProofAction::NextDepth => continue 'bmc,
                     ProofAction::Stop => return Err(Error::Counterexample),

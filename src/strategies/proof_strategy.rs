@@ -19,6 +19,8 @@ pub enum ProofAction {
 /// finalizing steps with `finish`. The `result` method describes how to construct a
 /// `ProofLoopResult` from `self`.
 pub trait ProofStrategy<'ctx, S> {
+    fn abstract_array_theory(&self) -> bool;
+
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model
     }
@@ -39,7 +41,12 @@ pub trait ProofStrategy<'ctx, S> {
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, model: &mut VMTModel, state: S) -> driver::Result<()> {
+    fn finish(
+        &mut self,
+        model: &mut VMTModel,
+        state: S,
+        smt: &mut SMTProblem,
+    ) -> driver::Result<()> {
         Ok(())
     }
 

@@ -19,6 +19,7 @@ mod interpolant;
 pub mod logger;
 mod smt_problem;
 pub mod strategies;
+mod subterm_handler;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;

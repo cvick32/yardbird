@@ -178,6 +178,11 @@ impl SMTProblem {
                 .clone()
                 .accept_term_visitor(&mut reads_and_writes);
         }
+        _ = self
+            .property_assertion
+            .clone()
+            .unwrap()
+            .accept_term_visitor(&mut reads_and_writes);
         reads_and_writes
     }
 

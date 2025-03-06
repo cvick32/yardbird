@@ -40,8 +40,8 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
 
     fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-        for term in smt.get_assert_terms() {
-            if let Ok(parsed) = &term.to_string().parse() {
+        for term_string in smt.get_assert_strings() {
+            if let Ok(parsed) = &term_string.parse() {
                 egraph.add_expr(parsed);
             }
         }
@@ -94,6 +94,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         &mut self,
         model: &mut VMTModel,
         state: AbstractRefinementState,
+        smt: &mut SMTProblem,
     ) -> driver::Result<()> {
         self.const_instantiations
             .extend_from_slice(&state.const_instantiations);
@@ -128,5 +129,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
         }
+    }
+
+    fn abstract_array_theory(&self) -> bool {
+        true
     }
 }

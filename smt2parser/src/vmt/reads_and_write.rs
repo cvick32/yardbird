@@ -18,6 +18,16 @@ pub struct ReadsAndWrites {
 }
 
 impl ReadsAndWrites {
+    pub fn from(
+        reads_from: HashSet<(String, String)>,
+        writes_to: HashSet<(String, String, String)>,
+    ) -> Self {
+        ReadsAndWrites {
+            reads_from,
+            writes_to,
+        }
+    }
+
     pub fn read_array<A>(&self, array: A) -> impl Iterator<Item = String> + use<'_, A>
     where
         A: ToString,

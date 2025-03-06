@@ -40,6 +40,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         &mut self,
         model: &mut VMTModel,
         _state: AbstractRefinementState,
+        _smt: &mut SMTProblem,
     ) -> driver::Result<()> {
         self.model = Some(model.clone());
         Ok(())
@@ -61,5 +62,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
+    }
+
+    fn abstract_array_theory(&self) -> bool {
+        false
     }
 }

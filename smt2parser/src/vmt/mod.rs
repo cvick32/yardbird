@@ -31,7 +31,7 @@ pub mod bmc;
 pub mod canonicalize_boolean;
 mod frame_num_getter;
 mod instantiator;
-mod non_boolean_subterms;
+pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 mod reads_and_write;
 pub mod smt;
@@ -206,7 +206,7 @@ impl VMTModel {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
@@ -260,7 +260,7 @@ impl VMTModel {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
@@ -273,7 +273,7 @@ impl VMTModel {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
@@ -297,7 +297,7 @@ impl VMTModel {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
@@ -478,6 +478,10 @@ impl VMTModel {
         let mut file = File::create(filename).unwrap();
 
         let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();
+    }
+
+    pub fn get_function_definitions(&self) -> Vec<Command> {
+        self.function_definitions.clone()
     }
 }
 
