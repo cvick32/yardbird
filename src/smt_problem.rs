@@ -16,7 +16,6 @@ pub struct SMTProblem<'ctx> {
     bmc_builder: BMCBuilder,
     init_assertion: Term,
     trans_assertion: Term,
-    property_assertion: Term,
     depth: u8,
     instantiations: Vec<Term>,
     subterm_handler: SubtermHandler,
@@ -24,6 +23,8 @@ pub struct SMTProblem<'ctx> {
     solver: z3::Solver<'ctx>,
     newest_model: Option<z3::Model<'ctx>>,
 }
+
+#[allow(clippy::borrowed_box)]
 impl<'ctx> SMTProblem<'ctx> {
     pub(crate) fn new<S>(
         vmt_model: &VMTModel,
@@ -43,7 +44,6 @@ impl<'ctx> SMTProblem<'ctx> {
             ),
             init_assertion,
             trans_assertion,
-            property_assertion,
             instantiations: vec![],
             depth: 0,
             bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
@@ -141,11 +141,13 @@ impl<'ctx> SMTProblem<'ctx> {
     /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
     /// off of the solver. Keeping the invariant of the property never being on the solver until check
     /// time allows us to not worry about when to add instances and other facts to the solver.
+    ///
+    /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
+    /// be lost.
     pub(crate) fn check(&mut self) -> z3::SatResult {
         // Push property back on top of the solver.
         self.push_property();
         let sat_result = self.solver.check();
-        println!("{}", self.solver);
         self.newest_model = self.solver.get_model();
         // Popping property off.
         self.solver.pop(1);
@@ -154,11 +156,7 @@ impl<'ctx> SMTProblem<'ctx> {
 
     fn push_property(&mut self) {
         self.solver.push();
-        let prop = self
-            .property_assertion
-            .clone()
-            .accept(&mut self.bmc_builder)
-            .unwrap();
+        let prop = self.subterm_handler.get_property_assert();
         let z3_prop_negated =
             z3::ast::Bool::not(&self.z3_var_context.rewrite_term(&prop).as_bool().unwrap());
         self.solver.assert(&z3_prop_negated);
@@ -189,7 +187,6 @@ impl<'ctx> SMTProblem<'ctx> {
             all_z3_insts.push(z3_inst.as_bool().unwrap());
         }
         let inst_and = self.z3_var_context.make_and(all_z3_insts);
-        println!("{}: {}", inst, inst_and);
         self.solver.assert(&inst_and);
     }
 

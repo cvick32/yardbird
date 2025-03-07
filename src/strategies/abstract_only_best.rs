@@ -1,6 +1,5 @@
 use std::mem;
 
-use anyhow::anyhow;
 use egg::CostFunction;
 use itertools::Itertools;
 use log::info;
@@ -71,7 +70,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             Some(model) => model,
             None => todo!("No Z3 model available for SAT instance"),
         };
-        state.update_with_subterms(&model, smt)?;
+        state.update_with_subterms(model, smt)?;
         state.egraph.rebuild();
         let mut cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
