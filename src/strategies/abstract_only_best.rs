@@ -95,7 +95,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
 
     fn finish(
         &mut self,
-        model: &mut VMTModel,
         state: AbstractRefinementState,
         smt: &mut SMTProblem,
     ) -> driver::Result<()> {
@@ -108,13 +107,13 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             // .inspect(|x| println!("x: {x}"))
             .flat_map(|inst| inst.parse())
             .map(QuantifiedInstantiator::rewrite_quantified)
-            .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
+            .all(|inst| !smt.add_instantiation(inst));
         let const_progress = state
             .const_instantiations
             .into_iter()
             .flat_map(|inst| inst.parse())
             .map(QuantifiedInstantiator::rewrite_quantified)
-            .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
+            .all(|inst| !smt.add_instantiation(inst));
         if no_progress && const_progress {
             Err(Error::NoProgress {
                 depth: state.depth,
@@ -125,10 +124,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         }
     }
 
-    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         ProofLoopResult {
             model: Some(vmt_model),
-            used_instances: mem::take(&mut self.used_instantiations),
+            used_instances: mem::take(&mut smt.get_instantiation_strings()),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
         }

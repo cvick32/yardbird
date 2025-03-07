@@ -115,7 +115,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 match action {
                     ProofAction::Continue => {
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
-                        strat.finish(&mut self.vmt_model, state, &mut smt_problem)?;
+                        strat.finish(state, &mut smt_problem)?;
                     }
                     ProofAction::NextDepth => continue 'bmc,
                     ProofAction::Stop => return Err(Error::Counterexample),
@@ -124,7 +124,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
-        Ok(strat.result(self.vmt_model.clone()))
+        Ok(strat.result(self.vmt_model.clone(), &smt_problem))
     }
 }
 

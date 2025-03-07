@@ -41,16 +41,11 @@ pub trait ProofStrategy<'ctx, S> {
     }
 
     #[allow(unused_variables)]
-    fn finish(
-        &mut self,
-        model: &mut VMTModel,
-        state: S,
-        smt: &mut SMTProblem,
-    ) -> driver::Result<()> {
+    fn finish(&mut self, state: S, smt: &mut SMTProblem) -> driver::Result<()> {
         Ok(())
     }
 
-    fn result(&mut self, model: VMTModel) -> ProofLoopResult;
+    fn result(&mut self, model: VMTModel, smt: &SMTProblem) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond

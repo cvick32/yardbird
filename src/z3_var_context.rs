@@ -260,7 +260,7 @@ impl<'ctx> Z3VarContext<'ctx> {
 
     pub(crate) fn make_and(&self, all_z3_insts: Vec<Bool<'ctx>>) -> z3::ast::Bool<'_> {
         let inst_ref_args = all_z3_insts.iter().collect::<Vec<_>>();
-        z3::ast::Bool::and(&self.context, &inst_ref_args)
+        z3::ast::Bool::and(self.context, &inst_ref_args)
     }
 }
 

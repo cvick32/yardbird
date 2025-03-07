@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use log::info;
 use smt2parser::vmt::VMTModel;
 
@@ -7,9 +6,7 @@ use crate::{driver, smt_problem::SMTProblem, z3_ext::ModelExt, ProofLoopResult};
 use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 
 #[derive(Default)]
-pub struct ConcreteZ3 {
-    model: Option<VMTModel>,
-}
+pub struct ConcreteZ3 {}
 
 impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     fn n_refines(&mut self) -> u32 {
@@ -41,15 +38,13 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
 
     fn finish(
         &mut self,
-        model: &mut VMTModel,
         _state: AbstractRefinementState,
         _smt: &mut SMTProblem,
     ) -> driver::Result<()> {
-        self.model = Some(model.clone());
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel, _smt: &SMTProblem) -> ProofLoopResult {
         ProofLoopResult {
             model: Some(vmt_model),
             used_instances: vec![],

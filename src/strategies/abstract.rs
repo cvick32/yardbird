@@ -1,7 +1,6 @@
 use std::mem;
 
-use anyhow::anyhow;
-use log::{debug, info};
+use log::info;
 use smt2parser::{
     concrete::Term,
     vmt::{QuantifiedInstantiator, VMTModel},
@@ -14,7 +13,6 @@ use crate::{
     driver::{self, Error},
     egg_utils::Saturate,
     smt_problem::SMTProblem,
-    z3_ext::ModelExt,
     ProofLoopResult,
 };
 
@@ -23,7 +21,6 @@ use super::{ProofAction, ProofStrategy};
 /// Global state carried across different BMC depths
 #[derive(Default)]
 pub struct Abstract {
-    used_instantiations: Vec<String>,
     const_instantiations: Vec<String>,
     bmc_depth: u8,
 }
@@ -52,14 +49,14 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
-        let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-        for term_string in smt.get_assert_strings() {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+        let egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
+        /* for term_string in smt.get_assert_strings() {
             // TODO: we don't want to add instantiations
             if let Ok(parsed) = &term_string.parse() {
                 egraph.add_expr(parsed);
             }
-        }
+        } */
 
         Ok(AbstractRefinementState {
             depth: depth + 1,
@@ -87,7 +84,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             Some(model) => model,
             None => todo!("No Z3 model available for SAT instance"),
         };
-        println!("{}", model.dump_sorted().unwrap());
         state.update_with_subterms(model, smt)?;
         // state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {
@@ -105,7 +101,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
     #[allow(clippy::unnecessary_fold)]
     fn finish(
         &mut self,
-        model: &mut VMTModel,
         state: AbstractRefinementState,
         smt: &mut SMTProblem,
     ) -> driver::Result<()> {
@@ -145,10 +140,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         ProofLoopResult {
             model: Some(vmt_model),
-            used_instances: mem::take(&mut self.used_instantiations),
+            used_instances: mem::take(&mut smt.get_instantiation_strings()),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
         }
@@ -178,34 +173,3 @@ impl AbstractRefinementState {
         Ok(())
     }
 }
-
-/* let mut full_false_insts = vec![];
-let mut full_const_insts = vec![];
-let mut i = 0;
-loop {
-    if i > 15 {
-        break;
-    }
-    state.egraph.rebuild();
-    let cost_fn = BestVariableSubstitution {
-        current_bmc_depth: state.depth as u32,
-        transition_system_terms: state.smt.get_transition_system_subterms(),
-        property_terms: state.smt.get_property_subterms(),
-    };
-
-    let (insts, const_insts) = state.egraph.saturate(cost_fn);
-    let (false_insts, true_insts) =
-        self._check_found_instantiations(z3_var_context, &model, insts);
-    if false_insts.is_empty() {
-        for (lhs, rhs) in true_insts {
-            println!("Add: {} = {}", lhs, rhs);
-            state._add_true_instantiation(lhs, rhs)?;
-        }
-    } else {
-        full_false_insts.extend_from_slice(&false_insts);
-        full_const_insts.extend_from_slice(&const_insts);
-        break;
-    }
-    i += 1;
-}
-println!("ACTUALLY FALSE INSTS: {:#?}", full_false_insts); */
