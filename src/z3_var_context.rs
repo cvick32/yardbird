@@ -95,11 +95,26 @@ impl<'ctx> Z3VarContext<'ctx> {
                     self.call_z3_function(function_name, argument_values)
                 }
             }
+            Term::Forall { vars: _, term: _ } => {
+                /* let mut bounds = vec![];
+                for (symbol, _) in vars {
+                    z3::ast::new
+                    bounds
+                        .push(z3::ast::Int::new_const(self.context, symbol.0.clone()))
+                        .into();
+                }
+                let ref_bounds = bounds.as_slice();
+
+                let x = z3::ast::Int::new_const(self.context, "x");
+
+                let quantified_term = self.rewrite_term(term).as_bool().unwrap();
+                z3::ast::forall_const(self.context, ref_bounds, &[], &quantified_term).into() */
+                todo!()
+            }
             Term::Let {
                 var_bindings: _,
                 term: _,
             } => todo!(),
-            Term::Forall { vars: _, term: _ } => todo!(),
             Term::Exists { vars: _, term: _ } => todo!(),
             Term::Match { term: _, cases: _ } => todo!(),
             Term::Attributes {
