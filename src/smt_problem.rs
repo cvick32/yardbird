@@ -68,6 +68,8 @@ impl<'ctx> SMTProblem<'ctx> {
                 .unwrap();
             let _ = bmc_variable.accept(&mut smt.z3_var_context);
         }
+        // Generate initial subterms.
+        smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
         // Add initial assertion.
         smt.add_assertion();
         smt
@@ -92,27 +94,20 @@ impl<'ctx> SMTProblem<'ctx> {
     fn add_assertion(&mut self) {
         if self.depth == 0 {
             let init = self
-                .init_assertion
-                .clone()
-                .accept(&mut self.bmc_builder)
-                .unwrap();
+                .bmc_builder
+                .index_single_step_term(self.init_assertion.clone());
             let z3_init = self.z3_var_context.rewrite_term(&init);
             self.solver.assert(&z3_init.as_bool().unwrap());
         }
         if self.depth != 0 {
-            // Have to set backwards so we get 0->1 for depth 1.
-            self.bmc_builder.set_depth(self.depth - 1);
             let trans = self
-                .trans_assertion
-                .clone()
-                .accept(&mut self.bmc_builder)
-                .unwrap();
-            self.bmc_builder.set_depth(self.depth);
+                .bmc_builder
+                .index_transition_term(self.trans_assertion.clone());
             let z3_trans = self.z3_var_context.rewrite_term(&trans);
             self.solver.assert(&z3_trans.as_bool().unwrap());
         }
         if !self.instantiations.is_empty() {
-            // Get the instantiations for the next depth.
+            // Instantiate for this depth.
             let mut all_z3_insts = vec![];
             for inst in &self.instantiations {
                 let indexed_inst = inst.clone().accept(&mut self.bmc_builder).unwrap();
@@ -128,14 +123,14 @@ impl<'ctx> SMTProblem<'ctx> {
     // this function is called. We only need to unroll transition and all instantiations
     // one more time.
     pub(crate) fn unroll(&mut self, depth: u8) {
-        // Generate subterms.
-        self.subterm_handler
-            .generate_subterms(&mut self.bmc_builder);
         if depth > self.depth {
             // These things should only happen the first time a new depth is seen.
             // Set new depth.
             self.depth = depth;
             self.bmc_builder.set_depth(self.depth);
+            // Generate subterms.
+            self.subterm_handler
+                .generate_subterms(&mut self.bmc_builder);
             // Add new variables to Z3VarContext for depth.
             self.add_z3_variables();
             // Add assertion for current depth.

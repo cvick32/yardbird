@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::concrete::{Symbol, SyntaxBuilder};
+use crate::concrete::{Symbol, SyntaxBuilder, Term};
 
 #[derive(Clone)]
 pub struct BMCBuilder {
@@ -26,6 +26,18 @@ impl BMCBuilder {
 
     pub fn add_step(&mut self) {
         self.depth += 1;
+    }
+
+    /// Have to set the depth to minus 1 so that we get the transition from 0->1 for depth 1.
+    pub fn index_transition_term(&mut self, trans_term: Term) -> Term {
+        self.set_depth(self.depth - 1);
+        let indexed_term = trans_term.accept(self).unwrap();
+        self.set_depth(self.depth);
+        indexed_term
+    }
+
+    pub fn index_single_step_term(&mut self, term: Term) -> Term {
+        term.accept(self).unwrap()
     }
 }
 

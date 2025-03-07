@@ -59,9 +59,14 @@ impl SubtermHandler {
                 .accept_term_visitor(&mut self.initial_reads_and_writes);
             self.initial_subterms = initial_subterms.subterms;
         } else {
+            // Have to set backwards so we get 0->1 for depth 1.
+            let cur_depth = bmc_builder.depth;
+            bmc_builder.set_depth(cur_depth - 1);
             // Union up all of the trans subterms.
             let mut trans_subterms = NonBooleanSubterms::default();
             let indexed_trans_term = self.trans_term.clone().accept(bmc_builder).unwrap();
+            // Reset the depth.
+            bmc_builder.set_depth(cur_depth);
             self.init_and_trans_asserts
                 .push(indexed_trans_term.clone().to_string());
             let _ = indexed_trans_term
@@ -115,5 +120,9 @@ impl SubtermHandler {
             .iter()
             .map(|ts| ts.to_string())
             .collect()
+    }
+
+    pub(crate) fn get_property_assert(&self) -> Term {
+        self.prop_assert.parse().unwrap()
     }
 }
