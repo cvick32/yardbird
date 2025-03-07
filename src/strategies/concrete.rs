@@ -31,7 +31,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
-        let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
+        let model = match smt.get_model() {
+            Some(model) => model,
+            None => todo!("No Z3 model available for SAT instance"),
+        };
         info!("Counterexample:\n{}", model.dump_sorted()?);
         Ok(ProofAction::Stop)
     }

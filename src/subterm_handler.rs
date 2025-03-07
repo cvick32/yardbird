@@ -58,19 +58,20 @@ impl SubtermHandler {
                 .clone()
                 .accept_term_visitor(&mut self.initial_reads_and_writes);
             self.initial_subterms = initial_subterms.subterms;
+        } else {
+            // Union up all of the trans subterms.
+            let mut trans_subterms = NonBooleanSubterms::default();
+            let indexed_trans_term = self.trans_term.clone().accept(bmc_builder).unwrap();
+            self.init_and_trans_asserts
+                .push(indexed_trans_term.clone().to_string());
+            let _ = indexed_trans_term
+                .clone()
+                .accept_term_visitor(&mut trans_subterms);
+            self.trans_subterms.extend(trans_subterms.subterms);
+            let _ = indexed_trans_term
+                .clone()
+                .accept_term_visitor(&mut self.trans_reads_and_writes);
         }
-        // Union up all of the trans subterms.
-        let mut trans_subterms = NonBooleanSubterms::default();
-        let indexed_trans_term = self.trans_term.clone().accept(bmc_builder).unwrap();
-        self.init_and_trans_asserts
-            .push(indexed_trans_term.clone().to_string());
-        let _ = indexed_trans_term
-            .clone()
-            .accept_term_visitor(&mut trans_subterms);
-        self.trans_subterms.extend(trans_subterms.subterms);
-        let _ = indexed_trans_term
-            .clone()
-            .accept_term_visitor(&mut self.trans_reads_and_writes);
         // Fully replace prop subterms every iteration.
         let mut prop_subterms = NonBooleanSubterms::default();
         self.prop_reads_and_writes = ReadsAndWrites::default();

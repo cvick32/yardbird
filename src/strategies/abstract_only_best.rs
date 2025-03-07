@@ -67,7 +67,10 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         state: &mut AbstractRefinementState,
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
-        let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
+        let model = match smt.get_model() {
+            Some(model) => model,
+            None => todo!("No Z3 model available for SAT instance"),
+        };
         state.update_with_subterms(&model, smt)?;
         state.egraph.rebuild();
         let mut cost_fn = BestSymbolSubstitution {

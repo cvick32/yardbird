@@ -14,6 +14,7 @@ use crate::{
     driver::{self, Error},
     egg_utils::Saturate,
     smt_problem::SMTProblem,
+    z3_ext::ModelExt,
     ProofLoopResult,
 };
 
@@ -53,12 +54,12 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
 
     fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-        /* for term_string in smt.get_assert_strings() {
+        for term_string in smt.get_assert_strings() {
             // TODO: we don't want to add instantiations
             if let Ok(parsed) = &term_string.parse() {
                 egraph.add_expr(parsed);
             }
-        } */
+        }
 
         Ok(AbstractRefinementState {
             depth: depth + 1,
@@ -82,9 +83,12 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         state: &mut AbstractRefinementState,
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
-        let model = smt.get_model().ok_or(anyhow!("No z3 model"))?;
-        println!("counter example:\n{model}");
-        state.update_with_subterms(&model, smt)?;
+        let model = match smt.get_model() {
+            Some(model) => model,
+            None => todo!("No Z3 model available for SAT instance"),
+        };
+        println!("{}", model.dump_sorted().unwrap());
+        state.update_with_subterms(model, smt)?;
         // state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
@@ -115,7 +119,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .collect();
 
         // first try without quantifiers
-        let _ = terms
+        let no_progress = terms
             .clone()
             .into_iter()
             .flat_map(QuantifiedInstantiator::rewrite_no_prophecy)
@@ -123,20 +127,20 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .fold(true, |acc, used_instantiation| acc && used_instantiation);
 
         // if that didn't work, try with quantifiers
-        /* if no_progress {
+        if no_progress {
             let no_quant_progress = terms
                 .into_iter()
                 .map(QuantifiedInstantiator::rewrite_quantified)
-                .map(|term| !model.add_instantiation(term, &mut self.used_instantiations))
+                .map(|term| !smt.add_instantiation(term))
                 .fold(true, |a, b| a && b);
 
             if no_quant_progress {
                 return Err(Error::NoProgress {
                     depth: state.depth,
-                    instantiations: self.used_instantiations.clone(),
+                    instantiations: smt.get_instantiation_strings().clone(),
                 });
             }
-        } */
+        }
 
         Ok(())
     }
