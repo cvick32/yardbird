@@ -17,7 +17,7 @@ use crate::{
     CommandStream,
 };
 
-pub use instantiator::{Instantiator, QuantifiedInstantiator};
+pub use quantified_instantiator::QuantifiedInstantiator;
 pub use reads_and_write::ReadsAndWrites;
 
 static PROPERTY_ATTRIBUTE: &str = "invar-property";
@@ -30,10 +30,9 @@ mod array_axiom_frame_num_getter;
 mod axiom;
 pub mod bmc;
 pub mod canonicalize_boolean;
-mod frame_num_getter;
-mod instantiator;
 pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
+mod quantified_instantiator;
 mod reads_and_write;
 pub mod smt;
 mod smtinterpol_utils;
