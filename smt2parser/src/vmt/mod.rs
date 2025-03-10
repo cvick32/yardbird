@@ -32,7 +32,7 @@ pub mod bmc;
 pub mod canonicalize_boolean;
 pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
-mod quantified_instantiator;
+pub mod quantified_instantiator;
 mod reads_and_write;
 pub mod smt;
 mod smtinterpol_utils;

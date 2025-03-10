@@ -3,7 +3,7 @@ use std::vec;
 use log::debug;
 use smt2parser::{
     concrete::Term,
-    vmt::{bmc::BMCBuilder, variable::Variable, VMTModel},
+    vmt::{bmc::BMCBuilder, quantified_instantiator::Instance, variable::Variable, VMTModel},
 };
 use z3::ast::Dynamic;
 
@@ -17,7 +17,7 @@ pub struct SMTProblem<'ctx> {
     init_assertion: Term,
     trans_assertion: Term,
     depth: u8,
-    instantiations: Vec<Term>,
+    instantiations: Vec<Instance>,
     subterm_handler: SubtermHandler,
     pub variables: Vec<Variable>,
     solver: z3::Solver<'ctx>,
@@ -110,7 +110,7 @@ impl<'ctx> SMTProblem<'ctx> {
             // Instantiate for this depth.
             let mut all_z3_insts = vec![];
             for inst in &self.instantiations {
-                let indexed_inst = inst.clone().accept(&mut self.bmc_builder).unwrap();
+                let indexed_inst = inst.rewrite(&mut self.bmc_builder);
                 let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
                 all_z3_insts.push(z3_inst.as_bool().unwrap());
             }
@@ -148,6 +148,7 @@ impl<'ctx> SMTProblem<'ctx> {
         // Push property back on top of the solver.
         self.push_property();
         let sat_result = self.solver.check();
+        println!("{}", self.solver);
         self.newest_model = self.solver.get_model();
         // Popping property off.
         self.solver.pop(1);
@@ -162,7 +163,7 @@ impl<'ctx> SMTProblem<'ctx> {
         self.solver.assert(&z3_prop_negated);
     }
 
-    pub(crate) fn add_instantiation(&mut self, inst: Term) -> bool {
+    pub(crate) fn add_instantiation(&mut self, inst: Instance) -> bool {
         if self.instantiations.contains(&inst) {
             debug!("ALREADY SEEN {}!", inst);
             return false;
@@ -170,7 +171,7 @@ impl<'ctx> SMTProblem<'ctx> {
             self.instantiations.push(inst.clone());
         }
         // Add in any quantified variables to Z3VarContext.
-        if let Term::Forall { vars, term: _ } = &inst {
+        if let Term::Forall { vars, term: _ } = inst.get_term() {
             for (symbol, sort) in vars {
                 self.z3_var_context.create_variable(symbol, sort);
             }
@@ -183,12 +184,13 @@ impl<'ctx> SMTProblem<'ctx> {
 
     /// We unroll the new instantiation from 0 to the current BMC depth. This allows us
     /// to just worry about the next unrolling in add_assertion().
-    fn unroll_instantiation(&mut self, inst: &Term) {
+    fn unroll_instantiation(&mut self, inst: &Instance) {
         let mut all_z3_insts = vec![];
-        // depth + 1 so we grab the depth inst.
-        for i in 0..self.bmc_builder.depth + 1 {
+        // The additional unrolling we need depends on the instance itself, if all
+        // variables are current, then we need 2 more, if not just 1.
+        for i in 0..self.bmc_builder.depth + inst.additional_depth() {
             self.bmc_builder.set_depth(i);
-            let indexed_inst = inst.clone().accept(&mut self.bmc_builder).unwrap();
+            let indexed_inst = inst.rewrite(&mut self.bmc_builder);
             let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
             all_z3_insts.push(z3_inst.as_bool().unwrap());
         }

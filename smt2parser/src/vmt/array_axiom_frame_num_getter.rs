@@ -74,6 +74,7 @@ impl ArrayAxiomFrameNumGetter {
     ) -> Option<(
         std::collections::BTreeMap<(String, usize), String>,
         BTreeSet<String>,
+        bool,
     )> {
         if self.max_array() - self.min_array() > 1 {
             // This forces us to never quantify over arrays.
@@ -85,6 +86,7 @@ impl ArrayAxiomFrameNumGetter {
         } else {
             let min_array_frame_number = self.min_array();
             let mut quantified = BTreeSet::new();
+            let mut is_current = true;
             let mut subst: std::collections::BTreeMap<(String, usize), String> = self
                 .int_term_frame_map
                 .iter()
@@ -93,6 +95,7 @@ impl ArrayAxiomFrameNumGetter {
                     if *frame == min_array_frame_number || var_is_immutable(var) {
                         ((var.clone(), *frame), var.clone())
                     } else if *frame == min_array_frame_number + 1 {
+                        is_current = false;
                         ((var.clone(), *frame), format!("{var}_next"))
                     } else {
                         let name = format!("PH{idx}");
@@ -109,13 +112,14 @@ impl ArrayAxiomFrameNumGetter {
                     if *frame == min_array_frame_number || var_is_immutable(var) {
                         ((var.clone(), *frame), var.clone())
                     } else {
+                        is_current = false;
                         ((var.clone(), *frame), format!("{var}_next"))
                     }
                 })
                 .collect();
 
             subst.extend(arr_subst);
-            Some((subst, quantified))
+            Some((subst, quantified, is_current))
         }
     }
 }

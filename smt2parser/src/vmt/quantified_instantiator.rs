@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 
 use crate::{
     concrete::{Identifier, Sort, Symbol, SyntaxBuilder, Term},
@@ -7,6 +7,34 @@ use crate::{
 
 use super::{array_axiom_frame_num_getter::ArrayAxiomFrameNumGetter, variable::Variable};
 
+#[derive(PartialEq, Debug, Clone)]
+pub struct Instance {
+    instance: Term,
+    all_substitution_variables_are_current: bool,
+}
+impl Display for Instance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.instance.to_string().as_str())
+    }
+}
+impl Instance {
+    pub fn get_term(&self) -> &Term {
+        &self.instance
+    }
+
+    pub fn rewrite(&self, bmc_builder: &mut super::bmc::BMCBuilder) -> Term {
+        self.instance.clone().accept(bmc_builder).unwrap()
+    }
+
+    pub fn additional_depth(&self) -> u8 {
+        if self.all_substitution_variables_are_current {
+            2
+        } else {
+            1
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct QuantifiedInstantiator {
     visitor: SyntaxBuilder,
@@ -14,7 +42,7 @@ pub struct QuantifiedInstantiator {
 }
 
 impl QuantifiedInstantiator {
-    pub fn rewrite_no_prophecy(term: Term, variables: Vec<Variable>) -> Option<Term> {
+    pub fn rewrite_no_prophecy(term: Term, variables: Vec<Variable>) -> Option<Instance> {
         let frames = ArrayAxiomFrameNumGetter::new(term.clone(), variables.clone());
         if frames.needs_quantifier() {
             return None;
@@ -22,20 +50,19 @@ impl QuantifiedInstantiator {
         QuantifiedInstantiator::rewrite_quantified(term, variables)
     }
 
-    pub fn rewrite_quantified(term: Term, variables: Vec<Variable>) -> Option<Term> {
+    pub fn rewrite_quantified(term: Term, variables: Vec<Variable>) -> Option<Instance> {
         let frames = ArrayAxiomFrameNumGetter::new(term.clone(), variables);
-        let (subst, quantified) = frames.to_substitution()?;
+        let (subst, quantified, is_current) = frames.to_substitution()?;
         let mut qi = Self {
             visitor: SyntaxBuilder,
             subst,
         };
         let rewritten = term.accept(&mut qi).unwrap();
 
-        // TODO: keep track of types of variables
-        if quantified.is_empty() {
-            Some(rewritten)
+        let term = if quantified.is_empty() {
+            rewritten
         } else {
-            Some(Term::Forall {
+            Term::Forall {
                 vars: quantified
                     .into_iter()
                     .map(|var| {
@@ -51,8 +78,12 @@ impl QuantifiedInstantiator {
                     })
                     .collect(),
                 term: Box::new(rewritten),
-            })
-        }
+            }
+        };
+        Some(Instance {
+            instance: term,
+            all_substitution_variables_are_current: is_current,
+        })
     }
 }
 
