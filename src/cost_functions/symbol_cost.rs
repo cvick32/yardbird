@@ -8,7 +8,7 @@ use crate::array_axioms::ArrayLanguage;
 #[derive(Clone)]
 pub struct BestSymbolSubstitution {
     pub current_bmc_depth: u32,
-    pub transition_system_terms: Vec<String>,
+    pub init_and_transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
     pub reads_writes: ReadsAndWrites,
 }
@@ -23,7 +23,7 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
         let op_cost = match enode {
             ArrayLanguage::Num(num) => {
                 let num_string = num.to_string();
-                let in_trans = self.transition_system_terms.contains(&num_string);
+                let in_trans = self.init_and_transition_system_terms.contains(&num_string);
                 let in_prop = self.property_terms.contains(&num_string);
                 if in_trans {
                     // If the constant is just in the transition system, we assign a low cost.
@@ -61,7 +61,7 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
             ArrayLanguage::Div(_) => 1,
             ArrayLanguage::Symbol(sym) => {
                 let symbol_str = sym.as_str().to_string();
-                let in_trans = self.transition_system_terms.contains(&symbol_str);
+                let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
                 let in_prop = self.property_terms.contains(&symbol_str);
 
                 if let Some((name, frame_number)) =

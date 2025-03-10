@@ -111,15 +111,15 @@ impl SubtermHandler {
         dd
     }
 
-    pub(crate) fn get_property_subterms(&self) -> Vec<String> {
-        self.prop_subterms.iter().map(|ts| ts.to_string()).collect()
-    }
-
-    pub(crate) fn get_transition_system_subterms(&self) -> Vec<String> {
-        self.trans_subterms
+    pub(crate) fn get_initial_subterms(&self) -> Vec<String> {
+        self.initial_subterms
             .iter()
             .map(|ts| ts.to_string())
             .collect()
+    }
+
+    pub(crate) fn get_property_subterms(&self) -> Vec<String> {
+        self.prop_subterms.iter().map(|ts| ts.to_string()).collect()
     }
 
     pub(crate) fn get_property_assert(&self) -> Term {

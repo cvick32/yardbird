@@ -209,10 +209,6 @@ impl<'ctx> SMTProblem<'ctx> {
         self.z3_var_context.rewrite_term(term)
     }
 
-    pub(crate) fn get_transition_system_subterms(&self) -> Vec<String> {
-        self.subterm_handler.get_transition_system_subterms()
-    }
-
     pub(crate) fn get_property_subterms(&self) -> Vec<String> {
         self.subterm_handler.get_property_subterms()
     }
@@ -234,5 +230,11 @@ impl<'ctx> SMTProblem<'ctx> {
             .iter()
             .map(|inst| inst.to_string())
             .collect()
+    }
+
+    pub(crate) fn get_init_and_transition_subterms(&self) -> Vec<String> {
+        let mut trans = self.subterm_handler.get_property_subterms();
+        trans.extend(self.subterm_handler.get_initial_subterms());
+        trans
     }
 }
