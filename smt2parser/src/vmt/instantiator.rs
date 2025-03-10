@@ -1,11 +1,14 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     concrete::{Identifier, Sort, Symbol, SyntaxBuilder, Term},
     vmt::{variable::var_is_immutable, VARIABLE_FRAME_DELIMITER},
 };
 
-use super::frame_num_getter::FrameNumGetter;
+use super::{
+    array_axiom_frame_num_getter::ArrayAxiomFrameNumGetter, frame_num_getter::FrameNumGetter,
+    variable::Variable,
+};
 
 #[derive(Clone)]
 pub struct Instantiator {
@@ -56,48 +59,28 @@ pub struct QuantifiedInstantiator {
 }
 
 impl QuantifiedInstantiator {
-    pub fn rewrite_no_prophecy(term: Term) -> Option<Term> {
-        let frames = FrameNumGetter::new(term.clone());
-        if frames.needs_prophecy() {
+    pub fn rewrite_no_prophecy(term: Term, variables: Vec<Variable>) -> Option<Term> {
+        let frames = ArrayAxiomFrameNumGetter::new(term.clone(), variables.clone());
+        if frames.needs_quantifier() {
             return None;
         }
-
-        Some(QuantifiedInstantiator::rewrite_quantified(term))
+        QuantifiedInstantiator::rewrite_quantified(term, variables)
     }
 
-    pub fn rewrite_quantified(term: Term) -> Term {
-        let frames = FrameNumGetter::new(term.clone());
-        let min_frame_number = frames.min();
-        let mut quantified = BTreeSet::new();
-        let subst = frames
-            .frame_map
-            .into_iter()
-            .enumerate()
-            .map(|(idx, (var, frame))| {
-                if frame == min_frame_number || var_is_immutable(&var) {
-                    ((var.clone(), frame), var)
-                } else if frame == min_frame_number + 1 {
-                    ((var.clone(), frame), format!("{var}_next"))
-                } else {
-                    let name = format!("PH{idx}");
-                    quantified.insert(name.clone());
-                    ((var, frame), name)
-                }
-            })
-            .collect();
-
+    pub fn rewrite_quantified(term: Term, variables: Vec<Variable>) -> Option<Term> {
+        let frames = ArrayAxiomFrameNumGetter::new(term.clone(), variables);
+        let (subst, quantified) = frames.to_substitution()?;
         let mut qi = Self {
             visitor: SyntaxBuilder,
             subst,
         };
-
         let rewritten = term.accept(&mut qi).unwrap();
 
         // TODO: keep track of types of variables
         if quantified.is_empty() {
-            rewritten
+            Some(rewritten)
         } else {
-            Term::Forall {
+            Some(Term::Forall {
                 vars: quantified
                     .into_iter()
                     .map(|var| {
@@ -105,6 +88,7 @@ impl QuantifiedInstantiator {
                             Symbol(var.clone()),
                             Sort::Simple {
                                 identifier: Identifier::Simple {
+                                    // Only quantifying over Int types is guaranteed by ArrayAxiomFrameNumGetter.
                                     symbol: Symbol("Int".to_string()),
                                 },
                             },
@@ -112,7 +96,7 @@ impl QuantifiedInstantiator {
                     })
                     .collect(),
                 term: Box::new(rewritten),
-            }
+            })
         }
     }
 }

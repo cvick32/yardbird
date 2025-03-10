@@ -5,7 +5,7 @@ use smt2parser::{
     concrete::Term,
     vmt::{bmc::BMCBuilder, variable::Variable, VMTModel},
 };
-use z3::ast::Dynamic;
+use z3::ast::{Ast, Dynamic};
 
 use crate::{
     strategies::ProofStrategy, subterm_handler::SubtermHandler, z3_var_context::Z3VarContext,
@@ -19,7 +19,7 @@ pub struct SMTProblem<'ctx> {
     depth: u8,
     instantiations: Vec<Term>,
     subterm_handler: SubtermHandler,
-    variables: Vec<Variable>,
+    pub variables: Vec<Variable>,
     solver: z3::Solver<'ctx>,
     newest_model: Option<z3::Model<'ctx>>,
 }
@@ -168,6 +168,12 @@ impl<'ctx> SMTProblem<'ctx> {
             return false;
         } else {
             self.instantiations.push(inst.clone());
+        }
+        // Add in any quantified variables to Z3VarContext.
+        if let Term::Forall { vars, term: _ } = &inst {
+            for (symbol, sort) in vars {
+                self.z3_var_context.create_variable(symbol, sort);
+            }
         }
         debug!("USED INSTANCE: {}", inst);
         // We have to unroll the instantiation for 0-self.bmc_builder

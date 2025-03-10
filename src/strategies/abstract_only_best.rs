@@ -99,19 +99,19 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
     ) -> driver::Result<()> {
         self.const_instantiations
             .extend_from_slice(&state.const_instantiations);
-
+        let variables = smt.variables.clone();
         let no_progress = state
             .instantiations
             .into_iter()
             // .inspect(|x| println!("x: {x}"))
             .flat_map(|inst| inst.parse())
-            .map(QuantifiedInstantiator::rewrite_quantified)
+            .flat_map(|term| QuantifiedInstantiator::rewrite_quantified(term, variables.clone()))
             .all(|inst| !smt.add_instantiation(inst));
         let const_progress = state
             .const_instantiations
             .into_iter()
             .flat_map(|inst| inst.parse())
-            .map(QuantifiedInstantiator::rewrite_quantified)
+            .flat_map(|term| QuantifiedInstantiator::rewrite_quantified(term, variables.clone()))
             .all(|inst| !smt.add_instantiation(inst));
         if no_progress && const_progress {
             Err(Error::NoProgress {

@@ -112,12 +112,12 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .into_iter()
             .flat_map(|inst| inst.parse())
             .collect();
-
+        let variables = smt.variables.clone();
         // first try without quantifiers
         let no_progress = terms
             .clone()
             .into_iter()
-            .flat_map(QuantifiedInstantiator::rewrite_no_prophecy)
+            .flat_map(|term| QuantifiedInstantiator::rewrite_no_prophecy(term, variables.clone()))
             .map(|term| !smt.add_instantiation(term))
             .fold(true, |acc, used_instantiation| acc && used_instantiation);
 
@@ -125,7 +125,9 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         if no_progress {
             let no_quant_progress = terms
                 .into_iter()
-                .map(QuantifiedInstantiator::rewrite_quantified)
+                .flat_map(|term| {
+                    QuantifiedInstantiator::rewrite_quantified(term, variables.clone())
+                })
                 .map(|term| !smt.add_instantiation(term))
                 .fold(true, |a, b| a && b);
 
