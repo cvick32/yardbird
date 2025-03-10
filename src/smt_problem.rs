@@ -5,7 +5,7 @@ use smt2parser::{
     concrete::Term,
     vmt::{bmc::BMCBuilder, variable::Variable, VMTModel},
 };
-use z3::ast::{Ast, Dynamic};
+use z3::ast::Dynamic;
 
 use crate::{
     strategies::ProofStrategy, subterm_handler::SubtermHandler, z3_var_context::Z3VarContext,
@@ -157,9 +157,8 @@ impl<'ctx> SMTProblem<'ctx> {
     fn push_property(&mut self) {
         self.solver.push();
         let prop = self.subterm_handler.get_property_assert();
-        let term = self.z3_var_context.rewrite_term(&prop).simplify();
-        let z3_prop_negated = z3::ast::Bool::not(&term.as_bool().unwrap());
-
+        let z3_prop_negated =
+            z3::ast::Bool::not(&self.z3_var_context.rewrite_term(&prop).as_bool().unwrap());
         self.solver.assert(&z3_prop_negated);
     }
 
