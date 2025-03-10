@@ -88,15 +88,8 @@ impl<'ctx, S> Driver<'ctx, S> {
             info!("STARTING BMC FOR DEPTH {depth}");
             for i in 0..n_refines {
                 info!("  refining loop: {}/{n_refines}", i + 1);
-
-                //let smt = self.vmt_model.unroll(depth);
-                //let solver = z3::Solver::new(self.context);
-                //let z3_var_context = Z3VarContext::from(self.context, &smt);
-                //solver.from_string(smt.to_bmc());
-
                 smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
-
                 let action = match smt_problem.check() {
                     z3::SatResult::Unsat => {
                         self.extensions.unsat(&mut state, &smt_problem)?;
