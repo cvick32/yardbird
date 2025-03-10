@@ -188,7 +188,11 @@ impl<'ctx> Z3VarContext<'ctx> {
                 .map(|x| x.as_int().expect("Not an int"))
                 .collect::<Vec<_>>();
             let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::sub(self.context, &int_ref_args).into()
+            if args.len() == 1 {
+                z3::ast::Int::unary_minus(int_ref_args[0]).into()
+            } else {
+                z3::ast::Int::sub(self.context, &int_ref_args).into()
+            }
         } else if function_name == "*" {
             let args = argument_values
                 .iter()

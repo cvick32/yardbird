@@ -16,7 +16,7 @@ use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
 #[command(version, about, long_about = None)]
 struct Options {
     /// Directory to find vmt files in.
-    pub base: PathBuf,
+    pub examples: PathBuf,
 
     /// BMC depth until quitting.
     #[arg(short, long, default_value_t = 10)]
@@ -206,7 +206,7 @@ fn main() -> anyhow::Result<()> {
         .map(|skip| Pattern::new(skip))
         .collect::<Result<_, _>>()?;
 
-    let benchmarks: Vec<_> = read_dir(options.base)?
+    let benchmarks: Vec<_> = read_dir(options.examples)?
         .filter_map(|path| path.ok())
         // recurse one level
         .flat_map(|path| {

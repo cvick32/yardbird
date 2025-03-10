@@ -157,14 +157,15 @@ impl<'ctx> SMTProblem<'ctx> {
     fn push_property(&mut self) {
         self.solver.push();
         let prop = self.subterm_handler.get_property_assert();
-        let z3_prop_negated =
-            z3::ast::Bool::not(&self.z3_var_context.rewrite_term(&prop).as_bool().unwrap());
+        let term = self.z3_var_context.rewrite_term(&prop).simplify();
+        let z3_prop_negated = z3::ast::Bool::not(&term.as_bool().unwrap());
+
         self.solver.assert(&z3_prop_negated);
     }
 
     pub(crate) fn add_instantiation(&mut self, inst: Term) -> bool {
         if self.instantiations.contains(&inst) {
-            debug!("ALREADY SEEN {} in {:?}", inst, self.instantiations);
+            debug!("ALREADY SEEN {}!", inst);
             return false;
         } else {
             self.instantiations.push(inst.clone());
