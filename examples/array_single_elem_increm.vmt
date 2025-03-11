@@ -10,7 +10,7 @@
 
 (define-fun init-conditions () Bool (!
  (and
-(= a (store a 0 0))
+  (= (select a 0) 0)
 ) :init true))
 
 (define-fun trans-conditions () Bool (!
