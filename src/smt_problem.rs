@@ -188,7 +188,12 @@ impl<'ctx> SMTProblem<'ctx> {
         // The additional unrolling we need depends on the instance itself, if all
         // variables are current, then we need 2 more, if not just 1.
         let cur_depth = self.bmc_builder.depth;
-        for i in 0..(self.bmc_builder.depth + inst.additional_depth()) {
+        let number_of_unrollings = if cur_depth == 0 {
+            1
+        } else {
+            cur_depth + inst.additional_depth()
+        };
+        for i in 0..number_of_unrollings {
             self.bmc_builder.set_depth(i);
             let indexed_inst = inst.rewrite(&mut self.bmc_builder);
             // Have to get the subterms.
