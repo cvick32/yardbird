@@ -12,8 +12,13 @@ pub struct FunctionDefinition<'ctx> {
 impl<'ctx> FunctionDefinition<'ctx> {
     fn apply(&self, argument_values: Vec<Dynamic<'ctx>>) -> Dynamic<'_> {
         assert!(self.domain.len() == argument_values.len());
-        self.z3_function
-            .apply(argument_values.iter().collect::<Vec<_>>().as_slice())
+        self.z3_function.apply(
+            argument_values
+                .iter()
+                .map(|x| x as _)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
     }
 
     fn new(arg_sorts: Vec<z3::Sort<'ctx>>, func_decl: FuncDecl<'ctx>) -> Self {
