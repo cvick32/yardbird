@@ -410,18 +410,12 @@ impl VMTModel {
             .collect()
     }
 
-    pub fn add_instantiation(&mut self, term: Term, instances: &mut Vec<Term>) -> bool {
-        if instances.contains(&term) {
-            debug!("ALREADY SEEN {} in {:?}", term, instances);
-            return false;
-        } else {
-            instances.push(term.clone());
-        }
-        debug!("USED INSTANCE: {}", term);
+    pub fn add_instantiation(&mut self, term: &Term) -> bool {
+        debug!("ADDED INSTANCE TO VMTModel: {}", term);
         self.initial_condition =
             self.add_instantiation_to_condition(term.clone(), self.initial_condition.clone());
         self.transition_condition =
-            self.add_instantiation_to_condition(term, self.transition_condition.clone());
+            self.add_instantiation_to_condition(term.clone(), self.transition_condition.clone());
         true
     }
 

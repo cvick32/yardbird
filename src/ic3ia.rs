@@ -21,3 +21,7 @@ pub fn call_ic3ia(model: VMTModel) -> Result<String, String> {
 
     utils::run_command("ic3ia", &[path, "-w"])
 }
+
+pub fn ic3ia_output_contains_proof(ic3ia_out: String) -> bool {
+    ic3ia_out.contains("invariant")
+}

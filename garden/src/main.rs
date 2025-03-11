@@ -30,6 +30,10 @@ struct Options {
     #[arg(short, long)]
     pub include: Vec<String>,
 
+    /// Run IC3IA
+    #[arg(long, default_value_t = false)]
+    pub run_ic3ia: bool,
+
     /// Benchmarks to skip.
     #[arg(short, long)]
     pub skip: Vec<String>,
@@ -76,6 +80,7 @@ impl From<ProofLoopResult> for SerializableProofResult {
 #[derive(Debug, Serialize)]
 enum BenchmarkResult {
     Success(SerializableProofResult),
+    FoundProof(SerializableProofResult),
     NoProgress(SerializableProofResult),
     Timeout(u128),
     Error(String),
@@ -131,7 +136,10 @@ where
 
     match rx.recv_timeout(timeout) {
         Ok(TimeoutFnResult::Ok(res)) => match res {
-            Ok(proof_result) => BenchmarkResult::Success(proof_result.into()),
+            Ok(proof_result) => match proof_result.found_proof {
+                true => BenchmarkResult::FoundProof(proof_result.into()),
+                false => BenchmarkResult::Success(proof_result.into()),
+            },
             Err(yardbird::Error::NoProgress { instantiations, .. }) => {
                 BenchmarkResult::NoProgress(SerializableProofResult {
                     used_instances: instantiations.iter().map(ToString::to_string).collect(),
@@ -256,7 +264,7 @@ fn main() -> anyhow::Result<()> {
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
-                                invoke_ic3ia: false,
+                                invoke_ic3ia: options.run_ic3ia,
                             },
                             options.retry,
                         )

@@ -13,6 +13,7 @@ pub struct ProofLoopResult {
     pub used_instances: Vec<Term>,
     pub const_instances: Vec<Term>,
     pub counterexample: bool,
+    pub found_proof: bool,
 }
 
 #[derive(Debug)]
@@ -120,14 +121,14 @@ impl<'ctx, S> Driver<'ctx, S> {
                     ProofAction::NextDepth => continue 'bmc,
                     ProofAction::FoundCounterexample => return Err(Error::Counterexample),
                     ProofAction::FoundProof => {
-                        return Ok(strat.result(self.vmt_model.clone(), &smt_problem))
+                        return Ok(strat.result(&mut self.vmt_model.clone(), &smt_problem))
                     }
                 }
             }
             return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
-        Ok(strat.result(self.vmt_model.clone(), &smt_problem))
+        Ok(strat.result(&mut self.vmt_model.clone(), &smt_problem))
     }
 }
 

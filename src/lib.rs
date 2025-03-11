@@ -85,7 +85,7 @@ impl YardbirdOptions {
 
     pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
         match self.strategy {
-            Strategy::Abstract => Box::new(Abstract::new(self.depth)),
+            Strategy::Abstract => Box::new(Abstract::new(self.depth, self.invoke_ic3ia)),
             Strategy::AbstractOnlyBest => Box::new(AbstractOnlyBest::new(self.depth)),
             Strategy::Concrete => Box::new(ConcreteZ3::default()),
         }

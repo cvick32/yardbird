@@ -14,7 +14,7 @@ macro_rules! create_integration_test {
             let vmt_model = model_from_options(&options);
             let ctx = z3::Context::new(&z3::Config::new());
             let mut driver = Driver::new(&ctx, vmt_model);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(10));
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(10, false));
             let res = driver.check_strategy(options.depth, strat).unwrap();
             assert!(
                 res.used_instances.len() == $num_instances,

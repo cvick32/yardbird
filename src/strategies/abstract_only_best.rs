@@ -122,12 +122,13 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         }
     }
 
-    fn result(&mut self, vmt_model: VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         ProofLoopResult {
-            model: Some(vmt_model),
+            model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
+            found_proof: false,
         }
     }
 

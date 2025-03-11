@@ -12,7 +12,7 @@ fn run(path: impl AsRef<Path>, depth: u16) {
     let context = z3::Context::new(&cfg);
     let mut driver = Driver::new(&context, vmt_model);
 
-    let strat = Box::new(Abstract::new(depth));
+    let strat = Box::new(Abstract::new(depth, false));
 
     _ = driver.check_strategy(depth, strat);
 }

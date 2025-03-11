@@ -12,6 +12,7 @@ use crate::{
     cost_functions::symbol_cost::BestSymbolSubstitution,
     driver::{self, Error},
     egg_utils::Saturate,
+    ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
     ProofLoopResult,
 };
@@ -23,12 +24,14 @@ use super::{ProofAction, ProofStrategy};
 pub struct Abstract {
     const_instantiations: Vec<Term>,
     bmc_depth: u16,
+    run_ic3ia: bool,
 }
 
 impl Abstract {
-    pub fn new(bmc_depth: u16) -> Self {
+    pub fn new(bmc_depth: u16, run_ic3ia: bool) -> Self {
         Self {
             bmc_depth,
+            run_ic3ia,
             ..Default::default()
         }
     }
@@ -135,12 +138,25 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+        for instantiation_term in &smt.get_instantiations() {
+            vmt_model.add_instantiation(instantiation_term);
+        }
+        let found_proof = if self.run_ic3ia {
+            let result = call_ic3ia(vmt_model.clone());
+            match result {
+                Ok(out) => ic3ia_output_contains_proof(out),
+                Err(_) => false,
+            }
+        } else {
+            false
+        };
         ProofLoopResult {
-            model: Some(vmt_model),
+            model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
+            found_proof,
         }
     }
 

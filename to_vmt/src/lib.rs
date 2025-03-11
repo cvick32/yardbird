@@ -41,7 +41,7 @@ pub fn run_model(
     let context = z3::Context::new(&cfg);
     let mut driver = Driver::new(&context, model);
 
-    let strat = Box::new(Abstract::new(depth));
+    let strat = Box::new(Abstract::new(depth, false));
 
     match driver.check_strategy(depth, strat) {
         Ok(res) => {
