@@ -5,7 +5,7 @@ use crate::array_axioms::ArrayLanguage;
 
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BestSymbolSubstitution {
     pub current_bmc_depth: u32,
     pub init_and_transition_system_terms: Vec<String>,

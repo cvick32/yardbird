@@ -59,7 +59,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
         } */
 
         Ok(AbstractRefinementState {
-            depth: depth + 1,
+            depth,
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],

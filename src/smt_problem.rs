@@ -148,7 +148,6 @@ impl<'ctx> SMTProblem<'ctx> {
         // Push property back on top of the solver.
         self.push_property();
         let sat_result = self.solver.check();
-        println!("{}", self.solver);
         self.newest_model = self.solver.get_model();
         // Popping property off.
         self.solver.pop(1);
@@ -188,12 +187,18 @@ impl<'ctx> SMTProblem<'ctx> {
         let mut all_z3_insts = vec![];
         // The additional unrolling we need depends on the instance itself, if all
         // variables are current, then we need 2 more, if not just 1.
-        for i in 0..self.bmc_builder.depth + inst.additional_depth() {
+        let cur_depth = self.bmc_builder.depth;
+        for i in 0..(self.bmc_builder.depth + inst.additional_depth()) {
             self.bmc_builder.set_depth(i);
             let indexed_inst = inst.rewrite(&mut self.bmc_builder);
+            // Have to get the subterms.
+            self.subterm_handler
+                .register_instantiation_term(indexed_inst.clone());
             let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
             all_z3_insts.push(z3_inst.as_bool().unwrap());
         }
+        // reset depth
+        self.bmc_builder.set_depth(cur_depth);
         let inst_and = self.z3_var_context.make_and(all_z3_insts);
         self.solver.assert(&inst_and);
     }
@@ -234,8 +239,9 @@ impl<'ctx> SMTProblem<'ctx> {
     }
 
     pub(crate) fn get_init_and_transition_subterms(&self) -> Vec<String> {
-        let mut trans = self.subterm_handler.get_property_subterms();
+        let mut trans = self.subterm_handler.get_transition_system_subterms();
         trans.extend(self.subterm_handler.get_initial_subterms());
+        trans.extend(self.subterm_handler.get_instantiation_subterms());
         trans
     }
 }

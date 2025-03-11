@@ -13,9 +13,11 @@ pub struct SubtermHandler {
     initial_subterms: HashSet<Term>,
     trans_subterms: HashSet<Term>,
     prop_subterms: HashSet<Term>,
+    instantiation_subterms: HashSet<Term>,
     initial_reads_and_writes: ReadsAndWrites,
     trans_reads_and_writes: ReadsAndWrites,
     prop_reads_and_writes: ReadsAndWrites,
+    instantiation_reads_and_writes: ReadsAndWrites,
     init_and_trans_asserts: Vec<String>,
     prop_assert: String,
 }
@@ -29,9 +31,11 @@ impl SubtermHandler {
             initial_subterms: HashSet::new(),
             trans_subterms: HashSet::new(),
             prop_subterms: HashSet::new(),
+            instantiation_subterms: HashSet::new(),
             initial_reads_and_writes: ReadsAndWrites::default(),
             trans_reads_and_writes: ReadsAndWrites::default(),
             prop_reads_and_writes: ReadsAndWrites::default(),
+            instantiation_reads_and_writes: ReadsAndWrites::default(),
             init_and_trans_asserts: vec![],
             prop_assert: "".into(),
         }
@@ -40,8 +44,23 @@ impl SubtermHandler {
     pub(crate) fn get_all_subterms(&self) -> Vec<&Term> {
         self.initial_subterms
             .iter()
-            .chain(self.trans_subterms.iter().chain(self.prop_subterms.iter()))
+            .chain(
+                self.trans_subterms.iter().chain(
+                    self.prop_subterms
+                        .iter()
+                        .chain(self.instantiation_subterms.iter()),
+                ),
+            )
             .collect()
+    }
+
+    pub(crate) fn register_instantiation_term(&mut self, inst: Term) {
+        let mut inst_subterms = NonBooleanSubterms::default();
+        let _ = inst.clone().accept_term_visitor(&mut inst_subterms);
+        let _ = inst
+            .clone()
+            .accept_term_visitor(&mut self.instantiation_reads_and_writes);
+        self.instantiation_subterms.extend(inst_subterms.subterms);
     }
 
     pub(crate) fn generate_subterms(&mut self, bmc_builder: &mut BMCBuilder) {
@@ -62,7 +81,6 @@ impl SubtermHandler {
             // Have to set backwards so we get 0->1 for depth 1.
             let cur_depth = bmc_builder.depth;
             bmc_builder.set_depth(cur_depth - 1);
-            // Union up all of the trans subterms.
             let mut trans_subterms = NonBooleanSubterms::default();
             let indexed_trans_term = self.trans_term.clone().accept(bmc_builder).unwrap();
             // Reset the depth.
@@ -73,6 +91,7 @@ impl SubtermHandler {
                 .clone()
                 .accept_term_visitor(&mut trans_subterms);
             self.trans_subterms.extend(trans_subterms.subterms);
+            // Union up all of the trans subterms.
             let _ = indexed_trans_term
                 .clone()
                 .accept_term_visitor(&mut self.trans_reads_and_writes);
@@ -96,11 +115,13 @@ impl SubtermHandler {
         all_reads_from.extend(self.initial_reads_and_writes.reads_from.clone());
         all_reads_from.extend(self.trans_reads_and_writes.reads_from.clone());
         all_reads_from.extend(self.prop_reads_and_writes.reads_from.clone());
+        all_reads_from.extend(self.instantiation_reads_and_writes.reads_from.clone());
 
         let mut all_writes_to = HashSet::new();
         all_writes_to.extend(self.initial_reads_and_writes.writes_to.clone());
         all_writes_to.extend(self.trans_reads_and_writes.writes_to.clone());
         all_writes_to.extend(self.prop_reads_and_writes.writes_to.clone());
+        all_writes_to.extend(self.instantiation_reads_and_writes.writes_to.clone());
 
         ReadsAndWrites::from(all_reads_from, all_writes_to)
     }
@@ -113,6 +134,20 @@ impl SubtermHandler {
 
     pub(crate) fn get_initial_subterms(&self) -> Vec<String> {
         self.initial_subterms
+            .iter()
+            .map(|ts| ts.to_string())
+            .collect()
+    }
+
+    pub(crate) fn get_transition_system_subterms(&self) -> Vec<String> {
+        self.trans_subterms
+            .iter()
+            .map(|ts| ts.to_string())
+            .collect()
+    }
+
+    pub(crate) fn get_instantiation_subterms(&self) -> Vec<String> {
+        self.instantiation_subterms
             .iter()
             .map(|ts| ts.to_string())
             .collect()
