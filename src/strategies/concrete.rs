@@ -33,7 +33,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             None => todo!("No Z3 model available for SAT instance"),
         };
         info!("Counterexample:\n{}", model.dump_sorted()?);
-        Ok(ProofAction::Stop)
+        Ok(ProofAction::FoundCounterexample)
     }
 
     fn finish(

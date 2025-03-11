@@ -111,7 +111,10 @@ impl<'ctx, S> Driver<'ctx, S> {
                         strat.finish(state, &mut smt_problem)?;
                     }
                     ProofAction::NextDepth => continue 'bmc,
-                    ProofAction::Stop => return Err(Error::Counterexample),
+                    ProofAction::FoundCounterexample => return Err(Error::Counterexample),
+                    ProofAction::FoundProof => {
+                        return Ok(strat.result(self.vmt_model.clone(), &smt_problem))
+                    }
                 }
             }
             return Err(Error::TooManyRefinements { n_refines, depth });

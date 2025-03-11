@@ -9,7 +9,8 @@ use crate::{
 pub enum ProofAction {
     Continue,
     NextDepth,
-    Stop,
+    FoundCounterexample,
+    FoundProof,
 }
 
 /// Describes how to respond to the solver returning `unsat`, `unknown`, or `sat` at
