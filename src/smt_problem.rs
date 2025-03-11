@@ -249,4 +249,12 @@ impl<'ctx> SMTProblem<'ctx> {
         trans.extend(self.subterm_handler.get_instantiation_subterms());
         trans
     }
+
+    pub(crate) fn get_interpretation(
+        &self,
+        model: &z3::Model<'ctx>,
+        z3_term: &Dynamic<'ctx>,
+    ) -> Dynamic<'_> {
+        self.z3_var_context.get_interpretation(model, z3_term)
+    }
 }

@@ -172,13 +172,8 @@ impl AbstractRefinementState {
         smt: &SMTProblem,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
-            //let term_id = self.egraph.add_expr(&term.to_string().parse()?);
             let z3_term = smt.rewrite_term(term);
-            let model_interp = model
-                .eval(&z3_term, false)
-                .unwrap_or_else(|| panic!("Term not found in model: {term}"));
-
-            // let term_id = self.egraph.add_expr(&term.to_string().parse()?);
+            let model_interp = smt.get_interpretation(model, &z3_term);
             let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
             let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
             self.egraph.union(term_id, interp_id);

@@ -306,6 +306,16 @@ impl<'ctx> Z3VarContext<'ctx> {
         self.var_name_to_z3_term
             .insert(var_var_name, var_dynamic.clone());
     }
+
+    pub(crate) fn get_interpretation(
+        &self,
+        model: &z3::Model<'ctx>,
+        z3_term: &Dynamic<'ctx>,
+    ) -> Dynamic<'_> {
+        model
+            .eval(z3_term, true) // Add Model completion so we don't have to deal with ite in the interpretations.
+            .unwrap_or_else(|| panic!("Term not found in model: {z3_term}"))
+    }
 }
 
 impl smt2parser::rewriter::Rewriter for Z3VarContext<'_> {
