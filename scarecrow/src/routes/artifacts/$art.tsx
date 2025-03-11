@@ -234,6 +234,14 @@ function Status({
     }
   }
 
+  if ("FoundProof" in result) {
+    return (
+      <td className="m-0 bg-green-200 px-2 text-left align-top dark:bg-green-800">
+        Found Proof!
+      </td>
+    );
+  }
+
   if ("NoProgress" in result) {
     return (
       <td className="m-0 bg-pink-200 px-2 text-left align-top dark:bg-pink-800">

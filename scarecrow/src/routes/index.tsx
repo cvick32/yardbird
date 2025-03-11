@@ -252,6 +252,7 @@ function Stats({ id }: { id: string }) {
 
   const total =
     stats.data.success +
+    stats.data.foundProof +
     stats.data.noProgress +
     stats.data.trivialSuccess +
     stats.data.timeout +
@@ -262,7 +263,7 @@ function Stats({ id }: { id: string }) {
     <FlexGrid className="text-black dark:text-white">
       <div key={`0-${id}`} className="flex flex-row gap-[2px] font-bold">
         <span className="text-green-600 dark:text-green-500">
-          {stats.data.success}
+          {stats.data.success + stats.data.foundProof}
         </span>
         /
         <span className="text-teal-600 dark:text-teal-500">

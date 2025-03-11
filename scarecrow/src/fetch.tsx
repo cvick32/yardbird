@@ -18,6 +18,7 @@ export interface Benchmark {
 export type BenchmarkResult =
   | { Success: ProofLoopResult }
   | { NoProgress: ProofLoopResult }
+  | { FoundProof: ProofLoopResult }
   | { Timeout: number }
   | { Error: string }
   | { Panic: string };
@@ -68,6 +69,8 @@ export function getStatus(result?: BenchmarkResult): string {
     } else {
       return "trivial";
     }
+  } else if ("FoundProof" in result) {
+    return "found-proof";
   } else if ("NoProgress" in result) {
     return "no-progress";
   } else if ("Timeout" in result) {
@@ -109,6 +112,13 @@ export function isSuccess(
     result,
     strat,
   );
+}
+
+export function isFoundProof(
+  result?: BenchmarkResult | StrategyResult[],
+  strat: string = "abstract",
+) {
+  return benchmarkVariant((res) => "FoundProof" in res, result, strat);
 }
 
 export function isNoProgress(
@@ -338,6 +348,7 @@ export async function readFile(file: File): Promise<Artifact> {
 
 export function benchmarkSummary(artifact: Artifact) {
   let success = 0;
+  let foundProof = 0;
   let noProgress = 0;
   let trivialSuccess = 0;
   let timeout = 0;
@@ -355,6 +366,8 @@ export function benchmarkSummary(artifact: Artifact) {
         } else {
           success += 1;
         }
+      } else if ("FoundProof" in res) {
+        foundProof += 1;
       } else if ("NoProgress" in res) {
         noProgress += 1;
       } else if ("Timeout" in res) {
@@ -369,6 +382,7 @@ export function benchmarkSummary(artifact: Artifact) {
 
   return {
     success,
+    foundProof,
     noProgress,
     trivialSuccess,
     timeout,
