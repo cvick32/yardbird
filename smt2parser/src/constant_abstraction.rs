@@ -17,13 +17,13 @@ const PREFIX: &str = "CONST";
 #[derive(Clone, Debug, Default)]
 pub struct ConstantAbstractor {
     visitor: SyntaxBuilder,
-    depth: u8,
+    depth: u16,
     next_id: usize,
     scope: HashMap<BigUint, usize>,
 }
 
 impl ConstantAbstractor {
-    pub fn new(depth: u8) -> Self {
+    pub fn new(depth: u16) -> Self {
         Self {
             depth,
             ..Default::default()

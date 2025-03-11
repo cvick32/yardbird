@@ -125,7 +125,7 @@ where
     type Ret = (Vec<ArrayExpr>, Vec<ArrayExpr>);
     fn saturate(&mut self, cost_fn: BestSymbolSubstitution) -> Self::Ret {
         let egraph = std::mem::take(self);
-        let trans_terms = cost_fn.transition_system_terms.clone();
+        let trans_terms = cost_fn.init_and_transition_system_terms.clone();
         let prop_terms = cost_fn.property_terms.clone();
         let reads_writes = cost_fn.reads_writes.clone();
         let scheduler = ConflictScheduler::new(

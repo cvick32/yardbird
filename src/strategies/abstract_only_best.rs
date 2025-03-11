@@ -1,12 +1,11 @@
 use std::mem;
 
-use anyhow::anyhow;
 use egg::CostFunction;
 use itertools::Itertools;
 use log::info;
 use smt2parser::{
     concrete::Term,
-    vmt::{smt::SMTProblem, QuantifiedInstantiator, VMTModel},
+    vmt::{QuantifiedInstantiator, VMTModel},
 };
 
 use crate::{
@@ -15,7 +14,7 @@ use crate::{
     cost_functions::symbol_cost::BestSymbolSubstitution,
     driver,
     egg_utils::Saturate,
-    z3_var_context::Z3VarContext,
+    smt_problem::SMTProblem,
     Error, ProofLoopResult,
 };
 
@@ -26,11 +25,11 @@ use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 pub struct AbstractOnlyBest {
     used_instantiations: Vec<Term>,
     const_instantiations: Vec<Term>,
-    bmc_depth: u8,
+    bmc_depth: u16,
 }
 
 impl AbstractOnlyBest {
-    pub fn new(bmc_depth: u8) -> Self {
+    pub fn new(bmc_depth: u16) -> Self {
         Self {
             bmc_depth,
             ..Default::default()
@@ -45,15 +44,14 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
-        for term in smt.get_assert_terms() {
-            if let Ok(parsed) = &term.to_string().parse() {
+        for term_string in smt.get_assert_strings() {
+            if let Ok(parsed) = &term_string.parse() {
                 egraph.add_expr(parsed);
             }
         }
         Ok(AbstractRefinementState {
-            smt,
             depth,
             egraph,
             instantiations: vec![],
@@ -64,7 +62,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
     fn unsat(
         &mut self,
         state: &mut AbstractRefinementState,
-        _solver: &z3::Solver,
+        _solver: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -73,17 +71,19 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
     fn sat(
         &mut self,
         state: &mut AbstractRefinementState,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
+        smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
-        let model = solver.get_model().ok_or(anyhow!("No z3 model"))?;
-        state.update_with_subterms(&model, z3_var_context)?;
+        let model = match smt.get_model() {
+            Some(model) => model,
+            None => todo!("No Z3 model available for SAT instance"),
+        };
+        state.update_with_subterms(model, smt)?;
         state.egraph.rebuild();
         let mut cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
-            transition_system_terms: state.smt.get_transition_system_subterms(),
-            property_terms: state.smt.get_property_subterms(),
-            reads_writes: state.smt.get_reads_and_writes(),
+            init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
+            property_terms: smt.get_property_subterms(),
+            reads_writes: smt.get_reads_and_writes(),
         };
         let (insts, const_insts) = state.egraph.saturate(cost_fn.clone());
         let insts: Vec<ArrayExpr> = insts
@@ -99,26 +99,20 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
 
     fn finish(
         &mut self,
-        model: &mut VMTModel,
         state: AbstractRefinementState,
+        smt: &mut SMTProblem,
     ) -> driver::Result<()> {
         self.const_instantiations
-            .extend(state.const_instantiations.iter().cloned().map(expr_to_term));
+            .extend(state.const_instantiations.into_iter().map(expr_to_term));
+        let variables = smt.variables.clone();
+        let terms: Vec<Term> = state.instantiations.into_iter().map(expr_to_term).collect();
+        let no_progress = terms
+            .clone()
+            .into_iter()
+            .flat_map(|term| QuantifiedInstantiator::rewrite_quantified(term, variables.clone()))
+            .all(|inst| !smt.add_instantiation(inst));
 
-        let no_progress = state
-            .instantiations
-            .into_iter()
-            // .inspect(|x| println!("x: {x}"))
-            .map(expr_to_term)
-            .map(QuantifiedInstantiator::rewrite_quantified)
-            .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
-        let const_progress = state
-            .const_instantiations
-            .into_iter()
-            .map(expr_to_term)
-            .map(QuantifiedInstantiator::rewrite_quantified)
-            .all(|inst| !model.add_instantiation(inst, &mut self.used_instantiations));
-        if no_progress && const_progress {
+        if no_progress {
             Err(Error::NoProgress {
                 depth: state.depth,
                 instantiations: self.used_instantiations.clone(),
@@ -128,12 +122,16 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
         }
     }
 
-    fn result(&mut self, vmt_model: VMTModel) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         ProofLoopResult {
             model: Some(vmt_model),
-            used_instances: mem::take(&mut self.used_instantiations),
+            used_instances: mem::take(&mut smt.get_instantiations()),
             const_instances: mem::take(&mut self.const_instantiations),
             counterexample: false,
         }
+    }
+
+    fn abstract_array_theory(&self) -> bool {
+        true
     }
 }

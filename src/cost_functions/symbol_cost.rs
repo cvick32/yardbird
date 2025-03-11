@@ -5,10 +5,10 @@ use crate::array_axioms::ArrayLanguage;
 
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BestSymbolSubstitution {
     pub current_bmc_depth: u32,
-    pub transition_system_terms: Vec<String>,
+    pub init_and_transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
     pub reads_writes: ReadsAndWrites,
 }
@@ -21,21 +21,20 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
         C: FnMut(egg::Id) -> Self::Cost,
     {
         let op_cost = match enode {
-            ArrayLanguage::Num(_num) => {
-                3
-                // let num_string = num.to_string();
-                // let in_trans = self.transition_system_terms.contains(&num_string);
-                // let in_prop = self.property_terms.contains(&num_string);
-                // if in_trans {
-                //     // If the constant is just in the transition system, we assign a low cost.
-                //     1
-                // } else if in_prop {
-                //     // If the constant is just property term, we assign a lower cost.
-                //     0
-                // } else {
-                //     // Otherwise, 100.
-                //     100
-                // }
+            ArrayLanguage::Num(num) => {
+                let num_string = num.to_string();
+                let in_trans = self.init_and_transition_system_terms.contains(&num_string);
+                let in_prop = self.property_terms.contains(&num_string);
+                if in_trans {
+                    // If the constant is just in the transition system, we assign a low cost.
+                    1
+                } else if in_prop {
+                    // If the constant is just property term, we assign a lower cost.
+                    0
+                } else {
+                    // Otherwise, 100.
+                    100
+                }
             }
             ArrayLanguage::ConstArr(_) => 0,
             // NOTE: try changing the value of Write from 0 to 10 for
@@ -61,9 +60,9 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
             ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Div(_) => 1,
             ArrayLanguage::Symbol(sym) => {
-                // let symbol_str = sym.as_str().to_string();
-                // let in_trans = self.transition_system_terms.contains(&symbol_str);
-                // let in_prop = self.property_terms.contains(&symbol_str);
+                //let symbol_str = sym.as_str().to_string();
+                //let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
+                //let in_prop = self.property_terms.contains(&symbol_str);
 
                 if let Some((name, frame_number)) =
                     sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)

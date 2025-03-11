@@ -17,7 +17,9 @@ mod egg_utils;
 mod extractor;
 mod interpolant;
 pub mod logger;
+mod smt_problem;
 pub mod strategies;
+mod subterm_handler;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;
@@ -32,7 +34,7 @@ pub struct YardbirdOptions {
 
     /// BMC depth until quitting.
     #[arg(short, long, default_value_t = 10)]
-    pub depth: u8,
+    pub depth: u16,
 
     /// How many times BMC should be UNSAT until we check with an invariant generator.
     #[arg(short, long, default_value_t = 1)]

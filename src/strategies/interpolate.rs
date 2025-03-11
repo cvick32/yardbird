@@ -1,7 +1,7 @@
 use log::{debug, info, warn};
 use z3::ast::Ast;
 
-use crate::{utils::run_smtinterpol, z3_var_context::Z3VarContext};
+use crate::{smt_problem::SMTProblem, utils::run_smtinterpol};
 
 use super::{AbstractRefinementState, ProofStrategyExt};
 
@@ -10,15 +10,14 @@ pub struct Interpolating;
 impl ProofStrategyExt<AbstractRefinementState> for Interpolating {
     fn unsat(
         &mut self,
-        state: &mut AbstractRefinementState,
-        _solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
+        _state: &mut AbstractRefinementState,
+        smt: &SMTProblem,
     ) -> anyhow::Result<()> {
-        let interpolants = run_smtinterpol(&state.smt);
+        let interpolants = run_smtinterpol(smt);
         match interpolants {
             Ok(interps) => {
                 for interp in interps {
-                    let z3_interp = z3_var_context.rewrite_term(&interp.simplified_term);
+                    let z3_interp = smt.rewrite_term(&interp.simplified_term);
                     let z3_interp_str = z3_interp.to_string();
                     let simple = z3_interp.simplify();
                     info!(

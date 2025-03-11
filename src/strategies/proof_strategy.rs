@@ -1,15 +1,16 @@
-use smt2parser::vmt::{smt::SMTProblem, VMTModel};
+use smt2parser::vmt::VMTModel;
 
 use crate::{
     driver::{self, Error},
-    z3_var_context::Z3VarContext,
+    smt_problem::SMTProblem,
     ProofLoopResult,
 };
 
 pub enum ProofAction {
     Continue,
     NextDepth,
-    Stop,
+    FoundCounterexample,
+    FoundProof,
 }
 
 /// Describes how to respond to the solver returning `unsat`, `unknown`, or `sat` at
@@ -19,6 +20,8 @@ pub enum ProofAction {
 /// finalizing steps with `finish`. The `result` method describes how to construct a
 /// `ProofLoopResult` from `self`.
 pub trait ProofStrategy<'ctx, S> {
+    fn abstract_array_theory(&self) -> bool;
+
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model
     }
@@ -27,28 +30,23 @@ pub trait ProofStrategy<'ctx, S> {
         10
     }
 
-    fn setup(&mut self, smt: SMTProblem, depth: u8) -> driver::Result<S>;
+    fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<S>;
 
-    fn unsat(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<ProofAction>;
+    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
 
-    fn sat(
-        &mut self,
-        state: &mut S,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
-    ) -> driver::Result<ProofAction>;
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> driver::Result<ProofAction> {
-        Err(Error::SolverUnknown(solver.get_reason_unknown()))
+    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction> {
+        Err(Error::SolverUnknown(smt.get_reason_unknown()))
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, model: &mut VMTModel, state: S) -> driver::Result<()> {
+    fn finish(&mut self, state: S, smt: &mut SMTProblem) -> driver::Result<()> {
         Ok(())
     }
 
-    fn result(&mut self, model: VMTModel) -> ProofLoopResult;
+    fn result(&mut self, model: VMTModel, smt: &SMTProblem) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond
@@ -57,22 +55,17 @@ pub trait ProofStrategy<'ctx, S> {
 /// to a proof strategy.
 pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
-    fn unsat(
-        &mut self,
-        state: &mut S,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<()> {
+    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         Ok(())
     }
 

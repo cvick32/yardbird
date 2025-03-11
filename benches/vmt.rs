@@ -5,7 +5,7 @@ use criterion::{criterion_group, criterion_main, Criterion, SamplingMode};
 use smt2parser::vmt::VMTModel;
 use yardbird::{strategies::Abstract, Driver};
 
-fn run(path: impl AsRef<Path>, depth: u8) {
+fn run(path: impl AsRef<Path>, depth: u16) {
     let vmt_model = VMTModel::from_path(path).unwrap();
 
     let cfg = z3::Config::new();

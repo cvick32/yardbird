@@ -13,10 +13,11 @@ use variable::Variable;
 use crate::{
     concrete::{self, Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term},
     constant_abstraction::ConstantAbstractor,
+    let_extract::LetExtract,
     CommandStream,
 };
 
-pub use instantiator::{Instantiator, QuantifiedInstantiator};
+pub use quantified_instantiator::QuantifiedInstantiator;
 pub use reads_and_write::ReadsAndWrites;
 
 static PROPERTY_ATTRIBUTE: &str = "invar-property";
@@ -25,13 +26,13 @@ static INITIAL_ATTRIBUTE: &str = "init";
 
 mod action;
 mod array_abstractor;
+mod array_axiom_frame_num_getter;
 mod axiom;
-mod bmc;
+pub mod bmc;
 pub mod canonicalize_boolean;
-mod frame_num_getter;
-mod instantiator;
-mod non_boolean_subterms;
+pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
+pub mod quantified_instantiator;
 mod reads_and_write;
 pub mod smt;
 mod smtinterpol_utils;
@@ -165,7 +166,7 @@ impl VMTModel {
         VMTModel::checked_from(array_definitions).unwrap()
     }
 
-    pub fn abstract_constants_over(mut self, depth: u8) -> Self {
+    pub fn abstract_constants_over(mut self, depth: u16) -> Self {
         let mut constant_abstactor = ConstantAbstractor::new(depth);
         self.initial_condition = self
             .initial_condition
@@ -200,12 +201,12 @@ impl VMTModel {
         self
     }
 
-    pub fn unroll(&self, length: u8) -> SMTProblem {
+    pub fn unroll(&self, length: u16) -> SMTProblem {
         let mut builder = BMCBuilder {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
@@ -232,12 +233,34 @@ impl VMTModel {
         smt_problem
     }
 
+    pub fn get_initial_condition_for_yardbird(&self) -> Term {
+        self.unwrap_attributes(&self.initial_condition)
+    }
+
+    pub fn get_trans_condition_for_yardbird(&self) -> Term {
+        self.unwrap_attributes(&self.transition_condition)
+    }
+
+    pub fn get_property_for_yardbird(&self) -> Term {
+        self.unwrap_attributes(&self.property_condition)
+    }
+
+    fn unwrap_attributes(&self, attribute_term: &Term) -> Term {
+        match attribute_term {
+            Term::Attributes {
+                term,
+                attributes: _,
+            } => LetExtract::substitute(*term.clone()),
+            _ => panic!("Ill-formatted VMT condition: {}", self.initial_condition),
+        }
+    }
+
     pub fn get_initial_term(&self) -> SMTProblem {
         let mut builder = BMCBuilder {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
@@ -250,7 +273,7 @@ impl VMTModel {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
@@ -274,7 +297,7 @@ impl VMTModel {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
-            step: 0,
+            depth: 0,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
@@ -347,7 +370,7 @@ impl VMTModel {
             .join("\n")
     }
 
-    fn get_all_current_variable_names(&self) -> Vec<String> {
+    pub fn get_all_current_variable_names(&self) -> Vec<String> {
         let mut state_variable_names: Vec<String> = self
             .state_variables
             .iter()
@@ -362,7 +385,7 @@ impl VMTModel {
         state_variable_names
     }
 
-    fn get_next_to_current_varible_names(&self) -> HashMap<String, String> {
+    pub fn get_next_to_current_varible_names(&self) -> HashMap<String, String> {
         self.state_variables
             .iter()
             .map(|var| {
@@ -455,6 +478,10 @@ impl VMTModel {
         let mut file = File::create(filename).unwrap();
 
         let _ = file.write(self.as_vmt_string().as_bytes()).unwrap();
+    }
+
+    pub fn get_function_definitions(&self) -> Vec<Command> {
+        self.function_definitions.clone()
     }
 }
 

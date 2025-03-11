@@ -1,10 +1,7 @@
-use smt2parser::{
-    concrete::{Constant, SyntaxBuilder, Term},
-    vmt::smt::SMTProblem,
-};
+use smt2parser::concrete::{Constant, SyntaxBuilder, Term};
 use std::collections::HashMap;
 use z3::{
-    ast::{Ast, Dynamic},
+    ast::{Ast, Bool, Dynamic},
     Context, FuncDecl,
 };
 
@@ -15,13 +12,8 @@ pub struct FunctionDefinition<'ctx> {
 impl<'ctx> FunctionDefinition<'ctx> {
     fn apply(&self, argument_values: Vec<Dynamic<'ctx>>) -> Dynamic<'_> {
         assert!(self.domain.len() == argument_values.len());
-        self.z3_function.apply(
-            argument_values
-                .iter()
-                .map(|x| x as _)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )
+        self.z3_function
+            .apply(argument_values.iter().collect::<Vec<_>>().as_slice())
     }
 
     fn new(arg_sorts: Vec<z3::Sort<'ctx>>, func_decl: FuncDecl<'ctx>) -> Self {
@@ -40,26 +32,22 @@ pub struct Z3VarContext<'ctx> {
 }
 
 impl<'ctx> Z3VarContext<'ctx> {
-    pub fn from(context: &'ctx Context, smt: &SMTProblem) -> Self {
-        let mut var_context = Z3VarContext {
+    pub(crate) fn new(context: &'ctx Context) -> Self {
+        Z3VarContext {
             builder: SyntaxBuilder,
             context,
             var_name_to_z3_term: HashMap::new(),
             function_name_to_z3_function: HashMap::new(),
-        };
-        for var_def in smt.get_variable_definitions() {
-            let _ = var_def.accept(&mut var_context);
         }
-        for function_def in smt.get_function_definitions() {
-            let _ = function_def.accept(&mut var_context);
-        }
-        var_context
     }
 
     /// This is for the extra terms that we want to add to the egraph after the variable
     /// interpretations and Array function interpretations.
-    pub(crate) fn rewrite_term(&'ctx self, term: &smt2parser::concrete::Term) -> Dynamic<'ctx> {
-        match term {
+    pub(crate) fn rewrite_term(
+        &'ctx self,
+        outer_term: &smt2parser::concrete::Term,
+    ) -> Dynamic<'ctx> {
+        match outer_term {
             Term::Constant(constant) => match constant {
                 Constant::Numeral(big_uint) => {
                     z3::ast::Int::from_u64(self.context, big_uint.try_into().unwrap()).into()
@@ -105,11 +93,35 @@ impl<'ctx> Z3VarContext<'ctx> {
                     self.call_z3_function(function_name, argument_values)
                 }
             }
+            Term::Forall { vars, term } => {
+                let mut bounds = vec![];
+                for (symbol, _) in vars {
+                    let var: Dynamic<'_> = if self.var_name_to_z3_term.contains_key(&symbol.0) {
+                        self.var_name_to_z3_term.get(&symbol.0).unwrap().clone()
+                    } else {
+                        panic!("Unknown quantified variable {symbol} encountered!")
+                    };
+                    bounds.push(var);
+                }
+                let quantified_term = self.rewrite_term(term).as_bool().unwrap();
+                if bounds.len() == 1 {
+                    z3::ast::forall_const(self.context, &[&bounds[0]], &[], &quantified_term).into()
+                } else if bounds.len() == 2 {
+                    z3::ast::forall_const(
+                        self.context,
+                        &[&bounds[0], &bounds[1]],
+                        &[],
+                        &quantified_term,
+                    )
+                    .into()
+                } else {
+                    todo!("Haven't implemented universal quantification for more than 2 variables.")
+                }
+            }
             Term::Let {
                 var_bindings: _,
                 term: _,
             } => todo!(),
-            Term::Forall { vars: _, term: _ } => todo!(),
             Term::Exists { vars: _, term: _ } => todo!(),
             Term::Match { term: _, cases: _ } => todo!(),
             Term::Attributes {
@@ -176,7 +188,11 @@ impl<'ctx> Z3VarContext<'ctx> {
                 .map(|x| x.as_int().expect("Not an int"))
                 .collect::<Vec<_>>();
             let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::sub(self.context, &int_ref_args).into()
+            if args.len() == 1 {
+                z3::ast::Int::unary_minus(int_ref_args[0]).into()
+            } else {
+                z3::ast::Int::sub(self.context, &int_ref_args).into()
+            }
         } else if function_name == "*" {
             let args = argument_values
                 .iter()
@@ -254,9 +270,36 @@ impl<'ctx> Z3VarContext<'ctx> {
                 .map(|x| x.as_bool().expect("Not a bool"))
                 .collect::<Vec<_>>();
             z3::ast::Bool::not(&args[0]).into()
+        } else if function_name == "select" {
+            let arr = argument_values[0].as_array().expect("Not an array");
+            let idx = argument_values[1].clone();
+            z3::ast::Array::select(&arr, &idx)
+        } else if function_name == "store" {
+            let arr = argument_values[0].as_array().expect("Not an array");
+            let idx = argument_values[1].clone();
+            let val = argument_values[2].clone();
+            z3::ast::Array::store(&arr, &idx, &val).into()
         } else {
             todo!("Add Z3 function: {function_name}");
         }
+    }
+
+    pub(crate) fn make_and(&self, all_z3_insts: Vec<Bool<'ctx>>) -> z3::ast::Bool<'_> {
+        let inst_ref_args = all_z3_insts.iter().collect::<Vec<_>>();
+        z3::ast::Bool::and(self.context, &inst_ref_args)
+    }
+
+    pub fn create_variable(
+        &mut self,
+        symbol: &smt2parser::concrete::Symbol,
+        sort: &smt2parser::concrete::Sort,
+    ) {
+        let var_sort = self.get_z3_sort(sort);
+        let var_func_decl = FuncDecl::new(self.context, symbol.0.clone(), &[], &var_sort);
+        let var_dynamic = var_func_decl.apply(&[]);
+        let var_var_name = symbol.0.clone();
+        self.var_name_to_z3_term
+            .insert(var_var_name, var_dynamic.clone());
     }
 }
 
@@ -274,22 +317,18 @@ impl smt2parser::rewriter::Rewriter for Z3VarContext<'_> {
         parameters: Vec<<Self::V as smt2parser::visitors::Smt2Visitor>::Sort>,
         sort: <Self::V as smt2parser::visitors::Smt2Visitor>::Sort,
     ) -> Result<<Self::V as smt2parser::visitors::Smt2Visitor>::Command, Self::Error> {
-        let sort_binding = sort.clone();
-        let var_sort = self.get_z3_sort(&sort_binding);
         if parameters.is_empty() {
             // Create Z3 object for variable.
-            let var_func_decl = FuncDecl::new(self.context, symbol.0.clone(), &[], &var_sort);
-            let var_dynamic = var_func_decl.apply(&[]);
-            let var_var_name = symbol.0.clone();
-            self.var_name_to_z3_term.insert(var_var_name, var_dynamic);
+            self.create_variable(&symbol, &sort);
         } else {
             // Create Z3 object for function.
             let arg_sorts = parameters
                 .iter()
                 .map(|arg_sort| self.get_z3_sort(arg_sort))
                 .collect::<Vec<z3::Sort>>();
+            let return_sort = self.get_z3_sort(&sort);
             let sort_refs = arg_sorts.iter().collect::<Vec<&z3::Sort>>();
-            let func_decl = FuncDecl::new(self.context, symbol.0.clone(), &sort_refs, &var_sort);
+            let func_decl = FuncDecl::new(self.context, symbol.0.clone(), &sort_refs, &return_sort);
             self.function_name_to_z3_function.insert(
                 symbol.0.clone(),
                 FunctionDefinition::new(arg_sorts, func_decl),

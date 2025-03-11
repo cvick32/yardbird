@@ -7,6 +7,7 @@ pub struct LetExtract {
     pub scope: HashMap<Symbol, Term>,
 }
 impl LetExtract {
+    /// Removes all lets and nested lets from `term`.
     pub fn substitute(term: Term) -> Term {
         let mut extractor = Self::default();
         extractor.substitute_scoped_symbols(term)

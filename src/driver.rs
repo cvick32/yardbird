@@ -3,8 +3,8 @@ use log::info;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
+    smt_problem::SMTProblem,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
-    z3_var_context::Z3VarContext,
 };
 
 #[derive(Debug)]
@@ -37,12 +37,12 @@ pub enum Error {
             .join("\n")
     )]
     NoProgress {
-        depth: u8,
+        depth: u16,
         instantiations: Vec<Term>,
     },
 
     #[error("Hit refinement limit of {n_refines} at depth {depth}")]
-    TooManyRefinements { n_refines: u32, depth: u8 },
+    TooManyRefinements { n_refines: u32, depth: u16 },
 
     #[error("Error: {0}")]
     Anyhow(#[from] anyhow::Error),
@@ -82,54 +82,52 @@ impl<'ctx, S> Driver<'ctx, S> {
     /// model returning `Unsat`, `Unknown`, and `Sat`.
     pub fn check_strategy(
         &mut self,
-        target_depth: u8,
+        target_depth: u16,
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
     ) -> Result<ProofLoopResult> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
+        let mut smt_problem =
+            crate::smt_problem::SMTProblem::new(&self.vmt_model, self.context, &strat);
+
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
             for i in 0..n_refines {
                 info!("  refining loop: {}/{n_refines}", i + 1);
-
-                let smt = self.vmt_model.unroll(depth);
-                let solver = z3::Solver::new(self.context);
-                let z3_var_context = Z3VarContext::from(self.context, &smt);
-                solver.from_string(smt.to_bmc());
-
-                let mut state = strat.setup(smt, depth)?;
-
-                let sat_result = solver.check();
-                let action = match sat_result {
+                smt_problem.unroll(depth);
+                let mut state = strat.setup(&smt_problem, depth)?;
+                let action = match smt_problem.check() {
                     z3::SatResult::Unsat => {
-                        self.extensions
-                            .unsat(&mut state, &solver, &z3_var_context)?;
-                        strat.unsat(&mut state, &solver)?
+                        self.extensions.unsat(&mut state, &smt_problem)?;
+                        strat.unsat(&mut state, &smt_problem)?
                     }
                     z3::SatResult::Unknown => {
-                        self.extensions.unknown(&mut state, &solver)?;
-                        strat.unknown(&mut state, &solver)?
+                        self.extensions.unknown(&mut state, &smt_problem)?;
+                        strat.unknown(&mut state, &smt_problem)?
                     }
                     z3::SatResult::Sat => {
-                        self.extensions.sat(&mut state, &solver)?;
-                        strat.sat(&mut state, &solver, &z3_var_context)?
+                        self.extensions.sat(&mut state, &smt_problem)?;
+                        strat.sat(&mut state, &smt_problem)?
                     }
                 };
 
                 match action {
                     ProofAction::Continue => {
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
-                        strat.finish(&mut self.vmt_model, state)?;
+                        strat.finish(state, &mut smt_problem)?;
                     }
                     ProofAction::NextDepth => continue 'bmc,
-                    ProofAction::Stop => return Err(Error::Counterexample),
+                    ProofAction::FoundCounterexample => return Err(Error::Counterexample),
+                    ProofAction::FoundProof => {
+                        return Ok(strat.result(self.vmt_model.clone(), &smt_problem))
+                    }
                 }
             }
             return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
-        Ok(strat.result(self.vmt_model.clone()))
+        Ok(strat.result(self.vmt_model.clone(), &smt_problem))
     }
 }
 
@@ -157,30 +155,25 @@ impl<'ctx, S> DriverExtensions<'ctx, S> {
 }
 
 impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
-    fn unsat(
-        &mut self,
-        state: &mut S,
-        solver: &z3::Solver,
-        z3_var_context: &Z3VarContext,
-    ) -> anyhow::Result<()> {
+    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
-            ext.unsat(state, solver, z3_var_context)?;
+            ext.unsat(state, smt)?;
         }
 
         Ok(())
     }
 
-    fn sat(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
-            ext.sat(state, solver)?;
+            ext.sat(state, smt)?;
         }
 
         Ok(())
     }
 
-    fn unknown(&mut self, state: &mut S, solver: &z3::Solver) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
-            ext.unknown(state, solver)?;
+            ext.unknown(state, smt)?;
         }
         Ok(())
     }
