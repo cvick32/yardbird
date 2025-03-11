@@ -20,7 +20,7 @@ struct Options {
 
     /// BMC depth until quitting.
     #[arg(short, long, default_value_t = 10)]
-    pub depth: u8,
+    pub depth: u16,
 
     /// Timeout for each benchmark
     #[arg(short, long, default_value_t = 30)]
@@ -85,7 +85,7 @@ struct StrategyResult {
     strategy: yardbird::Strategy,
     result: BenchmarkResult,
     run_time: u128,
-    depth: u8,
+    depth: u16,
 }
 
 enum TimeoutFnResult {

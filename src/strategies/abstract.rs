@@ -22,11 +22,11 @@ use super::{ProofAction, ProofStrategy};
 #[derive(Default)]
 pub struct Abstract {
     const_instantiations: Vec<String>,
-    bmc_depth: u8,
+    bmc_depth: u16,
 }
 
 impl Abstract {
-    pub fn new(bmc_depth: u8) -> Self {
+    pub fn new(bmc_depth: u16) -> Self {
         Self {
             bmc_depth,
             ..Default::default()
@@ -36,7 +36,7 @@ impl Abstract {
 
 /// State for the inner refinement looop
 pub struct AbstractRefinementState {
-    pub depth: u8,
+    pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
     pub instantiations: Vec<String>,
     pub const_instantiations: Vec<String>,
@@ -49,7 +49,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
         let egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         /* for term_string in smt.get_assert_strings() {
             // TODO: we don't want to add instantiations

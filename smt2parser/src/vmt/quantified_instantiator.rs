@@ -26,7 +26,7 @@ impl Instance {
         self.instance.clone().accept(bmc_builder).unwrap()
     }
 
-    pub fn additional_depth(&self) -> u8 {
+    pub fn additional_depth(&self) -> u16 {
         if self.all_substitution_variables_are_current {
             2
         } else {

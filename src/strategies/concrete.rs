@@ -13,7 +13,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         1
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
         Ok(AbstractRefinementState {
             depth,
             egraph: egg::EGraph::default(),

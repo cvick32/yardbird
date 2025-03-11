@@ -166,7 +166,7 @@ impl VMTModel {
         VMTModel::checked_from(array_definitions).unwrap()
     }
 
-    pub fn abstract_constants_over(mut self, depth: u8) -> Self {
+    pub fn abstract_constants_over(mut self, depth: u16) -> Self {
         let mut constant_abstactor = ConstantAbstractor::new(depth);
         self.initial_condition = self
             .initial_condition
@@ -201,7 +201,7 @@ impl VMTModel {
         self
     }
 
-    pub fn unroll(&self, length: u8) -> SMTProblem {
+    pub fn unroll(&self, length: u16) -> SMTProblem {
         let mut builder = BMCBuilder {
             visitor: SyntaxBuilder,
             current_variables: self.get_all_current_variable_names(),

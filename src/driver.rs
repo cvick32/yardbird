@@ -30,12 +30,12 @@ pub enum Error {
 
     #[error("No progress at depth {depth}\nUsed Instantiations:\n{instantiations:#?}")]
     NoProgress {
-        depth: u8,
+        depth: u16,
         instantiations: Vec<String>,
     },
 
     #[error("Hit refinement limit of {n_refines} at depth {depth}")]
-    TooManyRefinements { n_refines: u32, depth: u8 },
+    TooManyRefinements { n_refines: u32, depth: u16 },
 
     #[error("Error: {0}")]
     Anyhow(#[from] anyhow::Error),
@@ -75,7 +75,7 @@ impl<'ctx, S> Driver<'ctx, S> {
     /// model returning `Unsat`, `Unknown`, and `Sat`.
     pub fn check_strategy(
         &mut self,
-        target_depth: u8,
+        target_depth: u16,
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
     ) -> Result<ProofLoopResult> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());

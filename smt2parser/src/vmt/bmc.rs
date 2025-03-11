@@ -7,7 +7,7 @@ pub struct BMCBuilder {
     pub visitor: SyntaxBuilder,
     pub current_variables: Vec<String>,
     pub next_variables: HashMap<String, String>,
-    pub depth: u8,
+    pub depth: u16,
 }
 
 impl BMCBuilder {
@@ -20,7 +20,7 @@ impl BMCBuilder {
         }
     }
 
-    pub fn set_depth(&mut self, depth: u8) {
+    pub fn set_depth(&mut self, depth: u16) {
         self.depth = depth;
     }
 

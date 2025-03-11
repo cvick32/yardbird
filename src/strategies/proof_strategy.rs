@@ -29,7 +29,7 @@ pub trait ProofStrategy<'ctx, S> {
         10
     }
 
-    fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<S>;
+    fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<S>;
 
     fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
 

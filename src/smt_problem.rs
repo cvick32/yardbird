@@ -16,7 +16,7 @@ pub struct SMTProblem<'ctx> {
     bmc_builder: BMCBuilder,
     init_assertion: Term,
     trans_assertion: Term,
-    depth: u8,
+    depth: u16,
     instantiations: Vec<Instance>,
     subterm_handler: SubtermHandler,
     pub variables: Vec<Variable>,
@@ -122,7 +122,7 @@ impl<'ctx> SMTProblem<'ctx> {
     // All instantiations have been added self.current_depth number of times when
     // this function is called. We only need to unroll transition and all instantiations
     // one more time.
-    pub(crate) fn unroll(&mut self, depth: u8) {
+    pub(crate) fn unroll(&mut self, depth: u16) {
         if depth > self.depth {
             // These things should only happen the first time a new depth is seen.
             // Set new depth.

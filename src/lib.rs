@@ -33,7 +33,7 @@ pub struct YardbirdOptions {
 
     /// BMC depth until quitting.
     #[arg(short, long, default_value_t = 10)]
-    pub depth: u8,
+    pub depth: u16,
 
     /// How many times BMC should be UNSAT until we check with an invariant generator.
     #[arg(short, long, default_value_t = 1)]

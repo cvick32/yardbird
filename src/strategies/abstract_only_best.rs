@@ -18,11 +18,11 @@ use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 pub struct AbstractOnlyBest {
     used_instantiations: Vec<String>,
     const_instantiations: Vec<String>,
-    bmc_depth: u8,
+    bmc_depth: u16,
 }
 
 impl AbstractOnlyBest {
-    pub fn new(bmc_depth: u8) -> Self {
+    pub fn new(bmc_depth: u16) -> Self {
         Self {
             bmc_depth,
             ..Default::default()
@@ -37,7 +37,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for AbstractOnlyBest {
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, smt: &SMTProblem, depth: u8) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
         let mut egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
         for term_string in smt.get_assert_strings() {
             if let Ok(parsed) = &term_string.parse() {

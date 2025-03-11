@@ -5,7 +5,7 @@ use yardbird::{strategies::Abstract, Driver};
 
 pub struct RunModelArgs {
     pub builder: vmtil::VmtilBuilder,
-    pub depth: u8,
+    pub depth: u16,
     pub debug_vmt: bool,
     pub should_fail: bool,
     pub logger: Option<log::Level>,
