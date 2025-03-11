@@ -15,6 +15,7 @@ mod cost_functions;
 mod driver;
 mod egg_utils;
 mod extractor;
+pub mod ic3ia;
 mod interpolant;
 pub mod logger;
 mod smt_problem;
@@ -23,7 +24,6 @@ mod subterm_handler;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;
-pub mod ic3ia;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -57,7 +57,7 @@ pub struct YardbirdOptions {
 
     // Invoke IC3IA
     #[arg(long, default_value_t = false)]
-    pub invoke_ic3ia : bool,
+    pub invoke_ic3ia: bool,
 }
 
 impl Default for YardbirdOptions {
