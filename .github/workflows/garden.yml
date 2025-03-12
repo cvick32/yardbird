@@ -2,7 +2,7 @@ name: Garden
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,18 +12,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Install Stable Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: clippy, rustfmt
-    - uses: Swatinem/rust-cache@v2
-    - name: Build
-      run: cargo build --release -p garden
-    - name: Run benchmarks
-      run: ./target/release/garden examples -o garden.json --strategy abstract --strategy concrete --depth 10
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: results-${{ github.head_ref }}-${{ github.sha }}
-        path: garden.json
+      - uses: actions/checkout@v4
+      - name: Install Stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Build ic3ia
+        run: ./script/build-ic3ia.sh
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p garden
+      - name: Run benchmarks
+        run: ./target/release/garden examples -o garden.json --strategy abstract --strategy concrete --depth 20
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ github.head_ref }}-${{ github.sha }}
+          path: garden.json
