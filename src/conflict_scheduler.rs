@@ -80,7 +80,6 @@ where
 
         for m in &matches {
             if let Some(searcher_ast) = &m.ast {
-                // TODO: do something smarter than just the first subst?
                 info!("Number of subs: {}", m.substs.len());
                 for subst in &m.substs {
                     info!("Current Sub: {:?}", subst);

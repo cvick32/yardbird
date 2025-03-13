@@ -1,19 +1,52 @@
 use itertools::Itertools;
 use log::info;
+use serde::{ser::SerializeStruct, Serialize};
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
     smt_problem::SMTProblem,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
+    utils::SolverStatistics,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
     pub used_instances: Vec<Term>,
     pub const_instances: Vec<Term>,
+    pub solver_statistics: SolverStatistics,
     pub counterexample: bool,
     pub found_proof: bool,
+}
+
+impl Serialize for ProofLoopResult {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // 3 is the number of fields in the struct.
+        let mut state = serializer.serialize_struct("ProofLoopResult", 5)?;
+        state.serialize_field(
+            "used_instances",
+            &self
+                .used_instances
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        )?;
+        state.serialize_field(
+            "const_instances",
+            &self
+                .const_instances
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+        )?;
+        state.serialize_field("solver_statistics", &self.solver_statistics)?;
+        state.serialize_field("counterexample", &self.counterexample)?;
+        state.serialize_field("found_proof", &self.found_proof)?;
+        state.end()
+    }
 }
 
 #[derive(Debug)]

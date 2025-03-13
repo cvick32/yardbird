@@ -55,33 +55,10 @@ struct Options {
 }
 
 #[derive(Debug, Serialize)]
-struct SerializableProofResult {
-    pub used_instances: Vec<String>,
-    pub const_instances: Vec<String>,
-}
-
-impl From<ProofLoopResult> for SerializableProofResult {
-    fn from(value: ProofLoopResult) -> Self {
-        SerializableProofResult {
-            used_instances: value
-                .used_instances
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-            const_instances: value
-                .const_instances
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
 enum BenchmarkResult {
-    Success(SerializableProofResult),
-    FoundProof(SerializableProofResult),
-    NoProgress(SerializableProofResult),
+    Success(ProofLoopResult),
+    FoundProof(ProofLoopResult),
+    NoProgress(ProofLoopResult),
     Timeout(u128),
     Error(String),
     Panic(String),
@@ -137,13 +114,13 @@ where
     match rx.recv_timeout(timeout) {
         Ok(TimeoutFnResult::Ok(res)) => match res {
             Ok(proof_result) => match proof_result.found_proof {
-                true => BenchmarkResult::FoundProof(proof_result.into()),
-                false => BenchmarkResult::Success(proof_result.into()),
+                true => BenchmarkResult::FoundProof(proof_result),
+                false => BenchmarkResult::Success(proof_result),
             },
             Err(yardbird::Error::NoProgress { instantiations, .. }) => {
-                BenchmarkResult::NoProgress(SerializableProofResult {
-                    used_instances: instantiations.iter().map(ToString::to_string).collect(),
-                    const_instances: vec![],
+                BenchmarkResult::NoProgress(ProofLoopResult {
+                    used_instances: instantiations,
+                    ..Default::default()
                 })
             }
             Err(err) => BenchmarkResult::Error(format!("{err}")),
