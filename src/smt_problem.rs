@@ -8,7 +8,8 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    strategies::ProofStrategy, subterm_handler::SubtermHandler, z3_var_context::Z3VarContext,
+    strategies::ProofStrategy, subterm_handler::SubtermHandler, utils::SolverStatistics,
+    z3_var_context::Z3VarContext,
 };
 
 pub struct SMTProblem<'ctx> {
@@ -208,12 +209,12 @@ impl<'ctx> SMTProblem<'ctx> {
         self.solver.assert(&inst_and);
     }
 
-    pub(crate) fn get_reason_unknown(&self) -> Option<String> {
-        self.solver.get_reason_unknown()
+    pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
+        SolverStatistics::from_z3_statistics(self.solver.get_statistics())
     }
 
-    pub(crate) fn get_assert_strings(&self) -> Vec<String> {
-        self.subterm_handler.get_assert_strings()
+    pub(crate) fn get_reason_unknown(&self) -> Option<String> {
+        self.solver.get_reason_unknown()
     }
 
     pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic {

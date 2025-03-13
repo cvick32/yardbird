@@ -1,8 +1,7 @@
-use std::{fs::File, io::Write};
-
 use clap::Parser;
 use itertools::Itertools;
 use log::info;
+use std::{fs::File, io::Write};
 use yardbird::{
     ic3ia, logger, model_from_options,
     strategies::{Interpolating, Repl},
@@ -40,6 +39,7 @@ fn main() -> anyhow::Result<()> {
             .map(|inst| format!(" - {inst}"))
             .join("\n")
     );
+    log::debug!("Solver stats: {:#?}", res.solver_statistics);
 
     if let Some(model) = res.model {
         if options.invoke_ic3ia {

@@ -52,7 +52,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: &mut VMTModel, _smt: &SMTProblem) -> ProofLoopResult {
+    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         let found_proof = if self.run_ic3ia {
             let result = ic3ia::call_ic3ia(vmt_model.clone());
             match result {
@@ -67,6 +67,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             model: Some(vmt_model.clone()),
             used_instances: vec![],
             const_instances: vec![],
+            solver_statistics: smt.get_solver_statistics(),
             counterexample: true,
             found_proof,
         }

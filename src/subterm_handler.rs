@@ -126,12 +126,6 @@ impl SubtermHandler {
         ReadsAndWrites::from(all_reads_from, all_writes_to)
     }
 
-    pub fn get_assert_strings(&self) -> Vec<String> {
-        let mut dd = self.init_and_trans_asserts.clone();
-        dd.push(self.prop_assert.clone());
-        dd
-    }
-
     pub(crate) fn get_initial_subterms(&self) -> Vec<String> {
         self.initial_subterms
             .iter()
