@@ -6,7 +6,7 @@ use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::Serialize;
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, AbstractOnlyBest, AbstractRefinementState, ConcreteZ3, ProofStrategy};
+use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
 
 pub mod analysis;
 pub mod array_axioms;
@@ -86,7 +86,6 @@ impl YardbirdOptions {
     pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
         match self.strategy {
             Strategy::Abstract => Box::new(Abstract::new(self.depth, self.invoke_ic3ia)),
-            Strategy::AbstractOnlyBest => Box::new(AbstractOnlyBest::new(self.depth)),
             Strategy::Concrete => Box::new(ConcreteZ3::default()),
         }
     }
@@ -107,6 +106,5 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     Abstract,
-    AbstractOnlyBest,
     Concrete,
 }
