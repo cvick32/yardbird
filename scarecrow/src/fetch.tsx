@@ -12,7 +12,11 @@ export interface Artifact {
 
 export interface Benchmark {
   example: string;
-  result: BenchmarkResult | StrategyResult[];
+  result: StrategyResult[];
+}
+
+export interface SolverStatistics {
+  stats: { [key: string]: number };
 }
 
 export type BenchmarkResult =
@@ -33,6 +37,7 @@ export interface StrategyResult {
 export interface ProofLoopResult {
   used_instances: string[];
   const_instances: string[];
+  solver_statistics: SolverStatistics | undefined;
 }
 
 export function getResult(

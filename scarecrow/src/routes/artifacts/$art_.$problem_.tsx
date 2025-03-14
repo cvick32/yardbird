@@ -68,7 +68,7 @@ function ProblemView({ problem }: { problem: string }) {
             cols={80}
             rows={25}
             readOnly={true}
-            className="bg-solarized-base3 text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0 grow-0 whitespace-pre-line font-mono"
+            className="grow-0 whitespace-pre-line bg-solarized-base3 font-mono text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0"
           >
             {window.atob(vmtQuery.data.data.content)}
           </textarea>
@@ -103,7 +103,7 @@ function ResultView() {
           <th className="px-2 font-bold">Strategy</th>
           <th className="px-2 font-bold">Status</th>
           <th className="px-2 font-bold">Depth</th>
-          <th className="px-2 font-bold">Runtime (ms)</th>
+          <th className="px-2 font-bold">Runtime (s)</th>
         </tr>
         <ResultRow benchmark={benchmark.data} />
       </table>
@@ -120,7 +120,7 @@ function ResultRow({ benchmark }: { benchmark: Benchmark }) {
             <td className="px-2">{res.strategy}</td>
             <td className="px-2">{getStatus(res.result)}</td>
             <td className="px-2">{res.depth}</td>
-            <td className="px-2">{res.run_time}ms</td>
+            <td className="px-2">{res.run_time / 1000}s</td>
           </tr>
         ))}
       </>
@@ -168,7 +168,7 @@ function Instances() {
           cols={80}
           rows={10}
           readOnly={true}
-          className="bg-solarized-base3 text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0 grow-0 whitespace-pre-line font-mono"
+          className="grow-0 whitespace-pre-line bg-solarized-base3 font-mono text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0"
         >
           {result.Success.used_instances.join("\n\n")}
         </textarea>

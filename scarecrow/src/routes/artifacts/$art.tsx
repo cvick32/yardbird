@@ -6,6 +6,7 @@ import {
   getResult,
   getRuntime,
   getStatus,
+  ProofLoopResult,
   selectGeomean,
   useArtifact,
 } from "../../fetch";
@@ -18,6 +19,9 @@ import {
   Legend,
   Bar,
   Brush,
+  Rectangle,
+  ReferenceArea,
+  XAxis,
 } from "recharts";
 import { useState } from "react";
 import { FaCaretDown, FaCaretRight } from "react-icons/fa6";
@@ -54,6 +58,7 @@ function RouteComponent() {
   return (
     <div>
       <SpeedUpGraph />
+      <ConflictGraph />
       <TimeSummary />
       <table className="relative">
         <thead>
@@ -139,7 +144,15 @@ function getSuccessfulBenchmarks(artifact: Artifact): Benchmark[] {
   }
 }
 
-function SpeedUpGraph() {
+function getConflicts(proofLoopResult: ProofLoopResult): number {
+  if (proofLoopResult.solver_statistics?.stats.conflicts === undefined) {
+    return 0;
+  } else {
+    return proofLoopResult.solver_statistics?.stats.conflicts.UInt;
+  }
+}
+
+function ConflictGraph() {
   const { art } = Route.useParams();
   const artifact = useArtifact(art);
 
@@ -151,54 +164,228 @@ function SpeedUpGraph() {
     return <div>Error! {JSON.stringify(artifact.error)}</div>;
   }
   const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
-  const data = benchmarks.flatMap((benchmark) => {
-    if (benchmark.result[0].strategy === "abstract") {
-      let abs_time = benchmark.result[0].run_time;
-      let con_time = benchmark.result[1].run_time;
-      return {
-        example: benchmark.example, // Benchmark name
-        abs_time: abs_time, // Abstract execution time
-        con_time: con_time, // Concrete execution time
-      };
-    } else {
-      let abs_time = benchmark.result[1].run_time;
-      let con_time = benchmark.result[0].run_time;
-      return {
-        example: benchmark.example, // Benchmark name
-        abs_time: abs_time,
-        con_time: con_time, // Execution time
-      };
-    }
-  });
+  try {
+    const data = benchmarks.flatMap((benchmark) => {
+      if (benchmark.result[0].strategy === "abstract") {
+        let abs_conflicts = getConflicts(benchmark.result[0].result.Success);
+        let con_conflicts = getConflicts(benchmark.result[1].result.Success);
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_conflicts: abs_conflicts, // Abstract conflicts time
+          con_conflicts: con_conflicts, // Concrete execution time
+        };
+      } else {
+        let abs_conflicts = getConflicts(benchmark.result[1].result.Success);
+        let con_conflicts = getConflicts(benchmark.result[0].result.Success);
+        return {
+          example: benchmark.example,
+          abs_conflicts: abs_conflicts,
+          con_conflicts: con_conflicts,
+        };
+      }
+    });
 
-  // Sort by difference in abstract and concrete times
-  data.sort((a, b) => b.abs_time - b.con_time - (a.abs_time - a.con_time));
+    // Sort by difference in conflicts
+    data.sort(
+      (a, b) =>
+        b.abs_conflicts - b.con_conflicts - (a.abs_conflicts - a.con_conflicts),
+    );
 
-  return (
-    <div style={{ textAlign: "center", marginBottom: "20px" }}>
-      <h2>Successful Benchmarks Comparison (Abstract vs Concrete)</h2>{" "}
-      <ResponsiveContainer width="100%" height={400}>
-        <BarChart
-          data={data}
-          margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" />
-          <YAxis />
-          <Tooltip
-            content={<CustomTooltip active={undefined} payload={undefined} />}
-          />{" "}
-          <Legend />
-          <Bar dataKey="abs_time" name="Abstract Strategy" fill="#8884d8" />
-          <Bar dataKey="con_time" name="Concrete Strategy" fill="#82ca9d" />
-          <Brush dataKey="id" height={20} stroke="#8884d8" />
-          {/* Zoom & Scroll */}
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
+    return (
+      <div style={{ textAlign: "center", marginBottom: "20px" }}>
+        <h2>Z3 Conflicts needed (Abstract vs Concrete)</h2>{" "}
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart
+            data={data}
+            margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <YAxis />
+            <XAxis dataKey="example" tick={false} axisLine={false} />
+            <Tooltip
+              content={
+                <ConflictTooltip active={undefined} payload={undefined} />
+              }
+            />{" "}
+            <Legend />
+            {data.map((entry, index) => {
+              console.log(`ReferenceArea for: ${entry.example}`);
+              return (
+                <ReferenceArea
+                  key={index}
+                  x1={entry.example}
+                  x2={
+                    index < data.length - 1
+                      ? data[index + 1].example
+                      : entry.example
+                  }
+                  fill={getBackgroundColor(
+                    entry.abs_conflicts,
+                    entry.con_conflicts,
+                  )}
+                  fillOpacity={0.3}
+                />
+              );
+            })}
+            <Bar
+              dataKey="abs_conflicts"
+              name="Abstract Strategy"
+              fill="#8884d8"
+            />
+            <Bar
+              dataKey="con_conflicts"
+              name="Concrete Strategy"
+              fill="#82ca9d"
+            />
+            <Brush dataKey="id" height={20} stroke="#8884d8" />
+            {/* Zoom & Scroll */}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  } catch (error) {
+    return (
+      <div>
+        <h3>No Solver Statistics...</h3>
+      </div>
+    );
+  }
 }
 
-const CustomTooltip = ({ active, payload }: { active: any; payload: any }) => {
+const ConflictTooltip = ({
+  active,
+  payload,
+}: {
+  active: any;
+  payload: any;
+}) => {
+  if (active && payload && payload.length) {
+    return (
+      <div
+        style={{
+          background: "white",
+          padding: "10px",
+          border: "1px solid #ccc",
+        }}
+      >
+        <p>
+          <strong>Benchmark:</strong> {payload[0].payload.example}
+        </p>
+        <p>
+          <strong>Abstract:</strong> {payload[0].payload.abs_conflicts}{" "}
+          conflicts
+        </p>
+        <p>
+          <strong>Concrete:</strong> {payload[0].payload.con_conflicts}{" "}
+          conflicts
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+function SpeedUpGraph() {
+  const { art } = Route.useParams();
+  const artifact = useArtifact(art);
+
+  if (artifact.isPending) {
+    return <div>Loading Artifacts...</div>;
+  }
+
+  if (!artifact.data || artifact.isError) {
+    return <div>Error! {JSON.stringify(artifact.error)}</div>;
+  }
+  try {
+    const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
+    const data = benchmarks.flatMap((benchmark) => {
+      if (benchmark.result[0].strategy === "abstract") {
+        let abs_time = benchmark.result[0].run_time;
+        let con_time = benchmark.result[1].run_time;
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_time: abs_time, // Abstract execution time
+          con_time: con_time, // Concrete execution time
+        };
+      } else {
+        let abs_time = benchmark.result[1].run_time;
+        let con_time = benchmark.result[0].run_time;
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_time: abs_time,
+          con_time: con_time, // Execution time
+        };
+      }
+    });
+
+    // Sort by difference in abstract and concrete times
+    data.sort((a, b) => b.abs_time - b.con_time - (a.abs_time - a.con_time));
+
+    return (
+      <div style={{ textAlign: "center", marginBottom: "20px" }}>
+        <h2>Time to BMC 10 (Abstract vs Concrete)</h2>{" "}
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart
+            data={data}
+            margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" />
+            <YAxis />
+            <XAxis dataKey="example" tick={false} axisLine={false} />
+            <Tooltip
+              content={
+                <SpeedUpTooltip active={undefined} payload={undefined} />
+              }
+            />{" "}
+            <Legend />
+            {/*<Bar
+            dataKey="abs_time"
+            name="Abstract Strategy"
+            shape={<CustomBarShape />}
+          />*/}
+            {/* Generate ReferenceArea for each bar dynamically */}
+            {data.map((entry, index) => {
+              console.log(`ReferenceArea for: ${entry.example}`);
+              return (
+                <ReferenceArea
+                  key={index}
+                  x1={entry.example}
+                  x2={
+                    index < data.length - 1
+                      ? data[index + 1].example
+                      : entry.example
+                  }
+                  fill={getBackgroundColor(entry.abs_time, entry.con_time)}
+                  fillOpacity={0.3}
+                />
+              );
+            })}
+            <Bar dataKey="abs_time" name="Abstract Strategy" fill="#8884d8" />
+            <Bar dataKey="con_time" name="Concrete Strategy" fill="#82ca9d" />
+            <Brush dataKey="id" height={20} stroke="#8884d8" />
+            {/* Zoom & Scroll */}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  } catch (error) {
+    return (
+      <div>
+        <h3>No Runtime Statistics...</h3>
+      </div>
+    );
+  }
+}
+
+const getBackgroundColor = (abs_time: number, con_time: number) => {
+  if (abs_time > con_time) {
+    return "#f08080";
+  } else {
+    return "#bcf5bc";
+  }
+};
+
+const SpeedUpTooltip = ({ active, payload }: { active: any; payload: any }) => {
   if (active && payload && payload.length) {
     return (
       <div
