@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
+  Artifact,
   Benchmark,
   BenchmarkResult,
   getResult,
@@ -8,6 +9,16 @@ import {
   selectGeomean,
   useArtifact,
 } from "../../fetch";
+import {
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+  BarChart,
+  Legend,
+  Bar,
+  Brush,
+} from "recharts";
 import { useState } from "react";
 import { FaCaretDown, FaCaretRight } from "react-icons/fa6";
 
@@ -42,6 +53,7 @@ function RouteComponent() {
 
   return (
     <div>
+      <SpeedUpGraph />
       <TimeSummary />
       <table className="relative">
         <thead>
@@ -116,6 +128,102 @@ function TimeSummary() {
     </div>
   );
 }
+
+function getSuccessfulBenchmarks(artifact: Artifact): Benchmark[] {
+  if (artifact.benchmarks === undefined) {
+    return [];
+  } else {
+    return artifact.benchmarks?.filter(
+      (benchmark) => getStatus(getResult(benchmark)) === "success",
+    );
+  }
+}
+
+function SpeedUpGraph() {
+  const { art } = Route.useParams();
+  const artifact = useArtifact(art);
+
+  if (artifact.isPending) {
+    return <div>Loading Artifacts...</div>;
+  }
+
+  if (!artifact.data || artifact.isError) {
+    return <div>Error! {JSON.stringify(artifact.error)}</div>;
+  }
+  const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
+  const data = benchmarks.flatMap((benchmark) => {
+    if (benchmark.result[0].strategy === "abstract") {
+      let abs_time = benchmark.result[0].run_time;
+      let con_time = benchmark.result[1].run_time;
+      return {
+        example: benchmark.example, // Benchmark name
+        abs_time: abs_time, // Abstract execution time
+        con_time: con_time, // Concrete execution time
+      };
+    } else {
+      let abs_time = benchmark.result[1].run_time;
+      let con_time = benchmark.result[0].run_time;
+      return {
+        example: benchmark.example, // Benchmark name
+        abs_time: abs_time,
+        con_time: con_time, // Execution time
+      };
+    }
+  });
+
+  // Sort by difference in abstract and concrete times
+  data.sort((a, b) => b.abs_time - b.con_time - (a.abs_time - a.con_time));
+
+  return (
+    <div style={{ textAlign: "center", marginBottom: "20px" }}>
+      <h2>Successful Benchmarks Comparison (Abstract vs Concrete)</h2>{" "}
+      <ResponsiveContainer width="100%" height={400}>
+        <BarChart
+          data={data}
+          margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <YAxis />
+          <Tooltip
+            content={<CustomTooltip active={undefined} payload={undefined} />}
+          />{" "}
+          <Legend />
+          <Bar dataKey="abs_time" name="Abstract Strategy" fill="#8884d8" />
+          <Bar dataKey="con_time" name="Concrete Strategy" fill="#82ca9d" />
+          <Brush dataKey="id" height={20} stroke="#8884d8" />
+          {/* Zoom & Scroll */}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+const CustomTooltip = ({ active, payload }: { active: any; payload: any }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div
+        style={{
+          background: "white",
+          padding: "10px",
+          border: "1px solid #ccc",
+        }}
+      >
+        <p>
+          <strong>Benchmark:</strong> {payload[0].payload.example}
+        </p>
+        <p>
+          <strong>Abstract:</strong> {payload[0].payload.abs_time / 1000}{" "}
+          seconds
+        </p>
+        <p>
+          <strong>Concrete:</strong> {payload[0].payload.con_time / 1000}{" "}
+          seconds
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
 
 function Row({ benchmark, index }: { benchmark: Benchmark; index: number }) {
   const [showInstances, setShowInstances] = useState(false);
