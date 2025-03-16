@@ -63,6 +63,7 @@ pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Err
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[serde(untagged)]
 pub enum StatisticsValue {
     UInt(u32),
     Double(f64),
