@@ -161,17 +161,35 @@ function Instances() {
   if ("Success" in result) {
     return (
       <>
-        <div className="pl-5 text-lg font-bold text-black dark:text-white">
-          Used Instances:
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <div>
+            <div className="pl-5 text-lg font-bold text-black dark:text-white">
+              Used Instances:
+            </div>
+            <textarea
+              cols={80}
+              rows={10}
+              readOnly={true}
+              className="grow-0 whitespace-pre-line bg-solarized-base3 font-mono text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0"
+            >
+              {result.Success.used_instances.join("\n\n")}
+            </textarea>
+          </div>
+          <div>
+            {" "}
+            <div className="pl-5 text-lg font-bold text-black dark:text-white">
+              Solver Statistics:
+            </div>
+            <textarea
+              cols={80}
+              rows={10}
+              readOnly={true}
+              className="grow-0 whitespace-pre-line bg-solarized-base3 font-mono text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0"
+            >
+              {JSON.stringify(result.Success.solver_statistics?.stats, null, 2)}
+            </textarea>
+          </div>
         </div>
-        <textarea
-          cols={80}
-          rows={10}
-          readOnly={true}
-          className="grow-0 whitespace-pre-line bg-solarized-base3 font-mono text-solarized-base00 dark:bg-solarized-base03 dark:text-solarized-base0"
-        >
-          {result.Success.used_instances.join("\n\n")}
-        </textarea>
       </>
     );
   }

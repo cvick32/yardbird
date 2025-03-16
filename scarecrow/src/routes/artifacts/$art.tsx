@@ -20,6 +20,10 @@ import {
   Brush,
   ReferenceArea,
   XAxis,
+  ScatterChart,
+  Scatter,
+  Cell,
+  Label,
 } from "recharts";
 import { useState } from "react";
 import { FaCaretDown, FaCaretRight } from "react-icons/fa6";
@@ -55,7 +59,16 @@ function RouteComponent() {
 
   return (
     <div>
-      <SpeedUpGraph />
+      <div>
+        <h1 style={{ textAlign: "center" }}>
+          <b>Bounded Model Checking Speed Comparison</b>
+        </h1>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <SpeedUpGraph />
+          <SpeedUpScatter />
+        </div>
+      </div>
+
       <ConflictGraph />
       <TimeSummary />
       <table className="relative">
@@ -211,7 +224,6 @@ function ConflictGraph() {
             />{" "}
             <Legend />
             {data.map((entry, index) => {
-              console.log(`ReferenceArea for: ${entry.example}`);
               return (
                 <ReferenceArea
                   key={index}
@@ -287,6 +299,101 @@ const ConflictTooltip = ({
   return null;
 };
 
+const getScatterColor = (point: any) => {
+  return point.abs_time > point.con_time ? "#f08080" : "#bcf5bc"; // Red if abstract > concrete, Green otherwise
+};
+
+function SpeedUpScatter() {
+  const { art } = Route.useParams();
+  const artifact = useArtifact(art);
+
+  if (artifact.isPending) {
+    return <div>Loading Artifacts...</div>;
+  }
+
+  if (!artifact.data || artifact.isError) {
+    return <div>Error! {JSON.stringify(artifact.error)}</div>;
+  }
+  try {
+    const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
+    const data = benchmarks.flatMap((benchmark) => {
+      if (benchmark.result[0].strategy === "abstract") {
+        let abs_time = benchmark.result[0].run_time;
+        let con_time = benchmark.result[1].run_time;
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_time: abs_time / 1000, // Abstract execution time in seconds
+          con_time: con_time / 1000, // Concrete execution time
+        };
+      } else {
+        let abs_time = benchmark.result[1].run_time;
+        let con_time = benchmark.result[0].run_time;
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_time: abs_time / 1000,
+          con_time: con_time / 1000, // Execution time
+        };
+      }
+    });
+
+    const minVal = Math.min(
+      ...data.map((d) => Math.min(d.con_time, d.abs_time)),
+    );
+    const maxVal = Math.max(
+      ...data.map((d) => Math.max(d.con_time, d.abs_time)),
+    );
+
+    return (
+      <ResponsiveContainer width="50%" height={400}>
+        <ScatterChart margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+          <CartesianGrid />
+          <XAxis
+            type="number"
+            dataKey="con_time"
+            name="Concrete Time"
+            scale="log"
+            domain={[minVal, maxVal]}
+          >
+            <Label
+              value="Concrete Runtime (s)"
+              offset={-10}
+              position="insideBottom"
+            />
+          </XAxis>
+          <YAxis
+            type="number"
+            dataKey="abs_time"
+            name="Abstract Time"
+            scale="log"
+            domain={[minVal, maxVal]}
+          >
+            <Label
+              value="Abstract Runtime (s)"
+              angle={-90}
+              position="insideLeft"
+              style={{ textAnchor: "middle" }}
+            />
+          </YAxis>
+          <Scatter name="BMC Speed" data={data}>
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={getScatterColor(entry)} />
+            ))}
+          </Scatter>
+          <Tooltip
+            content={<SpeedUpTooltip active={undefined} payload={undefined} />}
+          />
+        </ScatterChart>
+      </ResponsiveContainer>
+    );
+  } catch (error) {
+    return (
+      <div>
+        <h3>No Runtime Statistics...</h3>
+      </div>
+    );
+  }
+}
+
 function SpeedUpGraph() {
   const { art } = Route.useParams();
   const artifact = useArtifact(art);
@@ -306,16 +413,16 @@ function SpeedUpGraph() {
         let con_time = benchmark.result[1].run_time;
         return {
           example: benchmark.example, // Benchmark name
-          abs_time: abs_time, // Abstract execution time
-          con_time: con_time, // Concrete execution time
+          abs_time: abs_time / 1000, // Abstract execution time
+          con_time: con_time / 1000, // Concrete execution time
         };
       } else {
         let abs_time = benchmark.result[1].run_time;
         let con_time = benchmark.result[0].run_time;
         return {
           example: benchmark.example, // Benchmark name
-          abs_time: abs_time,
-          con_time: con_time, // Execution time
+          abs_time: abs_time / 1000,
+          con_time: con_time / 1000, // Execution time
         };
       }
     });
@@ -324,51 +431,49 @@ function SpeedUpGraph() {
     data.sort((a, b) => b.abs_time - b.con_time - (a.abs_time - a.con_time));
 
     return (
-      <div style={{ textAlign: "center", marginBottom: "20px" }}>
-        <h2>Time to BMC 10 (Abstract vs Concrete)</h2>{" "}
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart
-            data={data}
-            margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" />
-            <YAxis />
-            <XAxis dataKey="example" tick={false} axisLine={false} />
-            <Tooltip
-              content={
-                <SpeedUpTooltip active={undefined} payload={undefined} />
-              }
-            />{" "}
-            <Legend />
-            {/*<Bar
-            dataKey="abs_time"
-            name="Abstract Strategy"
-            shape={<CustomBarShape />}
-          />*/}
-            {/* Generate ReferenceArea for each bar dynamically */}
-            {data.map((entry, index) => {
-              console.log(`ReferenceArea for: ${entry.example}`);
-              return (
-                <ReferenceArea
-                  key={index}
-                  x1={entry.example}
-                  x2={
-                    index < data.length - 1
-                      ? data[index + 1].example
-                      : entry.example
-                  }
-                  fill={getBackgroundColor(entry.abs_time, entry.con_time)}
-                  fillOpacity={0.3}
-                />
-              );
-            })}
-            <Bar dataKey="abs_time" name="Abstract Strategy" fill="#8884d8" />
-            <Bar dataKey="con_time" name="Concrete Strategy" fill="#82ca9d" />
-            <Brush dataKey="id" height={20} stroke="#8884d8" />
-            {/* Zoom & Scroll */}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      <ResponsiveContainer width="50%" height={400}>
+        <BarChart
+          data={data}
+          margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" />
+          <YAxis>
+            {" "}
+            <Label
+              value="Runtime (s)"
+              angle={-90}
+              position="insideLeft"
+              style={{ textAnchor: "middle" }}
+            />
+          </YAxis>
+          <XAxis dataKey="example" tick={false} axisLine={false} />
+          <Tooltip
+            content={<SpeedUpTooltip active={undefined} payload={undefined} />}
+          />
+          <Legend />
+          {/* Generate ReferenceArea for each bar dynamically */}
+          {data.map((entry, index) => {
+            console.log(`ReferenceArea for: ${entry.example}`);
+            return (
+              <ReferenceArea
+                key={index}
+                x1={entry.example}
+                x2={
+                  index < data.length - 1
+                    ? data[index + 1].example
+                    : entry.example
+                }
+                fill={getBackgroundColor(entry.abs_time, entry.con_time)}
+                fillOpacity={0.3}
+              />
+            );
+          })}
+          <Bar dataKey="abs_time" name="Abstract Strategy" fill="#8884d8" />
+          <Bar dataKey="con_time" name="Concrete Strategy" fill="#82ca9d" />
+          <Brush dataKey="id" height={20} stroke="#8884d8" />
+          {/* Zoom & Scroll */}
+        </BarChart>
+      </ResponsiveContainer>
     );
   } catch (error) {
     return (
@@ -401,12 +506,10 @@ const SpeedUpTooltip = ({ active, payload }: { active: any; payload: any }) => {
           <strong>Benchmark:</strong> {payload[0].payload.example}
         </p>
         <p>
-          <strong>Abstract:</strong> {payload[0].payload.abs_time / 1000}{" "}
-          seconds
+          <strong>Abstract:</strong> {payload[0].payload.abs_time} seconds
         </p>
         <p>
-          <strong>Concrete:</strong> {payload[0].payload.con_time / 1000}{" "}
-          seconds
+          <strong>Concrete:</strong> {payload[0].payload.con_time} seconds
         </p>
       </div>
     );
