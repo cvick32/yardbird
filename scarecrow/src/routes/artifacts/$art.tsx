@@ -6,7 +6,6 @@ import {
   getResult,
   getRuntime,
   getStatus,
-  ProofLoopResult,
   selectGeomean,
   useArtifact,
 } from "../../fetch";
@@ -19,7 +18,6 @@ import {
   Legend,
   Bar,
   Brush,
-  Rectangle,
   ReferenceArea,
   XAxis,
 } from "recharts";
@@ -144,12 +142,16 @@ function getSuccessfulBenchmarks(artifact: Artifact): Benchmark[] {
   }
 }
 
-function getConflicts(proofLoopResult: ProofLoopResult): number {
-  if (proofLoopResult.solver_statistics?.stats.conflicts === undefined) {
-    return 0;
-  } else {
-    return proofLoopResult.solver_statistics?.stats.conflicts.UInt;
+function getConflicts(bench: BenchmarkResult): number {
+  if ("Success" in bench) {
+    const proofLoopResult = bench.Success;
+    if (proofLoopResult.solver_statistics?.stats.conflicts === undefined) {
+      return 0;
+    } else {
+      return proofLoopResult.solver_statistics?.stats.conflicts;
+    }
   }
+  return 0;
 }
 
 function ConflictGraph() {
@@ -163,20 +165,20 @@ function ConflictGraph() {
   if (!artifact.data || artifact.isError) {
     return <div>Error! {JSON.stringify(artifact.error)}</div>;
   }
-  const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
   try {
+    const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
     const data = benchmarks.flatMap((benchmark) => {
       if (benchmark.result[0].strategy === "abstract") {
-        let abs_conflicts = getConflicts(benchmark.result[0].result.Success);
-        let con_conflicts = getConflicts(benchmark.result[1].result.Success);
+        let abs_conflicts = getConflicts(benchmark.result[0].result);
+        let con_conflicts = getConflicts(benchmark.result[1].result);
         return {
           example: benchmark.example, // Benchmark name
           abs_conflicts: abs_conflicts, // Abstract conflicts time
           con_conflicts: con_conflicts, // Concrete execution time
         };
       } else {
-        let abs_conflicts = getConflicts(benchmark.result[1].result.Success);
-        let con_conflicts = getConflicts(benchmark.result[0].result.Success);
+        let abs_conflicts = getConflicts(benchmark.result[1].result);
+        let con_conflicts = getConflicts(benchmark.result[0].result);
         return {
           example: benchmark.example,
           abs_conflicts: abs_conflicts,
