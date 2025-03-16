@@ -68,7 +68,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
             used_instances: vec![],
             const_instances: vec![],
             solver_statistics: smt.get_solver_statistics(),
-            counterexample: true,
+            counterexample: false,
             found_proof,
         }
     }

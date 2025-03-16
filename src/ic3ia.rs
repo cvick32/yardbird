@@ -4,10 +4,11 @@ use smt2parser::vmt::VMTModel;
 use tempfile::NamedTempFile;
 
 use crate::utils;
+use std::io::Error;
 
 use log;
 
-pub fn call_ic3ia(model: VMTModel) -> Result<String, String> {
+pub fn call_ic3ia(model: VMTModel) -> Result<String, Error> {
     log::info!("Calling IC3IA ...");
 
     let mut temp_file = NamedTempFile::new().unwrap();
