@@ -8,6 +8,8 @@ fn array_copy(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
     }
 }
 
+mod standalone;
+
 #[allow(clippy::manual_memcpy)]
 #[to_vmt::ensures(|z| (z < n).implies(a[z] == b[z]))]
 fn array_copy_raw_loop(a: Vec<usize>, mut b: Vec<usize>, n: usize) {
@@ -75,9 +77,8 @@ fn main() {}
 
 #[cfg(test)]
 mod verify {
-    use log::Level;
-
     use super::*;
+    use log::Level;
 
     to_vmt::generate_test!(array_copy, depth = 20);
     to_vmt::generate_test!(array_copy_buggy, should_fail = true);

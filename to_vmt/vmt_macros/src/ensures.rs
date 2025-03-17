@@ -271,8 +271,8 @@ fn syn_binop_string(binop: syn::BinOp) -> &'static str {
         syn::BinOp::MulAssign(_) => "*",
         syn::BinOp::Div(_) => "/",
         syn::BinOp::DivAssign(_) => "/",
-        syn::BinOp::Rem(_) => "&",
-        syn::BinOp::RemAssign(_) => "&",
+        syn::BinOp::Rem(_) => "mod",
+        syn::BinOp::RemAssign(_) => todo!("mod assignment..."),
         syn::BinOp::Eq(_) => "=",
         syn::BinOp::Lt(_) => "<",
         syn::BinOp::Le(_) => "<=",
@@ -280,6 +280,7 @@ fn syn_binop_string(binop: syn::BinOp) -> &'static str {
         syn::BinOp::Ge(_) => ">=",
         syn::BinOp::Gt(_) => ">",
         syn::BinOp::And(_) => "and",
+        syn::BinOp::Or(_) => "or",
         x => todo!("binop: {x:#?}"),
     }
 }
