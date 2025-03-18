@@ -143,8 +143,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             vmt_model.add_instantiation(instantiation_term);
         }
         let found_proof = if self.run_ic3ia {
-            let result = call_ic3ia(vmt_model.clone());
-            match result {
+            match call_ic3ia(vmt_model.clone()) {
                 Ok(out) => ic3ia_output_contains_proof(out),
                 Err(_) => false,
             }

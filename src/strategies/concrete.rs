@@ -15,6 +15,11 @@ use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 pub struct ConcreteZ3 {
     run_ic3ia: bool,
 }
+impl ConcreteZ3 {
+    pub(crate) fn new(run_ic3ia: bool) -> Self {
+        Self { run_ic3ia }
+    }
+}
 
 impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     fn n_refines(&mut self) -> u32 {
@@ -54,8 +59,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
 
     fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         let found_proof = if self.run_ic3ia {
-            let result = ic3ia::call_ic3ia(vmt_model.clone());
-            match result {
+            match ic3ia::call_ic3ia(vmt_model.clone()) {
                 Ok(out) => ic3ia_output_contains_proof(out),
                 Err(_) => false,
             }
