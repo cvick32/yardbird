@@ -111,12 +111,6 @@ where
                         // e-graph. This is a conflict, so we record the rule instantiation
                         // here.
                         if Some(m.eclass) != rhs_eclass {
-                            info!(
-                                "FOUND VIOLATION: \n{} => {}",
-                                new_lhs.pretty(80),
-                                new_rhs.pretty(80)
-                            );
-
                             let instantiation: ArrayExpr =
                                 if rewrite.name.as_str() == "write-does-not-overwrite" {
                                     let expr1 = &memo[&"?c".parse::<egg::Var>().unwrap()];
@@ -132,6 +126,7 @@ where
                                 } else {
                                     ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
+                            info!("FOUND VIOLATION: \n{}", instantiation.pretty(80));
 
                             let cost = self.cost_fn.cost_rec(&new_rhs);
                             if cost >= 100 {
