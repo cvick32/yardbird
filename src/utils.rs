@@ -3,24 +3,23 @@ use serde::Serialize;
 use smt2parser::{get_term_from_term_string, let_extract::LetExtract};
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::time::Duration;
 use std::{fmt::Display, fs::File, io::Error, process::Command};
-use wait_timeout::ChildExt;
+
 use z3::Statistics;
 static INTERPOLANT_FILENAME: &str = "interpolant-out.smt2";
-static COMMAND_TIME_LIMIT: u64 = 1800;
 
 /// Run with COMMAND_TIME_LIMIT so that we don't keep zombie ic3ia
 /// runs.
-pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, Error> {
-    let mut child = Command::new(cmd).args(args).spawn().unwrap();
+pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to execute command: {}", e))?;
 
-    let command_duration = Duration::from_secs(COMMAND_TIME_LIMIT);
-    child.wait_timeout(command_duration)?;
-
-    match child.wait_with_output() {
-        Ok(out) => Ok(String::from_utf8_lossy(&out.stdout).trim().to_string()),
-        Err(err) => Err(err),
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
 }
 
