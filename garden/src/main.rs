@@ -22,9 +22,9 @@ struct Options {
     #[arg(short, long, default_value_t = 10)]
     pub depth: u16,
 
-    /// Timeout for each benchmark
+    /// Timeout for each benchmark in seconds.
     #[arg(short, long, default_value_t = 30)]
-    pub timeout: usize,
+    pub timeout: u64,
 
     /// Benchmarks to include.
     #[arg(short, long)]
@@ -131,9 +131,12 @@ where
     }
 }
 
-fn run_single(options: YardbirdOptions, retry: usize) -> anyhow::Result<StrategyResult> {
+fn run_single(
+    options: YardbirdOptions,
+    retry: usize,
+    timeout: u64,
+) -> anyhow::Result<StrategyResult> {
     let mut status_code = None;
-    let mut timed_out_count = 0;
     let mut run_time = Duration::default();
     // don't retry for the concrete strategy
     let retry = if matches!(options.strategy, yardbird::Strategy::Concrete) {
@@ -154,13 +157,12 @@ fn run_single(options: YardbirdOptions, retry: usize) -> anyhow::Result<Strategy
                 let strategy = options.build_strategy();
                 driver.check_strategy(proof_options.depth, strategy)
             },
-            Duration::from_secs(20 + (timed_out_count * 5)),
+            Duration::from_secs(timeout),
         ));
         run_time = now.elapsed();
         // TODO: this is really a hack to try and mitigate z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
             println!("  retrying: {}", filename);
-            timed_out_count += 1;
             continue;
         } else if let Some(BenchmarkResult::Error(_)) = status_code {
             println!("  retrying error: {}", filename);
@@ -241,9 +243,10 @@ fn main() -> anyhow::Result<()> {
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
-                                invoke_ic3ia: options.run_ic3ia,
+                                run_ic3ia: options.run_ic3ia,
                             },
                             options.retry,
+                            options.timeout,
                         )
                     })
                     .collect::<anyhow::Result<_>>()?,

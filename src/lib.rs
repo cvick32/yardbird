@@ -57,7 +57,7 @@ pub struct YardbirdOptions {
 
     // Invoke IC3IA
     #[arg(long, default_value_t = false)]
-    pub invoke_ic3ia: bool,
+    pub run_ic3ia: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -70,7 +70,7 @@ impl Default for YardbirdOptions {
             interpolate: false,
             strategy: Strategy::Abstract,
             repl: false,
-            invoke_ic3ia: false,
+            run_ic3ia: false,
         }
     }
 }
@@ -85,8 +85,8 @@ impl YardbirdOptions {
 
     pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
         match self.strategy {
-            Strategy::Abstract => Box::new(Abstract::new(self.depth, self.invoke_ic3ia)),
-            Strategy::Concrete => Box::new(ConcreteZ3::default()),
+            Strategy::Abstract => Box::new(Abstract::new(self.depth, self.run_ic3ia)),
+            Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
         }
     }
 }
