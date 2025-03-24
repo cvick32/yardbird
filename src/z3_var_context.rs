@@ -284,8 +284,14 @@ impl<'ctx> Z3VarContext<'ctx> {
             let idx = argument_values[1].clone();
             let val = argument_values[2].clone();
             z3::ast::Array::store(&arr, &idx, &val).into()
+        } else if function_name == "const" {
+            let sort = match argument_values[0].sort_kind() {
+                z3::SortKind::Int => z3::Sort::int(self.context),
+                _ => todo!("Add Z3 array value: {:?}", argument_values[0].sort_kind()),
+            };
+            z3::ast::Array::const_array(self.context, &sort, &argument_values[0]).into()
         } else {
-            todo!("Add Z3 function: {function_name}");
+            todo!("Add Z3 function: ({function_name} {argument_values:?})");
         }
     }
 
