@@ -27,6 +27,13 @@ import {
 } from "recharts";
 import { useState } from "react";
 import { FaCaretDown, FaCaretRight } from "react-icons/fa6";
+import {
+  generateLogTicks,
+  getBackgroundColor,
+  getFoundProofBenchmarks,
+  getScatterColor,
+  getSuccessfulBenchmarks,
+} from "../../graphs/utils";
 
 export const Route = createFileRoute("/artifacts/$art")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -68,8 +75,16 @@ function RouteComponent() {
           <SpeedUpScatter />
         </div>
       </div>
+      <div>
+        <FoundProofScattter />
+      </div>
 
-      <ConflictGraph />
+      <div>
+        <h1 style={{ textAlign: "center" }}>
+          <b>Z3 Conflict Comparison</b>
+        </h1>
+        <Z3ConflictGraph />
+      </div>
       <TimeSummary />
       <table className="relative">
         <thead>
@@ -145,12 +160,136 @@ function TimeSummary() {
   );
 }
 
-function getSuccessfulBenchmarks(artifact: Artifact): Benchmark[] {
-  if (artifact.benchmarks === undefined) {
-    return [];
-  } else {
-    return artifact.benchmarks?.filter(
-      (benchmark) => getStatus(getResult(benchmark)) === "success",
+export const ConflictTooltip = ({
+  active,
+  payload,
+}: {
+  active: any;
+  payload: any;
+}) => {
+  if (active && payload && payload.length) {
+    return (
+      <div
+        style={{
+          background: "white",
+          padding: "10px",
+          border: "1px solid #ccc",
+        }}
+      >
+        <p>
+          <strong>Benchmark:</strong> {payload[0].payload.example}
+        </p>
+        <p>
+          <strong>Abstract:</strong> {payload[0].payload.abs_conflicts}{" "}
+          conflicts
+        </p>
+        <p>
+          <strong>Concrete:</strong> {payload[0].payload.con_conflicts}{" "}
+          conflicts
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
+function FoundProofScattter() {
+  const { art } = Route.useParams();
+  const artifact = useArtifact(art);
+
+  if (artifact.isPending) {
+    return <div>Loading Artifacts...</div>;
+  }
+
+  if (!artifact.data || artifact.isError) {
+    return <div>Error! {JSON.stringify(artifact.error)}</div>;
+  }
+  try {
+    const benchmarks: Benchmark[] = getFoundProofBenchmarks(artifact.data);
+    if (benchmarks.length === 0) {
+      return (
+        <div>
+          <h3>No Found Proof Statistics...</h3>
+        </div>
+      );
+    }
+
+    const data = benchmarks.flatMap((benchmark) => {
+      if (benchmark.result[0].strategy === "abstract") {
+        let abs_time = benchmark.result[0].run_time;
+        let con_time = benchmark.result[1].run_time;
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_time: abs_time / 1000, // Abstract execution time in seconds
+          con_time: con_time / 1000, // Concrete execution time
+        };
+      } else {
+        let abs_time = benchmark.result[1].run_time;
+        let con_time = benchmark.result[0].run_time;
+        return {
+          example: benchmark.example, // Benchmark name
+          abs_time: abs_time / 1000,
+          con_time: con_time / 1000, // Execution time
+        };
+      }
+    });
+
+    const minVal = Math.min(
+      ...data.map((d) => Math.min(d.con_time, d.abs_time)),
+    );
+    const maxVal = Math.max(
+      ...data.map((d) => Math.max(d.con_time, d.abs_time)),
+    );
+
+    return (
+      <ResponsiveContainer width="50%" height={400}>
+        <ScatterChart margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+          <CartesianGrid />
+          <XAxis
+            type="number"
+            dataKey="con_time"
+            name="Concrete Time to Proof"
+            scale="log"
+            ticks={generateLogTicks(minVal, maxVal)}
+            domain={[minVal, maxVal]}
+          >
+            <Label
+              value="Concrete Runtime (s)"
+              offset={-10}
+              position="insideBottom"
+            />
+          </XAxis>
+          <YAxis
+            type="number"
+            dataKey="abs_time"
+            name="Abstract Time to Proof"
+            scale="log"
+            ticks={generateLogTicks(minVal, maxVal)}
+            domain={[minVal, maxVal]}
+          >
+            <Label
+              value="Abstract Runtime (s)"
+              angle={-90}
+              position="insideLeft"
+              style={{ textAnchor: "middle" }}
+            />
+          </YAxis>
+          <Scatter name="IC3IA Proof Speed" data={data}>
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={getScatterColor(entry)} />
+            ))}
+          </Scatter>
+          <Tooltip
+            content={<SpeedUpTooltip active={undefined} payload={undefined} />}
+          />
+        </ScatterChart>
+      </ResponsiveContainer>
+    );
+  } catch (error) {
+    return (
+      <div>
+        <h3>No Found Proof Statistics...</h3>
+      </div>
     );
   }
 }
@@ -167,7 +306,7 @@ function getConflicts(bench: BenchmarkResult): number {
   return 0;
 }
 
-function ConflictGraph() {
+function Z3ConflictGraph() {
   const { art } = Route.useParams();
   const artifact = useArtifact(art);
 
@@ -208,7 +347,6 @@ function ConflictGraph() {
 
     return (
       <div style={{ textAlign: "center", marginBottom: "20px" }}>
-        <h2>Z3 Conflicts needed (Abstract vs Concrete)</h2>{" "}
         <ResponsiveContainer width="100%" height={400}>
           <BarChart
             data={data}
@@ -266,43 +404,6 @@ function ConflictGraph() {
   }
 }
 
-const ConflictTooltip = ({
-  active,
-  payload,
-}: {
-  active: any;
-  payload: any;
-}) => {
-  if (active && payload && payload.length) {
-    return (
-      <div
-        style={{
-          background: "white",
-          padding: "10px",
-          border: "1px solid #ccc",
-        }}
-      >
-        <p>
-          <strong>Benchmark:</strong> {payload[0].payload.example}
-        </p>
-        <p>
-          <strong>Abstract:</strong> {payload[0].payload.abs_conflicts}{" "}
-          conflicts
-        </p>
-        <p>
-          <strong>Concrete:</strong> {payload[0].payload.con_conflicts}{" "}
-          conflicts
-        </p>
-      </div>
-    );
-  }
-  return null;
-};
-
-const getScatterColor = (point: any) => {
-  return point.abs_time > point.con_time ? "#f08080" : "#bcf5bc"; // Red if abstract > concrete, Green otherwise
-};
-
 function SpeedUpScatter() {
   const { art } = Route.useParams();
   const artifact = useArtifact(art);
@@ -352,6 +453,7 @@ function SpeedUpScatter() {
             dataKey="con_time"
             name="Concrete Time"
             scale="log"
+            ticks={generateLogTicks(minVal, maxVal)}
             domain={[minVal, maxVal]}
           >
             <Label
@@ -365,6 +467,7 @@ function SpeedUpScatter() {
             dataKey="abs_time"
             name="Abstract Time"
             scale="log"
+            ticks={generateLogTicks(minVal, maxVal)}
             domain={[minVal, maxVal]}
           >
             <Label
@@ -483,14 +586,6 @@ function SpeedUpGraph() {
     );
   }
 }
-
-const getBackgroundColor = (abs_time: number, con_time: number) => {
-  if (abs_time > con_time) {
-    return "#f08080";
-  } else {
-    return "#bcf5bc";
-  }
-};
 
 const SpeedUpTooltip = ({ active, payload }: { active: any; payload: any }) => {
   if (active && payload && payload.length) {
