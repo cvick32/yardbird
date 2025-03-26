@@ -27,7 +27,7 @@ pub trait ProofStrategy<'ctx, S> {
     }
 
     fn n_refines(&mut self) -> u32 {
-        10
+        25
     }
 
     fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<S>;
