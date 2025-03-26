@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
             .map(|inst| format!(" - {inst}"))
             .join("\n")
     );
-    log::debug!("Solver stats: {:#?}", res.solver_statistics);
+    log::info!("Solver stats: {:#?}", res.solver_statistics);
 
     if let Some(model) = res.model {
         if options.print_vmt {

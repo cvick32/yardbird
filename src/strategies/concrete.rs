@@ -60,13 +60,15 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
         let found_proof = if self.run_ic3ia {
             match ic3ia::call_ic3ia(vmt_model.clone()) {
-                Ok(out) => ic3ia_output_contains_proof(out),
+                Ok(out) => {
+                    info!("IC3IA OUT: {out}");
+                    ic3ia_output_contains_proof(out)
+                }
                 Err(_) => false,
             }
         } else {
             false
         };
-
         ProofLoopResult {
             model: Some(vmt_model.clone()),
             used_instances: vec![],
