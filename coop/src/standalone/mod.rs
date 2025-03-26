@@ -8,3 +8,4 @@ pub mod array_even_odd_1;
 pub mod array_even_odd_2;
 pub mod array_partial_init;
 pub mod array_split_12;
+pub mod array_tiling_pr5;
