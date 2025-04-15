@@ -38,18 +38,10 @@ impl Instance {
 #[derive(Clone)]
 pub struct QuantifiedInstantiator {
     visitor: SyntaxBuilder,
-    subst: BTreeMap<(String, usize), String>,
+    subst: BTreeMap<(String, u64), String>,
 }
 
 impl QuantifiedInstantiator {
-    pub fn rewrite_no_prophecy(term: Term, variables: Vec<Variable>) -> Option<Instance> {
-        let frames = ArrayAxiomFrameNumGetter::new(term.clone(), variables.clone());
-        if frames.needs_quantifier() {
-            return None;
-        }
-        QuantifiedInstantiator::rewrite_quantified(term, variables)
-    }
-
     pub fn rewrite_quantified(term: Term, variables: Vec<Variable>) -> Option<Instance> {
         let frames = ArrayAxiomFrameNumGetter::new(term.clone(), variables);
         let (subst, quantified, is_current) = frames.to_substitution()?;

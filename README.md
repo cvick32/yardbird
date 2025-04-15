@@ -67,3 +67,13 @@ This was resolved by running:
 ```
 sudo apt install libclang-dev
 ```
+
+# notes
+
+measure number of quantifiers in abstract and do scatter plot
+
+measure difference in quantifier insts that concrete gets and abstract gets
+
+measure if first forall requires a model if it takes a long time for MBQI to get a model
+
+just use a trigger based instantiation scheme for insts where we need quantifiers

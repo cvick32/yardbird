@@ -13,8 +13,8 @@ use super::variable::Variable;
 pub struct ArrayAxiomFrameNumGetter {
     pub visitor: SyntaxBuilder,
     pub instance_term: Term,
-    pub array_term_frame_map: BTreeSet<(String, usize)>,
-    pub int_term_frame_map: BTreeSet<(String, usize)>,
+    pub array_term_frame_map: BTreeSet<(String, u64)>,
+    pub int_term_frame_map: BTreeSet<(String, u64)>,
     variables: Vec<Variable>,
 }
 
@@ -38,7 +38,7 @@ impl ArrayAxiomFrameNumGetter {
         frame_getter
     }
 
-    fn max_array(&self) -> usize {
+    fn max_array(&self) -> u64 {
         *self
             .array_term_frame_map
             .iter()
@@ -47,18 +47,13 @@ impl ArrayAxiomFrameNumGetter {
             .unwrap_or(&0) // If all variables are immutable, return 0.
     }
 
-    fn min_array(&self) -> usize {
+    fn min_array(&self) -> u64 {
         *self
             .array_term_frame_map
             .iter()
             .map(|(_, frame)| frame)
             .min()
             .unwrap_or(&0) // If all variables are immutable, return 0.
-    }
-
-    #[allow(unused)]
-    pub(crate) fn needs_quantifier(&self) -> bool {
-        false
     }
 
     fn get_var_sort(&self, var_name: &str) -> String {
@@ -74,7 +69,7 @@ impl ArrayAxiomFrameNumGetter {
     pub(crate) fn to_substitution(
         &self,
     ) -> Option<(
-        std::collections::BTreeMap<(String, usize), String>,
+        std::collections::BTreeMap<(String, u64), String>,
         BTreeSet<String>,
         bool,
     )> {
@@ -89,7 +84,7 @@ impl ArrayAxiomFrameNumGetter {
             let min_array_frame_number = self.min_array();
             let mut quantified = BTreeSet::new();
             let mut is_current = true;
-            let mut subst: std::collections::BTreeMap<(String, usize), String> = self
+            let mut subst: std::collections::BTreeMap<(String, u64), String> = self
                 .int_term_frame_map
                 .iter()
                 .enumerate()
@@ -107,7 +102,7 @@ impl ArrayAxiomFrameNumGetter {
                 })
                 .collect();
 
-            let arr_subst: std::collections::BTreeMap<(String, usize), String> = self
+            let arr_subst: std::collections::BTreeMap<(String, u64), String> = self
                 .array_term_frame_map
                 .iter()
                 .map(|(var, frame)| {
