@@ -126,9 +126,13 @@ where
                                 } else {
                                     ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
-                            info!("FOUND VIOLATION: \n{}", instantiation.pretty(80));
-
                             let cost = self.cost_fn.cost_rec(&new_rhs);
+                            info!(
+                                "FOUND VIOLATION (cost {}): \n{}",
+                                cost,
+                                instantiation.pretty(80)
+                            );
+
                             if cost >= 100 {
                                 debug!("rejecting because of cost");
                                 self.instantiations_w_constants
