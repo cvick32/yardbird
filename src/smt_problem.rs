@@ -8,8 +8,8 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    strategies::ProofStrategy, subterm_handler::SubtermHandler, utils::SolverStatistics,
-    z3_var_context::Z3VarContext,
+    proof_tree::ProofTree, strategies::ProofStrategy, subterm_handler::SubtermHandler,
+    utils::SolverStatistics, z3_var_context::Z3VarContext,
 };
 
 pub struct SMTProblem<'ctx> {
@@ -150,6 +150,12 @@ impl<'ctx> SMTProblem<'ctx> {
         self.push_property();
         let sat_result = self.solver.check();
         self.newest_model = self.solver.get_model();
+        match self.solver.get_proof() {
+            Some(proof) => {
+                ProofTree::new(proof);
+            }
+            None => debug!("NO PROOF!"),
+        }
         // Popping property off.
         self.solver.pop(1);
         sat_result

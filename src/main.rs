@@ -14,6 +14,8 @@ fn main() -> anyhow::Result<()> {
     let vmt_model = model_from_options(&options);
 
     let cfg = z3::Config::new();
+    //cfg.set_proof_generation(true);
+
     let context = z3::Context::new(&cfg);
     let mut driver = Driver::new(&context, vmt_model);
 
@@ -39,7 +41,7 @@ fn main() -> anyhow::Result<()> {
             .map(|inst| format!(" - {inst}"))
             .join("\n")
     );
-    log::info!("Solver stats: {:#?}", res.solver_statistics);
+    log::debug!("Solver stats: {:#?}", res.solver_statistics);
 
     if let Some(model) = res.model {
         if options.print_vmt {

@@ -18,6 +18,7 @@ mod extractor;
 pub mod ic3ia;
 mod interpolant;
 pub mod logger;
+mod proof_tree;
 mod smt_problem;
 pub mod strategies;
 mod subterm_handler;
