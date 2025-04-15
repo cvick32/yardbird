@@ -23,14 +23,14 @@ where
         egraph: &egg::EGraph<ArrayLanguage, N>,
         mut cost_function: CF,
         transition_system_terms: &[String],
-        _property_terms: &[String],
+        property_terms: &[String],
         reads_and_writes: ReadsAndWrites,
     ) -> Self
     where
         N: egg::Analysis<ArrayLanguage>,
     {
         let mut term_map: HashMap<egg::Id, Vec<_>> = HashMap::new();
-        for string_term in transition_system_terms {
+        for string_term in transition_system_terms.iter().chain(property_terms) {
             let term: egg::RecExpr<ArrayLanguage> = string_term.parse().unwrap();
             let cost = cost_function.cost_rec(&term);
             match egraph.lookup_expr(&term) {
