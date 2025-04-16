@@ -12,7 +12,9 @@ pub struct Variable {
 /// relation and only tag variables as immutable if they only
 /// ever have `(= var var_next)` but this is fine for now.
 pub fn var_is_immutable(var_name: &str) -> bool {
-    var_name.chars().all(|char| char.is_uppercase())
+    var_name
+        .chars()
+        .all(|char| char.is_uppercase() || char.is_numeric())
 }
 
 impl Variable {
