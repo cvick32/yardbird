@@ -81,7 +81,6 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             None => todo!("No Z3 model available for SAT instance"),
         };
         state.update_with_subterms(model, smt)?;
-        // state.egraph.rebuild();
         let cost_fn = BestSymbolSubstitution {
             current_bmc_depth: state.depth as u32,
             init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
@@ -109,32 +108,18 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             .flat_map(|inst| inst.to_string().parse())
             .collect();
         let variables = smt.variables.clone();
-        // first try without quantifiers
-        let no_progress = terms
-            .clone()
+        let no_quant_progress = terms
             .into_iter()
-            .flat_map(|term| QuantifiedInstantiator::rewrite_no_prophecy(term, variables.clone()))
+            .flat_map(|term| QuantifiedInstantiator::rewrite_quantified(term, variables.clone()))
             .map(|inst| !smt.add_instantiation(inst))
-            .fold(true, |acc, used_instantiation| acc && used_instantiation);
+            .fold(true, |a, b| a && b);
 
-        // if that didn't work, try with quantifiers
-        if no_progress {
-            let no_quant_progress = terms
-                .into_iter()
-                .flat_map(|term| {
-                    QuantifiedInstantiator::rewrite_quantified(term, variables.clone())
-                })
-                .map(|inst| !smt.add_instantiation(inst))
-                .fold(true, |a, b| a && b);
-
-            if no_quant_progress {
-                return Err(Error::NoProgress {
-                    depth: state.depth,
-                    instantiations: smt.get_instantiations().clone(),
-                });
-            }
+        if no_quant_progress {
+            return Err(Error::NoProgress {
+                depth: state.depth,
+                instantiations: smt.get_instantiations().clone(),
+            });
         }
-
         Ok(())
     }
 
