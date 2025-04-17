@@ -89,7 +89,10 @@ impl ArrayAxiomFrameNumGetter {
                 .iter()
                 .enumerate()
                 .map(|(idx, (var, frame))| {
-                    if *frame == min_array_frame_number || var_is_immutable(var) {
+                    if *frame == min_array_frame_number || var_is_immutable(var)
+                    // || (*frame == min_array_frame_number - 1
+                    //     && self.max_array() == self.min_array())
+                    {
                         ((var.clone(), *frame), var.clone())
                     } else if *frame == min_array_frame_number + 1 {
                         is_current = false;
