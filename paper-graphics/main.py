@@ -242,6 +242,43 @@ def get_outcome_type(outcome: StrategyOutcome) -> str:
 # === Graph Creation Functions ===
 
 
+def save_fig(name: str, graph_type: str, max_val: int, min_val: int, fig):
+    # Add the x = y line to the existing figure
+    fig.add_trace(
+        go.Scatter(
+            x=[min_val, max_val],
+            y=[min_val, max_val],
+            mode="lines",
+            line=dict(color="black", dash="dash"),
+            name="x = y",
+        )
+    )
+
+    fig.update_traces(marker=dict(size=8))
+    fig.update_layout(
+        width=800,
+        height=600,
+        showlegend=True,
+        legend=dict(
+            orientation="h",  # horizontal layout
+            yanchor="bottom",
+            y=-0.2,
+            xanchor="center",
+            x=0.5,
+        ),
+        margin=dict(b=100),  # increase bottom margin to prevent clipping
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=True, gridcolor="rgb(150,150,150)", gridwidth=1),
+        yaxis=dict(showgrid=True, gridcolor="rgb(150,150,150)", gridwidth=1),
+    )
+    # Save as high-resolution PNG
+    fig.write_image(
+        f"{name}_{graph_type}_plot.png", scale=3
+    )  # scale=3 means 3x default resolution
+    # fig.show()
+
+
 def create_runtime_graph(benchmarks: list[BenchmarkResult], name: str):
     data = []
 
@@ -256,7 +293,6 @@ def create_runtime_graph(benchmarks: list[BenchmarkResult], name: str):
         )
 
         if abstract is None or concrete is None:
-            print(benchmark)
             continue
 
         def get_time(result: StrategyResultBase) -> float:
@@ -281,63 +317,36 @@ def create_runtime_graph(benchmarks: list[BenchmarkResult], name: str):
     df = pd.DataFrame(data)
     # Plot using Plotly for interactivity
 
-    df["time_performance"] = df.apply(
+    df["BMC Time"] = df.apply(
         lambda row: (
-            "abstract faster"
+            "Yardbird Faster"
             if row["abstract_time"] < row["concrete_time"]
-            else "concrete faster"
+            else "Z3 Faster"
         ),
         axis=1,
     )
-
-    abstract_time_wins = (df["abstract_time"] < df["concrete_time"]).sum()
-    concrete_time_wins = (df["abstract_time"] > df["concrete_time"]).sum()
 
     fig = px.scatter(
         df,
         y="abstract_time",
         x="concrete_time",
         hover_name="example",
-        color="time_performance",
+        color="BMC Time",
         color_discrete_sequence=px.colors.qualitative.Vivid,
         log_x=True,
         log_y=True,
         labels={
-            "abstract_time": "Yardbird Runtime (s)",
-            "concrete_time": "Z3 Runtime (s)",
+            "abstract_time": "Yardbird Runtime (s, log scale)",
+            "concrete_time": "Z3 Runtime (s, log scale)",
         },
     )
 
     min_val = min(df["abstract_time"].min(), df["concrete_time"].min())
     max_val = max(df["abstract_time"].max(), df["concrete_time"].max())
-
-    # Add the x = y line to the existing figure
-    fig.add_trace(
-        go.Scatter(
-            x=[min_val, max_val],
-            y=[min_val, max_val],
-            mode="lines",
-            line=dict(color="black", dash="dash"),
-            # name="x = y",
-        )
-    )
-
-    fig.update_traces(marker=dict(size=8))
-    fig.update_layout(
-        width=800,
-        height=600,
-        showlegend=False,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=True, gridcolor="black", gridwidth=1),
-        yaxis=dict(showgrid=True, gridcolor="black", gridwidth=1),
-    )
-    # Save as high-resolution PNG
-    fig.write_image(
-        f"{name}_runtime_plot.png", scale=3
-    )  # scale=3 means 3x default resolution
     # fig.show()
-    return (df, abstract_time_wins, concrete_time_wins)
+
+    save_fig(name, "runtime", max_val, min_val, fig)
+    return df
 
 
 def create_instantiation_graph(benchmarks: list[BenchmarkResult], name: str):
@@ -353,34 +362,27 @@ def create_instantiation_graph(benchmarks: list[BenchmarkResult], name: str):
         )
 
     df = pd.DataFrame(data)
-    df["inst_performance"] = df.apply(
+    df["# of Instantiations"] = df.apply(
         lambda row: (
-            "abstract better"
+            "Yardbird Fewer"
             if row["abstract_instantiations"] <= row["concrete_instantiations"]
-            else "concrete better"
+            else "Z3 Fewer"
         ),
         axis=1,
     )
-
-    abstract_inst_wins = (
-        df["abstract_instantiations"] < df["concrete_instantiations"]
-    ).sum()
-    concrete_inst_wins = (
-        df["abstract_instantiations"] > df["concrete_instantiations"]
-    ).sum()
 
     fig = px.scatter(
         df,
         y="abstract_instantiations",
         x="concrete_instantiations",
-        color="inst_performance",
+        color="# of Instantiations",
         color_discrete_sequence=px.colors.qualitative.Vivid,
         log_x=True,
         log_y=True,
         hover_name="example",
         labels={
-            "abstract_instantiations": "# of Yardbird Quantifier Instantiations",
-            "concrete_instantiations": "# of Z3 Quantifier Instantiations",
+            "abstract_instantiations": "# of Yardbird Array Axiom Instantiations (log scale)",
+            "concrete_instantiations": "# of Z3 Array Axiom Instantiations (log scale)",
         },
     )
 
@@ -391,34 +393,10 @@ def create_instantiation_graph(benchmarks: list[BenchmarkResult], name: str):
         df["abstract_instantiations"].max(), df["concrete_instantiations"].max()
     )
 
-    # Add the x = y line to the existing figure
-    fig.add_trace(
-        go.Scatter(
-            x=[min_val, max_val],
-            y=[min_val, max_val],
-            mode="lines",
-            line=dict(color="black", dash="dash"),
-            name="x = y",
-        )
-    )
+    fig.show()
+    save_fig(name, "inst", max_val, min_val, fig)
 
-    fig.update_traces(marker=dict(size=8))
-    fig.update_layout(
-        width=800,
-        height=600,
-        showlegend=False,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(showgrid=True, gridcolor="black", gridwidth=1),
-        yaxis=dict(showgrid=True, gridcolor="black", gridwidth=1),
-    )
-    # fig.show()
-    # Save as high-resolution PNG
-    fig.write_image(
-        f"{name}_instantiation_plot.png", scale=3
-    )  # scale=3 means 3x default resolution
-
-    return (df, abstract_inst_wins, concrete_inst_wins)
+    return df
 
 
 # === Helpers ===
@@ -444,6 +422,84 @@ def split_by_quantification(
         else:
             unquantified.append(b)
     return quantified, unquantified
+
+
+# === Helpers ===
+
+
+def build_latex_table(runtime_df, insts_df) -> str:
+    combined_df = runtime_df.merge(insts_df, on="example", how="inner")
+    combined_df = combined_df.drop(columns=["BMC Time", "# of Instantiations"])
+    combined_df.sort_values(by="example", inplace=True)
+    for i, row in combined_df.iterrows():
+        name = row["example"]
+        combined_df.at[i, "example"] = name.replace("examples/", "")
+
+    return combined_df.to_latex(
+        index=False, escape=True, longtable=True, float_format="%.2f"
+    )
+
+
+def print_time_wins(runtime_df) -> tuple[int, int]:
+    abs_time_wins = (runtime_df["abstract_time"] < runtime_df["concrete_time"]).sum()
+    con_time_wins = (runtime_df["abstract_time"] > runtime_df["concrete_time"]).sum()
+    tie = (runtime_df["abstract_time"] == runtime_df["concrete_time"]).sum()
+    print(
+        f"Abs Time Wins: {abs_time_wins}\nCon Time Wins: {con_time_wins}\nTies: {tie}"
+    )
+    print(
+        f"Abs Time % Win: {round(abs_time_wins / (abs_time_wins + con_time_wins + tie) * 100, 2)}"
+    )
+
+
+def print_insts_wins(insts_df) -> tuple[int, int]:
+    abs_insts_wins = (
+        insts_df["abstract_instantiations"] < insts_df["concrete_instantiations"]
+    ).sum()
+    con_insts_wins = (
+        insts_df["abstract_instantiations"] > insts_df["concrete_instantiations"]
+    ).sum()
+    tie = (
+        insts_df["abstract_instantiations"] == insts_df["concrete_instantiations"]
+    ).sum()
+    print(
+        f"Abs Inst Wins: {abs_insts_wins}\nCon Inst Wins: {con_insts_wins}\nTies: {tie}"
+    )
+    print(
+        f"Abs Inst % Win: {round(abs_insts_wins / (abs_insts_wins + con_insts_wins + tie) * 100, 2)}"
+    )
+    winning_cases = insts_df[
+        insts_df["abstract_instantiations"] < insts_df["concrete_instantiations"]
+    ]
+    losing_cases = insts_df[
+        insts_df["abstract_instantiations"] > insts_df["concrete_instantiations"]
+    ]
+
+    # Compute percent difference per row
+    winning_cases["percent_diff"] = (
+        (
+            winning_cases["concrete_instantiations"]
+            - winning_cases["abstract_instantiations"]
+        )
+        / winning_cases["concrete_instantiations"]
+    ) * 100
+
+    # Compute the average
+    average_percent_diff_win = winning_cases["percent_diff"].mean()
+    print(f"Average Win: {average_percent_diff_win}")
+
+    # Compute percent difference per row
+    losing_cases["percent_diff"] = (
+        (
+            losing_cases["abstract_instantiations"]
+            - losing_cases["concrete_instantiations"]
+        )
+        / losing_cases["abstract_instantiations"]
+    ) * 100
+
+    # Compute the average
+    average_percent_diff_loss = losing_cases["percent_diff"].mean()
+    print(f"Average loss: {average_percent_diff_loss}")
 
 
 # === Main CLI Runner ===
@@ -472,45 +528,22 @@ def main():
         benchmarks = parse_benchmark_results(f.read())
 
     print(f"Parsed {len(benchmarks)} benchmark results.\n")
-    for b in benchmarks:
-        abstract_inst, concrete_inst = b.get_instantiations()
-        print(f"{b.example}: abstract={abstract_inst}, concrete={concrete_inst}")
 
     quantified, unquantified = split_by_quantification(benchmarks)
 
-    runtime_df, abs_time_wins, con_time_wins = create_runtime_graph(
-        benchmarks, name="full"
-    )
-    insts_df, abs_insts_wins, con_insts_wins = create_instantiation_graph(
-        benchmarks, name="full"
-    )
-    print(f"Abs Time Wins: {abs_time_wins}\nCon Time Wins: {con_time_wins}")
-    print(f"Abs Inst Wins: {abs_insts_wins}\nCon Inst Wins: {con_insts_wins}")
+    runtime_df = create_runtime_graph(benchmarks, name="full")
+    insts_df = create_instantiation_graph(benchmarks, name="full")
 
-    combined_df = runtime_df.merge(insts_df, on="example", how="inner")
-    combined_df = combined_df.drop(columns=["time_performance", "inst_performance"])
-    combined_df.sort_values(by="example", inplace=True)
-    for i, row in combined_df.iterrows():
-        name = row["example"]
-        combined_df.at[i, "example"] = name.replace("examples/", "")
-    print(
-        combined_df.to_latex(
-            index=False, escape=True, longtable=True, float_format="%.2f"
-        )
-    )
-    runtime_df, abs_time_wins, con_time_wins = create_runtime_graph(
-        quantified, name="quant"
-    )
-    insts_df, abs_insts_wins, con_insts_wins = create_instantiation_graph(
-        quantified, name="quant"
-    )
-    runtime_df, abs_time_wins, con_time_wins = create_runtime_graph(
-        unquantified, name="unquant"
-    )
-    insts_df, abs_insts_wins, con_insts_wins = create_instantiation_graph(
-        unquantified, name="unquant"
-    )
+    print_time_wins(runtime_df)
+    print_insts_wins(insts_df)
 
+    latex_table = build_latex_table(runtime_df, insts_df)
+
+    # runtime_df_quant = create_runtime_graph(quantified, name="quant")
+    # insts_df_quant = create_instantiation_graph(quantified, name="quant")
+    # runtime_df_unquant = create_runtime_graph(unquantified, name="unquant")
+    # insts_df_unquant = create_instantiation_graph(unquantified, name="unquant")
+    # len([b for b in benchmarks if isinstance(b.results[0].outcome, StrategySuccess)])
     breakpoint()
 
 
