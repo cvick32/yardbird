@@ -19,6 +19,15 @@ pub struct ProofLoopResult {
     pub found_proof: bool,
 }
 
+impl ProofLoopResult {
+    pub fn get_instantiations_string(&self) -> String {
+        self.used_instances
+            .iter()
+            .map(|inst| format!(" - {inst}"))
+            .join("\n")
+    }
+}
+
 impl Serialize for ProofLoopResult {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where

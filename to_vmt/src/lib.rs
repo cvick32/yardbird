@@ -45,7 +45,7 @@ pub fn run_model(
 
     match driver.check_strategy(depth, strat) {
         Ok(res) => {
-            println!("Instances: {:#?}", res.used_instances);
+            println!("Used Instances: \n{}", res.get_instantiations_string());
             !res.used_instances.is_empty() && !debug_vmt && !should_fail
         }
         Err(e) => {

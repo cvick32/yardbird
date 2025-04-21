@@ -1,5 +1,4 @@
 use clap::Parser;
-use itertools::Itertools;
 use log::info;
 use std::{fs::File, io::Write};
 use yardbird::{
@@ -36,10 +35,7 @@ fn main() -> anyhow::Result<()> {
     info!("SUCCESSFUL BMC!");
     info!(
         "NEEDED INSTANTIATIONS:\n{}",
-        res.used_instances
-            .iter()
-            .map(|inst| format!(" - {inst}"))
-            .join("\n")
+        res.get_instantiations_string()
     );
     log::debug!("Solver stats: {:#?}", res.solver_statistics);
 
