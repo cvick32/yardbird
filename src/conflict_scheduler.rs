@@ -6,13 +6,14 @@ use log::{debug, info};
 
 use crate::{
     array_axioms::{ArrayExpr, ArrayLanguage},
+    cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
     extractor::TermExtractor,
 };
 
 pub struct ConflictScheduler<S, CF>
 where
-    CF: egg::CostFunction<ArrayLanguage> + Clone,
+    CF: YardbirdCostFunction,
 {
     inner: S,
     /// TODO: use RecExpr instead of String
@@ -28,7 +29,7 @@ where
 
 impl<S, CF> ConflictScheduler<S, CF>
 where
-    CF: egg::CostFunction<ArrayLanguage> + Clone,
+    CF: YardbirdCostFunction,
 {
     pub fn new(scheduler: S, cost_fn: CF, extractor: TermExtractor<CF>) -> Self {
         Self {
@@ -52,7 +53,7 @@ where
 impl<S, N, CF> egg::RewriteScheduler<ArrayLanguage, N> for ConflictScheduler<S, CF>
 where
     S: egg::RewriteScheduler<ArrayLanguage, N>,
-    CF: egg::CostFunction<ArrayLanguage, Cost = u32> + Clone,
+    CF: YardbirdCostFunction,
     N: egg::Analysis<ArrayLanguage>,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
@@ -170,8 +171,7 @@ fn reify_pattern_ast<N, CF>(
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
-    CF: egg::CostFunction<ArrayLanguage> + Clone,
-    <CF as egg::CostFunction<ArrayLanguage>>::Cost: Ord,
+    CF: YardbirdCostFunction,
 {
     match pattern.as_ref() {
         [node] => {
@@ -384,8 +384,7 @@ fn find_best_variable_substitution<N, CF>(
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
-    CF: egg::CostFunction<ArrayLanguage> + Clone,
-    <CF as egg::CostFunction<ArrayLanguage>>::Cost: Ord,
+    CF: YardbirdCostFunction,
 {
     let expr = extractor.extract(egraph, eclass.id);
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));

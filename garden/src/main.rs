@@ -14,7 +14,7 @@ use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
-struct Options {
+struct GardenOptions {
     /// Directory to find vmt files in.
     pub examples: PathBuf,
 
@@ -52,6 +52,10 @@ struct Options {
 
     #[arg(long, default_value_t = 2)]
     pub retry: usize,
+
+    // Choose Cost Function
+    #[arg(short, long, value_enum, default_value_t = yardbird::CostFunction::SymbolCost)]
+    pub cost_function: yardbird::CostFunction,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,6 +77,7 @@ struct Benchmark {
 #[derive(Debug, Serialize)]
 struct StrategyResult {
     strategy: yardbird::Strategy,
+    cost_function: yardbird::CostFunction,
     result: BenchmarkResult,
     run_time: u128,
     depth: u16,
@@ -179,6 +184,7 @@ fn run_single(
         Some(result) => Ok(StrategyResult {
             strategy: options.strategy,
             result,
+            cost_function: options.cost_function,
             run_time: run_time.as_millis(),
             depth: options.depth,
         }),
@@ -187,7 +193,7 @@ fn run_single(
 }
 
 fn main() -> anyhow::Result<()> {
-    let options = Options::parse();
+    let options = GardenOptions::parse();
 
     let include: Vec<_> = options
         .include
@@ -238,12 +244,12 @@ fn main() -> anyhow::Result<()> {
                             YardbirdOptions {
                                 filename: filename.clone(),
                                 depth: options.depth,
-                                bmc_count: 10,
                                 print_vmt: false,
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
                                 run_ic3ia: options.run_ic3ia,
+                                cost_function: options.cost_function,
                             },
                             options.retry,
                             options.timeout,

@@ -1,10 +1,15 @@
-use crate::cost_functions::symbol_cost::BestSymbolSubstitution;
+use egg::CostFunction;
+
+use crate::array_axioms::ArrayLanguage;
 
 /// Trait for saturating an egraph with the array axioms. This hides the details of
 /// needing to create a runner every time you want to saturate a set of rules on an egraph.
-pub trait Saturate {
+pub trait Saturate<CF>
+where
+    CF: CostFunction<ArrayLanguage, Cost = u32> + Clone,
+{
     type Ret;
-    fn saturate(&mut self, cost: BestSymbolSubstitution) -> Self::Ret;
+    fn saturate(&mut self, cost: CF) -> Self::Ret;
 }
 
 pub trait RecExprRoot<L> {

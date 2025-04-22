@@ -3,6 +3,7 @@
 use std::{fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
+use cost_functions::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::Serialize;
 use smt2parser::vmt::VMTModel;
@@ -11,7 +12,7 @@ use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
 pub mod analysis;
 pub mod array_axioms;
 pub mod conflict_scheduler;
-mod cost_functions;
+pub mod cost_functions;
 mod driver;
 mod egg_utils;
 mod extractor;
@@ -37,10 +38,6 @@ pub struct YardbirdOptions {
     #[arg(short, long, default_value_t = 10)]
     pub depth: u16,
 
-    /// How many times BMC should be UNSAT until we check with an invariant generator.
-    #[arg(short, long, default_value_t = 1)]
-    pub bmc_count: usize,
-
     /// Output VMT files before and after instantiation.
     #[arg(short, long, default_value_t = false)]
     pub print_vmt: bool,
@@ -59,6 +56,10 @@ pub struct YardbirdOptions {
     // Invoke IC3IA
     #[arg(long, default_value_t = false)]
     pub run_ic3ia: bool,
+
+    // Choose Cost Function
+    #[arg(short, long, value_enum, default_value_t = CostFunction::SymbolCost)]
+    pub cost_function: CostFunction,
 }
 
 impl Default for YardbirdOptions {
@@ -66,12 +67,12 @@ impl Default for YardbirdOptions {
         YardbirdOptions {
             filename: "".into(),
             depth: 10,
-            bmc_count: 1,
             print_vmt: false,
             interpolate: false,
             strategy: Strategy::Abstract,
             repl: false,
             run_ic3ia: false,
+            cost_function: CostFunction::SymbolCost,
         }
     }
 }
@@ -86,7 +87,18 @@ impl YardbirdOptions {
 
     pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
         match self.strategy {
-            Strategy::Abstract => Box::new(Abstract::new(self.depth, self.run_ic3ia)),
+            Strategy::Abstract => match self.cost_function {
+                CostFunction::SymbolCost => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    best_symbol_cost_factory,
+                )),
+                CostFunction::ASTSize => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    ast_size_cost_factory,
+                )),
+            },
             Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
         }
     }
@@ -108,4 +120,13 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 pub enum Strategy {
     Abstract,
     Concrete,
+}
+
+/// Describes the proving strategies available.
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum CostFunction {
+    SymbolCost,
+    ASTSize,
 }

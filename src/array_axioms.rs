@@ -4,7 +4,7 @@ use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
-    conflict_scheduler::ConflictScheduler, cost_functions::symbol_cost::BestSymbolSubstitution,
+    conflict_scheduler::ConflictScheduler, cost_functions::YardbirdCostFunction,
     egg_utils::Saturate, extractor::TermExtractor,
 };
 
@@ -118,20 +118,19 @@ impl ArrayLanguage {
     }
 }
 
-impl<N> Saturate for EGraph<ArrayLanguage, N>
+impl<CF, N> Saturate<CF> for EGraph<ArrayLanguage, N>
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
+    CF: YardbirdCostFunction + 'static,
 {
     type Ret = (Vec<ArrayExpr>, Vec<ArrayExpr>);
-    fn saturate(&mut self, cost_fn: BestSymbolSubstitution) -> Self::Ret {
+
+    fn saturate(&mut self, cost_fn: CF) -> Self::Ret {
         let egraph = std::mem::take(self);
-        let trans_terms = cost_fn.init_and_transition_system_terms.clone();
-        let prop_terms = cost_fn.property_terms.clone();
-        let reads_writes = cost_fn.reads_writes.clone();
         let scheduler = ConflictScheduler::new(
             BackoffScheduler::default(),
             cost_fn.clone(),
-            TermExtractor::new(&egraph, cost_fn, &trans_terms, &prop_terms, reads_writes),
+            TermExtractor::new(&egraph, cost_fn),
         );
         let instantiations = scheduler.instantiations();
         let const_instantiations = scheduler.instantiations_w_constants();

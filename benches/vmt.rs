@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion, SamplingMode};
 use smt2parser::vmt::VMTModel;
-use yardbird::{strategies::Abstract, Driver};
+use yardbird::{cost_functions::best_symbol_cost_factory, strategies::Abstract, Driver};
 
 fn run(path: impl AsRef<Path>, depth: u16) {
     let vmt_model = VMTModel::from_path(path).unwrap();
@@ -12,7 +12,7 @@ fn run(path: impl AsRef<Path>, depth: u16) {
     let context = z3::Context::new(&cfg);
     let mut driver = Driver::new(&context, vmt_model);
 
-    let strat = Box::new(Abstract::new(depth, false));
+    let strat = Box::new(Abstract::new(depth, false, best_symbol_cost_factory));
 
     _ = driver.check_strategy(depth, strat);
 }

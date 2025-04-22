@@ -3,6 +3,8 @@ use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::array_axioms::ArrayLanguage;
 
+use super::YardbirdCostFunction;
+
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
 #[derive(Clone, Debug)]
@@ -90,5 +92,19 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
             }
         };
         enode.fold(op_cost, |sum, id| sum + costs(id))
+    }
+}
+
+impl YardbirdCostFunction for BestSymbolSubstitution {
+    fn get_string_terms(&self) -> Vec<String> {
+        self.init_and_transition_system_terms
+            .clone()
+            .into_iter()
+            .chain(self.property_terms.clone())
+            .collect::<Vec<String>>()
+    }
+
+    fn get_reads_and_writes(&self) -> ReadsAndWrites {
+        self.reads_writes.clone()
     }
 }

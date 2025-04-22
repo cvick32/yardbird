@@ -9,7 +9,7 @@ use smt2parser::{
 use crate::{
     analysis::SaturationInequalities,
     array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
-    cost_functions::symbol_cost::BestSymbolSubstitution,
+    cost_functions::YardbirdCostFunction,
     driver::{self, Error},
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
@@ -20,19 +20,30 @@ use crate::{
 use super::{ProofAction, ProofStrategy};
 
 /// Global state carried across different BMC depths
-#[derive(Default)]
-pub struct Abstract {
+pub struct Abstract<F>
+where
+    F: YardbirdCostFunction,
+{
     const_instantiations: Vec<Term>,
     bmc_depth: u16,
     run_ic3ia: bool,
+    cost_fn_factory: fn(&SMTProblem, u32) -> F,
 }
 
-impl Abstract {
-    pub fn new(bmc_depth: u16, run_ic3ia: bool) -> Self {
+impl<F> Abstract<F>
+where
+    F: YardbirdCostFunction,
+{
+    pub fn new(
+        bmc_depth: u16,
+        run_ic3ia: bool,
+        cost_fn_factory: fn(&SMTProblem, u32) -> F,
+    ) -> Self {
         Self {
             bmc_depth,
             run_ic3ia,
-            ..Default::default()
+            const_instantiations: vec![],
+            cost_fn_factory,
         }
     }
 }
@@ -45,7 +56,10 @@ pub struct AbstractRefinementState {
     pub const_instantiations: Vec<ArrayExpr>,
 }
 
-impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
+impl<F> ProofStrategy<'_, AbstractRefinementState> for Abstract<F>
+where
+    F: YardbirdCostFunction + 'static,
+{
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model
             .abstract_array_theory()
@@ -81,12 +95,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for Abstract {
             None => todo!("No Z3 model available for SAT instance"),
         };
         state.update_with_subterms(model, smt)?;
-        let cost_fn = BestSymbolSubstitution {
-            current_bmc_depth: state.depth as u32,
-            init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-            property_terms: smt.get_property_subterms(),
-            reads_writes: smt.get_reads_and_writes(),
-        };
+        let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
         let (insts, const_insts) = state.egraph.saturate(cost_fn);
         state.instantiations.extend_from_slice(&insts);
         state.const_instantiations.extend_from_slice(&const_insts);
