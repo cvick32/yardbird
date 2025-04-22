@@ -34,7 +34,7 @@ pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 pub mod quantified_instantiator;
 mod reads_and_write;
-pub mod smt;
+mod smt;
 mod smtinterpol_utils;
 mod utils;
 pub mod variable;
