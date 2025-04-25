@@ -301,7 +301,7 @@ def create_runtime_graph(benchmarks: list[BenchmarkResult], name: str):
             elif isinstance(result.outcome, StrategyTimeout):
                 return result.outcome.duration_ms / 1000.0
             else:
-                return 1800000 / 1000.0  # Default timeout in seconds
+                return BMC_TIMEOUT
 
         abstract_time = round(get_time(abstract), 2)
         concrete_time = round(get_time(concrete), 2)
@@ -343,7 +343,7 @@ def create_runtime_graph(benchmarks: list[BenchmarkResult], name: str):
 
     min_val = min(df["abstract_time"].min(), df["concrete_time"].min())
     max_val = max(df["abstract_time"].max(), df["concrete_time"].max())
-    # fig.show()
+    fig.show()
 
     save_fig(name, "runtime", max_val, min_val, fig)
     return df

@@ -7,3 +7,4 @@ interpolant-out.smt2
 /*.json
 info.sh
 debug.sh
+*.png
