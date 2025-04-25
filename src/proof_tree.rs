@@ -11,8 +11,11 @@ pub struct ProofTree<'ctx> {
 impl<'ctx> ProofTree<'ctx> {
     pub fn new(ast: impl Ast<'ctx>) -> Self {
         let mut to_process = ast.children();
+
         while let Some(rule) = to_process.pop() {
-            info!("{:?}", rule.decl().kind());
+            if rule.decl().kind() == z3::DeclKind::PR_TH_LEMMA {
+                info!("{:?}: {}", rule.decl().kind(), rule.to_string());
+            }
             if !rule.children().is_empty() {
                 to_process.extend_from_slice(&rule.children());
             }
