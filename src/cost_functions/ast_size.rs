@@ -1,4 +1,3 @@
-use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::array_axioms::ArrayLanguage;
@@ -20,7 +19,7 @@ impl egg::CostFunction<ArrayLanguage> for AstSize {
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
-        enode.len() as u32
+        enode.to_string().len() as u32
     }
 }
 
