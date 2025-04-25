@@ -36,6 +36,7 @@ impl<'ctx> SMTProblem<'ctx> {
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
+        let solver = z3::Solver::new_for_logic(context, strategy.get_logic_string()).unwrap();
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
             subterm_handler: SubtermHandler::new(
@@ -49,7 +50,7 @@ impl<'ctx> SMTProblem<'ctx> {
             depth: 0,
             bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
             variables: vmt_model.get_state_holding_variables(),
-            solver: z3::Solver::new(context),
+            solver,
             z3_var_context: Z3VarContext::new(context),
             newest_model: None,
         };

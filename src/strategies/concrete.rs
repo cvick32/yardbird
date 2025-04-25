@@ -91,4 +91,8 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
     fn abstract_array_theory(&self) -> bool {
         false
     }
+
+    fn get_logic_string(&self) -> String {
+        "AUFLIA".into()
+    }
 }

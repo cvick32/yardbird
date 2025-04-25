@@ -160,6 +160,10 @@ where
     fn abstract_array_theory(&self) -> bool {
         true
     }
+
+    fn get_logic_string(&self) -> String {
+        "UFLIA".into()
+    }
 }
 
 impl AbstractRefinementState {

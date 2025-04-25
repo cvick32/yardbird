@@ -22,6 +22,8 @@ pub enum ProofAction {
 pub trait ProofStrategy<'ctx, S> {
     fn abstract_array_theory(&self) -> bool;
 
+    fn get_logic_string(&self) -> String;
+
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model
     }
