@@ -56,24 +56,6 @@ impl ArrayAxiomFrameNumGetter {
             .unwrap_or(&0) // If all variables are immutable, return 0.
     }
 
-    pub fn max_int(&self) -> u64 {
-        *self
-            .int_term_frame_map
-            .iter()
-            .map(|(_, frame)| frame)
-            .max()
-            .unwrap_or(&0) // If all variables are immutable, return 0.
-    }
-
-    pub fn min_int(&self) -> u64 {
-        *self
-            .int_term_frame_map
-            .iter()
-            .map(|(_, frame)| frame)
-            .min()
-            .unwrap_or(&0) // If all variables are immutable, return 0.
-    }
-
     fn get_var_sort(&self, var_name: &str) -> String {
         for variable in &self.variables {
             if variable.get_current_variable_name() == var_name {
@@ -172,35 +154,19 @@ impl crate::rewriter::Rewriter for ArrayAxiomFrameNumGetter {
 #[derive(Clone, Debug)]
 pub struct VariableOffsetGetter {
     pub visitor: SyntaxBuilder,
-    pub instance_term: Term,
     pub variable_offsets: std::collections::BTreeMap<String, Vec<i64>>,
-    variables: Vec<Variable>,
 }
 
 impl VariableOffsetGetter {
-    pub fn new(instance_term: Term, variables: Vec<Variable>) -> Self {
+    pub fn new(instance_term: Term) -> Self {
         let mut offset_getter = VariableOffsetGetter {
             visitor: SyntaxBuilder,
-            instance_term: instance_term.clone(),
             variable_offsets: std::collections::BTreeMap::new(),
-            variables,
         };
 
         instance_term.accept(&mut offset_getter).unwrap();
 
         offset_getter
-    }
-
-    /// Get the offset for a specific variable (returns the max offset for compatibility)
-    pub fn get_offset(&self, var_name: &str) -> Option<i64> {
-        self.variable_offsets
-            .get(var_name)
-            .and_then(|v| v.iter().max().copied())
-    }
-
-    /// Get all variable offsets
-    pub fn get_all_offsets(&self) -> &std::collections::BTreeMap<String, Vec<i64>> {
-        &self.variable_offsets
     }
 
     /// Get the minimum offset across all variables and all their offsets
@@ -226,20 +192,6 @@ impl VariableOffsetGetter {
     /// Get the total span of offsets (max - min)
     pub fn offset_span(&self) -> i64 {
         self.max_offset() - self.min_offset()
-    }
-
-    /// Check if all variables have the same offset (span = 0)
-    pub fn is_uniform_offset(&self) -> bool {
-        self.offset_span() == 0
-    }
-
-    fn get_var_sort(&self, var_name: &str) -> String {
-        for variable in &self.variables {
-            if variable.get_current_variable_name() == var_name {
-                return variable.get_sort_name();
-            }
-        }
-        panic!("Could not find variable {var_name} in {:?}", self.variables);
     }
 }
 

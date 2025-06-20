@@ -82,7 +82,7 @@ impl QuantifiedInstantiator {
         };
 
         // Get variable offsets for distance calculation
-        let offset_getter = VariableOffsetGetter::new(term.clone(), variables);
+        let offset_getter = VariableOffsetGetter::new(term.clone());
 
         Some(Instance {
             instance: term,
@@ -99,8 +99,8 @@ pub struct UnquantifiedInstantiator {
 }
 
 impl UnquantifiedInstantiator {
-    pub fn rewrite_unquantified(term: Term, variables: Vec<Variable>) -> Option<Instance> {
-        let offset_getter = VariableOffsetGetter::new(term.clone(), variables);
+    pub fn rewrite_unquantified(term: Term, _variables: Vec<Variable>) -> Option<Instance> {
+        let offset_getter = VariableOffsetGetter::new(term.clone());
         let mut ui = Self {
             visitor: SyntaxBuilder,
             variable_offsets: offset_getter,
@@ -216,19 +216,11 @@ mod tests {
         };
 
         // Test VariableOffsetGetter directly - it only needs the term to extract offsets
-        let empty_variables = vec![];
-        let offset_getter = VariableOffsetGetter::new(example_term.clone(), empty_variables);
+        let offset_getter = VariableOffsetGetter::new(example_term.clone());
 
         assert_eq!(offset_getter.min_offset(), 0);
         assert_eq!(offset_getter.max_offset(), 1);
         assert_eq!(offset_getter.offset_span(), 1);
-        assert!(!offset_getter.is_uniform_offset());
-
-        // Check specific variable offsets
-        assert_eq!(offset_getter.get_offset("b"), Some(0));
-        assert_eq!(offset_getter.get_offset("i"), Some(1)); // i appears as both i@0 and i@1, captures max offset
-        assert_eq!(offset_getter.get_offset("a"), Some(0));
-        assert_eq!(offset_getter.get_offset("n"), Some(0));
     }
 
     #[test]
@@ -283,19 +275,13 @@ mod tests {
             arguments: vec![read_write_term, read_a_term],
         };
 
-        let empty_variables = vec![];
-        let offset_getter = VariableOffsetGetter::new(example_term.clone(), empty_variables);
+        let offset_getter = VariableOffsetGetter::new(example_term.clone());
 
         // Expected: b@3 (3), i@1 (1), i@5 (5), a@2 (2), n@1 (1)
         // min: 1, max: 5, span: 4, not uniform
         assert_eq!(offset_getter.min_offset(), 1);
         assert_eq!(offset_getter.max_offset(), 5);
         assert_eq!(offset_getter.offset_span(), 4);
-        assert!(!offset_getter.is_uniform_offset());
-        assert_eq!(offset_getter.get_offset("b"), Some(3));
-        assert_eq!(offset_getter.get_offset("i"), Some(5)); // i@1 and i@5, max is 5
-        assert_eq!(offset_getter.get_offset("a"), Some(2));
-        assert_eq!(offset_getter.get_offset("n"), Some(1));
     }
 
     #[test]
@@ -358,8 +344,6 @@ mod tests {
             UnquantifiedInstantiator::rewrite_unquantified(example_term, empty_variables)
         {
             let rewritten_term = instance.get_term();
-            println!("Original term: (= (Read-Int-Int (Write-Int-Int b@3 i@1 (Read-Int-Int a@2 (+ n@1 i@5))) i@5) (Read-Int-Int a@2 (+ n@1 i@5)))");
-            println!("Rewritten term: {}", rewritten_term);
 
             // The rewriter should normalize offsets by subtracting min_offset (1)
             // So: b@3 -> b+2, i@1 -> i+0, a@2 -> a+1, n@1 -> n+0, i@5 -> i+4
@@ -367,7 +351,6 @@ mod tests {
 
             // Convert to string to check the rewriting
             let rewritten_str = rewritten_term.to_string();
-            println!("Rewritten string: {}", rewritten_str);
 
             // Check that the offsets have been normalized
             assert!(rewritten_str.contains("b+2")); // b@3 -> b+2 (3-1=2)
@@ -378,8 +361,6 @@ mod tests {
 
             // Check that no original frame annotations remain
             assert!(!rewritten_str.contains("@"));
-
-            println!("Test passed! UnquantifiedInstantiator correctly normalized frame offsets.");
         } else {
             panic!("Failed to create unquantified instance");
         }
@@ -455,12 +436,7 @@ mod tests {
         let empty_variables = vec![];
 
         // Test VariableOffsetGetter directly
-        let offset_getter =
-            VariableOffsetGetter::new(implication_term.clone(), empty_variables.clone());
-        println!("Variable offsets: {:?}", offset_getter.get_all_offsets());
-        println!("Min offset: {}", offset_getter.min_offset());
-        println!("Max offset: {}", offset_getter.max_offset());
-        println!("Offset span: {}", offset_getter.offset_span());
+        let offset_getter = VariableOffsetGetter::new(implication_term.clone());
 
         // Expected: i@0 (0), i@1 (1), b@1 (1), a@1 (1), n@1 (1), i@2 (2)
         // min: 0, max: 2, span: 2
@@ -472,9 +448,7 @@ mod tests {
         if let Some(instance) =
             UnquantifiedInstantiator::rewrite_unquantified(implication_term, empty_variables)
         {
-            println!("Instance width: {}", instance.width());
             assert_eq!(instance.width(), 2);
-            println!("Test passed! Width calculation is correct.");
         } else {
             panic!("Failed to create unquantified instance");
         }
