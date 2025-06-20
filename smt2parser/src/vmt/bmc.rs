@@ -22,7 +22,7 @@ impl BMCBuilder {
         }
     }
 
-    pub fn set_depth(&mut self, depth: u16) {        
+    pub fn set_depth(&mut self, depth: u16) {
         self.depth = depth;
     }
 
@@ -60,7 +60,10 @@ impl crate::rewriter::Rewriter for BMCBuilder {
         // Check if this is a normalized symbol with + offset (from UnquantifiedInstantiator)
         if let Some((var_name, offset_str)) = s.0.split_once('+') {
             if let Ok(normalized_offset) = offset_str.parse::<u16>() {
-                assert!(self.width != 0, "Width must be set for UnquantifiedInstantiator!");
+                assert!(
+                    self.width != 0,
+                    "Width must be set for UnquantifiedInstantiator!"
+                );
                 // // For reverse instantiation: concrete_offset = current_depth - (width - normalized_offset)
                 // // This ensures we work backwards from the current depth
                 // let concrete_offset = if self.width > 0 && normalized_offset < self.width {
@@ -74,11 +77,15 @@ impl crate::rewriter::Rewriter for BMCBuilder {
                 //     0
                 // };
                 // assert!((self.depth + self.width) >= normalized_offset, "UnquantifiedInstantiator is incorrect");
-                
-                return Ok(Symbol(format!("{}@{}", var_name, (self.depth as i64) + ((normalized_offset as i64) - (self.width as i64)))));
+
+                return Ok(Symbol(format!(
+                    "{}@{}",
+                    var_name,
+                    (self.depth as i64) + ((normalized_offset as i64) - (self.width as i64))
+                )));
             }
         }
-        
+
         // Original logic for @ notation
         if self.current_variables.contains(&s.0) {
             Ok(Symbol(format!("{}@{}", s.0, &self.depth)))

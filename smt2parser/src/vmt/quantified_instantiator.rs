@@ -6,8 +6,8 @@ use crate::{
 };
 
 use super::{
-    array_axiom_frame_num_getter::{ArrayAxiomFrameNumGetter, VariableOffsetGetter}, 
-    variable::Variable
+    array_axiom_frame_num_getter::{ArrayAxiomFrameNumGetter, VariableOffsetGetter},
+    variable::Variable,
 };
 
 #[derive(PartialEq, Debug, Clone)]
@@ -83,7 +83,7 @@ impl QuantifiedInstantiator {
 
         // Get variable offsets for distance calculation
         let offset_getter = VariableOffsetGetter::new(term.clone(), variables);
-        
+
         Some(Instance {
             instance: term,
             all_substitution_variables_are_current: is_current,
@@ -101,14 +101,14 @@ pub struct UnquantifiedInstantiator {
 impl UnquantifiedInstantiator {
     pub fn rewrite_unquantified(term: Term, variables: Vec<Variable>) -> Option<Instance> {
         let offset_getter = VariableOffsetGetter::new(term.clone(), variables);
-        let mut ui = Self{
+        let mut ui = Self {
             visitor: SyntaxBuilder,
             variable_offsets: offset_getter,
         };
         let rewritten = term.accept(&mut ui).unwrap();
         Some(Instance {
             instance: rewritten,
-            all_substitution_variables_are_current: false,            
+            all_substitution_variables_are_current: false,
             width: ui.variable_offsets.offset_span() as u16,
         })
     }
@@ -148,7 +148,7 @@ impl crate::rewriter::Rewriter for UnquantifiedInstantiator {
                 let frame_num = frame.parse::<i64>().unwrap();
                 let new_frame = frame_num - self.variable_offsets.min_offset();
                 Ok(Symbol(format!("{var_name}+{new_frame}")))
-            },
+            }
             None => Ok(s),
         }
     }
@@ -157,7 +157,7 @@ impl crate::rewriter::Rewriter for UnquantifiedInstantiator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::concrete::{Term, QualIdentifier};
+    use crate::concrete::{QualIdentifier, Term};
 
     /// Example demonstrating how VariableOffsetGetter and UnquantifiedInstantiator work
     #[test]
@@ -165,7 +165,7 @@ mod tests {
         // Real instantiation from the terminal output:
         // (= (Read-Int-Int (Write-Int-Int b@0 i@0 (Read-Int-Int a@0 (- n@0 i@1))) i@0)
         //    (Read-Int-Int a@0 (- n@0 i@1)))
-        
+
         // Create the term structure manually
         let write_term = Term::Application {
             qual_identifier: QualIdentifier::simple("Write-Int-Int"),
@@ -218,19 +218,17 @@ mod tests {
         // Test VariableOffsetGetter directly - it only needs the term to extract offsets
         let empty_variables = vec![];
         let offset_getter = VariableOffsetGetter::new(example_term.clone(), empty_variables);
-        
-        
+
         assert_eq!(offset_getter.min_offset(), 0);
         assert_eq!(offset_getter.max_offset(), 1);
         assert_eq!(offset_getter.offset_span(), 1);
         assert!(!offset_getter.is_uniform_offset());
-        
+
         // Check specific variable offsets
         assert_eq!(offset_getter.get_offset("b"), Some(0));
         assert_eq!(offset_getter.get_offset("i"), Some(1)); // i appears as both i@0 and i@1, captures max offset
         assert_eq!(offset_getter.get_offset("a"), Some(0));
         assert_eq!(offset_getter.get_offset("n"), Some(0));
-
     }
 
     #[test]
@@ -298,7 +296,6 @@ mod tests {
         assert_eq!(offset_getter.get_offset("i"), Some(5)); // i@1 and i@5, max is 5
         assert_eq!(offset_getter.get_offset("a"), Some(2));
         assert_eq!(offset_getter.get_offset("n"), Some(1));
-
     }
 
     #[test]
@@ -355,31 +352,33 @@ mod tests {
         };
 
         let empty_variables = vec![];
-        
+
         // Test the UnquantifiedInstantiator rewriter
-        if let Some(instance) = UnquantifiedInstantiator::rewrite_unquantified(example_term, empty_variables) {
+        if let Some(instance) =
+            UnquantifiedInstantiator::rewrite_unquantified(example_term, empty_variables)
+        {
             let rewritten_term = instance.get_term();
             println!("Original term: (= (Read-Int-Int (Write-Int-Int b@3 i@1 (Read-Int-Int a@2 (+ n@1 i@5))) i@5) (Read-Int-Int a@2 (+ n@1 i@5)))");
             println!("Rewritten term: {}", rewritten_term);
-            
+
             // The rewriter should normalize offsets by subtracting min_offset (1)
             // So: b@3 -> b+2, i@1 -> i+0, a@2 -> a+1, n@1 -> n+0, i@5 -> i+4
             // Expected: (= (Read-Int-Int (Write-Int-Int b+2 i+0 (Read-Int-Int a+1 (+ n+0 i+4))) i+4) (Read-Int-Int a+1 (+ n+0 i+4)))
-            
+
             // Convert to string to check the rewriting
             let rewritten_str = rewritten_term.to_string();
             println!("Rewritten string: {}", rewritten_str);
-            
+
             // Check that the offsets have been normalized
             assert!(rewritten_str.contains("b+2")); // b@3 -> b+2 (3-1=2)
             assert!(rewritten_str.contains("i+0")); // i@1 -> i+0 (1-1=0)
             assert!(rewritten_str.contains("a+1")); // a@2 -> a+1 (2-1=1)
             assert!(rewritten_str.contains("n+0")); // n@1 -> n+0 (1-1=0)
             assert!(rewritten_str.contains("i+4")); // i@5 -> i+4 (5-1=4)
-            
+
             // Check that no original frame annotations remain
             assert!(!rewritten_str.contains("@"));
-            
+
             println!("Test passed! UnquantifiedInstantiator correctly normalized frame offsets.");
         } else {
             panic!("Failed to create unquantified instance");
@@ -394,7 +393,7 @@ mod tests {
         //   (=
         //     (Read-Int-Int (Write-Int-Int b@1 i@1 (Read-Int-Int a@1 (- n@1 i@2))) i@0)
         //     (Read-Int-Int b@1 i@0)))
-        
+
         let write_term = Term::Application {
             qual_identifier: QualIdentifier::simple("Write-Int-Int"),
             arguments: vec![
@@ -439,15 +438,13 @@ mod tests {
 
         let not_equal_term = Term::Application {
             qual_identifier: QualIdentifier::simple("not"),
-            arguments: vec![
-                Term::Application {
-                    qual_identifier: QualIdentifier::simple("="),
-                    arguments: vec![
-                        Term::QualIdentifier(QualIdentifier::simple("i@0")),
-                        Term::QualIdentifier(QualIdentifier::simple("i@1")),
-                    ],
-                },
-            ],
+            arguments: vec![Term::Application {
+                qual_identifier: QualIdentifier::simple("="),
+                arguments: vec![
+                    Term::QualIdentifier(QualIdentifier::simple("i@0")),
+                    Term::QualIdentifier(QualIdentifier::simple("i@1")),
+                ],
+            }],
         };
 
         let implication_term = Term::Application {
@@ -456,22 +453,25 @@ mod tests {
         };
 
         let empty_variables = vec![];
-        
+
         // Test VariableOffsetGetter directly
-        let offset_getter = VariableOffsetGetter::new(implication_term.clone(), empty_variables.clone());
+        let offset_getter =
+            VariableOffsetGetter::new(implication_term.clone(), empty_variables.clone());
         println!("Variable offsets: {:?}", offset_getter.get_all_offsets());
         println!("Min offset: {}", offset_getter.min_offset());
         println!("Max offset: {}", offset_getter.max_offset());
         println!("Offset span: {}", offset_getter.offset_span());
-        
+
         // Expected: i@0 (0), i@1 (1), b@1 (1), a@1 (1), n@1 (1), i@2 (2)
         // min: 0, max: 2, span: 2
         assert_eq!(offset_getter.min_offset(), 0);
         assert_eq!(offset_getter.max_offset(), 2);
         assert_eq!(offset_getter.offset_span(), 2);
-        
+
         // Test UnquantifiedInstantiator
-        if let Some(instance) = UnquantifiedInstantiator::rewrite_unquantified(implication_term, empty_variables) {
+        if let Some(instance) =
+            UnquantifiedInstantiator::rewrite_unquantified(implication_term, empty_variables)
+        {
             println!("Instance width: {}", instance.width());
             assert_eq!(instance.width(), 2);
             println!("Test passed! Width calculation is correct.");

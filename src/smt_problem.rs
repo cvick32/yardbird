@@ -198,11 +198,10 @@ impl<'ctx> SMTProblem<'ctx> {
         // The additional unrolling we need depends on the instance itself, if all
         // variables are current, then we need 2 more, if not just 1.
         let cur_depth = self.bmc_builder.depth;
-        
+
         // The UnquantifiedInstantiator has already normalized the offsets in the term,
         // so the BMC builder will handle the + notation by adding offsets to the current depth.
         // This provides more intelligent unrolling without needing separate offset tracking.
-        
 
         for i in (0..=cur_depth).rev() {
             if i < inst.width() {
@@ -212,11 +211,11 @@ impl<'ctx> SMTProblem<'ctx> {
             self.bmc_builder.set_width(inst.width());
             let indexed_inst = inst.rewrite(&mut self.bmc_builder);
             // Have to get the subterms.
-            
+
             self.subterm_handler
                 .register_instantiation_term(indexed_inst.clone());
             let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
-            
+
             all_z3_insts.push(z3_inst.as_bool().unwrap());
         }
         // reset depth

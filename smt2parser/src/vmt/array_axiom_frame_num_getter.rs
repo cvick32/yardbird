@@ -193,7 +193,9 @@ impl VariableOffsetGetter {
 
     /// Get the offset for a specific variable (returns the max offset for compatibility)
     pub fn get_offset(&self, var_name: &str) -> Option<i64> {
-        self.variable_offsets.get(var_name).and_then(|v| v.iter().max().copied())
+        self.variable_offsets
+            .get(var_name)
+            .and_then(|v| v.iter().max().copied())
     }
 
     /// Get all variable offsets
@@ -203,12 +205,22 @@ impl VariableOffsetGetter {
 
     /// Get the minimum offset across all variables and all their offsets
     pub fn min_offset(&self) -> i64 {
-        self.variable_offsets.values().flat_map(|v| v.iter()).min().copied().unwrap_or(0)
+        self.variable_offsets
+            .values()
+            .flat_map(|v| v.iter())
+            .min()
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Get the maximum offset across all variables and all their offsets
     pub fn max_offset(&self) -> i64 {
-        self.variable_offsets.values().flat_map(|v| v.iter()).max().copied().unwrap_or(0)
+        self.variable_offsets
+            .values()
+            .flat_map(|v| v.iter())
+            .max()
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Get the total span of offsets (max - min)
@@ -245,7 +257,10 @@ impl crate::rewriter::Rewriter for VariableOffsetGetter {
                 let time: u64 = time_str.parse().unwrap();
                 // Calculate offset relative to the current frame (0)
                 let offset = time as i64;
-                self.variable_offsets.entry(var_name.to_string()).or_default().push(offset);
+                self.variable_offsets
+                    .entry(var_name.to_string())
+                    .or_default()
+                    .push(offset);
             }
         }
         Ok(s)

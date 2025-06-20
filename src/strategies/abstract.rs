@@ -119,7 +119,9 @@ where
         let variables = smt.variables.clone();
         let no_quant_progress = terms
             .into_iter()
-            .flat_map(|term| UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone()))
+            .flat_map(|term| {
+                UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
+            })
             .map(|inst| !smt.add_instantiation(inst))
             .fold(true, |a, b| a && b);
 
