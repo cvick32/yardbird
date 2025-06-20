@@ -22,7 +22,7 @@ impl BMCBuilder {
         }
     }
 
-    pub fn set_depth(&mut self, depth: u16) {
+    pub fn set_depth(&mut self, depth: u16) {        
         self.depth = depth;
     }
 
@@ -36,9 +36,10 @@ impl BMCBuilder {
 
     /// Have to set the depth to minus 1 so that we get the transition from 0->1 for depth 1.
     pub fn index_transition_term(&mut self, trans_term: Term) -> Term {
+        let depth = self.depth;
         self.set_depth(self.depth - 1);
         let indexed_term = trans_term.accept(self).unwrap();
-        self.set_depth(self.depth);
+        self.set_depth(depth);
         indexed_term
     }
 
@@ -59,19 +60,22 @@ impl crate::rewriter::Rewriter for BMCBuilder {
         // Check if this is a normalized symbol with + offset (from UnquantifiedInstantiator)
         if let Some((var_name, offset_str)) = s.0.split_once('+') {
             if let Ok(normalized_offset) = offset_str.parse::<u16>() {
-                // For reverse instantiation: concrete_offset = current_depth - (width - normalized_offset)
-                // This ensures we work backwards from the current depth
-                let concrete_offset = if self.width > 0 && normalized_offset < self.width {
-                    self.depth - (self.width - 1 - normalized_offset)
-                } else if normalized_offset <= self.depth {
-                    // Fallback: if width is not set, use simple subtraction
-                    self.depth - normalized_offset
-                } else {
-                    // If normalized_offset > current_depth, we can't instantiate at this depth
-                    // This should be handled by the calling code, but we'll use 0 as fallback
-                    0
-                };
-                return Ok(Symbol(format!("{}@{}", var_name, concrete_offset)));
+                assert!(self.width != 0, "Width must be set for UnquantifiedInstantiator!");
+                // // For reverse instantiation: concrete_offset = current_depth - (width - normalized_offset)
+                // // This ensures we work backwards from the current depth
+                // let concrete_offset = if self.width > 0 && normalized_offset < self.width {
+                //     self.depth - (self.width - 1 - normalized_offset)
+                // } else if normalized_offset <= self.depth {
+                //     // Fallback: if width is not set, use simple subtraction
+                //     self.depth - normalized_offset
+                // } else {
+                //     // If normalized_offset > current_depth, we can't instantiate at this depth
+                //     // This should be handled by the calling code, but we'll use 0 as fallback
+                //     0
+                // };
+                // assert!((self.depth + self.width) >= normalized_offset, "UnquantifiedInstantiator is incorrect");
+                
+                return Ok(Symbol(format!("{}@{}", var_name, (self.depth as i64) + ((normalized_offset as i64) - (self.width as i64)))));
             }
         }
         

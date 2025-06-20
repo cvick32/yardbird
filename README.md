@@ -73,3 +73,7 @@ sudo apt install libclang-dev
 measure if first forall requires a model if it takes a long time for MBQI to get a model
 
 just use a trigger based instantiation scheme for insts where we need quantifiers
+
+NO EXPLANATIONS: cargo run -- --filename examples/array_copy.vmt -d 300  5.43s user 0.11s system 90% cpu 6.100 total
+
+W EXPLANATIONS:  cargo run -- --filename examples/array_copy.vmt -d 300  5.27s user 0.17s system 48% cpu 11.230 total

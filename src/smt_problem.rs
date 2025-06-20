@@ -112,6 +112,7 @@ impl<'ctx> SMTProblem<'ctx> {
             // Instantiate for this depth.
             let mut all_z3_insts = vec![];
             for inst in &self.instantiations {
+                self.bmc_builder.set_width(inst.width());
                 let indexed_inst = inst.rewrite(&mut self.bmc_builder);
                 let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
                 all_z3_insts.push(z3_inst.as_bool().unwrap());
@@ -149,6 +150,7 @@ impl<'ctx> SMTProblem<'ctx> {
     pub(crate) fn check(&mut self) -> z3::SatResult {
         // Push property back on top of the solver.
         self.push_property();
+        //println!("solver: {:#?}", self.solver);
         let sat_result = self.solver.check();
         self.newest_model = self.solver.get_model();
         match self.solver.get_proof() {
@@ -196,27 +198,25 @@ impl<'ctx> SMTProblem<'ctx> {
         // The additional unrolling we need depends on the instance itself, if all
         // variables are current, then we need 2 more, if not just 1.
         let cur_depth = self.bmc_builder.depth;
-        let number_of_unrollings = if cur_depth == 0 {
-            1
-        } else {
-            cur_depth + inst.additional_depth()
-        };
         
         // The UnquantifiedInstantiator has already normalized the offsets in the term,
         // so the BMC builder will handle the + notation by adding offsets to the current depth.
         // This provides more intelligent unrolling without needing separate offset tracking.
         
-        for i in 0..number_of_unrollings {
-            println!("i: {}, width: {}, cur_depth: {}", i, inst.width(), cur_depth);
-            if i + inst.width() > cur_depth + 1 { // cur_depth + 1 because of the property check
+
+        for i in (0..=cur_depth).rev() {
+            if i < inst.width() {
                 break;
             }
             self.bmc_builder.set_depth(i);
+            self.bmc_builder.set_width(inst.width());
             let indexed_inst = inst.rewrite(&mut self.bmc_builder);
             // Have to get the subterms.
+            
             self.subterm_handler
                 .register_instantiation_term(indexed_inst.clone());
             let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
+            
             all_z3_insts.push(z3_inst.as_bool().unwrap());
         }
         // reset depth
