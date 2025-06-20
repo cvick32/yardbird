@@ -17,7 +17,7 @@ use crate::{
     CommandStream,
 };
 
-pub use quantified_instantiator::QuantifiedInstantiator;
+pub use quantified_instantiator::{Instance, QuantifiedInstantiator, UnquantifiedInstantiator};
 pub use reads_and_write::ReadsAndWrites;
 
 static PROPERTY_ATTRIBUTE: &str = "invar-property";

@@ -201,7 +201,16 @@ impl<'ctx> SMTProblem<'ctx> {
         } else {
             cur_depth + inst.additional_depth()
         };
+        
+        // The UnquantifiedInstantiator has already normalized the offsets in the term,
+        // so the BMC builder will handle the + notation by adding offsets to the current depth.
+        // This provides more intelligent unrolling without needing separate offset tracking.
+        
         for i in 0..number_of_unrollings {
+            println!("i: {}, width: {}, cur_depth: {}", i, inst.width(), cur_depth);
+            if i + inst.width() > cur_depth + 1 { // cur_depth + 1 because of the property check
+                break;
+            }
             self.bmc_builder.set_depth(i);
             let indexed_inst = inst.rewrite(&mut self.bmc_builder);
             // Have to get the subterms.

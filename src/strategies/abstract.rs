@@ -3,7 +3,7 @@ use std::mem;
 use log::info;
 use smt2parser::{
     concrete::Term,
-    vmt::{QuantifiedInstantiator, VMTModel},
+    vmt::{quantified_instantiator::UnquantifiedInstantiator, VMTModel},
 };
 
 use crate::{
@@ -67,7 +67,7 @@ where
     }
 
     fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
-        let egraph = egg::EGraph::new(SaturationInequalities).with_explanations_enabled();
+        let egraph = egg::EGraph::new(SaturationInequalities);
         Ok(AbstractRefinementState {
             depth,
             egraph,
@@ -119,7 +119,7 @@ where
         let variables = smt.variables.clone();
         let no_quant_progress = terms
             .into_iter()
-            .flat_map(|term| QuantifiedInstantiator::rewrite_quantified(term, variables.clone()))
+            .flat_map(|term| UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone()))
             .map(|inst| !smt.add_instantiation(inst))
             .fold(true, |a, b| a && b);
 
