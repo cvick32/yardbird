@@ -83,6 +83,7 @@ struct StrategyResult {
     depth: u16,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum TimeoutFnResult {
     Ok(yardbird::Result<ProofLoopResult>),
     Panic(String),
