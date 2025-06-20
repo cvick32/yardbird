@@ -8,7 +8,7 @@ pub struct BMCBuilder {
     pub current_variables: Vec<String>,
     pub next_variables: HashMap<String, String>,
     pub depth: u16,
-    pub width: u16, // Width of the current instantiation being processed
+    pub width: Option<u16>, // Width of the current instantiation being processed
 }
 
 impl BMCBuilder {
@@ -18,7 +18,7 @@ impl BMCBuilder {
             current_variables,
             next_variables,
             depth: 0,
-            width: 0,
+            width: None,
         }
     }
 
@@ -27,7 +27,7 @@ impl BMCBuilder {
     }
 
     pub fn set_width(&mut self, width: u16) {
-        self.width = width;
+        self.width = Some(width);
     }
 
     pub fn add_step(&mut self) {
@@ -60,10 +60,6 @@ impl crate::rewriter::Rewriter for BMCBuilder {
         // Check if this is a normalized symbol with + offset (from UnquantifiedInstantiator)
         if let Some((var_name, offset_str)) = s.0.split_once('+') {
             if let Ok(normalized_offset) = offset_str.parse::<u16>() {
-                assert!(
-                    self.width != 0,
-                    "Width must be set for UnquantifiedInstantiator!"
-                );
                 // // For reverse instantiation: concrete_offset = current_depth - (width - normalized_offset)
                 // // This ensures we work backwards from the current depth
                 // let concrete_offset = if self.width > 0 && normalized_offset < self.width {
@@ -81,7 +77,7 @@ impl crate::rewriter::Rewriter for BMCBuilder {
                 return Ok(Symbol(format!(
                     "{}@{}",
                     var_name,
-                    (self.depth as i64) + ((normalized_offset as i64) - (self.width as i64))
+                    (self.depth as i64) + ((normalized_offset as i64) - (self.width.unwrap() as i64))
                 )));
             }
         }

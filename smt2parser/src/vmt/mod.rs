@@ -207,7 +207,7 @@ impl VMTModel {
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
             depth: 0,
-            width: 0,
+            width: None,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
@@ -262,7 +262,7 @@ impl VMTModel {
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
             depth: 0,
-            width: 0,
+            width: None,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
@@ -276,7 +276,7 @@ impl VMTModel {
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
             depth: 0,
-            width: 0,
+            width: None,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
@@ -301,7 +301,7 @@ impl VMTModel {
             current_variables: self.get_all_current_variable_names(),
             next_variables: self.get_next_to_current_varible_names(),
             depth: 0,
-            width: 0,
+            width: None,
         };
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
