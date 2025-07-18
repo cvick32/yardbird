@@ -505,8 +505,8 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // ⟨numeral⟩ | ⟨symbol⟩
         match self {
-            Index::Numeral(num) => write!(f, "{}", num),
-            Index::Symbol(sym) => write!(f, "{}", sym),
+            Index::Numeral(num) => write!(f, "{num}"),
+            Index::Symbol(sym) => write!(f, "{sym}"),
         }
     }
 }
@@ -518,7 +518,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // ⟨symbol⟩ | ( _ ⟨symbol⟩ ⟨index⟩+ )
         match self {
-            Identifier::Simple { symbol } => write!(f, "{}", symbol),
+            Identifier::Simple { symbol } => write!(f, "{symbol}"),
             Identifier::Indexed { symbol, indices } => {
                 write!(f, "(_ {} {})", symbol, indices.iter().format(" "))
             }
@@ -537,8 +537,8 @@ where
         use AttributeValue::*;
         match self {
             None => Ok(()),
-            Constant(c) => write!(f, "{}", c),
-            Symbol(s) => write!(f, "{}", s),
+            Constant(c) => write!(f, "{c}"),
+            Symbol(s) => write!(f, "{s}"),
             SExpr(values) => write!(f, "({})", values.iter().format(" ")),
         }
     }
@@ -558,8 +558,7 @@ where
             self.selectors
                 .iter()
                 .format_with(" ", |(symbol, sort), f| f(&format_args!(
-                    "({} {})",
-                    symbol, sort
+                    "({symbol} {sort})"
                 )))
         )
     }
@@ -577,7 +576,7 @@ where
         } else {
             let symbols = format!("({})", self.parameters.iter().format(" "));
             let constructors = format!("({})", self.constructors.iter().format(" "));
-            write!(f, "(par {} {})", symbols, constructors)
+            write!(f, "(par {symbols} {constructors})")
         }
     }
 }
@@ -593,7 +592,7 @@ where
             .parameters
             .iter()
             .format_with(" ", |(symbol, sort), f| {
-                f(&format_args!("({} {})", symbol, sort))
+                f(&format_args!("({symbol} {sort})"))
             });
         write!(f, "{} ({}) {}", self.name, params, self.result)
     }

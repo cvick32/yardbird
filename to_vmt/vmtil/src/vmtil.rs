@@ -85,7 +85,7 @@ impl VmtilBuilder {
 
         let vmt_string = format!("{self}");
         if dump_vmt {
-            println!("{}", vmt_string)
+            println!("{vmt_string}")
         }
         let command_stream =
             CommandStream::new(vmt_string.as_bytes(), concrete::SyntaxBuilder, None);
@@ -232,7 +232,7 @@ impl BuildContextual for Stmt {
                     frame_conditions.push(BooleanExpr::binop(
                         "=",
                         variable,
-                        format!("{}_next", variable),
+                        format!("{variable}_next"),
                     ));
                 }
                 BooleanExpr::Conjunction(frame_conditions)
@@ -310,7 +310,7 @@ impl std::fmt::Display for VmtilBuilder {
                 f,
                 "{}",
                 VmtCommands::DeclareFun {
-                    variable: format!("{}_next", var),
+                    variable: format!("{var}_next"),
                     arguments: vec![],
                     output_type: self.get_type(var).clone()
                 }

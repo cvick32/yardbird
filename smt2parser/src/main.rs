@@ -76,7 +76,7 @@ where
         match result {
             Ok(command) => f(command),
             Err(error) => {
-                eprintln!("{}", error);
+                eprintln!("{error}");
                 break;
             }
         }
@@ -134,12 +134,12 @@ fn main() -> std::io::Result<()> {
                     process_file(TesterModernizer::new(SyntaxBuilder), input, |command| {
                         // 2. Re-visit the syntax for name resolution and normalization.
                         let command = command.accept(&mut normalizer).unwrap();
-                        println!("{}", command);
+                        println!("{command}");
                     })?;
                 }
             } else {
                 for input in inputs {
-                    process_file(SyntaxBuilder, input, |command| println!("{}", command))?;
+                    process_file(SyntaxBuilder, input, |command| println!("{command}"))?;
                 }
             }
         }
@@ -154,7 +154,7 @@ fn main() -> std::io::Result<()> {
             for input in inputs {
                 state = process_file(state, input, |_| {})?;
             }
-            println!("{:#?}", state)
+            println!("{state:#?}")
         }
     }
     Ok(())

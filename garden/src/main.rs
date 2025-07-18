@@ -168,13 +168,13 @@ fn run_single(
         run_time = now.elapsed();
         // TODO: this is really a hack to try and mitigate z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
-            println!("  retrying: {}", filename);
+            println!("  retrying: {filename}");
             continue;
         } else if let Some(BenchmarkResult::Error(_)) = status_code {
-            println!("  retrying error: {}", filename);
+            println!("  retrying error: {filename}");
             continue;
         } else if let Some(BenchmarkResult::NoProgress(_)) = status_code {
-            println!("  retrying no progress: {}", filename);
+            println!("  retrying no progress: {filename}");
             continue;
         } else {
             break;

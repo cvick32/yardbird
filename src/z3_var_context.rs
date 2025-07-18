@@ -71,7 +71,7 @@ impl<'ctx> Z3VarContext<'ctx> {
                 } else if var_name == "false" {
                     z3::ast::Bool::from_bool(self.context, false).into()
                 } else {
-                    panic!("Could not find symbol {} in Z3VarContext.", var_name);
+                    panic!("Could not find symbol {var_name} in Z3VarContext.");
                 }
             }
             Term::Application {

@@ -129,8 +129,7 @@ impl SMTProblem {
             None => String::new(),
         };
         format!(
-            "{}\n{}\n{}\n{}\n{}",
-            sort_names, function_definitions, defs, init_and_trans_asserts, property_assert
+            "{sort_names}\n{function_definitions}\n{defs}\n{init_and_trans_asserts}\n{property_assert}"
         )
     }
 
@@ -218,14 +217,7 @@ impl SMTProblem {
         };
         let interpolant_command = get_interpolant_command(self.init_and_trans_length());
         format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}",
-            SMT_INTERPOL_OPTIONS,
-            sort_names,
-            function_definitions,
-            defs,
-            init_and_trans_asserts,
-            property_assert,
-            interpolant_command
+            "{SMT_INTERPOL_OPTIONS}\n{sort_names}\n{function_definitions}\n{defs}\n{init_and_trans_asserts}\n{property_assert}\n{interpolant_command}"
         )
     }
 }

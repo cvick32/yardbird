@@ -192,7 +192,7 @@ impl<V> SymbolNormalizer<V> {
             Some(table) => table.encode(r.index),
             None => r.index,
         };
-        Symbol(format!("{}{}", prefix, index))
+        Symbol(format!("{prefix}{index}"))
     }
 
     fn parse_external_symbol(&self, s: &Symbol) -> LocalSymbolRef {

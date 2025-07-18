@@ -1140,19 +1140,19 @@ impl std::fmt::Display for Constant {
         // ⟨numeral⟩ | ⟨decimal⟩ | ⟨hexadecimal⟩ | ⟨binary⟩ | ⟨string⟩
         use Constant::*;
         match self {
-            Numeral(num) => write!(f, "{}", num),
+            Numeral(num) => write!(f, "{num}"),
             Decimal(dec) => {
                 let nom = dec.trunc();
                 let mut denom = dec.fract();
                 while !denom.is_integer() {
                     denom *= num::BigInt::from(10u32);
                 }
-                write!(f, "{}.{}", nom, denom)
+                write!(f, "{nom}.{denom}")
             }
             Hexadecimal(hex) => {
                 write!(f, "#x")?;
                 for digit in hex {
-                    write!(f, "{:x}", digit)?;
+                    write!(f, "{digit:x}")?;
                 }
                 Ok(())
             }
@@ -1169,7 +1169,7 @@ impl std::fmt::Display for Constant {
             }
             String(value) => {
                 for s in value.split('"') {
-                    write!(f, "\"{}\"", s)?;
+                    write!(f, "\"{s}\"")?;
                 }
                 Ok(())
             }
@@ -1207,9 +1207,9 @@ where
         // ⟨spec_constant⟩ | ⟨symbol⟩ | ⟨keyword⟩ | ( ⟨s_expr⟩∗ )
         use SExpr::*;
         match self {
-            Constant(c) => write!(f, "{}", c),
-            Symbol(s) => write!(f, "{}", s),
-            Keyword(k) => write!(f, "{}", k),
+            Constant(c) => write!(f, "{c}"),
+            Symbol(s) => write!(f, "{s}"),
+            Keyword(k) => write!(f, "{k}"),
             Application(values) => write!(f, "({})", values.iter().format(" ")),
         }
     }
@@ -1223,7 +1223,7 @@ where
         // ⟨identifier⟩ | ( ⟨identifier⟩ ⟨sort⟩+ )
         use Sort::*;
         match self {
-            Simple { identifier } => write!(f, "{}", identifier),
+            Simple { identifier } => write!(f, "{identifier}"),
             Parameterized {
                 identifier,
                 parameters,
@@ -1240,8 +1240,8 @@ where
         // ⟨identifier⟩ | ( as ⟨identifier⟩ ⟨sort⟩ )
         use QualIdentifier::*;
         match self {
-            Simple { identifier } => write!(f, "{}", identifier),
-            Sorted { identifier, sort } => write!(f, "(as {} {})", identifier, sort),
+            Simple { identifier } => write!(f, "{identifier}"),
+            Sorted { identifier, sort } => write!(f, "(as {identifier} {sort})"),
         }
     }
 }
@@ -1261,11 +1261,11 @@ where
         match self {
             Constant(c) => {
                 // ⟨spec_constant⟩
-                write!(f, "{}", c)
+                write!(f, "{c}")
             }
             QualIdentifier(id) => {
                 // ⟨qual_identifier⟩
-                write!(f, "{}", id)
+                write!(f, "{id}")
             }
             Application {
                 qual_identifier,
@@ -1281,7 +1281,7 @@ where
                     "(let ({}) {})",
                     var_bindings
                         .iter()
-                        .format_with(" ", |(v, t), f| f(&format_args!("({} {})", v, t))),
+                        .format_with(" ", |(v, t), f| f(&format_args!("({v} {t})"))),
                     term
                 )
             }
@@ -1291,7 +1291,7 @@ where
                     f,
                     "(forall ({}) {})",
                     vars.iter()
-                        .format_with(" ", |(v, s), f| f(&format_args!("({} {})", v, s))),
+                        .format_with(" ", |(v, s), f| f(&format_args!("({v} {s})"))),
                     term
                 )
             }
@@ -1301,7 +1301,7 @@ where
                     f,
                     "(exists ({}) {})",
                     vars.iter()
-                        .format_with(" ", |(v, s), f| f(&format_args!("({} {})", v, s))),
+                        .format_with(" ", |(v, s), f| f(&format_args!("({v} {s})"))),
                     term
                 )
             }
@@ -1330,7 +1330,7 @@ where
                         .iter()
                         .format_with(" ", |(key, value), f| match value {
                             AttributeValue::None => f(key),
-                            _ => f(&format_args!("{} {}", key, value)),
+                            _ => f(&format_args!("{key} {value}")),
                         })
                 )
             }
@@ -1351,7 +1351,7 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Command::*;
         match self {
-            Assert { term } => write!(f, "(assert {})", term),
+            Assert { term } => write!(f, "(assert {term})"),
             CheckSat => write!(f, "(check-sat)"),
             CheckSatAssuming { literals } => {
                 // ( check-sat-assuming ( ⟨prop_literal⟩∗ ) )
@@ -1363,22 +1363,22 @@ where
                         if *b {
                             f(s)
                         } else {
-                            f(&format_args!("(not {})", s))
+                            f(&format_args!("(not {s})"))
                         }
                     })
                 )
             }
-            DeclareConst { symbol, sort } => write!(f, "(declare-const {} {})", symbol, sort),
+            DeclareConst { symbol, sort } => write!(f, "(declare-const {symbol} {sort})"),
             DeclareDatatype { symbol, datatype } => {
-                write!(f, "(declare-datatype {} {})", symbol, datatype)
+                write!(f, "(declare-datatype {symbol} {datatype})")
             }
             DeclareDatatypes { datatypes } => {
                 // ( declare-datatypes ( ⟨sort_dec⟩n+1 ) ( ⟨datatype_dec⟩n+1 ) )
                 let sorts = datatypes.iter().format_with(" ", |(sym, num, _), f| {
-                    f(&format_args!("({} {})", sym, num))
+                    f(&format_args!("({sym} {num})"))
                 });
                 let types = datatypes.iter().format_with(" ", |(_, _, ty), f| f(ty));
-                write!(f, "(declare-datatypes ({}) ({}))", sorts, types)
+                write!(f, "(declare-datatypes ({sorts}) ({types}))")
             }
             DeclareFun {
                 symbol,
@@ -1402,17 +1402,17 @@ where
             ),
             DefineFun { sig, term } => {
                 // ( define-fun ⟨function_dec⟩ ⟨term⟩ )
-                write!(f, "(define-fun {} {})", sig, term)
+                write!(f, "(define-fun {sig} {term})")
             }
             DefineFunRec { sig, term } => {
                 // ( define-fun-rec ⟨function_dec⟩ ⟨term⟩ )
-                write!(f, "(define-fun {} {})", sig, term)
+                write!(f, "(define-fun {sig} {term})")
             }
             DefineFunsRec { funs } => {
                 // ( define-funs-rec ( ( ⟨function_dec⟩ )n+1 ) ( ⟨term⟩n+1 ) )
                 let sigs = funs.iter().format_with(" ", |(sig, _), f| f(sig));
                 let terms = funs.iter().format_with(" ", |(_, t), f| f(t));
-                write!(f, "(define-funs-rec ({}) ({}))", sigs, terms)
+                write!(f, "(define-funs-rec ({sigs}) ({terms}))")
             }
             DefineSort {
                 symbol,
@@ -1432,9 +1432,9 @@ where
             Exit => write!(f, "(exit)"),
             GetAssertions => write!(f, "(get-assertions)"),
             GetAssignment => write!(f, "(get-assignment)"),
-            GetInfo { flag } => write!(f, "(get-info {})", flag),
+            GetInfo { flag } => write!(f, "(get-info {flag})"),
             GetModel => write!(f, "(get-model)"),
-            GetOption { keyword } => write!(f, "(get-info {})", keyword),
+            GetOption { keyword } => write!(f, "(get-info {keyword})"),
             GetProof => write!(f, "(get-proof)"),
             GetUnsatAssumptions => write!(f, "(get-unsat-assumptions)"),
             GetUnsatCore => write!(f, "(get-unsat-core)"),
@@ -1446,9 +1446,9 @@ where
             Push { level } => write!(f, "(push {})", self::Constant::Numeral(level.clone())),
             Reset => write!(f, "(reset)"),
             ResetAssertions => write!(f, "(reset-assertions)"),
-            SetInfo { keyword, value } => write!(f, "(set-info {} {})", keyword, value),
-            SetLogic { symbol } => write!(f, "(set-logic {})", symbol),
-            SetOption { keyword, value } => write!(f, "(set-option {} {})", keyword, value),
+            SetInfo { keyword, value } => write!(f, "(set-info {keyword} {value})"),
+            SetLogic { symbol } => write!(f, "(set-logic {symbol})"),
+            SetOption { keyword, value } => write!(f, "(set-option {keyword} {value})"),
         }
     }
 }

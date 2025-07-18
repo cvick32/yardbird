@@ -30,7 +30,7 @@ impl ArrayAbstractor {
         for (index, value) in &self.array_types {
             let arr_sort = Sort::Simple {
                 identifier: Identifier::Simple {
-                    symbol: Symbol(format!("Array-{}-{}", index, value)),
+                    symbol: Symbol(format!("Array-{index}-{value}")),
                 },
             };
             let index_sort = Sort::Simple {
@@ -44,21 +44,21 @@ impl ArrayAbstractor {
                 },
             };
             let sort_definition = Command::DeclareSort {
-                symbol: Symbol(format!("Array-{}-{}", index, value)),
+                symbol: Symbol(format!("Array-{index}-{value}")),
                 arity: BigUint::zero(),
             };
             let read_definition: Command = Command::DeclareFun {
-                symbol: Symbol(format!("Read-{}-{}", index, value)),
+                symbol: Symbol(format!("Read-{index}-{value}")),
                 parameters: vec![arr_sort.clone(), index_sort.clone()],
                 sort: value_sort.clone(),
             };
             let write_definition: Command = Command::DeclareFun {
-                symbol: Symbol(format!("Write-{}-{}", index, value)),
+                symbol: Symbol(format!("Write-{index}-{value}")),
                 parameters: vec![arr_sort.clone(), index_sort.clone(), value_sort.clone()],
                 sort: arr_sort.clone(),
             };
             let constarr_definition: Command = Command::DeclareFun {
-                symbol: Symbol(format!("ConstArr-{}-{}", index, value)),
+                symbol: Symbol(format!("ConstArr-{index}-{value}")),
                 parameters: vec![value_sort],
                 sort: arr_sort,
             };
@@ -99,7 +99,7 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
                         .insert((index_type.clone(), value_type.clone()));
                     crate::concrete::Sort::Simple {
                         identifier: Identifier::Simple {
-                            symbol: Symbol(format!("Array-{}-{}", index_type, value_type)),
+                            symbol: Symbol(format!("Array-{index_type}-{value_type}")),
                         },
                     }
                 } else {

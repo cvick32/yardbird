@@ -11,11 +11,11 @@ static INTERPOLANT_NAMES: [&str; 26] = [
 ];
 
 pub fn assert_term(assertion: &Term) -> String {
-    format!("(assert {})", assertion)
+    format!("(assert {assertion})")
 }
 
 pub fn assert_negation(assertion: &Term) -> String {
-    format!("(assert (not {}))", assertion)
+    format!("(assert (not {assertion}))")
 }
 
 pub fn assert_term_interpolant(i: usize, assertion: &Term) -> String {

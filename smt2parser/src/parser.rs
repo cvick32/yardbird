@@ -20,7 +20,7 @@ pomelo! {
     %extra_argument (&'a mut T, &'a mut crate::lexer::Position);
     %error T::Error;
     %syntax_error { match token {
-        Some(token) => Err(extra.0.syntax_error(extra.1.clone(), format!("unexpected token: {:?}", token))),
+        Some(token) => Err(extra.0.syntax_error(extra.1.clone(), format!("unexpected token: {token:?}"))),
         None => Err(extra.0.syntax_error(extra.1.clone(), "unexpected end of input".into())),
     }};
     %parse_fail { extra.0.parsing_error(extra.1.clone(), "unrecoverable parsing error".into()) };
@@ -197,7 +197,7 @@ pomelo! {
     prop_literal ::= bound_symbol(x) { (x, true) }
     prop_literal ::= LeftParen Symbol(s) bound_symbol(x) RightParen {
         if s != "not" {
-            return Err(extra.0.parsing_error(extra.1.clone(), format!("invalid prop_literal: found {} instead of `not`", s)));
+            return Err(extra.0.parsing_error(extra.1.clone(), format!("invalid prop_literal: found {s} instead of `not`")));
         }
         (x, false)
     }

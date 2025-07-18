@@ -14,7 +14,7 @@ pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(cmd)
         .args(args)
         .output()
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
+        .map_err(|e| format!("Failed to execute command: {e}"))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
