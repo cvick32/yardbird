@@ -77,7 +77,8 @@ impl crate::rewriter::Rewriter for BMCBuilder {
                 return Ok(Symbol(format!(
                     "{}@{}",
                     var_name,
-                    (self.depth as i64) + ((normalized_offset as i64) - (self.width.unwrap() as i64))
+                    (self.depth as i64)
+                        + ((normalized_offset as i64) - (self.width.unwrap() as i64))
                 )));
             }
         }
