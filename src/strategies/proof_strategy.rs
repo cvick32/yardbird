@@ -1,3 +1,4 @@
+use crate::z3_var_context::Z3VarContext;
 use smt2parser::vmt::VMTModel;
 
 use crate::{
@@ -22,10 +23,14 @@ pub enum ProofAction {
 pub trait ProofStrategy<'ctx, S> {
     fn abstract_array_theory(&self) -> bool;
 
-    fn get_logic_string(&self) -> String;
+    fn get_logic_string(&self) -> &'static str;
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model
+    }
+
+    #[allow(unused_variables)]
+    fn customize_solver(&self, ctx: &z3::Context, z3_vars: &Z3VarContext, solver: &mut z3::Solver) {
     }
 
     fn n_refines(&mut self) -> u32 {

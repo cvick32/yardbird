@@ -25,12 +25,11 @@ pub struct SMTProblem<'ctx> {
     newest_model: Option<z3::Model<'ctx>>,
 }
 
-#[allow(clippy::borrowed_box)]
 impl<'ctx> SMTProblem<'ctx> {
     pub(crate) fn new<S>(
         vmt_model: &VMTModel,
         context: &'ctx z3::Context,
-        strategy: &Box<dyn ProofStrategy<'_, S>>,
+        strategy: &dyn ProofStrategy<'_, S>,
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
@@ -74,6 +73,7 @@ impl<'ctx> SMTProblem<'ctx> {
         smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
         // Add initial assertion.
         smt.add_assertion();
+        strategy.customize_solver(context, &smt.z3_var_context, &mut smt.solver);
         smt
     }
 
@@ -150,7 +150,6 @@ impl<'ctx> SMTProblem<'ctx> {
     pub(crate) fn check(&mut self) -> z3::SatResult {
         // Push property back on top of the solver.
         self.push_property();
-        //println!("solver: {:#?}", self.solver);
         let sat_result = self.solver.check();
         self.newest_model = self.solver.get_model();
         match self.solver.get_proof() {

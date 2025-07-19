@@ -5,23 +5,25 @@ use z3::{
     Context, FuncDecl,
 };
 
+#[derive(Debug)]
 pub struct FunctionDefinition<'ctx> {
     z3_function: FuncDecl<'ctx>,
     domain: Vec<z3::Sort<'ctx>>,
 }
+
 impl<'ctx> FunctionDefinition<'ctx> {
-    fn apply(&self, argument_values: Vec<Dynamic<'ctx>>) -> Dynamic<'_> {
+    pub fn apply(&self, argument_values: &[&dyn Ast<'ctx>]) -> Dynamic<'_> {
         assert!(self.domain.len() == argument_values.len());
         self.z3_function.apply(
             argument_values
                 .iter()
-                .map(|x| x as _)
+                .map(|&x| x as _)
                 .collect::<Vec<_>>()
                 .as_slice(),
         )
     }
 
-    fn new(arg_sorts: Vec<z3::Sort<'ctx>>, func_decl: FuncDecl<'ctx>) -> Self {
+    pub fn new(arg_sorts: Vec<z3::Sort<'ctx>>, func_decl: FuncDecl<'ctx>) -> Self {
         Self {
             z3_function: func_decl,
             domain: arg_sorts,
@@ -29,6 +31,7 @@ impl<'ctx> FunctionDefinition<'ctx> {
     }
 }
 
+#[derive(Debug)]
 pub struct Z3VarContext<'ctx> {
     pub builder: SyntaxBuilder,
     pub context: &'ctx Context,
@@ -93,7 +96,13 @@ impl<'ctx> Z3VarContext<'ctx> {
                         .function_name_to_z3_function
                         .get(&function_name)
                         .unwrap();
-                    function_definition.apply(argument_values)
+                    function_definition.apply(
+                        argument_values
+                            .iter()
+                            .map(|arg| arg as &dyn Ast<'_>)
+                            .collect::<Vec<_>>()
+                            .as_slice(),
+                    )
                 } else {
                     self.call_z3_function(function_name, argument_values)
                 }

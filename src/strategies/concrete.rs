@@ -15,6 +15,7 @@ use super::{AbstractRefinementState, ProofAction, ProofStrategy};
 pub struct ConcreteZ3 {
     run_ic3ia: bool,
 }
+
 impl ConcreteZ3 {
     pub(crate) fn new(run_ic3ia: bool) -> Self {
         Self { run_ic3ia }
@@ -92,7 +93,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         false
     }
 
-    fn get_logic_string(&self) -> String {
-        "AUFLIA".into()
+    fn get_logic_string(&self) -> &'static str {
+        "AUFLIA"
     }
 }

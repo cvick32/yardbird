@@ -163,8 +163,8 @@ where
         true
     }
 
-    fn get_logic_string(&self) -> String {
-        "UFLIA".into()
+    fn get_logic_string(&self) -> &'static str {
+        "UFLIA"
     }
 }
 

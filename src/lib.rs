@@ -7,7 +7,7 @@ use cost_functions::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::Serialize;
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
+use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy, Z3NoArrays};
 
 pub mod analysis;
 pub mod array_axioms;
@@ -100,6 +100,7 @@ impl YardbirdOptions {
                 )),
             },
             Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
+            Strategy::RawZ3 => Box::new(Z3NoArrays::new(self.depth)),
         }
     }
 }
@@ -120,6 +121,7 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 pub enum Strategy {
     Abstract,
     Concrete,
+    RawZ3,
 }
 
 /// Describes the proving strategies available.

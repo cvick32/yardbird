@@ -132,7 +132,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         let n_refines = strat.n_refines();
 
         let mut smt_problem =
-            crate::smt_problem::SMTProblem::new(&self.vmt_model, self.context, &strat);
+            crate::smt_problem::SMTProblem::new(&self.vmt_model, self.context, &*strat);
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
