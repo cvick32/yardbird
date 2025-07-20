@@ -1,6 +1,5 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import {
-  Artifact,
   Benchmark,
   BenchmarkResult,
   getResult,
@@ -56,6 +55,9 @@ function RouteComponent() {
   const artifact = useArtifact(art);
   const compareAgainst = useArtifact(compare);
 
+  const [strat1, setStrat1] = useState("abstract");
+  const [strat2, setStrat2] = useState("concrete");
+
   if (artifact.isPending) {
     return <div>Loading Artifacts...</div>;
   }
@@ -70,9 +72,21 @@ function RouteComponent() {
         <h1 style={{ textAlign: "center" }}>
           <b>Bounded Model Checking Speed Comparison</b>
         </h1>
+        <div style={{ display: "flex", gap: "1rem", justifyContent: "center" }}>
+          <select value={strat1} onChange={(e) => setStrat1(e.target.value)}>
+            <option value="abstract">Abstract</option>
+            <option value="concrete">Concrete</option>
+            <option value="raw-z3">Raw Z3</option>
+          </select>
+          <select value={strat2} onChange={(e) => setStrat2(e.target.value)}>
+            <option value="abstract">Abstract</option>
+            <option value="concrete">Concrete</option>
+            <option value="raw-z3">Raw Z3</option>
+          </select>
+        </div>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <SpeedUpGraph />
-          <SpeedUpScatter />
+          <SpeedUpGraph strat1={strat1} strat2={strat2} />
+          <SpeedUpScatter strat1={strat1} strat2={strat2} />
         </div>
       </div>
       <div>
@@ -404,7 +418,13 @@ function Z3ConflictGraph() {
   }
 }
 
-function SpeedUpScatter() {
+function SpeedUpScatter({
+  strat1,
+  strat2,
+}: {
+  strat1: string;
+  strat2: string;
+}) {
   const { art } = Route.useParams();
   const artifact = useArtifact(art);
 
@@ -418,23 +438,33 @@ function SpeedUpScatter() {
   try {
     const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
     const data = benchmarks.flatMap((benchmark) => {
-      if (benchmark.result[0].strategy === "abstract") {
-        let abs_time = benchmark.result[0].run_time;
-        let con_time = benchmark.result[1].run_time;
-        return {
-          example: benchmark.example, // Benchmark name
-          abs_time: abs_time / 1000, // Abstract execution time in seconds
-          con_time: con_time / 1000, // Concrete execution time
-        };
-      } else {
-        let abs_time = benchmark.result[1].run_time;
-        let con_time = benchmark.result[0].run_time;
-        return {
-          example: benchmark.example, // Benchmark name
-          abs_time: abs_time / 1000,
-          con_time: con_time / 1000, // Execution time
-        };
-      }
+      const bench1 = benchmark.result.find((x) => x.strategy === strat1);
+      const bench2 = benchmark.result.find((x) => x.strategy === strat2);
+      return {
+        example: benchmark.example,
+        abs_name: strat1,
+        con_name: strat2,
+        abs_time: bench1!.run_time / 1000,
+        con_time: bench2!.run_time / 1000,
+      };
+      // if (benchmark.result[0].strategy === "abstract") {
+      //   console.log(benchmark.result);
+      //   let abs_time = benchmark.result[0].run_time;
+      //   let con_time = benchmark.result[1].run_time;
+      //   return {
+      //     example: benchmark.example, // Benchmark name
+      //     abs_time: abs_time / 1000, // Abstract execution time in seconds
+      //     con_time: con_time / 1000, // Concrete execution time
+      //   };
+      // } else {
+      //   let abs_time = benchmark.result[1].run_time;
+      //   let con_time = benchmark.result[0].run_time;
+      //   return {
+      //     example: benchmark.example, // Benchmark name
+      //     abs_time: abs_time / 1000,
+      //     con_time: con_time / 1000, // Execution time
+      //   };
+      // }
     });
 
     const minVal = Math.min(
@@ -457,7 +487,7 @@ function SpeedUpScatter() {
             domain={[minVal, maxVal]}
           >
             <Label
-              value="Concrete Runtime (s)"
+              value={`${strat2.charAt(0).toUpperCase()}${strat2.slice(1)} Runtime (s)`}
               offset={-10}
               position="insideBottom"
             />
@@ -471,7 +501,7 @@ function SpeedUpScatter() {
             domain={[minVal, maxVal]}
           >
             <Label
-              value="Abstract Runtime (s)"
+              value={`${strat1.charAt(0).toUpperCase()}${strat1.slice(1)} Runtime (s)`}
               angle={-90}
               position="insideLeft"
               style={{ textAnchor: "middle" }}
@@ -497,7 +527,13 @@ function SpeedUpScatter() {
   }
 }
 
-function SpeedUpGraph() {
+function SpeedUpGraph({
+  strat1 = "abstract",
+  strat2 = "concrete",
+}: {
+  strat1: string;
+  strat2: string;
+}) {
   const { art } = Route.useParams();
   const artifact = useArtifact(art);
 
@@ -511,23 +547,15 @@ function SpeedUpGraph() {
   try {
     const benchmarks: Benchmark[] = getSuccessfulBenchmarks(artifact.data);
     const data = benchmarks.flatMap((benchmark) => {
-      if (benchmark.result[0].strategy === "abstract") {
-        let abs_time = benchmark.result[0].run_time;
-        let con_time = benchmark.result[1].run_time;
-        return {
-          example: benchmark.example, // Benchmark name
-          abs_time: abs_time / 1000, // Abstract execution time
-          con_time: con_time / 1000, // Concrete execution time
-        };
-      } else {
-        let abs_time = benchmark.result[1].run_time;
-        let con_time = benchmark.result[0].run_time;
-        return {
-          example: benchmark.example, // Benchmark name
-          abs_time: abs_time / 1000,
-          con_time: con_time / 1000, // Execution time
-        };
-      }
+      const bench1 = benchmark.result.find((x) => x.strategy === strat1);
+      const bench2 = benchmark.result.find((x) => x.strategy === strat2);
+      return {
+        example: benchmark.example,
+        abs_name: strat1,
+        con_name: strat2,
+        abs_time: bench1!.run_time / 1000,
+        con_time: bench2!.run_time / 1000,
+      };
     });
 
     // Sort by difference in abstract and concrete times
@@ -571,8 +599,16 @@ function SpeedUpGraph() {
               />
             );
           })}
-          <Bar dataKey="abs_time" name="Abstract Strategy" fill="#8884d8" />
-          <Bar dataKey="con_time" name="Concrete Strategy" fill="#82ca9d" />
+          <Bar
+            dataKey="abs_time"
+            name={`${strat1.charAt(0).toUpperCase()}${strat1.slice(1)} Strategy`}
+            fill="#8884d8"
+          />
+          <Bar
+            dataKey="con_time"
+            name={`${strat2.charAt(0).toUpperCase()}${strat2.slice(1)} Strategy`}
+            fill="#82ca9d"
+          />
           <Brush dataKey="id" height={20} stroke="#8884d8" />
           {/* Zoom & Scroll */}
         </BarChart>
@@ -601,10 +637,12 @@ const SpeedUpTooltip = ({ active, payload }: { active: any; payload: any }) => {
           <strong>Benchmark:</strong> {payload[0].payload.example}
         </p>
         <p>
-          <strong>Abstract:</strong> {payload[0].payload.abs_time} seconds
+          <strong>{payload[0].payload.abs_name}:</strong>{" "}
+          {payload[0].payload.abs_time} seconds
         </p>
         <p>
-          <strong>Concrete:</strong> {payload[0].payload.con_time} seconds
+          <strong>{payload[0].payload.con_name}:</strong>{" "}
+          {payload[0].payload.con_time} seconds
         </p>
       </div>
     );

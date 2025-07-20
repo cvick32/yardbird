@@ -8,3 +8,4 @@ interpolant-out.smt2
 info.sh
 debug.sh
 *.png
+*.DS_Store
