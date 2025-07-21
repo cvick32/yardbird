@@ -128,7 +128,6 @@ class StrategyResultBase:
 
 @dataclass
 class AbstractStrategyResult(StrategyResultBase):
-
     @override
     def get_instantiations(self):
         return self.outcome.get_abstract_instantiation_count()
@@ -141,7 +140,16 @@ class ConcreteStrategyResult(StrategyResultBase):
         return self.outcome.get_concrete_instantiation_count()
 
 
-StrategyResult = Union[AbstractStrategyResult, ConcreteStrategyResult]
+@dataclass
+class RawStrategyResult(StrategyResultBase):
+    @override
+    def get_instantiations(self):
+        return self.outcome.get_abstract_instantiation_count()
+
+
+StrategyResult = Union[
+    AbstractStrategyResult, ConcreteStrategyResult, RawStrategyResult
+]
 
 
 @dataclass
@@ -211,6 +219,8 @@ def parse_strategy_result(entry: dict) -> StrategyResult:
         return AbstractStrategyResult(**common_args)
     elif strat_type == "concrete":
         return ConcreteStrategyResult(**common_args)
+    elif strat_type == "raw-z3":
+        return RawStrategyResult(**common_args)
     else:
         raise ValueError(f"Unknown strategy type: {strat_type}")
 
