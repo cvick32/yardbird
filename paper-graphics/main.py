@@ -227,8 +227,21 @@ def parse_strategy_result(entry: dict) -> StrategyResult:
 
 def parse_benchmark_results(json_data: str) -> list[BenchmarkResult]:
     raw = json.loads(json_data)
+    
+    # Handle new JSON schema with metadata
+    if "benchmarks" in raw and "metadata" in raw:
+        benchmarks_data = raw["benchmarks"]
+        metadata = raw["metadata"]
+        print(f"Loaded benchmark suite from {metadata.get('timestamp', 'unknown time')}")
+        print(f"Git commit: {metadata.get('git_commit', 'unknown')}")
+        print(f"Total benchmarks: {metadata.get('total_benchmarks', len(benchmarks_data))}")
+    else:
+        # Legacy format
+        benchmarks_data = raw
+        print("Loading legacy format benchmark data")
+    
     benchmarks = []
-    for entry in raw:
+    for entry in benchmarks_data:
         example = entry["example"]
         results = [parse_strategy_result(r) for r in entry["result"]]
         benchmarks.append(BenchmarkResult(example=example, results=results))
