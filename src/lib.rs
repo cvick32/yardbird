@@ -5,7 +5,7 @@ use std::{fs::File, io::Write};
 use clap::{Parser, ValueEnum};
 use cost_functions::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
 
@@ -114,7 +114,7 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 }
 
 /// Describes the proving strategies available.
-#[derive(Copy, Clone, Debug, ValueEnum, Serialize)]
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
@@ -123,7 +123,7 @@ pub enum Strategy {
 }
 
 /// Describes the proving strategies available.
-#[derive(Copy, Clone, Debug, ValueEnum, Serialize)]
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum CostFunction {
