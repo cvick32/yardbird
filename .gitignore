@@ -9,3 +9,7 @@ info.sh
 debug.sh
 *.png
 *.DS_Store
+.env
+.terraform
+terraform.tfstate
+terraform.tfstate.backup

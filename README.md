@@ -68,6 +68,184 @@ This was resolved by running:
 sudo apt install libclang-dev
 ```
 
+# Benchmarking Platform
+
+We've implemented a comprehensive benchmarking platform for systematic evaluation of yardbird across different parameter configurations. The platform supports both local and cloud-based execution with automated result processing and visualization.
+
+## Components
+
+### 1. Configuration System
+- **Location**: `garden/benchmark_config.yaml`, `configs/`
+- **Purpose**: Define parameter matrices and individual benchmark configurations
+- **Features**: 
+  - Parameter matrices (all combinations of depth, strategy, cost function)
+  - Individual configurations for specific tests
+  - Global settings for timeout, retry, file patterns
+  - Cloud execution settings
+
+### 2. Enhanced Garden CLI
+- **Location**: `garden/src/main.rs`
+- **Purpose**: Execute benchmarks with configuration files
+- **New Features**:
+  - Config file support (`--config`)
+  - Matrix selection (`--matrix`)
+  - Metadata collection (git commit, timestamp)
+  - Standardized JSON output schema
+
+### 3. Graphics Generation
+- **Location**: `paper-graphics/`
+- **Purpose**: Generate publication-ready graphics from benchmark results
+- **Components**:
+  - `main.py`: Plotly-based scatter plots and analysis
+  - `tikz_generator.py`: Raw TikZ code for LaTeX publications
+  - Support for both legacy and new JSON formats
+
+### 4. Master CLI Tool
+- **Location**: `yardbird-bench`
+- **Purpose**: Orchestrate entire benchmark pipeline
+- **Features**: Local/EC2 execution, graphics generation, S3 upload
+
+### 5. Cloud Infrastructure
+- **EC2 Runner**: `scripts/ec2_runner.py` - Launch instances for remote execution
+- **Terraform**: `terraform/` - Infrastructure as code for AWS resources
+- **S3 Integration**: `scripts/s3_manager.py` - Result storage and retrieval
+
+## Usage
+
+### Local Execution
+
+#### Quick Test
+```bash
+# Build the platform
+cargo build --release -p garden
+
+# Run a quick test matrix
+./target/release/garden --config configs/quick_test.yaml --matrix fast_test --output results.json
+
+# Generate graphics
+cd paper-graphics
+uv run main.py ../results.json 5 15
+python3 tikz_generator.py ../results.json --all
+```
+
+#### Using Master CLI
+```bash
+# Run benchmarks with automatic graphics generation
+./yardbird-bench configs/quick_test.yaml --matrix fast_test --graphics
+
+# Run comprehensive evaluation
+./yardbird-bench configs/comprehensive.yaml --matrix full_evaluation --output comprehensive_results.json
+```
+
+#### Legacy Mode (Original CLI)
+```bash
+./target/release/garden examples --strategy abstract --strategy concrete --depth 10 --output legacy_results.json
+```
+
+### AWS Cloud Execution
+
+#### Prerequisites
+1. Configure AWS credentials (`aws configure`)
+2. Create S3 bucket for results
+3. Set up EC2 key pair
+4. Ensure IAM permissions for EC2 and S3
+
+#### Deploy Infrastructure
+```bash
+cd terraform
+
+# Initialize and deploy
+python3 terraform_runner.py deploy --s3-bucket yardbird-benchmarks --instance-type c5.xlarge
+
+# Or manually with terraform
+terraform init
+terraform plan -var="s3_bucket_name=yardbird-benchmarks"
+terraform apply -var="s3_bucket_name=yardbird-benchmarks"
+```
+
+#### Run Cloud Benchmarks
+```bash
+# Using master CLI
+./yardbird-bench configs/paper_evaluation.yaml --matrix paper_main --ec2 --upload yardbird-benchmarks
+
+# Using EC2 runner directly
+python3 scripts/ec2_runner.py configs/comprehensive.yaml --matrix full_evaluation --s3-bucket yardbird-benchmarks --wait --download ./results/
+
+# Using Terraform runner
+python3 terraform/terraform_runner.py run configs/paper_evaluation.yaml --matrix paper_main --wait --download ./results/
+```
+
+#### Download Results
+```bash
+# Download specific run
+python3 scripts/s3_manager.py download yardbird-benchmarks benchmarks/20250901_143022/results.json ./local_results.json
+
+# Sync entire benchmark run
+python3 scripts/s3_manager.py sync yardbird-benchmarks benchmarks/20250901_143022 ./results/ --download
+
+# List available results
+python3 scripts/s3_manager.py list yardbird-benchmarks
+```
+
+#### Cleanup Infrastructure
+```bash
+cd terraform
+python3 terraform_runner.py destroy
+# or: terraform destroy -auto-approve
+```
+
+## Configuration Examples
+
+### Parameter Matrix
+```yaml
+parameter_matrices:
+  comprehensive:
+    depths: [10, 15, 20]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    timeout_seconds: 120
+```
+
+### Individual Configuration
+```yaml
+individual_configs:
+  - name: "quick_abstract"
+    depth: 5
+    strategy: "abstract"
+    cost_function: "symbol-cost" 
+    timeout_seconds: 30
+```
+
+## Output Formats
+
+### JSON Schema
+```json
+{
+  "metadata": {
+    "timestamp": "2025-09-01T14:30:22Z",
+    "git_commit": "abc123...",
+    "config_name": "paper_main",
+    "total_benchmarks": 150,
+    "yardbird_version": "0.1.0"
+  },
+  "benchmarks": [...]
+}
+```
+
+### Generated Graphics
+- **PNG**: Plotly-generated scatter plots and analysis charts
+- **TikZ**: Raw LaTeX code for publication graphics
+- **Tables**: LaTeX longtable format for benchmark data
+
+## Cost Optimization
+
+- **EC2**: Instances auto-terminate after completion
+- **S3**: 90-day lifecycle policy for automatic cleanup
+- **Instance Sizing**: c5.xlarge for standard runs, configurable per workload
+- **Spot Instances**: Can be configured in Terraform for cost savings
+
+The platform is designed for "fire and forget" cloud execution - launch a run, get results automatically uploaded to S3, and infrastructure tears down to minimize costs.
+
 # notes
 
 measure if first forall requires a model if it takes a long time for MBQI to get a model
