@@ -8,7 +8,7 @@ pub trait ModelExt {
 
     /// Return an iterator over `z3::FuncDecl`s that is sorted by frame numbers (if
     /// applicable)
-    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl>;
+    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl<'_>>;
 }
 
 impl ModelExt for z3::Model<'_> {
@@ -55,7 +55,7 @@ impl ModelExt for z3::Model<'_> {
         Ok(b)
     }
 
-    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl> {
+    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl<'_>> {
         self.iter().map(FuncDeclOrd).sorted().map(|x| x.0)
     }
 }

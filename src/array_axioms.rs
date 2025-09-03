@@ -205,7 +205,7 @@ where
     S: egg::Searcher<L, N>,
     C: Fn(&egg::EGraph<L, N>, egg::Id, &egg::Subst) -> bool,
 {
-    fn search_with_limit(&self, egraph: &EGraph<L, N>, limit: usize) -> Vec<SearchMatches<L>> {
+    fn search_with_limit(&self, egraph: &EGraph<L, N>, limit: usize) -> Vec<SearchMatches<'_, L>> {
         self.searcher
             .search_with_limit(egraph, limit)
             .into_iter()
@@ -234,7 +234,7 @@ where
         egraph: &EGraph<L, N>,
         eclass: Id,
         limit: usize,
-    ) -> Option<SearchMatches<L>> {
+    ) -> Option<SearchMatches<'_, L>> {
         self.searcher
             .search_eclass_with_limit(egraph, eclass, limit)
             .map(|matches| SearchMatches {

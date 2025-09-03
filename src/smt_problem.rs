@@ -89,7 +89,7 @@ impl<'ctx> SMTProblem<'ctx> {
         }
     }
 
-    pub fn get_model(&self) -> &Option<z3::Model> {
+    pub fn get_model(&self) -> &Option<z3::Model<'_>> {
         &self.newest_model
     }
 
@@ -232,7 +232,7 @@ impl<'ctx> SMTProblem<'ctx> {
         self.solver.get_reason_unknown()
     }
 
-    pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic {
+    pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic<'_> {
         self.z3_var_context.rewrite_term(term)
     }
 

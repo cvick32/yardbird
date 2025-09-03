@@ -1374,9 +1374,9 @@ where
             }
             DeclareDatatypes { datatypes } => {
                 // ( declare-datatypes ( ⟨sort_dec⟩n+1 ) ( ⟨datatype_dec⟩n+1 ) )
-                let sorts = datatypes.iter().format_with(" ", |(sym, num, _), f| {
-                    f(&format_args!("({sym} {num})"))
-                });
+                let sorts = datatypes
+                    .iter()
+                    .format_with(" ", |(sym, num, _), f| f(&format_args!("({sym} {num})")));
                 let types = datatypes.iter().format_with(" ", |(_, _, ty), f| f(ty));
                 write!(f, "(declare-datatypes ({sorts}) ({types}))")
             }

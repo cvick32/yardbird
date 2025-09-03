@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use glob::Pattern;
 use serde::Serialize;
@@ -11,10 +12,9 @@ use std::{
     time::{Duration, Instant},
 };
 use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
-use chrono::{DateTime, Utc};
 
 mod config;
-use config::{BenchmarkConfig, BenchmarkRun};
+use config::BenchmarkConfig;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -215,7 +215,8 @@ fn get_git_commit() -> Option<String> {
         .ok()
         .and_then(|output| {
             if output.status.success() {
-                String::from_utf8(output.stdout).ok()
+                String::from_utf8(output.stdout)
+                    .ok()
                     .map(|s| s.trim().to_string())
             } else {
                 None
@@ -224,11 +225,15 @@ fn get_git_commit() -> Option<String> {
 }
 
 fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
-    let examples = options.examples.unwrap_or_else(|| PathBuf::from("examples"));
+    let examples = options
+        .examples
+        .unwrap_or_else(|| PathBuf::from("examples"));
     let depth = options.depth.unwrap_or(10);
     let timeout = options.timeout.unwrap_or(30);
     let retry = options.retry.unwrap_or(2);
-    let cost_function = options.cost_function.unwrap_or(yardbird::CostFunction::SymbolCost);
+    let cost_function = options
+        .cost_function
+        .unwrap_or(yardbird::CostFunction::SymbolCost);
 
     let include: Vec<_> = options
         .include
@@ -324,26 +329,30 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
 
 fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
     let runs = config.generate_benchmark_runs(options.matrix.as_deref())?;
-    
+
     println!("Running {} benchmark configurations", runs.len());
-    
-    let examples_dir = options.examples.unwrap_or(config.global.examples_dir.clone());
-    
+
+    let examples_dir = options
+        .examples
+        .unwrap_or(config.global.examples_dir.clone());
+
     let include: Vec<_> = if options.include.is_empty() {
         config.global.include_patterns
     } else {
         options.include
-    }.iter()
-        .map(|pattern| Pattern::new(pattern))
-        .collect::<Result<_, _>>()?;
+    }
+    .iter()
+    .map(|pattern| Pattern::new(pattern))
+    .collect::<Result<_, _>>()?;
 
     let exclude: Vec<_> = if options.skip.is_empty() {
         config.global.exclude_patterns
     } else {
         options.skip
-    }.iter()
-        .map(|pattern| Pattern::new(pattern))
-        .collect::<Result<_, _>>()?;
+    }
+    .iter()
+    .map(|pattern| Pattern::new(pattern))
+    .collect::<Result<_, _>>()?;
 
     let benchmarks: Vec<_> = read_dir(&examples_dir)?
         .filter_map(|path| path.ok())
@@ -367,8 +376,13 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
     let mut all_benchmarks = Vec::new();
 
     for (run_idx, run) in runs.iter().enumerate() {
-        println!("[Config {}/{}] Running: {}", run_idx + 1, runs.len(), run.name);
-        
+        println!(
+            "[Config {}/{}] Running: {}",
+            run_idx + 1,
+            runs.len(),
+            run.name
+        );
+
         let results: Vec<_> = benchmarks
             .iter()
             .enumerate()
@@ -394,7 +408,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
-        
+
         all_benchmarks.extend(results);
     }
 
@@ -429,7 +443,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
 
 fn main() -> anyhow::Result<()> {
     let options = GardenOptions::parse();
-    
+
     if let Some(config_path) = &options.config {
         let config = BenchmarkConfig::from_file(config_path)?;
         run_config_based(options, config)

@@ -108,7 +108,7 @@ impl BenchmarkConfig {
     pub fn from_file(path: &PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-        
+
         serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse config file: {}", path.display()))
     }
@@ -123,7 +123,9 @@ impl BenchmarkConfig {
                 depth: config.depth,
                 strategy: config.strategy,
                 cost_function: config.cost_function,
-                timeout_seconds: config.timeout_seconds.unwrap_or(self.global.timeout_seconds),
+                timeout_seconds: config
+                    .timeout_seconds
+                    .unwrap_or(self.global.timeout_seconds),
             });
         }
 
@@ -134,11 +136,16 @@ impl BenchmarkConfig {
                     for &strategy in &matrix.strategies {
                         for &cost_function in &matrix.cost_functions {
                             runs.push(BenchmarkRun {
-                                name: format!("{}_d{}_s{:?}_c{:?}", matrix_name, depth, strategy, cost_function),
+                                name: format!(
+                                    "{}_d{}_s{:?}_c{:?}",
+                                    matrix_name, depth, strategy, cost_function
+                                ),
                                 depth,
                                 strategy,
                                 cost_function,
-                                timeout_seconds: matrix.timeout_seconds.unwrap_or(self.global.timeout_seconds),
+                                timeout_seconds: matrix
+                                    .timeout_seconds
+                                    .unwrap_or(self.global.timeout_seconds),
                             });
                         }
                     }
@@ -151,11 +158,16 @@ impl BenchmarkConfig {
                     for &strategy in &matrix.strategies {
                         for &cost_function in &matrix.cost_functions {
                             runs.push(BenchmarkRun {
-                                name: format!("{}_d{}_s{:?}_c{:?}", matrix_name, depth, strategy, cost_function),
+                                name: format!(
+                                    "{}_d{}_s{:?}_c{:?}",
+                                    matrix_name, depth, strategy, cost_function
+                                ),
                                 depth,
                                 strategy,
                                 cost_function,
-                                timeout_seconds: matrix.timeout_seconds.unwrap_or(self.global.timeout_seconds),
+                                timeout_seconds: matrix
+                                    .timeout_seconds
+                                    .unwrap_or(self.global.timeout_seconds),
                             });
                         }
                     }

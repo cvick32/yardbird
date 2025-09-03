@@ -5,7 +5,7 @@ use std::{fs::File, io::Write};
 use clap::{Parser, ValueEnum};
 use cost_functions::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
 
@@ -85,7 +85,7 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_strategy(&self) -> Box<dyn ProofStrategy<AbstractRefinementState>> {
+    pub fn build_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
                 CostFunction::SymbolCost => Box::new(Abstract::new(

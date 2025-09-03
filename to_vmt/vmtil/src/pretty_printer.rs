@@ -8,11 +8,11 @@ use crate::{
 pub type Doc<'a> = RcDoc<'a, ()>;
 
 pub trait ToDoc {
-    fn to_doc(&self) -> Doc;
+    fn to_doc(&self) -> Doc<'_>;
 }
 
 impl ToDoc for Type {
-    fn to_doc(&self) -> Doc {
+    fn to_doc(&self) -> Doc<'_> {
         match self {
             Type::Int => Doc::text("Int"),
             Type::Bool => Doc::text("Bool"),
@@ -28,7 +28,7 @@ impl ToDoc for Type {
 }
 
 impl ToDoc for Expr {
-    fn to_doc(&self) -> Doc {
+    fn to_doc(&self) -> Doc<'_> {
         match self {
             Expr::Store { array, index, expr } => Doc::text("(")
                 .append("store")
@@ -61,7 +61,7 @@ impl ToDoc for Expr {
 }
 
 impl ToDoc for BooleanExpr {
-    fn to_doc(&self) -> Doc {
+    fn to_doc(&self) -> Doc<'_> {
         match self {
             BooleanExpr::Forall { quantified, expr } => Doc::text("(")
                 .append("forall")
@@ -129,7 +129,7 @@ pub enum VmtCommands {
 }
 
 impl ToDoc for VmtCommands {
-    fn to_doc(&self) -> Doc {
+    fn to_doc(&self) -> Doc<'_> {
         match self {
             VmtCommands::DeclareFun {
                 variable,
