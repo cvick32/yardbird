@@ -37,11 +37,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bin]]
 name = "yardbird"
 path = "src/main.rs"
-bench = false
-
-[[bench]]
-name = "vmt"
-harness = false
 
 [workspace]
 members = [
