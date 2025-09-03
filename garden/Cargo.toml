@@ -7,7 +7,9 @@ edition = "2021"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 glob = "0.3.1"
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml = "0.9"
 yardbird = { path = ".." }
 z3 = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }

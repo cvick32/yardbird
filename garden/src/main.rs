@@ -11,51 +11,51 @@ use std::{
     time::{Duration, Instant},
 };
 use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
+use chrono::{DateTime, Utc};
+
+mod config;
+use config::{BenchmarkConfig, BenchmarkRun};
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 struct GardenOptions {
-    /// Directory to find vmt files in.
-    pub examples: PathBuf,
+    #[arg(short, long)]
+    pub config: Option<PathBuf>,
 
-    /// BMC depth until quitting.
-    #[arg(short, long, default_value_t = 10)]
-    pub depth: u16,
+    #[arg(short, long)]
+    pub matrix: Option<String>,
 
-    /// Timeout for each benchmark in seconds.
-    #[arg(short, long, default_value_t = 30)]
-    pub timeout: u64,
+    pub examples: Option<PathBuf>,
 
-    /// Benchmarks to include.
+    #[arg(short, long)]
+    pub depth: Option<u16>,
+
+    #[arg(short, long)]
+    pub timeout: Option<u64>,
+
     #[arg(short, long)]
     pub include: Vec<String>,
 
-    /// Run IC3IA
     #[arg(long, default_value_t = false)]
     pub run_ic3ia: bool,
 
-    /// Benchmarks to skip.
     #[arg(short, long)]
     pub skip: Vec<String>,
 
-    /// Optionally a file to output results to.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Should we write out pretty json?
     #[arg(short, long)]
     pub pretty: bool,
 
-    /// Strategy to run benchmarks with
     #[arg(long)]
     pub strategy: Vec<yardbird::Strategy>,
 
-    #[arg(long, default_value_t = 2)]
-    pub retry: usize,
+    #[arg(long)]
+    pub retry: Option<usize>,
 
-    // Choose Cost Function
-    #[arg(short, long, value_enum, default_value_t = yardbird::CostFunction::SymbolCost)]
-    pub cost_function: yardbird::CostFunction,
+    #[arg(short, long)]
+    pub cost_function: Option<yardbird::CostFunction>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +72,21 @@ enum BenchmarkResult {
 struct Benchmark {
     example: String,
     result: Vec<StrategyResult>,
+}
+
+#[derive(Debug, Serialize)]
+struct BenchmarkSuite {
+    metadata: SuiteMetadata,
+    benchmarks: Vec<Benchmark>,
+}
+
+#[derive(Debug, Serialize)]
+struct SuiteMetadata {
+    timestamp: DateTime<Utc>,
+    git_commit: Option<String>,
+    config_name: Option<String>,
+    total_benchmarks: usize,
+    yardbird_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -193,8 +208,27 @@ fn run_single(
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let options = GardenOptions::parse();
+fn get_git_commit() -> Option<String> {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                String::from_utf8(output.stdout).ok()
+                    .map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        })
+}
+
+fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
+    let examples = options.examples.unwrap_or_else(|| PathBuf::from("examples"));
+    let depth = options.depth.unwrap_or(10);
+    let timeout = options.timeout.unwrap_or(30);
+    let retry = options.retry.unwrap_or(2);
+    let cost_function = options.cost_function.unwrap_or(yardbird::CostFunction::SymbolCost);
 
     let include: Vec<_> = options
         .include
@@ -208,9 +242,8 @@ fn main() -> anyhow::Result<()> {
         .map(|skip| Pattern::new(skip))
         .collect::<Result<_, _>>()?;
 
-    let benchmarks: Vec<_> = read_dir(options.examples)?
+    let benchmarks: Vec<_> = read_dir(examples)?
         .filter_map(|path| path.ok())
-        // recurse one level
         .flat_map(|path| {
             if path.path().is_dir() {
                 read_dir(path.path())
@@ -221,14 +254,13 @@ fn main() -> anyhow::Result<()> {
                 vec![path]
             }
         })
-        // include all files that match an include pattern
         .filter(|entry| {
             include.is_empty() || include.iter().any(|glob| glob.matches_path(&entry.path()))
         })
-        // and exlude all the ones matching a skip pattern
         .filter(|entry| !exclude.iter().any(|glob| glob.matches_path(&entry.path())))
         .map(|entry| entry.path().to_string_lossy().to_string())
         .collect();
+
     let results: Vec<_> = benchmarks
         .iter()
         .enumerate()
@@ -244,22 +276,33 @@ fn main() -> anyhow::Result<()> {
                         run_single(
                             YardbirdOptions {
                                 filename: filename.clone(),
-                                depth: options.depth,
+                                depth,
                                 print_vmt: false,
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
                                 run_ic3ia: options.run_ic3ia,
-                                cost_function: options.cost_function,
+                                cost_function,
                             },
-                            options.retry,
-                            options.timeout,
+                            retry,
+                            timeout,
                         )
                     })
                     .collect::<anyhow::Result<_>>()?,
             })
         })
         .collect::<anyhow::Result<_>>()?;
+
+    let suite = BenchmarkSuite {
+        metadata: SuiteMetadata {
+            timestamp: Utc::now(),
+            git_commit: get_git_commit(),
+            config_name: None,
+            total_benchmarks: results.len(),
+            yardbird_version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        benchmarks: results,
+    };
 
     if let Some(output) = options.output {
         let file = OpenOptions::new()
@@ -268,13 +311,129 @@ fn main() -> anyhow::Result<()> {
             .truncate(true)
             .open(output)?;
         if options.pretty {
-            serde_json::to_writer_pretty(file, &results)?;
+            serde_json::to_writer_pretty(file, &suite)?;
         } else {
-            serde_json::to_writer(file, &results)?;
+            serde_json::to_writer(file, &suite)?;
         }
     } else {
-        println!("{}", serde_json::to_string_pretty(&results)?);
+        println!("{}", serde_json::to_string_pretty(&suite)?);
     }
 
     Ok(())
+}
+
+fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
+    let runs = config.generate_benchmark_runs(options.matrix.as_deref())?;
+    
+    println!("Running {} benchmark configurations", runs.len());
+    
+    let examples_dir = options.examples.unwrap_or(config.global.examples_dir.clone());
+    
+    let include: Vec<_> = if options.include.is_empty() {
+        config.global.include_patterns
+    } else {
+        options.include
+    }.iter()
+        .map(|pattern| Pattern::new(pattern))
+        .collect::<Result<_, _>>()?;
+
+    let exclude: Vec<_> = if options.skip.is_empty() {
+        config.global.exclude_patterns
+    } else {
+        options.skip
+    }.iter()
+        .map(|pattern| Pattern::new(pattern))
+        .collect::<Result<_, _>>()?;
+
+    let benchmarks: Vec<_> = read_dir(&examples_dir)?
+        .filter_map(|path| path.ok())
+        .flat_map(|path| {
+            if path.path().is_dir() {
+                read_dir(path.path())
+                    .unwrap()
+                    .filter_map(|path| path.ok())
+                    .collect()
+            } else {
+                vec![path]
+            }
+        })
+        .filter(|entry| {
+            include.is_empty() || include.iter().any(|glob| glob.matches_path(&entry.path()))
+        })
+        .filter(|entry| !exclude.iter().any(|glob| glob.matches_path(&entry.path())))
+        .map(|entry| entry.path().to_string_lossy().to_string())
+        .collect();
+
+    let mut all_benchmarks = Vec::new();
+
+    for (run_idx, run) in runs.iter().enumerate() {
+        println!("[Config {}/{}] Running: {}", run_idx + 1, runs.len(), run.name);
+        
+        let results: Vec<_> = benchmarks
+            .iter()
+            .enumerate()
+            .map(|(idx, filename)| {
+                println!("  [{}/{}] {filename}", idx + 1, benchmarks.len());
+                let result = run_single(
+                    YardbirdOptions {
+                        filename: filename.clone(),
+                        depth: run.depth,
+                        print_vmt: false,
+                        interpolate: false,
+                        repl: false,
+                        strategy: run.strategy,
+                        run_ic3ia: options.run_ic3ia,
+                        cost_function: run.cost_function,
+                    },
+                    config.global.retry_count,
+                    run.timeout_seconds,
+                )?;
+                Ok(Benchmark {
+                    example: format!("{}_{}", run.name, filename),
+                    result: vec![result],
+                })
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        
+        all_benchmarks.extend(results);
+    }
+
+    let suite = BenchmarkSuite {
+        metadata: SuiteMetadata {
+            timestamp: Utc::now(),
+            git_commit: get_git_commit(),
+            config_name: options.matrix.clone(),
+            total_benchmarks: all_benchmarks.len(),
+            yardbird_version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        benchmarks: all_benchmarks,
+    };
+
+    if let Some(output) = options.output {
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(output)?;
+        if options.pretty || config.output.pretty_json {
+            serde_json::to_writer_pretty(file, &suite)?;
+        } else {
+            serde_json::to_writer(file, &suite)?;
+        }
+    } else {
+        println!("{}", serde_json::to_string_pretty(&suite)?);
+    }
+
+    Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
+    let options = GardenOptions::parse();
+    
+    if let Some(config_path) = &options.config {
+        let config = BenchmarkConfig::from_file(config_path)?;
+        run_config_based(options, config)
+    } else {
+        run_legacy_mode(options)
+    }
 }

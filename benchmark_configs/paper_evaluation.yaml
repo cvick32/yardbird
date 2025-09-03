@@ -1,0 +1,31 @@
+# Configuration for paper evaluation benchmarks
+global:
+  examples_dir: "examples"
+  timeout_seconds: 120
+  retry_count: 3
+  output_format: "json"
+  include_patterns: []
+  exclude_patterns: ["*bug*", "*counterexample*"]
+
+parameter_matrices:
+  paper_main:
+    depths: [10, 15, 20]
+    strategies: ["abstract", "concrete"] 
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    
+  paper_deep:
+    depths: [25, 30]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost"]
+    timeout_seconds: 300
+
+output:
+  include_metadata: true
+  pretty_json: true
+  timestamp_format: "%Y%m%d_%H%M%S"
+
+cloud:
+  instance_type: "c5.2xlarge"
+  region: "us-west-2"
+  s3_bucket: "yardbird-paper-results"
+  auto_teardown: true

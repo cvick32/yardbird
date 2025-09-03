@@ -1,0 +1,59 @@
+# Benchmark Configuration Schema
+# This file defines parameter matrices for comprehensive yardbird benchmarking
+
+# Global settings
+global:
+  examples_dir: "examples"
+  timeout_seconds: 30
+  retry_count: 2
+  output_format: "json"
+  include_patterns: []
+  exclude_patterns: []
+
+# Parameter matrices - all combinations will be tested
+parameter_matrices:
+  # Standard evaluation matrix
+  standard:
+    depths: [5, 10, 15]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    
+  # Quick test matrix  
+  quick:
+    depths: [5]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost"]
+    
+  # Deep analysis matrix
+  deep:
+    depths: [10, 20, 30]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    timeout_seconds: 60
+
+# Individual configurations (non-matrix)
+individual_configs:
+  - name: "abstract_only_quick"
+    depth: 10
+    strategy: "abstract"
+    cost_function: "symbol-cost"
+    timeout_seconds: 15
+    
+  - name: "concrete_deep"
+    depth: 25 
+    strategy: "concrete"
+    cost_function: "a-s-t-size"
+    timeout_seconds: 120
+
+# Output configuration
+output:
+  include_metadata: true
+  pretty_json: true
+  timestamp_format: "%Y%m%d_%H%M%S"
+  
+# Cloud execution settings
+cloud:
+  instance_type: "c5.xlarge"
+  region: "us-west-2" 
+  s3_bucket: "yardbird-benchmarks"
+  auto_teardown: true

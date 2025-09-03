@@ -1,0 +1,32 @@
+# Comprehensive benchmarking configuration
+global:
+  examples_dir: "examples"
+  timeout_seconds: 180
+  retry_count: 3
+  output_format: "json"
+  include_patterns: []
+  exclude_patterns: []
+
+parameter_matrices:
+  full_evaluation:
+    depths: [5, 10, 15, 20, 25, 30]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    timeout_seconds: 300
+
+  strategy_comparison:
+    depths: [10]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    timeout_seconds: 60
+
+output:
+  include_metadata: true
+  pretty_json: true
+  timestamp_format: "%Y%m%d_%H%M%S"
+
+cloud:
+  instance_type: "c5.4xlarge"
+  region: "us-west-2"
+  s3_bucket: "yardbird-comprehensive-results"
+  auto_teardown: true
