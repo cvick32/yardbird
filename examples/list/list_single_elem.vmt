@@ -1,0 +1,63 @@
+;; VMT file demonstrating list element modification
+;; Converted from array_single_elem.vmt
+;; Property: After modifying position 143 to value 0, that position contains 0
+
+(declare-sort ListInt 0)
+
+;; List variable
+(declare-fun lst () ListInt)
+(declare-fun lst_next () ListInt)
+(define-fun .lst () ListInt (! lst :next lst_next))
+
+;; Counter for iteration
+(declare-fun i () Int)
+(declare-fun i_next () Int)
+(define-fun .i () Int (! i :next i_next))
+
+;; List length
+(declare-fun N () Int)
+(declare-fun N_next () Int)
+(define-fun .N () Int (! N :next N_next))
+
+;; Test position
+(declare-fun Z () Int)
+(declare-fun Z_next () Int)
+(define-fun .Z () Int (! Z :next Z_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun nth (ListInt Int) Int)
+(declare-fun update-nth (ListInt Int Int) ListInt)  ;; update-nth(list, index, value)
+(declare-fun length (ListInt) Int)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+  (and
+    (= i 0)
+    (> N 150)
+    ;; Initialize list with some default values
+    (= (length lst) N)
+  )
+  :init true))
+
+;; Transition relation
+(define-fun trans-conditions () Bool (!
+  (and
+    ;; Update list at position 143 with value 0 when i reaches 143
+    (ite (= i 143)
+      (= lst_next (update-nth lst i 0))
+      (= lst_next lst)
+    )
+    (< i N)
+    (= i_next (+ i 1))
+    (= N_next N)
+    (= Z_next Z)
+  )
+  :trans true))
+
+;; Property: After completion, position 143 contains 0
+(define-fun property () Bool (!
+  (=> (>= i N)
+      (= (nth lst 143) 0))
+  :invar-property 0))

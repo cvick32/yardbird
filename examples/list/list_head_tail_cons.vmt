@@ -1,0 +1,65 @@
+;; VMT file demonstrating basic list constructor/destructor properties
+;; Property: head(cons(x, xs)) = x and tail(cons(x, xs)) = xs
+
+(declare-sort ListInt 0)
+
+;; Variables
+(declare-fun x () Int)
+(declare-fun x_next () Int)
+(define-fun .x () Int (! x :next x_next))
+
+(declare-fun xs () ListInt)
+(declare-fun xs_next () ListInt)
+(define-fun .xs () ListInt (! xs :next xs_next))
+
+(declare-fun list_cons () ListInt)
+(declare-fun list_cons_next () ListInt)
+(define-fun .list_cons () ListInt (! list_cons :next list_cons_next))
+
+(declare-fun head_result () Int)
+(declare-fun head_result_next () Int)
+(define-fun .head_result () Int (! head_result :next head_result_next))
+
+(declare-fun tail_result () ListInt)
+(declare-fun tail_result_next () ListInt)
+(define-fun .tail_result () ListInt (! tail_result :next tail_result_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun head (ListInt) Int)
+(declare-fun tail (ListInt) ListInt)
+(declare-fun is-nil (ListInt) Bool)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+  (and
+    ;; Start with some value and list
+    true
+  )
+  :init true))
+
+;; Transition relation
+(define-fun trans-conditions () Bool (!
+  (and
+    ;; Create cons and extract head/tail
+    (= list_cons (cons x xs))
+    (= head_result (head list_cons))
+    (= tail_result (tail list_cons))
+    
+    ;; Variables don't change
+    (= x x_next)
+    (= xs xs_next)
+    (= list_cons list_cons_next)
+    (= head_result head_result_next)
+    (= tail_result tail_result_next)
+  )
+  :trans true))
+
+;; Properties: head(cons(x, xs)) = x and tail(cons(x, xs)) = xs
+(define-fun property () Bool (!
+  (and
+    (= head_result x)
+    (= tail_result xs)
+  )
+  :invar-property 0))

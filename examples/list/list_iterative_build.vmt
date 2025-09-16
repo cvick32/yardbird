@@ -1,0 +1,67 @@
+;; VMT file demonstrating iterative list building
+;; Property: After building a list of length n, the length is indeed n
+
+(declare-sort ListInt 0)
+
+;; Variables for iterative list construction
+(declare-fun current_list () ListInt)
+(declare-fun current_list_next () ListInt)
+(define-fun .current_list () ListInt (! current_list :next current_list_next))
+
+(declare-fun counter () Int)
+(declare-fun counter_next () Int)
+(define-fun .counter () Int (! counter :next counter_next))
+
+(declare-fun target_length () Int)
+(declare-fun target_length_next () Int)
+(define-fun .target_length () Int (! target_length :next target_length_next))
+
+(declare-fun current_length () Int)
+(declare-fun current_length_next () Int)
+(define-fun .current_length () Int (! current_length :next current_length_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun length (ListInt) Int)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+  (and
+    ;; Start with empty list and counter at 0
+    (= current_list nil)
+    (= counter 0)
+    (= target_length 5)  ;; Build a list of length 5
+    (= current_length 0)
+  )
+  :init true))
+
+;; Transition relation
+(define-fun trans-conditions () Bool (!
+  (and
+    (ite (< counter target_length)
+      ;; Still building: add element to front of list
+      (and
+        (= current_list_next (cons counter current_list))
+        (= counter_next (+ counter 1))
+        (= current_length_next (+ current_length 1))
+      )
+      ;; Done building: everything stays the same
+      (and
+        (= current_list_next current_list)
+        (= counter_next counter)
+        (= current_length_next current_length)
+      )
+    )
+    (= target_length_next target_length)
+  )
+  :trans true))
+
+;; Property: When we're done building, the length matches target
+(define-fun property () Bool (!
+  (=> (>= counter target_length)
+      (and
+        (= current_length target_length)
+        (= (length current_list) target_length)
+      ))
+  :invar-property 0))

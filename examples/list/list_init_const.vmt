@@ -1,0 +1,65 @@
+;; VMT file demonstrating list initialization to constant value
+;; Property: After initialization, all elements equal the constant
+
+(declare-sort ListInt 0)
+
+;; List being initialized
+(declare-fun lst () ListInt)
+(declare-fun lst_next () ListInt)
+(define-fun .lst () ListInt (! lst :next lst_next))
+
+;; Counter for iteration
+(declare-fun i () Int)
+(declare-fun i_next () Int)
+(define-fun .i () Int (! i :next i_next))
+
+;; List length
+(declare-fun n () Int)
+(declare-fun n_next () Int)
+(define-fun .n () Int (! n :next n_next))
+
+;; Constant value to initialize with
+(declare-fun init_val () Int)
+(declare-fun init_val_next () Int)
+(define-fun .init_val () Int (! init_val :next init_val_next))
+
+;; Test position
+(declare-fun Z () Int)
+(declare-fun Z_next () Int)
+(define-fun .Z () Int (! Z :next Z_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun nth (ListInt Int) Int)
+(declare-fun update-nth (ListInt Int Int) ListInt)
+(declare-fun length (ListInt) Int)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+  (and
+    (= i 0)
+    (= init_val 42)  ;; Initialize all elements to 42
+    (> n 0)
+    (= (length lst) n)
+  )
+  :init true))
+
+;; Transition relation
+(define-fun trans-conditions () Bool (!
+  (and
+    ;; Set lst[i] = init_val
+    (= lst_next (update-nth lst i init_val))
+    (< i n)
+    (= i_next (+ i 1))
+    (= n_next n)
+    (= init_val_next init_val)
+    (= Z_next Z)
+  )
+  :trans true))
+
+;; Property: After initialization, all elements equal init_val
+(define-fun property () Bool (!
+  (=> (and (>= i n) (>= Z 0) (< Z n))
+      (= (nth lst Z) init_val))
+  :invar-property 0))

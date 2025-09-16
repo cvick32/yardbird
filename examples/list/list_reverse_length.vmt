@@ -1,0 +1,56 @@
+;; VMT file demonstrating list reverse properties
+;; Property: length(reverse(xs)) = length(xs)
+
+(declare-sort ListInt 0)
+
+;; List variables
+(declare-fun xs () ListInt)
+(declare-fun xs_next () ListInt)
+(define-fun .xs () ListInt (! xs :next xs_next))
+
+(declare-fun rev_xs () ListInt)
+(declare-fun rev_xs_next () ListInt)
+(define-fun .rev_xs () ListInt (! rev_xs :next rev_xs_next))
+
+(declare-fun len_xs () Int)
+(declare-fun len_xs_next () Int)
+(define-fun .len_xs () Int (! len_xs :next len_xs_next))
+
+(declare-fun len_rev () Int)
+(declare-fun len_rev_next () Int)
+(define-fun .len_rev () Int (! len_rev :next len_rev_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun reverse (ListInt) ListInt)
+(declare-fun length (ListInt) Int)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+  (and
+    ;; Start with some initial list
+    (>= (length xs) 0)
+    (= len_xs (length xs))
+  )
+  :init true))
+
+;; Transition relation
+(define-fun trans-conditions () Bool (!
+  (and
+    ;; Compute reverse
+    (= rev_xs (reverse xs))
+    (= len_rev (length rev_xs))
+    
+    ;; Lists don't change
+    (= xs xs_next)
+    (= rev_xs rev_xs_next)
+    (= len_xs len_xs_next)
+    (= len_rev len_rev_next)
+  )
+  :trans true))
+
+;; Property: length(reverse(xs)) = length(xs)
+(define-fun property () Bool (!
+  (= len_rev len_xs)
+  :invar-property 0))

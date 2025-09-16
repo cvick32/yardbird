@@ -1,0 +1,68 @@
+;; VMT file demonstrating list append and length properties
+;; Property: length(append(xs, ys)) = length(xs) + length(ys)
+
+(declare-sort ListInt 0)
+
+;; List variables
+(declare-fun xs () ListInt)
+(declare-fun xs_next () ListInt)
+(define-fun .xs () ListInt (! xs :next xs_next))
+
+(declare-fun ys () ListInt)
+(declare-fun ys_next () ListInt)
+(define-fun .ys () ListInt (! ys :next ys_next))
+
+(declare-fun result () ListInt)
+(declare-fun result_next () ListInt)
+(define-fun .result () ListInt (! result :next result_next))
+
+(declare-fun len_xs () Int)
+(declare-fun len_xs_next () Int)
+(define-fun .len_xs () Int (! len_xs :next len_xs_next))
+
+(declare-fun len_ys () Int)
+(declare-fun len_ys_next () Int)
+(define-fun .len_ys () Int (! len_ys :next len_ys_next))
+
+(declare-fun len_result () Int)
+(declare-fun len_result_next () Int)
+(define-fun .len_result () Int (! len_result :next len_result_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun append (ListInt ListInt) ListInt)
+(declare-fun length (ListInt) Int)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+  (and
+    ;; Start with some initial lists
+    (>= (length xs) 0)
+    (>= (length ys) 0)
+    (= len_xs (length xs))
+    (= len_ys (length ys))
+  )
+  :init true))
+
+;; Transition relation
+(define-fun trans-conditions () Bool (!
+  (and
+    ;; Compute append
+    (= result (append xs ys))
+    (= len_result (length result))
+    
+    ;; Lists don't change
+    (= xs xs_next)
+    (= ys ys_next)
+    (= result result_next)
+    (= len_xs len_xs_next)
+    (= len_ys len_ys_next)
+    (= len_result len_result_next)
+  )
+  :trans true))
+
+;; Property: length(append(xs, ys)) = length(xs) + length(ys)
+(define-fun property () Bool (!
+  (= len_result (+ len_xs len_ys))
+  :invar-property 0))
