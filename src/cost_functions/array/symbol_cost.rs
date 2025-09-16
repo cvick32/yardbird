@@ -1,7 +1,7 @@
 use egg::Language;
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
-use crate::theories::array_axioms::ArrayLanguage;
+use crate::theories::{array_axioms::ArrayLanguage, list_axioms::ListLanguage};
 
 use super::YardbirdCostFunction;
 
@@ -92,6 +92,17 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
             }
         };
         enode.fold(op_cost, |sum, id| sum + costs(id))
+    }
+}
+
+impl egg::CostFunction<ListLanguage> for BestSymbolSubstitution {
+    type Cost = u32;
+
+    fn cost<C>(&mut self, enode: &ListLanguage, costs: C) -> Self::Cost
+    where
+        C: FnMut(egg::Id) -> Self::Cost,
+    {
+        todo!()
     }
 }
 

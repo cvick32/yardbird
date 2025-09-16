@@ -7,7 +7,7 @@ use cost_functions::array::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
+use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ListAbstract, ProofStrategy};
 
 pub mod analysis;
 pub mod conflict_scheduler;
@@ -144,6 +144,10 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
             // but might need other abstractions
             vmt_model = vmt_model.abstract_constants_over(options.depth);
         }
+        Language::List => {
+            // For lists, we don't abstract array theory, just constants
+            vmt_model = vmt_model.abstract_constants_over(options.depth);
+        }
     }
 
     if options.print_vmt {
@@ -178,4 +182,5 @@ pub enum CostFunction {
 pub enum Language {
     Array,
     BvList,
+    List,
 }
