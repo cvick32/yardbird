@@ -1,10 +1,7 @@
 use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
-use crate::{
-    cost_functions::array::YardbirdCostFunction,
-    egg_utils::Saturate,
-};
+use crate::{cost_functions::array::YardbirdCostFunction, egg_utils::Saturate};
 
 define_language! {
     pub enum ListLanguage {
@@ -106,13 +103,7 @@ impl ListLanguage {
         let l = expr.add(ListLanguage::Symbol("l".into()));
         let head = expr.add(ListLanguage::Head(l));
 
-        expr[head].join_recexprs(|id| {
-            if id == l {
-                list.clone()
-            } else {
-                panic!()
-            }
-        })
+        expr[head].join_recexprs(|id| if id == l { list.clone() } else { panic!() })
     }
 
     pub fn tail(list: ListExpr) -> ListExpr {
@@ -120,13 +111,7 @@ impl ListLanguage {
         let l = expr.add(ListLanguage::Symbol("l".into()));
         let tail = expr.add(ListLanguage::Tail(l));
 
-        expr[tail].join_recexprs(|id| {
-            if id == l {
-                list.clone()
-            } else {
-                panic!()
-            }
-        })
+        expr[tail].join_recexprs(|id| if id == l { list.clone() } else { panic!() })
     }
 }
 
@@ -139,9 +124,7 @@ where
 
     fn saturate(&mut self, _cost_fn: CF) -> Self::Ret {
         let egraph = std::mem::take(self);
-        let mut runner = Runner::default()
-            .with_egraph(egraph)
-            .run(&list_axioms());
+        let mut runner = Runner::default().with_egraph(egraph).run(&list_axioms());
 
         *self = std::mem::take(&mut runner.egraph);
 
@@ -161,25 +144,20 @@ where
         rewrite!("tail-cons"; "(tail (cons ?x ?xs))" => "?xs"),
         rewrite!("is-nil-nil"; "(is-nil nil)" => "true"),
         rewrite!("is-nil-cons"; "(is-nil (cons ?x ?xs))" => "false"),
-        
         // Length axioms
         rewrite!("length-nil"; "(length nil)" => "0"),
         rewrite!("length-cons"; "(length (cons ?x ?xs))" => "(+ 1 (length ?xs))"),
-        
         // Append axioms
         rewrite!("append-nil"; "(append nil ?xs)" => "?xs"),
         rewrite!("append-cons"; "(append (cons ?x ?xs) ?ys)" => "(cons ?x (append ?xs ?ys))"),
-        
         // Nth axioms
         rewrite!("nth-cons-zero"; "(nth (cons ?x ?xs) 0)" => "?x"),
         rewrite!("nth-cons-succ"; "(nth (cons ?x ?xs) (+ 1 ?n))" => "(nth ?xs ?n)"),
-        
         // Reverse axioms
         rewrite!("reverse-nil"; "(reverse nil)" => "nil"),
         rewrite!("reverse-cons"; "(reverse (cons ?x ?xs))" => "(append (reverse ?xs) (cons ?x nil))"),
-        
         // Composition axioms
-        rewrite!("head-append-non-nil"; 
+        rewrite!("head-append-non-nil";
             {
                 ConditionalSearcher::new(
                     "(head (append ?xs ?ys))"
@@ -190,16 +168,13 @@ where
             }
             => "(head ?xs)"
         ),
-        
         // Length composition
         rewrite!("length-append"; "(length (append ?xs ?ys))" => "(+ (length ?xs) (length ?ys))"),
         rewrite!("length-reverse"; "(length (reverse ?xs))" => "(length ?xs)"),
     ]
 }
 
-fn not_nil<N>(
-    var: &'static str,
-) -> impl Fn(&EGraph<ListLanguage, N>, Id, &Subst) -> bool
+fn not_nil<N>(var: &'static str) -> impl Fn(&EGraph<ListLanguage, N>, Id, &Subst) -> bool
 where
     N: Analysis<ListLanguage>,
 {
@@ -208,7 +183,7 @@ where
         // Check if the variable maps to any existing nil representation
         // For now, we'll use string comparison as a simple heuristic
         let var_id = subst[var];
-        
+
         // Try to find if there's a nil in the egraph
         for class in egraph.classes() {
             for node in &class.nodes {
@@ -217,7 +192,7 @@ where
                 }
             }
         }
-        
+
         // If no nil found, assume it's not nil
         true
     }
@@ -300,9 +275,7 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ListLanguage>> {
     fn inner(term: Term, expr: &mut egg::RecExpr<ListLanguage>) -> Option<egg::Id> {
         match term {
             Term::Constant(c) => Some(expr.add(ListLanguage::Symbol(c.to_string().into()))),
-            Term::QualIdentifier(qi) => {
-                Some(expr.add(ListLanguage::Symbol(qi.to_string().into())))
-            }
+            Term::QualIdentifier(qi) => Some(expr.add(ListLanguage::Symbol(qi.to_string().into()))),
             Term::Application {
                 qual_identifier,
                 mut arguments,
@@ -574,9 +547,7 @@ mod test {
     fn test_head_cons() {
         init();
         let expr: RecExpr<ListLanguage> = "(head (cons x xs))".parse().unwrap();
-        let runner = Runner::default()
-            .with_expr(&expr)
-            .run(&list_axioms::<()>());
+        let runner = Runner::default().with_expr(&expr).run(&list_axioms::<()>());
 
         let gold: RecExpr<ListLanguage> = "x".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_some())
@@ -586,9 +557,7 @@ mod test {
     fn test_tail_cons() {
         init();
         let expr: RecExpr<ListLanguage> = "(tail (cons x xs))".parse().unwrap();
-        let runner = Runner::default()
-            .with_expr(&expr)
-            .run(&list_axioms::<()>());
+        let runner = Runner::default().with_expr(&expr).run(&list_axioms::<()>());
 
         let gold: RecExpr<ListLanguage> = "xs".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_some())
@@ -598,9 +567,7 @@ mod test {
     fn test_length_cons() {
         init();
         let expr: RecExpr<ListLanguage> = "(length (cons x xs))".parse().unwrap();
-        let runner = Runner::default()
-            .with_expr(&expr)
-            .run(&list_axioms::<()>());
+        let runner = Runner::default().with_expr(&expr).run(&list_axioms::<()>());
 
         let gold: RecExpr<ListLanguage> = "(+ 1 (length xs))".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_some())
@@ -610,9 +577,7 @@ mod test {
     fn test_append_nil() {
         init();
         let expr: RecExpr<ListLanguage> = "(append nil xs)".parse().unwrap();
-        let runner = Runner::default()
-            .with_expr(&expr)
-            .run(&list_axioms::<()>());
+        let runner = Runner::default().with_expr(&expr).run(&list_axioms::<()>());
 
         let gold: RecExpr<ListLanguage> = "xs".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_some())
