@@ -1,0 +1,119 @@
+; Bit-vector list benchmark: Error correction codes
+; Models encoding/decoding with Hamming codes where bits are packed/unpacked
+; between bit-vectors and lists for syndrome calculation
+
+(declare-fun data_word () (_ BitVec 4))
+(declare-fun data_word_next () (_ BitVec 4))
+(define-fun .data_word () (_ BitVec 4) (! data_word :next data_word_next))
+
+(declare-fun encoded_bits () (List (_ BitVec 1)))
+(declare-fun encoded_bits_next () (List (_ BitVec 1)))
+(define-fun .encoded_bits () (List (_ BitVec 1)) (! encoded_bits :next encoded_bits_next))
+
+(declare-fun received_word () (_ BitVec 7))
+(declare-fun received_word_next () (_ BitVec 7))
+(define-fun .received_word () (_ BitVec 7) (! received_word :next received_word_next))
+
+(declare-fun corrected_data () (_ BitVec 4))
+(declare-fun corrected_data_next () (_ BitVec 4))
+(define-fun .corrected_data () (_ BitVec 4) (! corrected_data :next corrected_data_next))
+
+(declare-fun syndrome_list () (List (_ BitVec 1)))
+(declare-fun syndrome_list_next () (List (_ BitVec 1)))
+(define-fun .syndrome_list () (List (_ BitVec 1)) (! syndrome_list :next syndrome_list_next))
+
+(declare-fun phase () Int)
+(declare-fun phase_next () Int)
+(define-fun .phase () Int (! phase :next phase_next))
+
+; Hamming(7,4) encoding: 4 data bits -> 7 code bits
+(define-fun hamming-encode ((data (_ BitVec 4))) (List (_ BitVec 1))
+  (let ((d1 ((_ extract 3 3) data))
+        (d2 ((_ extract 2 2) data))
+        (d3 ((_ extract 1 1) data))
+        (d4 ((_ extract 0 0) data)))
+    (let ((p1 (bvxor (bvxor d1 d2) d4))
+          (p2 (bvxor (bvxor d1 d3) d4))
+          (p3 (bvxor (bvxor d2 d3) d4)))
+      (list-cons p1
+      (list-cons p2
+      (list-cons d1
+      (list-cons p3
+      (list-cons d2
+      (list-cons d3
+      (list-cons d4 list-nil))))))))))
+
+; Convert encoded list back to 7-bit vector
+(define-fun list-to-bv7 ((lst (List (_ BitVec 1)))) (_ BitVec 7)
+  (bvconcat
+    (bvconcat
+      (bvconcat (list-nth lst 0) (list-nth lst 1))
+      (bvconcat (list-nth lst 2) (list-nth lst 3)))
+    (bvconcat
+      (bvconcat (list-nth lst 4) (list-nth lst 5))
+      (list-nth lst 6))))
+
+; Calculate syndrome for error detection
+(define-fun calculate-syndrome ((received (_ BitVec 7))) (List (_ BitVec 1))
+  (let ((r1 ((_ extract 6 6) received))
+        (r2 ((_ extract 5 5) received))
+        (r3 ((_ extract 4 4) received))
+        (r4 ((_ extract 3 3) received))
+        (r5 ((_ extract 2 2) received))
+        (r6 ((_ extract 1 1) received))
+        (r7 ((_ extract 0 0) received)))
+    (let ((s1 (bvxor (bvxor (bvxor r1 r3) r5) r7))
+          (s2 (bvxor (bvxor (bvxor r2 r3) r6) r7))
+          (s3 (bvxor (bvxor (bvxor r4 r5) r6) r7)))
+      (list-cons s1
+      (list-cons s2
+      (list-cons s3 list-nil))))))
+
+; Extract original data (assuming no errors for this benchmark)
+(define-fun extract-data ((received (_ BitVec 7))) (_ BitVec 4)
+  (bvconcat
+    (bvconcat ((_ extract 4 4) received) ((_ extract 2 2) received))
+    (bvconcat ((_ extract 1 1) received) ((_ extract 0 0) received))))
+
+(define-fun init-conditions () Bool (!
+  (and
+    (= phase 0)
+    (= encoded_bits list-nil)
+    (= received_word #b0000000)
+    (= corrected_data #b0000)
+    (= syndrome_list list-nil)
+  ) :init true))
+
+(define-fun trans-conditions () Bool (!
+  (and
+    (ite (= phase 0)
+      ; Phase 0: Encode data word into list
+      (and (= encoded_bits_next (hamming-encode data_word))
+           (= received_word_next (list-to-bv7 encoded_bits_next))
+           (= phase_next 1))
+      ; Phase 1: Calculate syndrome and extract data
+      (and (= syndrome_list_next (calculate-syndrome received_word))
+           (= corrected_data_next (extract-data received_word))
+           (= phase_next 2)))
+    
+    ; Unchanged variables
+    (= data_word_next data_word)
+    (ite (= phase 0)
+      (and (= received_word_next received_word)
+           (= corrected_data_next corrected_data)
+           (= syndrome_list_next syndrome_list))
+      (and (= encoded_bits_next encoded_bits)))
+  ) :trans true))
+
+; Property: Error-free encoding should be perfectly reversible
+; This creates complex cross-domain reasoning about bit-packing
+(define-fun property () Bool (!
+  (and
+    (=> (= phase 2)
+        (= data_word corrected_data))
+    ; Additional property: syndrome should be all zeros for error-free transmission  
+    (=> (= phase 2)
+        (and (= (list-nth syndrome_list 0) #b0)
+             (= (list-nth syndrome_list 1) #b0)
+             (= (list-nth syndrome_list 2) #b0)))
+  ) :invar-property 0))

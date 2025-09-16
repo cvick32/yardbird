@@ -1,0 +1,61 @@
+; Bit-vector list benchmark: Cryptographic bit shuffling
+; This models a crypto operation that shuffles bits according to a permutation
+; and then verifies the shuffle is reversible
+
+(declare-fun input_bv () (_ BitVec 8))
+(declare-fun input_bv_next () (_ BitVec 8))
+(define-fun .input_bv () (_ BitVec 8) (! input_bv :next input_bv_next))
+
+(declare-fun shuffled_list () (List (_ BitVec 1)))
+(declare-fun shuffled_list_next () (List (_ BitVec 1)))
+(define-fun .shuffled_list () (List (_ BitVec 1)) (! shuffled_list :next shuffled_list_next))
+
+(declare-fun output_bv () (_ BitVec 8))
+(declare-fun output_bv_next () (_ BitVec 8))
+(define-fun .output_bv () (_ BitVec 8) (! output_bv :next output_bv_next))
+
+(declare-fun step () Int)
+(declare-fun step_next () Int)
+(define-fun .step () Int (! step :next step_next))
+
+; Custom bit shuffle function (models crypto permutation)
+(define-fun shuffle-bits ((bv (_ BitVec 8))) (List (_ BitVec 1))
+  (list-cons ((_ extract 0 0) bv)
+  (list-cons ((_ extract 3 3) bv)  
+  (list-cons ((_ extract 6 6) bv)
+  (list-cons ((_ extract 1 1) bv)
+  (list-cons ((_ extract 4 4) bv)
+  (list-cons ((_ extract 7 7) bv)
+  (list-cons ((_ extract 2 2) bv)
+  (list-cons ((_ extract 5 5) bv) list-nil)))))))))
+
+(define-fun unshuffle-bits ((lst (List (_ BitVec 1)))) (_ BitVec 8)
+  (bvconcat
+    (bvconcat 
+      (bvconcat (list-nth lst 5) (list-nth lst 6)) ; bits 7,6
+      (bvconcat (list-nth lst 7) (list-nth lst 2))) ; bits 5,4  
+    (bvconcat
+      (bvconcat (list-nth lst 4) (list-nth lst 1)) ; bits 3,2
+      (bvconcat (list-nth lst 3) (list-nth lst 0))))) ; bits 1,0
+
+(define-fun init-conditions () Bool (!
+  (and
+    (= step 0)
+    (= shuffled_list list-nil)
+    (= output_bv #b00000000)
+  ) :init true))
+
+(define-fun trans-conditions () Bool (!
+  (and
+    (= shuffled_list_next (shuffle-bits input_bv))
+    (= output_bv_next (unshuffle-bits shuffled_list_next))
+    (= step_next (+ step 1))
+    (= input_bv_next input_bv)
+  ) :trans true))
+
+; Property: shuffle then unshuffle should be identity
+(define-fun property () Bool (!
+  (and
+    (=> (= step 1)
+        (= input_bv output_bv))
+  ) :invar-property 0))

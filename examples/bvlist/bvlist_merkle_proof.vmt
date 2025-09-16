@@ -1,0 +1,108 @@
+; Bit-vector list benchmark: Simplified Merkle tree proof verification
+; Models verifying a Merkle proof path using hash operations on bit-vector lists
+; Challenges cross-domain reasoning about list structure and bit operations
+
+(declare-fun leaf_data () (_ BitVec 16))
+(declare-fun leaf_data_next () (_ BitVec 16))
+(define-fun .leaf_data () (_ BitVec 16) (! leaf_data :next leaf_data_next))
+
+(declare-fun proof_path () (List (_ BitVec 16)))
+(declare-fun proof_path_next () (List (_ BitVec 16)))
+(define-fun .proof_path () (List (_ BitVec 16)) (! proof_path :next proof_path_next))
+
+(declare-fun computed_root () (_ BitVec 16))
+(declare-fun computed_root_next () (_ BitVec 16))
+(define-fun .computed_root () (_ BitVec 16) (! computed_root :next computed_root_next))
+
+(declare-fun expected_root () (_ BitVec 16))
+(declare-fun expected_root_next () (_ BitVec 16))
+(define-fun .expected_root () (_ BitVec 16) (! expected_root :next expected_root_next))
+
+(declare-fun path_bits () (List (_ BitVec 1)))
+(declare-fun path_bits_next () (List (_ BitVec 1)))
+(define-fun .path_bits () (List (_ BitVec 1)) (! path_bits :next path_bits_next))
+
+(declare-fun depth () Int)
+(declare-fun depth_next () Int)
+(define-fun .depth () Int (! depth :next depth_next))
+
+(declare-fun current_hash () (_ BitVec 16))
+(declare-fun current_hash_next () (_ BitVec 16))
+(define-fun .current_hash () (_ BitVec 16) (! current_hash :next current_hash_next))
+
+; Simplified hash function (XOR with rotation)
+(define-fun simple-hash ((left (_ BitVec 16)) (right (_ BitVec 16))) (_ BitVec 16)
+  (bvxor (bvor (bvshl left #b0001) (bvlshr left #b1111))
+         (bvxor right #b1010101010101010)))
+
+; Extract path direction bits from proof path
+(define-fun extract-path-bits ((proof (List (_ BitVec 16)))) (List (_ BitVec 1))
+  (ite (= (list-length proof) 0)
+    list-nil
+    (list-cons ((_ extract 0 0) (list-head proof))
+               (extract-path-bits (list-tail proof)))))
+
+; Compute Merkle root given leaf and proof path
+(define-fun compute-merkle-root ((leaf (_ BitVec 16)) 
+                                (proof (List (_ BitVec 16))) 
+                                (directions (List (_ BitVec 1)))) (_ BitVec 16)
+  (ite (= (list-length proof) 0)
+    leaf
+    (let ((sibling (list-head proof))
+          (direction (list-head directions)))
+      (ite (= direction #b1)
+        ; If direction bit is 1, current hash goes right
+        (compute-merkle-root 
+          (simple-hash sibling leaf)
+          (list-tail proof)
+          (list-tail directions))
+        ; If direction bit is 0, current hash goes left  
+        (compute-merkle-root
+          (simple-hash leaf sibling)
+          (list-tail proof)
+          (list-tail directions))))))
+
+(define-fun init-conditions () Bool (!
+  (and
+    (= depth 0)
+    (= current_hash #b0000000000000000)
+    (= computed_root #b0000000000000000)
+    ; Initialize with a 2-level proof path
+    (= proof_path (list-cons #b1111000011110001
+                   (list-cons #b0000111100001111 list-nil)))
+    (= path_bits list-nil)
+  ) :init true))
+
+(define-fun trans-conditions () Bool (!
+  (and
+    (ite (= depth 0)
+      ; Phase 0: Extract path bits from proof
+      (and (= path_bits_next (extract-path-bits proof_path))
+           (= current_hash_next leaf_data)
+           (= depth_next 1))
+      ; Phase 1: Compute Merkle root
+      (and (= computed_root_next 
+              (compute-merkle-root current_hash proof_path path_bits))
+           (= depth_next 2)))
+    
+    ; Unchanged variables
+    (= leaf_data_next leaf_data)
+    (= proof_path_next proof_path)
+    (= expected_root_next expected_root)
+    (ite (= depth 0)
+      (and (= computed_root_next computed_root)
+           (= current_hash_next current_hash))
+      (and (= path_bits_next path_bits)
+           (= current_hash_next current_hash)))
+  ) :trans true))
+
+; Property: Proof verification should be consistent
+; The computed root should match expected root for valid proofs
+(define-fun property () Bool (!
+  (and
+    (=> (= depth 2)
+        (= computed_root expected_root))
+    ; Additional property: path extraction preserves bit structure
+    (=> (= depth 1)
+        (= (list-length path_bits) (list-length proof_path)))
+  ) :invar-property 0))

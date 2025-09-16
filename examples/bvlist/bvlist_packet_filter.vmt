@@ -1,0 +1,73 @@
+; Bit-vector list benchmark: Packet filtering with header manipulation
+; Models network packet processing where headers are parsed into lists
+; and filtering decisions are made based on bit-vector operations
+
+(declare-fun packet_data () (_ BitVec 32))
+(declare-fun packet_data_next () (_ BitVec 32))
+(define-fun .packet_data () (_ BitVec 32) (! packet_data :next packet_data_next))
+
+(declare-fun header_fields () (List (_ BitVec 8)))
+(declare-fun header_fields_next () (List (_ BitVec 8)))
+(define-fun .header_fields () (List (_ BitVec 8)) (! header_fields :next header_fields_next))
+
+(declare-fun filtered_packet () (_ BitVec 32))
+(declare-fun filtered_packet_next () (_ BitVec 32))
+(define-fun .filtered_packet () (_ BitVec 32) (! filtered_packet :next filtered_packet_next))
+
+(declare-fun filter_mask () (_ BitVec 32))
+(declare-fun filter_mask_next () (_ BitVec 32))
+(define-fun .filter_mask () (_ BitVec 32) (! filter_mask :next filter_mask_next))
+
+(declare-fun processing_step () Int)
+(declare-fun processing_step_next () Int)
+(define-fun .processing_step () Int (! processing_step :next processing_step_next))
+
+; Parse 32-bit packet into 4 header fields of 8 bits each
+(define-fun parse-packet ((data (_ BitVec 32))) (List (_ BitVec 8))
+  (list-cons ((_ extract 31 24) data)  ; field 0
+  (list-cons ((_ extract 23 16) data)  ; field 1  
+  (list-cons ((_ extract 15 8) data)   ; field 2
+  (list-cons ((_ extract 7 0) data)    ; field 3
+    list-nil)))))
+
+; Reconstruct packet from header fields
+(define-fun reconstruct-packet ((fields (List (_ BitVec 8)))) (_ BitVec 32)
+  (bvconcat
+    (bvconcat (list-nth fields 0) (list-nth fields 1))
+    (bvconcat (list-nth fields 2) (list-nth fields 3))))
+
+; Generate filter mask based on header analysis
+(define-fun generate-filter-mask ((fields (List (_ BitVec 8)))) (_ BitVec 32)
+  (ite (bvugt (list-nth fields 0) #b10000000)  ; if first field > 128
+    #b11110000111100001111000011110000         ; mask high bits
+    #b00001111000011110000111100001111))       ; mask low bits
+
+; Apply filter to packet
+(define-fun apply-filter ((data (_ BitVec 32)) (mask (_ BitVec 32))) (_ BitVec 32)
+  (bvand data mask))
+
+(define-fun init-conditions () Bool (!
+  (and
+    (= processing_step 0)
+    (= header_fields list-nil)
+    (= filtered_packet #b00000000000000000000000000000000)
+    (= filter_mask #b11111111111111111111111111111111)
+  ) :init true))
+
+(define-fun trans-conditions () Bool (!
+  (and
+    (= header_fields_next (parse-packet packet_data))
+    (= filter_mask_next (generate-filter-mask header_fields_next))
+    (= filtered_packet_next (apply-filter packet_data filter_mask_next))
+    (= processing_step_next (+ processing_step 1))
+    (= packet_data_next packet_data)
+  ) :trans true))
+
+; Property: Filtered packet should preserve structure when reconstructed
+(define-fun property () Bool (!
+  (and
+    (=> (and (= processing_step 1) 
+             (not (= filter_mask #b00000000000000000000000000000000)))
+        (= (reconstruct-packet (parse-packet filtered_packet))
+           filtered_packet))
+  ) :invar-property 0))
