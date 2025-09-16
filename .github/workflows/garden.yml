@@ -21,7 +21,7 @@ jobs:
       - name: Build
         run: cargo build --release -p garden
       - name: Run benchmarks
-        run: ./target/release/garden examples -o garden.json --strategy abstract --strategy concrete --depth 10
+        run: ./target/release/garden examples/array -o garden.json --strategy abstract --strategy concrete --depth 10
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
