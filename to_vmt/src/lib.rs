@@ -1,7 +1,7 @@
 pub use smt2parser::vmt::VMTModel;
 pub use vmt_macros::{ensures, generate_test};
 pub use vmtil;
-use yardbird::{cost_functions::best_symbol_cost_factory, strategies::Abstract, Driver};
+use yardbird::{cost_functions::array::best_symbol_cost_factory, strategies::Abstract, Driver};
 
 pub struct RunModelArgs {
     pub builder: vmtil::VmtilBuilder,
