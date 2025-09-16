@@ -1,6 +1,6 @@
 use egg::{Analysis, DidMerge, EGraph, Id, Justification};
 
-use crate::array_axioms::ArrayLanguage;
+use crate::theories::array_axioms::ArrayLanguage;
 
 #[derive(Default)]
 pub struct SaturationInequalities;

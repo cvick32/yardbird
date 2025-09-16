@@ -4,7 +4,7 @@ use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
-    conflict_scheduler::ConflictScheduler, cost_functions::YardbirdCostFunction,
+    conflict_scheduler::ConflictScheduler, cost_functions::array::YardbirdCostFunction,
     egg_utils::Saturate, extractor::TermExtractor,
 };
 

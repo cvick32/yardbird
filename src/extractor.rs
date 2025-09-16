@@ -4,8 +4,8 @@ use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
-    array_axioms::{ArrayExpr, ArrayLanguage},
-    cost_functions::YardbirdCostFunction,
+    cost_functions::array::YardbirdCostFunction,
+    theories::array_axioms::{ArrayExpr, ArrayLanguage},
 };
 
 pub struct TermExtractor<CF>

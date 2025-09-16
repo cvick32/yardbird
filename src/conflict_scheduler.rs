@@ -5,10 +5,10 @@ use itertools::Itertools;
 use log::{debug, info};
 
 use crate::{
-    array_axioms::{ArrayExpr, ArrayLanguage},
-    cost_functions::YardbirdCostFunction,
+    cost_functions::array::YardbirdCostFunction,
     egg_utils::RecExprRoot,
     extractor::TermExtractor,
+    theories::array_axioms::{ArrayExpr, ArrayLanguage},
 };
 
 pub struct ConflictScheduler<S, CF>

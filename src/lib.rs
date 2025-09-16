@@ -3,14 +3,13 @@
 use std::{fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
-use cost_functions::{ast_size_cost_factory, best_symbol_cost_factory};
+use cost_functions::array::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ProofStrategy};
 
 pub mod analysis;
-pub mod array_axioms;
 pub mod conflict_scheduler;
 pub mod cost_functions;
 mod driver;
@@ -23,6 +22,7 @@ mod proof_tree;
 pub mod smt_problem;
 pub mod strategies;
 mod subterm_handler;
+pub mod theories;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;
@@ -60,6 +60,10 @@ pub struct YardbirdOptions {
     // Choose Cost Function
     #[arg(short, long, value_enum, default_value_t = CostFunction::SymbolCost)]
     pub cost_function: CostFunction,
+
+    // Choose Language Theory
+    #[arg(short, long, value_enum, default_value_t = Language::Array)]
+    pub language: Language,
 }
 
 impl Default for YardbirdOptions {
@@ -73,6 +77,7 @@ impl Default for YardbirdOptions {
             repl: false,
             run_ic3ia: false,
             cost_function: CostFunction::SymbolCost,
+            language: Language::Array,
         }
     }
 }
@@ -85,7 +90,27 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+        match self.strategy {
+            Strategy::Abstract => match self.cost_function {
+                CostFunction::SymbolCost => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    best_symbol_cost_factory,
+                )),
+                CostFunction::ASTSize => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    ast_size_cost_factory,
+                )),
+            },
+            Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
+        }
+    }
+
+    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+        // For now, use the same strategy structure as arrays
+        // TODO: Create proper bit-vector list strategy
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
                 CostFunction::SymbolCost => Box::new(Abstract::new(
@@ -105,7 +130,22 @@ impl YardbirdOptions {
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
-    let vmt_model = VMTModel::from_path(&options.filename).unwrap();
+    let mut vmt_model = VMTModel::from_path(&options.filename).unwrap();
+
+    // Apply language-specific model configuration
+    match options.language {
+        Language::Array => {
+            vmt_model = vmt_model
+                .abstract_array_theory()
+                .abstract_constants_over(options.depth);
+        }
+        Language::BvList => {
+            // For bit-vector lists, we don't abstract array theory
+            // but might need other abstractions
+            vmt_model = vmt_model.abstract_constants_over(options.depth);
+        }
+    }
+
     if options.print_vmt {
         let mut output = File::create("original.vmt").unwrap();
         let _ = output.write(vmt_model.as_vmt_string().as_bytes());
@@ -122,11 +162,20 @@ pub enum Strategy {
     Concrete,
 }
 
-/// Describes the proving strategies available.
+/// Describes the cost functions available.
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum CostFunction {
     SymbolCost,
     ASTSize,
+}
+
+/// Describes the languages available.
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum Language {
+    Array,
+    BvList,
 }

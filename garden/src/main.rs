@@ -175,7 +175,7 @@ fn run_single(
             move || {
                 let ctx = z3::Context::new(&z3::Config::new());
                 let mut driver = Driver::new(&ctx, abstract_vmt_model);
-                let strategy = options.build_strategy();
+                let strategy = options.build_array_strategy();
                 driver.check_strategy(proof_options.depth, strategy)
             },
             Duration::from_secs(timeout),
@@ -288,6 +288,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 strategy: *strat,
                                 run_ic3ia: options.run_ic3ia,
                                 cost_function,
+                                language: yardbird::Language::Array,
                             },
                             retry,
                             timeout,
@@ -398,6 +399,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         strategy: run.strategy,
                         run_ic3ia: options.run_ic3ia,
                         cost_function: run.cost_function,
+                        language: yardbird::Language::Array,
                     },
                     config.global.retry_count,
                     run.timeout_seconds,

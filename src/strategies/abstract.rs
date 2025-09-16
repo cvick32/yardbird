@@ -8,12 +8,12 @@ use smt2parser::{
 
 use crate::{
     analysis::SaturationInequalities,
-    array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
-    cost_functions::YardbirdCostFunction,
+    cost_functions::array::YardbirdCostFunction,
     driver::{self, Error},
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
+    theories::array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
     ProofLoopResult,
 };
 

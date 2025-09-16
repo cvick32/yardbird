@@ -2,7 +2,7 @@ mod snapshot_tests;
 
 use yardbird::{
     self,
-    cost_functions::best_symbol_cost_factory,
+    cost_functions::array::best_symbol_cost_factory,
     model_from_options,
     strategies::{Abstract, ProofStrategy},
     Driver, YardbirdOptions,

@@ -1,6 +1,6 @@
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::array_axioms::ArrayLanguage;
+use crate::theories::array_axioms::ArrayLanguage;
 
 use super::YardbirdCostFunction;
 

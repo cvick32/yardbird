@@ -1,6 +1,6 @@
 use egg::CostFunction;
 
-use crate::array_axioms::ArrayLanguage;
+use crate::theories::array_axioms::ArrayLanguage;
 
 /// Trait for saturating an egraph with the array axioms. This hides the details of
 /// needing to create a runner every time you want to saturate a set of rules on an egraph.
