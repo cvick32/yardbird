@@ -14,6 +14,7 @@ use crate::{
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
     theories::array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
+    theory_support::{ArrayTheorySupport, TheorySupport},
     ProofLoopResult,
 };
 
@@ -60,9 +61,13 @@ impl<F> ProofStrategy<'_, AbstractRefinementState> for Abstract<F>
 where
     F: YardbirdCostFunction + 'static,
 {
+    fn get_theory_support(&self) -> Box<dyn TheorySupport> {
+        Box::new(ArrayTheorySupport)
+    }
+
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        model
-            .abstract_array_theory()
+        self.get_theory_support()
+            .abstract_model(model)
             .abstract_constants_over(self.bmc_depth)
     }
 
@@ -157,14 +162,6 @@ where
             counterexample: false,
             found_proof,
         }
-    }
-
-    fn abstract_array_theory(&self) -> bool {
-        true
-    }
-
-    fn get_logic_string(&self) -> String {
-        "UFLIA".into()
     }
 }
 

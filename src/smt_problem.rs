@@ -36,7 +36,9 @@ impl<'ctx> SMTProblem<'ctx> {
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
-        let solver = z3::Solver::new_for_logic(context, strategy.get_logic_string()).unwrap();
+        let solver =
+            z3::Solver::new_for_logic(context, strategy.get_theory_support().get_logic_string())
+                .unwrap();
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
             subterm_handler: SubtermHandler::new(
@@ -54,11 +56,19 @@ impl<'ctx> SMTProblem<'ctx> {
             z3_var_context: Z3VarContext::new(context),
             newest_model: None,
         };
-        if strategy.abstract_array_theory() {
-            // Add in abstracted function definitions to Z3VarContext
+        // Handle theory-specific function declarations
+        let theory = strategy.get_theory_support();
+        if theory.requires_abstraction() {
+            // Add in abstracted function definitions from VMT model
             for function_def in vmt_model.get_function_definitions() {
                 let _ = function_def.accept(&mut smt.z3_var_context);
             }
+        }
+
+        // Add uninterpreted functions declared by the theory
+        for func_decl in theory.get_uninterpreted_functions() {
+            let command = func_decl.to_command();
+            let _ = command.accept(&mut smt.z3_var_context);
         }
 
         // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.

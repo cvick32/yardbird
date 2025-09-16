@@ -23,6 +23,7 @@ pub mod smt_problem;
 pub mod strategies;
 mod subterm_handler;
 pub mod theories;
+pub mod theory_support;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;
@@ -125,6 +126,32 @@ impl YardbirdOptions {
                 )),
             },
             Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
+        }
+    }
+
+    pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+        match self.strategy {
+            Strategy::Abstract => match self.cost_function {
+                CostFunction::SymbolCost => Box::new(ListAbstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    best_symbol_cost_factory,
+                )),
+                CostFunction::ASTSize => Box::new(ListAbstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    ast_size_cost_factory,
+                )),
+            },
+            Strategy::Concrete => {
+                // For now, fall back to abstract strategy for lists
+                // TODO: Implement concrete strategy for lists
+                Box::new(ListAbstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    best_symbol_cost_factory,
+                ))
+            }
         }
     }
 }

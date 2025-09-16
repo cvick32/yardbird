@@ -5,6 +5,7 @@ use crate::{
     driver,
     ic3ia::{self, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
+    theory_support::{NoTheorySupport, TheorySupport},
     z3_ext::ModelExt,
     ProofLoopResult,
 };
@@ -88,11 +89,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
         Ok(ProofAction::NextDepth)
     }
 
-    fn abstract_array_theory(&self) -> bool {
-        false
-    }
-
-    fn get_logic_string(&self) -> String {
-        "AUFLIA".into()
+    fn get_theory_support(&self) -> Box<dyn TheorySupport> {
+        Box::new(NoTheorySupport)
     }
 }

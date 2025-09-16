@@ -3,6 +3,7 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     driver::{self, Error},
     smt_problem::SMTProblem,
+    theory_support::TheorySupport,
     ProofLoopResult,
 };
 
@@ -20,9 +21,8 @@ pub enum ProofAction {
 /// finalizing steps with `finish`. The `result` method describes how to construct a
 /// `ProofLoopResult` from `self`.
 pub trait ProofStrategy<'ctx, S> {
-    fn abstract_array_theory(&self) -> bool;
-
-    fn get_logic_string(&self) -> String;
+    /// Returns the theory support for this strategy, if any
+    fn get_theory_support(&self) -> Box<dyn TheorySupport>;
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         model

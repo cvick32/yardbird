@@ -98,7 +98,7 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
 impl egg::CostFunction<ListLanguage> for BestSymbolSubstitution {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ListLanguage, costs: C) -> Self::Cost
+    fn cost<C>(&mut self, _enode: &ListLanguage, _costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
