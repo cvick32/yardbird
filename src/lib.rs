@@ -10,6 +10,7 @@ use smt2parser::vmt::VMTModel;
 use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ListAbstract, ProofStrategy};
 
 pub mod analysis;
+pub mod baml_client;
 pub mod conflict_scheduler;
 pub mod cost_functions;
 mod driver;

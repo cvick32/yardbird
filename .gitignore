@@ -13,3 +13,4 @@ debug.sh
 .terraform
 terraform.tfstate
 terraform.tfstate.backup
+node_modules/
