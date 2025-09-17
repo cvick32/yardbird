@@ -1,0 +1,19 @@
+{
+  "name": "baml_schemas",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "baml-generate": "baml-cli generate",
+    "build": "npm run baml-generate",
+    "serve": "source .env && npx baml-cli serve"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@boundaryml/baml": "^0.207.1"
+  }
+}
