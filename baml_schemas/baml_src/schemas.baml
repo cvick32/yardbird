@@ -24,28 +24,10 @@ class VerificationContext {
   hints string[]
 }
 
-// Generated invariant candidate
-class InvariantCandidate {
-  // The invariant formula in SMT-LIB format
-  formula string
-  
-  // Confidence score (0-100)
-  confidence int
-  
-  // Explanation of why this invariant should hold
-  reasoning string
-  
-  // Variables referenced in the invariant
-  referenced_vars string[]
-  
-  // Type of invariant (e.g., "array_bounds", "loop_counter", "array_content")
-  invariant_type string
-}
-
-// Response with multiple invariant suggestions
+// Response with single best invariant suggestion
 class InvariantSuggestions {
-  // List of candidate invariants
-  candidates InvariantCandidate[]
+  // Single best candidate invariant
+  candidate_formula string
   
   // General analysis of the verification task
   analysis string

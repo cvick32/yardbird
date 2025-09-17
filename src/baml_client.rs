@@ -1,54 +1,7 @@
 use anyhow::Result;
+use baml_rust::models::{InvariantSuggestions, VerificationContext, VerificationRequest};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AnalysisType {
-    #[serde(rename = "PROPOSE_INVARIANT")]
-    ProposeInvariant,
-    #[serde(rename = "ANALYZE_COUNTEREXAMPLE")]
-    AnalyzeCounterexample,
-    #[serde(rename = "SUGGEST_LEMMAS")]
-    SuggestLemmas,
-    #[serde(rename = "DEBUG_STRATEGY")]
-    DebugStrategy,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationContext {
-    pub variables: Vec<String>,
-    pub init_conditions: String,
-    pub trans_conditions: String,
-    pub property: String,
-    pub array_operations: Vec<String>,
-    pub loop_bounds: Vec<String>,
-    pub hints: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerificationRequest {
-    pub analysis_type: AnalysisType,
-    pub context: VerificationContext,
-    pub failed_invariants: Vec<String>,
-    pub counterexample: Option<String>,
-    pub current_strategy: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InvariantCandidate {
-    pub formula: String,
-    pub confidence: i32,
-    pub reasoning: String,
-    pub referenced_vars: Vec<String>,
-    pub invariant_type: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InvariantSuggestions {
-    pub candidates: Vec<InvariantCandidate>,
-    pub analysis: String,
-    pub strategy_hints: Vec<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BamlRequest {

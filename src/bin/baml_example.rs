@@ -1,6 +1,7 @@
 use anyhow::Result;
+use baml_rust::models::{AnalysisType, VerificationContext, VerificationRequest};
 use std::env;
-use yardbird::baml_client::{AnalysisType, BamlClient, VerificationContext, VerificationRequest};
+use yardbird::baml_client::BamlClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -9,7 +10,7 @@ async fn main() -> Result<()> {
     println!("Connecting to BAML server at: {}", baml_url);
 
     let client = BamlClient::new(Some(baml_url));
-
+    println!("Connected to BAML server");
     // Create a sample verification context based on array_copy.vmt
     let context = VerificationContext {
         variables: vec![
@@ -26,29 +27,23 @@ async fn main() -> Result<()> {
         loop_bounds: vec!["(< i n)".to_string()],
         hints: vec!["Array copy loop".to_string()],
     };
+    println!("Created Context");
 
     let request = VerificationRequest {
         analysis_type: AnalysisType::ProposeInvariant,
-        context,
+        context: Box::new(context),
         failed_invariants: vec![],
         counterexample: None,
         current_strategy: Some("Abstract".to_string()),
     };
+    println!("Created Request");
 
     match client.propose_invariant(request).await {
         Ok(suggestions) => {
             println!("BAML Analysis: {}", suggestions.analysis);
             println!("\nProposed Invariants:");
             for (i, candidate) in suggestions.candidates.iter().enumerate() {
-                println!(
-                    "{}. {} (confidence: {}%)",
-                    i + 1,
-                    candidate.formula,
-                    candidate.confidence
-                );
-                println!("   Type: {}", candidate.invariant_type);
-                println!("   Reasoning: {}", candidate.reasoning);
-                println!("   Variables: {:?}", candidate.referenced_vars);
+                println!("   Type{}: {}", i, candidate.invariant_type);
                 println!();
             }
 

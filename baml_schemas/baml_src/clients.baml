@@ -1,5 +1,4 @@
 // BAML client configurations
-
 client<llm> GPT4 {
   provider openai
   options {

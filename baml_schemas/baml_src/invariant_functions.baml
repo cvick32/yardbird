@@ -28,21 +28,15 @@ function ProposeInvariant(request: VerificationRequest) -> InvariantSuggestions 
     {% endif %}
     
     ## Task
-    Generate 3-5 candidate loop invariants that could help prove the given property.
-    Focus on:
-    1. Array bounds and index relationships
-    2. Array content preservation or transformation
-    3. Loop counter relationships
-    4. Relationships between different arrays
+    Generate the single best loop invariant that you are most confident would help prove the given property.
+    Focus on the most critical relationship needed for the proof.
     
-    For each invariant:
-    - Provide the formula in SMT-LIB format
-    - Explain why it should be inductive
-    - Rate confidence (0-100)
-    - Identify the type of invariant
+    Return only:
+    - The invariant formula in SMT-LIB format
+    - The type of invariant (e.g., "array_bounds", "loop_counter", "array_content")
     
     ## Output Format
-    Return a structured response with multiple invariant candidates, analysis, and strategy hints.
+    Return a structured response with one invariant candidate, analysis, and strategy hints.
     
     ## Example Invariant Types
     - Array bounds: (and (>= i 0) (<= i n))

@@ -6,6 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "baml-generate": "baml-cli generate",
+    "rust-generate": "openapi-generator generate -i http://localhost:2024/openapi.json -g rust -o ../baml_rust",
+    "generate": "npm run baml-generate && npm run rust-generate",
     "build": "npm run baml-generate",
     "serve": "source .env && npx baml-cli serve"
   },
