@@ -21,7 +21,6 @@ pub enum ProofAction {
 /// finalizing steps with `finish`. The `result` method describes how to construct a
 /// `ProofLoopResult` from `self`.
 pub trait ProofStrategy<'ctx, S> {
-    /// Returns the theory support for this strategy, if any
     fn get_theory_support(&self) -> Box<dyn TheorySupport>;
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {

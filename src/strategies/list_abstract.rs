@@ -4,11 +4,12 @@ use log::info;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
+    analysis::SaturationInequalities,
     cost_functions::array::YardbirdCostFunction,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
-    strategies::AbstractRefinementState,
+    theories::list_axioms::{ListExpr, ListLanguage},
     theory_support::{ListTheorySupport, TheorySupport},
     ProofLoopResult,
 };
@@ -44,7 +45,14 @@ where
     }
 }
 
-impl<F> ProofStrategy<'_, AbstractRefinementState> for ListAbstract<F>
+pub struct ListRefinementState {
+    pub depth: u16,
+    pub egraph: egg::EGraph<ListLanguage, SaturationInequalities>,
+    pub instantiations: Vec<ListExpr>,
+    pub const_instantiations: Vec<ListExpr>,
+}
+
+impl<F> ProofStrategy<'_, ListRefinementState> for ListAbstract<F>
 where
     F: YardbirdCostFunction + 'static,
 {
@@ -58,10 +66,10 @@ where
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ListRefinementState> {
         use crate::analysis::SaturationInequalities;
         let egraph = egg::EGraph::new(SaturationInequalities);
-        Ok(AbstractRefinementState {
+        Ok(ListRefinementState {
             depth,
             egraph,
             instantiations: vec![],
@@ -71,7 +79,7 @@ where
 
     fn unsat(
         &mut self,
-        state: &mut AbstractRefinementState,
+        state: &mut ListRefinementState,
         _solver: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
@@ -80,7 +88,7 @@ where
 
     fn sat(
         &mut self,
-        _state: &mut AbstractRefinementState,
+        _state: &mut ListRefinementState,
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         let _ = match smt.get_model() {
@@ -95,11 +103,7 @@ where
     }
 
     #[allow(clippy::unnecessary_fold)]
-    fn finish(
-        &mut self,
-        _state: AbstractRefinementState,
-        _smt: &mut SMTProblem,
-    ) -> driver::Result<()> {
+    fn finish(&mut self, _state: ListRefinementState, _smt: &mut SMTProblem) -> driver::Result<()> {
         // For now, we don't add any instantiations
         // TODO: Implement proper list instantiation generation
         Ok(())

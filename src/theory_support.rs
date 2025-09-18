@@ -69,6 +69,7 @@ pub fn list_sort(element_sort: &str) -> Sort {
 }
 
 /// Theory support for list operations
+#[derive(Clone)]
 pub struct ListTheorySupport;
 
 impl TheorySupport for ListTheorySupport {
@@ -139,6 +140,7 @@ pub fn array_sort(index_sort: &str, element_sort: &str) -> Sort {
 }
 
 /// Theory support for array operations (existing behavior)
+#[derive(Clone)]
 pub struct ArrayTheorySupport;
 
 impl TheorySupport for ArrayTheorySupport {

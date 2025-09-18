@@ -15,22 +15,34 @@ fn main() -> anyhow::Result<()> {
     let cfg = z3::Config::new();
     //cfg.set_proof_generation(true);
     let context = z3::Context::new(&cfg);
-    let mut driver = Driver::new(&context, vmt_model);
-    if options.repl {
-        driver.add_extension(Repl);
-    }
-    if options.interpolate {
-        driver.add_extension(Interpolating);
-    }
-    let strat = match options.language {
-        Language::Array => options.build_array_strategy(),
+    match options.language {
+        Language::Array => {
+            let mut driver = Driver::new(&context, vmt_model);
+            if options.repl {
+                driver.add_extension(Repl);
+            }
+            if options.interpolate {
+                driver.add_extension(Interpolating);
+            }
+            let res = driver.check_strategy(options.depth, options.build_array_strategy())?;
+            print_results(res, &options)?;
+        }
         Language::BvList => {
             todo!("Implement BVList!")
         }
-        Language::List => options.build_list_strategy(),
+        Language::List => {
+            let mut driver = Driver::new(&context, vmt_model);
+            if options.repl {
+                driver.add_extension(Repl);
+            }
+            if options.interpolate {
+                driver.add_extension(Interpolating);
+            }
+            let res = driver.check_strategy(options.depth, options.build_list_strategy())?;
+            print_results(res, &options)?;
+        }
     };
-    let res = driver.check_strategy(options.depth, strat)?;
-    print_results(res, &options)?;
+
     Ok(())
 }
 

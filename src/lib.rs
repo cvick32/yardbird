@@ -7,7 +7,9 @@ use cost_functions::array::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, AbstractRefinementState, ConcreteZ3, ListAbstract, ProofStrategy};
+use strategies::{Abstract, ArrayRefinementState, ConcreteZ3, ListAbstract, ProofStrategy};
+
+use crate::strategies::ListRefinementState;
 
 pub mod analysis;
 pub mod baml_client;
@@ -92,7 +94,7 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
                 CostFunction::SymbolCost => Box::new(Abstract::new(
@@ -110,7 +112,7 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
         // For now, use the same strategy structure as arrays
         // TODO: Create proper bit-vector list strategy
         match self.strategy {
@@ -130,7 +132,7 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, AbstractRefinementState>> {
+    pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, ListRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
                 CostFunction::SymbolCost => Box::new(ListAbstract::new(

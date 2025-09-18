@@ -50,14 +50,14 @@ where
 }
 
 /// State for the inner refinement looop
-pub struct AbstractRefinementState {
+pub struct ArrayRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
     pub instantiations: Vec<ArrayExpr>,
     pub const_instantiations: Vec<ArrayExpr>,
 }
 
-impl<F> ProofStrategy<'_, AbstractRefinementState> for Abstract<F>
+impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
 where
     F: YardbirdCostFunction + 'static,
 {
@@ -71,9 +71,9 @@ where
             .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(SaturationInequalities);
-        Ok(AbstractRefinementState {
+        Ok(ArrayRefinementState {
             depth,
             egraph,
             instantiations: vec![],
@@ -83,7 +83,7 @@ where
 
     fn unsat(
         &mut self,
-        state: &mut AbstractRefinementState,
+        state: &mut ArrayRefinementState,
         _solver: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
@@ -92,7 +92,7 @@ where
 
     fn sat(
         &mut self,
-        state: &mut AbstractRefinementState,
+        state: &mut ArrayRefinementState,
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         let model = match smt.get_model() {
@@ -108,11 +108,7 @@ where
     }
 
     #[allow(clippy::unnecessary_fold)]
-    fn finish(
-        &mut self,
-        state: AbstractRefinementState,
-        smt: &mut SMTProblem,
-    ) -> driver::Result<()> {
+    fn finish(&mut self, state: ArrayRefinementState, smt: &mut SMTProblem) -> driver::Result<()> {
         self.const_instantiations
             .extend(state.const_instantiations.into_iter().map(expr_to_term));
 
@@ -165,7 +161,7 @@ where
     }
 }
 
-impl AbstractRefinementState {
+impl ArrayRefinementState {
     pub fn update_with_subterms(
         &mut self,
         model: &z3::Model,

@@ -10,7 +10,7 @@ use crate::{
     ProofLoopResult,
 };
 
-use super::{AbstractRefinementState, ProofAction, ProofStrategy};
+use super::{ArrayRefinementState, ProofAction, ProofStrategy};
 
 #[derive(Default)]
 pub struct ConcreteZ3 {
@@ -22,13 +22,13 @@ impl ConcreteZ3 {
     }
 }
 
-impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
+impl ProofStrategy<'_, ArrayRefinementState> for ConcreteZ3 {
     fn n_refines(&mut self) -> u32 {
         1
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<AbstractRefinementState> {
-        Ok(AbstractRefinementState {
+    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
+        Ok(ArrayRefinementState {
             depth,
             egraph: egg::EGraph::default(),
             instantiations: vec![],
@@ -38,7 +38,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
 
     fn sat(
         &mut self,
-        state: &mut AbstractRefinementState,
+        state: &mut ArrayRefinementState,
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
@@ -52,7 +52,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
 
     fn finish(
         &mut self,
-        _state: AbstractRefinementState,
+        _state: ArrayRefinementState,
         _smt: &mut SMTProblem,
     ) -> driver::Result<()> {
         Ok(())
@@ -82,7 +82,7 @@ impl ProofStrategy<'_, AbstractRefinementState> for ConcreteZ3 {
 
     fn unsat(
         &mut self,
-        state: &mut AbstractRefinementState,
+        state: &mut ArrayRefinementState,
         _smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
