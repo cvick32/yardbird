@@ -30,6 +30,11 @@ class InvariantSuggestions {
   candidate_formula string
 }
 
+class CounterexampleClassification {
+  conjuncts string[]
+  explanation string
+}
+
 // Specific analysis request types
 enum AnalysisType {
   PROPOSE_INVARIANT
