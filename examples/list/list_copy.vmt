@@ -33,6 +33,7 @@
     (= b nil)
     ;; Current processing starts with the source list
     (= curr a)
+    (not (is-nil a))
   )
   :init true))
 
