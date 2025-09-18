@@ -29,23 +29,63 @@ async fn main() -> Result<()> {
     };
     println!("Created Context");
 
-    let request = VerificationRequest {
+    // Example 1: Propose Invariant
+    println!("\n=== Example 1: Propose Invariant ===");
+    let request1 = VerificationRequest {
         analysis_type: AnalysisType::ProposeInvariant,
-        context: Box::new(context),
+        context: Box::new(context.clone()),
         failed_invariants: vec![],
         counterexample: None,
         current_strategy: Some("Abstract".to_string()),
     };
-    println!("Created Request");
 
-    match client.propose_invariant(request).await {
+    match client.propose_invariant(request1).await {
         Ok(suggestions) => {
-            println!("\nProposed Invariant:\n{}", suggestions.candidate_formula);
+            println!("✅ Proposed Invariant: {}", suggestions.candidate_formula);
         }
         Err(e) => {
-            eprintln!("Failed to get invariant suggestions: {}", e);
-            eprintln!("Make sure the BAML server is running:");
-            eprintln!("  cd baml_schemas && npx baml-cli serve");
+            eprintln!("❌ Failed to get invariant suggestions: {}", e);
+        }
+    }
+
+    // Example 2: Analyze Counterexample
+    println!("\n=== Example 2: Analyze Counterexample ===");
+    let request2 = VerificationRequest {
+        analysis_type: AnalysisType::AnalyzeCounterexample,
+        context: Box::new(context.clone()),
+        failed_invariants: vec!["(and (>= i 0) (<= i n))".to_string(), "(= a b)".to_string()],
+        counterexample: Some("Model: i=5, n=3, a=[1,2,3], b=[1,2,0], Z=2".to_string()),
+        current_strategy: Some("Abstract".to_string()),
+    };
+
+    match client.analyze_counterexample(request2).await {
+        Ok(suggestions) => {
+            println!(
+                "✅ Counterexample Analysis: {}",
+                suggestions.candidate_formula
+            );
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to analyze counterexample: {}", e);
+        }
+    }
+
+    // Example 3: Suggest Lemmas
+    println!("\n=== Example 3: Suggest Lemmas ===");
+    let request3 = VerificationRequest {
+        analysis_type: AnalysisType::SuggestLemmas,
+        context: Box::new(context),
+        failed_invariants: vec![],
+        counterexample: None,
+        current_strategy: Some("Interpolation".to_string()),
+    };
+
+    match client.suggest_lemmas(request3).await {
+        Ok(suggestions) => {
+            println!("✅ Suggested Lemmas: {}", suggestions.candidate_formula);
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to get lemma suggestions: {}", e);
         }
     }
 
