@@ -116,21 +116,8 @@ impl BenchmarkConfig {
     pub fn generate_benchmark_runs(&self, matrix_name: Option<&str>) -> Result<Vec<BenchmarkRun>> {
         let mut runs = Vec::new();
 
-        // Add individual configs
-        for config in &self.individual_configs {
-            runs.push(BenchmarkRun {
-                name: config.name.clone(),
-                depth: config.depth,
-                strategy: config.strategy,
-                cost_function: config.cost_function,
-                timeout_seconds: config
-                    .timeout_seconds
-                    .unwrap_or(self.global.timeout_seconds),
-            });
-        }
-
-        // Add matrix configs
         if let Some(matrix_name) = matrix_name {
+            // If a specific matrix is requested, only run that matrix
             if let Some(matrix) = self.parameter_matrices.get(matrix_name) {
                 for &depth in &matrix.depths {
                     for &strategy in &matrix.strategies {
@@ -152,6 +139,21 @@ impl BenchmarkConfig {
                 }
             }
         } else {
+            // If no specific matrix requested, run individual configs + all matrices
+
+            // Add individual configs
+            for config in &self.individual_configs {
+                runs.push(BenchmarkRun {
+                    name: config.name.clone(),
+                    depth: config.depth,
+                    strategy: config.strategy,
+                    cost_function: config.cost_function,
+                    timeout_seconds: config
+                        .timeout_seconds
+                        .unwrap_or(self.global.timeout_seconds),
+                });
+            }
+
             // Generate all matrices if none specified
             for (matrix_name, matrix) in &self.parameter_matrices {
                 for &depth in &matrix.depths {

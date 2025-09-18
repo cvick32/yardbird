@@ -62,7 +62,7 @@ def generate_graphics(json_file, output_dir=None):
 
     # Run paper-graphics
     run_command(
-        ["uv", "run", "main.py", str(json_file), str(depth), str(timeout)],
+        ["uv", "run", "main.py", str(Path(json_file).absolute()), str(depth), str(timeout)],
         cwd="paper-graphics",
     )
 

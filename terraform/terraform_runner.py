@@ -64,65 +64,18 @@ def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Create complete user data script (setup + benchmark execution)
-    user_data = f"""#!/bin/bash
-set -e
-exec > >(tee /var/log/user-data.log) 2>&1
-
-echo "Starting Yardbird benchmark setup at $(date)"
-
-# Install dependencies
-apt-get update
-apt-get install -y git curl build-essential python3 python3-pip awscli
-
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-echo 'source ~/.cargo/env' >> /home/ubuntu/.bashrc
-
-# Install uv for Python dependency management
-curl -LsSf https://astral.sh/uv/install.sh | sh
-echo 'source ~/.cargo/env' >> /home/ubuntu/.bashrc
-
-# Setup ubuntu user environment
-chown -R ubuntu:ubuntu /home/ubuntu
-sudo -u ubuntu bash << 'EOF'
-cd /home/ubuntu
-source ~/.cargo/env
-
-# Clone repository
-git clone https://github.com/cvickery/yardbird.git || git clone https://github.com/your-username/yardbird.git
-cd yardbird
-
-echo "Building yardbird..."
-cargo build --release -p garden
-
-# Write config file
-cat > garden/run_config.yaml << 'CONFIG_EOF'
-{config_content}
-CONFIG_EOF
-
-echo "Running benchmarks..."
-./target/release/garden --config garden/run_config.yaml --matrix {matrix_name} --output benchmark_results_{timestamp}.json
-
-# Generate graphics
-cd paper-graphics
-uv run main.py ../benchmark_results_{timestamp}.json 10 30
-uv run tikz_generator.py ../benchmark_results_{timestamp}.json --all
-
-# Upload results
-cd ..
-aws s3 cp benchmark_results_{timestamp}.json s3://{terraform_outputs["s3_bucket_name"]}/benchmarks/{timestamp}/results.json
-aws s3 sync paper-graphics/ s3://{terraform_outputs["s3_bucket_name"]}/benchmarks/{timestamp}/graphics/ --exclude "*.py" --exclude "*.toml" --exclude "*.md" --exclude "*.lock"
-
-# Mark completion
-echo "Benchmark completed at $(date)" | aws s3 cp - s3://{terraform_outputs["s3_bucket_name"]}/benchmarks/{timestamp}/completion.txt
-
-echo "Setup and benchmark complete at $(date)"
-EOF
-
-# Terminate instance
-sudo shutdown -h now
-"""
+    # Read user data template and substitute variables
+    terraform_dir = Path(__file__).parent
+    user_data_template_path = terraform_dir / "user_data.sh"
+    
+    with open(user_data_template_path, 'r') as f:
+        user_data_template = f.read()
+    
+    # Substitute template variables
+    user_data = user_data_template.replace('${config_content}', config_content)
+    user_data = user_data.replace('${matrix_name}', matrix_name)
+    user_data = user_data.replace('${timestamp}', timestamp)
+    user_data = user_data.replace('${s3_bucket_name}', terraform_outputs["s3_bucket_name"])
 
     # Launch instance
     response = ec2.run_instances(

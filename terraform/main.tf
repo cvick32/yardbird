@@ -184,10 +184,6 @@ resource "aws_launch_template" "benchmark_template" {
       AutoTerminate = "true"
     }
   }
-
-  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    s3_bucket = var.s3_bucket_name
-  }))
 }
 
 # Using hardcoded Ubuntu 22.04 LTS AMI for us-east-2 to avoid permission issues
