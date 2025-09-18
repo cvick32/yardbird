@@ -40,19 +40,7 @@ async fn main() -> Result<()> {
 
     match client.propose_invariant(request).await {
         Ok(suggestions) => {
-            println!("BAML Analysis: {}", suggestions.analysis);
-            println!("\nProposed Invariants:");
-            for (i, candidate) in suggestions.candidates.iter().enumerate() {
-                println!("   Type{}: {}", i, candidate.invariant_type);
-                println!();
-            }
-
-            if !suggestions.strategy_hints.is_empty() {
-                println!("Strategy Hints:");
-                for hint in &suggestions.strategy_hints {
-                    println!("- {}", hint);
-                }
-            }
+            println!("\nProposed Invariant:\n{}", suggestions.candidate_formula);
         }
         Err(e) => {
             eprintln!("Failed to get invariant suggestions: {}", e);

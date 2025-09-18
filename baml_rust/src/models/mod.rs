@@ -34,8 +34,6 @@ pub mod check;
 pub use self::check::Check;
 pub mod client_property;
 pub use self::client_property::ClientProperty;
-pub mod invariant_candidate;
-pub use self::invariant_candidate::InvariantCandidate;
 pub mod invariant_suggestions;
 pub use self::invariant_suggestions::InvariantSuggestions;
 pub mod propose_invariant_request;

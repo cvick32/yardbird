@@ -28,14 +28,15 @@ impl BamlClient {
     ) -> Result<InvariantSuggestions> {
         let url = format!("{}/call/ProposeInvariant", self.base_url);
         let body = BamlRequest { request };
-
         let response = self.client.post(&url).json(&body).send().await?;
-
         if response.status().is_success() {
             let suggestions: InvariantSuggestions = response.json().await?;
             Ok(suggestions)
         } else {
-            anyhow::bail!("BAML request failed with status: {}", response.status())
+            let status = response.status();
+            let error_text = response.text().await?;
+            eprintln!("DEBUG: Error response body:\n{}", error_text);
+            anyhow::bail!("BAML request failed with status: {}", status);
         }
     }
 

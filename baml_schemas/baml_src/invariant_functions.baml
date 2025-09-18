@@ -32,16 +32,13 @@ function ProposeInvariant(request: VerificationRequest) -> InvariantSuggestions 
     Focus on the most critical relationship needed for the proof.
     
     Return only:
-    - The invariant formula in SMT-LIB format
-    - The type of invariant (e.g., "array_bounds", "loop_counter", "array_content")
+    - The invariant formula in SMT-LIB format.
     
     ## Output Format
-    Return a structured response with one invariant candidate, analysis, and strategy hints.
-    
-    ## Example Invariant Types
-    - Array bounds: (and (>= i 0) (<= i n))
-    - Array content: (forall ((j Int)) (=> (and (>= j 0) (< j i)) (= (select a j) (select b j))))
-    - Loop relationship: (= (+ i0 iterations) i)
+    Return a JSON object with this exact structure:
+    {
+      "candidate_formula": "your_invariant_formula_here"
+    }
     
     Be precise with SMT-LIB syntax and ensure invariants are likely to be inductive.
   "#

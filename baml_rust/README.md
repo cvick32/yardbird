@@ -51,7 +51,6 @@ Class | Method | HTTP request | Description
  - [BamlVideoUrl](docs/BamlVideoUrl.md)
  - [Check](docs/Check.md)
  - [ClientProperty](docs/ClientProperty.md)
- - [InvariantCandidate](docs/InvariantCandidate.md)
  - [InvariantSuggestions](docs/InvariantSuggestions.md)
  - [ProposeInvariantRequest](docs/ProposeInvariantRequest.md)
  - [SuggestLemmasRequest](docs/SuggestLemmasRequest.md)

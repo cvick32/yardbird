@@ -13,24 +13,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InvariantSuggestions {
-    #[serde(rename = "analysis")]
-    pub analysis: String,
-    #[serde(rename = "candidates")]
-    pub candidates: Vec<models::InvariantCandidate>,
-    #[serde(rename = "strategy_hints")]
-    pub strategy_hints: Vec<String>,
+    #[serde(rename = "candidate_formula")]
+    pub candidate_formula: String,
 }
 
 impl InvariantSuggestions {
-    pub fn new(
-        analysis: String,
-        candidates: Vec<models::InvariantCandidate>,
-        strategy_hints: Vec<String>,
-    ) -> InvariantSuggestions {
-        InvariantSuggestions {
-            analysis,
-            candidates,
-            strategy_hints,
-        }
+    pub fn new(candidate_formula: String) -> InvariantSuggestions {
+        InvariantSuggestions { candidate_formula }
     }
 }

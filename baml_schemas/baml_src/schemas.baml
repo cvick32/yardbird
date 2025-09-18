@@ -28,12 +28,6 @@ class VerificationContext {
 class InvariantSuggestions {
   // Single best candidate invariant
   candidate_formula string
-  
-  // General analysis of the verification task
-  analysis string
-  
-  // Suggested verification strategy
-  strategy_hints string[]
 }
 
 // Specific analysis request types

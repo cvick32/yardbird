@@ -1,5 +1,4 @@
 .gitignore
-.openapi-generator-ignore
 .travis.yml
 Cargo.toml
 README.md
@@ -22,7 +21,6 @@ docs/BamlVideoUrl.md
 docs/Check.md
 docs/ClientProperty.md
 docs/DefaultApi.md
-docs/InvariantCandidate.md
 docs/InvariantSuggestions.md
 docs/ProposeInvariantRequest.md
 docs/SuggestLemmasRequest.md
@@ -51,7 +49,6 @@ src/models/baml_video_base64.rs
 src/models/baml_video_url.rs
 src/models/check.rs
 src/models/client_property.rs
-src/models/invariant_candidate.rs
 src/models/invariant_suggestions.rs
 src/models/mod.rs
 src/models/propose_invariant_request.rs
