@@ -156,6 +156,7 @@ where
         // Reverse axioms
         rewrite!("reverse-nil"; "(reverse nil)" => "nil"),
         rewrite!("reverse-cons"; "(reverse (cons ?x ?xs))" => "(append (reverse ?xs) (cons ?x nil))"),
+        rewrite!("reverse-reverse"; "(reverse (reverse ?x))" => "?x"),
         // Composition axioms
         rewrite!("head-append-non-nil";
             {
