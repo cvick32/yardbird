@@ -8,12 +8,12 @@ use smt2parser::{
 
 use crate::{
     analysis::SaturationInequalities,
-    cost_functions::array::YardbirdCostFunction,
+    cost_functions::YardbirdCostFunction,
     driver::{self, Error},
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
-    theories::array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
+    theories::array::array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
     theory_support::{ArrayTheorySupport, TheorySupport},
     ProofLoopResult,
 };
@@ -23,7 +23,7 @@ use super::{ProofAction, ProofStrategy};
 /// Global state carried across different BMC depths
 pub struct Abstract<F>
 where
-    F: YardbirdCostFunction,
+    F: YardbirdCostFunction<ArrayLanguage>,
 {
     const_instantiations: Vec<Term>,
     bmc_depth: u16,
@@ -33,7 +33,7 @@ where
 
 impl<F> Abstract<F>
 where
-    F: YardbirdCostFunction,
+    F: YardbirdCostFunction<ArrayLanguage>,
 {
     pub fn new(
         bmc_depth: u16,
@@ -57,9 +57,27 @@ pub struct ArrayRefinementState {
     pub const_instantiations: Vec<ArrayExpr>,
 }
 
+impl ArrayRefinementState {
+    pub fn update_with_subterms(
+        &mut self,
+        model: &z3::Model,
+        smt: &SMTProblem,
+    ) -> anyhow::Result<()> {
+        for term in smt.get_all_subterms() {
+            let z3_term = smt.rewrite_term(term);
+            let model_interp = smt.get_interpretation(model, &z3_term);
+            let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
+            let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
+            self.egraph.union(term_id, interp_id);
+        }
+        self.egraph.rebuild();
+        Ok(())
+    }
+}
+
 impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
 where
-    F: YardbirdCostFunction + 'static,
+    F: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ArrayTheorySupport)
@@ -158,23 +176,5 @@ where
             counterexample: false,
             found_proof,
         }
-    }
-}
-
-impl ArrayRefinementState {
-    pub fn update_with_subterms(
-        &mut self,
-        model: &z3::Model,
-        smt: &SMTProblem,
-    ) -> anyhow::Result<()> {
-        for term in smt.get_all_subterms() {
-            let z3_term = smt.rewrite_term(term);
-            let model_interp = smt.get_interpretation(model, &z3_term);
-            let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
-            let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
-            self.egraph.union(term_id, interp_id);
-        }
-        self.egraph.rebuild();
-        Ok(())
     }
 }

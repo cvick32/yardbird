@@ -1,7 +1,7 @@
 use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
-use crate::{cost_functions::array::YardbirdCostFunction, egg_utils::Saturate};
+use crate::{cost_functions::YardbirdCostFunction, egg_utils::Saturate};
 
 define_language! {
     pub enum ListLanguage {
@@ -115,10 +115,10 @@ impl ListLanguage {
     }
 }
 
-impl<CF, N> Saturate<CF> for EGraph<ListLanguage, N>
+impl<CF, N> Saturate<CF, ListLanguage> for EGraph<ListLanguage, N>
 where
     N: Analysis<ListLanguage> + Default + 'static,
-    CF: YardbirdCostFunction + 'static,
+    CF: YardbirdCostFunction<ListLanguage> + 'static,
 {
     type Ret = (Vec<ListExpr>, Vec<ListExpr>);
 

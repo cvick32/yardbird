@@ -5,15 +5,17 @@ use itertools::Itertools;
 use log::{debug, info};
 
 use crate::{
-    cost_functions::array::YardbirdCostFunction,
+    cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
-    extractor::TermExtractor,
-    theories::array_axioms::{ArrayExpr, ArrayLanguage},
+    theories::array::{
+        array_axioms::{ArrayExpr, ArrayLanguage},
+        array_term_extractor::ArrayTermExtractor,
+    },
 };
 
-pub struct ConflictScheduler<S, CF>
+pub struct ArrayConflictScheduler<S, CF>
 where
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ArrayLanguage>,
 {
     inner: S,
     /// TODO: use RecExpr instead of String
@@ -24,14 +26,14 @@ where
     instantiations: Rc<RefCell<Vec<ArrayExpr>>>,
     instantiations_w_constants: Rc<RefCell<Vec<ArrayExpr>>>,
     pub cost_fn: CF,
-    extractor: TermExtractor<CF>,
+    extractor: ArrayTermExtractor<CF>,
 }
 
-impl<S, CF> ConflictScheduler<S, CF>
+impl<S, CF> ArrayConflictScheduler<S, CF>
 where
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    pub fn new(scheduler: S, cost_fn: CF, extractor: TermExtractor<CF>) -> Self {
+    pub fn new(scheduler: S, cost_fn: CF, extractor: ArrayTermExtractor<CF>) -> Self {
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
@@ -50,10 +52,10 @@ where
     }
 }
 
-impl<S, N, CF> egg::RewriteScheduler<ArrayLanguage, N> for ConflictScheduler<S, CF>
+impl<S, N, CF> egg::RewriteScheduler<ArrayLanguage, N> for ArrayConflictScheduler<S, CF>
 where
     S: egg::RewriteScheduler<ArrayLanguage, N>,
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ArrayLanguage>,
     N: egg::Analysis<ArrayLanguage>,
 {
     fn can_stop(&mut self, iteration: usize) -> bool {
@@ -166,12 +168,12 @@ fn reify_pattern_ast<N, CF>(
     pattern: &egg::PatternAst<ArrayLanguage>,
     egraph: &egg::EGraph<ArrayLanguage, N>,
     subst: &egg::Subst,
-    extractor: &TermExtractor<CF>,
+    extractor: &ArrayTermExtractor<CF>,
     memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ArrayLanguage>,
 {
     match pattern.as_ref() {
         [node] => {
@@ -380,11 +382,11 @@ fn unpatternify(pattern: egg::PatternAst<ArrayLanguage>) -> egg::RecExpr<ArrayLa
 fn find_best_variable_substitution<N, CF>(
     egraph: &egg::EGraph<ArrayLanguage, N>,
     eclass: &egg::EClass<ArrayLanguage, <N as Analysis<ArrayLanguage>>::Data>,
-    extractor: &TermExtractor<CF>,
+    extractor: &ArrayTermExtractor<CF>,
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ArrayLanguage>,
 {
     let expr = extractor.extract(egraph, eclass.id);
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));

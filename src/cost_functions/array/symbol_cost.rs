@@ -1,21 +1,22 @@
 use egg::Language;
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
-use crate::theories::{array_axioms::ArrayLanguage, list_axioms::ListLanguage};
-
-use super::YardbirdCostFunction;
+use crate::{
+    cost_functions::YardbirdCostFunction,
+    theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
+};
 
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
 #[derive(Clone, Debug)]
-pub struct BestSymbolSubstitution {
+pub struct ArrayBestSymbolSubstitution {
     pub current_bmc_depth: u32,
     pub init_and_transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
     pub reads_writes: ReadsAndWrites,
 }
 
-impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
+impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
     type Cost = u32;
 
     fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
@@ -95,7 +96,7 @@ impl egg::CostFunction<ArrayLanguage> for BestSymbolSubstitution {
     }
 }
 
-impl egg::CostFunction<ListLanguage> for BestSymbolSubstitution {
+impl egg::CostFunction<ListLanguage> for ArrayBestSymbolSubstitution {
     type Cost = u32;
 
     fn cost<C>(&mut self, _enode: &ListLanguage, _costs: C) -> Self::Cost
@@ -106,7 +107,7 @@ impl egg::CostFunction<ListLanguage> for BestSymbolSubstitution {
     }
 }
 
-impl YardbirdCostFunction for BestSymbolSubstitution {
+impl YardbirdCostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .clone()

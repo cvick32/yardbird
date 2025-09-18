@@ -3,21 +3,24 @@
 use std::{fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
-use cost_functions::array::{ast_size_cost_factory, best_symbol_cost_factory};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{Abstract, ArrayRefinementState, ConcreteZ3, ListAbstract, ProofStrategy};
 
-use crate::strategies::ListRefinementState;
+use crate::{
+    cost_functions::{
+        array::{array_ast_size_cost_factory, array_best_symbol_cost_factory},
+        list::list_ast_size_cost_factory,
+    },
+    strategies::ListRefinementState,
+};
 
 pub mod analysis;
 pub mod baml_client;
-pub mod conflict_scheduler;
 pub mod cost_functions;
 mod driver;
 mod egg_utils;
-mod extractor;
 pub mod ic3ia;
 mod interpolant;
 pub mod logger;
@@ -100,12 +103,12 @@ impl YardbirdOptions {
                 CostFunction::SymbolCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    best_symbol_cost_factory,
+                    array_best_symbol_cost_factory,
                 )),
                 CostFunction::ASTSize => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    ast_size_cost_factory,
+                    array_ast_size_cost_factory,
                 )),
             },
             Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
@@ -120,12 +123,12 @@ impl YardbirdOptions {
                 CostFunction::SymbolCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    best_symbol_cost_factory,
+                    array_best_symbol_cost_factory,
                 )),
                 CostFunction::ASTSize => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    ast_size_cost_factory,
+                    array_ast_size_cost_factory,
                 )),
             },
             Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
@@ -135,25 +138,15 @@ impl YardbirdOptions {
     pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, ListRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::SymbolCost => Box::new(ListAbstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    best_symbol_cost_factory,
-                )),
+                CostFunction::SymbolCost => todo!(),
                 CostFunction::ASTSize => Box::new(ListAbstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    ast_size_cost_factory,
+                    list_ast_size_cost_factory,
                 )),
             },
             Strategy::Concrete => {
-                // For now, fall back to abstract strategy for lists
-                // TODO: Implement concrete strategy for lists
-                Box::new(ListAbstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    best_symbol_cost_factory,
-                ))
+                todo!()
             }
         }
     }

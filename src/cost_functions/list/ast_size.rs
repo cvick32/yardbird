@@ -1,19 +1,19 @@
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::{cost_functions::YardbirdCostFunction, theories::array::array_axioms::ArrayLanguage};
+use crate::{cost_functions::YardbirdCostFunction, theories::list::list_axioms::ListLanguage};
 
 #[derive(Clone, Debug)]
-pub struct ArrayAstSize {
+pub struct ListAstSize {
     pub current_bmc_depth: u32,
     pub init_and_transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
     pub reads_writes: ReadsAndWrites,
 }
 
-impl egg::CostFunction<ArrayLanguage> for ArrayAstSize {
+impl egg::CostFunction<ListLanguage> for ListAstSize {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, _costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &ListLanguage, _costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
@@ -21,7 +21,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayAstSize {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for ArrayAstSize {
+impl YardbirdCostFunction<ListLanguage> for ListAstSize {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .clone()

@@ -1,17 +1,21 @@
 use std::mem;
 
 use log::info;
-use smt2parser::{concrete::Term, vmt::VMTModel};
+use smt2parser::{
+    concrete::Term,
+    vmt::{UnquantifiedInstantiator, VMTModel},
+};
 
 use crate::{
     analysis::SaturationInequalities,
-    cost_functions::array::YardbirdCostFunction,
+    cost_functions::YardbirdCostFunction,
     driver::{self},
+    egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
-    theories::list_axioms::{ListExpr, ListLanguage},
+    theories::list::list_axioms::{expr_to_term, translate_term, ListExpr, ListLanguage},
     theory_support::{ListTheorySupport, TheorySupport},
-    ProofLoopResult,
+    Error, ProofLoopResult,
 };
 
 use super::{ProofAction, ProofStrategy};
@@ -19,7 +23,7 @@ use super::{ProofAction, ProofStrategy};
 /// Global state carried across different BMC depths for List theory
 pub struct ListAbstract<F>
 where
-    F: YardbirdCostFunction,
+    F: YardbirdCostFunction<ListLanguage>,
 {
     const_instantiations: Vec<Term>,
     bmc_depth: u16,
@@ -29,7 +33,7 @@ where
 
 impl<F> ListAbstract<F>
 where
-    F: YardbirdCostFunction,
+    F: YardbirdCostFunction<ListLanguage>,
 {
     pub fn new(
         bmc_depth: u16,
@@ -52,9 +56,27 @@ pub struct ListRefinementState {
     pub const_instantiations: Vec<ListExpr>,
 }
 
+impl ListRefinementState {
+    pub fn update_with_subterms(
+        &mut self,
+        model: &z3::Model,
+        smt: &SMTProblem,
+    ) -> anyhow::Result<()> {
+        for term in smt.get_all_subterms() {
+            let z3_term = smt.rewrite_term(term);
+            let model_interp = smt.get_interpretation(model, &z3_term);
+            let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
+            let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
+            self.egraph.union(term_id, interp_id);
+        }
+        self.egraph.rebuild();
+        Ok(())
+    }
+}
+
 impl<F> ProofStrategy<'_, ListRefinementState> for ListAbstract<F>
 where
-    F: YardbirdCostFunction + 'static,
+    F: YardbirdCostFunction<ListLanguage> + 'static,
 {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ListTheorySupport)
@@ -88,24 +110,46 @@ where
 
     fn sat(
         &mut self,
-        _state: &mut ListRefinementState,
+        state: &mut ListRefinementState,
         smt: &SMTProblem,
     ) -> driver::Result<ProofAction> {
-        let _ = match smt.get_model() {
+        let model = match smt.get_model() {
             Some(model) => model,
             None => todo!("No Z3 model available for SAT instance"),
         };
-        (self.cost_fn_factory)(smt, 0);
-        // For now, we'll use a simplified approach that doesn't use list-specific reasoning
-        // TODO: Implement proper list model interpretation
-        info!("List theory: found model, continuing with basic strategy");
+        state.update_with_subterms(model, smt)?;
+        let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
+        let (insts, const_insts) = state.egraph.saturate(cost_fn);
+        state.instantiations.extend_from_slice(&insts);
+        state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)
     }
 
     #[allow(clippy::unnecessary_fold)]
-    fn finish(&mut self, _state: ListRefinementState, _smt: &mut SMTProblem) -> driver::Result<()> {
-        // For now, we don't add any instantiations
-        // TODO: Implement proper list instantiation generation
+    fn finish(&mut self, state: ListRefinementState, smt: &mut SMTProblem) -> driver::Result<()> {
+        self.const_instantiations
+            .extend(state.const_instantiations.into_iter().map(expr_to_term));
+
+        let terms: Vec<Term> = state
+            .instantiations
+            .into_iter()
+            .flat_map(|inst| inst.to_string().parse())
+            .collect();
+        let variables = smt.variables.clone();
+        let no_quant_progress = terms
+            .into_iter()
+            .flat_map(|term| {
+                UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
+            })
+            .map(|inst| !smt.add_instantiation(inst))
+            .fold(true, |a, b| a && b);
+
+        if no_quant_progress {
+            return Err(Error::NoProgress {
+                depth: state.depth,
+                instantiations: smt.get_instantiations().clone(),
+            });
+        }
         Ok(())
     }
 

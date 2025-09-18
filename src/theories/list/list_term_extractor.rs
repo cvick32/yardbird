@@ -4,30 +4,30 @@ use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
-    cost_functions::array::YardbirdCostFunction,
-    theories::array_axioms::{ArrayExpr, ArrayLanguage},
+    cost_functions::YardbirdCostFunction,
+    theories::list::list_axioms::{ListExpr, ListLanguage},
 };
 
-pub struct TermExtractor<CF>
+pub struct ListTermExtractor<CF>
 where
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ListLanguage>,
 {
-    term_map: HashMap<egg::Id, Vec<(ArrayExpr, CF::Cost)>>,
+    term_map: HashMap<egg::Id, Vec<(ListExpr, CF::Cost)>>,
     cost_function: CF,
     pub reads_and_writes: ReadsAndWrites,
 }
 
-impl<CF> TermExtractor<CF>
+impl<CF> ListTermExtractor<CF>
 where
-    CF: YardbirdCostFunction,
+    CF: YardbirdCostFunction<ListLanguage>,
 {
-    pub fn new<N>(egraph: &egg::EGraph<ArrayLanguage, N>, mut cost_function: CF) -> Self
+    pub fn new<N>(egraph: &egg::EGraph<ListLanguage, N>, mut cost_function: CF) -> Self
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<ListLanguage>,
     {
         let mut term_map: HashMap<egg::Id, Vec<_>> = HashMap::new();
         for string_term in cost_function.get_string_terms() {
-            let term: egg::RecExpr<ArrayLanguage> = string_term.parse().unwrap();
+            let term: egg::RecExpr<ListLanguage> = string_term.parse().unwrap();
             let cost = cost_function.cost_rec(&term);
             match egraph.lookup_expr(&term) {
                 // TODO: might want to keep track of all terms that match this node
@@ -50,11 +50,11 @@ where
 
     pub fn extract<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<ListLanguage, N>,
         eclass: egg::Id,
-    ) -> egg::RecExpr<ArrayLanguage>
+    ) -> egg::RecExpr<ListLanguage>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<ListLanguage>,
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
             let (best_term, _) = terms.iter().min_by_key(|(_term, cost)| cost).unwrap();
