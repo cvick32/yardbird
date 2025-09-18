@@ -117,6 +117,7 @@ where
             Some(model) => model,
             None => todo!("No Z3 model available for SAT instance"),
         };
+        info!("{:#?}", model);
         state.update_with_subterms(model, smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
         let (insts, const_insts) = state.egraph.saturate(cost_fn);

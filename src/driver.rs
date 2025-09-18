@@ -33,7 +33,6 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        // 3 is the number of fields in the struct.
         let mut state = serializer.serialize_struct("ProofLoopResult", 5)?;
         state.serialize_field(
             "used_instances",

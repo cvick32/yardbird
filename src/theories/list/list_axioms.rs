@@ -1,7 +1,15 @@
+use std::rc::Rc;
+
 use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
-use crate::{cost_functions::YardbirdCostFunction, egg_utils::Saturate};
+use crate::{
+    cost_functions::YardbirdCostFunction,
+    egg_utils::Saturate,
+    theories::list::{
+        list_conflict_scheduler::ListConflictScheduler, list_term_extractor::ListTermExtractor,
+    },
+};
 
 define_language! {
     pub enum ListLanguage {
@@ -122,15 +130,26 @@ where
 {
     type Ret = (Vec<ListExpr>, Vec<ListExpr>);
 
-    fn saturate(&mut self, _cost_fn: CF) -> Self::Ret {
+    fn saturate(&mut self, cost_fn: CF) -> Self::Ret {
         let egraph = std::mem::take(self);
-        let mut runner = Runner::default().with_egraph(egraph).run(&list_axioms());
+        let scheduler = ListConflictScheduler::new(
+            BackoffScheduler::default(),
+            cost_fn.clone(),
+            ListTermExtractor::new(&egraph, cost_fn),
+        );
+        let instantiations = scheduler.instantiations();
+        let const_instantiations = scheduler.instantiations_w_constants();
+        let mut runner = Runner::default()
+            .with_egraph(egraph)
+            .with_scheduler(scheduler)
+            .run(&list_axioms());
 
         *self = std::mem::take(&mut runner.egraph);
 
-        // For now, return empty vectors since we don't have the full scheduler implemented
-        // TODO: Implement proper conflict scheduler for list language
-        (vec![], vec![])
+        let inst_vec = Rc::into_inner(instantiations).unwrap().into_inner();
+        let const_inst_vec = Rc::into_inner(const_instantiations).unwrap().into_inner();
+        drop(runner);
+        (inst_vec, const_inst_vec)
     }
 }
 
