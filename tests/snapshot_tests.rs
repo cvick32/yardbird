@@ -7,7 +7,7 @@ use std::{
 };
 use yardbird::{
     self,
-    cost_functions::array::best_symbol_cost_factory,
+    cost_functions::array::array_best_symbol_cost_factory,
     model_from_options,
     strategies::{Abstract, ProofStrategy},
     Driver, YardbirdOptions,
@@ -54,7 +54,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
             let ctx = z3::Context::new(&z3::Config::new());
             let mut driver = Driver::new(&ctx, vmt_model);
             let strat: Box<dyn ProofStrategy<_>> =
-                Box::new(Abstract::new(10, false, best_symbol_cost_factory));
+                Box::new(Abstract::new(10, false, array_best_symbol_cost_factory));
             let res = driver.check_strategy(options.depth, strat).unwrap();
             res.used_instances
         },
