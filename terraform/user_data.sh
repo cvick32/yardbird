@@ -23,30 +23,16 @@ log_status "INFO" "Starting Yardbird benchmark setup"
 # Install dependencies
 log_status "INFO" "Installing system dependencies"
 apt-get update
-if ! apt-get install -y git curl build-essential python3 python3-pip awscli; then
+if ! apt-get install -y git curl build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev libz3-dev; then
     log_status "ERROR" "Failed to install system dependencies"
     exit 1
 fi
 
-# Install Rust
-log_status "INFO" "Installing Rust"
-if ! curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; then
-    log_status "ERROR" "Failed to install Rust"
-    exit 1
-fi
-echo 'source ~/.cargo/env' >> /home/ubuntu/.bashrc
-
-# Install uv for Python dependency management
-log_status "INFO" "Installing uv for Python dependency management"
-if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
-    log_status "ERROR" "Failed to install uv"
-    exit 1
-fi
-echo 'source ~/.cargo/env' >> /home/ubuntu/.bashrc
-
-# Setup ubuntu user environment
+# Setup ubuntu user environment first
 log_status "INFO" "Setting up ubuntu user environment"
 chown -R ubuntu:ubuntu /home/ubuntu
+
+# Install Rust and uv as ubuntu user
 sudo -u ubuntu bash << 'EOF'
 set -e
 
@@ -58,6 +44,22 @@ log_status() {
 }
 
 cd /home/ubuntu
+
+# Install Rust as ubuntu user
+log_status "INFO" "Installing Rust as ubuntu user"
+if ! curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; then
+    log_status "ERROR" "Failed to install Rust"
+    exit 1
+fi
+
+# Install uv as ubuntu user
+log_status "INFO" "Installing uv for Python dependency management"
+if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+    log_status "ERROR" "Failed to install uv"
+    exit 1
+fi
+
+# Source cargo environment
 source ~/.cargo/env
 
 # Clone repository
