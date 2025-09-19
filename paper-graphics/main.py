@@ -227,19 +227,23 @@ def parse_strategy_result(entry: dict) -> StrategyResult:
 
 def parse_benchmark_results(json_data: str) -> list[BenchmarkResult]:
     raw = json.loads(json_data)
-    
+
     # Handle new JSON schema with metadata
     if "benchmarks" in raw and "metadata" in raw:
         benchmarks_data = raw["benchmarks"]
         metadata = raw["metadata"]
-        print(f"Loaded benchmark suite from {metadata.get('timestamp', 'unknown time')}")
+        print(
+            f"Loaded benchmark suite from {metadata.get('timestamp', 'unknown time')}"
+        )
         print(f"Git commit: {metadata.get('git_commit', 'unknown')}")
-        print(f"Total benchmarks: {metadata.get('total_benchmarks', len(benchmarks_data))}")
+        print(
+            f"Total benchmarks: {metadata.get('total_benchmarks', len(benchmarks_data))}"
+        )
     else:
         # Legacy format
         benchmarks_data = raw
         print("Loading legacy format benchmark data")
-    
+
     benchmarks = []
     for entry in benchmarks_data:
         example = entry["example"]
@@ -560,7 +564,7 @@ def main():
     print_time_wins(runtime_df)
     print_insts_wins(insts_df)
 
-    latex_table = build_latex_table(runtime_df, insts_df)
+    _ = build_latex_table(runtime_df, insts_df)
 
     # runtime_df_quant = create_runtime_graph(quantified, name="quant")
     # insts_df_quant = create_instantiation_graph(quantified, name="quant")
