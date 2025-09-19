@@ -111,7 +111,6 @@ We've implemented a comprehensive benchmarking platform for systematic evaluatio
 
 ### 5. Cloud Infrastructure
 
-- **EC2 Runner**: `scripts/ec2_runner.py` - Launch instances for remote execution
 - **Terraform**: `terraform/` - Infrastructure as code for AWS resources
 - **S3 Integration**: `scripts/s3_manager.py` - Result storage and retrieval
 
@@ -176,14 +175,8 @@ terraform apply -var="s3_bucket_name=yardbird-benchmarks"
 #### Run Cloud Benchmarks
 
 ```bash
-# Using master CLI
-./yardbird-bench configs/paper_evaluation.yaml --matrix paper_main --ec2 --upload yardbird-benchmarks
-
-# Using EC2 runner directly
-python3 scripts/ec2_runner.py configs/comprehensive.yaml --matrix full_evaluation --s3-bucket yardbird-benchmarks --wait --download ./results/
-
 # Using Terraform runner
-python3 terraform/terraform_runner.py run configs/paper_evaluation.yaml --matrix paper_main --wait --download ./results/
+python3 terraform_runner.py run configs/paper_evaluation.yaml --matrix paper_main --wait --download ./results/
 ```
 
 #### Download Results
