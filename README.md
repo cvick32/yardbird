@@ -112,7 +112,6 @@ We've implemented a comprehensive benchmarking platform for systematic evaluatio
 ### 5. Cloud Infrastructure
 
 - **Terraform**: `terraform/` - Infrastructure as code for AWS resources
-- **S3 Integration**: `scripts/s3_manager.py` - Result storage and retrieval
 
 ## Usage
 
@@ -181,16 +180,7 @@ python3 terraform_runner.py run configs/paper_evaluation.yaml --matrix paper_mai
 
 #### Download Results
 
-```bash
-# Download specific run
-python3 scripts/s3_manager.py download yardbird-benchmarks benchmarks/20250901_143022/results.json ./local_results.json
-
-# Sync entire benchmark run
-python3 scripts/s3_manager.py sync yardbird-benchmarks benchmarks/20250901_143022 ./results/ --download
-
-# List available results
-python3 scripts/s3_manager.py list yardbird-benchmarks
-```
+`source .env && aws s3 sync s3://yardbird-benchmarks-45749081/benchmarks/ benchmark-results`
 
 #### Cleanup Infrastructure
 
