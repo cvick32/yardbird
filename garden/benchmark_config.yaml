@@ -22,7 +22,7 @@ parameter_matrices:
   quick:
     depths: [5]
     strategies: ["abstract", "concrete"]
-    cost_functions: ["symbol-cost"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
 
   # Deep analysis matrix
   deep:
