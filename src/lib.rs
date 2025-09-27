@@ -6,7 +6,7 @@ use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, ArrayRefinementState, ConcreteZ3, ListAbstract, ProofStrategy};
+use strategies::{Abstract, ArrayRefinementState, ConcreteArrayZ3, ListAbstract, ProofStrategy};
 
 use crate::{
     cost_functions::{
@@ -111,7 +111,7 @@ impl YardbirdOptions {
                     array_ast_size_cost_factory,
                 )),
             },
-            Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
+            Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
 
@@ -131,7 +131,7 @@ impl YardbirdOptions {
                     array_ast_size_cost_factory,
                 )),
             },
-            Strategy::Concrete => Box::new(ConcreteZ3::new(self.run_ic3ia)),
+            Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
 
@@ -153,30 +153,36 @@ impl YardbirdOptions {
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
-    let mut vmt_model = VMTModel::from_path(&options.filename).unwrap();
-
-    match options.theory {
-        Theory::Array => {
-            vmt_model = vmt_model
-                .abstract_array_theory()
-                .abstract_constants_over(options.depth);
+    let output_model = match options.strategy {
+        Strategy::Concrete => VMTModel::from_path(&options.filename).unwrap(),
+        Strategy::Abstract => {
+            let mut vmt_model = VMTModel::from_path(&options.filename).unwrap();
+            match options.theory {
+                Theory::Array => {
+                    vmt_model = vmt_model
+                        .abstract_array_theory()
+                        .abstract_constants_over(options.depth);
+                    vmt_model
+                }
+                Theory::BvList => {
+                    // For bit-vector lists, we don't abstract array theory
+                    // but might need other abstractions
+                    vmt_model = vmt_model.abstract_constants_over(options.depth);
+                    vmt_model
+                }
+                Theory::List => {
+                    // For lists, we don't abstract array theory, just constants
+                    vmt_model = vmt_model.abstract_constants_over(options.depth);
+                    vmt_model
+                }
+            }
         }
-        Theory::BvList => {
-            // For bit-vector lists, we don't abstract array theory
-            // but might need other abstractions
-            vmt_model = vmt_model.abstract_constants_over(options.depth);
-        }
-        Theory::List => {
-            // For lists, we don't abstract array theory, just constants
-            vmt_model = vmt_model.abstract_constants_over(options.depth);
-        }
-    }
-
+    };
     if options.print_vmt {
         let mut output = File::create("original.vmt").unwrap();
-        let _ = output.write(vmt_model.as_vmt_string().as_bytes());
+        let _ = output.write(output_model.as_vmt_string().as_bytes());
     }
-    vmt_model
+    output_model
 }
 
 /// Describes the proving strategies available.
