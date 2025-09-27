@@ -112,15 +112,17 @@ def wait_for_completion(s3_bucket, timestamp, instance_id):
     ec2 = boto3.client("ec2", region_name="us-east-2")
 
     completion_key = f"benchmarks/{timestamp}/user-data.log"
-    max_wait_time = 3600  # 1 hour max wait
-    check_interval = 30  # Check every 30 seconds
+    max_wait_time_seconds = 3600 * 10  # 10 hour max wait
+    check_interval = 180  # Check every 180 seconds
     elapsed_time = 0
 
-    print(f"Waiting for benchmark completion (max {max_wait_time // 60} minutes)...")
+    print(
+        f"Waiting for benchmark completion (max {max_wait_time_seconds // 60} minutes)..."
+    )
     print(f"Monitoring S3 key: s3://{s3_bucket}/{completion_key}")
     print(f"Instance ID: {instance_id}")
 
-    while elapsed_time < max_wait_time:
+    while elapsed_time < max_wait_time_seconds:
         # Check if completion marker exists in S3
         try:
             s3.head_object(Bucket=s3_bucket, Key=completion_key)
@@ -171,7 +173,7 @@ def wait_for_completion(s3_bucket, timestamp, instance_id):
         elapsed_time += check_interval
 
     print(
-        f"  Timeout after {max_wait_time // 60} minutes. Benchmark may still be running."
+        f"  Timeout after {max_wait_time_seconds // 60} minutes. Benchmark may still be running."
     )
     return False
 
