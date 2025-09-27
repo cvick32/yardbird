@@ -186,15 +186,15 @@ impl TheorySupport for ArrayTheorySupport {
 }
 
 /// No theory support (for strategies that don't use any specific theory)
-pub struct NoTheorySupport;
+pub struct ConcreteArrayTheory;
 
-impl TheorySupport for NoTheorySupport {
+impl TheorySupport for ConcreteArrayTheory {
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
         vec![]
     }
 
     fn get_logic_string(&self) -> String {
-        "QF_LIA".to_string()
+        "QF_AUFLIA".to_string()
     }
 
     fn abstract_model(&self, model: VMTModel) -> VMTModel {
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_no_theory_support() {
-        let no_theory = NoTheorySupport;
+        let no_theory = ConcreteArrayTheory;
 
         // Test function declarations
         let functions = no_theory.get_uninterpreted_functions();

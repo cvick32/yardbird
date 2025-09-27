@@ -5,7 +5,7 @@ use crate::{
     driver,
     ic3ia::{self, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
-    theory_support::{NoTheorySupport, TheorySupport},
+    theory_support::{ConcreteArrayTheory, TheorySupport},
     z3_ext::ModelExt,
     ProofLoopResult,
 };
@@ -13,16 +13,16 @@ use crate::{
 use super::{ArrayRefinementState, ProofAction, ProofStrategy};
 
 #[derive(Default)]
-pub struct ConcreteZ3 {
+pub struct ConcreteArrayZ3 {
     run_ic3ia: bool,
 }
-impl ConcreteZ3 {
+impl ConcreteArrayZ3 {
     pub(crate) fn new(run_ic3ia: bool) -> Self {
         Self { run_ic3ia }
     }
 }
 
-impl ProofStrategy<'_, ArrayRefinementState> for ConcreteZ3 {
+impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
     fn n_refines(&mut self) -> u32 {
         1
     }
@@ -90,6 +90,6 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteZ3 {
     }
 
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
-        Box::new(NoTheorySupport)
+        Box::new(ConcreteArrayTheory)
     }
 }
