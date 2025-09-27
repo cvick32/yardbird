@@ -4,7 +4,7 @@ use std::{fs::File, io::Write};
 use yardbird::{
     logger, model_from_options,
     strategies::{Interpolating, Repl},
-    Driver, Language, YardbirdOptions,
+    Driver, Theory, YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -15,8 +15,8 @@ fn main() -> anyhow::Result<()> {
     let cfg = z3::Config::new();
     //cfg.set_proof_generation(true);
     let context = z3::Context::new(&cfg);
-    match options.language {
-        Language::Array => {
+    match options.theory {
+        Theory::Array => {
             let mut driver = Driver::new(&context, vmt_model);
             if options.repl {
                 driver.add_extension(Repl);
@@ -27,10 +27,10 @@ fn main() -> anyhow::Result<()> {
             let res = driver.check_strategy(options.depth, options.build_array_strategy())?;
             print_results(res, &options)?;
         }
-        Language::BvList => {
+        Theory::BvList => {
             todo!("Implement BVList!")
         }
-        Language::List => {
+        Theory::List => {
             let mut driver = Driver::new(&context, vmt_model);
             if options.repl {
                 driver.add_extension(Repl);

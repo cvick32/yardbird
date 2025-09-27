@@ -68,9 +68,9 @@ pub struct YardbirdOptions {
     #[arg(short, long, value_enum, default_value_t = CostFunction::SymbolCost)]
     pub cost_function: CostFunction,
 
-    // Choose Language Theory
-    #[arg(short, long, value_enum, default_value_t = Language::Array)]
-    pub language: Language,
+    // Choose Theory
+    #[arg(short, long, value_enum, default_value_t = Theory::Array)]
+    pub theory: Theory,
 }
 
 impl Default for YardbirdOptions {
@@ -84,7 +84,7 @@ impl Default for YardbirdOptions {
             repl: false,
             run_ic3ia: false,
             cost_function: CostFunction::SymbolCost,
-            language: Language::Array,
+            theory: Theory::Array,
         }
     }
 }
@@ -155,19 +155,18 @@ impl YardbirdOptions {
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
     let mut vmt_model = VMTModel::from_path(&options.filename).unwrap();
 
-    // Apply language-specific model configuration
-    match options.language {
-        Language::Array => {
+    match options.theory {
+        Theory::Array => {
             vmt_model = vmt_model
                 .abstract_array_theory()
                 .abstract_constants_over(options.depth);
         }
-        Language::BvList => {
+        Theory::BvList => {
             // For bit-vector lists, we don't abstract array theory
             // but might need other abstractions
             vmt_model = vmt_model.abstract_constants_over(options.depth);
         }
-        Language::List => {
+        Theory::List => {
             // For lists, we don't abstract array theory, just constants
             vmt_model = vmt_model.abstract_constants_over(options.depth);
         }
@@ -202,7 +201,7 @@ pub enum CostFunction {
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
-pub enum Language {
+pub enum Theory {
     Array,
     BvList,
     List,

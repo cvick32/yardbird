@@ -1,0 +1,123 @@
+;; VMT file demonstrating list equivalence using two different construction phases
+;; Converted from array_equiv_3.vmt - builds two lists using different strategies then verifies equivalence
+;; Phase 0: Build list a by appending elements (first 3 are constant c, rest copy from positions i-3)
+;; Phase 1: Build list b by appending constant c to existing list a
+;; Property: At any position Z, both lists should have the same element
+
+(declare-sort ListInt 0)
+
+;; List a (built in phase 0)
+(declare-fun a () ListInt)
+(declare-fun a_next () ListInt)
+(define-fun .a () ListInt (! a :next a_next))
+
+;; List b (built in phase 1)
+(declare-fun b () ListInt)
+(declare-fun b_next () ListInt)
+(define-fun .b () ListInt (! b :next b_next))
+
+;; Current position index
+(declare-fun i () Int)
+(declare-fun i_next () Int)
+(define-fun .i () Int (! i :next i_next))
+
+;; Length bound
+(declare-fun n () Int)
+(declare-fun n_next () Int)
+(define-fun .n () Int (! n :next n_next))
+
+;; Constant value
+(declare-fun c () Int)
+(declare-fun c_next () Int)
+(define-fun .c () Int (! c :next c_next))
+
+;; Program counter (phase indicator)
+(declare-fun pc () Int)
+(declare-fun pc_next () Int)
+(define-fun .pc () Int (! pc :next pc_next))
+
+;; Index for property checking
+(declare-fun Z () Int)
+(declare-fun Z_next () Int)
+(define-fun .Z () Int (! Z :next Z_next))
+
+;; List operations
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun head (ListInt) Int)
+(declare-fun tail (ListInt) ListInt)
+(declare-fun length (ListInt) Int)
+(declare-fun is-nil (ListInt) Bool)
+(declare-fun nth (ListInt Int) Int)
+(declare-fun append (ListInt Int) ListInt)
+
+;; Initial conditions
+(define-fun init-conditions () Bool (!
+ (and
+  ;; Start with empty lists
+  (= a nil)
+  (= b nil)
+  ;; Start at position 0
+  (= i 0)
+  ;; Constant value must be positive
+  (> c 1)
+  ;; Start in phase 0
+  (= pc 0)
+) :init true))
+
+;; Transition conditions
+(define-fun trans-conditions () Bool (!
+ (and
+  ;; Phase 0: Build list a
+  ;; For first 3 elements, append constant c
+  (=> (and (< i 3) (< i n) (= pc 0))
+      (= (append a c) a_next))
+  
+  ;; For remaining elements, append value from position (i-3)
+  (=> (and (not (< i 3)) (< i n) (= pc 0))
+      (= (append a (nth a (- i 3))) a_next))
+  
+  ;; Phase 0: Keep a unchanged when done or not in phase 0
+  (=> (and (not (< i n)) (= pc 0)) (= a a_next))
+  (=> (and (< i n) (= pc 1)) (= a a_next))
+  (=> (and (= pc 1) (not (< i n))) (= a a_next))
+  
+  ;; Phase 0: Keep b unchanged
+  (=> (and (< i n) (= pc 0)) (= b b_next))
+  (=> (and (not (< i n)) (= pc 0)) (= b b_next))
+  
+  ;; Phase 1: Build list b by appending constant c to current list a
+  (=> (and (< i n) (= pc 1))
+      (= (append a c) b_next))
+  (=> (and (= pc 1) (not (< i n))) (= b b_next))
+  
+  ;; Increment position counter when processing
+  (=> (and (< i n) (= pc 0)) (= (+ i 1) i_next))
+  (=> (and (< i n) (= pc 1)) (= (+ i 1) i_next))
+  
+  ;; Reset position counter when transitioning between phases
+  (=> (and (not (< i n)) (= pc 0)) (= 0 i_next))
+  (=> (and (= pc 1) (not (< i n))) (= i i_next))
+  
+  ;; Keep n and c constant
+  (= n n_next)
+  (= c c_next)
+  
+  ;; Phase transitions
+  (=> (and (< i n) (= pc 0)) (= 0 pc_next))           ; Stay in phase 0 while processing
+  (=> (and (not (< i n)) (= pc 0)) (= 1 pc_next))     ; Move to phase 1 when done
+  (=> (and (< i n) (= pc 1)) (= 1 pc_next))           ; Stay in phase 1 while processing
+  (=> (and (= pc 1) (not (< i n))) (= pc pc_next))    ; Stay in phase 1 when done
+  
+  ;; Keep Z constant
+  (= Z Z_next)
+  
+  ;; Valid program counter values
+  (or (= pc 0) (= pc 1))
+) :trans true))
+
+;; Property: When both phases are complete, lists should be equivalent at position Z
+(define-fun property () Bool (!
+ (=> (and (= pc 1) (not (< i n)) (>= Z 0) (< Z n))
+     (= (nth a Z) (nth b Z)))
+ :invar-property 0))
