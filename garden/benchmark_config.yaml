@@ -25,9 +25,15 @@ parameter_matrices:
     cost_functions: ["symbol-cost", "a-s-t-size"]
 
   # Deep analysis matrix
-  deep:
+  deep-abstract:
     depths: [50]
-    strategies: ["abstract", "concrete"]
+    strategies: ["abstract"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    timeout_seconds: 60
+
+  deep-concrete:
+    depths: [50]
+    strategies: ["concrete"]
     cost_functions: ["symbol-cost", "a-s-t-size"]
     timeout_seconds: 60
 
