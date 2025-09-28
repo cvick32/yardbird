@@ -25,7 +25,7 @@ variable "aws_region" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "c5.xlarge"
+  default     = "c5.2xlarge"
 }
 
 variable "s3_bucket_name" {

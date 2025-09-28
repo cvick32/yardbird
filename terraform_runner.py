@@ -23,37 +23,6 @@ def run_terraform_command(cmd, cwd=None):
     return result.stdout
 
 
-def deploy_infrastructure(config_vars=None):
-    """Deploy infrastructure using Terraform"""
-
-    # Initialize terraform
-    run_terraform_command(["init"], cwd=TERRAFORM_DIR)
-
-    # Plan
-    plan_cmd = ["plan"]
-    if config_vars:
-        for key, value in config_vars.items():
-            plan_cmd.extend(["-var", f"{key}={value}"])
-
-    run_terraform_command(plan_cmd, cwd=TERRAFORM_DIR)
-
-    # Apply
-    apply_cmd = ["apply", "-auto-approve"]
-    if config_vars:
-        for key, value in config_vars.items():
-            apply_cmd.extend(["-var", f"{key}={value}"])
-
-    run_terraform_command(apply_cmd, cwd=TERRAFORM_DIR)
-
-    # Get outputs
-    outputs_json = run_terraform_command(["output", "-json"], cwd=TERRAFORM_DIR)
-    if outputs_json:
-        outputs = json.loads(outputs_json)
-        return {k: v["value"] for k, v in outputs.items()}
-
-    return {}
-
-
 def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
     """Launch instance using deployed infrastructure"""
 
@@ -63,7 +32,7 @@ def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
 
     ec2 = boto3.client("ec2", region_name="us-east-2")  # Use us-east-2 for key pairs
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_benchmark_name = f"{matrix_name}-{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     # Read user data template and substitute variables
 
@@ -75,7 +44,7 @@ def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
     # Substitute template variables
     user_data = user_data_template.replace("${config_content}", config_content)
     user_data = user_data.replace("${matrix_name}", matrix_name)
-    user_data = user_data.replace("${timestamp}", timestamp)
+    user_data = user_data.replace("${unique_benchmark_name}", unique_benchmark_name)
     user_data = user_data.replace(
         "${s3_bucket_name}", terraform_outputs["s3_bucket_name"]
     )
@@ -90,8 +59,11 @@ def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
             {
                 "ResourceType": "instance",
                 "Tags": [
-                    {"Key": "BenchmarkRun", "Value": f"{matrix_name}_{timestamp}"},
-                    {"Key": "Timestamp", "Value": timestamp},
+                    {
+                        "Key": "BenchmarkRun",
+                        "Value": f"{matrix_name}_{unique_benchmark_name}",
+                    },
+                    {"Key": "Timestamp", "Value": unique_benchmark_name},
                 ],
             }
         ],
@@ -100,18 +72,18 @@ def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
     instance_id = response["Instances"][0]["InstanceId"]
     print(f"Launched benchmark instance: {instance_id}")
     print(
-        f"Results will be at: s3://{terraform_outputs['s3_bucket_name']}/benchmarks/{timestamp}/"
+        f"Results will be at: s3://{terraform_outputs['s3_bucket_name']}/benchmarks/{unique_benchmark_name}/"
     )
 
-    return instance_id, timestamp
+    return instance_id, unique_benchmark_name
 
 
-def wait_for_completion(s3_bucket, timestamp, instance_id):
+def wait_for_completion(s3_bucket, unique_benchmark_name, instance_id):
     """Wait for benchmark completion by monitoring S3 completion marker and instance state"""
     s3 = boto3.client("s3", region_name="us-east-2")
     ec2 = boto3.client("ec2", region_name="us-east-2")
 
-    completion_key = f"benchmarks/{timestamp}/user-data.log"
+    completion_key = f"benchmarks/{unique_benchmark_name}/user-data.log"
     max_wait_time_seconds = 3600 * 10  # 10 hour max wait
     check_interval = 180  # Check every 180 seconds
     elapsed_time = 0
@@ -216,13 +188,6 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # Deploy command
-    deploy_parser = subparsers.add_parser("deploy", help="Deploy infrastructure")
-    deploy_parser.add_argument("--s3-bucket", help="S3 bucket name")
-    deploy_parser.add_argument(
-        "--instance-type", default="c5.xlarge", help="EC2 instance type"
-    )
-
     # Run command
     run_parser = subparsers.add_parser("run", help="Run benchmarks")
     run_parser.add_argument("config", help="Benchmark configuration file")
@@ -235,18 +200,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "deploy":
-        config_vars = {}
-        if args.s3_bucket:
-            config_vars["s3_bucket_name"] = args.s3_bucket
-        if args.instance_type:
-            config_vars["instance_type"] = args.instance_type
-
-        outputs = deploy_infrastructure(config_vars)
-        print("Infrastructure deployed successfully!")
-        print("Outputs:", json.dumps(outputs, indent=2))
-
-    elif args.command == "run":
+    if args.command == "run":
         # Get terraform outputs
         outputs_json = run_terraform_command(["output", "-json"], cwd=TERRAFORM_DIR)
         if not outputs_json:
@@ -256,13 +210,13 @@ def main():
         outputs = json.loads(outputs_json)
         terraform_outputs = {k: v["value"] for k, v in outputs.items()}
 
-        instance_id, timestamp = launch_benchmark_instance(
+        instance_id, unique_benchmark_name = launch_benchmark_instance(
             args.config, args.matrix, terraform_outputs
         )
 
         if args.wait:
             wait_for_completion(
-                terraform_outputs["s3_bucket_name"], timestamp, instance_id
+                terraform_outputs["s3_bucket_name"], unique_benchmark_name, instance_id
             )
 
             if args.download:
@@ -273,11 +227,10 @@ def main():
                         "aws",
                         "s3",
                         "sync",
-                        f"s3://{terraform_outputs['s3_bucket_name']}/benchmarks/{timestamp}",
+                        f"s3://{terraform_outputs['s3_bucket_name']}/benchmarks/{unique_benchmark_name}",
                         str(download_dir),
                     ]
                 )
-        cleanup_benchmark_instances()
 
     elif args.command == "destroy":
         destroy_infrastructure()

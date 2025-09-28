@@ -7,12 +7,12 @@ log_status() {
     local status="$1"
     local message="$2"
     echo "[$status] $(date): $message"
-    echo "[$status] $(date): $message" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${timestamp}/status.log --region us-east-2 || true
+    echo "[$status] $(date): $message" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/status.log --region us-east-2 || true
 }
 
 # Function to upload logs to S3
 upload_logs() {
-    aws s3 cp /var/log/user-data.log s3://${s3_bucket_name}/benchmarks/${timestamp}/user-data.log --region us-east-2 || true
+    aws s3 cp /var/log/user-data.log s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/user-data.log --region us-east-2 || true
 }
 
 # Trap to upload logs on exit
@@ -32,7 +32,7 @@ fi
 log_status "INFO" "Setting up ubuntu user environment"
 chown -R ubuntu:ubuntu /home/ubuntu
 
-# Install Rust and uv as ubuntu user
+# Install Rust as ubuntu user
 sudo -u ubuntu bash << 'EOF'
 set -e
 
@@ -49,13 +49,6 @@ cd /home/ubuntu
 log_status "INFO" "Installing Rust as ubuntu user"
 if ! curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; then
     log_status "ERROR" "Failed to install Rust"
-    exit 1
-fi
-
-# Install uv as ubuntu user
-log_status "INFO" "Installing uv for Python dependency management"
-if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
-    log_status "ERROR" "Failed to install uv"
     exit 1
 fi
 
@@ -96,50 +89,28 @@ if [ ! -f "garden/run_config.yaml" ]; then
 fi
 
 log_status "INFO" "Running benchmarks with garden"
-if ! ./target/release/garden --config garden/run_config.yaml --matrix ${matrix_name} --output benchmark_results_${timestamp}.json; then
+if ! ./target/release/garden --config garden/run_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
     log_status "ERROR" "Benchmark execution failed"
     exit 1
 fi
 
 # Verify benchmark results file exists
-if [ ! -f "benchmark_results_${timestamp}.json" ]; then
+if [ ! -f "benchmark_results_${unique_benchmark_name}.json" ]; then
     log_status "ERROR" "Benchmark results file not found"
     exit 1
 fi
 log_status "INFO" "Benchmarks completed successfully"
 
-# Generate graphics
-log_status "INFO" "Generating graphics"
-cd paper-graphics
-if ! uv run main.py ../benchmark_results_${timestamp}.json 10 30; then
-    log_status "ERROR" "Failed to generate main graphics"
-    cd ..
-    # Continue with upload even if graphics fail
-else
-    if ! uv run tikz_generator.py ../benchmark_results_${timestamp}.json --all; then
-        log_status "ERROR" "Failed to generate tikz graphics"
-    else
-        log_status "INFO" "Graphics generated successfully"
-    fi
-    cd ..
-fi
-
 # Upload results
 log_status "INFO" "Uploading results to S3"
-if ! aws s3 cp benchmark_results_${timestamp}.json s3://${s3_bucket_name}/benchmarks/${timestamp}/results.json --region us-east-2; then
+if ! aws s3 cp benchmark_results_${unique_benchmark_name}.json s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/results.json --region us-east-2; then
     log_status "ERROR" "Failed to upload benchmark results"
     exit 1
 fi
 
-if ! aws s3 sync paper-graphics/ s3://${s3_bucket_name}/benchmarks/${timestamp}/graphics/ --exclude "*.py" --exclude "*.toml" --exclude "*.md" --exclude "*.lock" --region us-east-2; then
-    log_status "ERROR" "Failed to upload graphics"
-else
-    log_status "INFO" "Graphics uploaded successfully"
-fi
-
 # Mark completion
 log_status "INFO" "Marking completion"
-echo "Benchmark completed at $(date)" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${timestamp}/completion.txt --region us-east-2
+echo "Benchmark completed at $(date)" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/completion.txt --region us-east-2
 
 log_status "INFO" "Setup and benchmark complete"
 EOF
