@@ -4,92 +4,557 @@ import json
 import argparse
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Dict, Optional
+
+
+# Constants for axiom instantiation counting (from main.py)
+CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
+
+
+@dataclass
+class BenchmarkResult:
+    """Represents a single benchmark result with strategy outcomes"""
+
+    example_name: str
+    strategy: str
+    cost_function: Optional[str]
+    runtime_ms: float
+    depth: int
+    result_type: str  # "Success", "Timeout", "Error", "Panic", "NoProgress"
+    success: bool
+    found_proof: bool
+    counterexample: bool
+    used_instances: List[str]
+    solver_stats: Dict
 
 
 @dataclass
 class TikzPoint:
+    """Point for TikZ plotting"""
+
     x: float
     y: float
     label: str
     color: str = "blue"
 
 
-def parse_benchmark_json(json_file: Path) -> Tuple[List[TikzPoint], dict]:
-    """Parse benchmark JSON and extract points for plotting"""
-    with open(json_file) as f:
-        data = json.load(f)
+class BenchmarkParser:
+    """Parser for benchmark JSON results"""
 
-    points = []
-    metadata = data.get("metadata", {})
+    def __init__(self, json_paths: List[Path]):
+        self.all_results = []
+        self.metadata = {}
 
-    # Group benchmarks by base example name to compare strategies
-    benchmark_groups = {}
-    for benchmark in data.get("benchmarks", []):
-        example = benchmark["example"]
-        # Extract base example name (remove config prefix)
-        base_name = example.split("_", 1)[-1] if "_" in example else example
+        for json_path in json_paths:
+            with open(json_path) as f:
+                data = json.load(f)
 
-        if base_name not in benchmark_groups:
-            benchmark_groups[base_name] = {}
+            # Store metadata from first file
+            if not self.metadata:
+                self.metadata = data.get("metadata", {})
 
-        if benchmark["result"]:
-            result = benchmark["result"][0]
-            strategy = result["strategy"]
-            benchmark_groups[base_name][strategy] = {
-                "runtime": result["run_time"] / 1000.0,  # Convert to seconds
-                "depth": result["depth"],
-                "result_type": list(result["result"].keys())[0]
-                if result["result"]
-                else "unknown",
-            }
+            # Parse all benchmarks from this file
+            for benchmark in data.get("benchmarks", []):
+                example_full = benchmark["example"]
+                example_name = self._extract_clean_example_name(example_full)
 
-    # Create points for runtime comparison
-    for base_name, strategies in benchmark_groups.items():
-        if "abstract" in strategies and "concrete" in strategies:
-            abs_time = strategies["abstract"]["runtime"]
-            con_time = strategies["concrete"]["runtime"]
+                for result_entry in benchmark.get("result", []):
+                    result = self._parse_single_result(example_name, result_entry)
+                    if result:
+                        self.all_results.append(result)
 
-            # Determine color based on which is faster
-            color = "red" if abs_time < con_time else "blue"
+    def get_metadata(self) -> Dict:
+        """Get benchmark metadata"""
+        return self.metadata
 
-            points.append(
-                TikzPoint(
-                    x=con_time,
-                    y=abs_time,
-                    label=base_name.replace("examples/", "").replace(".vmt", ""),
-                    color=color,
-                )
+    def parse_benchmark_results(self) -> List[BenchmarkResult]:
+        """Parse all benchmark results into structured data"""
+        return self.all_results
+
+    def _extract_clean_example_name(self, full_name: str) -> str:
+        """Extract clean example name from full config-prefixed name"""
+        # Pattern: config_prefix_examples/path/file.vmt
+        # We want: examples/path/file.vmt
+        if "_examples/" in full_name:
+            return "examples/" + full_name.split("_examples/", 1)[1]
+        return full_name
+
+    def _parse_single_result(
+        self, example_name: str, result_entry: Dict
+    ) -> Optional[BenchmarkResult]:
+        """Parse a single strategy result"""
+        strategy = result_entry.get("strategy", "unknown")
+        cost_function = result_entry.get("cost_function")
+        runtime_ms = result_entry.get("run_time", 0)
+        depth = result_entry.get("depth", 0)
+
+        result_data = result_entry.get("result", {})
+
+        # Determine result type and extract details
+        result_type = list(result_data.keys())[0] if result_data else "Unknown"
+
+        if result_type == "Success":
+            success_data = result_data["Success"]
+            return BenchmarkResult(
+                example_name=example_name,
+                strategy=strategy,
+                cost_function=cost_function,
+                runtime_ms=runtime_ms,
+                depth=depth,
+                result_type=result_type,
+                success=True,
+                found_proof=success_data.get("found_proof", False),
+                counterexample=success_data.get("counterexample", False),
+                used_instances=success_data.get("used_instances", []),
+                solver_stats=success_data.get("solver_statistics", {}).get("stats", {}),
+            )
+        elif result_type == "Timeout":
+            timeout_ms = result_data["Timeout"]
+            return BenchmarkResult(
+                example_name=example_name,
+                strategy=strategy,
+                cost_function=cost_function,
+                runtime_ms=timeout_ms,
+                depth=depth,
+                result_type=result_type,
+                success=False,
+                found_proof=False,
+                counterexample=False,
+                used_instances=[],
+                solver_stats={},
+            )
+        else:
+            # Error, Panic, NoProgress
+            return BenchmarkResult(
+                example_name=example_name,
+                strategy=strategy,
+                cost_function=cost_function,
+                runtime_ms=runtime_ms,
+                depth=depth,
+                result_type=result_type,
+                success=False,
+                found_proof=False,
+                counterexample=False,
+                used_instances=[],
+                solver_stats={},
             )
 
-    return points, metadata
+    def get_runtime_comparison_points(
+        self, strategy1: str = "concrete", strategy2: str = "abstract"
+    ) -> List[TikzPoint]:
+        """Generate points for runtime comparison between two strategies"""
+        results = self.parse_benchmark_results()
+
+        # Group by example name
+        grouped = {}
+        for result in results:
+            if result.example_name not in grouped:
+                grouped[result.example_name] = {}
+            grouped[result.example_name][result.strategy] = result
+
+        points = []
+        for example_name, strategies in grouped.items():
+            if strategy1 in strategies and strategy2 in strategies:
+                result1 = strategies[strategy1]
+                result2 = strategies[strategy2]
+
+                # Only include successful results for fair comparison
+                if result1.success and result2.success:
+                    # Convert to seconds
+                    time1 = result1.runtime_ms / 1000.0
+                    time2 = result2.runtime_ms / 1000.0
+
+                    # Determine color based on which is faster
+                    color = "red" if time2 < time1 else "blue"
+
+                    # Clean up label
+                    label = example_name.replace("examples/", "").replace(".vmt", "")
+
+                    points.append(TikzPoint(x=time1, y=time2, label=label, color=color))
+
+        return points
+
+    def get_all_comparison_data(
+        self, strategy1: str = "concrete", strategy2: str = "abstract"
+    ) -> List[tuple]:
+        """Get all benchmark comparison data including unsuccessful results"""
+        results = self.parse_benchmark_results()
+
+        # Group by example name
+        grouped = {}
+        for result in results:
+            if result.example_name not in grouped:
+                grouped[result.example_name] = {}
+            grouped[result.example_name][result.strategy] = result
+
+        comparison_data = []
+        for example_name, strategies in grouped.items():
+            if strategy1 in strategies and strategy2 in strategies:
+                result1 = strategies[strategy1]
+                result2 = strategies[strategy2]
+
+                # Clean up label
+                label = example_name.replace("examples/", "").replace(".vmt", "")
+
+                comparison_data.append((label, result1, result2))
+
+        return comparison_data
 
 
-def generate_tikz_scatter(
-    points: List[TikzPoint], title: str = "Runtime Comparison"
-) -> str:
-    """Generate TikZ code for scatter plot"""
+def compute_axiom_instantiations(result: BenchmarkResult, bmc_depth: int) -> int:
+    """Compute axiom instantiations for a benchmark result"""
+    if not result.success:
+        return 10000000  # Large penalty for unsuccessful results
+
+    if result.strategy == "abstract":
+        # Abstract: used_instances * BMC_DEPTH
+        return len(result.used_instances) * bmc_depth
+
+    elif result.strategy == "concrete":
+        # Concrete: sum of concrete Z3 array axiom stats
+        concrete_z3_count = 0
+        for stat in CONCRETE_ARRAY_Z3_STATS:
+            try:
+                concrete_z3_count += int(result.solver_stats.get(stat, 0))
+            except (ValueError, TypeError):
+                pass
+
+        return concrete_z3_count
+
+    else:
+        return 10000000  # Unknown strategy
+
+
+def get_instantiation_comparison_points(
+    parser_obj,
+    strategy1: str = "concrete",
+    strategy2: str = "abstract",
+    bmc_depth: int = 50,
+) -> List[TikzPoint]:
+    """Generate points for axiom instantiation comparison between two strategies"""
+    results = parser_obj.parse_benchmark_results()
+
+    # Group by example name
+    grouped = {}
+    for result in results:
+        if result.example_name not in grouped:
+            grouped[result.example_name] = {}
+        grouped[result.example_name][result.strategy] = result
+
+    points = []
+    for example_name, strategies in grouped.items():
+        if strategy1 in strategies and strategy2 in strategies:
+            result1 = strategies[strategy1]
+            result2 = strategies[strategy2]
+
+            # Only include successful results for fair comparison
+            if result1.success and result2.success:
+                inst1 = compute_axiom_instantiations(result1, bmc_depth)
+                inst2 = compute_axiom_instantiations(result2, bmc_depth)
+
+                # Determine color based on which has fewer instantiations
+                color = "red" if inst2 < inst1 else "blue"
+
+                # Clean up label
+                label = example_name.replace("examples/", "").replace(".vmt", "")
+
+                points.append(TikzPoint(x=inst1, y=inst2, label=label, color=color))
+
+    return points
+
+
+def print_instantiation_statistics(
+    points: List[TikzPoint], strategy1: str = "concrete", strategy2: str = "abstract"
+):
+    """Print detailed instantiation comparison statistics between two strategies"""
     if not points:
-        return "% No data points to plot"
+        print("No comparable benchmark pairs found for instantiation analysis.")
+        return
 
-    # Find data bounds
-    x_vals = [p.x for p in points]
-    y_vals = [p.y for p in points]
+    # Count wins
+    strategy2_fewer = sum(
+        1 for p in points if p.color == "red"
+    )  # y < x means strategy2 fewer
+    strategy1_fewer = sum(
+        1 for p in points if p.color == "blue"
+    )  # x < y means strategy1 fewer
+    ties = len(points) - strategy2_fewer - strategy1_fewer
 
-    x_min, x_max = min(x_vals), max(x_vals)
-    y_min, y_max = min(y_vals), max(y_vals)
+    # Instantiation statistics
+    strategy1_insts = [p.x for p in points]
+    strategy2_insts = [p.y for p in points]
 
-    # Use log scale bounds
-    x_min_log = max(0.001, x_min)
-    y_min_log = max(0.001, y_min)
-    x_max_log = max(x_max, x_min_log * 10)
-    y_max_log = max(y_max, y_min_log * 10)
+    def compute_stats(values):
+        import statistics
 
-    tikz_code = f"""\\begin{{tikzpicture}}
+        return {
+            "mean": statistics.mean(values),
+            "median": statistics.median(values),
+            "min": min(values),
+            "max": max(values),
+            "stdev": statistics.stdev(values) if len(values) > 1 else 0,
+        }
+
+    stats1 = compute_stats(strategy1_insts)
+    stats2 = compute_stats(strategy2_insts)
+
+    # Reduction analysis
+    reductions = []
+    for p in points:
+        if p.y > 0:
+            reduction = (
+                p.x / p.y
+            )  # how much fewer instantiations strategy2 has compared to strategy1
+            reductions.append(reduction)
+        elif p.x > 0:
+            # If strategy2 has 0 but strategy1 has some, that's infinite reduction
+            reductions.append(float("inf"))
+
+    # Filter out infinite values for stats computation
+    finite_reductions = [r for r in reductions if r != float("inf")]
+    reduction_stats = compute_stats(finite_reductions) if finite_reductions else None
+    infinite_reductions = len(reductions) - len(finite_reductions)
+
+    print("\n=== Axiom Instantiation Comparison Statistics ===")
+    print(f"Total comparable benchmarks: {len(points)}")
+    print(
+        f"{strategy2.title()} fewer instantiations: {strategy2_fewer} ({strategy2_fewer / len(points) * 100:.1f}%)"
+    )
+    print(
+        f"{strategy1.title()} fewer instantiations: {strategy1_fewer} ({strategy1_fewer / len(points) * 100:.1f}%)"
+    )
+    if ties > 0:
+        print(f"Ties: {ties} ({ties / len(points) * 100:.1f}%)")
+
+    print("\n=== Instantiation Statistics ===")
+    print(f"{strategy1.title()} Strategy:")
+    print(f"  Mean: {stats1['mean']:.0f}")
+    print(f"  Median: {stats1['median']:.0f}")
+    print(f"  Min: {stats1['min']:.0f}")
+    print(f"  Max: {stats1['max']:.0f}")
+    print(f"  StdDev: {stats1['stdev']:.0f}")
+
+    print(f"\n{strategy2.title()} Strategy:")
+    print(f"  Mean: {stats2['mean']:.0f}")
+    print(f"  Median: {stats2['median']:.0f}")
+    print(f"  Min: {stats2['min']:.0f}")
+    print(f"  Max: {stats2['max']:.0f}")
+    print(f"  StdDev: {stats2['stdev']:.0f}")
+
+    if reduction_stats or infinite_reductions > 0:
+        print(
+            f"\n=== Instantiation Reduction Analysis ({strategy1} count / {strategy2} count) ==="
+        )
+        if infinite_reductions > 0:
+            print(f"  Infinite reductions (strategy2 has 0): {infinite_reductions}")
+        if reduction_stats:
+            print(f"  Mean reduction: {reduction_stats['mean']:.2f}x")
+            print(f"  Median reduction: {reduction_stats['median']:.2f}x")
+            print(f"  Best reduction: {reduction_stats['max']:.2f}x")
+            print(f"  Worst reduction: {reduction_stats['min']:.2f}x")
+
+        # Additional analysis
+        significant_reductions = (
+            sum(1 for r in finite_reductions if r > 2.0) + infinite_reductions
+        )
+        significant_increases = sum(1 for r in finite_reductions if r < 0.5)
+
+        print("\n=== Instantiation Categories ===")
+        print(
+            f"Significant reductions (>2x fewer): {significant_reductions} ({significant_reductions / len(reductions) * 100:.1f}%)"
+        )
+        print(
+            f"Significant increases (<0.5x fewer): {significant_increases} ({significant_increases / len(reductions) * 100:.1f}%)"
+        )
+        print(
+            f"Similar instantiation count (0.5x-2x): {len(reductions) - significant_reductions - significant_increases} ({(len(reductions) - significant_reductions - significant_increases) / len(reductions) * 100:.1f}%)"
+        )
+
+
+def print_comparison_statistics(
+    points: List[TikzPoint], strategy1: str = "concrete", strategy2: str = "abstract"
+):
+    """Print detailed comparison statistics between two strategies"""
+    if not points:
+        print("No comparable benchmark pairs found.")
+        return
+
+    # Count wins
+    strategy2_faster = sum(
+        1 for p in points if p.color == "red"
+    )  # y < x means strategy2 faster
+    strategy1_faster = sum(
+        1 for p in points if p.color == "blue"
+    )  # x < y means strategy1 faster
+    ties = len(points) - strategy2_faster - strategy1_faster
+
+    # Runtime statistics
+    strategy1_times = [p.x for p in points]
+    strategy2_times = [p.y for p in points]
+
+    def compute_stats(times):
+        import statistics
+
+        return {
+            "mean": statistics.mean(times),
+            "median": statistics.median(times),
+            "min": min(times),
+            "max": max(times),
+            "stdev": statistics.stdev(times) if len(times) > 1 else 0,
+        }
+
+    stats1 = compute_stats(strategy1_times)
+    stats2 = compute_stats(strategy2_times)
+
+    # Speedup analysis
+    speedups = []
+    for p in points:
+        if p.y > 0:
+            speedup = p.x / p.y  # how much faster strategy2 is compared to strategy1
+            speedups.append(speedup)
+
+    speedup_stats = compute_stats(speedups) if speedups else None
+
+    print("\n=== Benchmark Comparison Statistics ===")
+    print(f"Total comparable benchmarks: {len(points)}")
+    print(
+        f"{strategy2.title()} wins: {strategy2_faster} ({strategy2_faster / len(points) * 100:.1f}%)"
+    )
+    print(
+        f"{strategy1.title()} wins: {strategy1_faster} ({strategy1_faster / len(points) * 100:.1f}%)"
+    )
+    if ties > 0:
+        print(f"Ties: {ties} ({ties / len(points) * 100:.1f}%)")
+
+    print("\n=== Runtime Statistics (seconds) ===")
+    print(f"{strategy1.title()} Strategy:")
+    print(f"  Mean: {stats1['mean']:.3f}s")
+    print(f"  Median: {stats1['median']:.3f}s")
+    print(f"  Min: {stats1['min']:.3f}s")
+    print(f"  Max: {stats1['max']:.3f}s")
+    print(f"  StdDev: {stats1['stdev']:.3f}s")
+
+    print(f"\n{strategy2.title()} Strategy:")
+    print(f"  Mean: {stats2['mean']:.3f}s")
+    print(f"  Median: {stats2['median']:.3f}s")
+    print(f"  Min: {stats2['min']:.3f}s")
+    print(f"  Max: {stats2['max']:.3f}s")
+    print(f"  StdDev: {stats2['stdev']:.3f}s")
+
+    if speedup_stats:
+        print(f"\n=== Speedup Analysis ({strategy1} time / {strategy2} time) ===")
+        print(f"  Mean speedup: {speedup_stats['mean']:.2f}x")
+        print(f"  Median speedup: {speedup_stats['median']:.2f}x")
+        print(f"  Best speedup: {speedup_stats['max']:.2f}x")
+        print(f"  Worst speedup: {speedup_stats['min']:.2f}x")
+
+        # Additional analysis
+        significant_speedups = sum(1 for s in speedups if s > 2.0)
+        significant_slowdowns = sum(1 for s in speedups if s < 0.5)
+
+        print("\n=== Performance Categories ===")
+        print(
+            f"Significant speedups (>2x): {significant_speedups} ({significant_speedups / len(speedups) * 100:.1f}%)"
+        )
+        print(
+            f"Significant slowdowns (<0.5x): {significant_slowdowns} ({significant_slowdowns / len(speedups) * 100:.1f}%)"
+        )
+        print(
+            f"Similar performance (0.5x-2x): {len(speedups) - significant_speedups - significant_slowdowns} ({(len(speedups) - significant_speedups - significant_slowdowns) / len(speedups) * 100:.1f}%)"
+        )
+
+
+def print_comparison_table(
+    comparison_data: List[tuple],
+    strategy1: str = "concrete",
+    strategy2: str = "abstract",
+):
+    """Print a human-readable table of all benchmark comparisons"""
+    if not comparison_data:
+        print("No comparison data found.")
+        return
+
+    print("\n=== Detailed Benchmark Comparison Table ===")
+    print(f"{'Benchmark':<40} {strategy1.title():<20} {strategy2.title():<20}")
+    print(f"{'=' * 40} {'=' * 20} {'=' * 20}")
+
+    for label, result1, result2 in sorted(comparison_data):
+        # Format result info
+        def format_result(result):
+            if result.success:
+                runtime_s = result.runtime_ms / 1000.0
+                return f"(Success, {runtime_s:.3f}s)"
+            else:
+                runtime_s = result.runtime_ms / 1000.0
+                return f"({result.result_type}, {runtime_s:.3f}s)"
+
+        result1_str = format_result(result1)
+        result2_str = format_result(result2)
+
+        # Truncate label if too long
+        display_label = label if len(label) <= 39 else label[:36] + "..."
+
+        print(f"{display_label:<40} {result1_str:<20} {result2_str:<20}")
+
+    # Summary statistics
+    total = len(comparison_data)
+    both_success = sum(1 for _, r1, r2 in comparison_data if r1.success and r2.success)
+    strategy1_only = sum(
+        1 for _, r1, r2 in comparison_data if r1.success and not r2.success
+    )
+    strategy2_only = sum(
+        1 for _, r1, r2 in comparison_data if not r1.success and r2.success
+    )
+    both_fail = sum(
+        1 for _, r1, r2 in comparison_data if not r1.success and not r2.success
+    )
+
+    print("\n=== Success Rate Summary ===")
+    print(
+        f"Both strategies succeed: {both_success}/{total} ({both_success / total * 100:.1f}%)"
+    )
+    print(
+        f"Only {strategy1} succeeds: {strategy1_only}/{total} ({strategy1_only / total * 100:.1f}%)"
+    )
+    print(
+        f"Only {strategy2} succeeds: {strategy2_only}/{total} ({strategy2_only / total * 100:.1f}%)"
+    )
+    print(f"Both strategies fail: {both_fail}/{total} ({both_fail / total * 100:.1f}%)")
+
+
+class TikzGenerator:
+    """Generate TikZ code from benchmark data"""
+
+    @staticmethod
+    def generate_scatter_plot(
+        points: List[TikzPoint],
+        title: str = "Runtime Comparison",
+        xlabel: str = "Concrete Strategy Runtime (s)",
+        ylabel: str = "Abstract Strategy Runtime (s)",
+    ) -> str:
+        """Generate TikZ scatter plot code"""
+        if not points:
+            return "% No data points to plot"
+
+        # Find data bounds
+        x_vals = [p.x for p in points]
+        y_vals = [p.y for p in points]
+
+        x_min, x_max = min(x_vals), max(x_vals)
+        y_min, y_max = min(y_vals), max(y_vals)
+
+        # Use log scale bounds with safety margins
+        x_min_log = max(0.001, x_min * 0.5)
+        y_min_log = max(0.001, y_min * 0.5)
+        x_max_log = max(x_max * 2, x_min_log * 10)
+        y_max_log = max(y_max * 2, y_min_log * 10)
+
+        tikz_code = f"""% Required packages: \\usepackage{{pgfplots}} \\pgfplotsset{{compat=1.18}}
+\\begin{{tikzpicture}}
 \\begin{{loglogaxis}}[
     title={{{title}}},
-    xlabel={{Z3 Runtime (s)}},
-    ylabel={{Yardbird Runtime (s)}},
+    xlabel={{{xlabel}}},
+    ylabel={{{ylabel}}},
     xmin={x_min_log:.3f}, xmax={x_max_log:.3f},
     ymin={y_min_log:.3f}, ymax={y_max_log:.3f},
     grid=major,
@@ -100,24 +565,24 @@ def generate_tikz_scatter(
 
 % Data points"""
 
-    # Add data points
-    red_points = [p for p in points if p.color == "red"]
-    blue_points = [p for p in points if p.color == "blue"]
+        # Group points by color
+        red_points = [p for p in points if p.color == "red"]
+        blue_points = [p for p in points if p.color == "blue"]
 
-    if red_points:
-        tikz_code += "\n\\addplot[only marks, mark=*, color=red] coordinates {\n"
-        for point in red_points:
-            tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
-        tikz_code += "};\n\\addlegendentry{Yardbird Faster}"
+        if red_points:
+            tikz_code += "\n\\addplot[only marks, mark=*, color=red] coordinates {\n"
+            for point in red_points:
+                tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
+            tikz_code += "};\n\\addlegendentry{Abstract Faster}"
 
-    if blue_points:
-        tikz_code += "\n\\addplot[only marks, mark=*, color=blue] coordinates {\n"
-        for point in blue_points:
-            tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
-        tikz_code += "};\n\\addlegendentry{Z3 Faster}"
+        if blue_points:
+            tikz_code += "\n\\addplot[only marks, mark=*, color=blue] coordinates {\n"
+            for point in blue_points:
+                tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
+            tikz_code += "};\n\\addlegendentry{Concrete Faster}"
 
-    # Add diagonal line (x=y)
-    tikz_code += f"""
+        # Add diagonal line (x=y)
+        tikz_code += f"""
 % Diagonal line (x=y)
 \\addplot[dashed, color=black] coordinates {{
     ({x_min_log:.6f}, {y_min_log:.6f})
@@ -128,84 +593,162 @@ def generate_tikz_scatter(
 \\end{{loglogaxis}}
 \\end{{tikzpicture}}"""
 
-    return tikz_code
+        return tikz_code
 
+    @staticmethod
+    def generate_table(
+        points: List[TikzPoint], title: str = "Benchmark Results"
+    ) -> str:
+        """Generate LaTeX table from benchmark data"""
+        if not points:
+            return "% No data to table"
 
-def generate_tikz_table(points: List[TikzPoint], metadata: dict) -> str:
-    """Generate TikZ/LaTeX table from benchmark data"""
-    if not points:
-        return "% No data to table"
-
-    table_code = """\\begin{longtable}{lrrr}
-\\caption{Benchmark Results} \\\\
+        table_code = f"""% Required packages: \\usepackage{{longtable}} \\usepackage{{booktabs}}
+\\begin{{longtable}}{{lrrr}}
+\\caption{{{title}}} \\\\
 \\toprule
-Example & Z3 Runtime (s) & Yardbird Runtime (s) & Speedup \\\\
+Example & Concrete Runtime (s) & Abstract Runtime (s) & Speedup \\\\
 \\midrule
 \\endfirsthead
-\\multicolumn{4}{c}{\\tablename\\ \\thetable\\ -- continued from previous page} \\\\
+\\multicolumn{{4}}{{c}}{{\\tablename\\ \\thetable\\ -- continued from previous page}} \\\\
 \\toprule
-Example & Z3 Runtime (s) & Yardbird Runtime (s) & Speedup \\\\
+Example & Concrete Runtime (s) & Abstract Runtime (s) & Speedup \\\\
 \\midrule
 \\endhead
 \\midrule
-\\multicolumn{4}{r}{Continued on next page} \\\\
+\\multicolumn{{4}}{{r}}{{Continued on next page}} \\\\
 \\endfoot
 \\bottomrule
 \\endlastfoot
 """
 
-    # Sort points by example name
-    sorted_points = sorted(points, key=lambda p: p.label)
+        # Sort points by example name
+        sorted_points = sorted(points, key=lambda p: p.label)
 
-    for point in sorted_points:
-        speedup = point.x / point.y if point.y > 0 else float("inf")
-        speedup_str = f"{speedup:.2f}x" if speedup != float("inf") else "∞"
+        for point in sorted_points:
+            speedup = point.x / point.y if point.y > 0 else float("inf")
+            speedup_str = f"{speedup:.2f}x" if speedup != float("inf") else "∞"
 
-        table_code += (
-            f"{point.label} & {point.x:.3f} & {point.y:.3f} & {speedup_str} \\\\\n"
-        )
+            table_code += (
+                f"{point.label} & {point.x:.3f} & {point.y:.3f} & {speedup_str} \\\\\n"
+            )
 
-    table_code += "\\end{longtable}"
+        table_code += "\\end{longtable}"
 
-    return table_code
+        return table_code
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Generate TikZ code from benchmark JSON"
     )
-    parser.add_argument("json_file", help="Benchmark results JSON file")
+    parser.add_argument("json_files", nargs="+", help="Benchmark results JSON file(s)")
     parser.add_argument(
         "--output-dir", help="Output directory for TikZ files", default="."
     )
     parser.add_argument("--scatter", action="store_true", help="Generate scatter plot")
-    parser.add_argument("--table", action="store_true", help="Generate data table")
+    parser.add_argument(
+        "--tikz-table", action="store_true", help="Generate LaTeX table"
+    )
+    parser.add_argument(
+        "--table", action="store_true", help="Print human-readable comparison table"
+    )
     parser.add_argument("--all", action="store_true", help="Generate all graphics")
+    parser.add_argument(
+        "--strategy1", default="concrete", help="First strategy for comparison"
+    )
+    parser.add_argument(
+        "--strategy2", default="abstract", help="Second strategy for comparison"
+    )
+    parser.add_argument(
+        "--instantiations",
+        action="store_true",
+        help="Compute axiom instantiation statistics",
+    )
+    parser.add_argument(
+        "--bmc-depth",
+        type=int,
+        default=50,
+        help="BMC depth for instantiation calculation",
+    )
 
     args = parser.parse_args()
 
-    if not args.scatter and not args.table and not args.all:
+    if not args.scatter and not args.tikz_table and not args.table and not args.all:
         args.all = True
 
-    json_file = Path(args.json_file)
+    json_files = [Path(f) for f in args.json_files]
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
 
-    points, metadata = parse_benchmark_json(json_file)
+    # Parse benchmark data
+    parser_obj = BenchmarkParser(json_files)
+    metadata = parser_obj.get_metadata()
 
+    print(f"Parsed benchmark data from {metadata.get('timestamp', 'unknown time')}")
+    print(f"Config: {metadata.get('config_name', 'unknown')}")
+    print(f"Total benchmarks: {metadata.get('total_benchmarks', 'unknown')}")
+
+    # Show available strategies
+    results = parser_obj.parse_benchmark_results()
+    strategies = set(r.strategy for r in results)
+    print(f"Available strategies: {strategies}")
+    print(f"Total parsed results: {len(results)}")
+
+    # Get all comparison data and successful-only points
+    all_data = parser_obj.get_all_comparison_data(args.strategy1, args.strategy2)
+    points = parser_obj.get_runtime_comparison_points(args.strategy1, args.strategy2)
+
+    print(f"Found {len(all_data)} total benchmark pairs")
+    print(
+        f"Found {len(points)} successful benchmark pairs for {args.strategy1} vs {args.strategy2}"
+    )
+
+    # Print human-readable table if requested
+    if args.table:
+        print_comparison_table(all_data, args.strategy1, args.strategy2)
+
+    # Print detailed statistics (only for successful comparisons)
+    if points:
+        print_comparison_statistics(points, args.strategy1, args.strategy2)
+    else:
+        print("No successful benchmark pairs found for statistical analysis.")
+
+    # Compute instantiation analysis if requested
+    if args.instantiations:
+        inst_points = get_instantiation_comparison_points(
+            parser_obj, args.strategy1, args.strategy2, args.bmc_depth
+        )
+        if inst_points:
+            print_instantiation_statistics(inst_points, args.strategy1, args.strategy2)
+        else:
+            print("No successful benchmark pairs found for instantiation analysis.")
+
+    # Generate outputs
     if args.scatter or args.all:
-        tikz_scatter = generate_tikz_scatter(points, "Runtime Comparison")
+        title = (
+            f"Runtime Comparison ({args.strategy2.title()} vs {args.strategy1.title()})"
+        )
+        xlabel = f"{args.strategy1.title()} Strategy Runtime (s)"
+        ylabel = f"{args.strategy2.title()} Strategy Runtime (s)"
+
+        tikz_scatter = TikzGenerator.generate_scatter_plot(
+            points, title, xlabel, ylabel
+        )
         scatter_file = output_dir / "runtime_scatter.tikz"
         with open(scatter_file, "w") as f:
             f.write(tikz_scatter)
         print(f"Generated scatter plot: {scatter_file}")
 
-    if args.table or args.all:
-        tikz_table = generate_tikz_table(points, metadata)
+    if args.tikz_table or args.all:
+        table_title = (
+            f"Runtime Comparison Results ({metadata.get('config_name', 'Benchmark')})"
+        )
+        tikz_table = TikzGenerator.generate_table(points, table_title)
         table_file = output_dir / "results_table.tikz"
         with open(table_file, "w") as f:
             f.write(tikz_table)
-        print(f"Generated table: {table_file}")
+        print(f"Generated LaTeX table: {table_file}")
 
 
 if __name__ == "__main__":
