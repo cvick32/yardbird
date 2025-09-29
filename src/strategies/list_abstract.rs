@@ -15,7 +15,7 @@ use crate::{
     smt_problem::SMTProblem,
     theories::list::list_axioms::{expr_to_term, translate_term, ListExpr, ListLanguage},
     theory_support::{ListTheorySupport, TheorySupport},
-    Error, ProofLoopResult,
+    ProofLoopResult,
 };
 
 use super::{ProofAction, ProofStrategy};
@@ -137,7 +137,7 @@ where
             .flat_map(|inst| inst.to_string().parse())
             .collect();
         let variables = smt.variables.clone();
-        let no_quant_progress = terms
+        let _ = terms
             .into_iter()
             .flat_map(|term| {
                 UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
@@ -145,12 +145,6 @@ where
             .map(|inst| !smt.add_instantiation(inst))
             .fold(true, |a, b| a && b);
 
-        if no_quant_progress {
-            return Err(Error::NoProgress {
-                depth: state.depth,
-                instantiations: smt.get_instantiations().clone(),
-            });
-        }
         Ok(())
     }
 

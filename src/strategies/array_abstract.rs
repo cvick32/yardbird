@@ -9,7 +9,7 @@ use smt2parser::{
 use crate::{
     analysis::SaturationInequalities,
     cost_functions::YardbirdCostFunction,
-    driver::{self, Error},
+    driver::{self},
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
@@ -136,7 +136,7 @@ where
             .flat_map(|inst| inst.to_string().parse())
             .collect();
         let variables = smt.variables.clone();
-        let no_quant_progress = terms
+        let _ = terms
             .into_iter()
             .flat_map(|term| {
                 UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
@@ -144,12 +144,6 @@ where
             .map(|inst| !smt.add_instantiation(inst))
             .fold(true, |a, b| a && b);
 
-        if no_quant_progress {
-            return Err(Error::NoProgress {
-                depth: state.depth,
-                instantiations: smt.get_instantiations().clone(),
-            });
-        }
         Ok(())
     }
 
