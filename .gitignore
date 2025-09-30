@@ -16,3 +16,4 @@ terraform.tfstate.backup
 node_modules/
 ec2
 *.tikz
+benchmark_results
