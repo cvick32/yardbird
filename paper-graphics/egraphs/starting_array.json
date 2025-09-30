@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    { "id": "select", "label": "\\Select", "x": 0, "y": 1.4 },
+    { "id": "a", "label": "a", "x": -1.5, "y": 0 },
+    { "id": "constArr", "label": "\\ConstArr", "x": 0, "y": 0 },
+    { "id": "zero", "label": "0", "x": 1.5, "y": 0 }
+  ],
+  "edges": [
+    ["select", "a"],
+    ["select", "zero"],
+    ["constArr", "zero"]
+  ],
+  "eclasses": [["a", "constArr"], ["zero"], ["select"]],
+  "caption": "Possible e-graph for $(\\ConstArr(0) == a) \\land \\Select(0)$.",
+  "scale": 1.0
+}
