@@ -29,13 +29,13 @@ parameter_matrices:
     depths: [50]
     strategies: ["abstract"]
     cost_functions: ["symbol-cost", "a-s-t-size"]
-    timeout_seconds: 60
+    timeout_seconds: 120
 
   deep-concrete:
     depths: [50]
     strategies: ["concrete"]
-    cost_functions: ["symbol-cost", "a-s-t-size"]
-    timeout_seconds: 60
+    cost_functions: ["symbol-cost"]
+    timeout_seconds: 120
 
 # Individual configurations (non-matrix)
 individual_configs:
