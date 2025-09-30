@@ -10,8 +10,8 @@ from typing import List, Dict, Optional
 # Constants for axiom instantiation counting (from main.py)
 CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
 
-ABSTRACT_BETTER_COLOR = "red"
-Z3_BETTER_COLOR = "blue"
+ABSTRACT_BETTER_COLOR = "orange"  # Orange for abstract better
+Z3_BETTER_COLOR = "cyan!50!blue"  # Teal/cyan for Z3 better
 EQUAL_COLOR = "black"
 
 
@@ -187,8 +187,12 @@ class BenchmarkParser:
                 time2 = result2.get_runtime()
 
                 # Determine color based on which is faster
-                color = ABSTRACT_BETTER_COLOR if time2 < time1 else Z3_BETTER_COLOR
-
+                if time2 < time1:
+                    color = ABSTRACT_BETTER_COLOR
+                elif time2 > time1:
+                    color = Z3_BETTER_COLOR
+                else:
+                    color = EQUAL_COLOR
                 # Clean up label
                 label = example_name.replace("examples/", "").replace(".vmt", "")
 
@@ -303,7 +307,12 @@ def get_instantiation_comparison_points(
             inst2 = compute_axiom_instantiations(result2, bmc_depth)
 
             # Determine color based on which has fewer instantiations
-            color = ABSTRACT_BETTER_COLOR if inst2 < inst1 else Z3_BETTER_COLOR
+            if inst2 < inst1:
+                color = ABSTRACT_BETTER_COLOR
+            elif inst2 > inst1:
+                color = Z3_BETTER_COLOR
+            else:
+                color = EQUAL_COLOR
 
             # Clean up label
             label = example_name.replace("examples/", "").replace(".vmt", "")
@@ -600,8 +609,7 @@ class TikzGenerator:
         x_max_log = max(x_max * 2, x_min_log * 10)
         y_max_log = max(y_max * 2, y_min_log * 10)
 
-        tikz_code = f"""% Required packages: \\usepackage{{pgfplots}} \\pgfplotsset{{compat=1.18}}
-\\begin{{figure}}[htbp]
+        tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
 \\begin{{loglogaxis}}[
@@ -806,12 +814,16 @@ def main():
 
         # Generate outputs with cost function suffix
         if args.scatter or args.all:
-            title = f"Runtime Comparison ({cost_func_name} vs {'concrete'.title()})"
+            title = f"Runtime Comparison ({cost_func_name} vs Z3)"
             xlabel = "Z3 Strategy Runtime (s)"
-            ylabel = f"{cost_func} Strategy Runtime (s)"
+            ylabel = f"{cost_func_name} Runtime (s)"
 
             tikz_scatter = TikzGenerator.generate_scatter_plot(
-                points, title, xlabel, ylabel, caption=""
+                points,
+                title,
+                xlabel,
+                ylabel,
+                caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
             )
             scatter_file = (
                 output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
@@ -830,12 +842,16 @@ def main():
                 args.bmc_depth,
             )
             if inst_points:
-                title = f"Instantiation Comparison ({cost_func_name} vs {'concrete'.title()})"
+                title = f"Instantiation Comparison ({cost_func_name} vs Z3)"
                 ylabel = f"{cost_func_name} Instantiations"
                 xlabel = "Z3 Instantiations"
 
                 tikz_scatter = TikzGenerator.generate_scatter_plot(
-                    inst_points, title, xlabel, ylabel
+                    inst_points,
+                    title,
+                    xlabel,
+                    ylabel,
+                    caption=f"Comparison between the number of array axiom instantiations needed by {cost_func_name} and the built-in Z3 array theory.",
                 )
                 scatter_file = (
                     output_dir
