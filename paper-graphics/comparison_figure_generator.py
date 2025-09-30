@@ -10,6 +10,10 @@ from typing import List, Dict, Optional
 # Constants for axiom instantiation counting (from main.py)
 CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
 
+ABSTRACT_BETTER_COLOR = "red"
+Z3_BETTER_COLOR = "blue"
+EQUAL_COLOR = "black"
+
 
 @dataclass
 class BenchmarkResult:
@@ -27,6 +31,12 @@ class BenchmarkResult:
     used_instances: List[str]
     solver_stats: Dict
 
+    def get_runtime(self):
+        if self.result_type == "Success":
+            return self.runtime_ms
+        else:
+            return 60000
+
 
 @dataclass
 class TikzPoint:
@@ -35,7 +45,7 @@ class TikzPoint:
     x: float
     y: float
     label: str
-    color: str = "blue"
+    color: str = Z3_BETTER_COLOR
 
 
 class BenchmarkParser:
@@ -140,58 +150,86 @@ class BenchmarkParser:
             )
 
     def get_runtime_comparison_points(
-        self, strategy1: str = "concrete", strategy2: str = "abstract"
+        self,
+        strategy1: str = "concrete",
+        strategy2: str = "abstract",
+        cost_function: str = None,
     ) -> List[TikzPoint]:
         """Generate points for runtime comparison between two strategies"""
         results = self.parse_benchmark_results()
 
-        # Group by example name
-        grouped = {}
+        # Group by example name and strategy key (strategy + cost_function for abstract)
+        grouped: dict[str, BenchmarkResult] = {}
         for result in results:
             if result.example_name not in grouped:
                 grouped[result.example_name] = {}
-            grouped[result.example_name][result.strategy] = result
+
+            # Create strategy key that includes cost function for abstract strategy
+            if result.strategy == "abstract" and result.cost_function:
+                strategy_key = f"{result.strategy}_{result.cost_function}"
+            else:
+                strategy_key = result.strategy
+
+            grouped[result.example_name][strategy_key] = result
+
+        if strategy2 == "abstract" and cost_function:
+            strategy2_key = f"abstract_{cost_function}"
+        else:
+            strategy2_key = strategy2
 
         points = []
         for example_name, strategies in grouped.items():
-            if strategy1 in strategies and strategy2 in strategies:
+            if strategy1 in strategies and strategy2_key in strategies:
                 result1 = strategies[strategy1]
-                result2 = strategies[strategy2]
+                result2 = strategies[strategy2_key]
 
-                # Only include successful results for fair comparison
-                if result1.success and result2.success:
-                    # Convert to seconds
-                    time1 = result1.runtime_ms / 1000.0
-                    time2 = result2.runtime_ms / 1000.0
+                time1 = result1.get_runtime()
+                time2 = result2.get_runtime()
 
-                    # Determine color based on which is faster
-                    color = "red" if time2 < time1 else "blue"
+                # Determine color based on which is faster
+                color = ABSTRACT_BETTER_COLOR if time2 < time1 else Z3_BETTER_COLOR
 
-                    # Clean up label
-                    label = example_name.replace("examples/", "").replace(".vmt", "")
+                # Clean up label
+                label = example_name.replace("examples/", "").replace(".vmt", "")
 
-                    points.append(TikzPoint(x=time1, y=time2, label=label, color=color))
+                points.append(TikzPoint(x=time1, y=time2, label=label, color=color))
 
         return points
 
     def get_all_comparison_data(
-        self, strategy1: str = "concrete", strategy2: str = "abstract"
+        self,
+        strategy1: str = "concrete",
+        strategy2: str = "abstract",
+        cost_function: str = None,
     ) -> List[tuple]:
         """Get all benchmark comparison data including unsuccessful results"""
         results = self.parse_benchmark_results()
 
-        # Group by example name
+        # Group by example name and strategy key (strategy + cost_function for abstract)
         grouped = {}
         for result in results:
             if result.example_name not in grouped:
                 grouped[result.example_name] = {}
-            grouped[result.example_name][result.strategy] = result
+
+            # Create strategy key that includes cost function for abstract strategy
+            if result.strategy == "abstract" and result.cost_function:
+                strategy_key = f"{result.strategy}_{result.cost_function}"
+            else:
+                strategy_key = result.strategy
+
+            grouped[result.example_name][strategy_key] = result
+
+        # Determine strategy2 key based on cost function filter
+        if strategy2 == "abstract" and cost_function:
+            strategy2_key = f"abstract_{cost_function}"
+        else:
+            strategy2_key = strategy2
 
         comparison_data = []
         for example_name, strategies in grouped.items():
-            if strategy1 in strategies and strategy2 in strategies:
+            if strategy1 in strategies and strategy2_key in strategies:
                 result1 = strategies[strategy1]
-                result2 = strategies[strategy2]
+                result2 = strategies[strategy2_key]
 
                 # Clean up label
                 label = example_name.replace("examples/", "").replace(".vmt", "")
@@ -229,36 +267,48 @@ def get_instantiation_comparison_points(
     parser_obj,
     strategy1: str = "concrete",
     strategy2: str = "abstract",
+    cost_function: str = None,
     bmc_depth: int = 50,
 ) -> List[TikzPoint]:
     """Generate points for axiom instantiation comparison between two strategies"""
     results = parser_obj.parse_benchmark_results()
 
-    # Group by example name
-    grouped = {}
+    # Group by example name and strategy key (strategy + cost_function for abstract)
+    grouped: dict[str, BenchmarkResult] = {}
     for result in results:
         if result.example_name not in grouped:
             grouped[result.example_name] = {}
-        grouped[result.example_name][result.strategy] = result
+
+        # Create strategy key that includes cost function for abstract strategy
+        if result.strategy == "abstract" and result.cost_function:
+            strategy_key = f"{result.strategy}_{result.cost_function}"
+        else:
+            strategy_key = result.strategy
+
+        grouped[result.example_name][strategy_key] = result
+
+    # Determine strategy2 key based on cost function filter
+    if strategy2 == "abstract" and cost_function:
+        strategy2_key = f"abstract_{cost_function}"
+    else:
+        strategy2_key = strategy2
 
     points = []
     for example_name, strategies in grouped.items():
-        if strategy1 in strategies and strategy2 in strategies:
+        if strategy1 in strategies and strategy2_key in strategies:
             result1 = strategies[strategy1]
-            result2 = strategies[strategy2]
+            result2 = strategies[strategy2_key]
 
-            # Only include successful results for fair comparison
-            if result1.success and result2.success:
-                inst1 = compute_axiom_instantiations(result1, bmc_depth)
-                inst2 = compute_axiom_instantiations(result2, bmc_depth)
+            inst1 = compute_axiom_instantiations(result1, bmc_depth)
+            inst2 = compute_axiom_instantiations(result2, bmc_depth)
 
-                # Determine color based on which has fewer instantiations
-                color = "red" if inst2 < inst1 else "blue"
+            # Determine color based on which has fewer instantiations
+            color = ABSTRACT_BETTER_COLOR if inst2 < inst1 else Z3_BETTER_COLOR
 
-                # Clean up label
-                label = example_name.replace("examples/", "").replace(".vmt", "")
+            # Clean up label
+            label = example_name.replace("examples/", "").replace(".vmt", "")
 
-                points.append(TikzPoint(x=inst1, y=inst2, label=label, color=color))
+            points.append(TikzPoint(x=inst1, y=inst2, label=label, color=color))
 
     return points
 
@@ -273,10 +323,10 @@ def print_instantiation_statistics(
 
     # Count wins
     strategy2_fewer = sum(
-        1 for p in points if p.color == "red"
+        1 for p in points if p.color == ABSTRACT_BETTER_COLOR
     )  # y < x means strategy2 fewer
     strategy1_fewer = sum(
-        1 for p in points if p.color == "blue"
+        1 for p in points if p.color == Z3_BETTER_COLOR
     )  # x < y means strategy1 fewer
     ties = len(points) - strategy2_fewer - strategy1_fewer
 
@@ -381,10 +431,10 @@ def print_comparison_statistics(
 
     # Count wins
     strategy2_faster = sum(
-        1 for p in points if p.color == "red"
+        1 for p in points if p.color == ABSTRACT_BETTER_COLOR
     )  # y < x means strategy2 faster
     strategy1_faster = sum(
-        1 for p in points if p.color == "blue"
+        1 for p in points if p.color == Z3_BETTER_COLOR
     )  # x < y means strategy1 faster
     ties = len(points) - strategy2_faster - strategy1_faster
 
@@ -531,6 +581,7 @@ class TikzGenerator:
         title: str = "Runtime Comparison",
         xlabel: str = "Concrete Strategy Runtime (s)",
         ylabel: str = "Abstract Strategy Runtime (s)",
+        caption: str = None,
     ) -> str:
         """Generate TikZ scatter plot code"""
         if not points:
@@ -550,6 +601,8 @@ class TikzGenerator:
         y_max_log = max(y_max * 2, y_min_log * 10)
 
         tikz_code = f"""% Required packages: \\usepackage{{pgfplots}} \\pgfplotsset{{compat=1.18}}
+\\begin{{figure}}[htbp]
+\\centering
 \\begin{{tikzpicture}}
 \\begin{{loglogaxis}}[
     title={{{title}}},
@@ -558,28 +611,36 @@ class TikzGenerator:
     xmin={x_min_log:.3f}, xmax={x_max_log:.3f},
     ymin={y_min_log:.3f}, ymax={y_max_log:.3f},
     grid=major,
-    legend pos=outer north east,
-    width=10cm,
+    width=\\columnwidth,
     height=8cm
 ]
 
 % Data points"""
 
         # Group points by color
-        red_points = [p for p in points if p.color == "red"]
-        blue_points = [p for p in points if p.color == "blue"]
+        abs_points = [p for p in points if p.color == ABSTRACT_BETTER_COLOR]
+        z3_points = [p for p in points if p.color == Z3_BETTER_COLOR]
+        equal_points = [p for p in points if p.color == EQUAL_COLOR]
 
-        if red_points:
-            tikz_code += "\n\\addplot[only marks, mark=*, color=red] coordinates {\n"
-            for point in red_points:
+        if abs_points:
+            tikz_code += f"\n\\addplot[only marks, mark=*, color={ABSTRACT_BETTER_COLOR}] coordinates {{\n"
+            for point in abs_points:
                 tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
-            tikz_code += "};\n\\addlegendentry{Abstract Faster}"
+            tikz_code += "};\n"
 
-        if blue_points:
-            tikz_code += "\n\\addplot[only marks, mark=*, color=blue] coordinates {\n"
-            for point in blue_points:
+        if z3_points:
+            tikz_code += f"\n\\addplot[only marks, mark=*, color={Z3_BETTER_COLOR}] coordinates {{\n"
+            for point in z3_points:
                 tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
-            tikz_code += "};\n\\addlegendentry{Concrete Faster}"
+            tikz_code += "};\n"
+
+        if equal_points:
+            tikz_code += (
+                f"\n\\addplot[only marks, mark=*, color={EQUAL_COLOR}] coordinates {{\n"
+            )
+            for point in equal_points:
+                tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
+            tikz_code += "};\n"
 
         # Add diagonal line (x=y)
         tikz_code += f"""
@@ -588,10 +649,14 @@ class TikzGenerator:
     ({x_min_log:.6f}, {y_min_log:.6f})
     ({x_max_log:.6f}, {y_max_log:.6f})
 }};
-\\addlegendentry{{x = y}}
-
 \\end{{loglogaxis}}
 \\end{{tikzpicture}}"""
+
+        # Add caption if provided
+        if caption:
+            tikz_code += f"\n\\caption{{{caption}}}"
+
+        tikz_code += "\n\\end{figure}"
 
         return tikz_code
 
@@ -655,12 +720,6 @@ def main():
     )
     parser.add_argument("--all", action="store_true", help="Generate all graphics")
     parser.add_argument(
-        "--strategy1", default="concrete", help="First strategy for comparison"
-    )
-    parser.add_argument(
-        "--strategy2", default="abstract", help="Second strategy for comparison"
-    )
-    parser.add_argument(
         "--instantiations",
         action="store_true",
         help="Compute axiom instantiation statistics",
@@ -695,60 +754,110 @@ def main():
     print(f"Available strategies: {strategies}")
     print(f"Total parsed results: {len(results)}")
 
-    # Get all comparison data and successful-only points
-    all_data = parser_obj.get_all_comparison_data(args.strategy1, args.strategy2)
-    points = parser_obj.get_runtime_comparison_points(args.strategy1, args.strategy2)
-
-    print(f"Found {len(all_data)} total benchmark pairs")
-    print(
-        f"Found {len(points)} successful benchmark pairs for {args.strategy1} vs {args.strategy2}"
-    )
-
-    # Print human-readable table if requested
-    if args.table:
-        print_comparison_table(all_data, args.strategy1, args.strategy2)
-
-    # Print detailed statistics (only for successful comparisons)
-    if points:
-        print_comparison_statistics(points, args.strategy1, args.strategy2)
-    else:
-        print("No successful benchmark pairs found for statistical analysis.")
-
-    # Compute instantiation analysis if requested
-    if args.instantiations:
-        inst_points = get_instantiation_comparison_points(
-            parser_obj, args.strategy1, args.strategy2, args.bmc_depth
-        )
-        if inst_points:
-            print_instantiation_statistics(inst_points, args.strategy1, args.strategy2)
+    # run comparison for both
+    cost_functions = ["symbol-cost", "a-s-t-size"]
+    for cost_func in cost_functions:
+        if cost_func == "symbol-cost":
+            cost_func_name = "BMC Cost"
         else:
-            print("No successful benchmark pairs found for instantiation analysis.")
+            cost_func_name = "AST Size"
+        print(f"\n{'=' * 60}")
+        print(f"ANALYSIS FOR ABSTRACT STRATEGY WITH {cost_func.upper()}")
+        print(f"{'=' * 60}")
 
-    # Generate outputs
-    if args.scatter or args.all:
-        title = (
-            f"Runtime Comparison ({args.strategy2.title()} vs {args.strategy1.title()})"
+        # Get comparison data for this cost function
+        all_data = parser_obj.get_all_comparison_data("concrete", "abstract", cost_func)
+        points = parser_obj.get_runtime_comparison_points(
+            "concrete", "abstract", cost_func
         )
-        xlabel = f"{args.strategy1.title()} Strategy Runtime (s)"
-        ylabel = f"{args.strategy2.title()} Strategy Runtime (s)"
 
-        tikz_scatter = TikzGenerator.generate_scatter_plot(
-            points, title, xlabel, ylabel
+        print(f"Found {len(all_data)} total benchmark pairs")
+        print(
+            f"Found {len(points)} successful benchmark pairs for concrete vs abstract ({cost_func})"
         )
-        scatter_file = output_dir / "runtime_scatter.tikz"
-        with open(scatter_file, "w") as f:
-            f.write(tikz_scatter)
-        print(f"Generated scatter plot: {scatter_file}")
 
-    if args.tikz_table or args.all:
-        table_title = (
-            f"Runtime Comparison Results ({metadata.get('config_name', 'Benchmark')})"
-        )
-        tikz_table = TikzGenerator.generate_table(points, table_title)
-        table_file = output_dir / "results_table.tikz"
-        with open(table_file, "w") as f:
-            f.write(tikz_table)
-        print(f"Generated LaTeX table: {table_file}")
+        # Print human-readable table if requested
+        if args.table:
+            print_comparison_table(all_data, "concrete", f"{'abstract'} ({cost_func})")
+
+        # Print detailed statistics (only for successful comparisons)
+        if points:
+            print_comparison_statistics(
+                points, "concrete", f"{'abstract'} ({cost_func})"
+            )
+        else:
+            print("No successful benchmark pairs found for statistical analysis.")
+
+        # Compute instantiation analysis if requested
+        if args.instantiations:
+            inst_points = get_instantiation_comparison_points(
+                parser_obj,
+                "concrete",
+                "abstract",
+                cost_func,
+                args.bmc_depth,
+            )
+            if inst_points:
+                print_instantiation_statistics(
+                    inst_points, "concrete", f"{'abstract'} ({cost_func})"
+                )
+            else:
+                print("No successful benchmark pairs found for instantiation analysis.")
+
+        # Generate outputs with cost function suffix
+        if args.scatter or args.all:
+            title = f"Runtime Comparison ({cost_func_name} vs {'concrete'.title()})"
+            xlabel = "Z3 Strategy Runtime (s)"
+            ylabel = f"{cost_func} Strategy Runtime (s)"
+
+            tikz_scatter = TikzGenerator.generate_scatter_plot(
+                points, title, xlabel, ylabel, caption=""
+            )
+            scatter_file = (
+                output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
+            )
+            with open(scatter_file, "w") as f:
+                f.write(tikz_scatter)
+            print(f"Generated scatter plot: {scatter_file}")
+
+        # Generate instantiation scatter plot if requested
+        if args.instantiations and (args.scatter or args.all):
+            inst_points = get_instantiation_comparison_points(
+                parser_obj,
+                "concrete",
+                "abstract",
+                cost_func,
+                args.bmc_depth,
+            )
+            if inst_points:
+                title = f"Instantiation Comparison ({cost_func_name} vs {'concrete'.title()})"
+                ylabel = f"{cost_func_name} Instantiations"
+                xlabel = "Z3 Instantiations"
+
+                tikz_scatter = TikzGenerator.generate_scatter_plot(
+                    inst_points, title, xlabel, ylabel
+                )
+                scatter_file = (
+                    output_dir
+                    / f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
+                )
+                with open(scatter_file, "w") as f:
+                    f.write(tikz_scatter)
+                print(f"Generated instantiation scatter plot: {scatter_file}")
+            else:
+                print(
+                    "No successful benchmark pairs found for instantiation scatter plot."
+                )
+
+        if args.tikz_table or args.all:
+            table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
+            tikz_table = TikzGenerator.generate_table(points, table_title)
+            table_file = (
+                output_dir / f"results_table_{cost_func.replace('-', '_')}.tikz"
+            )
+            with open(table_file, "w") as f:
+                f.write(tikz_table)
+            print(f"Generated LaTeX table: {table_file}")
 
 
 if __name__ == "__main__":

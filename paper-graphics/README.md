@@ -5,7 +5,7 @@ Generate TikZ plots and statistics from Yardbird benchmark results.
 ## TikZ Generator
 
 ```bash
-python3 tikz_generator.py <json_files...> [options]
+python3 comparison_figure_generator.py <json_files...> [options]
 ```
 
 ### Arguments
@@ -39,16 +39,16 @@ python3 tikz_generator.py <json_files...> [options]
 
 ```bash
 # Basic usage with multiple benchmark files
-python3 tikz_generator.py results1.json results2.json
+python3 comparison_figure_generator.py results1.json results2.json
 
 # Runtime analysis only
-python3 tikz_generator.py results.json --scatter
+python3 comparison_figure_generator.py results.json --scatter
 
 # Detailed comparison with instantiation analysis
-python3 tikz_generator.py abstract.json concrete.json --table --instantiations
+python3 comparison_figure_generator.py abstract.json concrete.json --table --instantiations
 
 # Custom strategy comparison
-python3 tikz_generator.py results.json --strategy1 concrete --strategy2 interpolation
+python3 comparison_figure_generator.py results.json --strategy1 concrete --strategy2 interpolation
 ```
 
 ### Output Files
