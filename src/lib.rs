@@ -203,7 +203,7 @@ pub enum CostFunction {
     ASTSize,
 }
 
-/// Describes the languages available.
+/// Describes the theories available.
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
