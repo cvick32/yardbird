@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 
 # Constants for axiom instantiation counting (from main.py)
 CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
-
+BMC_DEPTH = 50
 ABSTRACT_BETTER_COLOR = "orange"  # Orange for abstract better
 Z3_BETTER_COLOR = "cyan!50!blue"  # Teal/cyan for Z3 better
 EQUAL_COLOR = "black"
@@ -710,44 +710,150 @@ Example & Concrete Runtime (s) & Abstract Runtime (s) & Speedup \\\\
 
         return table_code
 
+    @staticmethod
+    def generate_comparison_table(
+        all_comparison_data: List[tuple],
+        strategy_names: List[str],
+        title: str = "Strategy Comparison Summary",
+    ) -> str:
+        """Generate summary table comparing strategies across all benchmarks
+
+        Args:
+            all_comparison_data: List of tuples with (label, concrete_result, abstract_symbol_result, abstract_ast_result)
+            strategy_names: List of strategy display names
+            title: Table title
+        """
+        if not all_comparison_data:
+            return "% No data to table"
+
+        import statistics
+
+        # Compute statistics for each strategy
+        total_benchmarks = len(all_comparison_data)
+
+        # Initialize counters for each strategy (concrete, abstract-symbol-cost, abstract-a-s-t-size)
+        strategy_stats = []
+
+        for strategy_idx in range(
+            1, len(all_comparison_data[0])
+        ):  # Skip label at index 0
+            results = [item[strategy_idx] for item in all_comparison_data]
+
+            solved = sum(1 for r in results if r.success)
+            timeouts = sum(1 for r in results if r.result_type == "Timeout")
+
+            # Count benchmarks where only this strategy succeeded
+            only_success = 0
+            for item in all_comparison_data:
+                this_result = item[strategy_idx]
+                other_results = [
+                    item[i] for i in range(1, len(item)) if i != strategy_idx
+                ]
+                if this_result.success and not any(r.success for r in other_results):
+                    only_success += 1
+
+            # Average instantiations (only for successful runs)
+            successful_insts = []
+            for r in results:
+                if r.success:
+                    if r.strategy == "abstract":
+                        # For abstract, use number of used instances
+                        successful_insts.append(len(r.used_instances))
+                    elif r.strategy == "concrete":
+                        # For concrete, sum Z3 array axiom stats
+                        concrete_count = 0
+                        for stat in CONCRETE_ARRAY_Z3_STATS:
+                            try:
+                                concrete_count += int(r.solver_stats.get(stat, 0))
+                            except (ValueError, TypeError):
+                                pass
+                        successful_insts.append(concrete_count)
+
+            avg_inst = statistics.mean(successful_insts) if successful_insts else 0
+
+            strategy_stats.append(
+                {
+                    "solved": solved,
+                    "timeouts": timeouts,
+                    "only_success": only_success,
+                    "avg_inst": avg_inst,
+                }
+            )
+
+        # Generate LaTeX table
+        table_code = f"""% Required packages: \\usepackage{{booktabs}}
+\\begin{{table}}[htbp]
+\\centering
+\\caption{{{title}}}
+\\begin{{tabular}}{{lrrrr}}
+\\toprule
+Strategy & Solved & Timeouts & Unique Solves & Avg. Instantiations \\\\
+\\midrule
+"""
+
+        for i, stats in enumerate(strategy_stats):
+            strategy_name = strategy_names[i]
+            table_code += f"{strategy_name} & {stats['solved']}/{total_benchmarks} & {stats['timeouts']} & {stats['only_success']} & {stats['avg_inst']:.0f} \\\\\n"
+
+        table_code += """\\bottomrule
+\\end{tabular}
+\\end{table}
+"""
+
+        return table_code
+
+    @staticmethod
+    def generate_instantiation_stats_table(
+        concrete_points: List[TikzPoint],
+        abstract_symbol_points: List[TikzPoint],
+        abstract_ast_points: List[TikzPoint],
+        title: str = "Instantiation Statistics",
+    ) -> str:
+        """Generate separate table with detailed instantiation statistics"""
+        import statistics
+
+        table_code = f"""% Required packages: \\usepackage{{booktabs}}
+\\begin{{table}}[htbp]
+\\centering
+\\caption{{{title}}}
+\\begin{{tabular}}{{lrrrr}}
+\\toprule
+Strategy & Mean & Median & Min & Max \\\\
+\\midrule
+"""
+
+        # Process each strategy's instantiation data
+        strategies_data = [
+            ("Z3", [p.x for p in concrete_points]),
+            ("Abstract (symbol-cost)", [p.y for p in abstract_symbol_points]),
+            ("Abstract (AST size)", [p.y for p in abstract_ast_points]),
+        ]
+
+        for strategy_name, inst_vals in strategies_data:
+            if inst_vals:
+                mean_val = statistics.mean(inst_vals)
+                median_val = statistics.median(inst_vals)
+                min_val = min(inst_vals)
+                max_val = max(inst_vals)
+                table_code += f"{strategy_name} & {mean_val:.0f} & {median_val:.0f} & {min_val:.0f} & {max_val:.0f} \\\\\n"
+
+        table_code += """\\bottomrule
+\\end{tabular}
+\\end{table}
+"""
+
+        return table_code
+
 
 def main():
     parser = argparse.ArgumentParser(
         description="Generate TikZ code from benchmark JSON"
     )
     parser.add_argument("json_files", nargs="+", help="Benchmark results JSON file(s)")
-    parser.add_argument(
-        "--output-dir", help="Output directory for TikZ files", default="."
-    )
-    parser.add_argument("--scatter", action="store_true", help="Generate scatter plot")
-    parser.add_argument(
-        "--tikz-table", action="store_true", help="Generate LaTeX table"
-    )
-    parser.add_argument(
-        "--table", action="store_true", help="Print human-readable comparison table"
-    )
-    parser.add_argument("--all", action="store_true", help="Generate all graphics")
-    parser.add_argument(
-        "--instantiations",
-        action="store_true",
-        help="Compute axiom instantiation statistics",
-    )
-    parser.add_argument(
-        "--bmc-depth",
-        type=int,
-        default=50,
-        help="BMC depth for instantiation calculation",
-    )
 
     args = parser.parse_args()
 
-    if not args.scatter and not args.tikz_table and not args.table and not args.all:
-        args.all = True
-
     json_files = [Path(f) for f in args.json_files]
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(exist_ok=True)
-
     # Parse benchmark data
     parser_obj = BenchmarkParser(json_files)
     metadata = parser_obj.get_metadata()
@@ -762,8 +868,12 @@ def main():
     print(f"Available strategies: {strategies}")
     print(f"Total parsed results: {len(results)}")
 
-    # run comparison for both
+    # Collect data for all three strategies
     cost_functions = ["symbol-cost", "a-s-t-size"]
+
+    # Collect all comparison data for the summary table
+    all_benchmarks = {}  # benchmark_label -> {concrete: result, abstract_symbol: result, abstract_ast: result}
+
     for cost_func in cost_functions:
         if cost_func == "symbol-cost":
             cost_func_name = "BMC Cost"
@@ -779,14 +889,22 @@ def main():
             "concrete", "abstract", cost_func
         )
 
+        # Store data for combined table
+        for label, concrete_result, abstract_result in all_data:
+            if label not in all_benchmarks:
+                all_benchmarks[label] = {"concrete": concrete_result}
+            if cost_func == "symbol-cost":
+                all_benchmarks[label]["abstract_symbol"] = abstract_result
+            else:
+                all_benchmarks[label]["abstract_ast"] = abstract_result
+
         print(f"Found {len(all_data)} total benchmark pairs")
         print(
             f"Found {len(points)} successful benchmark pairs for concrete vs abstract ({cost_func})"
         )
 
-        # Print human-readable table if requested
-        if args.table:
-            print_comparison_table(all_data, "concrete", f"{'abstract'} ({cost_func})")
+        # Print human-readable table
+        print_comparison_table(all_data, "concrete", f"{'abstract'} ({cost_func})")
 
         # Print detailed statistics (only for successful comparisons)
         if points:
@@ -797,83 +915,118 @@ def main():
             print("No successful benchmark pairs found for statistical analysis.")
 
         # Compute instantiation analysis if requested
-        if args.instantiations:
-            inst_points = get_instantiation_comparison_points(
-                parser_obj,
-                "concrete",
-                "abstract",
-                cost_func,
-                args.bmc_depth,
+        inst_points = get_instantiation_comparison_points(
+            parser_obj,
+            "concrete",
+            "abstract",
+            cost_func,
+            BMC_DEPTH,
+        )
+        if inst_points:
+            print_instantiation_statistics(
+                inst_points, "concrete", f"{'abstract'} ({cost_func})"
             )
-            if inst_points:
-                print_instantiation_statistics(
-                    inst_points, "concrete", f"{'abstract'} ({cost_func})"
-                )
-            else:
-                print("No successful benchmark pairs found for instantiation analysis.")
+        else:
+            print("No successful benchmark pairs found for instantiation analysis.")
 
-        # Generate outputs with cost function suffix
-        if args.scatter or args.all:
-            title = f"Runtime Comparison ({cost_func_name} vs Z3)"
-            xlabel = "Z3 Strategy Runtime (s)"
-            ylabel = f"{cost_func_name} Runtime (s)"
+        runtime_title = f"Runtime Comparison ({cost_func_name} vs Z3)"
+        runtime_xlabel = "Z3 Strategy Runtime (s)"
+        runtime_ylabel = f"{cost_func_name} Runtime (s)"
+
+        tikz_scatter = TikzGenerator.generate_scatter_plot(
+            points,
+            runtime_title,
+            runtime_xlabel,
+            runtime_ylabel,
+            caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
+        )
+        scatter_file = f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
+        with open(scatter_file, "w") as f:
+            f.write(tikz_scatter)
+        print(f"Generated scatter plot: {scatter_file}")
+
+        # Generate instantiation scatter plot
+        inst_points = get_instantiation_comparison_points(
+            parser_obj,
+            "concrete",
+            "abstract",
+            cost_func,
+            BMC_DEPTH,
+        )
+        if inst_points:
+            inst_title = f"Instantiation Comparison ({cost_func_name} vs Z3)"
+            inst_ylabel = f"{cost_func_name} Instantiations"
+            inst_xlabel = "Z3 Instantiations"
 
             tikz_scatter = TikzGenerator.generate_scatter_plot(
-                points,
-                title,
-                xlabel,
-                ylabel,
-                caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
+                inst_points,
+                inst_title,
+                inst_xlabel,
+                inst_ylabel,
+                caption=f"Comparison between the number of array axiom instantiations needed by {cost_func_name} and the built-in Z3 array theory.",
             )
-            scatter_file = (
-                output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
-            )
+            scatter_file = f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
             with open(scatter_file, "w") as f:
                 f.write(tikz_scatter)
-            print(f"Generated scatter plot: {scatter_file}")
+            print(f"Generated instantiation scatter plot: {scatter_file}")
+        else:
+            print("No successful benchmark pairs found for instantiation scatter plot.")
 
-        # Generate instantiation scatter plot if requested
-        if args.instantiations and (args.scatter or args.all):
-            inst_points = get_instantiation_comparison_points(
-                parser_obj,
-                "concrete",
-                "abstract",
-                cost_func,
-                args.bmc_depth,
+        table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
+        tikz_table = TikzGenerator.generate_table(points, table_title)
+        table_file = f"results_table_{cost_func.replace('-', '_')}.tikz"
+        with open(table_file, "w") as f:
+            f.write(tikz_table)
+        print(f"Generated LaTeX table: {table_file}")
+
+    # Generate comprehensive comparison table with all three strategies
+    # Convert all_benchmarks dict to list of tuples format
+    comparison_data_list = []
+    for label, strategies in all_benchmarks.items():
+        if (
+            "concrete" in strategies
+            and "abstract_symbol" in strategies
+            and "abstract_ast" in strategies
+        ):
+            comparison_data_list.append(
+                (
+                    label,
+                    strategies["concrete"],
+                    strategies["abstract_symbol"],
+                    strategies["abstract_ast"],
+                )
             )
-            if inst_points:
-                title = f"Instantiation Comparison ({cost_func_name} vs Z3)"
-                ylabel = f"{cost_func_name} Instantiations"
-                xlabel = "Z3 Instantiations"
 
-                tikz_scatter = TikzGenerator.generate_scatter_plot(
-                    inst_points,
-                    title,
-                    xlabel,
-                    ylabel,
-                    caption=f"Comparison between the number of array axiom instantiations needed by {cost_func_name} and the built-in Z3 array theory.",
-                )
-                scatter_file = (
-                    output_dir
-                    / f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
-                )
-                with open(scatter_file, "w") as f:
-                    f.write(tikz_scatter)
-                print(f"Generated instantiation scatter plot: {scatter_file}")
-            else:
-                print(
-                    "No successful benchmark pairs found for instantiation scatter plot."
-                )
+    if comparison_data_list:
+        comparison_title = "Strategy Comparison Summary"
+        strategy_names = ["Z3", "Abstract (symbol-cost)", "Abstract (AST size)"]
+        comparison_table = TikzGenerator.generate_comparison_table(
+            comparison_data_list, strategy_names, comparison_title
+        )
+        comparison_file = "comparison_summary_table.tikz"
+        with open(comparison_file, "w") as f:
+            f.write(comparison_table)
+        print(f"Generated comprehensive comparison table: {comparison_file}")
 
-        if args.tikz_table or args.all:
-            table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
-            tikz_table = TikzGenerator.generate_table(points, table_title)
-            table_file = (
-                output_dir / f"results_table_{cost_func.replace('-', '_')}.tikz"
-            )
-            with open(table_file, "w") as f:
-                f.write(tikz_table)
-            print(f"Generated LaTeX table: {table_file}")
+    # Generate separate instantiation statistics table
+    symbol_inst_points = get_instantiation_comparison_points(
+        parser_obj, "concrete", "abstract", "symbol-cost", BMC_DEPTH
+    )
+    ast_inst_points = get_instantiation_comparison_points(
+        parser_obj, "concrete", "abstract", "a-s-t-size", BMC_DEPTH
+    )
+
+    if symbol_inst_points and ast_inst_points:
+        inst_stats_table = TikzGenerator.generate_instantiation_stats_table(
+            symbol_inst_points,  # Use as concrete reference
+            symbol_inst_points,
+            ast_inst_points,
+            "Instantiation Statistics Across Strategies",
+        )
+        inst_stats_file = "instantiation_stats_table.tikz"
+        with open(inst_stats_file, "w") as f:
+            f.write(inst_stats_table)
+        print(f"Generated instantiation statistics table: {inst_stats_file}")
 
 
 if __name__ == "__main__":
