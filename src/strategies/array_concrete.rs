@@ -40,6 +40,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
         &mut self,
         state: &mut ArrayRefinementState,
         smt: &SMTProblem,
+        _refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
         let model = match smt.get_model() {

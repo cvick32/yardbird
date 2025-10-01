@@ -128,12 +128,12 @@ where
 {
     type Ret = (Vec<ArrayExpr>, Vec<ArrayExpr>);
 
-    fn saturate(&mut self, cost_fn: CF) -> Self::Ret {
+    fn saturate(&mut self, cost_fn: CF, refinement_step: u32) -> Self::Ret {
         let egraph = std::mem::take(self);
         let scheduler = ArrayConflictScheduler::new(
             BackoffScheduler::default(),
             cost_fn.clone(),
-            ArrayTermExtractor::new(&egraph, cost_fn),
+            ArrayTermExtractor::new(&egraph, cost_fn, refinement_step),
         );
         let instantiations = scheduler.instantiations();
         let const_instantiations = scheduler.instantiations_w_constants();

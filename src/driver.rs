@@ -135,8 +135,8 @@ impl<'ctx, S> Driver<'ctx, S> {
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
-            for i in 0..n_refines {
-                info!("  refining loop: {}/{n_refines}", i + 1);
+            for refinement_step in 0..n_refines {
+                info!("  refining loop: {}/{n_refines}", refinement_step + 1);
                 smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
@@ -149,8 +149,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                         strat.unknown(&mut state, &smt_problem)?
                     }
                     z3::SatResult::Sat => {
-                        self.extensions.sat(&mut state, &smt_problem)?;
-                        strat.sat(&mut state, &smt_problem)?
+                        self.extensions
+                            .sat(&mut state, &smt_problem, refinement_step)?;
+                        strat.sat(&mut state, &smt_problem, refinement_step)?
                     }
                 };
 
@@ -205,9 +206,9 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
         Ok(())
     }
 
-    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem, refinement_step: u32) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
-            ext.sat(state, smt)?;
+            ext.sat(state, smt, refinement_step)?;
         }
 
         Ok(())

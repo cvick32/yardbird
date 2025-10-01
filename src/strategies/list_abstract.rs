@@ -112,6 +112,7 @@ where
         &mut self,
         state: &mut ListRefinementState,
         smt: &SMTProblem,
+        refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         let model = match smt.get_model() {
             Some(model) => model,
@@ -120,7 +121,7 @@ where
         info!("{:#?}", model);
         state.update_with_subterms(model, smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
-        let (insts, const_insts) = state.egraph.saturate(cost_fn);
+        let (insts, const_insts) = state.egraph.saturate(cost_fn, refinement_step);
         state.instantiations.extend_from_slice(&insts);
         state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use egg::Language;
+use itertools::Itertools;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
@@ -14,6 +15,7 @@ where
 {
     term_map: HashMap<egg::Id, Vec<(ArrayExpr, CF::Cost)>>,
     cost_function: CF,
+    refinement_step: u32,
     pub reads_and_writes: ReadsAndWrites,
 }
 
@@ -21,7 +23,11 @@ impl<CF> ArrayTermExtractor<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    pub fn new<N>(egraph: &egg::EGraph<ArrayLanguage, N>, mut cost_function: CF) -> Self
+    pub fn new<N>(
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        mut cost_function: CF,
+        refinement_step: u32,
+    ) -> Self
     where
         N: egg::Analysis<ArrayLanguage>,
     {
@@ -44,6 +50,7 @@ where
         Self {
             term_map,
             cost_function,
+            refinement_step,
             reads_and_writes,
         }
     }
@@ -57,13 +64,22 @@ where
         N: egg::Analysis<ArrayLanguage>,
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
+            log::info!("NUMBER OF OPTIONS: {}", terms.len());
+            for (i, term) in terms.iter().sorted_by_key(|(_term, cost)| cost).enumerate() {
+                log::info!("{i}/{}", self.refinement_step);
+                log::info!("term: {} cost: {}", term.0, term.1);
+                if i == self.refinement_step as usize {
+                    log::info!("term #{i}: {eclass} -> {}={}", term.0, term.1);
+                    return term.0.clone();
+                }
+            }
             let (best_term, _) = terms.iter().min_by_key(|(_term, cost)| cost).unwrap();
-            log::debug!("term exists: {eclass} -> {}", best_term);
+            log::info!("Just using best_term: {}", best_term);
             best_term.clone()
         } else {
             let extractor = egg::Extractor::new(egraph, self.cost_function.clone());
             let node = extractor.find_best_node(eclass);
-            log::debug!("recursing: {eclass} -> {node}");
+            log::info!("recursing: {eclass} -> {node}");
             node.join_recexprs(|id| self.extract(egraph, id))
         }
     }

@@ -30,10 +30,10 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
                 let in_prop = self.property_terms.contains(&num_string);
                 if in_trans {
                     // If the constant is just in the transition system, we assign a low cost.
-                    4
+                    3
                 } else if in_prop {
                     // If the constant is just property term, we assign a lower cost.
-                    3
+                    2
                 } else {
                     // Otherwise, 100.
                     100

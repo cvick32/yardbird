@@ -1,3 +1,4 @@
+use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{cost_functions::YardbirdCostFunction, theories::array::array_axioms::ArrayLanguage};
@@ -13,11 +14,11 @@ pub struct ArrayAstSize {
 impl egg::CostFunction<ArrayLanguage> for ArrayAstSize {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, _costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
-        enode.to_string().len() as u32
+        enode.fold(enode.to_string().len() as u32, |sum, id| sum + costs(id))
     }
 }
 

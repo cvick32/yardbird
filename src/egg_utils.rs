@@ -6,7 +6,7 @@ where
     L: egg::Language,
 {
     type Ret;
-    fn saturate(&mut self, cost: CF) -> Self::Ret;
+    fn saturate(&mut self, cost: CF, refinement_step: u32) -> Self::Ret;
 }
 
 pub trait RecExprRoot<L> {

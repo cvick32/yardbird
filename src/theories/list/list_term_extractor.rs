@@ -15,13 +15,18 @@ where
     term_map: HashMap<egg::Id, Vec<(ListExpr, CF::Cost)>>,
     cost_function: CF,
     pub reads_and_writes: ReadsAndWrites,
+    _refinement_step: u32,
 }
 
 impl<CF> ListTermExtractor<CF>
 where
     CF: YardbirdCostFunction<ListLanguage>,
 {
-    pub fn new<N>(egraph: &egg::EGraph<ListLanguage, N>, mut cost_function: CF) -> Self
+    pub fn new<N>(
+        egraph: &egg::EGraph<ListLanguage, N>,
+        mut cost_function: CF,
+        refinement_step: u32,
+    ) -> Self
     where
         N: egg::Analysis<ListLanguage>,
     {
@@ -45,6 +50,7 @@ where
             term_map,
             cost_function,
             reads_and_writes,
+            _refinement_step: refinement_step,
         }
     }
 

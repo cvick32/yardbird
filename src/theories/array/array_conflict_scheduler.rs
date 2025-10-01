@@ -149,9 +149,6 @@ where
                 }
             }
         }
-        // let n = self
-        //     .inner
-        //     .apply_rewrite(iteration, egraph, rewrite, matches);
         debug!("<======");
         // we don't actually want to apply the rewrite, because it would be a violation
         0
@@ -176,23 +173,19 @@ where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
     match pattern.as_ref() {
-        [node] => {
-            match node {
-                x @ egg::ENodeOrVar::ENode(_) => vec![x.clone()].into(),
-                egg::ENodeOrVar::Var(var) => {
-                    // let eclass = &egraph[*subst.get(*var).unwrap()];
-                    // find_best_variable_substitution(eclass, extractor)
-                    if let Some(expr) = memo.get(var) {
-                        expr.clone()
-                    } else {
-                        let eclass = &egraph[*subst.get(*var).unwrap()];
-                        let expr = find_best_variable_substitution(egraph, eclass, extractor);
-                        memo.insert(*var, expr.clone());
-                        expr
-                    }
+        [node] => match node {
+            x @ egg::ENodeOrVar::ENode(_) => vec![x.clone()].into(),
+            egg::ENodeOrVar::Var(var) => {
+                if let Some(expr) = memo.get(var) {
+                    expr.clone()
+                } else {
+                    let eclass = &egraph[*subst.get(*var).unwrap()];
+                    let expr = find_best_variable_substitution(egraph, eclass, extractor);
+                    memo.insert(*var, expr.clone());
+                    expr
                 }
             }
-        }
+        },
         _ => {
             use egg::ENodeOrVar as E;
             pattern

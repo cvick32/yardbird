@@ -130,12 +130,12 @@ where
 {
     type Ret = (Vec<ListExpr>, Vec<ListExpr>);
 
-    fn saturate(&mut self, cost_fn: CF) -> Self::Ret {
+    fn saturate(&mut self, cost_fn: CF, refinement_step: u32) -> Self::Ret {
         let egraph = std::mem::take(self);
         let scheduler = ListConflictScheduler::new(
             BackoffScheduler::default(),
             cost_fn.clone(),
-            ListTermExtractor::new(&egraph, cost_fn),
+            ListTermExtractor::new(&egraph, cost_fn, refinement_step),
         );
         let instantiations = scheduler.instantiations();
         let const_instantiations = scheduler.instantiations_w_constants();

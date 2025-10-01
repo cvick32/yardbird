@@ -26,7 +26,7 @@ where
     F: YardbirdCostFunction<ArrayLanguage>,
 {
     const_instantiations: Vec<Term>,
-    bmc_depth: u16,
+    _bmc_depth: u16,
     run_ic3ia: bool,
     cost_fn_factory: fn(&SMTProblem, u32) -> F,
 }
@@ -41,7 +41,7 @@ where
         cost_fn_factory: fn(&SMTProblem, u32) -> F,
     ) -> Self {
         Self {
-            bmc_depth,
+            _bmc_depth: bmc_depth,
             run_ic3ia,
             const_instantiations: vec![],
             cost_fn_factory,
@@ -84,9 +84,8 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        self.get_theory_support()
-            .abstract_model(model)
-            .abstract_constants_over(self.bmc_depth)
+        self.get_theory_support().abstract_model(model)
+        //     .abstract_constants_over(self.bmc_depth)
     }
 
     fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
@@ -112,6 +111,7 @@ where
         &mut self,
         state: &mut ArrayRefinementState,
         smt: &SMTProblem,
+        refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         let model = match smt.get_model() {
             Some(model) => model,
@@ -119,7 +119,7 @@ where
         };
         state.update_with_subterms(model, smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
-        let (insts, const_insts) = state.egraph.saturate(cost_fn);
+        let (insts, const_insts) = state.egraph.saturate(cost_fn, refinement_step);
         state.instantiations.extend_from_slice(&insts);
         state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)

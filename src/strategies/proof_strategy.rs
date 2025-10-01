@@ -28,14 +28,19 @@ pub trait ProofStrategy<'ctx, S> {
     }
 
     fn n_refines(&mut self) -> u32 {
-        25
+        250
     }
 
     fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<S>;
 
     fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
 
-    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
+    fn sat(
+        &mut self,
+        state: &mut S,
+        smt: &SMTProblem,
+        refinement_step: u32,
+    ) -> driver::Result<ProofAction>;
 
     #[allow(unused_variables)]
     fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction> {
@@ -61,7 +66,7 @@ pub trait ProofStrategyExt<S> {
     }
 
     #[allow(unused_variables)]
-    fn sat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
+    fn sat(&mut self, state: &mut S, smt: &SMTProblem, refinement_step: u32) -> anyhow::Result<()> {
         Ok(())
     }
 
