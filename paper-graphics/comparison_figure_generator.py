@@ -951,7 +951,9 @@ def main():
             runtime_ylabel,
             caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
         )
-        scatter_file = args.output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
+        scatter_file = (
+            args.output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
+        )
         with open(scatter_file, "w") as f:
             f.write(tikz_scatter)
         print(f"Generated scatter plot: {scatter_file}")
@@ -976,7 +978,10 @@ def main():
                 inst_ylabel,
                 caption=f"Comparison between the number of array axiom instantiations needed by {cost_func_name} and the built-in Z3 array theory.",
             )
-            scatter_file = args.output_dir / f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
+            scatter_file = (
+                args.output_dir
+                / f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
+            )
             with open(scatter_file, "w") as f:
                 f.write(tikz_scatter)
             print(f"Generated instantiation scatter plot: {scatter_file}")
@@ -985,7 +990,9 @@ def main():
 
         table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
         tikz_table = TikzGenerator.generate_table(points, table_title)
-        table_file = args.output_dir / f"results_table_{cost_func.replace('-', '_')}.tikz"
+        table_file = (
+            args.output_dir / f"results_table_{cost_func.replace('-', '_')}.tikz"
+        )
         with open(table_file, "w") as f:
             f.write(tikz_table)
         print(f"Generated LaTeX table: {table_file}")
