@@ -852,8 +852,17 @@ def main():
         description="Generate TikZ code from benchmark JSON"
     )
     parser.add_argument("json_files", nargs="+", help="Benchmark results JSON file(s)")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path.cwd(),
+        help="Directory to write output files (default: current directory)",
+    )
 
     args = parser.parse_args()
+
+    # Create output directory if it doesn't exist
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
     json_files = [Path(f) for f in args.json_files]
     # Parse benchmark data
@@ -942,7 +951,7 @@ def main():
             runtime_ylabel,
             caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
         )
-        scatter_file = f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
+        scatter_file = args.output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
         with open(scatter_file, "w") as f:
             f.write(tikz_scatter)
         print(f"Generated scatter plot: {scatter_file}")
@@ -967,7 +976,7 @@ def main():
                 inst_ylabel,
                 caption=f"Comparison between the number of array axiom instantiations needed by {cost_func_name} and the built-in Z3 array theory.",
             )
-            scatter_file = f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
+            scatter_file = args.output_dir / f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
             with open(scatter_file, "w") as f:
                 f.write(tikz_scatter)
             print(f"Generated instantiation scatter plot: {scatter_file}")
@@ -976,7 +985,7 @@ def main():
 
         table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
         tikz_table = TikzGenerator.generate_table(points, table_title)
-        table_file = f"results_table_{cost_func.replace('-', '_')}.tikz"
+        table_file = args.output_dir / f"results_table_{cost_func.replace('-', '_')}.tikz"
         with open(table_file, "w") as f:
             f.write(tikz_table)
         print(f"Generated LaTeX table: {table_file}")
@@ -1005,7 +1014,7 @@ def main():
         comparison_table = TikzGenerator.generate_comparison_table(
             comparison_data_list, strategy_names, comparison_title
         )
-        comparison_file = "comparison_summary_table.tikz"
+        comparison_file = args.output_dir / "comparison_summary_table.tikz"
         with open(comparison_file, "w") as f:
             f.write(comparison_table)
         print(f"Generated comprehensive comparison table: {comparison_file}")
@@ -1025,7 +1034,7 @@ def main():
             ast_inst_points,
             "Instantiation Statistics Across Strategies",
         )
-        inst_stats_file = "instantiation_stats_table.tikz"
+        inst_stats_file = args.output_dir / "instantiation_stats_table.tikz"
         with open(inst_stats_file, "w") as f:
             f.write(inst_stats_table)
         print(f"Generated instantiation statistics table: {inst_stats_file}")
