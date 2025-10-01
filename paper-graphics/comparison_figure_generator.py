@@ -13,6 +13,7 @@ BMC_DEPTH = 50
 ABSTRACT_BETTER_COLOR = "orange"  # Orange for abstract better
 Z3_BETTER_COLOR = "cyan!50!blue"  # Teal/cyan for Z3 better
 EQUAL_COLOR = "black"
+TIMEOUT_MS = 1200000
 
 
 @dataclass
@@ -35,7 +36,7 @@ class BenchmarkResult:
         if self.result_type == "Success":
             return self.runtime_ms
         else:
-            return 60000
+            return TIMEOUT_MS
 
 
 @dataclass
@@ -558,6 +559,7 @@ def print_comparison_table(
     # Summary statistics
     total = len(comparison_data)
     both_success = sum(1 for _, r1, r2 in comparison_data if r1.success and r2.success)
+    breakpoint()
     strategy1_only = sum(
         1 for _, r1, r2 in comparison_data if r1.success and not r2.success
     )
