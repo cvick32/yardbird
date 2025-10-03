@@ -952,7 +952,7 @@ def main():
             caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
         )
         scatter_file = (
-            args.output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tikz"
+            args.output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tex"
         )
         with open(scatter_file, "w") as f:
             f.write(tikz_scatter)
@@ -980,7 +980,7 @@ def main():
             )
             scatter_file = (
                 args.output_dir
-                / f"instantiation_scatter_{cost_func.replace('-', '_')}.tikz"
+                / f"instantiation_scatter_{cost_func.replace('-', '_')}.tex"
             )
             with open(scatter_file, "w") as f:
                 f.write(tikz_scatter)
@@ -991,7 +991,7 @@ def main():
         table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
         tikz_table = TikzGenerator.generate_table(points, table_title)
         table_file = (
-            args.output_dir / f"results_table_{cost_func.replace('-', '_')}.tikz"
+            args.output_dir / f"results_table_{cost_func.replace('-', '_')}.tex"
         )
         with open(table_file, "w") as f:
             f.write(tikz_table)
@@ -1021,7 +1021,7 @@ def main():
         comparison_table = TikzGenerator.generate_comparison_table(
             comparison_data_list, strategy_names, comparison_title
         )
-        comparison_file = args.output_dir / "comparison_summary_table.tikz"
+        comparison_file = args.output_dir / "comparison_summary_table.tex"
         with open(comparison_file, "w") as f:
             f.write(comparison_table)
         print(f"Generated comprehensive comparison table: {comparison_file}")
@@ -1041,7 +1041,7 @@ def main():
             ast_inst_points,
             "Instantiation Statistics Across Strategies",
         )
-        inst_stats_file = args.output_dir / "instantiation_stats_table.tikz"
+        inst_stats_file = args.output_dir / "instantiation_stats_table.tex"
         with open(inst_stats_file, "w") as f:
             f.write(inst_stats_table)
         print(f"Generated instantiation statistics table: {inst_stats_file}")
