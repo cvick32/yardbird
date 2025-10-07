@@ -155,8 +155,16 @@ class BenchmarkParser:
         strategy1: str = "concrete",
         strategy2: str = "abstract",
         cost_function: str = None,
+        successful_only: bool = False,
     ) -> List[TikzPoint]:
-        """Generate points for runtime comparison between two strategies"""
+        """Generate points for runtime comparison between two strategies
+
+        Args:
+            strategy1: First strategy to compare
+            strategy2: Second strategy to compare
+            cost_function: Cost function filter for abstract strategy
+            successful_only: If True, only include benchmarks where both strategies succeeded
+        """
         results = self.parse_benchmark_results()
 
         # Group by example name and strategy key (strategy + cost_function for abstract)
@@ -184,6 +192,10 @@ class BenchmarkParser:
                 result1 = strategies[strategy1]
                 result2 = strategies[strategy2_key]
 
+                # Skip if successful_only is True and either strategy failed
+                if successful_only and (not result1.success or not result2.success):
+                    continue
+
                 time1 = result1.get_runtime()
                 time2 = result2.get_runtime()
 
@@ -197,7 +209,11 @@ class BenchmarkParser:
                 # Clean up label
                 label = example_name.replace("examples/", "").replace(".vmt", "")
 
-                points.append(TikzPoint(x=time1, y=time2, label=label, color=color))
+                # Convert milliseconds to seconds for plotting
+                time1_s = time1 / 1000.0
+                time2_s = time2 / 1000.0
+
+                points.append(TikzPoint(x=time1_s, y=time2_s, label=label, color=color))
 
         return points
 
@@ -303,6 +319,10 @@ def get_instantiation_comparison_points(
         if strategy1 in strategies and strategy2_key in strategies:
             result1 = strategies[strategy1]
             result2 = strategies[strategy2_key]
+
+            # Skip if either strategy failed (only plot successful runs for instantiation comparison)
+            if not result1.success or not result2.success:
+                continue
 
             inst1 = compute_axiom_instantiations(result1, bmc_depth)
             inst2 = compute_axiom_instantiations(result2, bmc_depth)
@@ -559,7 +579,6 @@ def print_comparison_table(
     # Summary statistics
     total = len(comparison_data)
     both_success = sum(1 for _, r1, r2 in comparison_data if r1.success and r2.success)
-    breakpoint()
     strategy1_only = sum(
         1 for _, r1, r2 in comparison_data if r1.success and not r2.success
     )
@@ -593,8 +612,18 @@ class TikzGenerator:
         xlabel: str = "Concrete Strategy Runtime (s)",
         ylabel: str = "Abstract Strategy Runtime (s)",
         caption: str = None,
+        use_log_scale: bool = True,
     ) -> str:
-        """Generate TikZ scatter plot code"""
+        """Generate TikZ scatter plot code
+
+        Args:
+            points: Data points to plot
+            title: Plot title
+            xlabel: X-axis label
+            ylabel: Y-axis label
+            caption: Optional figure caption
+            use_log_scale: If True, use log-log scale; if False, use linear scale
+        """
         if not points:
             return "% No data points to plot"
 
@@ -605,21 +634,32 @@ class TikzGenerator:
         x_min, x_max = min(x_vals), max(x_vals)
         y_min, y_max = min(y_vals), max(y_vals)
 
-        # Use log scale bounds with safety margins
-        x_min_log = max(0.001, x_min * 0.5)
-        y_min_log = max(0.001, y_min * 0.5)
-        x_max_log = max(x_max * 2, x_min_log * 10)
-        y_max_log = max(y_max * 2, y_min_log * 10)
+        if use_log_scale:
+            # Use log scale bounds with safety margins
+            x_min_bound = max(0.001, x_min * 0.5)
+            y_min_bound = max(0.001, y_min * 0.5)
+            x_max_bound = max(x_max * 2, x_min_bound * 10)
+            y_max_bound = max(y_max * 2, y_min_bound * 10)
+            axis_env = "loglogaxis"
+        else:
+            # Use linear scale bounds with padding
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+            x_min_bound = max(0, x_min - 0.05 * x_range)
+            y_min_bound = max(0, y_min - 0.05 * y_range)
+            x_max_bound = x_max + 0.05 * x_range
+            y_max_bound = y_max + 0.05 * y_range
+            axis_env = "axis"
 
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
-\\begin{{loglogaxis}}[
+\\begin{{{axis_env}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
     ylabel={{{ylabel}}},
-    xmin={x_min_log:.3f}, xmax={x_max_log:.3f},
-    ymin={y_min_log:.3f}, ymax={y_max_log:.3f},
+    xmin={x_min_bound:.3f}, xmax={x_max_bound:.3f},
+    ymin={y_min_bound:.3f}, ymax={y_max_bound:.3f},
     grid=major,
     width=\\columnwidth,
     height=8cm
@@ -652,14 +692,10 @@ class TikzGenerator:
                 tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
             tikz_code += "};\n"
 
-        # Add diagonal line (x=y)
         tikz_code += f"""
 % Diagonal line (x=y)
-\\addplot[dashed, color=black] coordinates {{
-    ({x_min_log:.6f}, {y_min_log:.6f})
-    ({x_max_log:.6f}, {y_max_log:.6f})
-}};
-\\end{{loglogaxis}}
+\\addplot[dashed, color=black, domain={min(x_min_bound, x_max_bound):.6f}:{max(x_min_bound, x_max_bound):.6f}] {{x}};
+\\end{{{axis_env}}}
 \\end{{tikzpicture}}"""
 
         # Add caption if provided
@@ -896,8 +932,15 @@ def main():
 
         # Get comparison data for this cost function
         all_data = parser_obj.get_all_comparison_data("concrete", "abstract", cost_func)
-        points = parser_obj.get_runtime_comparison_points(
-            "concrete", "abstract", cost_func
+
+        # Get runtime points for ALL benchmarks (including unsuccessful)
+        runtime_points = parser_obj.get_runtime_comparison_points(
+            "concrete", "abstract", cost_func, successful_only=False
+        )
+
+        # Get successful-only points for statistics
+        successful_points = parser_obj.get_runtime_comparison_points(
+            "concrete", "abstract", cost_func, successful_only=True
         )
 
         # Store data for combined table
@@ -911,16 +954,19 @@ def main():
 
         print(f"Found {len(all_data)} total benchmark pairs")
         print(
-            f"Found {len(points)} successful benchmark pairs for concrete vs abstract ({cost_func})"
+            f"Found {len(runtime_points)} total benchmark pairs (including timeouts/errors)"
+        )
+        print(
+            f"Found {len(successful_points)} successful benchmark pairs for concrete vs abstract ({cost_func})"
         )
 
         # Print human-readable table
         print_comparison_table(all_data, "concrete", f"{'abstract'} ({cost_func})")
 
         # Print detailed statistics (only for successful comparisons)
-        if points:
+        if successful_points:
             print_comparison_statistics(
-                points, "concrete", f"{'abstract'} ({cost_func})"
+                successful_points, "concrete", f"{'abstract'} ({cost_func})"
             )
         else:
             print("No successful benchmark pairs found for statistical analysis.")
@@ -944,12 +990,15 @@ def main():
         runtime_xlabel = "Z3 Strategy Runtime (s)"
         runtime_ylabel = f"{cost_func_name} Runtime (s)"
 
+        # Use ALL benchmarks (including timeouts/errors) for runtime scatter plot
+        # Use log scale (default) for runtime to handle wide range of values
         tikz_scatter = TikzGenerator.generate_scatter_plot(
-            points,
+            runtime_points,
             runtime_title,
             runtime_xlabel,
             runtime_ylabel,
             caption=f"Runtime comparison between {cost_func_name} and the built-in Z3 array theory.",
+            use_log_scale=True,  # Explicit log scale for runtime data
         )
         scatter_file = (
             args.output_dir / f"runtime_scatter_{cost_func.replace('-', '_')}.tex"
@@ -958,7 +1007,7 @@ def main():
             f.write(tikz_scatter)
         print(f"Generated scatter plot: {scatter_file}")
 
-        # Generate instantiation scatter plot
+        # Generate instantiation scatter plot (only for successful benchmarks)
         inst_points = get_instantiation_comparison_points(
             parser_obj,
             "concrete",
@@ -966,6 +1015,7 @@ def main():
             cost_func,
             BMC_DEPTH,
         )
+        # Note: inst_points already filters to successful-only via compute_axiom_instantiations
         if inst_points:
             inst_title = f"Instantiation Comparison ({cost_func_name} vs Z3)"
             inst_ylabel = f"{cost_func_name} Instantiations"
@@ -977,6 +1027,7 @@ def main():
                 inst_xlabel,
                 inst_ylabel,
                 caption=f"Comparison between the number of array axiom instantiations needed by {cost_func_name} and the built-in Z3 array theory.",
+                use_log_scale=True,  # Use log scale to show full range of instantiation counts
             )
             scatter_file = (
                 args.output_dir
@@ -989,7 +1040,7 @@ def main():
             print("No successful benchmark pairs found for instantiation scatter plot.")
 
         table_title = f"Runtime Comparison Results {cost_func} ({metadata.get('config_name', 'Benchmark')})"
-        tikz_table = TikzGenerator.generate_table(points, table_title)
+        tikz_table = TikzGenerator.generate_table(successful_points, table_title)
         table_file = (
             args.output_dir / f"results_table_{cost_func.replace('-', '_')}.tex"
         )
