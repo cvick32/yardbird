@@ -18,3 +18,4 @@ ec2
 *.tikz
 *.tex
 benchmark_results
+*.pyc

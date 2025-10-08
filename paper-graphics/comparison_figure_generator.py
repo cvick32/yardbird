@@ -259,6 +259,55 @@ class BenchmarkParser:
 
         return comparison_data
 
+    def get_cactus_plot_data(
+        self, strategies: List[str], cost_functions: List[str] = None
+    ) -> Dict[str, List[float]]:
+        """Get runtime data for cactus plot across all benchmarks
+
+        Args:
+            strategies: List of strategy names (e.g., ["concrete", "abstract"])
+            cost_functions: List of cost functions for abstract strategies (optional)
+
+        Returns:
+            Dict mapping display names to lists of runtimes in seconds
+        """
+        results = self.parse_benchmark_results()
+
+        # Group by strategy (and cost function for abstract)
+        strategy_runtimes = {}
+
+        for result in results:
+            # Determine display name for strategy
+            if result.strategy == "abstract" and result.cost_function:
+                display_name = f"Abstract ({result.cost_function})"
+            else:
+                display_name = (
+                    "Z3" if result.strategy == "concrete" else result.strategy
+                )
+
+            # Filter by requested strategies
+            if result.strategy not in strategies:
+                continue
+
+            # Filter by cost functions if specified
+            if (
+                result.strategy == "abstract"
+                and cost_functions
+                and result.cost_function not in cost_functions
+            ):
+                continue
+
+            # Initialize list if needed
+            if display_name not in strategy_runtimes:
+                strategy_runtimes[display_name] = []
+
+            # Add runtime in seconds (convert from ms)
+            runtime_ms = result.get_runtime()
+            runtime_s = runtime_ms / 1000.0
+            strategy_runtimes[display_name].append(runtime_s)
+
+        return strategy_runtimes
+
 
 def compute_axiom_instantiations(result: BenchmarkResult, bmc_depth: int) -> int:
     """Compute axiom instantiations for a benchmark result"""
@@ -882,6 +931,105 @@ Strategy & Mean & Median & Min & Max \\\\
 
         return table_code
 
+    @staticmethod
+    def generate_cactus_plot(
+        strategy_data: Dict[str, List[float]],
+        title: str = "Cactus Plot",
+        xlabel: str = "Number of Solved Instances",
+        ylabel: str = "Runtime (s)",
+        caption: str = None,
+        use_log_scale: bool = True,
+    ) -> str:
+        """Generate a cactus plot comparing strategies
+
+        A cactus plot shows the runtime to solve N instances, sorted by runtime.
+        This gives a visual representation of how many instances each strategy
+        can solve within a given time budget.
+
+        Args:
+            strategy_data: Dict mapping strategy names to lists of runtimes (in seconds)
+            title: Plot title
+            xlabel: X-axis label (number of instances)
+            ylabel: Y-axis label (runtime)
+            caption: Optional figure caption
+            use_log_scale: If True, use log scale for y-axis
+        """
+        if not strategy_data:
+            return "% No strategy data to plot"
+
+        # Sort each strategy's runtimes
+        sorted_data = {}
+        max_instances = 0
+        max_time = 0
+        for strategy_name, runtimes in strategy_data.items():
+            if runtimes:
+                sorted_times = sorted(runtimes)
+                sorted_data[strategy_name] = sorted_times
+                max_instances = max(max_instances, len(sorted_times))
+                max_time = max(max_time, max(sorted_times))
+
+        if not sorted_data:
+            return "% No valid strategy data to plot"
+
+        # Determine axis type and bounds
+        if use_log_scale:
+            y_axis = "semilogyaxis"
+            y_min = 0.001  # Small positive value for log scale
+            y_max = max_time * 1.2
+        else:
+            y_axis = "axis"
+            y_min = 0
+            y_max = max_time * 1.05
+
+        x_max = max_instances * 1.05
+
+        # Color mapping for strategies
+        strategy_colors = {
+            "concrete": Z3_BETTER_COLOR,
+            "Z3": Z3_BETTER_COLOR,
+            "abstract_symbol-cost": ABSTRACT_BETTER_COLOR,
+            "abstract_a-s-t-size": "red",
+            "Abstract (symbol-cost)": ("BMC Cost", ABSTRACT_BETTER_COLOR),
+            "Abstract (AST size)": ("AST Size", "red"),
+        }
+
+        tikz_code = f"""\\begin{{figure}}[htbp]
+\\centering
+\\begin{{tikzpicture}}
+\\begin{{{y_axis}}}[
+    title={{{title}}},
+    xlabel={{{xlabel}}},
+    ylabel={{{ylabel}}},
+    xmin=0, xmax={x_max:.0f},
+    ymin={y_min:.3f}, ymax={y_max:.3f},
+    grid=major,
+    width=\\columnwidth,
+    height=8cm,
+    legend pos=north west
+]
+
+"""
+
+        # Plot each strategy
+        for strategy_name, sorted_times in sorted_data.items():
+            color = strategy_colors.get(strategy_name, "blue")
+
+            tikz_code += f"\\addplot[thick, color={color[1]}] coordinates {{\n"
+            for i, runtime in enumerate(sorted_times, start=1):
+                tikz_code += f"    ({i}, {runtime:.6f})\n"
+            tikz_code += f"}};\n\\addlegendentry{{{color[0]}}}\n\n"
+
+        tikz_code += f"""\\end{{{y_axis}}}
+\\end{{tikzpicture}}"""
+
+        # Add caption if provided
+        if caption:
+            tikz_code += f"\n\\caption{{{caption}}}"
+
+        tikz_code += "\n\\end{figure}"
+
+        return tikz_code
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1096,6 +1244,43 @@ def main():
         with open(inst_stats_file, "w") as f:
             f.write(inst_stats_table)
         print(f"Generated instantiation statistics table: {inst_stats_file}")
+
+    # Generate cactus plots for runtime comparison
+    print(f"\n{'=' * 60}")
+    print("GENERATING CACTUS PLOTS")
+    print(f"{'=' * 60}")
+
+    # Get runtime data for all strategies
+    cactus_data = parser_obj.get_cactus_plot_data(
+        strategies=["concrete", "abstract"],
+        cost_functions=["symbol-cost", "a-s-t-size"],
+    )
+
+    if cactus_data:
+        print("Cactus plot data collected:")
+        for strategy_name, runtimes in cactus_data.items():
+            print(f"  {strategy_name}: {len(runtimes)} instances")
+
+        cactus_title = "Runtime Performance Comparison"
+        cactus_xlabel = "Number of Solved Instances"
+        cactus_ylabel = "Runtime (s)"
+        cactus_caption = "Cactus plot comparing runtime performance across all benchmarks. Lower curves indicate better performance."
+
+        cactus_plot = TikzGenerator.generate_cactus_plot(
+            cactus_data,
+            cactus_title,
+            cactus_xlabel,
+            cactus_ylabel,
+            cactus_caption,
+            use_log_scale=True,
+        )
+
+        cactus_file = args.output_dir / "runtime_cactus_plot.tex"
+        with open(cactus_file, "w") as f:
+            f.write(cactus_plot)
+        print(f"Generated cactus plot: {cactus_file}")
+    else:
+        print("No data available for cactus plot generation.")
 
 
 if __name__ == "__main__":
