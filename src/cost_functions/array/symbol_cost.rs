@@ -1,4 +1,7 @@
-use egg::Language;
+use std::{cell::RefCell, collections::HashMap};
+
+use egg::{Language, Symbol};
+use rustc_hash::FxHashSet;
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
@@ -8,12 +11,44 @@ use crate::{
 
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ArrayBestSymbolSubstitution {
     pub current_bmc_depth: u32,
-    pub init_and_transition_system_terms: Vec<String>,
-    pub property_terms: Vec<String>,
+    pub init_and_transition_system_terms: FxHashSet<Symbol>,
+    pub property_terms: FxHashSet<Symbol>,
     pub reads_writes: ReadsAndWrites,
+    cost_cache: RefCell<HashMap<ArrayLanguage, u32>>,
+}
+
+impl std::fmt::Debug for ArrayBestSymbolSubstitution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArrayBestSymbolSubstitution")
+            .field("current_bmc_depth", &self.current_bmc_depth)
+            .field(
+                "init_and_transition_system_terms",
+                &self.init_and_transition_system_terms,
+            )
+            .field("property_terms", &self.property_terms)
+            .field("reads_writes", &self.reads_writes)
+            .finish()
+    }
+}
+
+impl ArrayBestSymbolSubstitution {
+    pub fn new(
+        current_bmc_depth: u32,
+        init_and_transition_system_terms: FxHashSet<Symbol>,
+        property_terms: FxHashSet<Symbol>,
+        reads_writes: ReadsAndWrites,
+    ) -> Self {
+        Self {
+            current_bmc_depth,
+            init_and_transition_system_terms,
+            property_terms,
+            reads_writes,
+            cost_cache: RefCell::new(HashMap::new()),
+        }
+    }
 }
 
 impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
@@ -23,11 +58,18 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
+        // Check cache first for leaf nodes and simple operations
+        if enode.is_leaf() {
+            if let Some(&cached) = self.cost_cache.borrow().get(enode) {
+                return cached;
+            }
+        }
+
         let op_cost = match enode {
             ArrayLanguage::Num(num) => {
-                let num_string = num.to_string();
-                let in_trans = self.init_and_transition_system_terms.contains(&num_string);
-                let in_prop = self.property_terms.contains(&num_string);
+                let num_symbol: Symbol = num.to_string().into();
+                let in_trans = self.init_and_transition_system_terms.contains(&num_symbol);
+                let in_prop = self.property_terms.contains(&num_symbol);
                 if in_trans {
                     // If the constant is just in the transition system, we assign a low cost.
                     3
@@ -63,9 +105,8 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
             ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Div(_) => 1,
             ArrayLanguage::Symbol(sym) => {
-                let symbol_str = sym.as_str().to_string();
-                let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
-                let in_prop = self.property_terms.contains(&symbol_str);
+                let in_trans = self.init_and_transition_system_terms.contains(sym);
+                let in_prop = self.property_terms.contains(sym);
 
                 if let Some((name, frame_number)) =
                     sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
@@ -92,7 +133,15 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
                 }
             }
         };
-        enode.fold(op_cost, |sum, id| sum + costs(id))
+
+        let total = enode.fold(op_cost, |sum, id| sum + costs(id));
+
+        // Cache the result for leaf nodes
+        if enode.is_leaf() {
+            self.cost_cache.borrow_mut().insert(enode.clone(), total);
+        }
+
+        total
     }
 }
 
@@ -110,10 +159,10 @@ impl egg::CostFunction<ListLanguage> for ArrayBestSymbolSubstitution {
 impl YardbirdCostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
-            .clone()
-            .into_iter()
-            .chain(self.property_terms.clone())
-            .collect::<Vec<String>>()
+            .iter()
+            .chain(self.property_terms.iter())
+            .map(|sym| sym.as_str().to_string())
+            .collect()
     }
 
     fn get_reads_and_writes(&self) -> ReadsAndWrites {

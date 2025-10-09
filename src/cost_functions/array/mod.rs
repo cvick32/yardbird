@@ -1,3 +1,6 @@
+use egg::Symbol;
+use rustc_hash::FxHashSet;
+
 use crate::{
     cost_functions::array::{
         adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize, split_cost::SplitArrayCost,
@@ -12,12 +15,24 @@ pub mod split_cost;
 pub mod symbol_cost;
 
 pub fn array_best_symbol_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBestSymbolSubstitution {
-    ArrayBestSymbolSubstitution {
-        current_bmc_depth: depth,
-        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-        property_terms: smt.get_property_subterms(),
-        reads_writes: smt.get_reads_and_writes(),
-    }
+    let init_and_transition_system_terms: FxHashSet<Symbol> = smt
+        .get_init_and_transition_subterms()
+        .into_iter()
+        .map(|s| s.into())
+        .collect();
+
+    let property_terms: FxHashSet<Symbol> = smt
+        .get_property_subterms()
+        .into_iter()
+        .map(|s| s.into())
+        .collect();
+
+    ArrayBestSymbolSubstitution::new(
+        depth,
+        init_and_transition_system_terms,
+        property_terms,
+        smt.get_reads_and_writes(),
+    )
 }
 
 pub fn array_ast_size_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayAstSize {
