@@ -31,6 +31,12 @@ parameter_matrices:
     cost_functions: ["symbol-cost", "a-s-t-size"]
     timeout_seconds: 120
 
+  abstract-75:
+    depths: [75]
+    strategies: ["abstract"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+    timeout_seconds: 120
+
   deep-concrete:
     depths: [50]
     strategies: ["concrete"]
