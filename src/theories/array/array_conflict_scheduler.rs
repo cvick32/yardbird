@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use egg::{Analysis, Language};
 use itertools::Itertools;
-use log::{debug, info};
+use log::debug;
 
 use crate::{
     cost_functions::YardbirdCostFunction,
@@ -86,9 +86,9 @@ where
         }
         for m in &matches {
             if let Some(searcher_ast) = &m.ast {
-                info!("Number of subs: {}", m.substs.len());
+                debug!("Number of subs: {}", m.substs.len());
                 for subst in &m.substs {
-                    info!("Current Sub: {:?}", subst);
+                    debug!("Current Sub: {:?}", subst);
 
                     if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
                         // construct a new term by instantiating variables in the pattern ast with terms
@@ -133,7 +133,7 @@ where
                                     ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
                             let cost = self.cost_fn.cost_rec(&new_rhs);
-                            info!(
+                            debug!(
                                 "FOUND VIOLATION (cost {}): \n{}",
                                 cost,
                                 instantiation.pretty(80)

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use egg::Language;
-use itertools::Itertools;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
@@ -32,8 +31,9 @@ where
         N: egg::Analysis<ArrayLanguage>,
     {
         let mut term_map: HashMap<egg::Id, Vec<_>> = HashMap::new();
-        for string_term in cost_function.get_string_terms() {
-            let term: egg::RecExpr<ArrayLanguage> = string_term.parse().unwrap();
+
+        // Use pre-parsed terms to avoid parsing in hot path
+        for term in cost_function.get_parsed_terms() {
             let cost = cost_function.cost_rec(&term);
             match egraph.lookup_expr(&term) {
                 // TODO: might want to keep track of all terms that match this node
@@ -43,6 +43,11 @@ where
                     .or_insert_with(|| vec![(term, cost)]),
                 None => continue,
             };
+        }
+
+        // Pre-sort all term vectors by cost for faster extraction
+        for terms in term_map.values_mut() {
+            terms.sort_by_key(|(_, cost)| *cost);
         }
 
         let reads_and_writes = cost_function.get_reads_and_writes();
@@ -64,23 +69,30 @@ where
         N: egg::Analysis<ArrayLanguage>,
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
-            log::info!("NUMBER OF OPTIONS: {}", terms.len());
-            for (i, term) in terms.iter().sorted_by_key(|(_term, cost)| cost).enumerate() {
-                log::info!("{i}/{}", self.refinement_step);
-                log::info!("term: {} cost: {}", term.0, term.1);
-                if i == self.refinement_step as usize {
-                    log::info!("term #{i}: {eclass} -> {}={}", term.0, term.1);
-                    return term.0.clone();
-                }
+            log::debug!("NUMBER OF OPTIONS: {}", terms.len());
+
+            // Terms are already sorted by cost, use direct indexing
+            if let Some((term, cost)) = terms.get(self.refinement_step as usize) {
+                log::debug!(
+                    "term #{}: {eclass} -> {}={}",
+                    self.refinement_step,
+                    term,
+                    cost
+                );
+                return term.clone();
             }
-            let (best_term, _) = terms.iter().min_by_key(|(_term, cost)| cost).unwrap();
-            log::info!("Just using best_term: {}", best_term);
-            best_term.clone()
-        } else {
-            let extractor = egg::Extractor::new(egraph, self.cost_function.clone());
-            let node = extractor.find_best_node(eclass);
-            log::info!("recursing: {eclass} -> {node}");
-            node.join_recexprs(|id| self.extract(egraph, id))
+
+            // Fallback to best (first) term if refinement_step is out of bounds
+            if let Some((best_term, best_cost)) = terms.first() {
+                log::debug!("Just using best_term: {} cost: {}", best_term, best_cost);
+                return best_term.clone();
+            }
         }
+
+        // No terms in map, fall back to standard extraction
+        let extractor = egg::Extractor::new(egraph, self.cost_function.clone());
+        let node = extractor.find_best_node(eclass);
+        log::debug!("recursing: {eclass} -> {node}");
+        node.join_recexprs(|id| self.extract(egraph, id))
     }
 }
