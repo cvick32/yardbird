@@ -80,7 +80,10 @@ where
     ) -> usize {
         debug!("======>");
         debug!("applying {}", rewrite.name);
-
+        if !self.instantiations.borrow().is_empty() {
+            // don't try to keep applying rewrites if we've found an inst
+            return 0;
+        }
         for m in &matches {
             if let Some(searcher_ast) = &m.ast {
                 info!("Number of subs: {}", m.substs.len());
