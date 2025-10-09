@@ -10,7 +10,10 @@ use strategies::{Abstract, ArrayRefinementState, ConcreteArrayZ3, ListAbstract, 
 
 use crate::{
     cost_functions::{
-        array::{array_ast_size_cost_factory, array_best_symbol_cost_factory},
+        array::{
+            adaptive_array_cost_factory, array_ast_size_cost_factory,
+            array_best_symbol_cost_factory, split_array_cost_factory,
+        },
         list::list_ast_size_cost_factory,
     },
     strategies::ListRefinementState,
@@ -110,6 +113,16 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     array_ast_size_cost_factory,
                 )),
+                CostFunction::AdaptiveCost => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    adaptive_array_cost_factory,
+                )),
+                CostFunction::SplitCost => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    split_array_cost_factory,
+                )),
             },
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
@@ -130,6 +143,16 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     array_ast_size_cost_factory,
                 )),
+                CostFunction::AdaptiveCost => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    adaptive_array_cost_factory,
+                )),
+                CostFunction::SplitCost => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    split_array_cost_factory,
+                )),
             },
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
@@ -144,6 +167,8 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     list_ast_size_cost_factory,
                 )),
+                CostFunction::AdaptiveCost => todo!(),
+                CostFunction::SplitCost => todo!(),
             },
             Strategy::Concrete => {
                 todo!()
@@ -178,6 +203,8 @@ pub enum Strategy {
 pub enum CostFunction {
     SymbolCost,
     ASTSize,
+    AdaptiveCost,
+    SplitCost,
 }
 
 /// Describes the theories available.

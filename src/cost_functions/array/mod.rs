@@ -1,9 +1,14 @@
 use crate::{
-    cost_functions::array::{ast_size::ArrayAstSize, symbol_cost::ArrayBestSymbolSubstitution},
+    cost_functions::array::{
+        adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize, split_cost::SplitArrayCost,
+        symbol_cost::ArrayBestSymbolSubstitution,
+    },
     smt_problem::SMTProblem,
 };
 
+pub mod adaptive_cost;
 pub mod ast_size;
+pub mod split_cost;
 pub mod symbol_cost;
 
 pub fn array_best_symbol_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBestSymbolSubstitution {
@@ -22,4 +27,22 @@ pub fn array_ast_size_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayAstSize
         property_terms: smt.get_property_subterms(),
         reads_writes: smt.get_reads_and_writes(),
     }
+}
+
+pub fn adaptive_array_cost_factory(smt: &SMTProblem, depth: u32) -> AdaptiveArrayCost {
+    AdaptiveArrayCost::new(
+        depth,
+        smt.get_init_and_transition_subterms(),
+        smt.get_property_subterms(),
+        smt.get_reads_and_writes(),
+    )
+}
+
+pub fn split_array_cost_factory(smt: &SMTProblem, depth: u32) -> SplitArrayCost {
+    SplitArrayCost::new(
+        depth,
+        smt.get_init_and_transition_subterms(),
+        smt.get_property_subterms(),
+        smt.get_reads_and_writes(),
+    )
 }
