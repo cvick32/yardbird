@@ -35,6 +35,6 @@
     ["a0", "a1"],
     ["b0"]
   ],
-  "caption": "Simplified e-graph for the abstract transition system of array\\_copy. Dotted lines represent equality classes, or \\emph{e-classes}, where each term in the box is equal. In the example, $0$, $z$, and $i_0$ are all equal, so they are in the same e-class. Function terms are represented by arrows from function heads to arguments. The program term $\\SelectAbs(a_0, i_0)$ is represented by the e-class in the top right-hand corner of the figure.",
+  "caption": "Simplified e-graph for the abstract transition system of array\\_copy. Dotted lines represent equality classes, or \\emph{e-classes}, where each term in the box is equal. In the example, $0$, $z$, and $i_0$ are all equal, so they are in the same e-class. Function terms are represented by arrows from function heads to arguments. For example, the program term $\\SelectAbs(a_0, i_0)$ is represented by the e-class in the top right-hand corner of the figure.",
   "scale": 1
 }
