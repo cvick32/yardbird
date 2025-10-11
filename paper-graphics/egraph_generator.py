@@ -46,7 +46,7 @@ PICTURE_HEADER = r"""
 \begin{tikzpicture}[
   x=1cm, y=1cm,
   >=Latex,
-  node/.style={draw, rounded corners, minimum size=7mm, inner sep=1pt},
+  node/.style={draw, rounded corners, minimum size=4mm, inner sep=2pt},
   ebox/.style={draw, dashed, rounded corners, inner sep=4pt},
   elabel/.style={font=\scriptsize, inner sep=1pt}
 ]
@@ -108,10 +108,19 @@ def emit_single_diagram(diag: dict, x_offset_cm: float = 0.0) -> str:
 
     out.append("")
 
-    # Edges (arrowed)
+    # Edges (arrowed) - connect to eclass borders instead of nodes
+    # First, build a mapping from node id to its eclass name
+    node_to_eclass = {}
+    for i, group in enumerate(eclasses, start=1):
+        for node_id in group:
+            if node_id in coord:
+                node_to_eclass[node_id] = f"EClass{i}"
+
     for u, v in edges:
         if u in coord and v in coord:
-            out.append(rf"\draw[->] ({u}) -- ({v});")
+            # Use eclass border if available, otherwise fall back to node
+            v_target = node_to_eclass.get(v, v)
+            out.append(rf"\draw[->] ({u}) -- ({v_target});")
 
     out.append(PICTURE_FOOTER)
 
