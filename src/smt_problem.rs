@@ -71,6 +71,20 @@ impl<'ctx> SMTProblem<'ctx> {
             let _ = command.accept(&mut smt.z3_var_context);
         }
 
+        // Add axioms declared by the theory
+        for axiom_command in theory.get_axiom_formulas() {
+            if let smt2parser::concrete::Command::Assert { term } = axiom_command {
+                // Register quantified variables if this is a forall term
+                if let smt2parser::concrete::Term::Forall { vars, term: _ } = &term {
+                    for (symbol, sort) in vars {
+                        smt.z3_var_context.create_variable(symbol, sort);
+                    }
+                }
+                let z3_axiom = smt.z3_var_context.rewrite_term(&term);
+                smt.solver.assert(&z3_axiom.as_bool().unwrap());
+            }
+        }
+
         // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.
         for variable in &smt.variables {
             let bmc_variable = variable

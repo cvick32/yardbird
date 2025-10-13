@@ -6,7 +6,10 @@ use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
-use strategies::{Abstract, ArrayRefinementState, ConcreteArrayZ3, ListAbstract, ProofStrategy};
+use strategies::{
+    Abstract, AbstractArrayWithQuantifiers, ArrayRefinementState, ConcreteArrayZ3, ListAbstract,
+    ProofStrategy,
+};
 
 use crate::{
     cost_functions::{
@@ -124,6 +127,9 @@ impl YardbirdOptions {
                     split_array_cost_factory,
                 )),
             },
+            Strategy::AbstractWithQuantifiers => {
+                Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
+            }
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
@@ -154,6 +160,9 @@ impl YardbirdOptions {
                     split_array_cost_factory,
                 )),
             },
+            Strategy::AbstractWithQuantifiers => {
+                Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
+            }
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
@@ -170,6 +179,9 @@ impl YardbirdOptions {
                 CostFunction::AdaptiveCost => todo!(),
                 CostFunction::SplitCost => todo!(),
             },
+            Strategy::AbstractWithQuantifiers => {
+                todo!("AbstractWithQuantifiers not yet implemented for List theory")
+            }
             Strategy::Concrete => {
                 todo!()
             }
@@ -193,6 +205,7 @@ pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     Abstract,
+    AbstractWithQuantifiers,
     Concrete,
 }
 

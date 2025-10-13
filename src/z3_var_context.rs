@@ -109,19 +109,9 @@ impl<'ctx> Z3VarContext<'ctx> {
                     bounds.push(var);
                 }
                 let quantified_term = self.rewrite_term(term).as_bool().unwrap();
-                if bounds.len() == 1 {
-                    z3::ast::forall_const(self.context, &[&bounds[0]], &[], &quantified_term).into()
-                } else if bounds.len() == 2 {
-                    z3::ast::forall_const(
-                        self.context,
-                        &[&bounds[0], &bounds[1]],
-                        &[],
-                        &quantified_term,
-                    )
-                    .into()
-                } else {
-                    todo!("Haven't implemented universal quantification for more than 2 variables.")
-                }
+                // Convert to references with trait object cast for z3::ast::forall_const
+                let bound_refs: Vec<&dyn Ast> = bounds.iter().map(|d| d as &dyn Ast).collect();
+                z3::ast::forall_const(self.context, &bound_refs, &[], &quantified_term).into()
             }
             Term::Let {
                 var_bindings: _,
