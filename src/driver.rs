@@ -15,6 +15,7 @@ pub struct ProofLoopResult {
     pub used_instances: Vec<Term>,
     pub const_instances: Vec<Term>,
     pub solver_statistics: SolverStatistics,
+    pub total_instantiations_added: u64,
     pub counterexample: bool,
     pub found_proof: bool,
 }

@@ -56,6 +56,7 @@ fn print_results(
         "NEEDED INSTANTIATIONS:\n{}",
         res.get_instantiations_string()
     );
+    info!("TOTAL NUMBER: {}", res.total_instantiations_added);
     log::debug!("Solver stats: {:#?}", res.solver_statistics);
 
     if let Some(model) = res.model {

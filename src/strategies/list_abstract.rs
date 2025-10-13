@@ -171,6 +171,7 @@ where
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
+            total_instantiations_added: smt.get_number_instantiations_added(),
         }
     }
 }

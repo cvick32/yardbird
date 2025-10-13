@@ -78,6 +78,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
+            total_instantiations_added: 0,
         }
     }
 

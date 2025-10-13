@@ -166,6 +166,7 @@ where
             model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),
             const_instances: mem::take(&mut self.const_instantiations),
+            total_instantiations_added: smt.get_number_instantiations_added(),
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,

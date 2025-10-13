@@ -23,6 +23,7 @@ pub struct SMTProblem<'ctx> {
     pub variables: Vec<Variable>,
     solver: z3::Solver<'ctx>,
     newest_model: Option<z3::Model<'ctx>>,
+    num_quantifiers_instantiated: u64,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -55,6 +56,7 @@ impl<'ctx> SMTProblem<'ctx> {
             solver,
             z3_var_context: Z3VarContext::new(context),
             newest_model: None,
+            num_quantifiers_instantiated: 0,
         };
         // Handle theory-specific function declarations
         let theory = strategy.get_theory_support();
@@ -141,6 +143,7 @@ impl<'ctx> SMTProblem<'ctx> {
                 let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
                 all_z3_insts.push(z3_inst.as_bool().unwrap());
             }
+            self.num_quantifiers_instantiated += all_z3_insts.len() as u64;
             let inst_and = self.z3_var_context.make_and(all_z3_insts);
             self.solver.assert(&inst_and);
         }
@@ -244,6 +247,7 @@ impl<'ctx> SMTProblem<'ctx> {
         }
         // reset depth
         self.bmc_builder.set_depth(cur_depth);
+        self.num_quantifiers_instantiated += all_z3_insts.len() as u64;
         let inst_and = self.z3_var_context.make_and(all_z3_insts);
         self.solver.assert(&inst_and);
     }
@@ -281,6 +285,10 @@ impl<'ctx> SMTProblem<'ctx> {
             .iter()
             .map(|inst| inst.get_term().clone())
             .collect()
+    }
+
+    pub(crate) fn get_number_instantiations_added(&self) -> u64 {
+        self.num_quantifiers_instantiated
     }
 
     pub(crate) fn get_init_and_transition_subterms(&self) -> Vec<String> {
