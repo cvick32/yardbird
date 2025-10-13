@@ -105,6 +105,10 @@ def emit_single_diagram(diag: dict, x_offset_cm: float = 0.0) -> str:
             continue
         inside = " ".join(f"({g})" for g in ids)
         out.append(rf"\node[ebox, fit={inside}] (EClass{i}) {{}};")
+        # Add label to bottom right of e-class box, offset outside
+        out.append(
+            rf"\node[elabel, anchor=north west] at ($(EClass{i}.south west)+(-0.2,0.0)$) {{$E_{{{i}}}$}};"
+        )
 
     out.append("")
 
