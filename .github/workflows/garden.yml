@@ -19,7 +19,9 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Build yardbird and garden
-        run: cargo build --release --all-targets
+        run: cargo build --release -p yardbird
+      - name: Build garden
+        run: cargo build --release -p garden
       - name: Run benchmarks
         run: ./target/release/garden examples/array -o garden.json --strategy abstract --strategy concrete --depth 10
       - name: Upload

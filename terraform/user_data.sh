@@ -65,8 +65,14 @@ cd yardbird
 
 echo git log -1 --format="%H"
 
-log_status "INFO" "Building yardbird and garden"
-if ! cargo build --release --all-targets; then
+log_status "INFO" "Building yardbird"
+if ! cargo build --release -p yardbird; then
+    log_status "ERROR" "Failed to build yardbird binary"
+    exit 1
+fi
+
+log_status "INFO" "Building garden"
+if ! cargo build --release -p garden; then
     log_status "ERROR" "Failed to build garden binary"
     exit 1
 fi
