@@ -5,13 +5,12 @@ use glob::Pattern;
 use serde::Serialize;
 use std::{
     fs::{read_dir, OpenOptions},
-    panic,
     path::PathBuf,
-    sync::mpsc::{self, RecvTimeoutError},
+    process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
-use yardbird::{model_from_options, Driver, ProofLoopResult, YardbirdOptions};
+use yardbird::{ProofLoopResult, YardbirdOptions};
 
 mod config;
 use config::BenchmarkConfig;
@@ -61,11 +60,10 @@ struct GardenOptions {
 #[derive(Debug, Serialize)]
 enum BenchmarkResult {
     Success(ProofLoopResult),
-    FoundProof(ProofLoopResult),
+    _FoundProof(ProofLoopResult),
     NoProgress(ProofLoopResult),
     Timeout(u128),
     Error(String),
-    Panic(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -98,57 +96,99 @@ struct StrategyResult {
     depth: u16,
 }
 
-#[allow(clippy::large_enum_variant)]
-enum TimeoutFnResult {
-    Ok(yardbird::Result<ProofLoopResult>),
-    Panic(String),
-}
+fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
+    // Get the path to the yardbird binary (in target/release/)
+    let yardbird_bin = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .map(|mut p| {
+            p.push("yardbird");
+            p
+        })
+        .expect("Failed to find yardbird binary path");
 
-fn run_with_timeout<F>(f: F, timeout: Duration) -> BenchmarkResult
-where
-    F: FnOnce() -> yardbird::Result<ProofLoopResult> + Send + std::panic::UnwindSafe + 'static,
-{
-    let (tx, rx) = mpsc::channel::<TimeoutFnResult>();
-    let _ = thread::spawn(move || {
-        // remove the default panic hook that prints the message
-        panic::set_hook(Box::new(|_| {}));
+    // Build command line arguments for yardbird with JSON output
+    let mut child = Command::new(&yardbird_bin)
+        .arg("--filename")
+        .arg(&options.filename)
+        .arg("--depth")
+        .arg(options.depth.to_string())
+        .arg("--strategy")
+        .arg(options.strategy.to_string())
+        .arg("--cost-function")
+        .arg(options.cost_function.to_string())
+        .arg("--json-output")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn yardbird subprocess");
 
-        // catch the panic so that we can extract the message
-        let result = panic::catch_unwind(f);
-        match result {
-            Ok(inner) => {
-                tx.send(TimeoutFnResult::Ok(inner)).unwrap();
+    let pid = child.id();
+    let start = Instant::now();
+
+    // Poll the subprocess until it completes or times out
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Process completed, read stdout for JSON
+                let mut stdout = String::new();
+                if let Some(mut pipe) = child.stdout.take() {
+                    use std::io::Read;
+                    let _ = pipe.read_to_string(&mut stdout);
+                }
+
+                if status.success() {
+                    // Parse JSON output from yardbird
+                    match serde_json::from_str::<ProofLoopResult>(stdout.trim()) {
+                        Ok(result) => {
+                            if result.found_proof {
+                                return BenchmarkResult::_FoundProof(result);
+                            } else {
+                                return BenchmarkResult::Success(result);
+                            }
+                        }
+                        Err(e) => {
+                            return BenchmarkResult::Error(format!(
+                                "Failed to parse JSON from yardbird: {e}\nOutput: {stdout}"
+                            ));
+                        }
+                    }
+                } else {
+                    // Check stderr for error messages
+                    let mut stderr = String::new();
+                    if let Some(mut pipe) = child.stderr.take() {
+                        use std::io::Read;
+                        let _ = pipe.read_to_string(&mut stderr);
+                    }
+
+                    // Parse common yardbird errors
+                    if stderr.contains("No progress") {
+                        return BenchmarkResult::NoProgress(ProofLoopResult::default());
+                    } else if stderr.contains("counter-example") {
+                        return BenchmarkResult::Error("Found counter-example".to_string());
+                    } else {
+                        return BenchmarkResult::Error(format!(
+                            "Process exited with error: {stderr}"
+                        ));
+                    }
+                }
             }
-            Err(panic) => {
-                let panic_string = match panic.downcast::<String>() {
-                    Ok(v) => *v,
-                    Err(e) => match e.downcast::<&str>() {
-                        Ok(v) => v.to_string(),
-                        Err(_) => "Unknown panic error".to_string(),
-                    },
-                };
-                tx.send(TimeoutFnResult::Panic(panic_string)).unwrap();
+            Ok(None) => {
+                // Process still running, check timeout
+                if start.elapsed() > timeout {
+                    eprintln!("Timeout reached for PID {pid}, killing process");
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return BenchmarkResult::Timeout(timeout.as_millis());
+                }
+                // Sleep briefly before checking again
+                thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => {
+                return BenchmarkResult::Error(format!("Failed to wait on subprocess: {e}"));
             }
         }
-    });
-
-    match rx.recv_timeout(timeout) {
-        Ok(TimeoutFnResult::Ok(res)) => match res {
-            Ok(proof_result) => match proof_result.found_proof {
-                true => BenchmarkResult::FoundProof(proof_result),
-                false => BenchmarkResult::Success(proof_result),
-            },
-            Err(yardbird::Error::NoProgress { instantiations, .. }) => {
-                BenchmarkResult::NoProgress(ProofLoopResult {
-                    used_instances: instantiations,
-                    ..Default::default()
-                })
-            }
-            Err(err) => BenchmarkResult::Error(format!("{err}")),
-        },
-        Ok(TimeoutFnResult::Panic(msg)) => BenchmarkResult::Panic(msg),
-        Err(RecvTimeoutError::Timeout) => BenchmarkResult::Timeout(timeout.as_millis()),
-        Err(RecvTimeoutError::Disconnected) => unreachable!(),
     }
 }
 
@@ -165,21 +205,17 @@ fn run_single(
     } else {
         retry
     };
+
     for _ in 0..retry {
-        let proof_options = options.clone();
-        let abstract_vmt_model = model_from_options(&proof_options);
         let now = Instant::now();
         let filename = options.filename.to_string();
-        let options = options.clone();
-        status_code = Some(run_with_timeout(
-            move || {
-                let ctx = z3::Context::new(&z3::Config::new());
-                let mut driver = Driver::new(&ctx, abstract_vmt_model);
-                let strategy = options.build_array_strategy();
-                driver.check_strategy(proof_options.depth, strategy)
-            },
+
+        // Run yardbird in subprocess with timeout
+        status_code = Some(run_yardbird_subprocess(
+            &options,
             Duration::from_secs(timeout),
         ));
+
         run_time = now.elapsed();
         // TODO: this is really a hack to try and mitigate z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
@@ -289,6 +325,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 run_ic3ia: options.run_ic3ia,
                                 cost_function,
                                 theory: yardbird::Theory::Array,
+                                json_output: false,
                             },
                             retry,
                             timeout,
@@ -400,6 +437,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         run_ic3ia: options.run_ic3ia,
                         cost_function: run.cost_function,
                         theory: yardbird::Theory::Array,
+                        json_output: false,
                     },
                     config.global.retry_count,
                     run.timeout_seconds,
