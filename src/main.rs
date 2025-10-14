@@ -51,13 +51,20 @@ fn print_results(
     options: &YardbirdOptions,
 ) -> anyhow::Result<()> {
     let res = res.into();
-    info!("SUCCESSFUL BMC!");
-    info!(
-        "NEEDED INSTANTIATIONS:\n{}",
-        res.get_instantiations_string()
-    );
-    info!("TOTAL NUMBER: {}", res.total_instantiations_added);
-    log::debug!("Solver stats: {:#?}", res.solver_statistics);
+
+    if options.json_output {
+        // Output JSON to stdout for garden to parse
+        println!("{}", serde_json::to_string(&res)?);
+    } else {
+        // Normal human-readable output
+        info!("SUCCESSFUL BMC!");
+        info!(
+            "NEEDED INSTANTIATIONS:\n{}",
+            res.get_instantiations_string()
+        );
+        info!("TOTAL NUMBER: {}", res.total_instantiations_added);
+        log::debug!("Solver stats: {:#?}", res.solver_statistics);
+    }
 
     if let Some(model) = res.model {
         if options.print_vmt {

@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use log::info;
-use serde::{ser::SerializeStruct, Serialize};
-use smt2parser::{concrete::Term, vmt::VMTModel};
+use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
 use crate::{
     smt_problem::SMTProblem,
@@ -34,7 +34,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 5)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 6)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -52,9 +52,116 @@ impl Serialize for ProofLoopResult {
                 .collect::<Vec<_>>(),
         )?;
         state.serialize_field("solver_statistics", &self.solver_statistics)?;
+        state.serialize_field(
+            "total_instantiations_added",
+            &self.total_instantiations_added,
+        )?;
         state.serialize_field("counterexample", &self.counterexample)?;
         state.serialize_field("found_proof", &self.found_proof)?;
         state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ProofLoopResult {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{MapAccess, Visitor};
+
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            UsedInstances,
+            ConstInstances,
+            SolverStatistics,
+            TotalInstantiationsAdded,
+            Counterexample,
+            FoundProof,
+        }
+
+        struct ProofLoopResultVisitor;
+
+        impl<'de> Visitor<'de> for ProofLoopResultVisitor {
+            type Value = ProofLoopResult;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct ProofLoopResult")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> std::result::Result<ProofLoopResult, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut used_instances: Option<Vec<String>> = None;
+                let mut const_instances: Option<Vec<String>> = None;
+                let mut solver_statistics = None;
+                let mut total_instantiations_added = None;
+                let mut counterexample = None;
+                let mut found_proof = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::UsedInstances => {
+                            used_instances = Some(map.next_value()?);
+                        }
+                        Field::ConstInstances => {
+                            const_instances = Some(map.next_value()?);
+                        }
+                        Field::SolverStatistics => {
+                            solver_statistics = Some(map.next_value()?);
+                        }
+                        Field::TotalInstantiationsAdded => {
+                            total_instantiations_added = Some(map.next_value()?);
+                        }
+                        Field::Counterexample => {
+                            counterexample = Some(map.next_value()?);
+                        }
+                        Field::FoundProof => {
+                            found_proof = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                // Parse term strings back into Term objects
+                let used_instances_terms = used_instances
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|s| get_term_from_term_string(&s))
+                    .collect();
+
+                let const_instances_terms = const_instances
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|s| get_term_from_term_string(&s))
+                    .collect();
+
+                Ok(ProofLoopResult {
+                    model: None,
+                    used_instances: used_instances_terms,
+                    const_instances: const_instances_terms,
+                    solver_statistics: solver_statistics
+                        .ok_or_else(|| serde::de::Error::missing_field("solver_statistics"))?,
+                    total_instantiations_added: total_instantiations_added.ok_or_else(|| {
+                        serde::de::Error::missing_field("total_instantiations_added")
+                    })?,
+                    counterexample: counterexample
+                        .ok_or_else(|| serde::de::Error::missing_field("counterexample"))?,
+                    found_proof: found_proof
+                        .ok_or_else(|| serde::de::Error::missing_field("found_proof"))?,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "used_instances",
+            "const_instances",
+            "solver_statistics",
+            "total_instantiations_added",
+            "counterexample",
+            "found_proof",
+        ];
+        deserializer.deserialize_struct("ProofLoopResult", FIELDS, ProofLoopResultVisitor)
     }
 }
 

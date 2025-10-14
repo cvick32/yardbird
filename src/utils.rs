@@ -1,5 +1,5 @@
 use crate::{interpolant::Interpolant, smt_problem::SMTProblem};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use smt2parser::{get_term_from_term_string, let_extract::LetExtract};
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -70,7 +70,7 @@ pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Err
     Ok(interpolants)
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StatisticsValue {
     UInt(u32),
@@ -86,7 +86,7 @@ impl Display for StatisticsValue {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SolverStatistics {
     stats: BTreeMap<String, StatisticsValue>,
 }

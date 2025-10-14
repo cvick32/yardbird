@@ -1,6 +1,6 @@
 #![warn(clippy::print_stdout)]
 
-use std::{fs::File, io::Write};
+use std::{fmt::Display, fs::File, io::Write};
 
 use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
@@ -77,6 +77,10 @@ pub struct YardbirdOptions {
     // Choose Theory
     #[arg(short, long, value_enum, default_value_t = Theory::Array)]
     pub theory: Theory,
+
+    /// Output ProofLoopResult as JSON to stdout (for garden integration)
+    #[arg(long, default_value_t = false)]
+    pub json_output: bool,
 }
 
 impl Default for YardbirdOptions {
@@ -91,6 +95,7 @@ impl Default for YardbirdOptions {
             run_ic3ia: false,
             cost_function: CostFunction::SymbolCost,
             theory: Theory::Array,
+            json_output: false,
         }
     }
 }
@@ -209,6 +214,16 @@ pub enum Strategy {
     Concrete,
 }
 
+impl Display for Strategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Strategy::Abstract => write!(f, "abstract"),
+            Strategy::AbstractWithQuantifiers => write!(f, "abstract-with-quantifiers"),
+            Strategy::Concrete => write!(f, "concrete"),
+        }
+    }
+}
+
 /// Describes the cost functions available.
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
@@ -218,6 +233,17 @@ pub enum CostFunction {
     ASTSize,
     AdaptiveCost,
     SplitCost,
+}
+
+impl Display for CostFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CostFunction::SymbolCost => write!(f, "symbol-cost"),
+            CostFunction::ASTSize => write!(f, "ast-size"),
+            CostFunction::AdaptiveCost => write!(f, "adaptive-cost"),
+            CostFunction::SplitCost => write!(f, "split-cost"),
+        }
+    }
 }
 
 /// Describes the theories available.
