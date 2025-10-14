@@ -84,11 +84,13 @@ cat > garden/run_config.yaml << 'CONFIG_EOF'
 ${config_content}
 CONFIG_EOF
 
+
 # Validate config file exists
 if [ ! -f "garden/run_config.yaml" ]; then
     log_status "ERROR" "Config file was not created successfully"
     exit 1
 fi
+echo "$(cat garden/run_config.yaml)"
 
 log_status "INFO" "Running benchmarks with garden"
 if ! ./target/release/garden --config garden/run_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
