@@ -21,8 +21,14 @@ parameter_matrices:
   # Quick test matrix
   quick:
     depths: [5]
-    strategies: ["abstract", "concrete"]
+    strategies: ["abstract"]
+    cost_functions: ["symbol-cost"]
+
+  timeout:
+    depths: [50]
+    strategies: ["abstract"]
     cost_functions: ["a-s-t-size"]
+    timeout_seconds: 1
 
   # Deep analysis matrix
   deep-abstract:
