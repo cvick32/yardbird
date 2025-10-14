@@ -63,6 +63,8 @@ if ! git clone https://github.com/cvick32/yardbird.git; then
 fi
 cd yardbird
 
+echo git log -1 --format="%H"
+
 log_status "INFO" "Building yardbird (garden)"
 if ! cargo build --release -p garden; then
     log_status "ERROR" "Failed to build garden binary"
