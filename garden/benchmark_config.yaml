@@ -37,10 +37,22 @@ parameter_matrices:
     cost_functions: ["symbol-cost", "a-s-t-size"]
     timeout_seconds: 120
 
-  abstract-75:
-    depths: [75]
+  deep-abstract-ast:
+    depths: [50]
     strategies: ["abstract"]
-    cost_functions: ["symbol-cost", "a-s-t-size"]
+    cost_functions: ["a-s-t-size"]
+    timeout_seconds: 120
+
+  deep-abstract-prefer-read:
+    depths: [50]
+    strategies: ["abstract"]
+    cost_functions: ["prefer-read"]
+    timeout_seconds: 120
+
+  deep-abstract-prefer-write:
+    depths: [50]
+    strategies: ["abstract"]
+    cost_functions: ["prefer-write"]
     timeout_seconds: 120
 
   deep-abstract-with-quantifiers:
