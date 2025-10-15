@@ -23,7 +23,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayPreferRead {
     {
         let op_cost = match enode {
             ArrayLanguage::Read(_) => 0,
-            _ => enode.to_string().len() as u32,
+            _ => 1,
         };
 
         enode.fold(op_cost, |sum, id| sum + costs(id))
