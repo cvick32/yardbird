@@ -34,7 +34,7 @@ parameter_matrices:
   deep-abstract:
     depths: [50]
     strategies: ["abstract"]
-    cost_functions: ["symbol-cost", "a-s-t-size"]
+    cost_functions: ["symbol-cost"]
     timeout_seconds: 120
 
   deep-abstract-ast:
