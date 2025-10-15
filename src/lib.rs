@@ -263,12 +263,12 @@ pub enum CostFunction {
 impl Display for CostFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CostFunction::SymbolCost => write!(f, "symbol_cost"),
-            CostFunction::ASTSize => write!(f, "ast_size"),
-            CostFunction::AdaptiveCost => write!(f, "adaptive_cost"),
-            CostFunction::SplitCost => write!(f, "split_cost"),
-            CostFunction::PreferRead => write!(f, "prefer_read"),
-            CostFunction::PreferWrite => write!(f, "prefer_write"),
+            CostFunction::SymbolCost => write!(f, "symbol-cost"),
+            CostFunction::ASTSize => write!(f, "ast-size"),
+            CostFunction::AdaptiveCost => write!(f, "adaptive-cost"),
+            CostFunction::SplitCost => write!(f, "split-cost"),
+            CostFunction::PreferRead => write!(f, "prefer-read"),
+            CostFunction::PreferWrite => write!(f, "prefer-write"),
         }
     }
 }
