@@ -3,6 +3,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
+CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
+ABSTRACT_WITH_QUANTIFIERS = ["quant instantiations"]
+
 
 @dataclass
 class BenchmarkResult:
@@ -15,6 +18,36 @@ class BenchmarkResult:
     depth: int
     result_type: str
     success: bool
+    used_instantiations: int
+
+
+def compute_axiom_instantiations(full_entry: dict, strategy: str, success: bool) -> int:
+    """Compute axiom instantiations for a benchmark result"""
+    if not success:
+        return 10000000  # Large penalty for unsuccessful results
+    entry = full_entry["result"]["Success"]
+    if strategy == "abstract":
+        return entry.get("total_instantiations_added")
+    elif strategy == "concrete":
+        # Concrete: sum of concrete Z3 array axiom stats
+        concrete_z3_count = 0
+        for stat in CONCRETE_ARRAY_Z3_STATS:
+            try:
+                concrete_z3_count += int(entry["solver_statistics"].get(stat, 0))
+            except (ValueError, TypeError):
+                pass
+
+        return concrete_z3_count
+    elif strategy == "abstract-with-quantifiers":
+        quant_count = 0
+        for stat in ABSTRACT_WITH_QUANTIFIERS:
+            try:
+                quant_count += int(entry["solver_statistics"].get(stat, 0))
+            except (ValueError, TypeError):
+                pass
+        return quant_count
+
+    raise ValueError(f"Unknown strategy: {strategy}")
 
 
 class BenchmarkParser:
@@ -59,6 +92,9 @@ class BenchmarkParser:
         if result_type == "Success":
             success = True
 
+        used_instantiations = compute_axiom_instantiations(
+            result_entry, strategy, success
+        )
         return BenchmarkResult(
             example_name=example_name,
             strategy=strategy,
@@ -67,4 +103,5 @@ class BenchmarkParser:
             depth=depth,
             result_type=result_type,
             success=success,
+            used_instantiations=used_instantiations,
         )
