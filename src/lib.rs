@@ -15,7 +15,8 @@ use crate::{
     cost_functions::{
         array::{
             adaptive_array_cost_factory, array_ast_size_cost_factory,
-            array_best_symbol_cost_factory, split_array_cost_factory,
+            array_best_symbol_cost_factory, array_minimal_ast_size_factory,
+            array_prefer_read_factory, array_prefer_write_factory, split_array_cost_factory,
         },
         list::list_ast_size_cost_factory,
     },
@@ -131,6 +132,21 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     split_array_cost_factory,
                 )),
+                CostFunction::MinimalASTSize => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_minimal_ast_size_factory,
+                )),
+                CostFunction::PreferRead => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_prefer_read_factory,
+                )),
+                CostFunction::PreferWrite => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_prefer_write_factory,
+                )),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -164,6 +180,21 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     split_array_cost_factory,
                 )),
+                CostFunction::MinimalASTSize => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_minimal_ast_size_factory,
+                )),
+                CostFunction::PreferRead => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_prefer_read_factory,
+                )),
+                CostFunction::PreferWrite => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_prefer_write_factory,
+                )),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -183,6 +214,13 @@ impl YardbirdOptions {
                 )),
                 CostFunction::AdaptiveCost => todo!(),
                 CostFunction::SplitCost => todo!(),
+                CostFunction::MinimalASTSize => Box::new(ListAbstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    list_ast_size_cost_factory,
+                )),
+                CostFunction::PreferRead => todo!(),
+                CostFunction::PreferWrite => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 todo!("AbstractWithQuantifiers not yet implemented for List theory")
@@ -233,15 +271,21 @@ pub enum CostFunction {
     ASTSize,
     AdaptiveCost,
     SplitCost,
+    MinimalASTSize,
+    PreferRead,
+    PreferWrite,
 }
 
 impl Display for CostFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CostFunction::SymbolCost => write!(f, "symbol-cost"),
-            CostFunction::ASTSize => write!(f, "ast-size"),
-            CostFunction::AdaptiveCost => write!(f, "adaptive-cost"),
-            CostFunction::SplitCost => write!(f, "split-cost"),
+            CostFunction::SymbolCost => write!(f, "symbol_cost"),
+            CostFunction::ASTSize => write!(f, "ast_size"),
+            CostFunction::AdaptiveCost => write!(f, "adaptive_cost"),
+            CostFunction::SplitCost => write!(f, "split_cost"),
+            CostFunction::MinimalASTSize => write!(f, "minimal_ast_size"),
+            CostFunction::PreferRead => write!(f, "prefer_read"),
+            CostFunction::PreferWrite => write!(f, "prefer_write"),
         }
     }
 }

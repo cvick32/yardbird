@@ -3,7 +3,9 @@ use rustc_hash::FxHashSet;
 
 use crate::{
     cost_functions::array::{
-        adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize, split_cost::SplitArrayCost,
+        adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize,
+        minimal_ast_size::ArrayMinimalAstSize, prefer_read::ArrayPreferRead,
+        prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost,
         symbol_cost::ArrayBestSymbolSubstitution,
     },
     smt_problem::SMTProblem,
@@ -11,6 +13,9 @@ use crate::{
 
 pub mod adaptive_cost;
 pub mod ast_size;
+pub mod minimal_ast_size;
+pub mod prefer_read;
+pub mod prefer_write;
 pub mod split_cost;
 pub mod symbol_cost;
 
@@ -60,4 +65,31 @@ pub fn split_array_cost_factory(smt: &SMTProblem, depth: u32) -> SplitArrayCost 
         smt.get_property_subterms(),
         smt.get_reads_and_writes(),
     )
+}
+
+pub fn array_minimal_ast_size_factory(smt: &SMTProblem, depth: u32) -> ArrayMinimalAstSize {
+    ArrayMinimalAstSize {
+        current_bmc_depth: depth,
+        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
+        property_terms: smt.get_property_subterms(),
+        reads_writes: smt.get_reads_and_writes(),
+    }
+}
+
+pub fn array_prefer_read_factory(smt: &SMTProblem, depth: u32) -> ArrayPreferRead {
+    ArrayPreferRead {
+        current_bmc_depth: depth,
+        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
+        property_terms: smt.get_property_subterms(),
+        reads_writes: smt.get_reads_and_writes(),
+    }
+}
+
+pub fn array_prefer_write_factory(smt: &SMTProblem, depth: u32) -> ArrayPreferWrite {
+    ArrayPreferWrite {
+        current_bmc_depth: depth,
+        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
+        property_terms: smt.get_property_subterms(),
+        reads_writes: smt.get_reads_and_writes(),
+    }
 }

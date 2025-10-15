@@ -1,5 +1,3 @@
-use std::{cell::RefCell, collections::HashMap};
-
 use egg::{Language, Symbol};
 use rustc_hash::FxHashSet;
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
@@ -17,7 +15,6 @@ pub struct ArrayBestSymbolSubstitution {
     pub init_and_transition_system_terms: FxHashSet<Symbol>,
     pub property_terms: FxHashSet<Symbol>,
     pub reads_writes: ReadsAndWrites,
-    cost_cache: RefCell<HashMap<ArrayLanguage, u32>>,
 }
 
 impl std::fmt::Debug for ArrayBestSymbolSubstitution {
@@ -46,7 +43,6 @@ impl ArrayBestSymbolSubstitution {
             init_and_transition_system_terms,
             property_terms,
             reads_writes,
-            cost_cache: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -58,13 +54,6 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
-        // Check cache first for leaf nodes and simple operations
-        if enode.is_leaf() {
-            if let Some(&cached) = self.cost_cache.borrow().get(enode) {
-                return cached;
-            }
-        }
-
         let op_cost = match enode {
             ArrayLanguage::Num(num) => {
                 let num_symbol: Symbol = num.to_string().into();
@@ -134,14 +123,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
             }
         };
 
-        let total = enode.fold(op_cost, |sum, id| sum + costs(id));
-
-        // Cache the result for leaf nodes
-        if enode.is_leaf() {
-            self.cost_cache.borrow_mut().insert(enode.clone(), total);
-        }
-
-        total
+        enode.fold(op_cost, |sum, id| sum + costs(id))
     }
 }
 
