@@ -186,7 +186,7 @@ class CactusPlotTikzGenerator:
     grid=major,
     width=\\columnwidth,
     height=8cm,
-    legend pos=north west
+    legend pos=south east
 ]
 
 """
