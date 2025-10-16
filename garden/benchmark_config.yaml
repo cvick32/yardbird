@@ -22,7 +22,7 @@ parameter_matrices:
   quick:
     depths: [5]
     strategies: ["abstract"]
-    cost_functions: ["symbol-cost"]
+    cost_functions: ["symbol-cost", "ast-size", "prefer-read", "prefer-write"]
 
   timeout:
     depths: [50]
