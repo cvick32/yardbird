@@ -71,12 +71,6 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
                 }
             }
             ArrayLanguage::ConstArr(_) => 0,
-            // NOTE: try changing the value of Write from 0 to 10 for
-            // `array_init_var.vmt`. Notice that when we allow Write terms
-            // to be used in axiom instantiations we end up with a chain of
-            // rewrites that use `Write`. When we change it to 10, we automatically
-            // rule out these very specific chains of Writes and are able to
-            // generate a single instance that generalizes immediately.
             ArrayLanguage::Write(_) => 1,
             ArrayLanguage::Read(_) => 1,
             ArrayLanguage::And(_) => 1,

@@ -15,8 +15,8 @@ use crate::{
     cost_functions::{
         array::{
             adaptive_array_cost_factory, array_ast_size_cost_factory,
-            array_best_symbol_cost_factory, array_prefer_read_factory, array_prefer_write_factory,
-            split_array_cost_factory,
+            array_best_symbol_cost_factory, array_prefer_constants, array_prefer_read_factory,
+            array_prefer_write_factory, split_array_cost_factory,
         },
         list::list_ast_size_cost_factory,
     },
@@ -142,6 +142,11 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     array_prefer_write_factory,
                 )),
+                CostFunction::PreferConstants => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    array_prefer_constants,
+                )),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -185,6 +190,7 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     array_prefer_write_factory,
                 )),
+                CostFunction::PreferConstants => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -206,6 +212,7 @@ impl YardbirdOptions {
                 CostFunction::SplitCost => todo!(),
                 CostFunction::PreferRead => todo!(),
                 CostFunction::PreferWrite => todo!(),
+                CostFunction::PreferConstants => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 todo!("AbstractWithQuantifiers not yet implemented for List theory")
@@ -258,6 +265,7 @@ pub enum CostFunction {
     SplitCost,
     PreferRead,
     PreferWrite,
+    PreferConstants,
 }
 
 impl Display for CostFunction {
@@ -269,6 +277,7 @@ impl Display for CostFunction {
             CostFunction::SplitCost => write!(f, "split-cost"),
             CostFunction::PreferRead => write!(f, "prefer-read"),
             CostFunction::PreferWrite => write!(f, "prefer-write"),
+            CostFunction::PreferConstants => write!(f, "prefer-constants"),
         }
     }
 }
