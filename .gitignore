@@ -19,3 +19,4 @@ ec2
 *.tex
 benchmark_results
 *.pyc
+run_all_benchmarks.sh
