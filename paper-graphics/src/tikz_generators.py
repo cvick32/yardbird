@@ -164,7 +164,6 @@ class CactusPlotTikzGenerator:
             y_max = max_time * 1.05
 
         x_max = max_instances * 1.05
-        breakpoint()
         # Color mapping for strategies
         strategy_colors = {
             "Z3 Array Theory": Z3_BETTER_COLOR,
