@@ -127,8 +127,6 @@ class CactusPlotGenerator:
 
     def generate_data(
         self,
-        strategies: List[str],
-        cost_functions: Optional[List[str]] = None,
     ) -> Dict[str, List[float]]:
         """Get runtime data for cactus plot
 
@@ -140,36 +138,14 @@ class CactusPlotGenerator:
             Dict mapping display names to sorted runtimes in seconds
         """
         strategy_runtimes = {}
-
         for result in self.all_results:
-            # Determine display name for strategy
-            if result.strategy == "abstract" and result.cost_function:
-                display_name = f"Abstract ({result.cost_function})"
-            else:
-                display_name = (
-                    "Z3" if result.strategy == "concrete" else result.strategy
-                )
-
-            # Filter by requested strategies
-            if result.strategy not in strategies:
-                continue
-
-            # Filter by cost functions if specified
-            if (
-                result.strategy == "abstract"
-                and cost_functions
-                and result.cost_function not in cost_functions
-            ):
-                continue
-
-            # Initialize list if needed
-            if display_name not in strategy_runtimes:
-                strategy_runtimes[display_name] = []
-
             # Add runtime in seconds (convert from ms)
             runtime_ms = result.runtime_ms if result.success else TIMEOUT_MS
             runtime_s = runtime_ms / 1000.0
-            strategy_runtimes[display_name].append(runtime_s)
+            if result.get_display_name() in strategy_runtimes:
+                strategy_runtimes[result.get_display_name()].append(runtime_s)
+            else:
+                strategy_runtimes[result.get_display_name()] = [runtime_s]
 
         # Sort each strategy's runtimes for cactus plot
         for display_name in strategy_runtimes:

@@ -164,16 +164,15 @@ class CactusPlotTikzGenerator:
             y_max = max_time * 1.05
 
         x_max = max_instances * 1.05
-
+        breakpoint()
         # Color mapping for strategies
         strategy_colors = {
-            "concrete": ("Z3", Z3_BETTER_COLOR),
-            "Z3": ("Z3", Z3_BETTER_COLOR),
-            "abstract_symbol-cost": ("BMC Cost", ABSTRACT_BETTER_COLOR),
-            "abstract_a-s-t-size": ("AST Size", "red"),
-            "Abstract (symbol-cost)": ("BMC Cost", ABSTRACT_BETTER_COLOR),
-            "Abstract (AST size)": ("AST Size", "red"),
-            "Abstract (a-s-t-size)": ("AST Size", "red"),
+            "Z3 Array Theory": Z3_BETTER_COLOR,
+            "BMC Cost": ABSTRACT_BETTER_COLOR,
+            "AST Size": "red",
+            "Prefer Read": "pink",
+            "Prefer Write": "yellow",
+            "Z3 Quantified Axioms": "green",
         }
 
         tikz_code = f"""\\begin{{figure}}[htbp]
@@ -195,13 +194,10 @@ class CactusPlotTikzGenerator:
 
         # Plot each strategy
         for strategy_name, sorted_times in sorted(strategy_data.items()):
-            color_info = strategy_colors.get(strategy_name, (strategy_name, "blue"))
-            legend_name, color = color_info
-
-            tikz_code += f"\\addplot[thick, color={color}] coordinates {{\n"
+            tikz_code += f"\\addplot[thick, color={strategy_colors[strategy_name]}] coordinates {{\n"
             for i, runtime in enumerate(sorted_times, start=1):
                 tikz_code += f"    ({i}, {runtime:.6f})\n"
-            tikz_code += f"}};\n\\addlegendentry{{{legend_name}}}\n\n"
+            tikz_code += f"}};\n\\addlegendentry{{{strategy_name}}}\n\n"
 
         tikz_code += f"""\\end{{{y_axis}}}
 \\end{{tikzpicture}}"""

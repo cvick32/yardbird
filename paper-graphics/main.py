@@ -99,21 +99,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
 
     cactus_gen = CactusPlotGenerator(all_results)
 
-    # Extract unique base strategies and cost functions from strategy_keys
-    base_strategies = set()
-    cost_functions = set()
-    for key in strategy_keys:
-        if "_" in key:
-            strategy, cost_func = key.split("_", 1)
-            base_strategies.add(strategy)
-            cost_functions.add(cost_func)
-        else:
-            base_strategies.add(key)
-
-    cactus_data = cactus_gen.generate_data(
-        strategies=list(base_strategies),
-        cost_functions=list(cost_functions) if cost_functions else None,
-    )
+    cactus_data = cactus_gen.generate_data()
 
     if cactus_data:
         tikz_code = CactusPlotTikzGenerator.generate(

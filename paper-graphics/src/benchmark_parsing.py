@@ -20,6 +20,31 @@ class BenchmarkResult:
     success: bool
     used_instantiations: int
 
+    def get_strategy_id(self) -> str:
+        if self.strategy == "abstract":
+            return f"{self.strategy}_{self.cost_function}"
+        else:
+            return self.strategy
+
+    def get_display_name(self) -> str:
+        if self.strategy == "concrete":
+            return "Z3 Array Theory"
+        elif self.strategy == "abstract-with-quantifiers":
+            return "Z3 Quantified Axioms"
+        elif self.strategy == "abstract":
+            if self.cost_function == "symbol-cost":
+                return "BMC Cost"
+            elif self.cost_function == "a-s-t-size":
+                return "AST Size"
+            elif self.cost_function == "prefer-read":
+                return "Prefer Read"
+            elif self.cost_function == "prefer-write":
+                return "Prefer Write"
+            else:
+                raise ValueError(f"Unknown Cost function: {self.cost_function}")
+        else:
+            raise ValueError(f"Unknown Strategy: {self.strategy}")
+
 
 def compute_axiom_instantiations(full_entry: dict, strategy: str, success: bool) -> int:
     """Compute axiom instantiations for a benchmark result"""
