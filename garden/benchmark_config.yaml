@@ -22,7 +22,7 @@ parameter_matrices:
   quick:
     depths: [5]
     strategies: ["abstract"]
-    cost_functions: ["symbol-cost", "ast-size", "prefer-read", "prefer-write"]
+    cost_functions: ["symbol-cost", "a-s-t-size", "prefer-read", "prefer-write"]
 
   timeout:
     depths: [50]
@@ -53,6 +53,12 @@ parameter_matrices:
     depths: [50]
     strategies: ["abstract"]
     cost_functions: ["prefer-write"]
+    timeout_seconds: 120
+
+  deep-abstract-prefer-constants:
+    depths: [50]
+    strategies: ["abstract"]
+    cost_functions: ["prefer-constants"]
     timeout_seconds: 120
 
   deep-abstract-with-quantifiers:
