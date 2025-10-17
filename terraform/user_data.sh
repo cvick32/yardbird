@@ -84,22 +84,10 @@ if [ ! -f "./target/release/garden" ]; then
 fi
 log_status "INFO" "Garden binary built successfully"
 
-# Write config file
-log_status "INFO" "Writing benchmark config file"
-cat > garden/run_config.yaml << 'CONFIG_EOF'
-${config_content}
-CONFIG_EOF
-
-
-# Validate config file exists
-if [ ! -f "garden/run_config.yaml" ]; then
-    log_status "ERROR" "Config file was not created successfully"
-    exit 1
-fi
-echo "$(cat garden/run_config.yaml)"
+echo "$(cat garden/benchmark_config.yaml)"
 
 log_status "INFO" "Running benchmarks with garden"
-if ! ./target/release/garden --config garden/run_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
+if ! ./target/release/garden --config garden/benchmark_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
     log_status "ERROR" "Benchmark execution failed"
     exit 1
 fi

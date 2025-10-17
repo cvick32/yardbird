@@ -23,12 +23,8 @@ def run_terraform_command(cmd, cwd=None):
     return result.stdout
 
 
-def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
+def launch_benchmark_instance(matrix_name, terraform_outputs):
     """Launch instance using deployed infrastructure"""
-
-    # Read config
-    with open(config_file) as f:
-        config_content = f.read()
 
     ec2 = boto3.client("ec2", region_name="us-east-2")  # Use us-east-2 for key pairs
 
@@ -42,8 +38,7 @@ def launch_benchmark_instance(config_file, matrix_name, terraform_outputs):
         user_data_template = f.read()
 
     # Substitute template variables
-    user_data = user_data_template.replace("${config_content}", config_content)
-    user_data = user_data.replace("${matrix_name}", matrix_name)
+    user_data = user_data_template.replace("${matrix_name}", matrix_name)
     user_data = user_data.replace("${unique_benchmark_name}", unique_benchmark_name)
     user_data = user_data.replace(
         "${s3_bucket_name}", terraform_outputs["s3_bucket_name"]
@@ -190,9 +185,7 @@ def main():
 
     # Run command
     run_parser = subparsers.add_parser("run", help="Run benchmarks")
-    run_parser.add_argument("config", help="Benchmark configuration file")
     run_parser.add_argument("--matrix", required=True, help="Matrix name to run")
-    run_parser.add_argument("--wait", action="store_true", help="Wait for completion")
     run_parser.add_argument("--download", help="Download results to directory")
 
     # Destroy command
@@ -210,27 +203,7 @@ def main():
         outputs = json.loads(outputs_json)
         terraform_outputs = {k: v["value"] for k, v in outputs.items()}
 
-        instance_id, unique_benchmark_name = launch_benchmark_instance(
-            args.config, args.matrix, terraform_outputs
-        )
-
-        if args.wait:
-            wait_for_completion(
-                terraform_outputs["s3_bucket_name"], unique_benchmark_name, instance_id
-            )
-
-            if args.download:
-                download_dir = Path(args.download)
-                print(f"Downloading results to {download_dir}")
-                subprocess.run(
-                    [
-                        "aws",
-                        "s3",
-                        "sync",
-                        f"s3://{terraform_outputs['s3_bucket_name']}/benchmarks/{unique_benchmark_name}",
-                        str(download_dir),
-                    ]
-                )
+        launch_benchmark_instance(args.matrix, terraform_outputs)
 
     elif args.command == "destroy":
         destroy_infrastructure()
