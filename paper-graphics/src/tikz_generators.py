@@ -171,6 +171,7 @@ class CactusPlotTikzGenerator:
             "AST Size": "red",
             "Prefer Read": "pink",
             "Prefer Write": "yellow",
+            "Prefer Constants": "purple",
             "Z3 Quantified Axioms": "green",
         }
 

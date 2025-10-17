@@ -40,6 +40,8 @@ class BenchmarkResult:
                 return "Prefer Read"
             elif self.cost_function == "prefer-write":
                 return "Prefer Write"
+            elif self.cost_function == "prefer-constants":
+                return "Prefer Constants"
             else:
                 raise ValueError(f"Unknown Cost function: {self.cost_function}")
         else:
