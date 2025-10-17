@@ -25,12 +25,12 @@ impl egg::CostFunction<ArrayLanguage> for ArrayPreferConstants {
             ArrayLanguage::Num(_) => 0,
             ArrayLanguage::Symbol(sym) => {
                 if let Some((_, _)) = sym.as_str().split_once(VARIABLE_FRAME_DELIMITER) {
-                    5
+                    20
                 } else {
                     1
                 }
             }
-            _ => 5,
+            _ => 20,
         };
 
         enode.fold(op_cost, |sum, id| sum + costs(id))

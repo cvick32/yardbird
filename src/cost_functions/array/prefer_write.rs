@@ -23,7 +23,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayPreferWrite {
     {
         let op_cost = match enode {
             ArrayLanguage::Write(_) => 0,
-            _ => 1,
+            _ => 20,
         };
 
         enode.fold(op_cost, |sum, id| sum + costs(id))

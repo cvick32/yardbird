@@ -67,7 +67,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
                     2
                 } else {
                     // Otherwise, 100.
-                    100
+                    10
                 }
             }
             ArrayLanguage::ConstArr(_) => 0,
@@ -112,7 +112,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
                     // constants instead of symbols.
                     // Ex: Array-Int-Int!val!0 is currently a symbol when it should be a
                     // constant.
-                    10000
+                    100
                 }
             }
         };
