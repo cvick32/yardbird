@@ -23,7 +23,7 @@ log_status "INFO" "Starting Yardbird benchmark setup"
 # Install dependencies
 log_status "INFO" "Installing system dependencies"
 apt-get update
-if ! apt-get install -y git curl build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev; then
+if ! apt-get install -y git curl cmake build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev; then
     log_status "ERROR" "Failed to install system dependencies"
     exit 1
 fi
@@ -40,6 +40,8 @@ set -e
 
 # install Z3
 pip install z3-solver==4.15.3
+sudo cp /home/ubuntu/.local/lib/python3.10/site-packages/z3/lib/* /usr/local/lib/
+export LD_LIBRARY_PATH="/home/ubuntu/.local/lib/python3.10/site-packages/z3/lib/"
 
 # Function to log inside ubuntu user context
 log_status() {
