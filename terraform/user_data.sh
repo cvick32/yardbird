@@ -23,10 +23,12 @@ log_status "INFO" "Starting Yardbird benchmark setup"
 # Install dependencies
 log_status "INFO" "Installing system dependencies"
 apt-get update
-if ! apt-get install -y git curl build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev libz3-dev; then
+if ! apt-get install -y git curl build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev; then
     log_status "ERROR" "Failed to install system dependencies"
     exit 1
 fi
+
+
 
 # Setup ubuntu user environment first
 log_status "INFO" "Setting up ubuntu user environment"
@@ -35,6 +37,9 @@ chown -R ubuntu:ubuntu /home/ubuntu
 # Install Rust as ubuntu user
 sudo -u ubuntu bash << 'EOF'
 set -e
+
+# install Z3
+pip install z3-solver==4.15.3
 
 # Function to log inside ubuntu user context
 log_status() {
@@ -66,13 +71,13 @@ cd yardbird
 echo git log -1 --format="%H"
 
 log_status "INFO" "Building yardbird"
-if ! cargo build --release -p yardbird; then
+if ! Z3_SYS_Z3_HEADER="/home/ubuntu/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p yardbird; then
     log_status "ERROR" "Failed to build yardbird binary"
     exit 1
 fi
 
 log_status "INFO" "Building garden"
-if ! cargo build --release -p garden; then
+if ! Z3_SYS_Z3_HEADER="/home/ubuntu/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p garden; then
     log_status "ERROR" "Failed to build garden binary"
     exit 1
 fi
