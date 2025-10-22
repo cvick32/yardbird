@@ -25,6 +25,11 @@ smt2parser = { workspace = true }
 tempfile = "3.17.1"
 thiserror = "2.0.11"
 tokio = { version = "1.0", features = ["full"] }
+# Platform-specific z3 configuration
+[target.'cfg(target_os = "linux")'.dependencies]
+z3 = { workspace = true, features = ["static-link-z3"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
 z3 = { workspace = true }
 
 [workspace.dependencies]
@@ -34,7 +39,7 @@ clap = { version = "4.5.20" }
 serde = "1.0.215"
 serde_json = "1.0.133"
 smt2parser = { path = "./smt2parser", version = "0.6.1" }
-z3 =  "0.12.1"
+z3 = { version = "0.12.1" }
 
 [dev-dependencies]
 insta = "1.41.1"
