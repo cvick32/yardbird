@@ -7,10 +7,12 @@ from src.data_generators import (
     RuntimeScatterPlotGenerator,
     CactusPlotGenerator,
     InstantiationScatterPlotGenerator,
+    InstCactusPlotGenerator,
 )
 from src.tikz_generators import (
     ScatterPlotTikzGenerator,
     CactusPlotTikzGenerator,
+    InstCactusPlotTikzGenerator,
     TableTikzGenerator,
 )
 
@@ -97,8 +99,12 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
 
-    cactus_gen = CactusPlotGenerator(all_results)
+    # Generate runtime cactus plot
+    print(f"\n{'=' * 60}")
+    print("Generating runtime cactus plot")
+    print(f"{'=' * 60}")
 
+    cactus_gen = CactusPlotGenerator(all_results)
     cactus_data = cactus_gen.generate_data()
 
     if cactus_data:
@@ -112,6 +118,28 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
         )
 
         output_file = output_dir / "runtime_cactus_plot.tex"
+        output_file.write_text(tikz_code)
+        print(f"  Saved: {output_file}")
+
+    # Generate instantiation cactus plot
+    print(f"\n{'=' * 60}")
+    print("Generating instantiation cactus plot")
+    print(f"{'=' * 60}")
+
+    inst_cactus_gen = InstCactusPlotGenerator(all_results)
+    inst_cactus_data = inst_cactus_gen.generate_data()
+
+    if inst_cactus_data:
+        tikz_code = InstCactusPlotTikzGenerator.generate(
+            inst_cactus_data,
+            title="Instantiation Performance Comparison",
+            xlabel="Number of Benchmarks",
+            ylabel="Instantiations",
+            caption="Cactus plot comparing instantiation counts across all benchmarks. Failed benchmarks are pinned to the top.",
+            use_log_scale=True,
+        )
+
+        output_file = output_dir / "instantiation_cactus_plot.tex"
         output_file.write_text(tikz_code)
         print(f"  Saved: {output_file}")
 

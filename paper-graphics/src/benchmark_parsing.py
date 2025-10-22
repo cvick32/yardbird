@@ -60,7 +60,9 @@ def compute_axiom_instantiations(full_entry: dict, strategy: str, success: bool)
         concrete_z3_count = 0
         for stat in CONCRETE_ARRAY_Z3_STATS:
             try:
-                concrete_z3_count += int(entry["solver_statistics"].get(stat, 0))
+                concrete_z3_count += int(
+                    entry["solver_statistics"]["stats"].get(stat, 0)
+                )
             except (ValueError, TypeError):
                 pass
 

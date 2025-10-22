@@ -1,6 +1,6 @@
 """TikZ/LaTeX code generators for benchmark visualization"""
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 from src.data_generators import (
     TikzPoint,
     ABSTRACT_BETTER_COLOR,
@@ -46,8 +46,8 @@ class ScatterPlotTikzGenerator:
 
         if use_log_scale:
             # Use log scale bounds with safety margins
-            x_min_bound = max(0.001, x_min * 0.5)
-            y_min_bound = max(0.001, y_min * 0.5)
+            x_min_bound = max(10, x_min * 0.5)
+            y_min_bound = max(10, y_min * 0.5)
             x_max_bound = max(x_max * 2, x_min_bound * 10)
             y_max_bound = max(y_max * 2, y_min_bound * 10)
             axis_env = "loglogaxis"
@@ -156,7 +156,7 @@ class CactusPlotTikzGenerator:
         # Determine axis type and bounds
         if use_log_scale:
             y_axis = "semilogyaxis"
-            y_min = 0.001  # Small positive value for log scale
+            y_min = 10  # Small positive value for log scale
             y_max = max_time * 1.2
         else:
             y_axis = "axis"
@@ -198,6 +198,111 @@ class CactusPlotTikzGenerator:
             for i, runtime in enumerate(sorted_times, start=1):
                 tikz_code += f"    ({i}, {runtime:.6f})\n"
             tikz_code += f"}};\n\\addlegendentry{{{strategy_name}}}\n\n"
+
+        tikz_code += f"""\\end{{{y_axis}}}
+\\end{{tikzpicture}}"""
+
+        # Add caption if provided
+        if caption:
+            tikz_code += f"\n\\caption{{{caption}}}"
+
+        tikz_code += "\n\\end{figure}"
+
+        return tikz_code
+
+
+class InstCactusPlotTikzGenerator:
+    """Generates TikZ instantiation cactus plot code"""
+
+    @staticmethod
+    def generate(
+        strategy_data: Dict[str, List[Optional[int]]],
+        title: str = "Instantiation Cactus Plot",
+        xlabel: str = "Number of Solved Instances",
+        ylabel: str = "Instantiations",
+        caption: str = None,
+        use_log_scale: bool = True,
+    ) -> str:
+        """Generate an instantiation cactus plot comparing strategies
+
+        Args:
+            strategy_data: Dict mapping strategy names to sorted lists of instantiation counts.
+                          None values represent failed benchmarks (pinned to top).
+            title: Plot title
+            xlabel: X-axis label (number of instances)
+            ylabel: Y-axis label (instantiations)
+            caption: Optional figure caption
+            use_log_scale: If True, use log scale for y-axis
+
+        Returns:
+            TikZ/LaTeX code string
+        """
+        if not strategy_data:
+            return "% No strategy data to plot"
+
+        # Find max instantiation count (excluding None values) for setting bounds
+        all_instantiations = []
+        for inst_list in strategy_data.values():
+            all_instantiations.extend([inst for inst in inst_list if inst is not None])
+
+        if not all_instantiations:
+            return "% No successful runs to plot"
+
+        max_inst = max(all_instantiations)
+        max_instances = max(len(inst_list) for inst_list in strategy_data.values())
+
+        # Determine axis type and bounds
+        if use_log_scale:
+            y_axis = "semilogyaxis"
+            y_min = 1  # Use 1 as minimum for log scale
+            # Pin failed runs to 2x the max successful instantiation count
+            y_max = max_inst * 2
+            pin_value = y_max
+        else:
+            y_axis = "axis"
+            y_min = 0
+            y_max = max_inst * 1.2
+            pin_value = y_max
+
+        x_max = max_instances * 1.05
+
+        # Color mapping for strategies
+        strategy_colors = {
+            "Z3 Array Theory": Z3_BETTER_COLOR,
+            "BMC Cost": ABSTRACT_BETTER_COLOR,
+            "AST Size": "red",
+            "Prefer Read": "pink",
+            "Prefer Write": "yellow",
+            "Prefer Constants": "purple",
+            "Z3 Quantified Axioms": "green",
+        }
+
+        tikz_code = f"""\\begin{{figure}}[htbp]
+\\centering
+\\begin{{tikzpicture}}
+\\begin{{{y_axis}}}[
+    title={{{title}}},
+    xlabel={{{xlabel}}},
+    ylabel={{{ylabel}}},
+    xmin=0, xmax={x_max:.0f},
+    ymin={y_min:.0f}, ymax={y_max:.0f},
+    grid=major,
+    width=\\columnwidth,
+    height=8cm,
+    legend pos=south east
+]
+
+"""
+
+        # Plot each strategy
+        for strategy_name, inst_counts in sorted(strategy_data.items()):
+            color = strategy_colors.get(strategy_name, "black")
+            tikz_code += f"\\addplot[thick, color={color}] coordinates {{\n"
+            for i, inst in enumerate(inst_counts, start=1):
+                # Pin None (failed) values to the top of the graph
+                value = pin_value if inst is None else inst
+                tikz_code += f"    ({i}, {value:.0f})\n"
+            tikz_code += f"}};\\addlegendentry{{{strategy_name}}}\n\n"
 
         tikz_code += f"""\\end{{{y_axis}}}
 \\end{{tikzpicture}}"""

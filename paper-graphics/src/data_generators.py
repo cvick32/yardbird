@@ -214,3 +214,43 @@ class InstantiationScatterPlotGenerator:
             points.append(TikzPoint(x=inst1, y=inst2, label=label, color=color))
 
         return points
+
+
+class InstCactusPlotGenerator:
+    """Generates instantiation cactus plots for strategy comparison"""
+
+    def __init__(self, all_results: List[BenchmarkResult]):
+        """Initialize generator with all results
+
+        Args:
+            all_results: List of all benchmark results
+        """
+        self.all_results = all_results
+
+    def generate_data(self) -> Dict[str, List[Optional[int]]]:
+        """Get instantiation data for cactus plot
+
+        Returns:
+            Dict mapping display names to sorted instantiation counts.
+            Failed benchmarks are represented as None (will be pinned to top of plot).
+        """
+        strategy_instantiations = {}
+
+        for result in self.all_results:
+            display_name = result.get_display_name()
+
+            # Use actual instantiation count for successful runs, None for failures
+            inst_count = result.used_instantiations if result.success else None
+            if display_name in strategy_instantiations:
+                strategy_instantiations[display_name].append(inst_count)
+            else:
+                strategy_instantiations[display_name] = [inst_count]
+
+        # Sort each strategy's instantiation counts for cactus plot
+        # None values (failures) will sort to the end
+        for display_name in strategy_instantiations:
+            strategy_instantiations[display_name].sort(
+                key=lambda x: (x is None, x if x is not None else 0)
+            )
+
+        return strategy_instantiations
