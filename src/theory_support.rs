@@ -231,7 +231,7 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     }
 
     fn get_logic_string(&self) -> String {
-        "AUFLIA".into()
+        "UFLIA".into()
     }
 
     fn abstract_model(&self, model: VMTModel) -> VMTModel {

@@ -14,7 +14,7 @@ impl<'ctx> ProofTree<'ctx> {
 
         while let Some(rule) = to_process.pop() {
             if rule.decl().kind() == z3::DeclKind::PR_TH_LEMMA {
-                info!("{:?}: {}", rule.decl().kind(), rule.to_string());
+                info!("{:?}: {}", rule.decl().kind(), rule);
             }
             if !rule.children().is_empty() {
                 to_process.extend_from_slice(&rule.children());
