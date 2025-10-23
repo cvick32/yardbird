@@ -30,6 +30,18 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
 
     print(f"Available strategies: {sorted(strategy_keys)}")
 
+    # Generate summary statistics table for all strategies
+    print(f"\n{'=' * 60}")
+    print("Generating summary statistics table")
+    print(f"{'=' * 60}")
+
+    summary_table = TableTikzGenerator.generate_summary_statistics_table(
+        grouped, strategy_keys, baseline_strategy="concrete"
+    )
+    summary_file = output_dir / "summary_statistics.tex"
+    summary_file.write_text(summary_table)
+    print(f"  Saved: {summary_file}")
+
     # Separate concrete from other strategies
     non_concrete_strategies = sorted([s for s in strategy_keys if s != "concrete"])
 
@@ -100,6 +112,18 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             output_file = output_dir / f"instantiation_scatter_{strategy_key}.tex"
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
+
+        # Generate unique solves detail table
+        print("\n  Generating unique solves detail table...")
+        unique_solves_table = TableTikzGenerator.generate_unique_solves_detail_table(
+            grouped, strategy_key, baseline_strategy="concrete"
+        )
+        if "No unique solves" not in unique_solves_table:
+            unique_file = output_dir / f"unique_solves_{strategy_key}.tex"
+            unique_file.write_text(unique_solves_table)
+            print(f"    Saved: {unique_file}")
+        else:
+            print(f"    No unique solves for {strategy_key}")
 
     # Generate runtime cactus plot
     print(f"\n{'=' * 60}")

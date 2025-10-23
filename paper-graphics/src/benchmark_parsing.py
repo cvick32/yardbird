@@ -30,7 +30,7 @@ class BenchmarkResult:
         if self.strategy == "concrete":
             return "Z3 Array Theory"
         elif self.strategy == "abstract-with-quantifiers":
-            return "Z3 Quantified Axioms"
+            return "Z3 MBQI"
         elif self.strategy == "abstract":
             if self.cost_function == "symbol-cost":
                 return "BMC Cost"

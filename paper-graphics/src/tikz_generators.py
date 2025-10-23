@@ -45,22 +45,16 @@ class ScatterPlotTikzGenerator:
         x_min, x_max = min(x_vals), max(x_vals)
         y_min, y_max = min(y_vals), max(y_vals)
 
-        if use_log_scale:
-            # Use log scale bounds with safety margins
+        # Use log scale bounds with safety margins
+        if "Instantiation" in title:
             x_min_bound = max(10, x_min * 0.5)
             y_min_bound = max(10, y_min * 0.5)
-            x_max_bound = max(x_max * 2, x_min_bound * 10)
-            y_max_bound = max(y_max * 2, y_min_bound * 10)
-            axis_env = "loglogaxis"
         else:
-            # Use linear scale bounds with padding
-            x_range = x_max - x_min
-            y_range = y_max - y_min
-            x_min_bound = max(0, x_min - 0.05 * x_range)
-            y_min_bound = max(0, y_min - 0.05 * y_range)
-            x_max_bound = x_max + 0.05 * x_range
-            y_max_bound = y_max + 0.05 * y_range
-            axis_env = "axis"
+            x_min_bound = max(0.1, x_min * 0.5)
+            y_min_bound = max(0.1, y_min * 0.5)
+        x_max_bound = max(x_max * 2, x_min_bound * 10)
+        y_max_bound = max(y_max * 2, y_min_bound * 10)
+        axis_env = "loglogaxis"
 
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
@@ -172,7 +166,7 @@ class CactusPlotTikzGenerator:
             "Prefer Read": "pink",
             "Prefer Write": "yellow",
             "Prefer Constants": "purple",
-            "Z3 Quantified Axioms": "green",
+            "Z3 MBQI": "green",
         }
 
         tikz_code = f"""\\begin{{figure}}[htbp]
@@ -274,7 +268,7 @@ class InstCactusPlotTikzGenerator:
             "Prefer Read": "pink",
             "Prefer Write": "yellow",
             "Prefer Constants": "purple",
-            "Z3 Quantified Axioms": "green",
+            "Z3 MBQI": "green",
         }
 
         tikz_code = f"""\\begin{{figure}}[htbp]
@@ -366,6 +360,197 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
             table_code += (
                 f"{point.label} & {point.x:.3f} & {point.y:.3f} & {speedup_str} \\\\\n"
             )
+
+        table_code += "\\end{longtable}"
+
+        return table_code
+
+    @staticmethod
+    def generate_summary_statistics_table(
+        grouped_results: Dict[str, Dict[str, any]],
+        strategy_keys: set[str],
+        baseline_strategy: str = "concrete",
+    ) -> str:
+        """Generate comprehensive summary statistics table comparing strategies
+
+        Args:
+            grouped_results: Dict mapping example names to strategy results
+            strategy_keys: Set of all strategy keys
+            baseline_strategy: Strategy to use as baseline (default: "concrete")
+
+        Returns:
+            LaTeX table code with summary statistics
+        """
+
+        # Collect statistics for each strategy
+        stats = {}
+
+        for strategy_key in strategy_keys:
+            successful_benchmarks = []
+            failed_benchmarks = []
+            instantiations = []
+            display_name = None
+
+            for example_name, strategies in grouped_results.items():
+                if strategy_key in strategies:
+                    result = strategies[strategy_key]
+                    # Get display name from the first result we find for this strategy
+                    if display_name is None:
+                        display_name = result.get_display_name()
+
+                    if result.success:
+                        successful_benchmarks.append(example_name)
+                        instantiations.append(result.used_instantiations)
+                    else:
+                        failed_benchmarks.append(example_name)
+
+            stats[strategy_key] = {
+                "total": len(successful_benchmarks) + len(failed_benchmarks),
+                "solved": len(successful_benchmarks),
+                "failed": len(failed_benchmarks),
+                "avg_inst": (
+                    sum(instantiations) / len(instantiations) if instantiations else 0
+                ),
+                "successful_examples": set(successful_benchmarks),
+                "display_name": display_name
+                or strategy_key,  # Fallback to key if no results
+            }
+
+        # Calculate unique solves compared to baseline
+        if baseline_strategy in stats:
+            baseline_solved = stats[baseline_strategy]["successful_examples"]
+            for strategy_key in strategy_keys:
+                if strategy_key != baseline_strategy and strategy_key in stats:
+                    strategy_solved = stats[strategy_key]["successful_examples"]
+                    unique_solves = strategy_solved - baseline_solved
+                    stats[strategy_key]["unique_solves"] = len(unique_solves)
+                    stats[strategy_key]["unique_solve_examples"] = unique_solves
+                else:
+                    stats[strategy_key]["unique_solves"] = 0
+                    stats[strategy_key]["unique_solve_examples"] = set()
+
+        # Generate table
+        table_code = """% Required packages: \\usepackage{booktabs}
+\\begin{table}[htbp]
+\\centering
+\\caption{Summary Statistics: Strategy Performance Comparison}
+\\label{tab:summary_statistics}
+\\resizebox{\columnwidth}{!}{%
+\\begin{tabular}{lrrrr}
+\\toprule
+Strategy & Solved & Failed & Unique Solves vs Z3 & Avg. Instantiations \\\\
+\\midrule
+"""
+
+        # Sort strategies: baseline first, then others alphabetically
+        sorted_strategies = sorted(
+            strategy_keys,
+            key=lambda s: (
+                0 if s == baseline_strategy else 1,
+                s,
+            ),
+        )
+
+        for strategy_key in sorted_strategies:
+            if strategy_key not in stats:
+                continue
+
+            s = stats[strategy_key]
+
+            # Use display name from BenchmarkResult object
+            display_name = s["display_name"]
+            if strategy_key == baseline_strategy:
+                display_name = f"{display_name} (Baseline)"
+
+            solved = s["solved"]
+            failed = s["failed"]
+            unique = s.get("unique_solves", 0)
+            avg_inst = s["avg_inst"]
+
+            # Format unique solves (show as dash for baseline)
+            unique_str = "---" if strategy_key == baseline_strategy else str(unique)
+
+            # Format average instantiations
+            avg_inst_str = f"{avg_inst:.0f}" if avg_inst > 0 else "---"
+
+            table_code += f"{display_name} & {solved} & {failed} & {unique_str} & {avg_inst_str} \\\\\n"
+
+        table_code += """\\bottomrule
+\\end{tabular}%
+}
+\\end{table}
+"""
+
+        return table_code
+
+    @staticmethod
+    def generate_unique_solves_detail_table(
+        grouped_results: Dict[str, Dict[str, any]],
+        strategy_key: str,
+        baseline_strategy: str = "concrete",
+    ) -> str:
+        """Generate detailed table of benchmarks uniquely solved by a strategy
+
+        Args:
+            grouped_results: Dict mapping example names to strategy results
+            strategy_key: Strategy to analyze
+            baseline_strategy: Baseline strategy for comparison
+
+        Returns:
+            LaTeX table code listing unique solves
+        """
+        # Find benchmarks solved by strategy but not baseline
+        unique_solves = []
+
+        for example_name, strategies in grouped_results.items():
+            if strategy_key not in strategies or baseline_strategy not in strategies:
+                continue
+
+            strategy_result = strategies[strategy_key]
+            baseline_result = strategies[baseline_strategy]
+
+            if strategy_result.success and not baseline_result.success:
+                unique_solves.append(
+                    {
+                        "example": example_name.replace("examples/", "").replace(
+                            ".vmt", ""
+                        ),
+                        "runtime": strategy_result.runtime_ms / 1000.0,
+                        "instantiations": strategy_result.used_instantiations,
+                        "depth": strategy_result.depth,
+                    }
+                )
+
+        if not unique_solves:
+            return "% No unique solves for this strategy"
+
+        # Sort by example name
+        unique_solves.sort(key=lambda x: x["example"])
+
+        # Create display name
+        display_name = strategy_key.replace("_", " ").replace("-", " ").title()
+
+        table_code = f"""% Required packages: \\usepackage{{longtable}} \\usepackage{{booktabs}}
+\\begin{{longtable}}{{lrrr}}
+\\caption{{Benchmarks Uniquely Solved by {display_name} (Not Solved by Z3)}} \\\\
+\\toprule
+Example & Runtime (s) & Instantiations & Depth \\\\
+\\midrule
+\\endfirsthead
+\\multicolumn{{4}}{{c}}{{\\tablename\\ \\thetable\\ -- continued from previous page}} \\\\
+\\toprule
+Example & Runtime (s) & Instantiations & Depth \\\\
+\\midrule
+\\endhead
+\\midrule
+\\multicolumn{{4}}{{r}}{{Continued on next page}} \\\\
+\\endfoot
+\\bottomrule
+\\endlastfoot
+"""
+
+        for solve in unique_solves:
+            table_code += f"{solve['example']} & {solve['runtime']:.3f} & {solve['instantiations']} & {solve['depth']} \\\\\n"
 
         table_code += "\\end{longtable}"
 
