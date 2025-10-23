@@ -555,3 +555,157 @@ Example & Runtime (s) & Instantiations & Depth \\\\
         table_code += "\\end{longtable}"
 
         return table_code
+
+    @staticmethod
+    def generate_shared_benchmark_analysis_table(
+        grouped_results: Dict[str, Dict[str, any]],
+        strategy_keys: set[str],
+        baseline_strategy: str = "concrete",
+        min_baseline_runtime_ms: float = 1000.0,
+    ) -> str:
+        """Generate analysis table for shared solved benchmarks where baseline took >1s
+
+        Compares average speedup and instantiation reduction for benchmarks that were
+        successfully solved by both the baseline and each comparison strategy, where
+        the baseline runtime exceeded the minimum threshold.
+
+        Args:
+            grouped_results: Dict mapping example names to strategy results
+            strategy_keys: Set of all strategy keys to compare
+            baseline_strategy: Strategy to use as baseline (default: "concrete")
+            min_baseline_runtime_ms: Minimum baseline runtime in ms to include (default: 1000)
+
+        Returns:
+            LaTeX table code with shared benchmark analysis
+        """
+
+        # Collect statistics for each strategy comparison
+        comparison_stats = {}
+
+        for strategy_key in strategy_keys:
+            if strategy_key == baseline_strategy:
+                continue
+
+            shared_benchmarks = []
+
+            for example_name, strategies in grouped_results.items():
+                if (
+                    strategy_key not in strategies
+                    or baseline_strategy not in strategies
+                ):
+                    continue
+
+                baseline_result = strategies[baseline_strategy]
+                strategy_result = strategies[strategy_key]
+
+                # Only include if both succeeded and baseline took >1s
+                if (
+                    baseline_result.success
+                    and strategy_result.success
+                    and baseline_result.runtime_ms >= min_baseline_runtime_ms
+                ):
+                    speedup = (
+                        baseline_result.runtime_ms / strategy_result.runtime_ms
+                        if strategy_result.runtime_ms > 0
+                        else float("inf")
+                    )
+                    inst_reduction = (
+                        baseline_result.used_instantiations
+                        - strategy_result.used_instantiations
+                    )
+                    inst_reduction_pct = (
+                        (inst_reduction / baseline_result.used_instantiations * 100)
+                        if baseline_result.used_instantiations > 0
+                        else 0
+                    )
+
+                    shared_benchmarks.append(
+                        {
+                            "example": example_name,
+                            "speedup": speedup,
+                            "inst_reduction": inst_reduction,
+                            "inst_reduction_pct": inst_reduction_pct,
+                            "baseline_runtime_ms": baseline_result.runtime_ms,
+                            "strategy_runtime_ms": strategy_result.runtime_ms,
+                            "baseline_inst": baseline_result.used_instantiations,
+                            "strategy_inst": strategy_result.used_instantiations,
+                        }
+                    )
+
+            if shared_benchmarks:
+                avg_speedup = sum(b["speedup"] for b in shared_benchmarks) / len(
+                    shared_benchmarks
+                )
+                avg_inst_reduction_pct = sum(
+                    b["inst_reduction_pct"] for b in shared_benchmarks
+                ) / len(shared_benchmarks)
+
+                # Get display name from first result
+                display_name = None
+                for example_name, strategies in grouped_results.items():
+                    if strategy_key in strategies:
+                        display_name = strategies[strategy_key].get_display_name()
+                        break
+
+                comparison_stats[strategy_key] = {
+                    "display_name": display_name or strategy_key,
+                    "shared_count": len(shared_benchmarks),
+                    "avg_speedup": avg_speedup,
+                    "avg_inst_reduction_pct": avg_inst_reduction_pct,
+                    "benchmarks": shared_benchmarks,
+                }
+
+        if not comparison_stats:
+            return "% No shared benchmarks meeting criteria"
+
+        # Get baseline display name
+        baseline_display_name = baseline_strategy
+        for example_name, strategies in grouped_results.items():
+            if baseline_strategy in strategies:
+                baseline_display_name = strategies[baseline_strategy].get_display_name()
+                break
+
+        # Generate table
+        table_code = f"""% Required packages: \\usepackage{{booktabs}}
+\\begin{{table}}[htbp]
+\\centering
+\\caption{{Performance Analysis for Shared Solved Benchmarks ({baseline_display_name} runtime > {min_baseline_runtime_ms / 1000:.1f}s)}}
+\\label{{tab:shared_benchmark_analysis}}
+\\resizebox{{\\columnwidth}}{{!}}{{%
+\\begin{{tabular}}{{lrrr}}
+\\toprule
+Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
+\\midrule
+"""
+
+        # Sort strategies alphabetically
+        sorted_strategies = sorted(comparison_stats.keys())
+
+        for strategy_key in sorted_strategies:
+            stats = comparison_stats[strategy_key]
+
+            display_name = stats["display_name"]
+            shared_count = stats["shared_count"]
+            avg_speedup = stats["avg_speedup"]
+            avg_inst_reduction_pct = stats["avg_inst_reduction_pct"]
+
+            # Format speedup (handle infinity case)
+            if avg_speedup == float("inf"):
+                speedup_str = "$\\infty$"
+            else:
+                speedup_str = f"{avg_speedup:.2f}x"
+
+            # Format instantiation reduction
+            inst_str = f"{avg_inst_reduction_pct:-.1f}\\%"
+
+            table_code += (
+                f"{display_name} & {shared_count} & {speedup_str} & {inst_str} \\\\\n"
+            )
+
+        table_code += """\\bottomrule
+\\end{tabular}%
+}
+\\end{table}
+"""
+
+        return table_code

@@ -42,6 +42,18 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     summary_file.write_text(summary_table)
     print(f"  Saved: {summary_file}")
 
+    # Generate shared benchmark analysis table
+    print(f"\n{'=' * 60}")
+    print("Generating shared benchmark analysis table")
+    print(f"{'=' * 60}")
+
+    shared_analysis_table = TableTikzGenerator.generate_shared_benchmark_analysis_table(
+        grouped, strategy_keys, baseline_strategy="concrete", min_baseline_runtime_ms=1000.0
+    )
+    shared_analysis_file = output_dir / "shared_benchmark_analysis.tex"
+    shared_analysis_file.write_text(shared_analysis_table)
+    print(f"  Saved: {shared_analysis_file}")
+
     # Separate concrete from other strategies
     non_concrete_strategies = sorted([s for s in strategy_keys if s != "concrete"])
 
