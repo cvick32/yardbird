@@ -65,13 +65,12 @@ def compute_axiom_instantiations(full_entry: dict, strategy: str, success: bool)
                 )
             except (ValueError, TypeError):
                 pass
-
         return concrete_z3_count
     elif strategy == "abstract-with-quantifiers":
         quant_count = 0
         for stat in ABSTRACT_WITH_QUANTIFIERS:
             try:
-                quant_count += int(entry["solver_statistics"].get(stat, 0))
+                quant_count += int(entry["solver_statistics"]["stats"].get(stat, 0))
             except (ValueError, TypeError):
                 pass
         return quant_count

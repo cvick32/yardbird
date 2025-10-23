@@ -58,6 +58,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
 
             tikz_code = ScatterPlotTikzGenerator.generate(
                 all_points,
+                label=f"fig:{strategy_key}_runtime_scatter",
                 title=f"Runtime Comparison ({display_name} vs Z3)",
                 xlabel="Z3 Runtime (s)",
                 ylabel=f"{display_name} Runtime (s)",
@@ -88,6 +89,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
 
             tikz_code = ScatterPlotTikzGenerator.generate(
                 inst_points,
+                label=f"fig:{strategy_key}_inst_scatter",
                 title=f"Instantiation Comparison ({display_name} vs Z3)",
                 xlabel="Z3 Instantiations",
                 ylabel=f"{display_name} Instantiations",

@@ -15,6 +15,7 @@ class ScatterPlotTikzGenerator:
     @staticmethod
     def generate(
         points: List[TikzPoint],
+        label: str,
         title: str = "Runtime Comparison",
         xlabel: str = "Strategy A Runtime (s)",
         ylabel: str = "Strategy B Runtime (s)",
@@ -64,6 +65,7 @@ class ScatterPlotTikzGenerator:
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
+\\label{{{label}}}
 \\begin{{{axis_env}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
@@ -156,13 +158,11 @@ class CactusPlotTikzGenerator:
         # Determine axis type and bounds
         if use_log_scale:
             y_axis = "semilogyaxis"
-            y_min = 10  # Small positive value for log scale
             y_max = max_time * 1.2
         else:
             y_axis = "axis"
-            y_min = 0
             y_max = max_time * 1.05
-
+        y_min = 0.01
         x_max = max_instances * 1.05
         # Color mapping for strategies
         strategy_colors = {
@@ -178,6 +178,7 @@ class CactusPlotTikzGenerator:
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
+\\label{{fig:cactus_runtime}}
 \\begin{{{y_axis}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
@@ -187,7 +188,8 @@ class CactusPlotTikzGenerator:
     grid=major,
     width=\\columnwidth,
     height=8cm,
-    legend pos=south east
+    legend style={{font=\\scriptsize}},
+    legend pos=south east,
 ]
 
 """
@@ -254,16 +256,14 @@ class InstCactusPlotTikzGenerator:
         # Determine axis type and bounds
         if use_log_scale:
             y_axis = "semilogyaxis"
-            y_min = 1  # Use 1 as minimum for log scale
             # Pin failed runs to 2x the max successful instantiation count
             y_max = max_inst * 2
             pin_value = y_max
         else:
             y_axis = "axis"
-            y_min = 0
             y_max = max_inst * 1.2
             pin_value = y_max
-
+        y_min = 0.01
         x_max = max_instances * 1.05
 
         # Color mapping for strategies
@@ -280,6 +280,7 @@ class InstCactusPlotTikzGenerator:
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
+\\label{{fig:cactus_inst}}
 \\begin{{{y_axis}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
@@ -289,7 +290,8 @@ class InstCactusPlotTikzGenerator:
     grid=major,
     width=\\columnwidth,
     height=8cm,
-    legend pos=south east
+    legend style={{font=\\scriptsize}},
+    legend pos=south east,
 ]
 
 """
