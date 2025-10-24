@@ -145,11 +145,11 @@ where
             .run(&list_axioms());
 
         *self = std::mem::take(&mut runner.egraph);
-
-        let inst_vec = Rc::into_inner(instantiations).unwrap().into_inner();
-        let const_inst_vec = Rc::into_inner(const_instantiations).unwrap().into_inner();
         drop(runner);
-        (inst_vec, const_inst_vec)
+        (
+            Rc::into_inner(instantiations).unwrap().into_inner(),
+            Rc::into_inner(const_instantiations).unwrap().into_inner(),
+        )
     }
 }
 
@@ -161,10 +161,30 @@ where
         // Basic list axioms
         rewrite!("head-cons"; "(head (cons ?x ?xs))" => "?x"),
         rewrite!("tail-cons"; "(tail (cons ?x ?xs))" => "?xs"),
-        rewrite!("is-nil-nil"; "(is-nil nil)" => "true"),
+        rewrite!("is-nil-nil";
+            {
+                ConditionalSearcher::new(
+                    "(is-nil ?x)"
+                        .parse::<egg::Pattern<ListLanguage>>()
+                        .unwrap(),
+                    is_nil("?x"),
+                )
+            }
+            => "true"
+        ),
         rewrite!("is-nil-cons"; "(is-nil (cons ?x ?xs))" => "false"),
         // Length axioms
-        rewrite!("length-nil"; "(length nil)" => "0"),
+        rewrite!("length-nil";
+            {
+                ConditionalSearcher::new(
+                    "(length ?x)"
+                        .parse::<egg::Pattern<ListLanguage>>()
+                        .unwrap(),
+                    is_nil("?x"),
+                )
+            }
+            => "0"
+        ),
         rewrite!("length-cons"; "(length (cons ?x ?xs))" => "(+ 1 (length ?xs))"),
         // Append axioms
         rewrite!("append-nil"; "(append nil ?xs)" => "?xs"),
@@ -173,7 +193,17 @@ where
         rewrite!("nth-cons-zero"; "(nth (cons ?x ?xs) 0)" => "?x"),
         rewrite!("nth-cons-succ"; "(nth (cons ?x ?xs) (+ 1 ?n))" => "(nth ?xs ?n)"),
         // Reverse axioms
-        rewrite!("reverse-nil"; "(reverse nil)" => "nil"),
+        rewrite!("reverse-nil";
+            {
+                ConditionalSearcher::new(
+                    "(reverse ?x)"
+                        .parse::<egg::Pattern<ListLanguage>>()
+                        .unwrap(),
+                    is_nil("?x"),
+                )
+            }
+            => "nil"
+        ),
         rewrite!("reverse-cons"; "(reverse (cons ?x ?xs))" => "(append (reverse ?xs) (cons ?x nil))"),
         rewrite!("reverse-reverse"; "(reverse (reverse ?x))" => "?x"),
         // Composition axioms
@@ -215,6 +245,28 @@ where
 
         // If no nil found, assume it's not nil
         true
+    }
+}
+
+fn is_nil<N>(var: &'static str) -> impl Fn(&EGraph<ListLanguage, N>, Id, &Subst) -> bool
+where
+    N: Analysis<ListLanguage>,
+{
+    let var = var.parse().unwrap();
+    move |egraph, _, subst| {
+        let var_id = subst[var];
+        let var_eclass = egraph.find(var_id);
+
+        for class in egraph.classes() {
+            for node in &class.nodes {
+                if node.to_string().eq("nil") {
+                    return var_eclass == class.id;
+                }
+            }
+        }
+
+        // If no nil found, it's not nil
+        false
     }
 }
 

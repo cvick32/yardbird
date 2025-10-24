@@ -1,0 +1,40 @@
+(declare-sort ListInt 0)
+
+(declare-fun a () ListInt)
+(declare-fun a_next () ListInt)
+(define-fun .a () ListInt (! a :next a_next))
+(declare-fun i () Int)
+(declare-fun i_next () Int)
+(define-fun .i () Int (! i :next i_next))
+(declare-fun n () Int)
+(declare-fun n_next () Int)
+(define-fun .n () Int (! n :next n_next))
+
+(declare-fun nil () ListInt)
+(declare-fun cons (Int ListInt) ListInt)
+(declare-fun length (ListInt) Int)
+
+(define-fun init-conditions () Bool (!
+  (and
+    (= a nil)
+    (= i 0)
+    (>= n 0))
+  :init true))
+
+;; Transition relation: functional copying by reconstruction
+(define-fun trans-conditions () Bool (!
+  (or
+    (and (< i n)
+         (= a_next (cons 0 a))
+         (= i_next (+ i 1))
+         (= n_next n))
+    (and (>= i n)
+         (= a_next a)
+         (= i_next i)
+         (= n_next n)))
+  :trans true))
+
+(define-fun property () Bool (!
+    (=> (>= i n)
+        (= (length a) i))
+  :invar-property 0))
