@@ -13,10 +13,10 @@ from src.benchmark_parsing import BenchmarkResult
 
 
 # Constants for plotting
-ABSTRACT_BETTER_COLOR = "orange"
-Z3_BETTER_COLOR = "cyan!50!blue"
+ABSTRACT_BETTER_COLOR = "softBlue"
+Z3_BETTER_COLOR = "softBrown"
 EQUAL_COLOR = "black"
-TIMEOUT_MS = 1200000
+TIMEOUT_MS = 120000
 
 
 @dataclass

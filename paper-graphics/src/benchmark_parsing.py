@@ -19,6 +19,7 @@ class BenchmarkResult:
     result_type: str
     success: bool
     used_instantiations: int
+    num_checks: int
 
     def get_strategy_id(self) -> str:
         if self.strategy == "abstract":
@@ -78,6 +79,14 @@ def compute_axiom_instantiations(full_entry: dict, strategy: str, success: bool)
     raise ValueError(f"Unknown strategy: {strategy}")
 
 
+def find_num_checks(full_entry: dict, strategy: str, success: bool) -> int:
+    """Compute axiom instantiations for a benchmark result"""
+    if not success:
+        return 10000000  # Large penalty for unsuccessful results
+    entry = full_entry["result"]["Success"]
+    return entry["solver_statistics"]["stats"].get("num checks")
+
+
 class BenchmarkParser:
     """Parser for benchmark JSON results"""
 
@@ -132,4 +141,5 @@ class BenchmarkParser:
             result_type=result_type,
             success=success,
             used_instantiations=used_instantiations,
+            num_checks=find_num_checks(result_entry, strategy, success),
         )

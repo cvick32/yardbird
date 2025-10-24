@@ -48,7 +48,10 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     print(f"{'=' * 60}")
 
     shared_analysis_table = TableTikzGenerator.generate_shared_benchmark_analysis_table(
-        grouped, strategy_keys, baseline_strategy="concrete", min_baseline_runtime_ms=1000.0
+        grouped,
+        strategy_keys,
+        baseline_strategy="concrete",
+        min_baseline_runtime_ms=1000.0,
     )
     shared_analysis_file = output_dir / "shared_benchmark_analysis.tex"
     shared_analysis_file.write_text(shared_analysis_table)
@@ -77,8 +80,13 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
         )
 
         if all_points:
-            # Create readable name for strategy
-            display_name = strategy_key.replace("_", " ").replace("-", " ").title()
+            # Get display name from BenchmarkResult
+            display_name = None
+            for example_name, strategies in grouped.items():
+                if strategy_key in strategies:
+                    display_name = strategies[strategy_key].get_display_name()
+                    break
+            display_name = display_name or strategy_key  # Fallback
 
             tikz_code = ScatterPlotTikzGenerator.generate(
                 all_points,
@@ -109,7 +117,13 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
         inst_points = inst_gen.generate_points("concrete", strategy_key, bmc_depth=50)
 
         if inst_points:
-            display_name = strategy_key.replace("_", " ").replace("-", " ").title()
+            # Get display name from BenchmarkResult
+            display_name = None
+            for example_name, strategies in grouped.items():
+                if strategy_key in strategies:
+                    display_name = strategies[strategy_key].get_display_name()
+                    break
+            display_name = display_name or strategy_key  # Fallback
 
             tikz_code = ScatterPlotTikzGenerator.generate(
                 inst_points,
@@ -151,7 +165,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             title="Runtime Performance Comparison",
             xlabel="Number of Solved Instances",
             ylabel="Runtime (s)",
-            caption="Cactus plot comparing runtime performance across all benchmarks.",
+            caption="Cactus plot comparing runtime performance across all strategies.",
             use_log_scale=True,
         )
 
@@ -173,7 +187,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             title="Instantiation Performance Comparison",
             xlabel="Number of Benchmarks",
             ylabel="Instantiations",
-            caption="Cactus plot comparing instantiation counts across all benchmarks. Failed benchmarks are pinned to the top.",
+            caption="Cactus plot comparing instantiation counts across all strategies. Failed benchmarks are pinned to the top.",
             use_log_scale=True,
         )
 

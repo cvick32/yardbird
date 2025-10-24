@@ -1,5 +1,6 @@
 """TikZ/LaTeX code generators for benchmark visualization"""
 
+import math
 from typing import List, Dict, Optional
 from src.data_generators import (
     TikzPoint,
@@ -59,7 +60,6 @@ class ScatterPlotTikzGenerator:
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
-\\label{{{label}}}
 \\begin{{{axis_env}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
@@ -108,7 +108,7 @@ class ScatterPlotTikzGenerator:
         if caption:
             tikz_code += f"\n\\caption{{{caption}}}"
 
-        tikz_code += "\n\\end{figure}"
+        tikz_code += f"\n\\label{{{label}}}\n\\end{{figure}}"
 
         return tikz_code
 
@@ -160,19 +160,18 @@ class CactusPlotTikzGenerator:
         x_max = max_instances * 1.05
         # Color mapping for strategies
         strategy_colors = {
-            "Z3 Array Theory": Z3_BETTER_COLOR,
-            "BMC Cost": ABSTRACT_BETTER_COLOR,
-            "AST Size": "red",
-            "Prefer Read": "pink",
-            "Prefer Write": "yellow",
-            "Prefer Constants": "purple",
-            "Z3 MBQI": "green",
+            "Z3 Array Theory": "softRed",
+            "BMC Cost": "softBlue",
+            "AST Size": "softGreen",
+            "Prefer Read": "softPurple",
+            "Prefer Write": "softOrange",
+            "Prefer Constants": "softYellow",
+            "Z3 MBQI": "softBrown",
         }
 
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
-\\label{{fig:cactus_runtime}}
 \\begin{{{y_axis}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
@@ -202,7 +201,7 @@ class CactusPlotTikzGenerator:
         if caption:
             tikz_code += f"\n\\caption{{{caption}}}"
 
-        tikz_code += "\n\\end{figure}"
+        tikz_code += "\n\\label{fig:cactus_runtime}\n\\end{figure}"
 
         return tikz_code
 
@@ -252,29 +251,26 @@ class InstCactusPlotTikzGenerator:
             y_axis = "semilogyaxis"
             # Pin failed runs to 2x the max successful instantiation count
             y_max = max_inst * 2
-            pin_value = y_max
         else:
             y_axis = "axis"
             y_max = max_inst * 1.2
-            pin_value = y_max
         y_min = 0.01
         x_max = max_instances * 1.05
 
         # Color mapping for strategies
         strategy_colors = {
-            "Z3 Array Theory": Z3_BETTER_COLOR,
-            "BMC Cost": ABSTRACT_BETTER_COLOR,
-            "AST Size": "red",
-            "Prefer Read": "pink",
-            "Prefer Write": "yellow",
-            "Prefer Constants": "purple",
-            "Z3 MBQI": "green",
+            "Z3 Array Theory": "softRed",
+            "BMC Cost": "softBlue",
+            "AST Size": "softGreen",
+            "Prefer Read": "softPurple",
+            "Prefer Write": "softOrange",
+            "Prefer Constants": "softYellow",
+            "Z3 MBQI": "softBrown",
         }
 
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
-\\label{{fig:cactus_inst}}
 \\begin{{{y_axis}}}[
     title={{{title}}},
     xlabel={{{xlabel}}},
@@ -296,8 +292,11 @@ class InstCactusPlotTikzGenerator:
             tikz_code += f"\\addplot[thick, color={color}] coordinates {{\n"
             for i, inst in enumerate(inst_counts, start=1):
                 # Pin None (failed) values to the top of the graph
-                value = pin_value if inst is None else inst
-                tikz_code += f"    ({i}, {value:.0f})\n"
+                if inst is not None:
+                    if inst == 0:
+                        tikz_code += f"    ({i}, 1)\n"
+                    else:
+                        tikz_code += f"    ({i}, {inst:.0f})\n"
             tikz_code += f"}};\\addlegendentry{{{strategy_name}}}\n\n"
 
         tikz_code += f"""\\end{{{y_axis}}}
@@ -307,7 +306,7 @@ class InstCactusPlotTikzGenerator:
         if caption:
             tikz_code += f"\n\\caption{{{caption}}}"
 
-        tikz_code += "\n\\end{figure}"
+        tikz_code += "\n\\label{fig:cactus_inst}\n\\end{figure}"
 
         return tikz_code
 
@@ -389,6 +388,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
             successful_benchmarks = []
             failed_benchmarks = []
             instantiations = []
+            z3_checks = []
             display_name = None
 
             for example_name, strategies in grouped_results.items():
@@ -401,6 +401,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                     if result.success:
                         successful_benchmarks.append(example_name)
                         instantiations.append(result.used_instantiations)
+                        z3_checks.append(result.num_checks)
                     else:
                         failed_benchmarks.append(example_name)
 
@@ -411,6 +412,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                 "avg_inst": (
                     sum(instantiations) / len(instantiations) if instantiations else 0
                 ),
+                "avg_z3_checks": (sum(z3_checks) / len(z3_checks) if z3_checks else 0),
                 "successful_examples": set(successful_benchmarks),
                 "display_name": display_name
                 or strategy_key,  # Fallback to key if no results
@@ -433,12 +435,10 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
         table_code = """% Required packages: \\usepackage{booktabs}
 \\begin{table}[htbp]
 \\centering
-\\caption{Summary Statistics: Strategy Performance Comparison}
-\\label{tab:summary_statistics}
 \\resizebox{\columnwidth}{!}{%
-\\begin{tabular}{lrrrr}
+\\begin{tabular}{lrrrrr}
 \\toprule
-Strategy & Solved & Failed & Unique Solves vs Z3 & Avg. Instantiations \\\\
+Strategy & Solved & Failed & Unique Solves vs Baseline & Avg. Instantiations & Avg. CEGAR Loops \\\\
 \\midrule
 """
 
@@ -466,6 +466,7 @@ Strategy & Solved & Failed & Unique Solves vs Z3 & Avg. Instantiations \\\\
             failed = s["failed"]
             unique = s.get("unique_solves", 0)
             avg_inst = s["avg_inst"]
+            avg_checks = s["avg_z3_checks"]
 
             # Format unique solves (show as dash for baseline)
             unique_str = "---" if strategy_key == baseline_strategy else str(unique)
@@ -473,11 +474,17 @@ Strategy & Solved & Failed & Unique Solves vs Z3 & Avg. Instantiations \\\\
             # Format average instantiations
             avg_inst_str = f"{avg_inst:.0f}" if avg_inst > 0 else "---"
 
-            table_code += f"{display_name} & {solved} & {failed} & {unique_str} & {avg_inst_str} \\\\\n"
+            # Format average Z3 checks
+            avg_checks_str = f"{avg_checks:.0f}" if avg_checks > 0 else "---"
+
+            table_code += f"{display_name} & {solved} & {failed} & {unique_str} & {avg_inst_str} & {avg_checks_str} \\\\\n"
 
         table_code += """\\bottomrule
 \\end{tabular}%
 }
+\\vspace{1em}
+\\caption{Summary Statistics: Strategy Performance Comparison}
+\\label{tab:summary_statistics}
 \\end{table}
 """
 
@@ -633,8 +640,10 @@ Example & Runtime (s) & Instantiations & Depth \\\\
                     )
 
             if shared_benchmarks:
-                avg_speedup = sum(b["speedup"] for b in shared_benchmarks) / len(
-                    shared_benchmarks
+                # Calculate geometric mean for speedup
+                avg_speedup = math.exp(
+                    sum(math.log(b["speedup"]) for b in shared_benchmarks)
+                    / len(shared_benchmarks)
                 )
                 avg_inst_reduction_pct = sum(
                     b["inst_reduction_pct"] for b in shared_benchmarks
@@ -666,13 +675,11 @@ Example & Runtime (s) & Instantiations & Depth \\\\
                 break
 
         # Generate table
-        table_code = f"""% Required packages: \\usepackage{{booktabs}}
-\\begin{{table}}[htbp]
+        table_code = """% Required packages: \\usepackage{booktabs}
+\\begin{table}[htbp]
 \\centering
-\\caption{{Performance Analysis for Shared Solved Benchmarks ({baseline_display_name} runtime > {min_baseline_runtime_ms / 1000:.1f}s)}}
-\\label{{tab:shared_benchmark_analysis}}
-\\resizebox{{\\columnwidth}}{{!}}{{%
-\\begin{{tabular}}{{lrrr}}
+\\resizebox{\\columnwidth}{!}{%
+\\begin{tabular}{lrrr}
 \\toprule
 Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
 \\midrule
@@ -702,10 +709,13 @@ Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
                 f"{display_name} & {shared_count} & {speedup_str} & {inst_str} \\\\\n"
             )
 
-        table_code += """\\bottomrule
-\\end{tabular}%
-}
-\\end{table}
+        table_code += f"""\\bottomrule
+\\end{{tabular}}%
+}}
+\\vspace{{1em}}
+\\caption{{Performance Analysis for Shared Solved Benchmarks ({baseline_display_name} runtime > {min_baseline_runtime_ms / 1000:.1f}s)}}
+\\label{{tab:shared_benchmark_analysis}}
+\\end{{table}}
 """
 
         return table_code
