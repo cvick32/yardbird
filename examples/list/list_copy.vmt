@@ -18,6 +18,10 @@
 (declare-fun curr_next () ListInt)
 (define-fun .curr () ListInt (! curr :next curr_next))
 
+(declare-fun Z () Int)
+(declare-fun Z_next () Int)
+(define-fun .Z () Int (! Z :next Z_next))
+
 ;; List operations - only use grounded primitives
 (declare-fun nil () ListInt)
 (declare-fun cons (Int ListInt) ListInt)
@@ -48,13 +52,11 @@
     (= curr_next (tail curr))
     ;; Source list never changes
     (= a_next a)
+    (= Z_next Z)
   )
   :trans true))
 
-;; Property: After copying (when curr is empty), b should equal a
-;; Note: This will actually build b in reverse order, so we need to account for that
-;; For now, let's prove a simpler property about lengths
 (define-fun property () Bool (!
   (=> (is-nil curr)
-      (= (length b) (length a)))
+      (= (nth (reverse b) Z) (nth a Z)))
   :invar-property 0))
