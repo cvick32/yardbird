@@ -92,16 +92,32 @@ pub struct SolverStatistics {
 }
 
 impl SolverStatistics {
-    pub fn from_z3_statistics(z3_stats: Statistics<'_>) -> SolverStatistics {
-        let mut stats = BTreeMap::new();
+    pub fn new() -> SolverStatistics {
+        SolverStatistics {
+            stats: BTreeMap::new(),
+        }
+    }
+
+    pub fn join_from_z3_statistics(&mut self, z3_stats: Statistics<'_>) {
         for entry in z3_stats.entries() {
             let key = entry.key;
             let value = match entry.value {
                 z3::StatisticsValue::UInt(int_num) => StatisticsValue::UInt(int_num),
                 z3::StatisticsValue::Double(float_num) => StatisticsValue::Double(float_num),
             };
-            stats.insert(key, value);
+            if self.stats.contains_key(&key) && key == "time" {
+                match self.stats.get(&key).unwrap() {
+                    StatisticsValue::Double(prev_value) => match value {
+                        StatisticsValue::Double(d_val) => self
+                            .stats
+                            .insert(key, StatisticsValue::Double(prev_value + d_val)),
+                        StatisticsValue::UInt(_) => panic!("Solver Time cannot be Int!"),
+                    },
+                    StatisticsValue::UInt(_) => panic!("Solver Time cannot be Int!"),
+                };
+            } else {
+                self.stats.insert(key, value);
+            }
         }
-        SolverStatistics { stats }
     }
 }

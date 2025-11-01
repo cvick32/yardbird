@@ -22,6 +22,7 @@ pub struct SMTProblem<'ctx> {
     subterm_handler: SubtermHandler,
     pub variables: Vec<Variable>,
     solver: z3::Solver<'ctx>,
+    solver_statistcs: SolverStatistics,
     newest_model: Option<z3::Model<'ctx>>,
     num_quantifiers_instantiated: u64,
 }
@@ -54,6 +55,7 @@ impl<'ctx> SMTProblem<'ctx> {
             bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
             variables: vmt_model.get_state_holding_variables(),
             solver,
+            solver_statistcs: SolverStatistics::new(),
             z3_var_context: Z3VarContext::new(context),
             newest_model: None,
             num_quantifiers_instantiated: 0,
@@ -188,6 +190,8 @@ impl<'ctx> SMTProblem<'ctx> {
         }
         // Popping property off.
         self.solver.pop(1);
+        self.solver_statistcs
+            .join_from_z3_statistics(self.solver.get_statistics());
         sat_result
     }
 
@@ -253,7 +257,7 @@ impl<'ctx> SMTProblem<'ctx> {
     }
 
     pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
-        SolverStatistics::from_z3_statistics(self.solver.get_statistics())
+        self.solver_statistcs.clone()
     }
 
     pub(crate) fn get_reason_unknown(&self) -> Option<String> {
