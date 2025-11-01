@@ -1,71 +1,106 @@
 #!/bin/bash
 set -e
-exec > >(tee /var/log/yardbird-setup.log) 2>&1
+exec > >(tee /var/log/user-data.log) 2>&1
 
-echo "[INFO] Starting Yardbird environment setup"
+# Function to log and upload status to S3
+log_status() {
+    local status="$1"
+    local message="$2"
+    echo "[$status] $(date): $message"
+    echo "[$status] $(date): $message" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/status.log --region us-east-2 || true
+}
 
-# ---------------------------------------------------------------------
-# 1. System-level dependencies (run as root)
-# ---------------------------------------------------------------------
-echo "[INFO] Installing system dependencies"
-apt-get update -y
-apt-get install -y git curl cmake build-essential python3 python3-pip pkg-config libssl-dev libclang-dev
+log_status "INFO" "Starting Yardbird benchmark setup"
 
-# ---------------------------------------------------------------------
-# 2. Create yardbird user (if missing)
-# ---------------------------------------------------------------------
-if ! id yardbird &>/dev/null; then
-    echo "[INFO] Creating yardbird user"
-    useradd -m -s /bin/bash yardbird
-    echo "yardbird ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/yardbird
+# Install dependencies
+log_status "INFO" "Installing system dependencies"
+apt-get update
+if ! apt-get install -y git cargo curl cmake build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev; then
+    log_status "ERROR" "Failed to install system dependencies"
+    exit 1
 fi
 
-# Ensure home ownership
-chown -R yardbird:yardbird /home/yardbird
+# install Z3
+pip install z3-solver==4.15.3
+sudo cp /home/yardbird/.local/lib/python3.10/site-packages/z3/lib/* /usr/local/lib/
+export LD_LIBRARY_PATH="/home/yardbird/.local/lib/python3.10/site-packages/z3/lib/"
 
-# ---------------------------------------------------------------------
-# 3. Install and build Yardbird as yardbird user
-# ---------------------------------------------------------------------
-sudo -u yardbird bash <<'EOF'
-set -e
+# Function to log inside yardbird user context
+log_status() {
+    local status="$1"
+    local message="$2"
+    echo "[$status] $(date): $message"
+}
+
 cd /home/yardbird
 
-log() { echo "[INFO] $(date): $1"; }
-
-# --- Install Z3 (Python + native libs) ---
-log "Installing Z3 Python package"
-python3 -m pip install --user z3-solver==4.15.3
-export LD_LIBRARY_PATH="$HOME/.local/lib/python3.10/site-packages/z3/lib/"
-echo "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" >> ~/.bashrc
-
-# --- Install Rust toolchain ---
-if ! command -v cargo >/dev/null; then
-    log "Installing Rust toolchain"
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    echo 'source "$HOME/.cargo/env"' >> ~/.bashrc
-    source "$HOME/.cargo/env"
+# Install Rust as yardbird user
+log_status "INFO" "Installing Rust as yardbird user"
+if ! curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; then
+    log_status "ERROR" "Failed to install Rust"
+    exit 1
 fi
 
-# --- Clone and build Yardbird ---
-if [ ! -d yardbird ]; then
-    log "Cloning yardbird repository"
-    git clone https://github.com/cvick32/yardbird.git
+# Source cargo environment
+source ~/.cargo/env
+
+# Clone repository
+log_status "INFO" "Cloning yardbird repository"
+if ! git clone https://github.com/cvick32/yardbird.git; then
+    log_status "ERROR" "Failed to clone repository"
+    exit 1
 fi
 cd yardbird
 
-log "Building yardbird"
-Z3_SYS_Z3_HEADER="$HOME/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p yardbird
+echo git log -1 --format="%H"
 
-log "Building garden"
-Z3_SYS_Z3_HEADER="$HOME/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p garden
+log_status "INFO" "Building yardbird"
+if ! Z3_SYS_Z3_HEADER="/home/yardbird/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p yardbird; then
+    log_status "ERROR" "Failed to build yardbird binary"
+    exit 1
+fi
 
-# --- Install binaries to ~/.local/bin and add to PATH ---
-mkdir -p ~/.local/bin
-cp ./target/release/yardbird ~/.local/bin/
-cp ./target/release/garden ~/.local/bin/
-echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc
+log_status "INFO" "Building garden"
+if ! Z3_SYS_Z3_HEADER="/home/yardbird/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p garden; then
+    log_status "ERROR" "Failed to build garden binary"
+    exit 1
+fi
 
-log "Setup complete for yardbird user"
+# Verify garden binary exists
+if [ ! -f "./target/release/garden" ]; then
+    log_status "ERROR" "Garden binary not found after build"
+    exit 1
+fi
+log_status "INFO" "Garden binary built successfully"
+
+echo "$(cat garden/benchmark_config.yaml)"
+
+log_status "INFO" "Running benchmarks with garden"
+if ! ./target/release/garden --config garden/benchmark_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
+    log_status "ERROR" "Benchmark execution failed"
+    exit 1
+fi
+
+# Verify benchmark results file exists
+if [ ! -f "benchmark_results_${unique_benchmark_name}.json" ]; then
+    log_status "ERROR" "Benchmark results file not found"
+    exit 1
+fi
+log_status "INFO" "Benchmarks completed successfully"
+
+# Upload results
+log_status "INFO" "Uploading results to S3"
+if ! aws s3 cp benchmark_results_${unique_benchmark_name}.json s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/results.json --region us-east-2; then
+    log_status "ERROR" "Failed to upload benchmark results"
+    exit 1
+fi
+
+# Mark completion
+log_status "INFO" "Marking completion"
+echo "Benchmark completed at $(date)" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/completion.txt --region us-east-2
+
+log_status "INFO" "Setup and benchmark complete"
 EOF
 
-echo "[INFO] Yardbird setup finished successfully"
+# Terminate instance
+sudo shutdown -h now
