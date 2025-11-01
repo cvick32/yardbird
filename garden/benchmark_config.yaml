@@ -24,6 +24,12 @@ parameter_matrices:
     strategies: ["abstract"]
     cost_functions: ["symbol-cost", "a-s-t-size", "prefer-read", "prefer-write"]
 
+  # Quick test matrix
+  light-review:
+    depths: [10]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost", "a-s-t-size"]
+
   timeout:
     depths: [50]
     strategies: ["abstract"]
