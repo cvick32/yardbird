@@ -21,14 +21,16 @@ parameter_matrices:
   # Quick test matrix
   quick:
     depths: [5]
-    strategies: ["abstract"]
-    cost_functions: ["symbol-cost", "a-s-t-size", "prefer-read", "prefer-write"]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["symbol-cost"]
+    timeout_seconds: 5
 
   # Quick test matrix
   light-review:
     depths: [10]
     strategies: ["abstract", "concrete"]
-    cost_functions: ["symbol-cost", "a-s-t-size"]
+    cost_functions: ["symbol-cost"]
+    timeout_seconds: 20
 
   timeout:
     depths: [50]
