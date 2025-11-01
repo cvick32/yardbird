@@ -22,8 +22,7 @@ fi
 
 # install Z3
 pip install z3-solver==4.15.3
-sudo cp /home/yardbird/.local/lib/python3.10/site-packages/z3/lib/* /usr/local/lib/
-export LD_LIBRARY_PATH="/home/yardbird/.local/lib/python3.10/site-packages/z3/lib/"
+export LD_LIBRARY_PATH="/usr/local/lib/python3.10/site-packages/z3/lib/"
 
 # Function to log inside yardbird user context
 log_status() {
@@ -55,13 +54,13 @@ cd yardbird
 echo git log -1 --format="%H"
 
 log_status "INFO" "Building yardbird"
-if ! Z3_SYS_Z3_HEADER="/home/yardbird/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p yardbird; then
+if ! Z3_SYS_Z3_HEADER="/usr/local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p yardbird; then
     log_status "ERROR" "Failed to build yardbird binary"
     exit 1
 fi
 
 log_status "INFO" "Building garden"
-if ! Z3_SYS_Z3_HEADER="/home/yardbird/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p garden; then
+if ! Z3_SYS_Z3_HEADER="/usr/local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p garden; then
     log_status "ERROR" "Failed to build garden binary"
     exit 1
 fi
