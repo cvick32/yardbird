@@ -105,19 +105,20 @@ impl SolverStatistics {
                 z3::StatisticsValue::UInt(int_num) => StatisticsValue::UInt(int_num),
                 z3::StatisticsValue::Double(float_num) => StatisticsValue::Double(float_num),
             };
-            if self.stats.contains_key(&key) && key == "time" {
-                match self.stats.get(&key).unwrap() {
-                    StatisticsValue::Double(prev_value) => match value {
-                        StatisticsValue::Double(d_val) => self
-                            .stats
-                            .insert(key, StatisticsValue::Double(prev_value + d_val)),
-                        StatisticsValue::UInt(_) => panic!("Solver Time cannot be Int!"),
-                    },
-                    StatisticsValue::UInt(_) => panic!("Solver Time cannot be Int!"),
-                };
-            } else {
-                self.stats.insert(key, value);
-            }
+            self.stats.insert(key, value);
+        }
+    }
+
+    /// Add or accumulate a custom timing measurement (in seconds)
+    pub fn add_time(&mut self, key: &str, duration_secs: f64) {
+        if let Some(StatisticsValue::Double(prev_value)) = self.stats.get(key) {
+            self.stats.insert(
+                key.to_string(),
+                StatisticsValue::Double(prev_value + duration_secs),
+            );
+        } else {
+            self.stats
+                .insert(key.to_string(), StatisticsValue::Double(duration_secs));
         }
     }
 }

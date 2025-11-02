@@ -177,6 +177,8 @@ impl<'ctx> SMTProblem<'ctx> {
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
     pub(crate) fn check(&mut self) -> z3::SatResult {
+        let start_time = std::time::Instant::now();
+
         // Push property back on top of the solver.
         self.push_property();
         //println!("solver: {:#?}", self.solver);
@@ -192,6 +194,12 @@ impl<'ctx> SMTProblem<'ctx> {
         self.solver.pop(1);
         self.solver_statistcs
             .join_from_z3_statistics(self.solver.get_statistics());
+
+        // Track total check time
+        let check_duration = start_time.elapsed();
+        self.solver_statistcs
+            .add_time("solver_time", check_duration.as_secs_f64());
+
         sat_result
     }
 
