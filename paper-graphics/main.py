@@ -1,5 +1,6 @@
 from pathlib import Path
 import argparse
+from datetime import datetime
 
 from src.benchmark_parsing import BenchmarkParser
 from src.unique_solves import unique_solves
@@ -200,15 +201,73 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     print(f"{'=' * 60}")
 
 
+def find_benchmark_runs_by_date(date_str, results_dir):
+    """Find all benchmark runs from a specific date.
+
+    Args:
+        date_str: Date string in format YYYY-MM-DD
+        results_dir: Directory to search for benchmark runs
+
+    Returns:
+        List of Path objects pointing to results.json files
+    """
+    try:
+        # Validate date format and convert to YYYYMMDD format
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        date_compact = date_obj.strftime("%Y%m%d")  # e.g., "20251021"
+    except ValueError:
+        raise ValueError(f"Invalid date format: {date_str}. Expected YYYY-MM-DD")
+
+    results_dir = Path(results_dir)
+    if not results_dir.exists():
+        raise FileNotFoundError(f"Results directory not found: {results_dir}")
+
+    # Find all directories that contain the date string (YYYYMMDD format)
+    matching_dirs = []
+    for item in results_dir.iterdir():
+        if item.is_dir() and date_compact in item.name:
+            results_file = item / "results.json"
+            if results_file.exists():
+                matching_dirs.append(item)
+
+    if not matching_dirs:
+        print(f"No benchmark runs found for {date_str} in {results_dir}")
+        return []
+
+    print(f"\nFound {len(matching_dirs)} benchmark run(s) for {date_str}:")
+    print("=" * 60)
+
+    json_files = []
+    for dir_path in sorted(matching_dirs):
+        results_file = dir_path / "results.json"
+        json_files.append(results_file)
+        print(f"  - {dir_path.name}/results.json")
+
+    print("=" * 60 + "\n")
+
+    return json_files
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Analyze benchmark results and generate figures"
     )
     parser.add_argument(
         "json_files",
-        nargs="+",
+        nargs="*",
         type=Path,
         help="Benchmark results JSON file(s)",
+    )
+    parser.add_argument(
+        "--day-date",
+        type=str,
+        help="Find all benchmark runs from a specific date (format: YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path.cwd(),
+        help="Directory to search for benchmark runs when using --day-date (default: current directory)",
     )
     parser.add_argument(
         "--figures",
@@ -224,8 +283,18 @@ def main():
 
     args = parser.parse_args()
 
+    # Determine which JSON files to process
+    if args.day_date:
+        json_files = find_benchmark_runs_by_date(args.day_date, args.results_dir)
+        if not json_files:
+            return
+    else:
+        if not args.json_files:
+            parser.error("Either provide json_files or use --day-date")
+        json_files = args.json_files
+
     # Parse benchmark results
-    benchmark_parser = BenchmarkParser(args.json_files)
+    benchmark_parser = BenchmarkParser(json_files)
 
     # Default: show unique solves analysis
     grouped = {}
