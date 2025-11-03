@@ -14,9 +14,9 @@ use strategies::{
 use crate::{
     cost_functions::{
         array::{
-            adaptive_array_cost_factory, array_ast_size_cost_factory,
-            array_best_symbol_cost_factory, array_prefer_constants, array_prefer_read_factory,
-            array_prefer_write_factory, split_array_cost_factory,
+            adaptive_array_cost_factory, array_ast_size_cost_factory, array_bmc_cost_factory,
+            array_prefer_constants, array_prefer_read_factory, array_prefer_write_factory,
+            split_array_cost_factory,
         },
         list::list_ast_size_cost_factory,
     },
@@ -72,7 +72,7 @@ pub struct YardbirdOptions {
     pub run_ic3ia: bool,
 
     // Choose Cost Function
-    #[arg(short, long, value_enum, default_value_t = CostFunction::SymbolCost)]
+    #[arg(short, long, value_enum, default_value_t = CostFunction::BmcCost)]
     pub cost_function: CostFunction,
 
     // Choose Theory
@@ -106,7 +106,7 @@ impl Default for YardbirdOptions {
             strategy: Strategy::Abstract,
             repl: false,
             run_ic3ia: false,
-            cost_function: CostFunction::SymbolCost,
+            cost_function: CostFunction::BmcCost,
             theory: Theory::Array,
             json_output: false,
             dump_solver: None,
@@ -127,12 +127,12 @@ impl YardbirdOptions {
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::SymbolCost => Box::new(Abstract::new(
+                CostFunction::BmcCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    array_best_symbol_cost_factory,
+                    array_bmc_cost_factory,
                 )),
-                CostFunction::ASTSize => Box::new(Abstract::new(
+                CostFunction::AstSize => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_ast_size_cost_factory,
@@ -175,12 +175,12 @@ impl YardbirdOptions {
         // TODO: Create proper bit-vector list strategy
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::SymbolCost => Box::new(Abstract::new(
+                CostFunction::BmcCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
-                    array_best_symbol_cost_factory,
+                    array_bmc_cost_factory,
                 )),
-                CostFunction::ASTSize => Box::new(Abstract::new(
+                CostFunction::AstSize => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_ast_size_cost_factory,
@@ -217,8 +217,8 @@ impl YardbirdOptions {
     pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, ListRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::SymbolCost => todo!(),
-                CostFunction::ASTSize => Box::new(ListAbstract::new(
+                CostFunction::BmcCost => todo!(),
+                CostFunction::AstSize => Box::new(ListAbstract::new(
                     self.depth,
                     self.run_ic3ia,
                     list_ast_size_cost_factory,
@@ -274,8 +274,8 @@ impl Display for Strategy {
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum CostFunction {
-    SymbolCost,
-    ASTSize,
+    BmcCost,
+    AstSize,
     AdaptiveCost,
     SplitCost,
     PreferRead,
@@ -286,8 +286,8 @@ pub enum CostFunction {
 impl Display for CostFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CostFunction::SymbolCost => write!(f, "symbol-cost"),
-            CostFunction::ASTSize => write!(f, "ast-size"),
+            CostFunction::BmcCost => write!(f, "bmc-cost"),
+            CostFunction::AstSize => write!(f, "ast-size"),
             CostFunction::AdaptiveCost => write!(f, "adaptive-cost"),
             CostFunction::SplitCost => write!(f, "split-cost"),
             CostFunction::PreferRead => write!(f, "prefer-read"),

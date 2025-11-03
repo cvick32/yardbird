@@ -5,8 +5,7 @@ use crate::{
     cost_functions::array::{
         adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize,
         prefer_constants::ArrayPreferConstants, prefer_read::ArrayPreferRead,
-        prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost,
-        symbol_cost::ArrayBestSymbolSubstitution,
+        prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost, symbol_cost::ArrayBMCCost,
     },
     smt_problem::SMTProblem,
 };
@@ -19,7 +18,7 @@ pub mod prefer_write;
 pub mod split_cost;
 pub mod symbol_cost;
 
-pub fn array_best_symbol_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBestSymbolSubstitution {
+pub fn array_bmc_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBMCCost {
     let init_and_transition_system_terms: FxHashSet<Symbol> = smt
         .get_init_and_transition_subterms()
         .into_iter()
@@ -32,7 +31,7 @@ pub fn array_best_symbol_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBest
         .map(|s| s.into())
         .collect();
 
-    ArrayBestSymbolSubstitution::new(
+    ArrayBMCCost::new(
         depth,
         init_and_transition_system_terms,
         property_terms,

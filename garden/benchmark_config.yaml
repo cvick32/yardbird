@@ -16,39 +16,39 @@ parameter_matrices:
   standard:
     depths: [5, 10, 15]
     strategies: ["abstract", "concrete"]
-    cost_functions: ["symbol-cost", "a-s-t-size"]
+    cost_functions: ["bmc-cost", "ast-size"]
 
   # Quick test matrix
   quick:
     depths: [5]
     strategies: ["abstract", "concrete"]
-    cost_functions: ["symbol-cost"]
+    cost_functions: ["bmc-cost"]
     timeout_seconds: 5
 
   # Quick test matrix
   light-review:
     depths: [10]
     strategies: ["abstract", "concrete"]
-    cost_functions: ["symbol-cost"]
+    cost_functions: ["bmc-cost"]
     timeout_seconds: 20
 
   timeout:
     depths: [50]
     strategies: ["abstract"]
-    cost_functions: ["a-s-t-size"]
+    cost_functions: ["ast-size"]
     timeout_seconds: 1
 
   # Deep analysis matrix
   deep-abstract:
     depths: [50]
     strategies: ["abstract"]
-    cost_functions: ["symbol-cost"]
+    cost_functions: ["bmc-cost"]
     timeout_seconds: 120
 
   deep-abstract-ast:
     depths: [50]
     strategies: ["abstract"]
-    cost_functions: ["a-s-t-size"]
+    cost_functions: ["ast-size"]
     timeout_seconds: 120
 
   deep-abstract-prefer-read:
@@ -72,13 +72,13 @@ parameter_matrices:
   deep-abstract-with-quantifiers:
     depths: [50]
     strategies: ["abstract-with-quantifiers"]
-    cost_functions: ["a-s-t-size"]
+    cost_functions: ["ast-size"]
     timeout_seconds: 120
 
   deep-concrete:
     depths: [50]
     strategies: ["concrete"]
-    cost_functions: ["symbol-cost"]
+    cost_functions: ["bmc-cost"]
     timeout_seconds: 120
 
 # Individual configurations (non-matrix)
@@ -86,13 +86,13 @@ individual_configs:
   - name: "abstract_only_quick"
     depth: 10
     strategy: "abstract"
-    cost_function: "symbol-cost"
+    cost_function: "bmc-cost"
     timeout_seconds: 15
 
   - name: "concrete_deep"
     depth: 25
     strategy: "concrete"
-    cost_function: "a-s-t-size"
+    cost_function: "ast-size"
     timeout_seconds: 120
 
 # Output configuration

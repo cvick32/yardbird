@@ -269,7 +269,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
     let retry = options.retry.unwrap_or(2);
     let cost_function = options
         .cost_function
-        .unwrap_or(yardbird::CostFunction::SymbolCost);
+        .unwrap_or(yardbird::CostFunction::BmcCost);
 
     let include: Vec<_> = options
         .include

@@ -10,14 +10,14 @@ use crate::{
 /// Cost function describing how to extract terms from an eclass while we are
 /// instantiating a rule violation with concrete terms.
 #[derive(Clone)]
-pub struct ArrayBestSymbolSubstitution {
+pub struct ArrayBMCCost {
     pub current_bmc_depth: u32,
     pub init_and_transition_system_terms: FxHashSet<Symbol>,
     pub property_terms: FxHashSet<Symbol>,
     pub reads_writes: ReadsAndWrites,
 }
 
-impl std::fmt::Debug for ArrayBestSymbolSubstitution {
+impl std::fmt::Debug for ArrayBMCCost {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ArrayBestSymbolSubstitution")
             .field("current_bmc_depth", &self.current_bmc_depth)
@@ -31,7 +31,7 @@ impl std::fmt::Debug for ArrayBestSymbolSubstitution {
     }
 }
 
-impl ArrayBestSymbolSubstitution {
+impl ArrayBMCCost {
     pub fn new(
         current_bmc_depth: u32,
         init_and_transition_system_terms: FxHashSet<Symbol>,
@@ -47,7 +47,7 @@ impl ArrayBestSymbolSubstitution {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
+impl egg::CostFunction<ArrayLanguage> for ArrayBMCCost {
     type Cost = u32;
 
     fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
@@ -120,7 +120,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
     }
 }
 
-impl egg::CostFunction<ListLanguage> for ArrayBestSymbolSubstitution {
+impl egg::CostFunction<ListLanguage> for ArrayBMCCost {
     type Cost = u32;
 
     fn cost<C>(&mut self, _enode: &ListLanguage, _costs: C) -> Self::Cost
@@ -131,7 +131,7 @@ impl egg::CostFunction<ListLanguage> for ArrayBestSymbolSubstitution {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for ArrayBestSymbolSubstitution {
+impl YardbirdCostFunction<ArrayLanguage> for ArrayBMCCost {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .iter()

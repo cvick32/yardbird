@@ -2,7 +2,7 @@ mod snapshot_tests;
 
 use yardbird::{
     self,
-    cost_functions::array::array_best_symbol_cost_factory,
+    cost_functions::array::array_bmc_cost_factory,
     model_from_options,
     strategies::{Abstract, ProofStrategy},
     Driver, YardbirdOptions,
@@ -17,7 +17,7 @@ macro_rules! create_integration_test {
             let ctx = z3::Context::new(&z3::Config::new());
             let mut driver = Driver::new(&ctx, vmt_model);
             let strat: Box<dyn ProofStrategy<_>> =
-                Box::new(Abstract::new(10, false, array_best_symbol_cost_factory));
+                Box::new(Abstract::new(10, false, array_bmc_cost_factory));
             let res = driver.check_strategy(options.depth, strat).unwrap();
             assert!(
                 res.used_instances.len() == $num_instances,
