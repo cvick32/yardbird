@@ -37,7 +37,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     print(f"{'=' * 60}")
 
     summary_table = TableTikzGenerator.generate_summary_statistics_table(
-        grouped, strategy_keys, baseline_strategy="concrete"
+        grouped, strategy_keys, baseline_strategy="concrete", min_baseline_runtime_ms=1000.0
     )
     summary_file = output_dir / "summary_statistics.tex"
     summary_file.write_text(summary_table)

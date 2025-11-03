@@ -330,7 +330,7 @@ class TableTikzGenerator:
         if not points:
             return "% No data to table"
 
-        table_code = f"""% Required packages: \\usepackage{{longtable}} \\usepackage{{booktabs}}
+        table_code = f"""
 \\begin{{longtable}}{{lrrr}}
 \\caption{{{title}}} \\\\
 \\toprule
@@ -369,6 +369,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
         grouped_results: Dict[str, Dict[str, any]],
         strategy_keys: set[str],
         baseline_strategy: str = "concrete",
+        min_baseline_runtime_ms: float = 1000.0,
     ) -> str:
         """Generate comprehensive summary statistics table comparing strategies
 
@@ -376,6 +377,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
             grouped_results: Dict mapping example names to strategy results
             strategy_keys: Set of all strategy keys
             baseline_strategy: Strategy to use as baseline (default: "concrete")
+            min_baseline_runtime_ms: Minimum baseline runtime in ms for speedup calculation (default: 1000)
 
         Returns:
             LaTeX table code with summary statistics
@@ -389,6 +391,8 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
             failed_benchmarks = []
             instantiations = []
             z3_checks = []
+            runtime_times = []
+            solver_times = []
             display_name = None
 
             for example_name, strategies in grouped_results.items():
@@ -402,6 +406,10 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                         successful_benchmarks.append(example_name)
                         instantiations.append(result.used_instantiations)
                         z3_checks.append(result.num_checks)
+                        runtime_times.append(
+                            result.runtime_ms / 1000.0
+                        )  # Convert to seconds
+                        solver_times.append(result.solver_time_s)
                     else:
                         failed_benchmarks.append(example_name)
 
@@ -413,6 +421,14 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                     sum(instantiations) / len(instantiations) if instantiations else 0
                 ),
                 "avg_z3_checks": (sum(z3_checks) / len(z3_checks) if z3_checks else 0),
+                "total_runtime": sum(runtime_times),
+                "total_solver_time": sum(solver_times),
+                "avg_runtime": (
+                    sum(runtime_times) / len(runtime_times) if runtime_times else 0
+                ),
+                "avg_solver_time": (
+                    sum(solver_times) / len(solver_times) if solver_times else 0
+                ),
                 "successful_examples": set(successful_benchmarks),
                 "display_name": display_name
                 or strategy_key,  # Fallback to key if no results
@@ -431,25 +447,111 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                     stats[strategy_key]["unique_solves"] = 0
                     stats[strategy_key]["unique_solve_examples"] = set()
 
-        # Generate table
-        table_code = """% Required packages: \\usepackage{booktabs}
-\\begin{table}[htbp]
+        # Calculate geometric mean speedup for shared benchmarks
+        if baseline_strategy in stats:
+            for strategy_key in strategy_keys:
+                if strategy_key != baseline_strategy and strategy_key in stats:
+                    # Find benchmarks solved by both strategies
+                    runtime_speedups = []
+                    solver_speedups = []
+                    inst_reductions = []
+
+                    for example_name, strategies in grouped_results.items():
+                        if (
+                            baseline_strategy not in strategies
+                            or strategy_key not in strategies
+                        ):
+                            continue
+
+                        baseline_result = strategies[baseline_strategy]
+                        strategy_result = strategies[strategy_key]
+
+                        # Only include if both succeeded and baseline took >= min runtime
+                        if (
+                            baseline_result.success
+                            and strategy_result.success
+                            and baseline_result.runtime_ms >= min_baseline_runtime_ms
+                        ):
+                            # Runtime speedup
+                            if strategy_result.runtime_ms > 0:
+                                runtime_speedup = (
+                                    baseline_result.runtime_ms
+                                    / strategy_result.runtime_ms
+                                )
+                                runtime_speedups.append(runtime_speedup)
+
+                            # Solver time speedup
+                            if strategy_result.solver_time_s > 0:
+                                solver_speedup = (
+                                    baseline_result.solver_time_s
+                                    / strategy_result.solver_time_s
+                                )
+                                solver_speedups.append(solver_speedup)
+
+                            # Instantiation reduction percentage
+                            if baseline_result.used_instantiations > 0:
+                                inst_reduction = (
+                                    baseline_result.used_instantiations
+                                    - strategy_result.used_instantiations
+                                )
+                                inst_reduction_pct = (
+                                    inst_reduction / baseline_result.used_instantiations
+                                ) * 100
+                                inst_reductions.append(inst_reduction_pct)
+
+                    # Calculate geometric mean speedup and average instantiation reduction
+                    avg_runtime_speedup = 0.0
+                    avg_solver_speedup = 0.0
+                    avg_inst_reduction_pct = 0.0
+
+                    if runtime_speedups:
+                        avg_runtime_speedup = math.exp(
+                            sum(math.log(s) for s in runtime_speedups)
+                            / len(runtime_speedups)
+                        )
+
+                    if solver_speedups:
+                        avg_solver_speedup = math.exp(
+                            sum(math.log(s) for s in solver_speedups)
+                            / len(solver_speedups)
+                        )
+
+                    if inst_reductions:
+                        avg_inst_reduction_pct = sum(inst_reductions) / len(
+                            inst_reductions
+                        )
+
+                    stats[strategy_key]["shared_benchmark_count"] = len(
+                        runtime_speedups
+                    )
+                    stats[strategy_key]["avg_runtime_speedup"] = avg_runtime_speedup
+                    stats[strategy_key]["avg_solver_speedup"] = avg_solver_speedup
+                    stats[strategy_key]["avg_inst_reduction_pct"] = (
+                        avg_inst_reduction_pct
+                    )
+
+        # Generate table (table* spans both columns)
+        table_code = """
+\\begin{table*}[htbp]
 \\centering
-\\resizebox{\columnwidth}{!}{%
-\\begin{tabular}{lrrrrr}
+\\begin{tabular}{lrrrrrrr}
 \\toprule
-Strategy & Solved & Failed & Unique Solves vs Baseline & Avg. Instantiations & Avg. CEGAR Loops \\\\
+Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction & Runtime Speedup & Solver Speedup \\\\
 \\midrule
 """
 
-        # Sort strategies: baseline first, then others alphabetically
-        sorted_strategies = sorted(
-            strategy_keys,
-            key=lambda s: (
-                0 if s == baseline_strategy else 1,
-                s,
-            ),
-        )
+        # Sort strategies: baseline, abstract-with-quantifiers, symbol-cost, then others alphabetically
+        def sort_key(s):
+            if s == baseline_strategy:
+                return (0, s)
+            elif s == "abstract-with-quantifiers":
+                return (1, s)
+            elif s == "abstract_symbol-cost":
+                return (2, s)
+            else:
+                return (3, s)
+
+        sorted_strategies = sorted(strategy_keys, key=sort_key)
 
         for strategy_key in sorted_strategies:
             if strategy_key not in stats:
@@ -464,28 +566,52 @@ Strategy & Solved & Failed & Unique Solves vs Baseline & Avg. Instantiations & A
 
             solved = s["solved"]
             failed = s["failed"]
-            unique = s.get("unique_solves", 0)
             avg_inst = s["avg_inst"]
-            avg_checks = s["avg_z3_checks"]
-
-            # Format unique solves (show as dash for baseline)
-            unique_str = "---" if strategy_key == baseline_strategy else str(unique)
+            shared_count = s.get("shared_benchmark_count", 0)
 
             # Format average instantiations
             avg_inst_str = f"{avg_inst:.0f}" if avg_inst > 0 else "---"
 
-            # Format average Z3 checks
-            avg_checks_str = f"{avg_checks:.0f}" if avg_checks > 0 else "---"
+            # Format shared difficult benchmark count
+            if strategy_key == baseline_strategy:
+                # For baseline, show how many benchmarks took >= 1s
+                shared_count_str = "---"
+            else:
+                shared_count_str = str(shared_count) if shared_count > 0 else "---"
 
-            table_code += f"{display_name} & {solved} & {failed} & {unique_str} & {avg_inst_str} & {avg_checks_str} \\\\\n"
+            # Format instantiation reduction and speedup metrics
+            if strategy_key == baseline_strategy:
+                inst_reduction_str = "---"
+                runtime_speedup_str = "---"
+                solver_speedup_str = "---"
+            else:
+                # Instantiation reduction percentage
+                inst_reduction_pct = s.get("avg_inst_reduction_pct", 0.0)
+                inst_reduction_str = (
+                    f"{inst_reduction_pct:.1f}\\%"
+                    if inst_reduction_pct != 0.0
+                    else "---"
+                )
+
+                # Speedups (geometric mean)
+                runtime_speedup = s.get("avg_runtime_speedup", 0.0)
+                solver_speedup = s.get("avg_solver_speedup", 0.0)
+                # Show speedup with 2 decimal places (e.g., 1.50x)
+                runtime_speedup_str = (
+                    f"{runtime_speedup:.2f}x" if runtime_speedup > 0 else "---"
+                )
+                solver_speedup_str = (
+                    f"{solver_speedup:.2f}x" if solver_speedup > 0 else "---"
+                )
+
+            table_code += f"{display_name} & {solved} & {failed} & {avg_inst_str} & {shared_count_str} & {inst_reduction_str} & {runtime_speedup_str} & {solver_speedup_str} \\\\\n"
 
         table_code += """\\bottomrule
-\\end{tabular}%
-}
+\\end{tabular}
 \\vspace{1em}
-\\caption{Summary Statistics: Strategy Performance Comparison}
+\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. ``Shared Difficult'' shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Inst. Reduction shows average percentage reduction in quantifier instantiations where both the strategy and the baseline solved the benchmark. Runtime Speedup and Solver Speedup are geometric mean speedups. All comparison metrics are computed over the shared difficult benchmarks (values $>1.0$ for speedup indicate faster performance; positive percentages for reduction indicate fewer instantiations).}
 \\label{tab:summary_statistics}
-\\end{table}
+\\end{table*}
 """
 
         return table_code
@@ -537,7 +663,7 @@ Strategy & Solved & Failed & Unique Solves vs Baseline & Avg. Instantiations & A
         # Create display name
         display_name = strategy_key.replace("_", " ").replace("-", " ").title()
 
-        table_code = f"""% Required packages: \\usepackage{{longtable}} \\usepackage{{booktabs}}
+        table_code = f"""
 \\begin{{longtable}}{{lrrr}}
 \\caption{{Benchmarks Uniquely Solved by {display_name} (Not Solved by Z3)}} \\\\
 \\toprule
@@ -675,7 +801,7 @@ Example & Runtime (s) & Instantiations & Depth \\\\
                 break
 
         # Generate table
-        table_code = """% Required packages: \\usepackage{booktabs}
+        table_code = """
 \\begin{table}[htbp]
 \\centering
 \\resizebox{\\columnwidth}{!}{%

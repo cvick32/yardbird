@@ -20,6 +20,7 @@ class BenchmarkResult:
     success: bool
     used_instantiations: int
     num_checks: int
+    solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
 
     def get_strategy_id(self) -> str:
         if self.strategy == "abstract":
@@ -87,6 +88,18 @@ def find_num_checks(full_entry: dict, strategy: str, success: bool) -> int:
     return entry["solver_statistics"]["stats"].get("num checks")
 
 
+def extract_solver_time(full_entry: dict, success: bool) -> float:
+    """Extract solver time from benchmark result (in seconds)"""
+    if not success:
+        return 0.0
+    try:
+        entry = full_entry["result"]["Success"]
+        solver_time = entry["solver_statistics"]["stats"].get("solver_time", 0.0)
+        return float(solver_time)
+    except (KeyError, ValueError, TypeError):
+        return 0.0
+
+
 class BenchmarkParser:
     """Parser for benchmark JSON results"""
 
@@ -132,6 +145,8 @@ class BenchmarkParser:
         used_instantiations = compute_axiom_instantiations(
             result_entry, strategy, success
         )
+        solver_time = extract_solver_time(result_entry, success)
+
         return BenchmarkResult(
             example_name=example_name,
             strategy=strategy,
@@ -142,4 +157,5 @@ class BenchmarkParser:
             success=success,
             used_instantiations=used_instantiations,
             num_checks=find_num_checks(result_entry, strategy, success),
+            solver_time_s=solver_time,
         )
