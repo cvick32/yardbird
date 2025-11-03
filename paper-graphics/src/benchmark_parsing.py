@@ -34,7 +34,7 @@ class BenchmarkResult:
         elif self.strategy == "abstract-with-quantifiers":
             return "Z3 MBQI"
         elif self.strategy == "abstract":
-            if self.cost_function == "symbol-cost":
+            if self.cost_function == "bmc-cost" or self.cost_function == "symbol-cost":
                 return "BMC Cost"
             elif self.cost_function == "a-s-t-size":
                 return "AST Size"

@@ -199,7 +199,7 @@ parameter_matrices:
   comprehensive:
     depths: [10, 15, 20]
     strategies: ["abstract", "concrete"]
-    cost_functions: ["symbol-cost", "a-s-t-size"]
+    cost_functions: ["bmc-cost", "a-s-t-size"]
     timeout_seconds: 120
 ```
 
@@ -210,7 +210,7 @@ individual_configs:
   - name: "quick_abstract"
     depth: 5
     strategy: "abstract"
-    cost_function: "symbol-cost"
+    cost_function: "bmc-cost"
     timeout_seconds: 30
 ```
 
@@ -252,9 +252,9 @@ The platform is designed for "fire and forget" cloud execution - launch a run, g
 
 This section provides comprehensive guidance for artifact reviewers and addresses all evaluation criteria for functional, available, and reusable badges.
 
-## Quick Start for Reviewers (10-15 minutes)
+## Quick Start for Reviewers
 
-For a rapid assessment of the artifact, follow these steps:
+For a quick assessment of the artifact, follow these steps:
 
 ### 1. Build the Tool
 
@@ -281,11 +281,11 @@ For a more comprehensive evaluation with depth 10 (completes in 5-10 minutes):
 # Build the benchmarking tool
 cargo build --release -p garden
 
-# Run light review configuration (depth 10, 30s timeout per benchmark)
-./target/release/garden --config garden/benchmark_config.yaml --matrix light-review --output review_results.json
+# Run light review configuration (depth 10, 20s timeout per benchmark)
+./target/release/garden --config garden/benchmark_config.yaml --matrix light-review --output light_review_results.json
 ```
 
-This runs all array benchmarks at depth 5 with both BMC cost and Z3 strategies, generating a JSON file with detailed results.
+This runs all array benchmarks at depth 10 with both BMC cost and Z3 strategies, generating a JSON file with detailed results.
 
 ### Functional Badge Criteria
 
@@ -295,11 +295,11 @@ This runs all array benchmarks at depth 5 with both BMC cost and Z3 strategies, 
 
 **YES.** Complete inventory:
 
-- **Core Tool**: `src/` - Yardbird bounded model checker
+- **Core Tool**: `src/` - Yardbird
 
   - `src/main.rs` - CLI entry point
   - `src/driver.rs` - Verification orchestration
-  - `src/strategies/` - Proof strategies (abstract, concrete, interpolation)
+  - `src/strategies/` - Proof strategies (abstract, concrete)
   - `src/cost_functions/` - Heuristics for term selection
   - `src/z3_ext.rs`, `src/smt_problem.rs` - Z3 integration
 
@@ -342,7 +342,7 @@ This runs all array benchmarks at depth 5 with both BMC cost and Z3 strategies, 
 
 - All benchmarks from evaluation section
 - All strategies discussed (abstract, concrete, interpolation)
-- All cost functions evaluated (symbol-cost, ast-size, prefer-read, prefer-write, prefer-constants)
+- All cost functions evaluated (bmc-cost, ast-size, prefer-read, prefer-write, prefer-constants)
 - Complete source code (no proprietary components)
 - Benchmark runner to reproduce all experiments
 - Graphics generation to reproduce all figures/tables

@@ -540,13 +540,13 @@ Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction &
 \\midrule
 """
 
-        # Sort strategies: baseline, abstract-with-quantifiers, symbol-cost, then others alphabetically
+        # Sort strategies: baseline, abstract-with-quantifiers, bmc-cost, then others alphabetically
         def sort_key(s):
             if s == baseline_strategy:
                 return (0, s)
             elif s == "abstract-with-quantifiers":
                 return (1, s)
-            elif s == "abstract_symbol-cost":
+            elif s == "abstract_bmc-cost":
                 return (2, s)
             else:
                 return (3, s)
