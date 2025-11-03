@@ -46,6 +46,10 @@ impl<'ctx> Z3VarContext<'ctx> {
         }
     }
 
+    pub(crate) fn get_context(&self) -> &'ctx Context {
+        self.context
+    }
+
     /// This is for the extra terms that we want to add to the egraph after the variable
     /// interpretations and Array function interpretations.
     pub(crate) fn rewrite_term(

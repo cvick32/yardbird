@@ -82,6 +82,18 @@ pub struct YardbirdOptions {
     /// Output ProofLoopResult as JSON to stdout (for garden integration)
     #[arg(long, default_value_t = false)]
     pub json_output: bool,
+
+    /// Dump solver state to SMT2 file when unsat is reached
+    #[arg(long)]
+    pub dump_solver: Option<String>,
+
+    /// Track instantiations using Z3's assert-and-track for unsat core analysis
+    #[arg(long, default_value_t = false)]
+    pub track_instantiations: bool,
+
+    /// Dump unsat core to JSON file when tracking is enabled and unsat is reached
+    #[arg(long)]
+    pub dump_unsat_core: Option<String>,
 }
 
 impl Default for YardbirdOptions {
@@ -97,6 +109,9 @@ impl Default for YardbirdOptions {
             cost_function: CostFunction::SymbolCost,
             theory: Theory::Array,
             json_output: false,
+            dump_solver: None,
+            track_instantiations: false,
+            dump_unsat_core: None,
         }
     }
 }

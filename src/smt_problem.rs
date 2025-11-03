@@ -25,6 +25,8 @@ pub struct SMTProblem<'ctx> {
     solver_statistcs: SolverStatistics,
     newest_model: Option<z3::Model<'ctx>>,
     num_quantifiers_instantiated: u64,
+    track_instantiations: bool,
+    tracked_labels: Vec<(String, Term)>, // (label, instantiation_term)
 }
 
 #[allow(clippy::borrowed_box)]
@@ -33,6 +35,7 @@ impl<'ctx> SMTProblem<'ctx> {
         vmt_model: &VMTModel,
         context: &'ctx z3::Context,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
+        track_instantiations: bool,
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
@@ -59,6 +62,8 @@ impl<'ctx> SMTProblem<'ctx> {
             z3_var_context: Z3VarContext::new(context),
             newest_model: None,
             num_quantifiers_instantiated: 0,
+            track_instantiations,
+            tracked_labels: vec![],
         };
         // Handle theory-specific function declarations
         let theory = strategy.get_theory_support();
@@ -143,11 +148,29 @@ impl<'ctx> SMTProblem<'ctx> {
                 self.bmc_builder.set_width(inst.width());
                 let indexed_inst = inst.rewrite(&mut self.bmc_builder);
                 let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
-                all_z3_insts.push(z3_inst.as_bool().unwrap());
+                all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
             }
             self.num_quantifiers_instantiated += all_z3_insts.len() as u64;
-            let inst_and = self.z3_var_context.make_and(all_z3_insts);
-            self.solver.assert(&inst_and);
+
+            if self.track_instantiations {
+                // Use assert_and_track for each instantiation
+                for (z3_inst, indexed_term) in all_z3_insts {
+                    let inst_num = self.tracked_labels.len();
+                    let label = format!("inst_{}_depth_{}", inst_num, self.depth);
+                    let tracked_bool =
+                        z3::ast::Bool::new_const(self.z3_var_context.get_context(), label.as_str());
+                    self.solver.assert_and_track(&z3_inst, &tracked_bool);
+                    self.tracked_labels.push((label, indexed_term));
+                }
+            } else {
+                let inst_and = self.z3_var_context.make_and(
+                    all_z3_insts
+                        .into_iter()
+                        .map(|(z3_inst, _)| z3_inst)
+                        .collect(),
+                );
+                self.solver.assert(&inst_and);
+            }
         }
     }
 
@@ -255,13 +278,32 @@ impl<'ctx> SMTProblem<'ctx> {
                 .register_instantiation_term(indexed_inst.clone());
             let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
 
-            all_z3_insts.push(z3_inst.as_bool().unwrap());
+            all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
         }
         // reset depth
         self.bmc_builder.set_depth(cur_depth);
         self.num_quantifiers_instantiated += all_z3_insts.len() as u64;
-        let inst_and = self.z3_var_context.make_and(all_z3_insts);
-        self.solver.assert(&inst_and);
+
+        if self.track_instantiations {
+            // Use assert_and_track for each instantiation
+            for (idx, (z3_inst, indexed_term)) in all_z3_insts.iter().enumerate() {
+                let inst_num = self.tracked_labels.len();
+                let label = format!("inst_{}_{}", inst_num, idx);
+                let tracked_bool =
+                    z3::ast::Bool::new_const(self.z3_var_context.get_context(), label.as_str());
+                self.solver.assert_and_track(z3_inst, &tracked_bool);
+                self.tracked_labels.push((label, indexed_term.clone()));
+            }
+        } else {
+            // Original behavior: combine all into one assertion
+            let inst_and = self.z3_var_context.make_and(
+                all_z3_insts
+                    .into_iter()
+                    .map(|(z3_inst, _)| z3_inst)
+                    .collect(),
+            );
+            self.solver.assert(&inst_and);
+        }
     }
 
     pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
@@ -316,5 +358,90 @@ impl<'ctx> SMTProblem<'ctx> {
         z3_term: &Dynamic<'ctx>,
     ) -> Dynamic<'_> {
         self.z3_var_context.get_interpretation(model, z3_term)
+    }
+
+    /// Dump the solver state to an SMT2 file
+    pub(crate) fn dump_solver_to_file(&self, path: &str) -> anyhow::Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+
+        let smt2_string = self.solver.to_string();
+        let mut file = File::create(path)?;
+        file.write_all(smt2_string.as_bytes())?;
+        Ok(())
+    }
+
+    /// Get the unsat core when tracking is enabled
+    pub(crate) fn get_unsat_core(&self) -> Option<Vec<String>> {
+        if !self.track_instantiations {
+            return None;
+        }
+
+        let core_asts = self.solver.get_unsat_core();
+        let core_labels: Vec<String> = core_asts.iter().map(|ast| ast.to_string()).collect();
+
+        Some(core_labels)
+    }
+
+    /// Export unsat core analysis to JSON
+    pub(crate) fn export_unsat_core_json(&self, path: &str) -> anyhow::Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+
+        if !self.track_instantiations {
+            anyhow::bail!("Tracking is not enabled, cannot export unsat core");
+        }
+
+        let core_labels = self
+            .get_unsat_core()
+            .ok_or_else(|| anyhow::anyhow!("Failed to get unsat core"))?;
+
+        #[derive(serde::Serialize)]
+        struct UnsatCoreData {
+            total_instantiations: usize,
+            core_size: usize,
+            core_labels: Vec<String>,
+            tracked_instantiations: Vec<TrackedInst>,
+            core_instantiations: Vec<TrackedInst>,
+        }
+
+        #[derive(serde::Serialize, Clone)]
+        struct TrackedInst {
+            label: String,
+            term: String,
+            in_core: bool,
+        }
+
+        let core_set: std::collections::HashSet<_> = core_labels.iter().collect();
+
+        let tracked_instantiations: Vec<TrackedInst> = self
+            .tracked_labels
+            .iter()
+            .map(|(label, term)| TrackedInst {
+                label: label.clone(),
+                term: term.to_string(),
+                in_core: core_set.contains(label),
+            })
+            .collect();
+
+        let core_instantiations: Vec<TrackedInst> = tracked_instantiations
+            .iter()
+            .filter(|inst| inst.in_core)
+            .cloned()
+            .collect();
+
+        let data = UnsatCoreData {
+            total_instantiations: self.tracked_labels.len(),
+            core_size: core_labels.len(),
+            core_labels,
+            tracked_instantiations,
+            core_instantiations,
+        };
+
+        let json = serde_json::to_string_pretty(&data)?;
+        let mut file = File::create(path)?;
+        file.write_all(json.as_bytes())?;
+
+        Ok(())
     }
 }

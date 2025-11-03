@@ -172,6 +172,9 @@ pub struct Driver<'ctx, S> {
     pub vmt_model: VMTModel,
     context: &'ctx z3::Context,
     extensions: DriverExtensions<'ctx, S>,
+    dump_solver_path: Option<String>,
+    track_instantiations: bool,
+    dump_unsat_core_path: Option<String>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -214,7 +217,22 @@ impl<'ctx, S> Driver<'ctx, S> {
             vmt_model,
             context,
             extensions: DriverExtensions::default(),
+            dump_solver_path: None,
+            track_instantiations: false,
+            dump_unsat_core_path: None,
         }
+    }
+
+    pub fn with_tracking_options(
+        mut self,
+        dump_solver: Option<String>,
+        track_instantiations: bool,
+        dump_unsat_core: Option<String>,
+    ) -> Self {
+        self.dump_solver_path = dump_solver;
+        self.track_instantiations = track_instantiations;
+        self.dump_unsat_core_path = dump_unsat_core;
+        self
     }
 
     pub fn add_extension(&mut self, ext: impl ProofStrategyExt<S> + 'ctx) -> &mut Self {
@@ -238,8 +256,12 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
-        let mut smt_problem =
-            crate::smt_problem::SMTProblem::new(&self.vmt_model, self.context, &strat);
+        let mut smt_problem = crate::smt_problem::SMTProblem::new(
+            &self.vmt_model,
+            self.context,
+            &strat,
+            self.track_instantiations,
+        );
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
@@ -249,6 +271,22 @@ impl<'ctx, S> Driver<'ctx, S> {
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
                     z3::SatResult::Unsat => {
+                        // Handle solver dumping if requested
+                        if let Some(ref path) = self.dump_solver_path {
+                            info!("Dumping solver to: {}", path);
+                            smt_problem.dump_solver_to_file(path)?;
+                        }
+
+                        // Handle unsat core dumping if requested
+                        if let Some(ref path) = self.dump_unsat_core_path {
+                            if self.track_instantiations {
+                                info!("Dumping unsat core to: {}", path);
+                                smt_problem.export_unsat_core_json(path)?;
+                            } else {
+                                log::warn!("--dump-unsat-core specified but --track-instantiations not enabled");
+                            }
+                        }
+
                         self.extensions.unsat(&mut state, &smt_problem)?;
                         strat.unsat(&mut state, &smt_problem)?
                     }

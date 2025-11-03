@@ -17,7 +17,11 @@ fn main() -> anyhow::Result<()> {
     let context = z3::Context::new(&cfg);
     match options.theory {
         Theory::Array => {
-            let mut driver = Driver::new(&context, vmt_model);
+            let mut driver = Driver::new(&context, vmt_model).with_tracking_options(
+                options.dump_solver.clone(),
+                options.track_instantiations,
+                options.dump_unsat_core.clone(),
+            );
             if options.repl {
                 driver.add_extension(Repl);
             }
@@ -31,7 +35,11 @@ fn main() -> anyhow::Result<()> {
             todo!("Implement BVList!")
         }
         Theory::List => {
-            let mut driver = Driver::new(&context, vmt_model);
+            let mut driver = Driver::new(&context, vmt_model).with_tracking_options(
+                options.dump_solver.clone(),
+                options.track_instantiations,
+                options.dump_unsat_core.clone(),
+            );
             if options.repl {
                 driver.add_extension(Repl);
             }
