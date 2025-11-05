@@ -37,7 +37,10 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     print(f"{'=' * 60}")
 
     summary_table = TableTikzGenerator.generate_summary_statistics_table(
-        grouped, strategy_keys, baseline_strategy="concrete", min_baseline_runtime_ms=1000.0
+        grouped,
+        strategy_keys,
+        baseline_strategy="concrete",
+        min_baseline_runtime_ms=1000.0,
     )
     summary_file = output_dir / "summary_statistics.tex"
     summary_file.write_text(summary_table)
@@ -166,7 +169,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             title="Runtime Performance Comparison",
             xlabel="Number of Solved Instances",
             ylabel="Runtime (s)",
-            caption="Cactus plot comparing runtime performance across all strategies.",
+            caption="Cactus plot comparing runtime performance across all strategies (lower lines are better).",
             use_log_scale=True,
         )
 
@@ -188,7 +191,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             title="Instantiation Performance Comparison",
             xlabel="Number of Benchmarks",
             ylabel="Instantiations",
-            caption="Cactus plot comparing instantiation counts across all strategies. Failed benchmarks are pinned to the top.",
+            caption="Cactus plot comparing instantiation counts across all strategies (lower lines are better).",
             use_log_scale=True,
         )
 

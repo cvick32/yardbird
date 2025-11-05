@@ -536,7 +536,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
 \\centering
 \\begin{tabular}{lrrrrrrr}
 \\toprule
-Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction & Runtime Speedup & Solver Speedup \\\\
+Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & Inst. Reduction & Runtime Speedup \\\\
 \\midrule
 """
 
@@ -546,7 +546,7 @@ Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction &
                 return (0, s)
             elif s == "abstract-with-quantifiers":
                 return (1, s)
-            elif s == "abstract_bmc-cost":
+            elif s == "abstract_bmc-cost" or s == "abstract_symbol-cost":
                 return (2, s)
             else:
                 return (3, s)
@@ -567,10 +567,17 @@ Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction &
             solved = s["solved"]
             failed = s["failed"]
             avg_inst = s["avg_inst"]
+            unique_solves = s.get("unique_solves", 0)
             shared_count = s.get("shared_benchmark_count", 0)
 
             # Format average instantiations
             avg_inst_str = f"{avg_inst:.0f}" if avg_inst > 0 else "---"
+
+            # Format unique solves
+            if strategy_key == baseline_strategy:
+                unique_solves_str = "---"
+            else:
+                unique_solves_str = str(unique_solves)
 
             # Format shared difficult benchmark count
             if strategy_key == baseline_strategy:
@@ -583,7 +590,6 @@ Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction &
             if strategy_key == baseline_strategy:
                 inst_reduction_str = "---"
                 runtime_speedup_str = "---"
-                solver_speedup_str = "---"
             else:
                 # Instantiation reduction percentage
                 inst_reduction_pct = s.get("avg_inst_reduction_pct", 0.0)
@@ -600,11 +606,8 @@ Strategy & Solved & Timeouts & Avg. Inst. & Shared Difficult & Inst. Reduction &
                 runtime_speedup_str = (
                     f"{runtime_speedup:.2f}x" if runtime_speedup > 0 else "---"
                 )
-                solver_speedup_str = (
-                    f"{solver_speedup:.2f}x" if solver_speedup > 0 else "---"
-                )
 
-            table_code += f"{display_name} & {solved} & {failed} & {avg_inst_str} & {shared_count_str} & {inst_reduction_str} & {runtime_speedup_str} & {solver_speedup_str} \\\\\n"
+            table_code += f"{display_name} & {solved} & {failed} & {avg_inst_str} & {unique_solves_str} & {shared_count_str} & {inst_reduction_str} & {runtime_speedup_str} \\\\\n"
 
         table_code += """\\bottomrule
 \\end{tabular}
