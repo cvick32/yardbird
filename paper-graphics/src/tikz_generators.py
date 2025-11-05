@@ -530,13 +530,69 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                         avg_inst_reduction_pct
                     )
 
+                    # Calculate instantiation metrics for ALL shared benchmarks (not just difficult)
+                    all_shared_count = 0
+                    inst_reduced_count = 0
+                    inst_reductions_all = []
+
+                    for example_name, strategies in grouped_results.items():
+                        if (
+                            baseline_strategy not in strategies
+                            or strategy_key not in strategies
+                        ):
+                            continue
+
+                        baseline_result = strategies[baseline_strategy]
+                        strategy_result = strategies[strategy_key]
+
+                        # Include all shared benchmarks where both succeeded (no runtime filter)
+                        if baseline_result.success and strategy_result.success:
+                            all_shared_count += 1
+
+                            # Check if instantiations were reduced
+                            if (
+                                baseline_result.used_instantiations > 0
+                                and strategy_result.used_instantiations
+                                < baseline_result.used_instantiations
+                            ):
+                                inst_reduced_count += 1
+                                inst_reduction = (
+                                    baseline_result.used_instantiations
+                                    - strategy_result.used_instantiations
+                                )
+                                inst_reduction_pct = (
+                                    inst_reduction / baseline_result.used_instantiations
+                                ) * 100
+                                inst_reductions_all.append(inst_reduction_pct)
+
+                    # Calculate percentage of benchmarks with reductions
+                    pct_with_reduction = 0.0
+                    avg_reduction_when_reduced = 0.0
+
+                    if all_shared_count > 0:
+                        pct_with_reduction = (
+                            inst_reduced_count / all_shared_count
+                        ) * 100
+
+                    if inst_reductions_all:
+                        avg_reduction_when_reduced = sum(inst_reductions_all) / len(
+                            inst_reductions_all
+                        )
+
+                    stats[strategy_key]["all_shared_count"] = all_shared_count
+                    stats[strategy_key]["pct_with_inst_reduction"] = pct_with_reduction
+                    stats[strategy_key]["avg_inst_reduction_when_reduced"] = (
+                        avg_reduction_when_reduced
+                    )
+
         # Generate table (table* spans both columns)
         table_code = """
 \\begin{table*}[htbp]
 \\centering
-\\begin{tabular}{lrrrrrrr}
+\\resizebox{\\textwidth}{!}{%
+\\begin{tabular}{lrrrrrrrrr}
 \\toprule
-Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & \\textbf{Inst. Reduction} & \\textbf{Runtime Speedup} \\\\
+Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & Avg. Reduction & Shared Difficult & \\textbf{Inst. Reduction} & \\textbf{Runtime Speedup} \\\\
 \\midrule
 """
 
@@ -568,7 +624,6 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & \
             failed = s["failed"]
             avg_inst = s["avg_inst"]
             unique_solves = s.get("unique_solves", 0)
-            shared_count = s.get("shared_benchmark_count", 0)
 
             # Format average instantiations
             avg_inst_str = f"{avg_inst:.0f}" if avg_inst > 0 else "---"
@@ -579,11 +634,30 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & \
             else:
                 unique_solves_str = str(unique_solves)
 
+            # Format instantiation improvement metrics (all shared benchmarks)
+            if strategy_key == baseline_strategy:
+                pct_with_reduction_str = "---"
+                avg_reduction_all_str = "---"
+            else:
+                pct_with_reduction = s.get("pct_with_inst_reduction", 0.0)
+                avg_reduction_when_reduced = s.get(
+                    "avg_inst_reduction_when_reduced", 0.0
+                )
+
+                pct_with_reduction_str = (
+                    f"{pct_with_reduction:.1f}\\%" if pct_with_reduction > 0 else "---"
+                )
+                avg_reduction_all_str = (
+                    f"{avg_reduction_when_reduced:.1f}\\%"
+                    if avg_reduction_when_reduced > 0
+                    else "---"
+                )
+
             # Format shared difficult benchmark count
             if strategy_key == baseline_strategy:
-                # For baseline, show how many benchmarks took >= 1s
                 shared_count_str = "---"
             else:
+                shared_count = s.get("shared_benchmark_count", 0)
                 shared_count_str = str(shared_count) if shared_count > 0 else "---"
 
             # Format instantiation reduction and speedup metrics
@@ -607,12 +681,13 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & \
                     f"{runtime_speedup:.2f}x" if runtime_speedup > 0 else "---"
                 )
 
-            table_code += f"{display_name} & {solved} & {failed} & {avg_inst_str} & {unique_solves_str} & {shared_count_str} & {inst_reduction_str} & {runtime_speedup_str} \\\\\n"
+            table_code += f"{display_name} & {solved} & {failed} & {avg_inst_str} & {unique_solves_str} & {pct_with_reduction_str} & {avg_reduction_all_str} & {shared_count_str} & {inst_reduction_str} & {runtime_speedup_str} \\\\\n"
 
         table_code += """\\bottomrule
-\\end{tabular}
+\\end{tabular}%
+}
 \\vspace{1em}
-\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. ``Shared Difficult'' shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Inst. Reduction shows average percentage reduction in quantifier instantiations where both the strategy and the baseline solved the benchmark. Runtime Speedup is a geometric mean speedup in total runtime. All bold comparison metrics are computed over the shared difficult benchmarks.}
+\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. ``\\% w/ Reduction'' shows the percentage of all shared solved benchmarks where instantiations were reduced compared to baseline. ``Avg. Reduction'' shows the average instantiation reduction percentage across benchmarks where reduction occurred. ``Shared Difficult'' shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Bold metrics (\\textbf{Inst. Reduction} and \\textbf{Runtime Speedup}) are computed only over the shared difficult benchmarks, using arithmetic mean for instantiation reduction and geometric mean for speedup.}
 \\label{tab:summary_statistics}
 \\end{table*}
 """

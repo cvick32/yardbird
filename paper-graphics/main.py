@@ -135,7 +135,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
                 title=f"Instantiation Comparison ({display_name} vs Z3)",
                 xlabel="Z3 Instantiations",
                 ylabel=f"{display_name} Instantiations",
-                caption=f"Array axiom instantiation comparison between {display_name} and Z3.",
+                caption=f"Array axiom instantiation comparison between {display_name} and Z3 (only successful, difficult benchmarks shown).",
                 use_log_scale=True,
             )
 
