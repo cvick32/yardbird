@@ -592,7 +592,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
 \\resizebox{\\textwidth}{!}{%
 \\begin{tabular}{lrrrrrrrrr}
 \\toprule
-Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & Avg. Reduction & Shared Difficult & \\textbf{Inst. Reduction} & \\textbf{Runtime Speedup} \\\\
+Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & Inst. Reduction & Shared Difficult & \\textbf{Inst. Reduction} & \\textbf{Runtime Speedup} \\\\
 \\midrule
 """
 
@@ -687,7 +687,7 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & A
 \\end{tabular}%
 }
 \\vspace{1em}
-\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. ``\\% w/ Reduction'' shows the percentage of all shared solved benchmarks where instantiations were reduced compared to baseline. ``Avg. Reduction'' shows the average instantiation reduction percentage across benchmarks where reduction occurred. ``Shared Difficult'' shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Bold metrics (\\textbf{Inst. Reduction} and \\textbf{Runtime Speedup}) are computed only over the shared difficult benchmarks, using arithmetic mean for instantiation reduction and geometric mean for speedup.}
+\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. \\% w/ Reduction shows the percentage of all shared solved benchmarks where instantiations were reduced compared to baseline. Inst. Reduction shows the average instantiation reduction percentage across benchmarks where reduction occurred. Shared Difficult shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Bold metrics (\\textbf{Inst. Reduction} and \\textbf{Runtime Speedup}) are computed only over the shared difficult benchmarks, using geometric mean for speedup.}
 \\label{tab:summary_statistics}
 \\end{table*}
 """
