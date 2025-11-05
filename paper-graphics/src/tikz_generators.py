@@ -536,7 +536,7 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
 \\centering
 \\begin{tabular}{lrrrrrrr}
 \\toprule
-Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & Inst. Reduction & Runtime Speedup \\\\
+Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & \\textbf{Inst. Reduction} & \\textbf{Runtime Speedup} \\\\
 \\midrule
 """
 
@@ -612,7 +612,7 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & Shared Difficult & I
         table_code += """\\bottomrule
 \\end{tabular}
 \\vspace{1em}
-\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. ``Shared Difficult'' shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Inst. Reduction shows average percentage reduction in quantifier instantiations where both the strategy and the baseline solved the benchmark. Runtime Speedup and Solver Speedup are geometric mean speedups. All comparison metrics are computed over the shared difficult benchmarks (values $>1.0$ for speedup indicate faster performance; positive percentages for reduction indicate fewer instantiations).}
+\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. ``Shared Difficult'' shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Inst. Reduction shows average percentage reduction in quantifier instantiations where both the strategy and the baseline solved the benchmark. Runtime Speedup is a geometric mean speedup in total runtime. All bold comparison metrics are computed over the shared difficult benchmarks.}
 \\label{tab:summary_statistics}
 \\end{table*}
 """
