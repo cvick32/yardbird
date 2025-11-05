@@ -2,9 +2,277 @@
 
 This chicken lays `egg`s...
 
-# Benchmark Results
+# Artifact Evaluation
 
-[Scarecrow](https://scarecrow.sgt-pl.com/)
+## Quick Start
+
+For a quick assessment of the artifact, follow these steps:
+
+### 1. Build the Tool
+
+```bash
+# Build yardbird
+cargo build --release
+
+# Verify build
+./target/release/yardbird --help
+```
+
+### 2. Run a Single Example
+
+This will automatically use the BMC Cost strategy.
+
+```bash
+# Run on a simple array copy example (completes in ~1 second)
+./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
+```
+
+### 3. Run Light Review Benchmark Suite
+
+For a more comprehensive evaluation with depth 10 (completes in 5-10 minutes):
+
+```bash
+# Build the benchmarking tool
+cargo build --release -p garden
+
+# Run light review configuration (depth 10, 20s timeout per benchmark)
+./target/release/garden --config garden/benchmark_config.yaml --matrix light-review --output light_review_results.json
+```
+
+This runs all array benchmarks at depth 10 with both BMC Cost and Z3 array theory strategies, generating a JSON file with detailed results.
+
+## Reproducing Paper Results
+
+To fully reproduce the paper's evaluation:
+
+```bash
+cargo build --release -p yardbird
+cargo build --release -p garden
+
+# Run BMC Cost
+./target/release/garden \
+  --config garden/benchmark_config.yaml \
+  --matrix deep-abstract \
+  --output paper_results_abstract.json
+
+# Run AST Size
+./target/release/garden \
+  --config garden/benchmark_config.yaml \
+  --matrix deep-abstract-ast \
+  --output paper_results_ast.json
+
+# Run Z3 Array theory baseline
+./target/release/garden \
+  --config garden/benchmark_config.yaml \
+  --matrix deep-concrete \
+  --output paper_results_z3.json
+
+# Run Z3 MBQI
+./target/release/garden \
+  --config garden/benchmark_config.yaml \
+  --matrix  deep-abstract-with-quantifiers \
+  --output paper_results_mbqi.json
+```
+
+Each of these runs will take 1.5 to 2 hours on an AWS EC2 instance. Times may vary locally and by hardware.
+
+These 4 runs will reproduce the main results from the paper. The additional cost functions can be run
+in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`, `deep-abstract-prefer-read`.
+
+### Functional Badge Criteria
+
+#### 1. Documentation and Inventory
+
+**Is the artifact documented with an inventory of artifacts and sufficient description to enable exercise?**
+
+**YES.** Complete inventory:
+
+- **Core Tool**: `src/` - Yardbird
+
+  - `src/main.rs` - CLI entry point
+  - `src/driver.rs` - Verification orchestration
+  - `src/strategies/` - Proof strategies (abstract, concrete)
+  - `src/cost_functions/` - Heuristics for term selection
+  - `src/z3_ext.rs`, `src/smt_problem.rs` - Z3 integration
+
+- **Parsing Library**: `smt2parser/` - VMT and SMT2 parsing with array abstraction
+
+- **Benchmarking Suite**: `garden/` - Automated benchmark runner
+
+  - Configuration-driven execution
+  - Supports parameter matrices
+  - JSON output with metadata
+
+- **Examples**: `examples/array/` - VMT benchmark files
+
+**Is the artifact consistent and relevant to the associated paper, contributing to its main results?**
+
+**YES.** The artifact directly supports the paper's claims:
+
+- **Main Claim**: Yardbird performs bounded model checking with cost-guided abstraction refinement
+
+  - Implemented in `src/strategies/abstract.rs` using egg-based term rewriting
+  - Cost functions in `src/cost_functions/` implement heuristics discussed in paper
+
+- **Evaluation Results**: All paper benchmarks are included in `examples/array/`
+
+  - The `garden` tool reproduces the exact parameter configurations from the paper
+  - Configuration `deep-abstract` matches paper's main evaluation (depth 50, 120s timeout)
+  - All "deep" configurations in `garden/benchmark_config.yaml` when run with garden will replicate results given in the paper
+
+- **Comparison with Baselines**:
+
+  - Concrete strategy (`src/strategies/concrete.rs`) implements baseline approach
+
+- **Performance Claims**: Quantifier instantiation counts and runtimes are logged and can be reproduced and verified from the output
+  JSON file.
+
+#### 3. Completeness
+
+**Is the artifact complete, with all components relevant to the paper included?**
+
+**YES.** All paper components are included:
+
+- All benchmarks from evaluation section
+- All strategies discussed (abstract, concrete)
+- All cost functions evaluated (bmc-cost, ast-size, prefer-read, prefer-write, prefer-constants)
+- Complete source code (no proprietary components)
+- Benchmark runner to reproduce all experiments
+
+#### 4. Runnability
+
+**Can the software be executed successfully and can data be accessed and manipulated?**
+
+**YES.** Multiple execution modes:
+
+1. **Direct CLI**: `cargo run -- --filename <file> [options]`
+2. **Benchmark Suite**: `garden --config <yaml> --matrix <name>`
+
+All benchmarks are accessible VMT files in `examples/`. Results are output as:
+
+- Human-readable logs to stdout
+- Structured JSON for automated processing
+- Compatible with graphics generation pipeline
+
+### Reusable Badge Criteria
+
+#### 1. License for Reuse
+
+**Does the artifact have a license allowing reuse and repurposing?**
+
+**YES.** This project is licensed under the **MIT License** (see `LICENSE` file), which allows:
+
+**Special provision for artifact evaluation:**
+The `LICENSE` file includes an explicit addendum granting artifact evaluation committees the right to download, execute, modify, and redistribute the artifact for evaluation purposes.
+
+All dependencies are also permissively licensed:
+
+- Rust standard library: MIT/Apache-2.0
+- Z3: MIT
+- egg (e-graphs): MIT
+
+#### 2. Dependencies Documentation
+
+**Are all dependencies and libraries well documented and up to date?**
+
+**YES.** Complete dependency documentation:
+
+**System Dependencies:**
+
+- Rust 1.89.0 (specified in `rust-toolchain.toml`)
+- Z3 SMT solver 4.15.2+ (any modern version compatible)
+- libclang-dev (for Z3 bindings)
+- Standard build tools (gcc/clang, cmake)
+
+**Rust Dependencies:** (all pinned in `Cargo.lock`)
+
+- `z3 = "0.8"` - Z3 solver bindings
+- `egg = "0.9"` - E-graph library for term rewriting
+- Full list in `Cargo.toml`
+
+#### 3. Usage Beyond the Paper
+
+**Does the README explain how the artifact can be used beyond the paper?**
+
+**YES.** Multiple extension points:
+
+**1. Verify New Programs:**
+
+```bash
+# Create your own VMT file describing a transition system
+# Run yardbird on it
+cargo run --release -- --filename my_program.vmt --depth 20
+```
+
+**2. Add New Cost Functions:**
+
+Implement the `egg::CostFunction` trait in `src/cost_functions/`:
+
+```rust
+pub trait CostFunction {
+    fn cost(&self, enode: &ENode) -> Cost;
+    fn name(&self) -> &str;
+}
+```
+
+Example: `src/cost_functions/ast_size.rs` shows a simple implementation.
+
+Register in `src/main.rs` to make it available via `--cost-function` flag.
+
+**3. Extend with New Strategies:**
+
+Add to `src/strategies/` following the pattern in `abstract.rs` or `concrete.rs`. Strategies coordinate:
+
+- SMT problem construction
+- Incremental solving
+- Abstraction refinement
+
+**4. Benchmark New Tool Configurations:**
+
+Create custom YAML configs in `garden/`:
+
+```yaml
+parameter_matrices:
+  my_experiment:
+    depths: [10, 20, 30]
+    strategies: ["my-new-strategy"]
+    cost_functions: ["my-cost-function"]
+    timeout_seconds: 60
+```
+
+Run with: `garden --config my_config.yaml --matrix my_experiment`
+
+**5. Integration with Other Tools:**
+
+- Use `--print-vmt` to output abstracted transition systems
+- We can dump the solver state to SMTLIB2 at any time during execution, giving us the
+  ability to use other solvers or tools.
+
+#### 4. Documented Interfaces and Open Source
+
+**Does the artifact provide documented interfaces for extensions, or is it open source?**
+
+**YES, both:**
+
+1. **Open Source**: Complete source code available, no proprietary components
+
+2. **Documented Extension Interfaces:**
+
+   - **Cost Functions**: `CostFunction` trait in `src/cost_functions/mod.rs`
+   - **Strategies**: Pattern established in `src/strategies/`
+   - **Output Formats**: JSON schema in `garden/src/main.rs`
+   - **VMT Parsing**: Public API in `smt2parser/`
+
+#### 5. Cross-Environment Usage
+
+**Can the artifact be used in different environments (different systems, outside VM)?**
+
+**YES.**
+
+- Z3 is available on all major platforms and available through a python package with necessary header files
+- Rust provides consistent cross-platform builds
+- VMT files are platform-independent text files
+- No OS-specific system calls or dependencies
 
 # Running Example
 
@@ -67,606 +335,3 @@ This was resolved by running:
 ```
 sudo apt install libclang-dev
 ```
-
-# Benchmarking Platform
-
-We've implemented a comprehensive benchmarking platform for systematic evaluation of yardbird across different parameter configurations. The platform supports both local and cloud-based execution with automated result processing and visualization.
-
-## Components
-
-### 1. Configuration System
-
-- **Location**: `garden/benchmark_config.yaml`, `configs/`
-- **Purpose**: Define parameter matrices and individual benchmark configurations
-- **Features**:
-  - Parameter matrices (all combinations of depth, strategy, cost function)
-  - Individual configurations for specific tests
-  - Global settings for timeout, retry, file patterns
-  - Cloud execution settings
-
-### 2. Enhanced Garden CLI
-
-- **Location**: `garden/src/main.rs`
-- **Purpose**: Execute benchmarks with configuration files
-- **New Features**:
-  - Config file support (`--config`)
-  - Matrix selection (`--matrix`)
-  - Metadata collection (git commit, timestamp)
-  - Standardized JSON output schema
-
-### 3. Graphics Generation
-
-- **Location**: `paper-graphics/`
-- **Purpose**: Generate publication-ready graphics from benchmark results
-- **Components**:
-  - `main.py`: Plotly-based scatter plots and analysis
-  - `tikz_generator.py`: Raw TikZ code for LaTeX publications
-  - Support for both legacy and new JSON formats
-
-### 4. Master CLI Tool
-
-- **Location**: `yardbird-bench`
-- **Purpose**: Orchestrate entire benchmark pipeline
-- **Features**: Local/EC2 execution, graphics generation, S3 upload
-
-### 5. Cloud Infrastructure
-
-- **Terraform**: `terraform/` - Infrastructure as code for AWS resources
-
-## Usage
-
-### Local Execution
-
-#### Quick Test
-
-```bash
-# Build the platform
-cargo build --release -p garden
-
-# Run a quick test matrix
-./target/release/garden --config configs/quick_test.yaml --matrix fast_test --output results.json
-
-# Generate graphics
-cd paper-graphics
-uv run main.py ../results.json 5 15
-python3 tikz_generator.py ../results.json --all
-```
-
-#### Using Master CLI
-
-```bash
-# Run benchmarks with automatic graphics generation
-./yardbird-bench configs/quick_test.yaml --matrix fast_test --graphics
-
-# Run comprehensive evaluation
-./yardbird-bench configs/comprehensive.yaml --matrix full_evaluation --output comprehensive_results.json
-```
-
-#### Legacy Mode (Original CLI)
-
-```bash
-./target/release/garden examples --strategy abstract --strategy concrete --depth 10 --output legacy_results.json
-```
-
-### AWS Cloud Execution
-
-#### Prerequisites
-
-1. Configure AWS credentials (`aws configure`)
-2. Create S3 bucket for results
-3. Set up EC2 key pair
-4. Ensure IAM permissions for EC2 and S3
-
-#### Deploy Infrastructure
-
-```bash
-cd terraform
-
-# Initialize and deploy
-python3 terraform_runner.py deploy --s3-bucket yardbird-benchmarks --instance-type c5.xlarge
-
-# Or manually with terraform
-terraform init
-terraform plan -var="s3_bucket_name=yardbird-benchmarks"
-terraform apply -var="s3_bucket_name=yardbird-benchmarks"
-```
-
-#### Run Cloud Benchmarks
-
-```bash
-# Using Terraform runner
-python3 terraform_runner.py run configs/paper_evaluation.yaml --matrix paper_main --wait --download ./results/
-```
-
-#### Download Results
-
-`source .env && aws s3 sync s3://yardbird-benchmarks-45749081/benchmarks/ benchmark-results`
-
-#### Cleanup Infrastructure
-
-```bash
-cd terraform
-python3 terraform_runner.py destroy
-# or: terraform destroy -auto-approve
-```
-
-## Configuration Examples
-
-### Parameter Matrix
-
-```yaml
-parameter_matrices:
-  comprehensive:
-    depths: [10, 15, 20]
-    strategies: ["abstract", "concrete"]
-    cost_functions: ["bmc-cost", "a-s-t-size"]
-    timeout_seconds: 120
-```
-
-### Individual Configuration
-
-```yaml
-individual_configs:
-  - name: "quick_abstract"
-    depth: 5
-    strategy: "abstract"
-    cost_function: "bmc-cost"
-    timeout_seconds: 30
-```
-
-## Output Formats
-
-### JSON Schema
-
-```json
-{
-  "metadata": {
-    "timestamp": "2025-09-01T14:30:22Z",
-    "git_commit": "abc123...",
-    "config_name": "paper_main",
-    "total_benchmarks": 150,
-    "yardbird_version": "0.1.0"
-  },
-  "benchmarks": [...]
-}
-```
-
-### Generated Graphics
-
-- **PNG**: Plotly-generated scatter plots and analysis charts
-- **TikZ**: Raw LaTeX code for publication graphics
-- **Tables**: LaTeX longtable format for benchmark data
-
-## Cost Optimization
-
-- **EC2**: Instances auto-terminate after completion
-- **S3**: 90-day lifecycle policy for automatic cleanup
-- **Instance Sizing**: c5.xlarge for standard runs, configurable per workload
-- **Spot Instances**: Can be configured in Terraform for cost savings
-
-The platform is designed for "fire and forget" cloud execution - launch a run, get results automatically uploaded to S3, and infrastructure tears down to minimize costs.
-
----
-
-# Artifact Evaluation
-
-This section provides comprehensive guidance for artifact reviewers and addresses all evaluation criteria for functional, available, and reusable badges.
-
-## Quick Start for Reviewers
-
-For a quick assessment of the artifact, follow these steps:
-
-### 1. Build the Tool
-
-```bash
-# Build yardbird
-cargo build --release
-
-# Verify build
-./target/release/yardbird --help
-```
-
-### 2. Run a Single Example
-
-```bash
-# Run on a simple array copy example (completes in ~1 second)
-./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10 --strategy abstract
-```
-
-### 3. Run Light Review Benchmark Suite
-
-For a more comprehensive evaluation with depth 10 (completes in 5-10 minutes):
-
-```bash
-# Build the benchmarking tool
-cargo build --release -p garden
-
-# Run light review configuration (depth 10, 20s timeout per benchmark)
-./target/release/garden --config garden/benchmark_config.yaml --matrix light-review --output light_review_results.json
-```
-
-This runs all array benchmarks at depth 10 with both BMC cost and Z3 strategies, generating a JSON file with detailed results.
-
-### Functional Badge Criteria
-
-#### 1. Documentation and Inventory
-
-**Is the artifact documented with an inventory of artifacts and sufficient description to enable exercise?**
-
-**YES.** Complete inventory:
-
-- **Core Tool**: `src/` - Yardbird
-
-  - `src/main.rs` - CLI entry point
-  - `src/driver.rs` - Verification orchestration
-  - `src/strategies/` - Proof strategies (abstract, concrete)
-  - `src/cost_functions/` - Heuristics for term selection
-  - `src/z3_ext.rs`, `src/smt_problem.rs` - Z3 integration
-
-- **Parsing Library**: `smt2parser/` - VMT and SMT2 parsing with array abstraction
-
-- **Benchmarking Suite**: `garden/` - Automated benchmark runner
-
-  - Configuration-driven execution
-  - Supports parameter matrices
-  - JSON output with metadata
-
-- **Examples**: `examples/array/` - VMT benchmark files
-
-**Is the artifact consistent and relevant to the associated paper, contributing to its main results?**
-
-**YES.** The artifact directly supports the paper's claims:
-
-- **Main Claim**: Yardbird performs bounded model checking with cost-guided abstraction refinement
-
-  - Implemented in `src/strategies/abstract.rs` using egg-based term rewriting
-  - Cost functions in `src/cost_functions/` implement heuristics discussed in paper
-
-- **Evaluation Results**: All paper benchmarks are included in `examples/array/`
-
-  - The `garden` tool reproduces the exact parameter configurations from the paper
-  - Configuration `deep-abstract` matches paper's main evaluation (depth 50, 120s timeout)
-
-- **Comparison with Baselines**:
-
-  - Concrete strategy (`src/strategies/concrete.rs`) implements baseline approach
-  - IC3IA integration (`--invoke-ic3ia`) for external tool comparison
-
-- **Performance Claims**: Quantifier instantiation counts and runtimes are logged and can be reproduced
-
-#### 3. Completeness
-
-**Is the artifact complete, with all components relevant to the paper included?**
-
-**YES.** All paper components are included:
-
-- All benchmarks from evaluation section
-- All strategies discussed (abstract, concrete, interpolation)
-- All cost functions evaluated (bmc-cost, ast-size, prefer-read, prefer-write, prefer-constants)
-- Complete source code (no proprietary components)
-- Benchmark runner to reproduce all experiments
-- Graphics generation to reproduce all figures/tables
-
-#### 4. Runnability
-
-**Can the software be executed successfully and can data be accessed and manipulated?**
-
-**YES.** Multiple execution modes:
-
-1. **Direct CLI**: `cargo run -- --filename <file> [options]`
-2. **Benchmark Suite**: `garden --config <yaml> --matrix <name>`
-3. **Cloud Execution**: `terraform_runner.py run <config>`
-
-All benchmarks are accessible VMT files in `examples/`. Results are output as:
-
-- Human-readable logs to stdout
-- Structured JSON for automated processing
-- Compatible with graphics generation pipeline
-
-### Available Badge Criteria
-
-**Upload to permanent repository with DOI (Zenodo, figshare, Dryad)**
-
-The artifact can be packaged and uploaded to a permanent repository. Key components for archival:
-
-1. **Source Code**: This Git repository at commit `9e355e6da1f91c37d1e6cea68e990dd085b573e5`
-2. **Dependencies**: `Cargo.lock` pins all Rust dependencies
-3. **Benchmarks**: All VMT files in `examples/`
-4. **Documentation**: README, CLAUDE.md, inline docs
-
-**Recommended archival structure:**
-
-```
-yardbird-artifact/
-├── yardbird-source.tar.gz      # Complete source at paper commit
-├── yardbird-linux-binary       # Prebuilt binary for Linux x86_64
-├── benchmark-results.json      # Reproduction of paper results
-├── paper-graphics/             # Generated figures
-└── README.txt                  # DOI-specific readme
-```
-
-### Reusable Badge Criteria
-
-#### 1. License for Reuse
-
-**Does the artifact have a license allowing reuse and repurposing?**
-
-**YES.** This project is licensed under the **MIT License** (see `LICENSE` file), which allows:
-
-- Commercial use
-- Modification
-- Distribution
-- Private use
-- Patent use
-
-The MIT License is one of the most permissive open-source licenses and is widely used in academic research. It places minimal restrictions on reuse while providing liability protection for authors.
-
-**Special provision for artifact evaluation:** The `LICENSE` file includes an explicit addendum granting artifact evaluation committees the right to download, execute, modify, and redistribute the artifact for evaluation purposes.
-
-All dependencies are also permissively licensed:
-
-- Rust standard library: MIT/Apache-2.0
-- Z3: MIT
-- egg (e-graphs): MIT
-- All Cargo dependencies: permissive licenses (see `Cargo.toml` and run `cargo license`)
-
-#### 2. Dependencies Documentation
-
-**Are all dependencies and libraries well documented and up to date?**
-
-**YES.** Complete dependency documentation:
-
-**System Dependencies:**
-
-- Rust 1.89.0 (specified in `rust-toolchain.toml`)
-- Z3 SMT solver 4.15.2+ (any modern version compatible)
-- libclang-dev (for Z3 bindings)
-- Standard build tools (gcc/clang, cmake)
-
-**Rust Dependencies:** (all pinned in `Cargo.lock`)
-
-- `z3 = "0.8"` - Z3 solver bindings
-- `egg = "0.9"` - E-graph library for term rewriting
-- `clap` - CLI argument parsing
-- `serde`, `serde_json` - Serialization
-- `anyhow` - Error handling
-- Full list in `Cargo.toml`
-
-**Python Dependencies:** (for graphics, specified in `paper-graphics/pyproject.toml`)
-
-- Python 3.13+
-- matplotlib >= 3.10.1
-- pandas >= 2.2.3
-- plotly >= 6.0.1
-
-**Update Status:** All dependencies are actively maintained (as of October 2025). The tool builds successfully with current stable Rust.
-
-#### 3. Usage Beyond the Paper
-
-**Does the README explain how the artifact can be used beyond the paper?**
-
-**YES.** Multiple extension points:
-
-**1. Verify New Programs:**
-
-```bash
-# Create your own VMT file describing a transition system
-# Run yardbird on it
-cargo run --release -- --filename my_program.vmt --depth 20
-```
-
-**2. Add New Cost Functions:**
-
-Implement the `CostFunction` trait in `src/cost_functions/`:
-
-```rust
-pub trait CostFunction {
-    fn cost(&self, enode: &ENode) -> Cost;
-    fn name(&self) -> &str;
-}
-```
-
-Example: `src/cost_functions/ast_size.rs` shows a simple implementation.
-
-Register in `src/main.rs` to make it available via `--cost-function` flag.
-
-**3. Extend with New Strategies:**
-
-Add to `src/strategies/` following the pattern in `abstract.rs` or `concrete.rs`. Strategies coordinate:
-
-- SMT problem construction
-- Incremental solving
-- Abstraction refinement
-
-**4. Benchmark New Tool Configurations:**
-
-Create custom YAML configs in `garden/`:
-
-```yaml
-parameter_matrices:
-  my_experiment:
-    depths: [10, 20, 30]
-    strategies: ["my-new-strategy"]
-    cost_functions: ["my-cost-function"]
-    timeout_seconds: 60
-```
-
-Run with: `garden --config my_config.yaml --matrix my_experiment`
-
-**5. Integration with Other Tools:**
-
-- Use `--print-vmt` to output abstracted transition systems
-- Pipe to other verifiers (IC3, IC3IA, etc.)
-- Parse JSON output for custom analysis
-
-#### 4. Documented Interfaces and Open Source
-
-**Does the artifact provide documented interfaces for extensions, or is it open source?**
-
-**YES, both:**
-
-1. **Open Source**: Complete source code available, no proprietary components
-
-2. **Documented Extension Interfaces:**
-
-   - **Cost Functions**: `CostFunction` trait in `src/cost_functions/mod.rs`
-   - **Strategies**: Pattern established in `src/strategies/`
-   - **Output Formats**: JSON schema in `garden/src/main.rs`
-   - **VMT Parsing**: Public API in `smt2parser/`
-
-3. **Code Architecture** (see `CLAUDE.md`):
-   - Modular workspace structure
-   - Clear separation of concerns
-   - Rust trait system for extensibility
-
-#### 5. Cross-Environment Usage
-
-**Can the artifact be used in different environments (different systems, outside VM)?**
-
-**YES.** Multiple deployment modes:
-
-**1. Native Build on Linux:**
-
-```bash
-# Ubuntu/Debian
-sudo apt install build-essential libclang-dev libz3-dev
-cargo build --release
-
-# Arch Linux
-sudo pacman -S base-devel clang z3
-cargo build --release
-
-# Fedora/RHEL
-sudo dnf install gcc clang-devel z3-devel
-cargo build --release
-```
-
-**2. Native Build on macOS:**
-
-```bash
-brew install z3
-cargo build --release
-```
-
-**3. Docker Container:**
-
-Create `Dockerfile`:
-
-```dockerfile
-FROM rust:1.89
-
-RUN apt-get update && apt-get install -y \
-    libclang-dev libz3-dev
-
-WORKDIR /yardbird
-COPY . .
-RUN cargo build --release
-
-ENTRYPOINT ["./target/release/yardbird"]
-```
-
-Build and run:
-
-```bash
-docker build -t yardbird .
-docker run -v $(pwd)/examples:/data yardbird --filename /data/array/array_copy.vmt
-```
-
-**4. Cloud Execution (AWS EC2):**
-
-Automated via Terraform (see `terraform/` directory):
-
-```bash
-terraform apply -var="s3_bucket_name=my-bucket"
-python3 terraform_runner.py run garden/benchmark_config.yaml --matrix standard
-```
-
-**5. Continuous Integration:**
-
-See `.github/workflows/garden.yml` for GitHub Actions configuration.
-
-**Cross-platform notes:**
-
-- Z3 is available on all major platforms
-- Rust provides consistent cross-platform builds
-- VMT files are platform-independent text files
-- No OS-specific system calls or dependencies
-
-## Reproducing Paper Results
-
-To fully reproduce the paper's evaluation:
-
-```bash
-# Build everything
-cargo build --release --all
-
-# Run main evaluation (depth 50, all cost functions)
-# This will take several hours
-./target/release/garden \
-  --config garden/benchmark_config.yaml \
-  --matrix deep-abstract \
-  --output paper_results_abstract.json
-
-# Run concrete baseline
-./target/release/garden \
-  --config garden/benchmark_config.yaml \
-  --matrix deep-concrete \
-  --output paper_results_concrete.json
-
-# Generate figures matching paper
-cd paper-graphics
-uv run main.py ../paper_results_abstract.json 5 50
-python3 tikz_generator.py ../paper_results_abstract.json --all
-```
-
-Expected results location:
-
-- Raw data: `paper_results_*.json`
-- Plots: `paper-graphics/*.png`, `paper-graphics/*.pdf`
-- LaTeX tables: `paper-graphics/*_table.tex`
-- TikZ figures: `paper-graphics/*_tikz.tex`
-
-## System Requirements
-
-**Minimum:**
-
-- 2 CPU cores
-- 4 GB RAM
-- 5 GB disk space
-- Linux, macOS, or Windows (with WSL2)
-
-**Recommended for full evaluation:**
-
-- 8+ CPU cores
-- 16 GB RAM
-- 20 GB disk space (for build artifacts and results)
-- Linux or macOS for best performance
-
-**Build time:**
-
-- Clean build: ~2-3 minutes on modern hardware
-- Incremental builds: ~10-30 seconds
-
-## Support and Issues
-
-For questions or issues with the artifact:
-
-1. Check this README and `CLAUDE.md` for documentation
-2. Examine example configurations in `garden/benchmark_config.yaml`
-3. Review test cases in `tests/` for usage examples
-4. Open an issue on the repository with:
-   - Your system configuration (`rustc --version`, `z3 --version`)
-   - Exact command you ran
-   - Full error output
-
----
-
-# notes
-
-measure if first forall requires a model if it takes a long time for MBQI to get a model
-
-just use a trigger based instantiation scheme for insts where we need quantifiers
-
-NO EXPLANATIONS: cargo run -- --filename examples/array/array_copy.vmt -d 300 5.43s user 0.11s system 90% cpu 6.100 total
-
-W EXPLANATIONS: cargo run -- --filename examples/array/array_copy.vmt -d 300 5.27s user 0.17s system 48% cpu 11.230 total
