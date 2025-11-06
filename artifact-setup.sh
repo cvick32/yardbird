@@ -32,6 +32,7 @@ set -e
 pip install z3-solver==4.15.3
 sudo cp /home/yardbird/.local/lib/python3.10/site-packages/z3/lib/* /usr/local/lib/
 echo 'export LD_LIBRARY_PATH="/home/yardbird/.local/lib/python3.10/site-packages/z3/lib/"' >> ~/.bashrc
+echo 'export Z3_SYS_Z3_HEADER="/home/yardbird/.local/lib/python3.10/site-packages/z3/include/z3.h"' >> ~/.bashrc
 source ~/.bashrc
 
 # Function to log inside yardbird user context

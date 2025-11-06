@@ -8,11 +8,23 @@ This chicken lays `egg`s...
 
 For a quick assessment of the artifact, follow these steps:
 
+### 0. Login to the VM
+
+An .ova of the Ubuntu 22.04 image with all dependencies installed is given in `yardbird-vm.ova`.
+
+username: yardbird
+password: yardbird
+
 ### 1. Build the Tool
 
+If there are any problems with Z3 header files during the build, be sure to run `source ~/.bashrc` to
+put the correct headers in the path.
+
 ```bash
+cd yardbird
+
 # Build yardbird
-cargo build --release
+cargo build -p yardbird --release
 
 # Verify build
 ./target/release/yardbird --help
@@ -29,11 +41,11 @@ This will automatically use the BMC Cost strategy.
 
 ### 3. Run Light Review Benchmark Suite
 
-For a more comprehensive evaluation with depth 10 (completes in 5-10 minutes):
+For a more comprehensive evaluation with depth 10 (completes in less than 5 minutes):
 
 ```bash
 # Build the benchmarking tool
-cargo build --release -p garden
+cargo build -p garden --release
 
 # Run light review configuration (depth 10, 20s timeout per benchmark)
 ./target/release/garden --config garden/benchmark_config.yaml --matrix light-review --output light_review_results.json
