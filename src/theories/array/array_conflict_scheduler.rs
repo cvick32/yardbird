@@ -192,7 +192,7 @@ where
         _ => {
             use egg::ENodeOrVar as E;
             pattern
-                .root()
+                .rooted()
                 .clone()
                 .join_recexprs(|id| match pattern[id].clone() {
                     x @ E::ENode(ArrayLanguage::Write([array, index, val])) => {

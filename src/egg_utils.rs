@@ -10,11 +10,11 @@ where
 }
 
 pub trait RecExprRoot<L> {
-    fn root(&self) -> &L;
+    fn rooted(&self) -> &L;
 }
 
 impl<L> RecExprRoot<L> for egg::RecExpr<L> {
-    fn root(&self) -> &L {
+    fn rooted(&self) -> &L {
         let ast_nodes = self.as_ref();
         &ast_nodes[ast_nodes.len() - 1]
     }

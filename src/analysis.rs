@@ -5,7 +5,7 @@ pub struct SaturationInequalities;
 
 impl<L: Language> Analysis<L> for SaturationInequalities {
     type Data = bool;
-    fn make(_egraph: &EGraph<L, Self>, _enode: &L) -> Self::Data {
+    fn make(_egraph: &mut egg::EGraph<L, SaturationInequalities>, _enode: &L) -> Self::Data {
         false
     }
     fn merge(&mut self, a: &mut Self::Data, _b: Self::Data) -> DidMerge {

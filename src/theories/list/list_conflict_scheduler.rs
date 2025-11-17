@@ -180,7 +180,7 @@ where
             // For multi-node patterns, recursively process each child
             use egg::ENodeOrVar as E;
             pattern
-                .root()
+                .rooted()
                 .clone()
                 .join_recexprs(|id| match pattern[id].clone() {
                     x @ E::ENode(_) => {
