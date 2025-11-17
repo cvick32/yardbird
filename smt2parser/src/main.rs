@@ -58,7 +58,7 @@ enum Operation {
         inputs: Vec<PathBuf>,
     },
     Vmt {
-        /// Path to the SMT2 files.
+        /// Path to the VMT file.
         #[structopt(parse(from_os_str))]
         input: PathBuf,
     },
