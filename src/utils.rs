@@ -98,7 +98,7 @@ impl SolverStatistics {
         }
     }
 
-    pub fn join_from_z3_statistics(&mut self, z3_stats: Statistics<'_>) {
+    pub fn join_from_z3_statistics(&mut self, z3_stats: Statistics) {
         for entry in z3_stats.entries() {
             let key = entry.key;
             let value = match entry.value {

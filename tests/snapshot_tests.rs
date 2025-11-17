@@ -51,8 +51,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     let vmt_model = model_from_options(&options);
     let (status, used_instantiations) = run_with_timeout(
         move || {
-            let ctx = z3::Context::new(&z3::Config::new());
-            let mut driver = Driver::new(&ctx, vmt_model);
+            let mut driver = Driver::new(vmt_model);
             let strat: Box<dyn ProofStrategy<_>> =
                 Box::new(Abstract::new(10, false, array_bmc_cost_factory));
             let res = driver.check_strategy(options.depth, strat).unwrap();

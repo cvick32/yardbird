@@ -8,10 +8,10 @@ pub trait ModelExt {
 
     /// Return an iterator over `z3::FuncDecl`s that is sorted by frame numbers (if
     /// applicable)
-    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl<'_>>;
+    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl>;
 }
 
-impl ModelExt for z3::Model<'_> {
+impl ModelExt for z3::Model {
     fn dump_sorted(&self) -> anyhow::Result<String> {
         let mut b = String::new();
         for func_decl in self.iter().sorted_by(func_decl_cmp) {
@@ -55,20 +55,20 @@ impl ModelExt for z3::Model<'_> {
         Ok(b)
     }
 
-    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl<'_>> {
+    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl> {
         self.iter().map(FuncDeclOrd).sorted().map(|x| x.0)
     }
 }
 
-pub struct FuncDeclOrd<'ctx>(pub z3::FuncDecl<'ctx>);
+pub struct FuncDeclOrd(pub z3::FuncDecl);
 
-impl PartialOrd for FuncDeclOrd<'_> {
+impl PartialOrd for FuncDeclOrd {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for FuncDeclOrd<'_> {
+impl Ord for FuncDeclOrd {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         let arity_cmp = self.0.arity().cmp(&other.0.arity());
         if !matches!(arity_cmp, cmp::Ordering::Equal) {
@@ -96,13 +96,13 @@ impl Ord for FuncDeclOrd<'_> {
     }
 }
 
-impl PartialEq for FuncDeclOrd<'_> {
+impl PartialEq for FuncDeclOrd {
     fn eq(&self, other: &Self) -> bool {
         self.0.name() == other.0.name()
     }
 }
 
-impl Eq for FuncDeclOrd<'_> {}
+impl Eq for FuncDeclOrd {}
 
 fn func_decl_cmp(a: &z3::FuncDecl, b: &z3::FuncDecl) -> cmp::Ordering {
     let arity_cmp = a.arity().cmp(&b.arity());

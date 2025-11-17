@@ -3,13 +3,13 @@ use z3::ast::{Ast, Dynamic};
 
 /// The idea of this is to parse the Z3 proof tree and count up how many
 /// array instantiations are in it. This is to measure the
-pub struct ProofTree<'ctx> {
-    _ast: Dynamic<'ctx>,
-    _array_axiom_instantiations: Vec<Dynamic<'ctx>>,
+pub struct ProofTree {
+    _ast: Dynamic,
+    _array_axiom_instantiations: Vec<Dynamic>,
 }
 
-impl<'ctx> ProofTree<'ctx> {
-    pub fn new(ast: impl Ast<'ctx>) -> Self {
+impl ProofTree {
+    pub fn new(ast: impl Ast) -> Self {
         let mut to_process = ast.children();
 
         while let Some(rule) = to_process.pop() {

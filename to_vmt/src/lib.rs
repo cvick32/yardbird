@@ -37,9 +37,8 @@ pub fn run_model(
     }
 
     let model = builder.build_model(debug_vmt);
-    let cfg = z3::Config::new();
-    let context = z3::Context::new(&cfg);
-    let mut driver = Driver::new(&context, model);
+    //let cfg = z3::Config::new();
+    let mut driver = Driver::new(model);
 
     let strat = Box::new(Abstract::new(depth, false, array_bmc_cost_factory));
 

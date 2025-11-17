@@ -170,7 +170,6 @@ pub struct Driver<'ctx, S> {
     pub used_instances: Vec<Term>,
     pub const_instances: Vec<Term>,
     pub vmt_model: VMTModel,
-    context: &'ctx z3::Context,
     extensions: DriverExtensions<'ctx, S>,
     dump_solver_path: Option<String>,
     track_instantiations: bool,
@@ -210,12 +209,11 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl<'ctx, S> Driver<'ctx, S> {
-    pub fn new(context: &'ctx z3::Context, vmt_model: VMTModel) -> Self {
+    pub fn new(vmt_model: VMTModel) -> Self {
         Self {
             used_instances: vec![],
             const_instances: vec![],
             vmt_model,
-            context,
             extensions: DriverExtensions::default(),
             dump_solver_path: None,
             track_instantiations: false,
@@ -256,12 +254,8 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
-        let mut smt_problem = crate::smt_problem::SMTProblem::new(
-            &self.vmt_model,
-            self.context,
-            &strat,
-            self.track_instantiations,
-        );
+        let mut smt_problem =
+            crate::smt_problem::SMTProblem::new(&self.vmt_model, &strat, self.track_instantiations);
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");

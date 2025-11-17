@@ -28,7 +28,7 @@ where
     const_instantiations: Vec<Term>,
     bmc_depth: u16,
     run_ic3ia: bool,
-    cost_fn_factory: fn(&SMTProblem<'_>, u32) -> F,
+    cost_fn_factory: fn(&SMTProblem, u32) -> F,
 }
 
 impl<F> ListAbstract<F>

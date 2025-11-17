@@ -12,8 +12,8 @@ use crate::{
     utils::SolverStatistics, z3_var_context::Z3VarContext,
 };
 
-pub struct SMTProblem<'ctx> {
-    z3_var_context: Z3VarContext<'ctx>,
+pub struct SMTProblem {
+    z3_var_context: Z3VarContext,
     bmc_builder: BMCBuilder,
     init_assertion: Term,
     trans_assertion: Term,
@@ -21,19 +21,18 @@ pub struct SMTProblem<'ctx> {
     instantiations: Vec<Instance>,
     subterm_handler: SubtermHandler,
     pub variables: Vec<Variable>,
-    solver: z3::Solver<'ctx>,
+    solver: z3::Solver,
     solver_statistcs: SolverStatistics,
-    newest_model: Option<z3::Model<'ctx>>,
+    newest_model: Option<z3::Model>,
     num_quantifiers_instantiated: u64,
     track_instantiations: bool,
     tracked_labels: Vec<(String, Term)>, // (label, instantiation_term)
 }
 
 #[allow(clippy::borrowed_box)]
-impl<'ctx> SMTProblem<'ctx> {
+impl SMTProblem {
     pub(crate) fn new<S>(
         vmt_model: &VMTModel,
-        context: &'ctx z3::Context,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
         track_instantiations: bool,
     ) -> Self {
@@ -42,8 +41,8 @@ impl<'ctx> SMTProblem<'ctx> {
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
         let solver =
-            z3::Solver::new_for_logic(context, strategy.get_theory_support().get_logic_string())
-                .unwrap();
+            z3::Solver::new_for_logic(strategy.get_theory_support().get_logic_string()).unwrap();
+
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
             subterm_handler: SubtermHandler::new(
@@ -59,7 +58,7 @@ impl<'ctx> SMTProblem<'ctx> {
             variables: vmt_model.get_state_holding_variables(),
             solver,
             solver_statistcs: SolverStatistics::new(),
-            z3_var_context: Z3VarContext::new(context),
+            z3_var_context: Z3VarContext::new(),
             newest_model: None,
             num_quantifiers_instantiated: 0,
             track_instantiations,
@@ -90,7 +89,7 @@ impl<'ctx> SMTProblem<'ctx> {
                     }
                 }
                 let z3_axiom = smt.z3_var_context.rewrite_term(&term);
-                smt.solver.assert(&z3_axiom.as_bool().unwrap());
+                smt.solver.assert(z3_axiom.as_bool().unwrap());
             }
         }
 
@@ -122,7 +121,7 @@ impl<'ctx> SMTProblem<'ctx> {
         }
     }
 
-    pub fn get_model(&self) -> &Option<z3::Model<'_>> {
+    pub fn get_model(&self) -> &Option<z3::Model> {
         &self.newest_model
     }
 
@@ -132,14 +131,14 @@ impl<'ctx> SMTProblem<'ctx> {
                 .bmc_builder
                 .index_single_step_term(self.init_assertion.clone());
             let z3_init = self.z3_var_context.rewrite_term(&init);
-            self.solver.assert(&z3_init.as_bool().unwrap());
+            self.solver.assert(z3_init.as_bool().unwrap());
         }
         if self.depth != 0 {
             let trans = self
                 .bmc_builder
                 .index_transition_term(self.trans_assertion.clone());
             let z3_trans = self.z3_var_context.rewrite_term(&trans);
-            self.solver.assert(&z3_trans.as_bool().unwrap());
+            self.solver.assert(z3_trans.as_bool().unwrap());
         }
         if !self.instantiations.is_empty() {
             // Instantiate for this depth.
@@ -157,8 +156,7 @@ impl<'ctx> SMTProblem<'ctx> {
                 for (z3_inst, indexed_term) in all_z3_insts {
                     let inst_num = self.tracked_labels.len();
                     let label = format!("inst_{}_depth_{}", inst_num, self.depth);
-                    let tracked_bool =
-                        z3::ast::Bool::new_const(self.z3_var_context.get_context(), label.as_str());
+                    let tracked_bool = z3::ast::Bool::new_const(label.as_str());
                     self.solver.assert_and_track(&z3_inst, &tracked_bool);
                     self.tracked_labels.push((label, indexed_term));
                 }
@@ -289,8 +287,7 @@ impl<'ctx> SMTProblem<'ctx> {
             for (idx, (z3_inst, indexed_term)) in all_z3_insts.iter().enumerate() {
                 let inst_num = self.tracked_labels.len();
                 let label = format!("inst_{}_{}", inst_num, idx);
-                let tracked_bool =
-                    z3::ast::Bool::new_const(self.z3_var_context.get_context(), label.as_str());
+                let tracked_bool = z3::ast::Bool::new_const(label.as_str());
                 self.solver.assert_and_track(z3_inst, &tracked_bool);
                 self.tracked_labels.push((label, indexed_term.clone()));
             }
@@ -314,7 +311,7 @@ impl<'ctx> SMTProblem<'ctx> {
         self.solver.get_reason_unknown()
     }
 
-    pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic<'_> {
+    pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic {
         self.z3_var_context.rewrite_term(term)
     }
 
@@ -352,11 +349,7 @@ impl<'ctx> SMTProblem<'ctx> {
         trans
     }
 
-    pub(crate) fn get_interpretation(
-        &self,
-        model: &z3::Model<'ctx>,
-        z3_term: &Dynamic<'ctx>,
-    ) -> Dynamic<'_> {
+    pub(crate) fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
         self.z3_var_context.get_interpretation(model, z3_term)
     }
 

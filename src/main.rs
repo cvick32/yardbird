@@ -12,12 +12,11 @@ fn main() -> anyhow::Result<()> {
     let options = YardbirdOptions::parse();
     let vmt_model = model_from_options(&options);
 
-    let cfg = z3::Config::new();
+    //let cfg = z3::Config::new();
     //cfg.set_proof_generation(true);
-    let context = z3::Context::new(&cfg);
     match options.theory {
         Theory::Array => {
-            let mut driver = Driver::new(&context, vmt_model).with_tracking_options(
+            let mut driver = Driver::new(vmt_model).with_tracking_options(
                 options.dump_solver.clone(),
                 options.track_instantiations,
                 options.dump_unsat_core.clone(),
@@ -35,7 +34,7 @@ fn main() -> anyhow::Result<()> {
             todo!("Implement BVList!")
         }
         Theory::List => {
-            let mut driver = Driver::new(&context, vmt_model).with_tracking_options(
+            let mut driver = Driver::new(vmt_model).with_tracking_options(
                 options.dump_solver.clone(),
                 options.track_instantiations,
                 options.dump_unsat_core.clone(),
