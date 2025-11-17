@@ -38,7 +38,9 @@ pub fn run_model(
 
     let model = builder.build_model(debug_vmt);
     //let cfg = z3::Config::new();
-    let mut driver = Driver::new(model);
+    let instantiation_strategy =
+        Box::new(yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy::new());
+    let mut driver = Driver::new(model, instantiation_strategy);
 
     let strat = Box::new(Abstract::new(depth, false, array_bmc_cost_factory));
 

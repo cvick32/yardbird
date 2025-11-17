@@ -8,8 +8,9 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    proof_tree::ProofTree, strategies::ProofStrategy, subterm_handler::SubtermHandler,
-    utils::SolverStatistics, z3_var_context::Z3VarContext,
+    instantiation_strategy::InstantiationStrategy, proof_tree::ProofTree,
+    strategies::ProofStrategy, subterm_handler::SubtermHandler, utils::SolverStatistics,
+    z3_var_context::Z3VarContext,
 };
 
 pub struct SMTProblem {
@@ -27,6 +28,7 @@ pub struct SMTProblem {
     num_quantifiers_instantiated: u64,
     track_instantiations: bool,
     tracked_labels: Vec<(String, Term)>, // (label, instantiation_term)
+    instantiation_strategy: Box<dyn InstantiationStrategy>,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -35,6 +37,7 @@ impl SMTProblem {
         vmt_model: &VMTModel,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
         track_instantiations: bool,
+        instantiation_strategy: Box<dyn InstantiationStrategy>,
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
@@ -63,6 +66,7 @@ impl SMTProblem {
             num_quantifiers_instantiated: 0,
             track_instantiations,
             tracked_labels: vec![],
+            instantiation_strategy,
         };
         // Handle theory-specific function declarations
         let theory = strategy.get_theory_support();
@@ -140,36 +144,8 @@ impl SMTProblem {
             let z3_trans = self.z3_var_context.rewrite_term(&trans);
             self.solver.assert(z3_trans.as_bool().unwrap());
         }
-        if !self.instantiations.is_empty() {
-            // Instantiate for this depth.
-            let mut all_z3_insts = vec![];
-            for inst in &self.instantiations {
-                self.bmc_builder.set_width(inst.width());
-                let indexed_inst = inst.rewrite(&mut self.bmc_builder);
-                let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
-                all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
-            }
-            self.num_quantifiers_instantiated += all_z3_insts.len() as u64;
-
-            if self.track_instantiations {
-                // Use assert_and_track for each instantiation
-                for (z3_inst, indexed_term) in all_z3_insts {
-                    let inst_num = self.tracked_labels.len();
-                    let label = format!("inst_{}_depth_{}", inst_num, self.depth);
-                    let tracked_bool = z3::ast::Bool::new_const(label.as_str());
-                    self.solver.assert_and_track(&z3_inst, &tracked_bool);
-                    self.tracked_labels.push((label, indexed_term));
-                }
-            } else {
-                let inst_and = self.z3_var_context.make_and(
-                    all_z3_insts
-                        .into_iter()
-                        .map(|(z3_inst, _)| z3_inst)
-                        .collect(),
-                );
-                self.solver.assert(&inst_and);
-            }
-        }
+        // Note: Instantiation handling at each depth is now delegated to
+        // the instantiation strategy's on_loop hook, called from unroll()
     }
 
     // All instantiations have been added self.current_depth number of times when
@@ -188,6 +164,21 @@ impl SMTProblem {
             self.add_z3_variables();
             // Add assertion for current depth.
             self.add_assertion();
+
+            // Call instantiation strategy's on_loop hook to handle instantiations at this depth
+            if !self.instantiations.is_empty() {
+                let instantiations_snapshot: Vec<Instance> = self.instantiations.clone();
+                self.instantiation_strategy.on_loop(
+                    self.depth,
+                    &instantiations_snapshot,
+                    &mut self.bmc_builder,
+                    &mut self.z3_var_context,
+                    &mut self.solver,
+                    self.track_instantiations,
+                    &mut self.tracked_labels,
+                    &mut self.num_quantifiers_instantiated,
+                );
+            }
         }
     }
 
@@ -233,74 +224,23 @@ impl SMTProblem {
     }
 
     pub(crate) fn add_instantiation(&mut self, inst: Instance) -> bool {
-        if self.instantiations.contains(&inst) {
-            debug!("ALREADY SEEN {}!", inst);
-            return false;
-        } else {
-            self.instantiations.push(inst.clone());
-        }
-        // Add in any quantified variables to Z3VarContext.
-        if let Term::Forall { vars, term: _ } = inst.get_term() {
-            for (symbol, sort) in vars {
-                self.z3_var_context.create_variable(symbol, sort);
-            }
-        }
-        debug!("USED INSTANCE: {}", inst);
-        // We have to unroll the instantiation for 0-self.bmc_builder
-        self.unroll_instantiation(&inst);
-        true
-    }
+        let initial_count = self.instantiations.len();
 
-    /// We unroll the new instantiation from 0 to the current BMC depth. This allows us
-    /// to just worry about the next unrolling in add_assertion().
-    fn unroll_instantiation(&mut self, inst: &Instance) {
-        let mut all_z3_insts = vec![];
-        // The additional unrolling we need depends on the instance itself, if all
-        // variables are current, then we need 2 more, if not just 1.
-        let cur_depth = self.bmc_builder.depth;
+        self.instantiation_strategy.on_generate(
+            inst,
+            &mut self.instantiations,
+            self.depth,
+            &mut self.bmc_builder,
+            &mut self.z3_var_context,
+            &mut self.solver,
+            &mut self.subterm_handler,
+            self.track_instantiations,
+            &mut self.tracked_labels,
+            &mut self.num_quantifiers_instantiated,
+        );
 
-        // The UnquantifiedInstantiator has already normalized the offsets in the term,
-        // so the BMC builder will handle the + notation by adding offsets to the current depth.
-        // This provides more intelligent unrolling without needing separate offset tracking.
-
-        for i in (0..=cur_depth).rev() {
-            if i < inst.width() {
-                break;
-            }
-            self.bmc_builder.set_depth(i);
-            self.bmc_builder.set_width(inst.width());
-            let indexed_inst = inst.rewrite(&mut self.bmc_builder);
-            // Have to get the subterms.
-
-            self.subterm_handler
-                .register_instantiation_term(indexed_inst.clone());
-            let z3_inst = self.z3_var_context.rewrite_term(&indexed_inst);
-
-            all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
-        }
-        // reset depth
-        self.bmc_builder.set_depth(cur_depth);
-        self.num_quantifiers_instantiated += all_z3_insts.len() as u64;
-
-        if self.track_instantiations {
-            // Use assert_and_track for each instantiation
-            for (idx, (z3_inst, indexed_term)) in all_z3_insts.iter().enumerate() {
-                let inst_num = self.tracked_labels.len();
-                let label = format!("inst_{}_{}", inst_num, idx);
-                let tracked_bool = z3::ast::Bool::new_const(label.as_str());
-                self.solver.assert_and_track(z3_inst, &tracked_bool);
-                self.tracked_labels.push((label, indexed_term.clone()));
-            }
-        } else {
-            // Original behavior: combine all into one assertion
-            let inst_and = self.z3_var_context.make_and(
-                all_z3_insts
-                    .into_iter()
-                    .map(|(z3_inst, _)| z3_inst)
-                    .collect(),
-            );
-            self.solver.assert(&inst_and);
-        }
+        // Return true if a new instantiation was added
+        self.instantiations.len() > initial_count
     }
 
     pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {

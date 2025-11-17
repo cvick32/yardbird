@@ -49,9 +49,10 @@ struct BenchmarkResult {
 fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
     let vmt_model = model_from_options(&options);
+    let instantiation_strategy = options.build_instantiation_strategy();
     let (status, used_instantiations) = run_with_timeout(
         move || {
-            let mut driver = Driver::new(vmt_model);
+            let mut driver = Driver::new(vmt_model, instantiation_strategy);
             let strat: Box<dyn ProofStrategy<_>> =
                 Box::new(Abstract::new(10, false, array_bmc_cost_factory));
             let res = driver.check_strategy(options.depth, strat).unwrap();

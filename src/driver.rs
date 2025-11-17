@@ -4,6 +4,7 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
 use crate::{
+    instantiation_strategy::InstantiationStrategy,
     smt_problem::SMTProblem,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     utils::SolverStatistics,
@@ -174,6 +175,7 @@ pub struct Driver<'ctx, S> {
     dump_solver_path: Option<String>,
     track_instantiations: bool,
     dump_unsat_core_path: Option<String>,
+    instantiation_strategy: Box<dyn InstantiationStrategy>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -209,7 +211,10 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl<'ctx, S> Driver<'ctx, S> {
-    pub fn new(vmt_model: VMTModel) -> Self {
+    pub fn new(
+        vmt_model: VMTModel,
+        instantiation_strategy: Box<dyn InstantiationStrategy>,
+    ) -> Self {
         Self {
             used_instances: vec![],
             const_instances: vec![],
@@ -218,6 +223,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             dump_solver_path: None,
             track_instantiations: false,
             dump_unsat_core_path: None,
+            instantiation_strategy,
         }
     }
 
@@ -254,8 +260,12 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
 
-        let mut smt_problem =
-            crate::smt_problem::SMTProblem::new(&self.vmt_model, &strat, self.track_instantiations);
+        let mut smt_problem = crate::smt_problem::SMTProblem::new(
+            &self.vmt_model,
+            &strat,
+            self.track_instantiations,
+            self.instantiation_strategy.clone_box(),
+        );
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");

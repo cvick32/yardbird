@@ -29,6 +29,7 @@ pub mod cost_functions;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
+pub mod instantiation_strategy;
 mod interpolant;
 pub mod logger;
 mod proof_tree;
@@ -79,6 +80,10 @@ pub struct YardbirdOptions {
     #[arg(short, long, value_enum, default_value_t = Theory::Array)]
     pub theory: Theory,
 
+    // Choose Instantiation Strategy
+    #[arg(long, value_enum, default_value_t = InstantiationStrategyType::FullUnroll)]
+    pub instantiation_strategy: InstantiationStrategyType,
+
     /// Output ProofLoopResult as JSON to stdout (for garden integration)
     #[arg(long, default_value_t = false)]
     pub json_output: bool,
@@ -108,6 +113,7 @@ impl Default for YardbirdOptions {
             run_ic3ia: false,
             cost_function: CostFunction::BmcCost,
             theory: Theory::Array,
+            instantiation_strategy: InstantiationStrategyType::FullUnroll,
             json_output: false,
             dump_solver: None,
             track_instantiations: false,
@@ -121,6 +127,19 @@ impl YardbirdOptions {
         YardbirdOptions {
             filename,
             ..Default::default()
+        }
+    }
+
+    pub fn build_instantiation_strategy(
+        &self,
+    ) -> Box<dyn instantiation_strategy::InstantiationStrategy> {
+        match self.instantiation_strategy {
+            InstantiationStrategyType::FullUnroll => {
+                Box::new(instantiation_strategy::full_unroll::FullUnrollStrategy::new())
+            }
+            InstantiationStrategyType::NoUnrollOnLoop => {
+                Box::new(instantiation_strategy::no_unroll_on_loop::NoUnrollOnLoop::new())
+            }
         }
     }
 
@@ -305,4 +324,22 @@ pub enum Theory {
     Array,
     BvList,
     List,
+}
+
+/// Describes the instantiation strategies available.
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum InstantiationStrategyType {
+    FullUnroll,
+    NoUnrollOnLoop,
+}
+
+impl Display for InstantiationStrategyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InstantiationStrategyType::FullUnroll => write!(f, "full-unroll"),
+            InstantiationStrategyType::NoUnrollOnLoop => write!(f, "no-unroll-on-loop"),
+        }
+    }
 }
