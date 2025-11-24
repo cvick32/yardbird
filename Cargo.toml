@@ -53,3 +53,8 @@ members = [
     "to_vmt/vmt_macros",
     "to_vmt/vmtil"
 ]
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
