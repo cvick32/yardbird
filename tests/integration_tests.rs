@@ -29,6 +29,10 @@ macro_rules! create_integration_test {
     };
 }
 
-create_integration_test!(test_array_init_var, "examples/array_init_var.vmt", 4);
-create_integration_test!(test_array_copy, "examples/array_copy.vmt", 5);
-create_integration_test!(test_array_init_const, "examples/array_init_const.vmt", 12);
+create_integration_test!(test_array_init_var, "examples/array/array_init_var.vmt", 4);
+create_integration_test!(test_array_copy, "examples/array/array_copy.vmt", 5);
+create_integration_test!(
+    test_array_init_const,
+    "examples/array/array_init_const.vmt",
+    12
+);
