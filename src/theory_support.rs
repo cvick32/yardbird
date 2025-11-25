@@ -628,7 +628,7 @@ mod tests {
         assert_eq!(functions.len(), 0);
 
         // Test logic string
-        assert_eq!(no_theory.get_logic_string(), "QF_LIA");
+        assert_eq!(no_theory.get_logic_string(), "QF_AUFLIA");
 
         // Test requires abstraction
         assert!(!no_theory.requires_abstraction());
