@@ -32,13 +32,16 @@ pub mod ic3ia;
 pub mod instantiation_strategy;
 mod interpolant;
 pub mod logger;
+pub mod problem;
 mod proof_tree;
 pub mod smt_problem;
+pub mod smtlib_problem;
 pub mod strategies;
 mod subterm_handler;
 pub mod theories;
 pub mod theory_support;
 mod utils;
+mod vmt_problem;
 pub mod z3_ext;
 mod z3_var_context;
 

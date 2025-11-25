@@ -1,8 +1,10 @@
 use clap::Parser;
 use log::info;
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, path::Path};
 use yardbird::{
     logger, model_from_options,
+    problem::Problem,
+    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Interpolating, Repl},
     Driver, Theory, YardbirdOptions,
 };
@@ -10,7 +12,82 @@ use yardbird::{
 fn main() -> anyhow::Result<()> {
     logger::init_logger(log::Level::Info);
     let options = YardbirdOptions::parse();
-    let vmt_model = model_from_options(&options);
+
+    // Auto-detect mode based on file extension
+    let path = Path::new(&options.filename);
+    let extension = path.extension().and_then(|s| s.to_str());
+
+    match extension {
+        Some("smt2") => {
+            // SMTLIB mode
+            run_smtlib_mode(&options)?;
+        }
+        Some("vmt") => {
+            // VMT mode (default)
+            run_vmt_mode(&options)?;
+        }
+        _ => {
+            panic!("Extension not supported: {:?}", extension)
+        }
+    }
+
+    Ok(())
+}
+
+fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
+    info!("Running in SMTLIB mode");
+
+    // Parse SMTLIB problem
+    let problem = SMTLIBProblem::from_path(&options.filename)
+        .map_err(|e| anyhow::anyhow!("Failed to parse SMTLIB file: {:?}", e))?;
+
+    info!(
+        "Parsed SMTLIB problem: {} check-sat commands, incremental: {}",
+        problem.num_check_sats(),
+        problem.is_incremental()
+    );
+
+    // Create and execute solver
+    let mut solver = SMTLIBSolver::new(problem.get_logic());
+    solver.execute(&problem);
+
+    // Print results
+    let results = solver.get_results();
+    if options.json_output {
+        // JSON output for garden
+        let json_output = serde_json::json!({
+            "mode": "smtlib",
+            "num_check_sats": results.len(),
+            "results": results.iter().map(|r| {
+                serde_json::json!({
+                    "command_index": r.command_index,
+                    "result": format!("{:?}", r.result),
+                })
+            }).collect::<Vec<_>>(),
+            "statistics": solver.get_statistics(),
+        });
+        println!("{}", serde_json::to_string(&json_output)?);
+    } else {
+        // Human-readable output
+        info!("SMTLIB Execution Complete!");
+        info!("Check-sat results:");
+        for (idx, result) in results.iter().enumerate() {
+            info!(
+                "  Check-sat #{} (command index {}): {:?}",
+                idx + 1,
+                result.command_index,
+                result.result
+            );
+        }
+        info!("Solver statistics: {:#?}", solver.get_statistics());
+    }
+
+    Ok(())
+}
+
+fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
+    info!("Running in VMT mode");
+    let vmt_model = model_from_options(options);
     let instantiation_strategy = options.build_instantiation_strategy();
 
     //let cfg = z3::Config::new();
@@ -29,7 +106,7 @@ fn main() -> anyhow::Result<()> {
                 driver.add_extension(Interpolating);
             }
             let res = driver.check_strategy(options.depth, options.build_array_strategy())?;
-            print_results(res, &options)?;
+            print_vmt_results(res, options)?;
         }
         Theory::BvList => {
             todo!("Implement BVList!")
@@ -47,14 +124,14 @@ fn main() -> anyhow::Result<()> {
                 driver.add_extension(Interpolating);
             }
             let res = driver.check_strategy(options.depth, options.build_list_strategy())?;
-            print_results(res, &options)?;
+            print_vmt_results(res, options)?;
         }
     };
 
     Ok(())
 }
 
-fn print_results(
+fn print_vmt_results(
     res: impl Into<yardbird::ProofLoopResult>,
     options: &YardbirdOptions,
 ) -> anyhow::Result<()> {
