@@ -152,10 +152,10 @@ impl VMTModel {
 
     /// Clones the current model, rewrites all usages of Arrays into uninterpreted functions
     /// and returns the abstracted VMTModel.
-    /// TODO: only works for Array Int Int, need to extend to other theories.
-    pub fn abstract_array_theory(&self) -> VMTModel {
-        let mut array_types: HashMap<String, String> = HashMap::new();
-        array_types.insert("Int".to_string(), "Int".to_string());
+    /// Abstract array theory and return both the abstracted model and discovered array types.
+    /// Returns (abstracted_model, discovered_types) where discovered_types is a vector of
+    /// (index_sort, value_sort) pairs for all array types found in the model.
+    pub fn abstract_array_theory(&self) -> (VMTModel, Vec<(String, String)>) {
         let mut abstractor = ArrayAbstractor::default();
         let mut abstracted_commands = vec![];
         for command in self.as_commands() {
@@ -163,7 +163,14 @@ impl VMTModel {
         }
         let mut array_definitions = abstractor.get_array_type_definitions();
         array_definitions.extend(abstracted_commands);
-        VMTModel::checked_from(array_definitions).unwrap()
+
+        // Extract discovered types from the abstractor
+        let discovered_types: Vec<(String, String)> = abstractor.array_types.into_iter().collect();
+
+        (
+            VMTModel::checked_from(array_definitions).unwrap(),
+            discovered_types,
+        )
     }
 
     pub fn abstract_constants_over(mut self, depth: u16) -> Self {
@@ -490,8 +497,8 @@ mod test {
     #[test]
     fn test_double_abstract() {
         let vmt_model = VMTModel::from_path("./examples/array_copy.vmt").unwrap();
-        let abstracted_model = vmt_model.abstract_array_theory();
-        let abstracted_abstracted_model = abstracted_model.abstract_array_theory();
+        let (abstracted_model, _types) = vmt_model.abstract_array_theory();
+        let (abstracted_abstracted_model, _types) = abstracted_model.abstract_array_theory();
 
         assert_eq!(
             abstracted_model.as_vmt_string(),

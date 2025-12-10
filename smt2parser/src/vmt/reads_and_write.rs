@@ -116,12 +116,14 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Rea
         qual_identifier: QualIdentifier,
         arguments: Vec<Self::T>,
     ) -> Result<Self::T, Self::E> {
-        match (qual_identifier.to_string().as_str(), arguments.as_slice()) {
-            ("Read-Int-Int" | "select", [array, index]) => {
+        let func_name = qual_identifier.to_string();
+        match (func_name.as_str(), arguments.as_slice()) {
+            // Handle typed array operations (e.g., "Read-BitVec5-BitVec32")
+            (name, [array, index]) if name.starts_with("Read") || name == "select" => {
                 self.reads_from
                     .insert((array.to_string(), index.to_string()));
             }
-            ("Write-Int-Int" | "store", [array, index, value]) => {
+            (name, [array, index, value]) if name.starts_with("Write") || name == "store" => {
                 self.writes_to
                     .insert((array.to_string(), index.to_string(), value.to_string()));
             }

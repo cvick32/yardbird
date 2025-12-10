@@ -19,7 +19,7 @@ pub struct ArrayAxiomFrameNumGetter {
 }
 
 /// What happens on this example?
-/// (not (= i@4 i@2)) => (Read-Int-Int (Write-Int-Int a@4 i@4 i@4) i@2) = (Read-Int-Int a@4 i@2)
+/// (not (= i@4 i@2)) => (Read_Int_Int (Read_Int_Int a@4 i@4 i@4) i@2) = (Read_Int_Int a@4 i@2)
 /// We set i@2 = i and then quantify out everything else. I feel like this isn't
 /// really what we want, what we want is to say forall i@2 then the rest holds. We don't
 /// want to quantify over arrays. It's unclear to me if that even makes sense

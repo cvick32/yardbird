@@ -163,17 +163,17 @@ mod tests {
     #[test]
     fn test_variable_offset_analysis() {
         // Real instantiation from the terminal output:
-        // (= (Read-Int-Int (Write-Int-Int b@0 i@0 (Read-Int-Int a@0 (- n@0 i@1))) i@0)
-        //    (Read-Int-Int a@0 (- n@0 i@1)))
+        // (= (Read_Int_Int (Read_Int_Int b@0 i@0 (Read_Int_Int a@0 (- n@0 i@1))) i@0)
+        //    (Read_Int_Int a@0 (- n@0 i@1)))
 
         // Create the term structure manually
         let write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Write-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("b@0")),
                 Term::QualIdentifier(QualIdentifier::simple("i@0")),
                 Term::Application {
-                    qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+                    qual_identifier: QualIdentifier::simple("Read_Int_Int"),
                     arguments: vec![
                         Term::QualIdentifier(QualIdentifier::simple("a@0")),
                         Term::Application {
@@ -189,7 +189,7 @@ mod tests {
         };
 
         let read_write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 write_term,
                 Term::QualIdentifier(QualIdentifier::simple("i@0")),
@@ -197,7 +197,7 @@ mod tests {
         };
 
         let read_a_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("a@0")),
                 Term::Application {
@@ -225,15 +225,15 @@ mod tests {
 
     #[test]
     fn test_variable_offset_large_span() {
-        // Term: (= (Read-Int-Int (Write-Int-Int b@3 i@1 (Read-Int-Int a@2 (+ n@1 i@5))) i@5)
-        //            (Read-Int-Int a@2 (+ n@1 i@5)))
+        // Term: (= (Read_Int_Int (Read_Int_Int b@3 i@1 (Read_Int_Int a@2 (+ n@1 i@5))) i@5)
+        //            (Read_Int_Int a@2 (+ n@1 i@5)))
         let write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Write-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("b@3")),
                 Term::QualIdentifier(QualIdentifier::simple("i@1")),
                 Term::Application {
-                    qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+                    qual_identifier: QualIdentifier::simple("Read_Int_Int"),
                     arguments: vec![
                         Term::QualIdentifier(QualIdentifier::simple("a@2")),
                         Term::Application {
@@ -249,7 +249,7 @@ mod tests {
         };
 
         let read_write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 write_term,
                 Term::QualIdentifier(QualIdentifier::simple("i@5")),
@@ -257,7 +257,7 @@ mod tests {
         };
 
         let read_a_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("a@2")),
                 Term::Application {
@@ -287,15 +287,15 @@ mod tests {
     #[test]
     fn test_unquantified_instantiator_rewriter() {
         // Same term as test_variable_offset_large_span:
-        // (= (Read-Int-Int (Write-Int-Int b@3 i@1 (Read-Int-Int a@2 (+ n@1 i@5))) i@5)
-        //    (Read-Int-Int a@2 (+ n@1 i@5)))
+        // (= (Read_Int_Int (Read_Int_Int b@3 i@1 (Read_Int_Int a@2 (+ n@1 i@5))) i@5)
+        //    (Read_Int_Int a@2 (+ n@1 i@5)))
         let write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Write-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("b@3")),
                 Term::QualIdentifier(QualIdentifier::simple("i@1")),
                 Term::Application {
-                    qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+                    qual_identifier: QualIdentifier::simple("Read_Int_Int"),
                     arguments: vec![
                         Term::QualIdentifier(QualIdentifier::simple("a@2")),
                         Term::Application {
@@ -311,7 +311,7 @@ mod tests {
         };
 
         let read_write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 write_term,
                 Term::QualIdentifier(QualIdentifier::simple("i@5")),
@@ -319,7 +319,7 @@ mod tests {
         };
 
         let read_a_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("a@2")),
                 Term::Application {
@@ -347,7 +347,7 @@ mod tests {
 
             // The rewriter should normalize offsets by subtracting min_offset (1)
             // So: b@3 -> b+2, i@1 -> i+0, a@2 -> a+1, n@1 -> n+0, i@5 -> i+4
-            // Expected: (= (Read-Int-Int (Write-Int-Int b+2 i+0 (Read-Int-Int a+1 (+ n+0 i+4))) i+4) (Read-Int-Int a+1 (+ n+0 i+4)))
+            // Expected: (= (Read_Int_Int (Read_Int_Int b+2 i+0 (Read_Int_Int a+1 (+ n+0 i+4))) i+4) (Read_Int_Int a+1 (+ n+0 i+4)))
 
             // Convert to string to check the rewriting
             let rewritten_str = rewritten_term.to_string();
@@ -372,16 +372,16 @@ mod tests {
         // (=>
         //   (not (= i@0 i@1))
         //   (=
-        //     (Read-Int-Int (Write-Int-Int b@1 i@1 (Read-Int-Int a@1 (- n@1 i@2))) i@0)
-        //     (Read-Int-Int b@1 i@0)))
+        //     (Read_Int_Int (Read_Int_Int b@1 i@1 (Read_Int_Int a@1 (- n@1 i@2))) i@0)
+        //     (Read_Int_Int b@1 i@0)))
 
         let write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Write-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("b@1")),
                 Term::QualIdentifier(QualIdentifier::simple("i@1")),
                 Term::Application {
-                    qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+                    qual_identifier: QualIdentifier::simple("Read_Int_Int"),
                     arguments: vec![
                         Term::QualIdentifier(QualIdentifier::simple("a@1")),
                         Term::Application {
@@ -397,7 +397,7 @@ mod tests {
         };
 
         let read_write_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 write_term,
                 Term::QualIdentifier(QualIdentifier::simple("i@0")),
@@ -405,7 +405,7 @@ mod tests {
         };
 
         let read_b_term = Term::Application {
-            qual_identifier: QualIdentifier::simple("Read-Int-Int"),
+            qual_identifier: QualIdentifier::simple("Read_Int_Int"),
             arguments: vec![
                 Term::QualIdentifier(QualIdentifier::simple("b@1")),
                 Term::QualIdentifier(QualIdentifier::simple("i@0")),

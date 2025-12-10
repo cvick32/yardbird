@@ -146,8 +146,8 @@ mod test {
         b"(assert (let ((a 10) (b (+ a 10))) (<= a b)))",
         "(<= 10 (+ 10 10))"
     );
-    create_let_test!(test_actual_usage, b"(assert (and (let ((a!1 (not (not (= (Read-Int-Int c@1 Z@1) 99))))) (=> (and (>= i@1 N@1) (>= Z@1 100) (< Z@1 N@1)) (and a!1)))))", "(and (=> (and (>= i@1 N@1) (>= Z@1 100) (< Z@1 N@1)) (and (not (not (= (Read-Int-Int c@1 Z@1) 99))))))");
-    create_let_test!(test_transition_use, b"(assert (and (let ((a!1 (= (Write-Int-Int c@0 i@0 (+ i@0 (Read-Int-Int a@0 i@0))) c@1)) (a!2 (= (Write-Int-Int c@0 i@0 (Read-Int-Int c@0 (- i@0 1))) c@1))) (and (=> (< i@0 100) a!1) (=> (not (< i@0 100)) a!2))) (< i@0 N@0) (= (+ i@0 1) i@1) (= a@0 a@1) (= N@0 N@1) (= Z@0 Z@1)))", "(and (and (=> (< i@0 100) (= (Write-Int-Int c@0 i@0 (+ i@0 (Read-Int-Int a@0 i@0))) c@1)) (=> (not (< i@0 100)) (= (Write-Int-Int c@0 i@0 (Read-Int-Int c@0 (- i@0 1))) c@1))) (< i@0 N@0) (= (+ i@0 1) i@1) (= a@0 a@1) (= N@0 N@1) (= Z@0 Z@1))");
+    create_let_test!(test_actual_usage, b"(assert (and (let ((a!1 (not (not (= (Read_Int_Int c@1 Z@1) 99))))) (=> (and (>= i@1 N@1) (>= Z@1 100) (< Z@1 N@1)) (and a!1)))))", "(and (=> (and (>= i@1 N@1) (>= Z@1 100) (< Z@1 N@1)) (and (not (not (= (Read_Int_Int c@1 Z@1) 99))))))");
+    create_let_test!(test_transition_use, b"(assert (and (let ((a!1 (= (Read_Int_Int c@0 i@0 (+ i@0 (Read_Int_Int a@0 i@0))) c@1)) (a!2 (= (Read_Int_Int c@0 i@0 (Read_Int_Int c@0 (- i@0 1))) c@1))) (and (=> (< i@0 100) a!1) (=> (not (< i@0 100)) a!2))) (< i@0 N@0) (= (+ i@0 1) i@1) (= a@0 a@1) (= N@0 N@1) (= Z@0 Z@1)))", "(and (and (=> (< i@0 100) (= (Read_Int_Int c@0 i@0 (+ i@0 (Read_Int_Int a@0 i@0))) c@1)) (=> (not (< i@0 100)) (= (Read_Int_Int c@0 i@0 (Read_Int_Int c@0 (- i@0 1))) c@1))) (< i@0 N@0) (= (+ i@0 1) i@1) (= a@0 a@1) (= N@0 N@1) (= Z@0 Z@1))");
     create_let_test!(test_double, b"(assert (let ((a!1 (and (not (and (< i N) (>= j 0))))) (a!2 (and (not (not (>= m n)))))) (=> a!1 a!2)))", "(=> (and (not (and (< i N) (>= j 0)))) (and (not (not (>= m n)))))");
     create_let_test!(
         test_nested,
