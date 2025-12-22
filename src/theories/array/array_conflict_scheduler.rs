@@ -13,6 +13,72 @@ use crate::{
     },
 };
 
+/// Preprocess array operation strings for egg parsing.
+/// Converts: "(Read_Int_Int a b)" -> "(Read Int Int a b)"
+/// Handles nested arrays: "(Read_Int_Array_Int_Int a b)" -> "(Read Int Array_Int_Int a b)"
+pub fn preprocess_array_expr(input: &str) -> String {
+    let mut result = String::with_capacity(input.len() + 10);
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '(' {
+            result.push(ch);
+
+            // Check if next tokens form an array operation
+            let mut op_name = String::new();
+
+            // Collect operator name (before first space or closing paren)
+            while let Some(&next_ch) = chars.peek() {
+                if next_ch.is_whitespace() || next_ch == ')' {
+                    break;
+                }
+                op_name.push(chars.next().unwrap());
+            }
+
+            // Check if it's a typed array operation
+            if let Some(rest) = op_name.strip_prefix("Read_") {
+                // Split on first two underscores: Read_IndexSort_ValueSort
+                let parts: Vec<&str> = rest.splitn(2, '_').collect();
+                if parts.len() == 2 {
+                    result.push_str("Read ");
+                    result.push_str(parts[0]);
+                    result.push(' ');
+                    result.push_str(parts[1]);
+                } else {
+                    result.push_str(&op_name);
+                }
+            } else if let Some(rest) = op_name.strip_prefix("Write_") {
+                let parts: Vec<&str> = rest.splitn(2, '_').collect();
+                if parts.len() == 2 {
+                    result.push_str("Write ");
+                    result.push_str(parts[0]);
+                    result.push(' ');
+                    result.push_str(parts[1]);
+                } else {
+                    result.push_str(&op_name);
+                }
+            } else if let Some(rest) = op_name.strip_prefix("ConstArr_") {
+                let parts: Vec<&str> = rest.splitn(2, '_').collect();
+                if parts.len() == 2 {
+                    result.push_str("ConstArr ");
+                    result.push_str(parts[0]);
+                    result.push(' ');
+                    result.push_str(parts[1]);
+                } else {
+                    result.push_str(&op_name);
+                }
+            } else {
+                // Not an array operation, keep as-is
+                result.push_str(&op_name);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
 pub struct ArrayConflictScheduler<S, CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
