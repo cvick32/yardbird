@@ -145,7 +145,12 @@ where
         matches: Vec<egg::SearchMatches<ArrayLanguage>>,
     ) -> usize {
         debug!("======>");
-        debug!("applying {}", rewrite.name);
+        debug!(
+            "apply_rewrite: {} with {} matches, inst_count={}",
+            rewrite.name,
+            matches.len(),
+            self.instantiations.borrow().len()
+        );
         if !self.instantiations.borrow().is_empty() {
             // don't try to keep applying rewrites if we've found an inst
             return 0;
@@ -261,9 +266,23 @@ where
                 .rooted()
                 .clone()
                 .join_recexprs(|id| match pattern[id].clone() {
-                    x @ E::ENode(ArrayLanguage::Write([array, index, val])) => {
-                        match (&pattern[array], &pattern[index], &pattern[val]) {
-                            (E::Var(array), E::Var(index), E::Var(val)) => {
+                    x @ E::ENode(ArrayLanguage::WriteTyped(
+                        [idx_sort, val_sort, array, index, val],
+                    )) => {
+                        match (
+                            &pattern[idx_sort],
+                            &pattern[val_sort],
+                            &pattern[array],
+                            &pattern[index],
+                            &pattern[val],
+                        ) {
+                            (
+                                E::ENode(idx_sort),
+                                E::ENode(val_sort),
+                                E::Var(array),
+                                E::Var(index),
+                                E::Var(val),
+                            ) => {
                                 let array_ecls = &egraph[*subst.get(*array).unwrap()];
                                 let index_ecls = &egraph[*subst.get(*index).unwrap()];
                                 let val_ecls = &egraph[*subst.get(*val).unwrap()];
@@ -277,7 +296,7 @@ where
                                             .reads_and_writes
                                             .write_array(node)
                                             // only keep items contained in index eclass
-                                            .flat_map(|idx| idx.parse())
+                                            .flat_map(|idx| preprocess_array_expr(&idx).parse())
                                             .filter(|idx| {
                                                 egraph_contains_at(egraph, idx, index_ecls.id)
                                             })
@@ -288,18 +307,22 @@ where
                                     if let Some(val_node) = extractor
                                         .reads_and_writes
                                         .write_array_index(array_node.clone(), index_node.clone())
-                                        .flat_map(|v| v.parse())
+                                        .flat_map(|v| preprocess_array_expr(&v).parse())
                                         .find(|v| egraph_contains_at(egraph, v, val_ecls.id))
                                     {
                                         let array_expr = egg::RecExpr::from(vec![array_node]);
                                         memo.insert(*array, patternify(&array_expr));
                                         memo.insert(*index, patternify(&index_node));
                                         memo.insert(*val, patternify(&val_node));
-                                        patternify(&ArrayLanguage::write(
-                                            array_expr, index_node, val_node,
+                                        patternify(&ArrayLanguage::write_typed(
+                                            &idx_sort.to_string(),
+                                            &val_sort.to_string(),
+                                            array_expr,
+                                            index_node,
+                                            val_node,
                                         ))
                                     } else {
-                                        todo!()
+                                        todo!("{}, {}", idx_sort, val_sort)
                                     }
                                 } else {
                                     // TODO: temporary fallback until we can handle array expressions that aren't variables
@@ -316,12 +339,17 @@ where
                                     }
                                 }
                             }
-                            _ => todo!(),
+                            _ => todo!("{}", x),
                         }
                     }
-                    E::ENode(ArrayLanguage::Read([array, index])) => {
-                        match (&pattern[array], &pattern[index]) {
-                            (E::Var(array), E::Var(index)) => {
+                    E::ENode(ArrayLanguage::ReadTyped([idx_sort, val_sort, array, index])) => {
+                        match (
+                            &pattern[idx_sort],
+                            &pattern[val_sort],
+                            &pattern[array],
+                            &pattern[index],
+                        ) {
+                            (E::Var(idx_sort), E::Var(val_sort), E::Var(array), E::Var(index)) => {
                                 let array_ecls = &egraph[*subst.get(*array).unwrap()];
                                 let index_ecls = &egraph[*subst.get(*index).unwrap()];
 
@@ -332,7 +360,7 @@ where
                                         extractor
                                             .reads_and_writes
                                             .read_array(node)
-                                            .flat_map(|idx| idx.parse())
+                                            .flat_map(|idx| preprocess_array_expr(&idx).parse())
                                             .filter(|idx| {
                                                 egraph_contains_at(egraph, idx, index_ecls.id)
                                             })
@@ -343,7 +371,12 @@ where
                                     let array_expr = egg::RecExpr::from(vec![array_node]);
                                     memo.insert(*array, patternify(&array_expr));
                                     memo.insert(*index, patternify(&index_node));
-                                    patternify(&ArrayLanguage::read(array_expr, index_node))
+                                    patternify(&ArrayLanguage::read_typed(
+                                        &idx_sort.to_string(),
+                                        &val_sort.to_string(),
+                                        array_expr,
+                                        index_node,
+                                    ))
                                 } else {
                                     todo!()
                                 }
