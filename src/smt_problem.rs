@@ -8,7 +8,7 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    instantiation_strategy::InstantiationStrategy, proof_tree::ProofTree,
+    instantiation_strategy::InstantiationStrategy, problem::Problem, proof_tree::ProofTree,
     strategies::ProofStrategy, subterm_handler::SubtermHandler, utils::SolverStatistics,
     z3_var_context::Z3VarContext,
 };
@@ -29,6 +29,28 @@ pub struct SMTProblem {
     track_instantiations: bool,
     tracked_labels: Vec<(String, Term)>, // (label, instantiation_term)
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+}
+
+impl std::fmt::Debug for SMTProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SMTProblem")
+            .field("depth", &self.depth)
+            .field(
+                "num_quantifiers_instantiated",
+                &self.num_quantifiers_instantiated,
+            )
+            .field("track_instantiations", &self.track_instantiations)
+            .field("variables", &self.variables)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for SMTProblem {
+    fn clone(&self) -> Self {
+        // SMTProblem contains non-cloneable Z3 objects (Solver, Model)
+        // Clone is required by the Problem trait but should not be used in practice
+        unimplemented!("SMTProblem::clone() is not implemented due to non-cloneable Z3 objects")
+    }
 }
 
 #[allow(clippy::borrowed_box)]
@@ -108,6 +130,7 @@ impl SMTProblem {
         }
         // Generate initial subterms.
         smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
+        debug!("{:#?}", smt);
         // Add initial assertion.
         smt.add_assertion();
         smt
@@ -146,73 +169,6 @@ impl SMTProblem {
         }
         // Note: Instantiation handling at each depth is now delegated to
         // the instantiation strategy's on_loop hook, called from unroll()
-    }
-
-    // All instantiations have been added self.current_depth number of times when
-    // this function is called. We only need to unroll transition and all instantiations
-    // one more time.
-    pub(crate) fn unroll(&mut self, depth: u16) {
-        if depth > self.depth {
-            // These things should only happen the first time a new depth is seen.
-            // Set new depth.
-            self.depth = depth;
-            self.bmc_builder.set_depth(self.depth);
-            // Generate subterms.
-            self.subterm_handler
-                .generate_subterms(&mut self.bmc_builder);
-            // Add new variables to Z3VarContext for depth.
-            self.add_z3_variables();
-            // Add assertion for current depth.
-            self.add_assertion();
-
-            // Call instantiation strategy's on_loop hook to handle instantiations at this depth
-            if !self.instantiations.is_empty() {
-                let instantiations_snapshot: Vec<Instance> = self.instantiations.clone();
-                self.instantiation_strategy.on_loop(
-                    self.depth,
-                    &instantiations_snapshot,
-                    &mut self.bmc_builder,
-                    &mut self.z3_var_context,
-                    &mut self.solver,
-                    self.track_instantiations,
-                    &mut self.tracked_labels,
-                    &mut self.num_quantifiers_instantiated,
-                );
-            }
-        }
-    }
-
-    /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
-    /// off of the solver. Keeping the invariant of the property never being on the solver until check
-    /// time allows us to not worry about when to add instances and other facts to the solver.
-    ///
-    /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
-    /// be lost.
-    pub(crate) fn check(&mut self) -> z3::SatResult {
-        let start_time = std::time::Instant::now();
-
-        // Push property back on top of the solver.
-        self.push_property();
-        //println!("solver: {:#?}", self.solver);
-        let sat_result = self.solver.check();
-        self.newest_model = self.solver.get_model();
-        match self.solver.get_proof() {
-            Some(proof) => {
-                ProofTree::new(proof);
-            }
-            None => debug!("NO PROOF!"),
-        }
-        // Popping property off.
-        self.solver.pop(1);
-        self.solver_statistcs
-            .join_from_z3_statistics(self.solver.get_statistics());
-
-        // Track total check time
-        let check_duration = start_time.elapsed();
-        self.solver_statistcs
-            .add_time("solver_time", check_duration.as_secs_f64());
-
-        sat_result
     }
 
     fn push_property(&mut self) {
@@ -376,5 +332,94 @@ impl SMTProblem {
         file.write_all(json.as_bytes())?;
 
         Ok(())
+    }
+}
+
+impl Problem for SMTProblem {
+    fn get_sorts(&self) -> Vec<smt2parser::concrete::Command> {
+        todo!()
+    }
+
+    fn get_function_definitions(&self) -> Vec<smt2parser::concrete::Command> {
+        todo!()
+    }
+
+    fn get_logic(&self) -> Option<String> {
+        todo!()
+    }
+
+    fn requires_unrolling(&self) -> bool {
+        todo!()
+    }
+
+    fn as_commands(&self) -> Vec<smt2parser::concrete::Command> {
+        todo!()
+    }
+
+    /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
+    /// off of the solver. Keeping the invariant of the property never being on the solver until check
+    /// time allows us to not worry about when to add instances and other facts to the solver.
+    ///
+    /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
+    /// be lost.
+    fn check(&mut self) -> z3::SatResult {
+        let start_time = std::time::Instant::now();
+
+        // Push property back on top of the solver.
+        self.push_property();
+        let sat_result = self.solver.check();
+        self.newest_model = self.solver.get_model();
+        match self.solver.get_proof() {
+            Some(proof) => {
+                ProofTree::new(proof);
+            }
+            None => debug!("NO PROOF!"),
+        }
+        // Popping property off.
+        self.solver.pop(1);
+        self.solver_statistcs
+            .join_from_z3_statistics(self.solver.get_statistics());
+
+        // Track total check time
+        let check_duration = start_time.elapsed();
+        self.solver_statistcs
+            .add_time("solver_time", check_duration.as_secs_f64());
+
+        sat_result
+    }
+
+    fn unroll(&mut self, depth: u16) {
+        if depth > self.depth {
+            // These things should only happen the first time a new depth is seen.
+            // Set new depth.
+            self.depth = depth;
+            self.bmc_builder.set_depth(self.depth);
+            // Generate subterms.
+            self.subterm_handler
+                .generate_subterms(&mut self.bmc_builder);
+            // Add new variables to Z3VarContext for depth.
+            self.add_z3_variables();
+            // Add assertion for current depth.
+            self.add_assertion();
+
+            // Call instantiation strategy's on_loop hook to handle instantiations at this depth
+            if !self.instantiations.is_empty() {
+                let instantiations_snapshot: Vec<Instance> = self.instantiations.clone();
+                self.instantiation_strategy.on_loop(
+                    self.depth,
+                    &instantiations_snapshot,
+                    &mut self.bmc_builder,
+                    &mut self.z3_var_context,
+                    &mut self.solver,
+                    self.track_instantiations,
+                    &mut self.tracked_labels,
+                    &mut self.num_quantifiers_instantiated,
+                );
+            }
+        }
+    }
+
+    fn add_instantiation(&self, _term: &Term) {
+        todo!()
     }
 }

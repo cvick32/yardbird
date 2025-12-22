@@ -5,6 +5,7 @@ use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
 use crate::{
     instantiation_strategy::InstantiationStrategy,
+    problem::Problem,
     smt_problem::SMTProblem,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     utils::SolverStatistics,

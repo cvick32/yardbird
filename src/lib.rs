@@ -41,7 +41,6 @@ mod subterm_handler;
 pub mod theories;
 pub mod theory_support;
 mod utils;
-mod vmt_problem;
 pub mod z3_ext;
 mod z3_var_context;
 
