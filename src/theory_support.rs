@@ -15,7 +15,7 @@ pub trait TheorySupport {
     fn get_logic_string(&self) -> String;
 
     /// Abstracts the VMT model for this theory (replaces theory-specific operations with uninterpreted functions)
-    fn abstract_model(&self, model: VMTModel) -> VMTModel;
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>);
 
     /// Returns true if this theory requires abstraction
     fn requires_abstraction(&self) -> bool;
@@ -125,10 +125,10 @@ impl TheorySupport for ListTheorySupport {
         "QF_LIA".to_string() // Quantifier-free linear integer arithmetic + uninterpreted functions
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
         // For now, we don't need to abstract the model for lists since we're declaring them as uninterpreted
         // In the future, we could implement a ListAbstractor similar to ArrayAbstractor
-        model
+        model.abstract_array_theory()
     }
 
     fn requires_abstraction(&self) -> bool {
@@ -143,49 +143,78 @@ impl TheorySupport for ListTheorySupport {
 pub fn array_sort(index_sort: &str, element_sort: &str) -> Sort {
     Sort::Simple {
         identifier: Identifier::Simple {
-            symbol: Symbol(format!("Array-{}-{}", index_sort, element_sort)),
+            symbol: Symbol(format!("Array_{}_{}", index_sort, element_sort)),
         },
     }
 }
 
-/// Theory support for array operations (existing behavior)
 #[derive(Clone)]
-pub struct ArrayTheorySupport;
+pub struct ArrayTheorySupport {
+    /// Set of (index_sort, value_sort) pairs discovered during abstraction
+    pub array_types: Vec<(String, String)>,
+}
+
+impl ArrayTheorySupport {
+    pub fn new(array_types: Vec<(String, String)>) -> Self {
+        Self { array_types }
+    }
+}
+
+pub fn get_uninterpreted_array_functions(
+    array_types: &[(String, String)],
+) -> Vec<FunctionDeclaration> {
+    let mut functions = Vec::new();
+
+    // Generate functions for each discovered array type
+    for (index_sort, value_sort) in array_types {
+        let array_sort_type = array_sort(index_sort, value_sort);
+        let index_sort_type = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol(index_sort.clone()),
+            },
+        };
+        let value_sort_type = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol(value_sort.clone()),
+            },
+        };
+
+        functions.push(FunctionDeclaration::new(
+            format!("Read_{}_{}", index_sort, value_sort),
+            vec![array_sort_type.clone(), index_sort_type.clone()],
+            value_sort_type.clone(),
+        ));
+
+        functions.push(FunctionDeclaration::new(
+            format!("Write_{}_{}", index_sort, value_sort),
+            vec![
+                array_sort_type.clone(),
+                index_sort_type.clone(),
+                value_sort_type.clone(),
+            ],
+            array_sort_type.clone(),
+        ));
+
+        functions.push(FunctionDeclaration::new(
+            format!("ConstArr_{}_{}", index_sort, value_sort),
+            vec![value_sort_type],
+            array_sort_type,
+        ));
+    }
+
+    functions
+}
 
 impl TheorySupport for ArrayTheorySupport {
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
-        let array_int_int_sort = array_sort("Int", "Int");
-        let int_sort = int_sort();
-
-        vec![
-            // Array operations that get abstracted to uninterpreted functions
-            FunctionDeclaration::new(
-                "Read-Int-Int",
-                vec![array_int_int_sort.clone(), int_sort.clone()],
-                int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "Write-Int-Int",
-                vec![
-                    array_int_int_sort.clone(),
-                    int_sort.clone(),
-                    int_sort.clone(),
-                ],
-                array_int_int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "ConstArr-Int-Int",
-                vec![int_sort.clone()],
-                array_int_int_sort.clone(),
-            ),
-        ]
+        get_uninterpreted_array_functions(&self.array_types)
     }
 
     fn get_logic_string(&self) -> String {
         "UFLIA".to_string()
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
         model.abstract_array_theory()
     }
 
@@ -199,42 +228,26 @@ impl TheorySupport for ArrayTheorySupport {
 }
 
 #[derive(Clone)]
-pub struct ArrayWithQuantifiersTheorySupport;
+pub struct ArrayWithQuantifiersTheorySupport {
+    pub array_types: Vec<(String, String)>,
+}
+
+impl ArrayWithQuantifiersTheorySupport {
+    pub fn new(array_types: Vec<(String, String)>) -> Self {
+        Self { array_types }
+    }
+}
 
 impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
-        let array_int_int_sort = array_sort("Int", "Int");
-        let int_sort = int_sort();
-
-        vec![
-            // Array operations that get abstracted to uninterpreted functions
-            FunctionDeclaration::new(
-                "Read-Int-Int",
-                vec![array_int_int_sort.clone(), int_sort.clone()],
-                int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "Write-Int-Int",
-                vec![
-                    array_int_int_sort.clone(),
-                    int_sort.clone(),
-                    int_sort.clone(),
-                ],
-                array_int_int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "ConstArr-Int-Int",
-                vec![int_sort.clone()],
-                array_int_int_sort.clone(),
-            ),
-        ]
+        get_uninterpreted_array_functions(&self.array_types)
     }
 
     fn get_logic_string(&self) -> String {
         "UFLIA".into()
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
         model.abstract_array_theory()
     }
 
@@ -242,6 +255,7 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
         true
     }
 
+    // TODO: generate axioms for all types
     fn get_axiom_formulas(&self) -> Vec<Command> {
         let array_int_int_sort = array_sort("Int", "Int");
         let int_sort = int_sort();
@@ -296,14 +310,14 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
                                     Term::Application {
                                         qual_identifier: QualIdentifier::Simple {
                                             identifier: Identifier::Simple {
-                                                symbol: Symbol("Read-Int-Int".to_string()),
+                                                symbol: Symbol("Read_Int_Int".to_string()),
                                             },
                                         },
                                         arguments: vec![
                                             Term::Application {
                                                 qual_identifier: QualIdentifier::Simple {
                                                     identifier: Identifier::Simple {
-                                                        symbol: Symbol("Write-Int-Int".to_string()),
+                                                        symbol: Symbol("Write_Int_Int".to_string()),
                                                     },
                                                 },
                                                 arguments: vec![
@@ -397,14 +411,14 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
                                     Term::Application {
                                         qual_identifier: QualIdentifier::Simple {
                                             identifier: Identifier::Simple {
-                                                symbol: Symbol("Read-Int-Int".to_string()),
+                                                symbol: Symbol("Read_Int_Int".to_string()),
                                             },
                                         },
                                         arguments: vec![
                                             Term::Application {
                                                 qual_identifier: QualIdentifier::Simple {
                                                     identifier: Identifier::Simple {
-                                                        symbol: Symbol("Write-Int-Int".to_string()),
+                                                        symbol: Symbol("Write_Int_Int".to_string()),
                                                     },
                                                 },
                                                 arguments: vec![
@@ -435,7 +449,7 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
                                     Term::Application {
                                         qual_identifier: QualIdentifier::Simple {
                                             identifier: Identifier::Simple {
-                                                symbol: Symbol("Read-Int-Int".to_string()),
+                                                symbol: Symbol("Read_Int_Int".to_string()),
                                             },
                                         },
                                         arguments: vec![
@@ -476,14 +490,14 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
                             Term::Application {
                                 qual_identifier: QualIdentifier::Simple {
                                     identifier: Identifier::Simple {
-                                        symbol: Symbol("Read-Int-Int".to_string()),
+                                        symbol: Symbol("Read_Int_Int".to_string()),
                                     },
                                 },
                                 arguments: vec![
                                     Term::Application {
                                         qual_identifier: QualIdentifier::Simple {
                                             identifier: Identifier::Simple {
-                                                symbol: Symbol("ConstArr-Int-Int".to_string()),
+                                                symbol: Symbol("ConstArr_Int_Int".to_string()),
                                             },
                                         },
                                         arguments: vec![Term::QualIdentifier(
@@ -526,8 +540,8 @@ impl TheorySupport for ConcreteArrayTheory {
         "QF_AUFLIA".to_string()
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
-        model
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
+        (model, vec![])
     }
 
     fn requires_abstraction(&self) -> bool {
@@ -574,16 +588,16 @@ mod tests {
 
     #[test]
     fn test_array_theory_support() {
-        let array_theory = ArrayTheorySupport;
+        let array_theory = ArrayTheorySupport::new(vec![("Int".into(), "Int".into())]);
 
         // Test function declarations
         let functions = array_theory.get_uninterpreted_functions();
         assert_eq!(functions.len(), 3);
 
         let function_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(function_names.contains(&"Read-Int-Int"));
-        assert!(function_names.contains(&"Write-Int-Int"));
-        assert!(function_names.contains(&"ConstArr-Int-Int"));
+        assert!(function_names.contains(&"Read_Int_Int"));
+        assert!(function_names.contains(&"Write_Int_Int"));
+        assert!(function_names.contains(&"ConstArr_Int_Int"));
 
         // Test logic string
         assert_eq!(array_theory.get_logic_string(), "UFLIA");
