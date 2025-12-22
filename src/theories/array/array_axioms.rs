@@ -1,11 +1,11 @@
 use std::rc::Rc;
 
 use egg::*;
+use log::debug;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
     cost_functions::YardbirdCostFunction,
-    egg_utils::Saturate,
     theories::array::{
         array_conflict_scheduler::ArrayConflictScheduler, array_term_extractor::ArrayTermExtractor,
     },
@@ -14,9 +14,13 @@ use crate::{
 define_language! {
     pub enum ArrayLanguage {
         Num(u64),
-        "ConstArr-Int-Int" = ConstArr([Id; 1]),
-        "Write-Int-Int" = Write([Id; 3]),
-        "Read-Int-Int" = Read([Id; 2]),
+        // Parameterized array operations that include sort information as Symbol children
+        // Format: "ConstArr" [index_sort_symbol, value_sort_symbol, value]
+        "ConstArr" = ConstArrTyped([Id; 3]),
+        // Format: "Write" [index_sort_symbol, value_sort_symbol, array, index, value]
+        "Write" = WriteTyped([Id; 5]),
+        // Format: "Read" [index_sort_symbol, value_sort_symbol, array, index]
+        "Read" = ReadTyped([Id; 4]),
         "and" = And(Box<[Id]>),
         "not" = Not(Id),
         "or" = Or(Box<[Id]>),
@@ -83,29 +87,104 @@ impl ArrayLanguage {
         })
     }
 
-    pub fn read(array: ArrayExpr, index: ArrayExpr) -> ArrayExpr {
+    pub fn sort_to_name(sort: &smt2parser::concrete::Sort) -> String {
+        use smt2parser::concrete::{Identifier, Sort};
+        match sort {
+            Sort::Simple { identifier } => match identifier {
+                Identifier::Simple { symbol } => symbol.0.clone(),
+                Identifier::Indexed { symbol, indices } => {
+                    // For indexed identifiers like (_ BitVec 32), format as "BitVec32"
+                    let indices_str = indices
+                        .iter()
+                        .map(|idx| match idx {
+                            smt2parser::visitors::Index::Numeral(n) => n.to_string(),
+                            smt2parser::visitors::Index::Symbol(s) => s.0.clone(),
+                        })
+                        .collect::<Vec<_>>()
+                        .join("_");
+                    format!("{}{}", symbol.0, indices_str)
+                }
+            },
+            Sort::Parameterized {
+                identifier: _,
+                parameters,
+            } => parameters
+                .iter()
+                .map(Self::sort_to_name)
+                .collect::<Vec<_>>()
+                .join("_"),
+        }
+    }
+
+    /// Format a typed array operation name (e.g., "Read_BitVec5_BitVec32" or "Read_Int_Array_Int_Int")
+    pub fn format_array_op_name(op: &str, index_sort: &str, value_sort: &str) -> String {
+        format!("{}_{}_{}", op, index_sort, value_sort)
+    }
+
+    pub fn extract_array_sorts(
+        array_sort: &smt2parser::concrete::Sort,
+    ) -> Option<(smt2parser::concrete::Sort, smt2parser::concrete::Sort)> {
+        use smt2parser::concrete::{Identifier, Sort};
+        match array_sort {
+            Sort::Parameterized {
+                identifier,
+                parameters,
+            } => {
+                let is_array = match identifier {
+                    Identifier::Simple { symbol } => symbol.0 == "Array",
+                    Identifier::Indexed { symbol, .. } => symbol.0 == "Array",
+                };
+                if is_array && parameters.len() == 2 {
+                    Some((parameters[0].clone(), parameters[1].clone()))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub fn read_typed(
+        index_sort: &str,
+        value_sort: &str,
+        array: ArrayExpr,
+        index: ArrayExpr,
+    ) -> ArrayExpr {
         let mut expr = egg::RecExpr::default();
+        let is = expr.add(ArrayLanguage::Symbol(index_sort.into()));
+        let vs = expr.add(ArrayLanguage::Symbol(value_sort.into()));
         let a = expr.add(ArrayLanguage::Symbol("a".into()));
         let i = expr.add(ArrayLanguage::Symbol("i".into()));
-        let write = expr.add(ArrayLanguage::Read([a, i]));
+        let read = expr.add(ArrayLanguage::ReadTyped([is, vs, a, i]));
 
-        expr[write].join_recexprs(|id| {
+        expr[read].join_recexprs(|id| {
             if id == a {
                 array.clone()
             } else if id == i {
                 index.clone()
+            } else if id == is || id == vs {
+                // Keep sort symbols as-is (they're not placeholders)
+                RecExpr::from(vec![expr[id].clone()])
             } else {
-                panic!()
+                unreachable!()
             }
         })
     }
 
-    pub fn write(array: ArrayExpr, index: ArrayExpr, value: ArrayExpr) -> ArrayExpr {
+    pub fn write_typed(
+        index_sort: &str,
+        value_sort: &str,
+        array: ArrayExpr,
+        index: ArrayExpr,
+        value: ArrayExpr,
+    ) -> ArrayExpr {
         let mut expr = egg::RecExpr::default();
+        let is = expr.add(ArrayLanguage::Symbol(index_sort.into()));
+        let vs = expr.add(ArrayLanguage::Symbol(value_sort.into()));
         let a = expr.add(ArrayLanguage::Symbol("a".into()));
         let i = expr.add(ArrayLanguage::Symbol("i".into()));
         let v = expr.add(ArrayLanguage::Symbol("v".into()));
-        let write = expr.add(ArrayLanguage::Write([a, i, v]));
+        let write = expr.add(ArrayLanguage::WriteTyped([is, vs, a, i, v]));
 
         expr[write].join_recexprs(|id| {
             if id == a {
@@ -114,64 +193,169 @@ impl ArrayLanguage {
                 index.clone()
             } else if id == v {
                 value.clone()
+            } else if id == is || id == vs {
+                // Keep sort symbols as-is (they're not placeholders)
+                RecExpr::from(vec![expr[id].clone()])
             } else {
-                panic!()
+                unreachable!()
+            }
+        })
+    }
+
+    pub fn const_arr_typed(index_sort: &str, value_sort: &str, value: ArrayExpr) -> ArrayExpr {
+        let mut expr = egg::RecExpr::default();
+        let is = expr.add(ArrayLanguage::Symbol(index_sort.into()));
+        let vs = expr.add(ArrayLanguage::Symbol(value_sort.into()));
+        let v = expr.add(ArrayLanguage::Symbol("v".into()));
+        let const_arr = expr.add(ArrayLanguage::ConstArrTyped([is, vs, v]));
+
+        expr[const_arr].join_recexprs(|id| {
+            if id == v {
+                value.clone()
+            } else if id == is || id == vs {
+                // Keep sort symbols as-is (they're not placeholders)
+                RecExpr::from(vec![expr[id].clone()])
+            } else {
+                unreachable!()
             }
         })
     }
 }
 
-impl<CF, N> Saturate<CF, ArrayLanguage> for EGraph<ArrayLanguage, N>
+pub fn saturate_with_array_types<CF, N>(
+    egraph: &mut EGraph<ArrayLanguage, N>,
+    cost_fn: CF,
+    refinement_step: u32,
+    array_types: &[(String, String)],
+) -> (Vec<ArrayExpr>, Vec<ArrayExpr>)
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
-    type Ret = (Vec<ArrayExpr>, Vec<ArrayExpr>);
+    let taken_egraph = std::mem::take(egraph);
+    let scheduler = ArrayConflictScheduler::new(
+        BackoffScheduler::default(),
+        cost_fn.clone(),
+        ArrayTermExtractor::new(&taken_egraph, cost_fn, refinement_step),
+    );
+    let instantiations = scheduler.instantiations();
+    let const_instantiations = scheduler.instantiations_w_constants();
+    let axioms = array_axioms_with_types(array_types);
 
-    fn saturate(&mut self, cost_fn: CF, refinement_step: u32) -> Self::Ret {
-        let egraph = std::mem::take(self);
-        let scheduler = ArrayConflictScheduler::new(
-            BackoffScheduler::default(),
-            cost_fn.clone(),
-            ArrayTermExtractor::new(&egraph, cost_fn, refinement_step),
-        );
-        let instantiations = scheduler.instantiations();
-        let const_instantiations = scheduler.instantiations_w_constants();
-        let mut runner = Runner::default()
-            .with_egraph(egraph)
-            .with_scheduler(scheduler)
-            .run(&array_axioms());
-
-        *self = std::mem::take(&mut runner.egraph);
-
-        drop(runner);
-        (
-            Rc::into_inner(instantiations).unwrap().into_inner(),
-            Rc::into_inner(const_instantiations).unwrap().into_inner(),
-        )
+    #[cfg(debug_assertions)]
+    {
+        for class in taken_egraph.classes() {
+            for node in &class.nodes {
+                let node_str = format!("{:?}", node);
+                if node_str.contains("Read")
+                    || node_str.contains("Write")
+                    || node_str.contains("Symbol(\"Int\")")
+                {
+                    debug!("ClassID={:?}, Node: {:?}", class.id, node);
+                }
+            }
+        }
     }
+
+    let runner = Runner::default()
+        .with_egraph(taken_egraph)
+        .with_scheduler(scheduler)
+        .run(&axioms);
+
+    drop(runner);
+
+    let final_insts = Rc::into_inner(instantiations).unwrap().into_inner();
+    let final_const_insts = Rc::into_inner(const_instantiations).unwrap().into_inner();
+
+    #[cfg(debug_assertions)]
+    {
+        debug!("=== FINAL INSTANTIATIONS ===");
+        debug!("Regular: {}", final_insts.len());
+        for (i, inst) in final_insts.iter().enumerate() {
+            debug!("  [{}]: {}", i, inst);
+        }
+        debug!("Const: {}", final_const_insts.len());
+        for (i, inst) in final_const_insts.iter().enumerate() {
+            debug!("  [{}]: {}", i, inst);
+        }
+        debug!("============================\n");
+    }
+
+    (final_insts, final_const_insts)
 }
 
-fn array_axioms<N>() -> Vec<Rewrite<ArrayLanguage, N>>
+/// Generate array axioms for a specific type pair (index_sort, value_sort).
+/// This creates type-specific versions of the three core array axioms.
+fn array_axioms_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<Rewrite<ArrayLanguage, N>>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {
-    vec![
-        rewrite!(
-            "write-does-not-overwrite";
-            {
-                ConditionalSearcher::new(
-                    "(Read-Int-Int (Write-Int-Int ?a ?idx ?val) ?c)"
-                        .parse::<egg::Pattern<ArrayLanguage>>()
-                        .unwrap(),
-                    not_equal("?idx", "?c"),
-                )
-            }
-            => "(Read-Int-Int ?a ?c)"
-        ),
-        rewrite!("read-after-write"; "(Read-Int-Int (Write-Int-Int ?a ?idx ?val) ?idx)" => "?val"),
-        rewrite!("constant-array"; "(Read-Int-Int (ConstArr-Int-Int ?a) ?b)" => "?a"),
-    ]
+    // Axiom 1: write-does-not-overwrite
+    // (Read (Write a idx val) c) => (Read a c) when idx != c
+    let axiom_name_1 = format!("write-does-not-overwrite-{}-{}", index_sort, value_sort);
+    let pattern_1 = format!(
+        "(Read {} {} (Write {} {} ?a ?idx ?val) ?c)",
+        index_sort, value_sort, index_sort, value_sort
+    );
+    let replacement_1 = format!("(Read {} {} ?a ?c)", index_sort, value_sort);
+    let parsed_pattern: egg::Pattern<ArrayLanguage> = pattern_1.parse().unwrap();
+    let axiom_1 = Rewrite::new(
+        axiom_name_1,
+        ConditionalSearcher::new(parsed_pattern, not_equal("?idx", "?c")),
+        replacement_1
+            .parse::<egg::Pattern<ArrayLanguage>>()
+            .unwrap(),
+    )
+    .unwrap();
+
+    // Axiom 2: read-after-write
+    // (Read (Write a idx val) idx) => val
+    let axiom_name_2 = format!("read-after-write-{}-{}", index_sort, value_sort);
+    let pattern_2 = format!(
+        "(Read {} {} (Write {} {} ?a ?idx ?val) ?idx)",
+        index_sort, value_sort, index_sort, value_sort
+    );
+    let pat2 = pattern_2.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
+    let replacement_2 = "?val";
+    let axiom_2 = Rewrite::new(
+        axiom_name_2,
+        pat2,
+        replacement_2
+            .parse::<egg::Pattern<ArrayLanguage>>()
+            .unwrap(),
+    )
+    .unwrap();
+
+    let axiom_name_3 = format!("constant-array-{}-{}", index_sort, value_sort);
+    let pattern_3 = format!(
+        "(Read {} {} (ConstArr {} {} ?a) ?b)",
+        index_sort, value_sort, index_sort, value_sort
+    );
+    let pat3 = pattern_3.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
+    let replacement_3 = "?a";
+    let axiom_3 = Rewrite::new(
+        axiom_name_3,
+        pat3,
+        replacement_3
+            .parse::<egg::Pattern<ArrayLanguage>>()
+            .unwrap(),
+    )
+    .unwrap();
+
+    vec![axiom_1, axiom_2, axiom_3]
+}
+
+/// Generate array axioms for multiple discovered array types.
+/// This creates axioms for each discovered type.
+fn array_axioms_with_types<N>(array_types: &[(String, String)]) -> Vec<Rewrite<ArrayLanguage, N>>
+where
+    N: Analysis<ArrayLanguage> + 'static,
+{
+    let mut all_axioms = Vec::new();
+    for (index_sort, value_sort) in array_types {
+        all_axioms.extend(array_axioms_for_type(index_sort, value_sort));
+    }
+    all_axioms
 }
 
 fn not_equal<N>(
@@ -272,125 +456,165 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
             Term::Application {
                 qual_identifier,
                 mut arguments,
-            } => match qual_identifier.get_name().as_str() {
-                "ConstArr-Int-Int" => {
-                    assert!(arguments.len() == 1);
-                    let arg_id = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::ConstArr([arg_id])))
+            } => {
+                let name = qual_identifier.get_name();
+
+                // Check for parameterized array operations (e.g., "Read_BitVec5_BitVec32" or "Read_Int_Array_Int_Int")
+                // Handle these before the match statement
+                if let Some(rest) = name.strip_prefix("ConstArr_") {
+                    // Parse "IndexSort_ValueSort" from the suffix - supports nested like "Int_Array_Int_Int"
+                    let parts: Vec<&str> = rest.split('_').collect();
+                    if parts.len() >= 2 {
+                        let (index_sort, value_sort) = (parts[0], parts[1..].join("_"));
+                        assert!(arguments.len() == 1);
+                        let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
+                        let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
+                        let arg_id = inner(arguments.pop().unwrap(), expr)?;
+                        return Some(expr.add(ArrayLanguage::ConstArrTyped([
+                            index_sort_id,
+                            value_sort_id,
+                            arg_id,
+                        ])));
+                    }
+                } else if let Some(rest) = name.strip_prefix("Write_") {
+                    let parts: Vec<&str> = rest.split('_').collect();
+                    if parts.len() >= 2 {
+                        let (index_sort, value_sort) = (parts[0], parts[1..].join("_"));
+                        assert!(arguments.len() == 3);
+                        let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
+                        let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
+                        // args popped in reverse order
+                        let val = inner(arguments.pop().unwrap(), expr)?;
+                        let idx = inner(arguments.pop().unwrap(), expr)?;
+                        let arr = inner(arguments.pop().unwrap(), expr)?;
+                        return Some(expr.add(ArrayLanguage::WriteTyped([
+                            index_sort_id,
+                            value_sort_id,
+                            arr,
+                            idx,
+                            val,
+                        ])));
+                    }
+                } else if let Some(rest) = name.strip_prefix("Read_") {
+                    let parts: Vec<&str> = rest.split('_').collect();
+                    if parts.len() >= 2 {
+                        let (index_sort, value_sort) = (parts[0], parts[1..].join("_"));
+                        assert!(arguments.len() == 2);
+                        let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
+                        let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
+                        // args popped in reverse order
+                        let idx = inner(arguments.pop().unwrap(), expr)?;
+                        let arr = inner(arguments.pop().unwrap(), expr)?;
+                        return Some(expr.add(ArrayLanguage::ReadTyped([
+                            index_sort_id,
+                            value_sort_id,
+                            arr,
+                            idx,
+                        ])));
+                    }
                 }
-                "Write-Int-Int" => {
-                    assert!(arguments.len() == 3);
-                    // args popped in reverse order
-                    let val = inner(arguments.pop().unwrap(), expr)?;
-                    let idx = inner(arguments.pop().unwrap(), expr)?;
-                    let arr = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Write([arr, idx, val])))
+
+                // Original hardcoded patterns for backward compatibility (Int_Int arrays)
+                match name.as_str() {
+                    "and" => {
+                        let arg_ids = arguments
+                            .into_iter()
+                            .map(|arg| inner(arg, expr))
+                            .collect::<Option<_>>()?;
+                        Some(expr.add(ArrayLanguage::And(arg_ids)))
+                    }
+                    "not" => {
+                        assert!(arguments.len() == 1);
+                        let arg_id = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Not(arg_id)))
+                    }
+                    "or" => {
+                        let arg_ids = arguments
+                            .into_iter()
+                            .map(|arg| inner(arg, expr))
+                            .collect::<Option<_>>()?;
+                        Some(expr.add(ArrayLanguage::Or(arg_ids)))
+                    }
+                    "=>" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Implies([lhs, rhs])))
+                    }
+                    "=" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Eq([lhs, rhs])))
+                    }
+                    ">=" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Geq([lhs, rhs])))
+                    }
+                    ">" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Gt([lhs, rhs])))
+                    }
+                    "<=" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Leq([lhs, rhs])))
+                    }
+                    "<" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Lt([lhs, rhs])))
+                    }
+                    "mod" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Mod([lhs, rhs])))
+                    }
+                    "+" => {
+                        let arg_ids = arguments
+                            .into_iter()
+                            .map(|arg| inner(arg, expr))
+                            .collect::<Option<_>>()?;
+                        Some(expr.add(ArrayLanguage::Plus(arg_ids)))
+                    }
+                    "-" => {
+                        let arg_ids = arguments
+                            .into_iter()
+                            .map(|arg| inner(arg, expr))
+                            .collect::<Option<_>>()?;
+                        Some(expr.add(ArrayLanguage::Negate(arg_ids)))
+                    }
+                    "*" => {
+                        let arg_ids = arguments
+                            .into_iter()
+                            .map(|arg| inner(arg, expr))
+                            .collect::<Option<_>>()?;
+                        Some(expr.add(ArrayLanguage::Times(arg_ids)))
+                    }
+                    "/" => {
+                        assert!(arguments.len() == 2);
+                        // args popped in reverse order
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
+                    }
+                    x => todo!("Unsupported operator: {x}"),
                 }
-                "Read-Int-Int" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let idx = inner(arguments.pop().unwrap(), expr)?;
-                    let arr = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Read([arr, idx])))
-                }
-                "and" => {
-                    let arg_ids = arguments
-                        .into_iter()
-                        .map(|arg| inner(arg, expr))
-                        .collect::<Option<_>>()?;
-                    Some(expr.add(ArrayLanguage::And(arg_ids)))
-                }
-                "not" => {
-                    assert!(arguments.len() == 1);
-                    let arg_id = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Not(arg_id)))
-                }
-                "or" => {
-                    let arg_ids = arguments
-                        .into_iter()
-                        .map(|arg| inner(arg, expr))
-                        .collect::<Option<_>>()?;
-                    Some(expr.add(ArrayLanguage::Or(arg_ids)))
-                }
-                "=>" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Implies([lhs, rhs])))
-                }
-                "=" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Eq([lhs, rhs])))
-                }
-                ">=" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Geq([lhs, rhs])))
-                }
-                ">" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Gt([lhs, rhs])))
-                }
-                "<=" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Leq([lhs, rhs])))
-                }
-                "<" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Lt([lhs, rhs])))
-                }
-                "mod" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Mod([lhs, rhs])))
-                }
-                "+" => {
-                    let arg_ids = arguments
-                        .into_iter()
-                        .map(|arg| inner(arg, expr))
-                        .collect::<Option<_>>()?;
-                    Some(expr.add(ArrayLanguage::Plus(arg_ids)))
-                }
-                "-" => {
-                    let arg_ids = arguments
-                        .into_iter()
-                        .map(|arg| inner(arg, expr))
-                        .collect::<Option<_>>()?;
-                    Some(expr.add(ArrayLanguage::Negate(arg_ids)))
-                }
-                "*" => {
-                    let arg_ids = arguments
-                        .into_iter()
-                        .map(|arg| inner(arg, expr))
-                        .collect::<Option<_>>()?;
-                    Some(expr.add(ArrayLanguage::Times(arg_ids)))
-                }
-                "/" => {
-                    assert!(arguments.len() == 2);
-                    // args popped in reverse order
-                    let rhs = inner(arguments.pop().unwrap(), expr)?;
-                    let lhs = inner(arguments.pop().unwrap(), expr)?;
-                    Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
-                }
-                x => todo!("Unsupported operator: {x}"),
-            },
+            }
             Term::Forall { .. } => None,
             x @ (Term::Let { .. }
             | Term::Exists { .. }
@@ -408,18 +632,58 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
     fn inner(expr: &ArrayExpr, id: egg::Id) -> Term {
         match &expr[id] {
             ArrayLanguage::Num(num) => Term::Constant(Constant::Numeral((*num).into())),
-            ArrayLanguage::ConstArr([x]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("ConstArr-Int-Int"),
-                arguments: vec![inner(expr, *x)],
-            },
-            ArrayLanguage::Write([arr, idx, val]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("Write-Int-Int"),
-                arguments: vec![inner(expr, *arr), inner(expr, *idx), inner(expr, *val)],
-            },
-            ArrayLanguage::Read([arr, idx]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("Read-Int-Int"),
-                arguments: vec![inner(expr, *arr), inner(expr, *idx)],
-            },
+            ArrayLanguage::ConstArrTyped([index_sort, value_sort, x]) => {
+                // Extract sort names from Symbol nodes
+                let index_sort_name = match &expr[*index_sort] {
+                    ArrayLanguage::Symbol(s) => s.as_str(),
+                    _ => "Unknown",
+                };
+                let value_sort_name = match &expr[*value_sort] {
+                    ArrayLanguage::Symbol(s) => s.as_str(),
+                    _ => "Unknown",
+                };
+                let func_name = ArrayLanguage::format_array_op_name(
+                    "ConstArr",
+                    index_sort_name,
+                    value_sort_name,
+                );
+                Term::Application {
+                    qual_identifier: QualIdentifier::simple(func_name),
+                    arguments: vec![inner(expr, *x)],
+                }
+            }
+            ArrayLanguage::WriteTyped([index_sort, value_sort, arr, idx, val]) => {
+                let index_sort_name = match &expr[*index_sort] {
+                    ArrayLanguage::Symbol(s) => s.as_str(),
+                    _ => "Unknown",
+                };
+                let value_sort_name = match &expr[*value_sort] {
+                    ArrayLanguage::Symbol(s) => s.as_str(),
+                    _ => "Unknown",
+                };
+                let func_name =
+                    ArrayLanguage::format_array_op_name("Write", index_sort_name, value_sort_name);
+                Term::Application {
+                    qual_identifier: QualIdentifier::simple(func_name),
+                    arguments: vec![inner(expr, *arr), inner(expr, *idx), inner(expr, *val)],
+                }
+            }
+            ArrayLanguage::ReadTyped([index_sort, value_sort, arr, idx]) => {
+                let index_sort_name = match &expr[*index_sort] {
+                    ArrayLanguage::Symbol(s) => s.as_str(),
+                    _ => "Unknown",
+                };
+                let value_sort_name = match &expr[*value_sort] {
+                    ArrayLanguage::Symbol(s) => s.as_str(),
+                    _ => "Unknown",
+                };
+                let func_name =
+                    ArrayLanguage::format_array_op_name("Read", index_sort_name, value_sort_name);
+                Term::Application {
+                    qual_identifier: QualIdentifier::simple(func_name),
+                    arguments: vec![inner(expr, *arr), inner(expr, *idx)],
+                }
+            }
             ArrayLanguage::And(ids) => Term::Application {
                 qual_identifier: QualIdentifier::simple("and"),
                 arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
@@ -500,12 +764,15 @@ mod test {
     fn test_conditional_axioms0() {
         init();
         let expr: RecExpr<ArrayLanguage> =
-            "(Read-Int-Int (Write-Int-Int A 0 0) 1)".parse().unwrap();
+            "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
         let runner = Runner::default()
             .with_expr(&expr)
-            .run(&array_axioms::<()>());
+            .run(&array_axioms_with_types::<()>(&[(
+                "Int".into(),
+                "Int".into(),
+            )]));
 
-        let gold: RecExpr<ArrayLanguage> = "(Read-Int-Int A 1)".parse().unwrap();
+        let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 1)".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_some())
     }
 
@@ -513,12 +780,14 @@ mod test {
     fn test_conditional_axioms1() {
         init();
         let expr: RecExpr<ArrayLanguage> =
-            "(Read-Int-Int (Write-Int-Int A 0 0) 0)".parse().unwrap();
+            "(Read Int Int (Write Int Int A 0 0) 0)".parse().unwrap();
         let runner = Runner::default()
             .with_expr(&expr)
-            .run(&array_axioms::<()>());
-
-        let gold: RecExpr<ArrayLanguage> = "(Read-Int-Int A 0)".parse().unwrap();
+            .run(&array_axioms_with_types::<()>(&[(
+                "Int".into(),
+                "Int".into(),
+            )]));
+        let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 0)".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_none())
     }
 
@@ -526,7 +795,7 @@ mod test {
     // fn test_conditional_axioms0_with_scheduluer() {
     //     init();
     //     let expr: RecExpr<ArrayLanguage> =
-    //         "(Read-Int-Int (Write-Int-Int A 0 0) 1)".parse().unwrap();
+    //         "(Read_Int_Int (Write_Int_Int A 0 0) 1)".parse().unwrap();
 
     //     let scheduler = ConflictScheduler::new(BackoffScheduler::default());
     //     let instantiations = scheduler.instantiations();
@@ -543,7 +812,7 @@ mod test {
     // fn test_conditional_axioms1_with_scheduler() {
     //     init();
     //     let expr: RecExpr<ArrayLanguage> =
-    //         "(Read-Int-Int (Write-Int-Int A 0 0) 0)".parse().unwrap();
+    //         "(Read_Int_Int (Write_Int_Int A 0 0) 0)".parse().unwrap();
     //     let scheduler = ConflictScheduler::new(BackoffScheduler::default());
     //     let instantiations = scheduler.instantiations_w_constants();
     //     let const_instantiations = scheduler.instantiations_w_constants();
