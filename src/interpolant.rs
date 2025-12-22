@@ -53,6 +53,7 @@ fn simplify_smtinterpol_interpolant(interpolant: String) -> String {
 }
 
 define_language! {
+    // TODO: make fully typed
     pub enum ArrayInterpolantLanguage {
         Num(i64),
         "ConstArr_Int_Int" = ConstArr([Id; 1]),
