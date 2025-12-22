@@ -130,8 +130,23 @@ impl Z3VarContext {
                     "Int" => z3::Sort::int(),
                     _ => z3::Sort::uninterpreted(z3::Symbol::String(symbol.0.clone())),
                 },
-                smt2parser::concrete::Identifier::Indexed { symbol, indices: _ } => {
-                    todo!("Must implement indexed sort: {}", symbol)
+                smt2parser::concrete::Identifier::Indexed { symbol, indices } => {
+                    // Handle indexed sorts like (_ BitVec 32)
+                    if symbol.0 == "BitVec" {
+                        // Extract the bit width from the indices
+                        if let Some(smt2parser::visitors::Index::Numeral(width)) = indices.first() {
+                            // Convert BigUint to u32 by parsing through string
+                            // (simpler than dealing with num crate conversions)
+                            let width_str = width.to_string();
+                            let width_u32: u32 =
+                                width_str.parse().expect("BitVec width must be a valid u32");
+                            z3::Sort::bitvector(width_u32)
+                        } else {
+                            panic!("BitVec sort must have a numeral width");
+                        }
+                    } else {
+                        todo!("Must implement indexed sort: {}", symbol)
+                    }
                 }
             },
             smt2parser::concrete::Sort::Parameterized {
