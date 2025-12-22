@@ -22,7 +22,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayPreferRead {
         C: FnMut(egg::Id) -> Self::Cost,
     {
         let op_cost = match enode {
-            ArrayLanguage::Read(_) => 0,
+            ArrayLanguage::ReadTyped(_) => 0,
             _ => 20,
         };
 
