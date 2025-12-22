@@ -15,21 +15,29 @@ use super::{ProofAction, ProofStrategy};
 
 pub struct AbstractArrayWithQuantifiers {
     run_ic3ia: bool,
+    discovered_array_types: Vec<(String, String)>,
 }
 
 impl AbstractArrayWithQuantifiers {
     pub fn new(run_ic3ia: bool) -> Self {
-        Self { run_ic3ia }
+        Self {
+            run_ic3ia,
+            discovered_array_types: vec![],
+        }
     }
 }
 
 impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
-        Box::new(ArrayWithQuantifiersTheorySupport)
+        Box::new(ArrayWithQuantifiersTheorySupport::new(
+            self.discovered_array_types.clone(),
+        ))
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        self.get_theory_support().abstract_model(model)
+        let (model, types) = self.get_theory_support().abstract_model(model);
+        self.discovered_array_types = types;
+        model
     }
 
     fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
@@ -38,6 +46,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             egraph: egg::EGraph::default(),
             instantiations: vec![],
             const_instantiations: vec![],
+            array_types: vec![],
         })
     }
 

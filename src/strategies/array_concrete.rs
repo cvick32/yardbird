@@ -33,6 +33,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
             egraph: egg::EGraph::default(),
             instantiations: vec![],
             const_instantiations: vec![],
+            array_types: vec![],
         })
     }
 

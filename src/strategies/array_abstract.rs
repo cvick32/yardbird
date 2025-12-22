@@ -10,10 +10,14 @@ use crate::{
     analysis::SaturationInequalities,
     cost_functions::YardbirdCostFunction,
     driver::{self},
-    egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     smt_problem::SMTProblem,
-    theories::array::array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
+    theories::array::{
+        array_axioms::{
+            expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
+        },
+        array_conflict_scheduler::preprocess_array_expr,
+    },
     theory_support::{ArrayTheorySupport, TheorySupport},
     ProofLoopResult,
 };
@@ -29,6 +33,7 @@ where
     _bmc_depth: u16,
     run_ic3ia: bool,
     cost_fn_factory: fn(&SMTProblem, u32) -> F,
+    discovered_array_types: Vec<(String, String)>,
 }
 
 impl<F> Abstract<F>
@@ -45,6 +50,7 @@ where
             run_ic3ia,
             const_instantiations: vec![],
             cost_fn_factory,
+            discovered_array_types: vec![],
         }
     }
 }
@@ -55,6 +61,7 @@ pub struct ArrayRefinementState {
     pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
     pub instantiations: Vec<ArrayExpr>,
     pub const_instantiations: Vec<ArrayExpr>,
+    pub array_types: Vec<(String, String)>,
 }
 
 impl ArrayRefinementState {
@@ -66,8 +73,10 @@ impl ArrayRefinementState {
         for term in smt.get_all_subterms() {
             let z3_term = smt.rewrite_term(term);
             let model_interp = smt.get_interpretation(model, &z3_term);
+            let interp_str = model_interp.to_string();
             let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
-            let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
+            let preprocessed = preprocess_array_expr(&interp_str);
+            let interp_id = self.egraph.add_expr(&preprocessed.parse()?);
             self.egraph.union(term_id, interp_id);
         }
         self.egraph.rebuild();
@@ -80,11 +89,13 @@ where
     F: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
-        Box::new(ArrayTheorySupport)
+        Box::new(ArrayTheorySupport::new(self.discovered_array_types.clone()))
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        self.get_theory_support().abstract_model(model)
+        let (abstracted_model, discovered_types) = model.abstract_array_theory();
+        self.discovered_array_types = discovered_types;
+        abstracted_model
         //     .abstract_constants_over(self.bmc_depth)
     }
 
@@ -95,6 +106,7 @@ where
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
+            array_types: self.discovered_array_types.clone(),
         })
     }
 
@@ -119,7 +131,12 @@ where
         };
         state.update_with_subterms(model, smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
-        let (insts, const_insts) = state.egraph.saturate(cost_fn, refinement_step);
+        let (insts, const_insts) = saturate_with_array_types(
+            &mut state.egraph,
+            cost_fn,
+            refinement_step,
+            &state.array_types,
+        );
         state.instantiations.extend_from_slice(&insts);
         state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)
@@ -127,14 +144,23 @@ where
 
     #[allow(clippy::unnecessary_fold)]
     fn finish(&mut self, state: ArrayRefinementState, smt: &mut SMTProblem) -> driver::Result<()> {
+        let const_terms: Vec<Term> = state
+            .const_instantiations
+            .iter()
+            .map(|inst| expr_to_term(inst.clone()))
+            .collect();
+        let variables = smt.variables.clone();
+        for term in &const_terms {
+            if let Some(inst) =
+                UnquantifiedInstantiator::rewrite_unquantified(term.clone(), variables.clone())
+            {
+                smt.add_instantiation(inst);
+            }
+        }
         self.const_instantiations
             .extend(state.const_instantiations.into_iter().map(expr_to_term));
 
-        let terms: Vec<Term> = state
-            .instantiations
-            .into_iter()
-            .flat_map(|inst| inst.to_string().parse())
-            .collect();
+        let terms: Vec<Term> = state.instantiations.into_iter().map(expr_to_term).collect();
         let variables = smt.variables.clone();
         let _ = terms
             .into_iter()
