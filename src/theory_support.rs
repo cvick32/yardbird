@@ -255,7 +255,6 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
         true
     }
 
-    // TODO: generate axioms for all types
     fn get_axiom_formulas(&self) -> Vec<Command> {
         let mut axioms = Vec::new();
 
@@ -697,5 +696,152 @@ mod tests {
 
         let update_nth_func = functions.iter().find(|f| f.name == "update-nth").unwrap();
         assert_eq!(update_nth_func.arg_sorts.len(), 3); // ListInt, Int, Int
+    }
+
+    #[test]
+    fn test_array_axioms_int_int() {
+        let theory = ArrayWithQuantifiersTheorySupport::new(vec![("Int".into(), "Int".into())]);
+        let axioms = theory.get_axiom_formulas();
+
+        // Should generate 3 axioms for 1 type
+        assert_eq!(axioms.len(), 3);
+
+        // Verify each axiom is an Assert command with Forall
+        for axiom in &axioms {
+            match axiom {
+                Command::Assert { term } => match term {
+                    Term::Forall { .. } => {} // Good
+                    _ => panic!("Expected Forall term in axiom"),
+                },
+                _ => panic!("Expected Assert command"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_array_axioms_bitvec() {
+        let theory =
+            ArrayWithQuantifiersTheorySupport::new(vec![("BitVec32".into(), "Int".into())]);
+        let axioms = theory.get_axiom_formulas();
+
+        // Should generate 3 axioms for BitVec32 -> Int arrays
+        assert_eq!(axioms.len(), 3);
+
+        let axiom_strings: Vec<String> = axioms.iter().map(|cmd| format!("{:?}", cmd)).collect();
+
+        for axiom_str in &axiom_strings {
+            assert!(
+                axiom_str.contains("Read_BitVec32_Int"),
+                "Axiom should contain Read_BitVec32_Int function"
+            );
+        }
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Write_BitVec32_Int")),
+            "At least one axiom should contain Write_BitVec32_Int"
+        );
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("ConstArr_BitVec32_Int")),
+            "At least one axiom should contain ConstArr_BitVec32_Int"
+        );
+    }
+
+    #[test]
+    fn test_array_axioms_nested_arrays() {
+        let theory =
+            ArrayWithQuantifiersTheorySupport::new(vec![("Int".into(), "Array_Int_Int".into())]);
+        let axioms = theory.get_axiom_formulas();
+
+        // Should generate 3 axioms for nested arrays
+        assert_eq!(axioms.len(), 3);
+
+        let axiom_strings: Vec<String> = axioms.iter().map(|cmd| format!("{:?}", cmd)).collect();
+
+        for axiom_str in &axiom_strings {
+            assert!(
+                axiom_str.contains("Read_Int_Array_Int_Int"),
+                "Axiom should contain Read_Int_Array_Int_Int function for nested arrays"
+            );
+        }
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Write_Int_Array_Int_Int")),
+            "Should have Write_Int_Array_Int_Int for nested arrays"
+        );
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("ConstArr_Int_Array_Int_Int")),
+            "Should have ConstArr_Int_Array_Int_Int for nested arrays"
+        );
+
+        // Verify the array sort type is correct
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Array_Int_Array_Int_Int")),
+            "Should reference Array_Int_Array_Int_Int sort"
+        );
+    }
+
+    #[test]
+    fn test_array_axioms_multiple_types() {
+        let theory = ArrayWithQuantifiersTheorySupport::new(vec![
+            ("Int".into(), "Int".into()),
+            ("BitVec32".into(), "Int".into()),
+            ("Int".into(), "Array_Int_Int".into()),
+        ]);
+        let axioms = theory.get_axiom_formulas();
+
+        assert_eq!(axioms.len(), 9);
+
+        let axiom_strings: Vec<String> = axioms.iter().map(|cmd| format!("{:?}", cmd)).collect();
+
+        assert!(
+            axiom_strings.iter().any(|s| s.contains("Read_Int_Int")),
+            "Should have Int_Int axioms"
+        );
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Read_BitVec32_Int")),
+            "Should have BitVec32_Int axioms"
+        );
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Read_Int_Array_Int_Int")),
+            "Should have nested array axioms"
+        );
+    }
+
+    #[test]
+    fn test_sort_from_string_helper() {
+        // Test the helper function creates correct sorts
+        let int_sort = sort_from_string("Int");
+        assert_eq!(
+            format!("{:?}", int_sort),
+            "Simple { identifier: Simple { symbol: Symbol(\"Int\") } }"
+        );
+
+        let bitvec_sort = sort_from_string("BitVec32");
+        assert_eq!(
+            format!("{:?}", bitvec_sort),
+            "Simple { identifier: Simple { symbol: Symbol(\"BitVec32\") } }"
+        );
+
+        let nested_sort = sort_from_string("Array_Int_Int");
+        assert_eq!(
+            format!("{:?}", nested_sort),
+            "Simple { identifier: Simple { symbol: Symbol(\"Array_Int_Int\") } }"
+        );
     }
 }
