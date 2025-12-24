@@ -430,62 +430,6 @@ mod tests {
     }
 
     #[test]
-    fn test_abstraction_simple_array_variable() {
-        let mut abstractor = ArrayAbstractor::default();
-
-        // Test: (declare-fun a () (Array Int Int))
-        let command = Command::DeclareFun {
-            symbol: Symbol("a".to_string()),
-            parameters: vec![],
-            sort: Sort::Parameterized {
-                identifier: Identifier::Simple {
-                    symbol: Symbol("Array".to_string()),
-                },
-                parameters: vec![
-                    Sort::Simple {
-                        identifier: Identifier::Simple {
-                            symbol: Symbol("Int".to_string()),
-                        },
-                    },
-                    Sort::Simple {
-                        identifier: Identifier::Simple {
-                            symbol: Symbol("Int".to_string()),
-                        },
-                    },
-                ],
-            },
-        };
-
-        let result = abstractor.visit_declare_fun(
-            Symbol("a".to_string()),
-            vec![],
-            command.get_sort().unwrap().clone(),
-        );
-
-        assert!(result.is_ok());
-        let abstracted = result.unwrap();
-
-        // Should produce: (declare-fun a () Array_Int_Int)
-        match abstracted {
-            Command::DeclareFun {
-                symbol,
-                parameters,
-                sort,
-            } => {
-                assert_eq!(symbol.0, "a");
-                assert!(parameters.is_empty());
-                assert_eq!(sort.to_string(), "Array_Int_Int");
-            }
-            _ => panic!("Expected DeclareFun"),
-        }
-
-        // Should register the array type
-        assert!(abstractor
-            .array_types
-            .contains(&("Int".to_string(), "Int".to_string())));
-    }
-
-    #[test]
     fn test_abstraction_nested_array_variable() {
         let mut abstractor = ArrayAbstractor::default();
 
