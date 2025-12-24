@@ -23,7 +23,6 @@ use crate::{
     strategies::ListRefinementState,
 };
 
-pub mod analysis;
 pub mod baml_client;
 pub mod cost_functions;
 mod driver;

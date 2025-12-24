@@ -7,7 +7,6 @@ use smt2parser::{
 };
 
 use crate::{
-    analysis::SaturationInequalities,
     cost_functions::YardbirdCostFunction,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
@@ -58,7 +57,7 @@ where
 /// State for the inner refinement looop
 pub struct ArrayRefinementState {
     pub depth: u16,
-    pub egraph: egg::EGraph<ArrayLanguage, SaturationInequalities>,
+    pub egraph: egg::EGraph<ArrayLanguage, ()>,
     pub instantiations: Vec<ArrayExpr>,
     pub const_instantiations: Vec<ArrayExpr>,
     pub array_types: Vec<(String, String)>,
@@ -100,7 +99,7 @@ where
     }
 
     fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
-        let egraph = egg::EGraph::new(SaturationInequalities);
+        let egraph = egg::EGraph::new(());
         Ok(ArrayRefinementState {
             depth,
             egraph,

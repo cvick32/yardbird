@@ -7,7 +7,6 @@ use smt2parser::{
 };
 
 use crate::{
-    analysis::SaturationInequalities,
     cost_functions::YardbirdCostFunction,
     driver::{self},
     egg_utils::Saturate,
@@ -51,7 +50,7 @@ where
 
 pub struct ListRefinementState {
     pub depth: u16,
-    pub egraph: egg::EGraph<ListLanguage, SaturationInequalities>,
+    pub egraph: egg::EGraph<ListLanguage, ()>,
     pub instantiations: Vec<ListExpr>,
     pub const_instantiations: Vec<ListExpr>,
 }
@@ -88,8 +87,7 @@ where
     }
 
     fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ListRefinementState> {
-        use crate::analysis::SaturationInequalities;
-        let egraph = egg::EGraph::new(SaturationInequalities);
+        let egraph = egg::EGraph::new(());
         Ok(ListRefinementState {
             depth,
             egraph,
