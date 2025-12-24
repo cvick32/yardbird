@@ -82,27 +82,22 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
                     50
                 }
             }
-            ArrayLanguage::ConstArr(_) => 0,
-
-            // Key change: penalize Write operations, but keep base cost low
-            ArrayLanguage::Write(_) => {
+            ArrayLanguage::ConstArrTyped(_) => 0,
+            ArrayLanguage::WriteTyped(_) => {
                 if self.depth > 2 {
                     10 + ((self.depth - 2) * 5) // Penalize nested writes strongly
                 } else {
                     3 // Base write cost - keep low for simple writes
                 }
             }
-
             // Penalize Read operations that are nested
-            ArrayLanguage::Read(_) => {
+            ArrayLanguage::ReadTyped(_) => {
                 if self.depth > 2 {
                     8 + ((self.depth - 2) * 3) // Penalize nested reads
                 } else {
                     2 // Base read cost - keep low for simple reads
                 }
             }
-
-            // Logical operations - keep cheap
             ArrayLanguage::And(_) => 1,
             ArrayLanguage::Not(_) => 1,
             ArrayLanguage::Or(_) => 1,

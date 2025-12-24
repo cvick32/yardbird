@@ -21,27 +21,10 @@ pub trait Problem: Clone + std::fmt::Debug {
     /// Returns all commands that make up this problem
     /// Used for model transformation and abstraction
     fn as_commands(&self) -> Vec<Command>;
-}
 
-/// Trait for problems that support bounded model checking with unrolling
-/// VMT problems implement this; SMTLIB problems do not
-pub trait UnrollableProblem: Problem {
-    /// Get the initial condition term
-    fn get_initial_condition(&self) -> Term;
+    fn check(&mut self) -> z3::SatResult;
 
-    /// Get the transition relation term
-    fn get_transition_condition(&self) -> Term;
+    fn unroll(&mut self, depth: u16);
 
-    /// Get the property to verify (negated for counterexample search)
-    fn get_property_condition(&self) -> Term;
-
-    /// Returns the names of all current state variables
-    fn get_all_current_variable_names(&self) -> Vec<String>;
-
-    /// Returns mapping from next-state variable names to current-state names
-    fn get_next_to_current_variable_names(&self) -> std::collections::HashMap<String, String>;
-
-    /// Add a quantifier instantiation to the model
-    /// Returns true if successful
-    fn add_instantiation(&mut self, term: &Term) -> bool;
+    fn add_instantiation(&self, term: &Term);
 }

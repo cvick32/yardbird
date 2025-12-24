@@ -53,11 +53,12 @@ fn simplify_smtinterpol_interpolant(interpolant: String) -> String {
 }
 
 define_language! {
+    // TODO: make fully typed
     pub enum ArrayInterpolantLanguage {
         Num(i64),
-        "ConstArr-Int-Int" = ConstArr([Id; 1]),
-        "Write-Int-Int" = Write([Id; 3]),
-        "Read-Int-Int" = Read([Id; 2]),
+        "ConstArr_Int_Int" = ConstArr([Id; 1]),
+        "Read_Int_Int" = Write([Id; 3]),
+        "Read_Int_Int" = Read([Id; 2]),
         "and" = And(Box<[Id]>),
         "not" = Not(Id),
         "or" = Or(Box<[Id]>),
@@ -88,10 +89,10 @@ fn interpolant_rewrites() -> Vec<Rewrite<ArrayInterpolantLanguage, ()>> {
         rewrite!("def-gt"; "(> ?a ?a)" => "false"),
         rewrite!("def-lte"; "(<= ?a ?a)" => "true"),
         rewrite!("def-gte"; "(>= ?a ?a)" => "true"),
-        rewrite!("constant-array"; "(Read-Int-Int (ConstArr-Int-Int ?a) ?b)" => "?a"),
-        rewrite!("read-after-write"; "(Read-Int-Int (Write-Int-Int ?a ?idx ?val) ?idx)" => "?val"),
+        rewrite!("constant-array"; "(Read_Int_Int (ConstArr_Int_Int ?a) ?b)" => "?a"),
+        rewrite!("read-after-write"; "(Read_Int_Int (Read_Int_Int ?a ?idx ?val) ?idx)" => "?val"),
         rewrite!(
-            "write-does-not-overwrite"; "(Read-Int-Int (Write-Int-Int ?a ?idx ?val) ?c)" => "(Read-Int-Int ?a ?c)" if not_equal("?idx", "?c")
+            "write-does-not-overwrite"; "(Read_Int_Int (Read_Int_Int ?a ?idx ?val) ?c)" => "(Read_Int_Int ?a ?c)" if not_equal("?idx", "?c")
         ),
     ]
 }

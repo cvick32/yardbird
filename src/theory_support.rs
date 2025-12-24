@@ -15,7 +15,7 @@ pub trait TheorySupport {
     fn get_logic_string(&self) -> String;
 
     /// Abstracts the VMT model for this theory (replaces theory-specific operations with uninterpreted functions)
-    fn abstract_model(&self, model: VMTModel) -> VMTModel;
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>);
 
     /// Returns true if this theory requires abstraction
     fn requires_abstraction(&self) -> bool;
@@ -125,10 +125,10 @@ impl TheorySupport for ListTheorySupport {
         "QF_LIA".to_string() // Quantifier-free linear integer arithmetic + uninterpreted functions
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
         // For now, we don't need to abstract the model for lists since we're declaring them as uninterpreted
         // In the future, we could implement a ListAbstractor similar to ArrayAbstractor
-        model
+        model.abstract_array_theory()
     }
 
     fn requires_abstraction(&self) -> bool {
@@ -143,49 +143,78 @@ impl TheorySupport for ListTheorySupport {
 pub fn array_sort(index_sort: &str, element_sort: &str) -> Sort {
     Sort::Simple {
         identifier: Identifier::Simple {
-            symbol: Symbol(format!("Array-{}-{}", index_sort, element_sort)),
+            symbol: Symbol(format!("Array_{}_{}", index_sort, element_sort)),
         },
     }
 }
 
-/// Theory support for array operations (existing behavior)
 #[derive(Clone)]
-pub struct ArrayTheorySupport;
+pub struct ArrayTheorySupport {
+    /// Set of (index_sort, value_sort) pairs discovered during abstraction
+    pub array_types: Vec<(String, String)>,
+}
+
+impl ArrayTheorySupport {
+    pub fn new(array_types: Vec<(String, String)>) -> Self {
+        Self { array_types }
+    }
+}
+
+pub fn get_uninterpreted_array_functions(
+    array_types: &[(String, String)],
+) -> Vec<FunctionDeclaration> {
+    let mut functions = Vec::new();
+
+    // Generate functions for each discovered array type
+    for (index_sort, value_sort) in array_types {
+        let array_sort_type = array_sort(index_sort, value_sort);
+        let index_sort_type = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol(index_sort.clone()),
+            },
+        };
+        let value_sort_type = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol(value_sort.clone()),
+            },
+        };
+
+        functions.push(FunctionDeclaration::new(
+            format!("Read_{}_{}", index_sort, value_sort),
+            vec![array_sort_type.clone(), index_sort_type.clone()],
+            value_sort_type.clone(),
+        ));
+
+        functions.push(FunctionDeclaration::new(
+            format!("Write_{}_{}", index_sort, value_sort),
+            vec![
+                array_sort_type.clone(),
+                index_sort_type.clone(),
+                value_sort_type.clone(),
+            ],
+            array_sort_type.clone(),
+        ));
+
+        functions.push(FunctionDeclaration::new(
+            format!("ConstArr_{}_{}", index_sort, value_sort),
+            vec![value_sort_type],
+            array_sort_type,
+        ));
+    }
+
+    functions
+}
 
 impl TheorySupport for ArrayTheorySupport {
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
-        let array_int_int_sort = array_sort("Int", "Int");
-        let int_sort = int_sort();
-
-        vec![
-            // Array operations that get abstracted to uninterpreted functions
-            FunctionDeclaration::new(
-                "Read-Int-Int",
-                vec![array_int_int_sort.clone(), int_sort.clone()],
-                int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "Write-Int-Int",
-                vec![
-                    array_int_int_sort.clone(),
-                    int_sort.clone(),
-                    int_sort.clone(),
-                ],
-                array_int_int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "ConstArr-Int-Int",
-                vec![int_sort.clone()],
-                array_int_int_sort.clone(),
-            ),
-        ]
+        get_uninterpreted_array_functions(&self.array_types)
     }
 
     fn get_logic_string(&self) -> String {
         "UFLIA".to_string()
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
         model.abstract_array_theory()
     }
 
@@ -199,42 +228,26 @@ impl TheorySupport for ArrayTheorySupport {
 }
 
 #[derive(Clone)]
-pub struct ArrayWithQuantifiersTheorySupport;
+pub struct ArrayWithQuantifiersTheorySupport {
+    pub array_types: Vec<(String, String)>,
+}
+
+impl ArrayWithQuantifiersTheorySupport {
+    pub fn new(array_types: Vec<(String, String)>) -> Self {
+        Self { array_types }
+    }
+}
 
 impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
-        let array_int_int_sort = array_sort("Int", "Int");
-        let int_sort = int_sort();
-
-        vec![
-            // Array operations that get abstracted to uninterpreted functions
-            FunctionDeclaration::new(
-                "Read-Int-Int",
-                vec![array_int_int_sort.clone(), int_sort.clone()],
-                int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "Write-Int-Int",
-                vec![
-                    array_int_int_sort.clone(),
-                    int_sort.clone(),
-                    int_sort.clone(),
-                ],
-                array_int_int_sort.clone(),
-            ),
-            FunctionDeclaration::new(
-                "ConstArr-Int-Int",
-                vec![int_sort.clone()],
-                array_int_int_sort.clone(),
-            ),
-        ]
+        get_uninterpreted_array_functions(&self.array_types)
     }
 
     fn get_logic_string(&self) -> String {
         "UFLIA".into()
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
         model.abstract_array_theory()
     }
 
@@ -243,199 +256,88 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     }
 
     fn get_axiom_formulas(&self) -> Vec<Command> {
-        let array_int_int_sort = array_sort("Int", "Int");
-        let int_sort = int_sort();
+        let mut axioms = Vec::new();
 
-        vec![
-            // Axiom 1: Read-after-write (same index)
-            // forall ((a (Array Int Int)) (i Int) (j Int) (v Int))
-            //   (=> (= i j) (= (select (store a i v) j) v))
-            Command::Assert {
-                term: Term::Forall {
-                    vars: vec![
-                        (Symbol("a".to_string()), array_int_int_sort.clone()),
-                        (Symbol("i".to_string()), int_sort.clone()),
-                        (Symbol("j".to_string()), int_sort.clone()),
-                        (Symbol("v".to_string()), int_sort.clone()),
-                    ],
-                    term: Box::new(Term::Application {
-                        qual_identifier: QualIdentifier::Simple {
-                            identifier: Identifier::Simple {
-                                symbol: Symbol("=>".to_string()),
-                            },
-                        },
-                        arguments: vec![
-                            // Condition: (= i j)
-                            Term::Application {
-                                qual_identifier: QualIdentifier::Simple {
-                                    identifier: Identifier::Simple {
-                                        symbol: Symbol("=".to_string()),
-                                    },
-                                },
-                                arguments: vec![
-                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                        identifier: Identifier::Simple {
-                                            symbol: Symbol("i".to_string()),
-                                        },
-                                    }),
-                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                        identifier: Identifier::Simple {
-                                            symbol: Symbol("j".to_string()),
-                                        },
-                                    }),
-                                ],
-                            },
-                            // Consequence: (= (select (store a i v) j) v)
-                            Term::Application {
-                                qual_identifier: QualIdentifier::Simple {
-                                    identifier: Identifier::Simple {
-                                        symbol: Symbol("=".to_string()),
-                                    },
-                                },
-                                arguments: vec![
-                                    Term::Application {
-                                        qual_identifier: QualIdentifier::Simple {
-                                            identifier: Identifier::Simple {
-                                                symbol: Symbol("Read-Int-Int".to_string()),
-                                            },
-                                        },
-                                        arguments: vec![
-                                            Term::Application {
-                                                qual_identifier: QualIdentifier::Simple {
-                                                    identifier: Identifier::Simple {
-                                                        symbol: Symbol("Write-Int-Int".to_string()),
-                                                    },
-                                                },
-                                                arguments: vec![
-                                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                                        identifier: Identifier::Simple {
-                                                            symbol: Symbol("a".to_string()),
-                                                        },
-                                                    }),
-                                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                                        identifier: Identifier::Simple {
-                                                            symbol: Symbol("i".to_string()),
-                                                        },
-                                                    }),
-                                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                                        identifier: Identifier::Simple {
-                                                            symbol: Symbol("v".to_string()),
-                                                        },
-                                                    }),
-                                                ],
-                                            },
-                                            Term::QualIdentifier(QualIdentifier::Simple {
-                                                identifier: Identifier::Simple {
-                                                    symbol: Symbol("j".to_string()),
-                                                },
-                                            }),
-                                        ],
-                                    },
-                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                        identifier: Identifier::Simple {
-                                            symbol: Symbol("v".to_string()),
-                                        },
-                                    }),
-                                ],
-                            },
-                        ],
-                    }),
+        for (index_sort, value_sort) in &self.array_types {
+            axioms.push(generate_read_after_write_axiom(index_sort, value_sort));
+            axioms.push(generate_write_preserves_other_axiom(index_sort, value_sort));
+            axioms.push(generate_const_array_axiom(index_sort, value_sort));
+        }
+
+        axioms
+    }
+}
+
+fn sort_from_string(name: &str) -> Sort {
+    Sort::Simple {
+        identifier: Identifier::Simple {
+            symbol: Symbol(name.to_string()),
+        },
+    }
+}
+
+fn generate_read_after_write_axiom(index_sort: &str, value_sort: &str) -> Command {
+    let array_sort = sort_from_string(&format!("Array_{}_{}", index_sort, value_sort));
+    let idx_sort = sort_from_string(index_sort);
+    let val_sort = sort_from_string(value_sort);
+
+    let read_fn = format!("Read_{}_{}", index_sort, value_sort);
+    let write_fn = format!("Write_{}_{}", index_sort, value_sort);
+
+    Command::Assert {
+        term: Term::Forall {
+            vars: vec![
+                (Symbol("a".to_string()), array_sort.clone()),
+                (Symbol("i".to_string()), idx_sort.clone()),
+                (Symbol("j".to_string()), idx_sort.clone()),
+                (Symbol("v".to_string()), val_sort.clone()),
+            ],
+            term: Box::new(Term::Application {
+                qual_identifier: QualIdentifier::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("=>".to_string()),
+                    },
                 },
-            },
-            // Axiom 2: Write-does-not-overwrite (different indices)
-            // forall ((a (Array Int Int)) (i Int) (j Int) (v Int))
-            //   (=> (not (= i j))
-            //       (= (select (store a i v) j) (select a j)))
-            Command::Assert {
-                term: Term::Forall {
-                    vars: vec![
-                        (Symbol("a".to_string()), array_int_int_sort.clone()),
-                        (Symbol("i".to_string()), int_sort.clone()),
-                        (Symbol("j".to_string()), int_sort.clone()),
-                        (Symbol("v".to_string()), int_sort.clone()),
-                    ],
-                    term: Box::new(Term::Application {
+                arguments: vec![
+                    // Condition: (= i j)
+                    Term::Application {
                         qual_identifier: QualIdentifier::Simple {
                             identifier: Identifier::Simple {
-                                symbol: Symbol("=>".to_string()),
+                                symbol: Symbol("=".to_string()),
+                            },
+                        },
+                        arguments: vec![
+                            Term::QualIdentifier(QualIdentifier::Simple {
+                                identifier: Identifier::Simple {
+                                    symbol: Symbol("i".to_string()),
+                                },
+                            }),
+                            Term::QualIdentifier(QualIdentifier::Simple {
+                                identifier: Identifier::Simple {
+                                    symbol: Symbol("j".to_string()),
+                                },
+                            }),
+                        ],
+                    },
+                    // Consequence: (= (select (store a i v) j) v)
+                    Term::Application {
+                        qual_identifier: QualIdentifier::Simple {
+                            identifier: Identifier::Simple {
+                                symbol: Symbol("=".to_string()),
                             },
                         },
                         arguments: vec![
                             Term::Application {
                                 qual_identifier: QualIdentifier::Simple {
                                     identifier: Identifier::Simple {
-                                        symbol: Symbol("not".to_string()),
-                                    },
-                                },
-                                arguments: vec![Term::Application {
-                                    qual_identifier: QualIdentifier::Simple {
-                                        identifier: Identifier::Simple {
-                                            symbol: Symbol("=".to_string()),
-                                        },
-                                    },
-                                    arguments: vec![
-                                        Term::QualIdentifier(QualIdentifier::Simple {
-                                            identifier: Identifier::Simple {
-                                                symbol: Symbol("i".to_string()),
-                                            },
-                                        }),
-                                        Term::QualIdentifier(QualIdentifier::Simple {
-                                            identifier: Identifier::Simple {
-                                                symbol: Symbol("j".to_string()),
-                                            },
-                                        }),
-                                    ],
-                                }],
-                            },
-                            Term::Application {
-                                qual_identifier: QualIdentifier::Simple {
-                                    identifier: Identifier::Simple {
-                                        symbol: Symbol("=".to_string()),
+                                        symbol: Symbol(read_fn.clone()),
                                     },
                                 },
                                 arguments: vec![
                                     Term::Application {
                                         qual_identifier: QualIdentifier::Simple {
                                             identifier: Identifier::Simple {
-                                                symbol: Symbol("Read-Int-Int".to_string()),
-                                            },
-                                        },
-                                        arguments: vec![
-                                            Term::Application {
-                                                qual_identifier: QualIdentifier::Simple {
-                                                    identifier: Identifier::Simple {
-                                                        symbol: Symbol("Write-Int-Int".to_string()),
-                                                    },
-                                                },
-                                                arguments: vec![
-                                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                                        identifier: Identifier::Simple {
-                                                            symbol: Symbol("a".to_string()),
-                                                        },
-                                                    }),
-                                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                                        identifier: Identifier::Simple {
-                                                            symbol: Symbol("i".to_string()),
-                                                        },
-                                                    }),
-                                                    Term::QualIdentifier(QualIdentifier::Simple {
-                                                        identifier: Identifier::Simple {
-                                                            symbol: Symbol("v".to_string()),
-                                                        },
-                                                    }),
-                                                ],
-                                            },
-                                            Term::QualIdentifier(QualIdentifier::Simple {
-                                                identifier: Identifier::Simple {
-                                                    symbol: Symbol("j".to_string()),
-                                                },
-                                            }),
-                                        ],
-                                    },
-                                    Term::Application {
-                                        qual_identifier: QualIdentifier::Simple {
-                                            identifier: Identifier::Simple {
-                                                symbol: Symbol("Read-Int-Int".to_string()),
+                                                symbol: Symbol(write_fn),
                                             },
                                         },
                                         arguments: vec![
@@ -446,57 +348,19 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
                                             }),
                                             Term::QualIdentifier(QualIdentifier::Simple {
                                                 identifier: Identifier::Simple {
-                                                    symbol: Symbol("j".to_string()),
+                                                    symbol: Symbol("i".to_string()),
+                                                },
+                                            }),
+                                            Term::QualIdentifier(QualIdentifier::Simple {
+                                                identifier: Identifier::Simple {
+                                                    symbol: Symbol("v".to_string()),
                                                 },
                                             }),
                                         ],
                                     },
-                                ],
-                            },
-                        ],
-                    }),
-                },
-            },
-            // Axiom 3: Constant array
-            // forall ((v Int) (i Int))
-            //   (= (select (const v) i) v)
-            Command::Assert {
-                term: Term::Forall {
-                    vars: vec![
-                        (Symbol("v".to_string()), int_sort.clone()),
-                        (Symbol("i".to_string()), int_sort.clone()),
-                    ],
-                    term: Box::new(Term::Application {
-                        qual_identifier: QualIdentifier::Simple {
-                            identifier: Identifier::Simple {
-                                symbol: Symbol("=".to_string()),
-                            },
-                        },
-                        arguments: vec![
-                            Term::Application {
-                                qual_identifier: QualIdentifier::Simple {
-                                    identifier: Identifier::Simple {
-                                        symbol: Symbol("Read-Int-Int".to_string()),
-                                    },
-                                },
-                                arguments: vec![
-                                    Term::Application {
-                                        qual_identifier: QualIdentifier::Simple {
-                                            identifier: Identifier::Simple {
-                                                symbol: Symbol("ConstArr-Int-Int".to_string()),
-                                            },
-                                        },
-                                        arguments: vec![Term::QualIdentifier(
-                                            QualIdentifier::Simple {
-                                                identifier: Identifier::Simple {
-                                                    symbol: Symbol("v".to_string()),
-                                                },
-                                            },
-                                        )],
-                                    },
                                     Term::QualIdentifier(QualIdentifier::Simple {
                                         identifier: Identifier::Simple {
-                                            symbol: Symbol("i".to_string()),
+                                            symbol: Symbol("j".to_string()),
                                         },
                                     }),
                                 ],
@@ -507,10 +371,188 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
                                 },
                             }),
                         ],
-                    }),
+                    },
+                ],
+            }),
+        },
+    }
+}
+
+fn generate_write_preserves_other_axiom(index_sort: &str, value_sort: &str) -> Command {
+    let array_sort = sort_from_string(&format!("Array_{}_{}", index_sort, value_sort));
+    let idx_sort = sort_from_string(index_sort);
+    let val_sort = sort_from_string(value_sort);
+
+    let read_fn = format!("Read_{}_{}", index_sort, value_sort);
+    let write_fn = format!("Write_{}_{}", index_sort, value_sort);
+
+    Command::Assert {
+        term: Term::Forall {
+            vars: vec![
+                (Symbol("a".to_string()), array_sort.clone()),
+                (Symbol("i".to_string()), idx_sort.clone()),
+                (Symbol("j".to_string()), idx_sort.clone()),
+                (Symbol("v".to_string()), val_sort.clone()),
+            ],
+            term: Box::new(Term::Application {
+                qual_identifier: QualIdentifier::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("=>".to_string()),
+                    },
                 },
-            },
-        ]
+                arguments: vec![
+                    Term::Application {
+                        qual_identifier: QualIdentifier::Simple {
+                            identifier: Identifier::Simple {
+                                symbol: Symbol("not".to_string()),
+                            },
+                        },
+                        arguments: vec![Term::Application {
+                            qual_identifier: QualIdentifier::Simple {
+                                identifier: Identifier::Simple {
+                                    symbol: Symbol("=".to_string()),
+                                },
+                            },
+                            arguments: vec![
+                                Term::QualIdentifier(QualIdentifier::Simple {
+                                    identifier: Identifier::Simple {
+                                        symbol: Symbol("i".to_string()),
+                                    },
+                                }),
+                                Term::QualIdentifier(QualIdentifier::Simple {
+                                    identifier: Identifier::Simple {
+                                        symbol: Symbol("j".to_string()),
+                                    },
+                                }),
+                            ],
+                        }],
+                    },
+                    Term::Application {
+                        qual_identifier: QualIdentifier::Simple {
+                            identifier: Identifier::Simple {
+                                symbol: Symbol("=".to_string()),
+                            },
+                        },
+                        arguments: vec![
+                            Term::Application {
+                                qual_identifier: QualIdentifier::Simple {
+                                    identifier: Identifier::Simple {
+                                        symbol: Symbol(read_fn.clone()),
+                                    },
+                                },
+                                arguments: vec![
+                                    Term::Application {
+                                        qual_identifier: QualIdentifier::Simple {
+                                            identifier: Identifier::Simple {
+                                                symbol: Symbol(write_fn),
+                                            },
+                                        },
+                                        arguments: vec![
+                                            Term::QualIdentifier(QualIdentifier::Simple {
+                                                identifier: Identifier::Simple {
+                                                    symbol: Symbol("a".to_string()),
+                                                },
+                                            }),
+                                            Term::QualIdentifier(QualIdentifier::Simple {
+                                                identifier: Identifier::Simple {
+                                                    symbol: Symbol("i".to_string()),
+                                                },
+                                            }),
+                                            Term::QualIdentifier(QualIdentifier::Simple {
+                                                identifier: Identifier::Simple {
+                                                    symbol: Symbol("v".to_string()),
+                                                },
+                                            }),
+                                        ],
+                                    },
+                                    Term::QualIdentifier(QualIdentifier::Simple {
+                                        identifier: Identifier::Simple {
+                                            symbol: Symbol("j".to_string()),
+                                        },
+                                    }),
+                                ],
+                            },
+                            Term::Application {
+                                qual_identifier: QualIdentifier::Simple {
+                                    identifier: Identifier::Simple {
+                                        symbol: Symbol(read_fn),
+                                    },
+                                },
+                                arguments: vec![
+                                    Term::QualIdentifier(QualIdentifier::Simple {
+                                        identifier: Identifier::Simple {
+                                            symbol: Symbol("a".to_string()),
+                                        },
+                                    }),
+                                    Term::QualIdentifier(QualIdentifier::Simple {
+                                        identifier: Identifier::Simple {
+                                            symbol: Symbol("j".to_string()),
+                                        },
+                                    }),
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            }),
+        },
+    }
+}
+
+fn generate_const_array_axiom(index_sort: &str, value_sort: &str) -> Command {
+    let idx_sort = sort_from_string(index_sort);
+    let val_sort = sort_from_string(value_sort);
+
+    let read_fn = format!("Read_{}_{}", index_sort, value_sort);
+    let const_arr_fn = format!("ConstArr_{}_{}", index_sort, value_sort);
+
+    Command::Assert {
+        term: Term::Forall {
+            vars: vec![
+                (Symbol("v".to_string()), val_sort.clone()),
+                (Symbol("i".to_string()), idx_sort.clone()),
+            ],
+            term: Box::new(Term::Application {
+                qual_identifier: QualIdentifier::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("=".to_string()),
+                    },
+                },
+                arguments: vec![
+                    Term::Application {
+                        qual_identifier: QualIdentifier::Simple {
+                            identifier: Identifier::Simple {
+                                symbol: Symbol(read_fn),
+                            },
+                        },
+                        arguments: vec![
+                            Term::Application {
+                                qual_identifier: QualIdentifier::Simple {
+                                    identifier: Identifier::Simple {
+                                        symbol: Symbol(const_arr_fn),
+                                    },
+                                },
+                                arguments: vec![Term::QualIdentifier(QualIdentifier::Simple {
+                                    identifier: Identifier::Simple {
+                                        symbol: Symbol("v".to_string()),
+                                    },
+                                })],
+                            },
+                            Term::QualIdentifier(QualIdentifier::Simple {
+                                identifier: Identifier::Simple {
+                                    symbol: Symbol("i".to_string()),
+                                },
+                            }),
+                        ],
+                    },
+                    Term::QualIdentifier(QualIdentifier::Simple {
+                        identifier: Identifier::Simple {
+                            symbol: Symbol("v".to_string()),
+                        },
+                    }),
+                ],
+            }),
+        },
     }
 }
 
@@ -526,8 +568,8 @@ impl TheorySupport for ConcreteArrayTheory {
         "QF_AUFLIA".to_string()
     }
 
-    fn abstract_model(&self, model: VMTModel) -> VMTModel {
-        model
+    fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
+        (model, vec![])
     }
 
     fn requires_abstraction(&self) -> bool {
@@ -574,16 +616,16 @@ mod tests {
 
     #[test]
     fn test_array_theory_support() {
-        let array_theory = ArrayTheorySupport;
+        let array_theory = ArrayTheorySupport::new(vec![("Int".into(), "Int".into())]);
 
         // Test function declarations
         let functions = array_theory.get_uninterpreted_functions();
         assert_eq!(functions.len(), 3);
 
         let function_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-        assert!(function_names.contains(&"Read-Int-Int"));
-        assert!(function_names.contains(&"Write-Int-Int"));
-        assert!(function_names.contains(&"ConstArr-Int-Int"));
+        assert!(function_names.contains(&"Read_Int_Int"));
+        assert!(function_names.contains(&"Write_Int_Int"));
+        assert!(function_names.contains(&"ConstArr_Int_Int"));
 
         // Test logic string
         assert_eq!(array_theory.get_logic_string(), "UFLIA");
@@ -654,5 +696,152 @@ mod tests {
 
         let update_nth_func = functions.iter().find(|f| f.name == "update-nth").unwrap();
         assert_eq!(update_nth_func.arg_sorts.len(), 3); // ListInt, Int, Int
+    }
+
+    #[test]
+    fn test_array_axioms_int_int() {
+        let theory = ArrayWithQuantifiersTheorySupport::new(vec![("Int".into(), "Int".into())]);
+        let axioms = theory.get_axiom_formulas();
+
+        // Should generate 3 axioms for 1 type
+        assert_eq!(axioms.len(), 3);
+
+        // Verify each axiom is an Assert command with Forall
+        for axiom in &axioms {
+            match axiom {
+                Command::Assert { term } => match term {
+                    Term::Forall { .. } => {} // Good
+                    _ => panic!("Expected Forall term in axiom"),
+                },
+                _ => panic!("Expected Assert command"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_array_axioms_bitvec() {
+        let theory =
+            ArrayWithQuantifiersTheorySupport::new(vec![("BitVec32".into(), "Int".into())]);
+        let axioms = theory.get_axiom_formulas();
+
+        // Should generate 3 axioms for BitVec32 -> Int arrays
+        assert_eq!(axioms.len(), 3);
+
+        let axiom_strings: Vec<String> = axioms.iter().map(|cmd| format!("{:?}", cmd)).collect();
+
+        for axiom_str in &axiom_strings {
+            assert!(
+                axiom_str.contains("Read_BitVec32_Int"),
+                "Axiom should contain Read_BitVec32_Int function"
+            );
+        }
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Write_BitVec32_Int")),
+            "At least one axiom should contain Write_BitVec32_Int"
+        );
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("ConstArr_BitVec32_Int")),
+            "At least one axiom should contain ConstArr_BitVec32_Int"
+        );
+    }
+
+    #[test]
+    fn test_array_axioms_nested_arrays() {
+        let theory =
+            ArrayWithQuantifiersTheorySupport::new(vec![("Int".into(), "Array_Int_Int".into())]);
+        let axioms = theory.get_axiom_formulas();
+
+        // Should generate 3 axioms for nested arrays
+        assert_eq!(axioms.len(), 3);
+
+        let axiom_strings: Vec<String> = axioms.iter().map(|cmd| format!("{:?}", cmd)).collect();
+
+        for axiom_str in &axiom_strings {
+            assert!(
+                axiom_str.contains("Read_Int_Array_Int_Int"),
+                "Axiom should contain Read_Int_Array_Int_Int function for nested arrays"
+            );
+        }
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Write_Int_Array_Int_Int")),
+            "Should have Write_Int_Array_Int_Int for nested arrays"
+        );
+
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("ConstArr_Int_Array_Int_Int")),
+            "Should have ConstArr_Int_Array_Int_Int for nested arrays"
+        );
+
+        // Verify the array sort type is correct
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Array_Int_Array_Int_Int")),
+            "Should reference Array_Int_Array_Int_Int sort"
+        );
+    }
+
+    #[test]
+    fn test_array_axioms_multiple_types() {
+        let theory = ArrayWithQuantifiersTheorySupport::new(vec![
+            ("Int".into(), "Int".into()),
+            ("BitVec32".into(), "Int".into()),
+            ("Int".into(), "Array_Int_Int".into()),
+        ]);
+        let axioms = theory.get_axiom_formulas();
+
+        assert_eq!(axioms.len(), 9);
+
+        let axiom_strings: Vec<String> = axioms.iter().map(|cmd| format!("{:?}", cmd)).collect();
+
+        assert!(
+            axiom_strings.iter().any(|s| s.contains("Read_Int_Int")),
+            "Should have Int_Int axioms"
+        );
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Read_BitVec32_Int")),
+            "Should have BitVec32_Int axioms"
+        );
+        assert!(
+            axiom_strings
+                .iter()
+                .any(|s| s.contains("Read_Int_Array_Int_Int")),
+            "Should have nested array axioms"
+        );
+    }
+
+    #[test]
+    fn test_sort_from_string_helper() {
+        // Test the helper function creates correct sorts
+        let int_sort = sort_from_string("Int");
+        assert_eq!(
+            format!("{:?}", int_sort),
+            "Simple { identifier: Simple { symbol: Symbol(\"Int\") } }"
+        );
+
+        let bitvec_sort = sort_from_string("BitVec32");
+        assert_eq!(
+            format!("{:?}", bitvec_sort),
+            "Simple { identifier: Simple { symbol: Symbol(\"BitVec32\") } }"
+        );
+
+        let nested_sort = sort_from_string("Array_Int_Int");
+        assert_eq!(
+            format!("{:?}", nested_sort),
+            "Simple { identifier: Simple { symbol: Symbol(\"Array_Int_Int\") } }"
+        );
     }
 }

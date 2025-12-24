@@ -121,17 +121,14 @@ impl SMTLIBProblem {
         self.is_incremental
     }
 
-    /// Returns the number of check-sat commands in this problem
     pub fn num_check_sats(&self) -> usize {
         self.check_sat_positions.len()
     }
 
-    /// Returns the commands in order, useful for executing the problem incrementally
     pub fn get_commands(&self) -> &[Command] {
         &self.commands
     }
 
-    /// Returns all assertion commands
     pub fn get_assertions(&self) -> &[Command] {
         &self.assertions
     }
@@ -151,12 +148,23 @@ impl Problem for SMTLIBProblem {
     }
 
     fn requires_unrolling(&self) -> bool {
-        // SMTLIB problems don't require unrolling - they're direct satisfiability queries
         false
     }
 
     fn as_commands(&self) -> Vec<Command> {
         self.commands.clone()
+    }
+
+    fn check(&mut self) -> z3::SatResult {
+        todo!()
+    }
+
+    fn unroll(&mut self, _depth: u16) {
+        // SMTLIB problems don't require unrolling
+    }
+
+    fn add_instantiation(&self, _term: &Term) {
+        todo!()
     }
 }
 

@@ -7,7 +7,6 @@ use smt2parser::{
 };
 
 use crate::{
-    analysis::SaturationInequalities,
     cost_functions::YardbirdCostFunction,
     driver::{self},
     egg_utils::Saturate,
@@ -26,7 +25,7 @@ where
     F: YardbirdCostFunction<ListLanguage>,
 {
     const_instantiations: Vec<Term>,
-    bmc_depth: u16,
+    _bmc_depth: u16,
     run_ic3ia: bool,
     cost_fn_factory: fn(&SMTProblem, u32) -> F,
 }
@@ -36,12 +35,12 @@ where
     F: YardbirdCostFunction<ListLanguage>,
 {
     pub fn new(
-        bmc_depth: u16,
+        _bmc_depth: u16,
         run_ic3ia: bool,
         cost_fn_factory: fn(&SMTProblem, u32) -> F,
     ) -> Self {
         Self {
-            bmc_depth,
+            _bmc_depth,
             run_ic3ia,
             const_instantiations: vec![],
             cost_fn_factory,
@@ -51,7 +50,7 @@ where
 
 pub struct ListRefinementState {
     pub depth: u16,
-    pub egraph: egg::EGraph<ListLanguage, SaturationInequalities>,
+    pub egraph: egg::EGraph<ListLanguage, ()>,
     pub instantiations: Vec<ListExpr>,
     pub const_instantiations: Vec<ListExpr>,
 }
@@ -83,14 +82,12 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        self.get_theory_support()
-            .abstract_model(model)
-            .abstract_constants_over(self.bmc_depth)
+        let (abs_model, _types) = self.get_theory_support().abstract_model(model);
+        abs_model
     }
 
     fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ListRefinementState> {
-        use crate::analysis::SaturationInequalities;
-        let egraph = egg::EGraph::new(SaturationInequalities);
+        let egraph = egg::EGraph::new(());
         Ok(ListRefinementState {
             depth,
             egraph,

@@ -105,7 +105,7 @@ fn main() -> std::io::Result<()> {
                     vm.print_stats();
                     println!("{}", vm.as_vmt_string());
                     let _smt = vm.unroll(10);
-                    let abs = vm.abstract_array_theory();
+                    let (abs, _types) = vm.abstract_array_theory();
                     println!("{}", abs.as_vmt_string());
                     let _abs_smt = abs.unroll(10);
                 }

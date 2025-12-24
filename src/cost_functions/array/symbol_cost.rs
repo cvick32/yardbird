@@ -69,9 +69,9 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBMCCost {
                     5
                 }
             }
-            ArrayLanguage::ConstArr(_) => 0,
-            ArrayLanguage::Write(_) => 1,
-            ArrayLanguage::Read(_) => 1,
+            ArrayLanguage::ConstArrTyped(_) => 0,
+            ArrayLanguage::WriteTyped(_) => 1,
+            ArrayLanguage::ReadTyped(_) => 1,
             ArrayLanguage::And(_) => 1,
             ArrayLanguage::Not(_) => 1,
             ArrayLanguage::Or(_) => 1,

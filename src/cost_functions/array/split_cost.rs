@@ -193,12 +193,12 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
                 }
             }
 
-            ArrayLanguage::ConstArr(_) => 0,
+            ArrayLanguage::ConstArrTyped(_) => 0,
 
             // Keep array operations reasonable, but not as cheap as arithmetic
             // We want to prefer simple indices over nested reads
-            ArrayLanguage::Write(_) => 2,
-            ArrayLanguage::Read(_) => 3, // Make reads slightly expensive to avoid (Read c i) as index
+            ArrayLanguage::WriteTyped(_) => 2,
+            ArrayLanguage::ReadTyped(_) => 3,
 
             // Logical operations - keep cheap
             ArrayLanguage::And(_)

@@ -22,7 +22,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayPreferWrite {
         C: FnMut(egg::Id) -> Self::Cost,
     {
         let op_cost = match enode {
-            ArrayLanguage::Write(_) => 0,
+            ArrayLanguage::WriteTyped(_) => 0,
             _ => 20,
         };
 
