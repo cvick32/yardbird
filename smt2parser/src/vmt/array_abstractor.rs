@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use num::{BigUint, Zero};
 
@@ -11,6 +11,7 @@ use super::utils::simple_identifier_with_name;
 pub struct ArrayAbstractor {
     pub visitor: SyntaxBuilder,
     pub array_types: HashSet<(String, String)>,
+    pub variable_types: HashMap<String, (String, String)>,
 }
 
 impl Default for ArrayAbstractor {
@@ -18,6 +19,7 @@ impl Default for ArrayAbstractor {
         Self {
             visitor: SyntaxBuilder,
             array_types: HashSet::new(),
+            variable_types: HashMap::new(),
         }
     }
 }
@@ -137,6 +139,16 @@ impl ArrayAbstractor {
         }
     }
 
+    fn get_variable_type_from_term(&self, term: &Term) -> Option<(String, String)> {
+        match term {
+            Term::QualIdentifier(qual_id) => {
+                let var_name = qual_id.get_name();
+                self.variable_types.get(&var_name).cloned()
+            }
+            _ => None,
+        }
+    }
+
     /// Extract array type from a term (by looking at variable declarations or other type info)
     /// This is a best-effort approach - we try to infer types from the structure
     /// Returns (index_sort_name, value_sort_name)
@@ -160,18 +172,25 @@ impl ArrayAbstractor {
                     crate::concrete::QualIdentifier::Simple { identifier } => {
                         // Try to infer from function name
                         let name = identifier.to_string();
-                        if name.starts_with("Write_")
-                            || name.starts_with("Read_")
-                            || name.starts_with("ConstArr_")
-                        {
-                            // Parse the type suffix like "Write_BitVec5_BitVec32" or "Read_Int_Array_Int_Int"
-                            // For nested arrays, we need to extract index and value carefully
-                            // Format: Op_IndexSort_ValueSort where ValueSort might be Array_X_Y
+                        if name.starts_with("Read_") {
                             let parts: Vec<&str> = name.split('_').collect();
                             if parts.len() >= 3 {
-                                // Index is always parts[1]
+                                let value_sort = parts[2..].join("_");
+                                if value_sort.starts_with("Array_") {
+                                    let array_parts: Vec<&str> =
+                                        value_sort.splitn(3, '_').collect();
+                                    if array_parts.len() == 3 {
+                                        return Some((
+                                            array_parts[1].to_string(),
+                                            array_parts[2].to_string(),
+                                        ));
+                                    }
+                                }
+                            }
+                        } else if name.starts_with("Write_") || name.starts_with("ConstArr_") {
+                            let parts: Vec<&str> = name.split('_').collect();
+                            if parts.len() >= 3 {
                                 let index_sort = parts[1].to_string();
-                                // Value is everything after index, joined back
                                 let value_sort = parts[2..].join("_");
                                 return Some((index_sort, value_sort));
                             }
@@ -181,6 +200,30 @@ impl ArrayAbstractor {
                 }
             }
             _ => None,
+        }
+    }
+
+    fn convert_sort_to_abstracted(&mut self, sort: &Sort) -> Sort {
+        match sort {
+            crate::concrete::Sort::Simple { identifier: _ } => sort.clone(),
+            crate::concrete::Sort::Parameterized {
+                identifier,
+                parameters,
+            } => {
+                if identifier.to_string() == "Array" {
+                    let index_type = self.sort_to_string(&parameters[0]);
+                    let value_type = self.sort_to_string(&parameters[1]);
+                    self.array_types
+                        .insert((index_type.clone(), value_type.clone()));
+                    crate::concrete::Sort::Simple {
+                        identifier: Identifier::Simple {
+                            symbol: Symbol(format!("Array_{index_type}_{value_type}")),
+                        },
+                    }
+                } else {
+                    sort.clone()
+                }
+            }
         }
     }
 }
@@ -199,31 +242,23 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         parameters: Vec<<Self::V as crate::visitors::Smt2Visitor>::Sort>,
         sort: <Self::V as crate::visitors::Smt2Visitor>::Sort,
     ) -> Result<<Self::V as crate::visitors::Smt2Visitor>::Command, Self::Error> {
-        let new_sort = match sort.clone() {
-            crate::concrete::Sort::Simple { identifier: _ } => sort,
-            crate::concrete::Sort::Parameterized {
-                identifier,
-                parameters,
-            } => {
-                if identifier.to_string() == "Array" {
-                    // TODO: also need to have a better way of finding Sort names.
-                    let (index_type, value_type) =
-                        (parameters[0].to_string(), parameters[1].to_string());
-                    self.array_types
-                        .insert((index_type.clone(), value_type.clone()));
-                    crate::concrete::Sort::Simple {
-                        identifier: Identifier::Simple {
-                            symbol: Symbol(format!("Array_{index_type}_{value_type}")),
-                        },
-                    }
-                } else {
-                    sort
-                }
+        if parameters.is_empty() {
+            if let Some((index_sort, value_sort)) = self.extract_array_sorts_from_sort(&sort) {
+                self.variable_types
+                    .insert(symbol.0.clone(), (index_sort, value_sort));
             }
-        };
+        }
+
+        let new_parameters: Vec<_> = parameters
+            .iter()
+            .map(|param_sort| self.convert_sort_to_abstracted(param_sort))
+            .collect();
+
+        let new_sort = self.convert_sort_to_abstracted(&sort);
+
         Ok(Command::DeclareFun {
             symbol,
-            parameters,
+            parameters: new_parameters,
             sort: new_sort,
         })
     }
@@ -238,11 +273,14 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         let new_identifier = match qual_identifier.clone() {
             crate::concrete::QualIdentifier::Simple { identifier } => {
                 if identifier.to_string() == "select" {
-                    // select: (Array a b) a -> b
-                    // Extract array type from first argument
-                    if let Some((index_sort, value_sort)) =
-                        self.extract_array_type_from_term(&arguments[0])
-                    {
+                    let array_type =
+                        if let Some(types) = self.get_variable_type_from_term(&arguments[0]) {
+                            Some(types)
+                        } else {
+                            self.extract_array_type_from_term(&arguments[0])
+                        };
+
+                    if let Some((index_sort, value_sort)) = array_type {
                         self.array_types
                             .insert((index_sort.clone(), value_sort.clone()));
                         simple_identifier_with_name(&format!("Read_{}_{}", index_sort, value_sort))
@@ -253,11 +291,14 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
                         simple_identifier_with_name("Read_Int_Int")
                     }
                 } else if identifier.to_string() == "store" {
-                    // store: (Array a b) a b -> (Array a b)
-                    // Extract array type from first argument
-                    if let Some((index_sort, value_sort)) =
-                        self.extract_array_type_from_term(&arguments[0])
-                    {
+                    let array_type =
+                        if let Some(types) = self.get_variable_type_from_term(&arguments[0]) {
+                            Some(types)
+                        } else {
+                            self.extract_array_type_from_term(&arguments[0])
+                        };
+
+                    if let Some((index_sort, value_sort)) = array_type {
                         self.array_types
                             .insert((index_sort.clone(), value_sort.clone()));
                         simple_identifier_with_name(&format!("Write_{}_{}", index_sort, value_sort))
