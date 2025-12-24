@@ -341,3 +341,268 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::concrete::{Command, Identifier, Sort, Symbol};
+    use crate::rewriter::Rewriter;
+
+    #[test]
+    fn test_sort_to_string_simple() {
+        let abstractor = ArrayAbstractor::default();
+
+        // Test simple sort
+        let int_sort = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Int".to_string()),
+            },
+        };
+        assert_eq!(abstractor.sort_to_string(&int_sort), "Int");
+    }
+
+    #[test]
+    fn test_sort_to_string_simple_array() {
+        let abstractor = ArrayAbstractor::default();
+
+        // Test simple array: (Array Int Int)
+        let array_sort = Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+            ],
+        };
+        assert_eq!(abstractor.sort_to_string(&array_sort), "Array_Int_Int");
+    }
+
+    #[test]
+    fn test_sort_to_string_nested_array() {
+        let abstractor = ArrayAbstractor::default();
+
+        // Test nested array: (Array Int (Array Int Int))
+        let inner_array = Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+            ],
+        };
+
+        let outer_array = Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+                inner_array,
+            ],
+        };
+
+        assert_eq!(
+            abstractor.sort_to_string(&outer_array),
+            "Array_Int_Array_Int_Int"
+        );
+    }
+
+    #[test]
+    fn test_abstraction_simple_array_variable() {
+        let mut abstractor = ArrayAbstractor::default();
+
+        // Test: (declare-fun a () (Array Int Int))
+        let command = Command::DeclareFun {
+            symbol: Symbol("a".to_string()),
+            parameters: vec![],
+            sort: Sort::Parameterized {
+                identifier: Identifier::Simple {
+                    symbol: Symbol("Array".to_string()),
+                },
+                parameters: vec![
+                    Sort::Simple {
+                        identifier: Identifier::Simple {
+                            symbol: Symbol("Int".to_string()),
+                        },
+                    },
+                    Sort::Simple {
+                        identifier: Identifier::Simple {
+                            symbol: Symbol("Int".to_string()),
+                        },
+                    },
+                ],
+            },
+        };
+
+        let result = abstractor.visit_declare_fun(
+            Symbol("a".to_string()),
+            vec![],
+            command.get_sort().unwrap().clone(),
+        );
+
+        assert!(result.is_ok());
+        let abstracted = result.unwrap();
+
+        // Should produce: (declare-fun a () Array_Int_Int)
+        match abstracted {
+            Command::DeclareFun {
+                symbol,
+                parameters,
+                sort,
+            } => {
+                assert_eq!(symbol.0, "a");
+                assert!(parameters.is_empty());
+                assert_eq!(sort.to_string(), "Array_Int_Int");
+            }
+            _ => panic!("Expected DeclareFun"),
+        }
+
+        // Should register the array type
+        assert!(abstractor
+            .array_types
+            .contains(&("Int".to_string(), "Int".to_string())));
+    }
+
+    #[test]
+    fn test_abstraction_nested_array_variable() {
+        let mut abstractor = ArrayAbstractor::default();
+
+        // Test: (declare-fun a () (Array Int (Array Int Int)))
+        let inner_array = Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+            ],
+        };
+
+        let outer_array = Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+                inner_array,
+            ],
+        };
+
+        let result = abstractor.visit_declare_fun(Symbol("a".to_string()), vec![], outer_array);
+
+        assert!(result.is_ok());
+        let abstracted = result.unwrap();
+
+        // Should produce: (declare-fun a () Array_Int_Array_Int_Int)
+        match abstracted {
+            Command::DeclareFun {
+                symbol,
+                parameters,
+                sort,
+            } => {
+                assert_eq!(symbol.0, "a");
+                assert!(parameters.is_empty());
+                assert_eq!(sort.to_string(), "Array_Int_Array_Int_Int");
+            }
+            _ => panic!("Expected DeclareFun"),
+        }
+
+        // Should register both array types
+        assert!(abstractor
+            .array_types
+            .contains(&("Int".to_string(), "Array_Int_Int".to_string())));
+    }
+
+    #[test]
+    fn test_abstraction_function_with_nested_array_params() {
+        let mut abstractor = ArrayAbstractor::default();
+
+        // Test: (declare-fun f ((Array Int Int)) Int)
+        let array_param = Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+                Sort::Simple {
+                    identifier: Identifier::Simple {
+                        symbol: Symbol("Int".to_string()),
+                    },
+                },
+            ],
+        };
+
+        let int_sort = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Int".to_string()),
+            },
+        };
+
+        let result = abstractor.visit_declare_fun(
+            Symbol("f".to_string()),
+            vec![array_param],
+            int_sort.clone(),
+        );
+
+        assert!(result.is_ok());
+        let abstracted = result.unwrap();
+
+        // Should produce: (declare-fun f (Array_Int_Int) Int)
+        match abstracted {
+            Command::DeclareFun {
+                symbol,
+                parameters,
+                sort,
+            } => {
+                assert_eq!(symbol.0, "f");
+                assert_eq!(parameters.len(), 1);
+                assert_eq!(parameters[0].to_string(), "Array_Int_Int");
+                assert_eq!(sort.to_string(), "Int");
+            }
+            _ => panic!("Expected DeclareFun"),
+        }
+
+        // Should register the array type
+        assert!(abstractor
+            .array_types
+            .contains(&("Int".to_string(), "Int".to_string())));
+    }
+}
