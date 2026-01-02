@@ -1,30 +1,16 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_max_reverse_min.vmt",
+    example_name: "examples/array/array_max_reverse_min.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read-Int-Int (Write-Int-Int b Z 28194) Z) 28194)",
-        "(= (Read-Int-Int (Write-Int-Int b Z max) Z) max)",
-        "(= (Read-Int-Int (Write-Int-Int b_next Z max) Z) max)",
-        "(= (Read-Int-Int (Write-Int-Int b Z max_next) Z) max_next)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 15261) Z) 15261)",
-        "(= (Read-Int-Int (Write-Int-Int b Z (- max)) Z) (- max))",
-        "(= (Read-Int-Int (Write-Int-Int b Z (- max_next)) Z) (- max_next))",
-        "(= (Read-Int-Int (Write-Int-Int b_next Z (- max)) Z) (- max))",
-        "(= (Read-Int-Int (Write-Int-Int b Z 15261) Z) (Read-Int-Int b Z))",
-        "(= (Read-Int-Int (Write-Int-Int c Z (- 15261)) Z) (- 15261))",
-        "(= (Read-Int-Int (Write-Int-Int b Z 24385) Z) 24385)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 35116) Z) 35116)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 27104) Z) 27104)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 24084) Z) 24084)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 41467) Z) 41467)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 28078) Z) 28078)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 30800) Z) 30800)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 46631) Z) 46631)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 30018) Z) 30018)",
-        "(= (Read-Int-Int (Write-Int-Int b Z 19044) Z) 19044)",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (* (Read_Int_Int a+0 i+0) (- 1))) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (* (Read_Int_Int b+0 i+0) (- 1))) Z) (Read_Int_Int c+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (* (Read_Int_Int a+0 i+0) (- 1))) i+4) (Read_Int_Int b+0 i+4))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (* (Read_Int_Int a+0 i+0) (- 1))) max+4) (Read_Int_Int b+0 max+4))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (* (Read_Int_Int a+0 i+0) (- 1))) i+0) (* (Read_Int_Int a+0 i+0) (- 1)))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (* (Read_Int_Int b+0 i+0) (- 1))) i+0) (* (Read_Int_Int b+0 i+0) (- 1)))",
     ],
 }

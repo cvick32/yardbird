@@ -1,17 +1,15 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_init_ite.vmt",
+    example_name: "examples/array/array_init_ite.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read-Int-Int (Write-Int-Int a i i) i) i)",
-        "(= (Read-Int-Int (Write-Int-Int a Z Z) i_next) (Read-Int-Int a i_next))",
-        "(= (Read-Int-Int (Write-Int-Int a Z Z) Z) Z)",
-        "(= (Read-Int-Int (Write-Int-Int a i i) i) (Read-Int-Int a i))",
-        "(= (Read-Int-Int (Write-Int-Int a Z Z) Z) (Read-Int-Int a Z))",
-        "(= (Read-Int-Int (Write-Int-Int a Z Z) n) (Read-Int-Int a n))",
-        "(= (Read-Int-Int (Write-Int-Int a i i) Z) (Read-Int-Int a Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 (Read_Int_Int a+0 i+0))) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 (Read_Int_Int a+0 i+0))) i+1) (Read_Int_Int a+0 i+1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 (Read_Int_Int a+0 i+0))) i+0) (+ i+0 (Read_Int_Int a+0 i+0)))",
     ],
 }

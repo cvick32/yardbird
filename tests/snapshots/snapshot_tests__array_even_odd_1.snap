@@ -1,9 +1,20 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_even_odd_1.vmt",
-    status: Panic,
-    used_instantiations: [],
+    example_name: "examples/array/array_even_odd_1.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 0) i+0) 0)",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 0) i+0) 0)",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) 0) (Read_Int_Int b+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int b+1 i+1 0) i+0) (Read_Int_Int b+1 i+0))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int c+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 0) Z) (Read_Int_Int c+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 0) Z) (Read_Int_Int b+0 Z))",
+    ],
 }

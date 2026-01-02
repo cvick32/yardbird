@@ -1,0 +1,15 @@
+---
+source: tests/snapshot_tests.rs
+expression: run_benchmark(& path)
+---
+BenchmarkResult {
+    example_name: "examples/array/array_nonlin_init_depend.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 C1) i+0) C1)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 (- i+0 1)) C2)) i+0) (+ (Read_Int_Int a+0 (- i+0 1)) C2))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 C1) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 (- i+0 1)) C2)) 1) (Read_Int_Int a+0 1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 (- i+0 1)) C2)) Z) (Read_Int_Int a+0 Z))",
+    ],
+}

@@ -1,29 +1,14 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_tiling_poly2.vmt",
+    example_name: "examples/array/array_tiling_poly2.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read-Int-Int (Write-Int-Int a i 3) S) (Read-Int-Int a S))",
-        "(= (Read-Int-Int (Write-Int-Int a S 3) S) 3)",
-        "(= (Read-Int-Int (Write-Int-Int a S 3) S) (Read-Int-Int a S))",
-        "(= (Read-Int-Int (Write-Int-Int a Z 3) S) (Read-Int-Int a S))",
-        "(= (Read-Int-Int (Write-Int-Int a Z (- S)) S) (Read-Int-Int a S))",
-        "(= (Read-Int-Int (Write-Int-Int a Z S) S) (Read-Int-Int a S))",
-        "(= (Read-Int-Int (Write-Int-Int a i 3) Z) (Read-Int-Int a Z))",
-        "(= (Read-Int-Int (Write-Int-Int a Z 3) Z) 3)",
-        "(= (Read-Int-Int (Write-Int-Int a Z Z) Z) Z)",
-        "(= (Read-Int-Int (Write-Int-Int a_next Z i) Z) i)",
-        "(= (Read-Int-Int (Write-Int-Int a Z S) Z) S)",
-        "(= (Read-Int-Int (Write-Int-Int a S S) S) S)",
-        "(= (Read-Int-Int (Write-Int-Int a S S) Z) (Read-Int-Int a Z))",
-        "(= (Read-Int-Int (Write-Int-Int a_next pc Z) Z) (Read-Int-Int a_next Z))",
-        "(= (Read-Int-Int (Write-Int-Int a_next pc S) S) (Read-Int-Int a_next S))",
-        "(= (Read-Int-Int (Write-Int-Int a_next i S) S) (Read-Int-Int a_next S))",
-        "(= (Read-Int-Int (Write-Int-Int a Z S) Z) (Read-Int-Int a Z))",
-        "(= (Read-Int-Int (Write-Int-Int a i S) S) (Read-Int-Int a S))",
-        "(= (Read-Int-Int (Write-Int-Int a_next i Z) Z) (Read-Int-Int a_next Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 2)) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 2)) i+4) (Read_Int_Int a+0 i+4))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (* i+0 i+0) 2)) 1) (Read_Int_Int a+0 1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 2)) i+0) (- (Read_Int_Int a+0 i+0) 2))",
     ],
 }

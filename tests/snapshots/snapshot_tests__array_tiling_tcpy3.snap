@@ -1,9 +1,36 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_tiling_tcpy3.vmt",
-    status: Panic,
-    used_instantiations: [],
+    example_name: "examples/array/array_tiling_tcpy3.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int acopy3+0 i+0 (Read_Int_Int a+0 i+0)) i+1) (Read_Int_Int acopy3+0 i+1))",
+        "(= (Read_Int_Int (Write_Int_Int acopy2+0 (- (* 2 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1)))) (- (* 2 S) (+ i+0 1))) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1))))",
+        "(= (Read_Int_Int (Write_Int_Int acopy3+0 i+0 (Read_Int_Int a+0 i+0)) 2) (Read_Int_Int acopy3+0 2))",
+        "(= (Read_Int_Int (Write_Int_Int acopy2+0 (- (* 2 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1)))) (* 2 S)) (Read_Int_Int acopy2+0 (* 2 S)))",
+        "(= (Read_Int_Int (Write_Int_Int acopy3+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
+        "(= (Read_Int_Int (Write_Int_Int acopy3+0 i+0 (Read_Int_Int a+0 i+0)) (* 3 S)) (Read_Int_Int acopy3+0 (* 3 S)))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) (- (* 3 S) (+ i+0 1))) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1))))",
+        "(= (Read_Int_Int (Write_Int_Int acopy2+0 (- (* 2 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1)))) (* 3 S)) (Read_Int_Int acopy2+0 (* 3 S)))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) (- (* 4 S) (+ i+0 1))) (Read_Int_Int acopy1+0 (- (* 4 S) (+ i+0 1))))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) (- (* 4 S) (+ i+0 1))) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1))))",
+        "(= (Read_Int_Int (Write_Int_Int acopy2+0 (- (* 2 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1)))) 1) (Read_Int_Int acopy2+0 1))",
+        "(= (Read_Int_Int (Write_Int_Int acopy2+0 (- (* 2 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1)))) i+2) (Read_Int_Int acopy2+0 i+2))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) (* 3 S)) (Read_Int_Int acopy1+0 (* 3 S)))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) 4) (Read_Int_Int acopy1+0 4))",
+        "(= (Read_Int_Int (Write_Int_Int acopy3+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int acopy3+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) 1) (Read_Int_Int acopy1+0 1))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) S) (Read_Int_Int acopy1+0 S))",
+        "(= (Read_Int_Int (Write_Int_Int acopy2+0 (- (* 2 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 2 S) (+ i+0 1)))) Z) (Read_Int_Int acopy2+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) (* 3 S)) (Read_Int_Int acopy+0 (* 3 S)))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) 4) (Read_Int_Int acopy+0 4))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) i+1) (Read_Int_Int acopy+0 i+1))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) i+0) (Read_Int_Int acopy+0 i+0))",
+        "(= (Read_Int_Int (Write_Int_Int acopy3+0 i+0 (Read_Int_Int a+0 i+0)) (* 2 S)) (Read_Int_Int acopy3+0 (* 2 S)))",
+        "(= (Read_Int_Int (Write_Int_Int acopy1+0 (- (* 3 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 3 S) (+ i+0 1)))) Z) (Read_Int_Int acopy1+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) i+2) (Read_Int_Int acopy+0 i+2))",
+        "(= (Read_Int_Int (Write_Int_Int acopy+0 (- (* 4 S) (+ i+0 1)) (Read_Int_Int a+0 (- (* 4 S) (+ i+0 1)))) Z) (Read_Int_Int acopy+0 Z))",
+    ],
 }

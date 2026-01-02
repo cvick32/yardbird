@@ -1,9 +1,12 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_append2_array_horn.vmt",
-    status: Panic,
-    used_instantiations: [],
+    example_name: "examples/array/array_append2_array_horn.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 W) i+0) W)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 W) K) (Read_Int_Int a+0 K))",
+    ],
 }

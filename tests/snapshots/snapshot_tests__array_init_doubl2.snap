@@ -1,36 +1,16 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_init_doubl2.vmt",
+    example_name: "examples/array/array_init_doubl2.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read-Int-Int (Write-Int-Int a Z 21658) Z) 21658)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 16910) Z) 16910)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 18460) Z) 18460)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 2449) Z) 2449)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 593) Z) 593)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 18480) Z) 18480)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 2243) Z) 2243)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 32281) Z) 32281)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 9728) Z) 9728)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 12620) Z) 12620)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 12459) Z) 12459)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 17890) Z) 17890)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 7581) Z) 7581)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 6881) Z) 6881)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 12282) Z) 12282)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 31600) Z) 31600)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 29536) Z) 29536)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 20587) Z) 20587)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 11652) Z) 11652)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 24391) Z) 24391)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 12282) Z) (Read-Int-Int a Z))",
-        "(= (Read-Int-Int (Write-Int-Int a Z 19462) Z) 19462)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 26422) Z) 26422)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 12286) Z) 12286)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 24498) Z) 24498)",
-        "(= (Read-Int-Int (Write-Int-Int a Z Z) Z) Z)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) 0) (Read_Int_Int a+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) N) (Read_Int_Int a+0 N))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) i+0) (+ (Read_Int_Int a+0 i+0) j+0))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
     ],
 }

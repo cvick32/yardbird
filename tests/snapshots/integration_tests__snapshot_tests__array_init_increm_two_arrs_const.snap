@@ -1,0 +1,20 @@
+---
+source: tests/snapshot_tests.rs
+expression: run_benchmark(& path)
+---
+BenchmarkResult {
+    example_name: "examples/array/array_init_increm_two_arrs_const.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 x+0) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ (Read_Int_Int b+0 i+0) 1)) N) (Read_Int_Int b+0 N))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 x+0) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) 0) (Read_Int_Int a+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) N) (Read_Int_Int a+0 N))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ (Read_Int_Int b+0 i+0) 1)) 0) (Read_Int_Int b+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ (Read_Int_Int b+0 i+0) 1)) i+0) (+ (Read_Int_Int b+0 i+0) 1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) (+ (Read_Int_Int a+0 i+0) 1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 x+0) i+0) x+0)",
+    ],
+}

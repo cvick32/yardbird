@@ -1,9 +1,20 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_init_nondet_vars_plus_ind.vmt",
-    status: Timeout,
-    used_instantiations: [],
+    example_name: "examples/array/array_init_nondet_vars_plus_ind.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) 0) (Read_Int_Int a+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) i+4) (Read_Int_Int a+0 i+4))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) i+4) (Read_Int_Int b+0 i+4))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) 0) (Read_Int_Int b+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) Z) (Read_Int_Int c+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) i+0) (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0)))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) i+0) (+ i+0 x+0))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) i+0) (+ i+0 y+0))",
+    ],
 }

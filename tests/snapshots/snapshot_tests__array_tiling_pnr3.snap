@@ -1,9 +1,9 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_tiling_pnr3.vmt",
-    status: Panic,
+    example_name: "examples/array/array_tiling_pnr3.vmt",
+    status: Timeout,
     used_instantiations: [],
 }

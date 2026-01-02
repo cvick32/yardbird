@@ -1,38 +1,13 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array_init_depend_incr.vmt",
+    example_name: "examples/array/array_init_depend_incr.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read-Int-Int (Write-Int-Int a i 2438) i) 2438)",
-        "(= (Read-Int-Int (Write-Int-Int a i c) i) c)",
-        "(= (Read-Int-Int (Write-Int-Int a i 21239) i) 21239)",
-        "(= (Read-Int-Int (Write-Int-Int a i 53525) i) 53525)",
-        "(= (Read-Int-Int (Write-Int-Int a i 31690) i) 31690)",
-        "(= (Read-Int-Int (Write-Int-Int a i 53524) i) 53524)",
-        "(= (Read-Int-Int (Write-Int-Int a i 31689) i) 31689)",
-        "(= (Read-Int-Int (Write-Int-Int a i 41777) i) 41777)",
-        "(= (Read-Int-Int (Write-Int-Int a i 44711) i) 44711)",
-        "(= (Read-Int-Int (Write-Int-Int a i 21521) i) 21521)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 21240) Z) 21240)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 21241) Z) 21241)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 42217) Z) 42217)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 2438) Z) 2438)",
-        "(= (Read-Int-Int (Write-Int-Int a i 38917) i) 38917)",
-        "(= (Read-Int-Int (Write-Int-Int a i 39508) i) 39508)",
-        "(= (Read-Int-Int (Write-Int-Int a i 39508) i) (Read-Int-Int a i))",
-        "(= (Read-Int-Int (Write-Int-Int a Z 39508) Z) 39508)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 39508) Z) (Read-Int-Int a Z))",
-        "(= (Read-Int-Int (Write-Int-Int a Z 21238) Z) 21238)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 11798) Z) 11798)",
-        "(= (Read-Int-Int (Write-Int-Int a i (- 10652)) i) (- 10652))",
-        "(= (Read-Int-Int (Write-Int-Int a Z 2439) Z) 2439)",
-        "(= (Read-Int-Int (Write-Int-Int a i 2436) i) 2436)",
-        "(= (Read-Int-Int (Write-Int-Int a i 1294) i) 1294)",
-        "(= (Read-Int-Int (Write-Int-Int a i 11795) i) 11795)",
-        "(= (Read-Int-Int (Write-Int-Int a Z 11797) Z) 11797)",
-        "(= (Read-Int-Int (Write-Int-Int a i 2438) i) (Read-Int-Int a i))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ 1 (Read_Int_Int a+0 (- i+0 1)))) i+0) (+ 1 (Read_Int_Int a+0 (- i+0 1))))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 c+0) i+0) c+0)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ 1 (Read_Int_Int a+0 (- i+0 1)))) Z) (Read_Int_Int a+0 Z))",
     ],
 }
