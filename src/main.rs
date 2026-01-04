@@ -47,6 +47,14 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
         problem.is_incremental()
     );
 
+    if options.print_file {
+        use std::fs::File;
+        use std::io::Write;
+        let mut output = File::create("original.smt2").unwrap();
+        let _ = output.write(problem.as_smt2_string().as_bytes());
+        info!("Wrote preprocessed SMT2 to original.smt2");
+    }
+
     // Create and execute solver
     let mut solver = SMTLIBSolver::new(problem.get_logic());
     solver.execute(&problem);
@@ -106,7 +114,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                 driver.add_extension(Interpolating);
             }
             let res = driver.check_strategy(options.depth, options.build_array_strategy())?;
-            print_vmt_results(res, options)?;
+            print_file_results(res, options)?;
         }
         Theory::BvList => {
             todo!("Implement BVList!")
@@ -124,14 +132,14 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                 driver.add_extension(Interpolating);
             }
             let res = driver.check_strategy(options.depth, options.build_list_strategy())?;
-            print_vmt_results(res, options)?;
+            print_file_results(res, options)?;
         }
     };
 
     Ok(())
 }
 
-fn print_vmt_results(
+fn print_file_results(
     res: impl Into<yardbird::ProofLoopResult>,
     options: &YardbirdOptions,
 ) -> anyhow::Result<()> {
@@ -152,7 +160,7 @@ fn print_vmt_results(
     }
 
     if let Some(model) = res.model {
-        if options.print_vmt {
+        if options.print_file {
             let mut output = File::create("instantiated.vmt").unwrap();
             let _ = output.write(model.as_vmt_string().as_bytes());
         }

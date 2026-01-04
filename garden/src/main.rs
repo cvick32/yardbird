@@ -318,7 +318,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                             YardbirdOptions {
                                 filename: filename.clone(),
                                 depth,
-                                print_vmt: false,
+                                print_file: false,
                                 interpolate: false,
                                 repl: false,
                                 strategy: *strat,
@@ -435,7 +435,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                     YardbirdOptions {
                         filename: filename.clone(),
                         depth: run.depth,
-                        print_vmt: false,
+                        print_file: false,
                         interpolate: false,
                         repl: false,
                         strategy: run.strategy,

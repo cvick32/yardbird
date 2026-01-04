@@ -56,7 +56,7 @@ pub struct YardbirdOptions {
 
     /// Output VMT files before and after instantiation.
     #[arg(short, long, default_value_t = false)]
-    pub print_vmt: bool,
+    pub print_file: bool,
 
     /// Run SMTInterpol when BMC depth is UNSAT
     #[arg(short, long, default_value_t = false)]
@@ -107,7 +107,7 @@ impl Default for YardbirdOptions {
         YardbirdOptions {
             filename: "".into(),
             depth: 10,
-            print_vmt: false,
+            print_file: false,
             interpolate: false,
             strategy: Strategy::Abstract,
             repl: false,
@@ -262,7 +262,7 @@ impl YardbirdOptions {
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
     let vmt_model = VMTModel::from_path(&options.filename).unwrap();
 
-    if options.print_vmt {
+    if options.print_file {
         let mut output = File::create("original.vmt").unwrap();
         let _ = output.write(vmt_model.as_vmt_string().as_bytes());
     }
