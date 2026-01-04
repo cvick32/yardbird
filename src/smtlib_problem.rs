@@ -1,4 +1,5 @@
 use smt2parser::concrete::{Command, SyntaxBuilder, Term};
+use smt2parser::let_extract::LetExtract;
 use smt2parser::CommandStream;
 use std::path::Path;
 
@@ -52,6 +53,30 @@ impl From<smt2parser::concrete::Error> for SMTLIBError {
 }
 
 impl SMTLIBProblem {
+    pub fn as_smt2_string(&self) -> String {
+        use itertools::Itertools;
+        self.commands
+            .iter()
+            .map(|command| format!("{}", command.clone().accept(&mut SyntaxBuilder).unwrap()))
+            .join("\n")
+    }
+
+    fn preprocess_commands(commands: Vec<Command>) -> Vec<Command> {
+        commands
+            .into_iter()
+            .map(|cmd| match cmd {
+                Command::Assert { term } => Command::Assert {
+                    term: LetExtract::substitute(term),
+                },
+                Command::DefineFun { sig, term } => Command::DefineFun {
+                    sig,
+                    term: LetExtract::substitute(term),
+                },
+                other => other,
+            })
+            .collect()
+    }
+
     /// Parse an SMTLIB file from a path
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, SMTLIBError> {
         let file = std::fs::File::open(path.as_ref())?;
@@ -69,6 +94,7 @@ impl SMTLIBProblem {
 
     /// Create an SMTLIBProblem from a list of commands
     pub fn from_commands(commands: Vec<Command>) -> Result<Self, SMTLIBError> {
+        let commands = Self::preprocess_commands(commands);
         let mut logic = None;
         let mut sorts = Vec::new();
         let mut function_definitions = Vec::new();
