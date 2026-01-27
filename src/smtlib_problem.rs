@@ -1,11 +1,15 @@
 use smt2parser::concrete::{Command, SyntaxBuilder, Term};
 use smt2parser::let_extract::LetExtract;
+use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
 use crate::problem::Problem;
+use crate::smtlib_smt_problem::SMTLIBSMTProblem;
+use crate::strategies::{ProofAction, ProofStrategy};
 use crate::utils::SolverStatistics;
 use crate::z3_var_context::Z3VarContext;
+use crate::ProofLoopResult;
 
 /// Represents an SMTLIB problem (non-transition system)
 /// Supports both incremental (multiple check-sat with push/pop) and
@@ -157,6 +161,41 @@ impl SMTLIBProblem {
 
     pub fn get_assertions(&self) -> &[Command] {
         &self.assertions
+    }
+
+    /// Abstract array theory (select/store operations) into uninterpreted functions (Read/Write).
+    /// Returns (abstracted_problem, discovered_array_types) where discovered_array_types is a vector
+    /// of (index_sort, value_sort) pairs for all array types found in the problem.
+    pub fn abstract_array_theory(&self) -> (SMTLIBProblem, Vec<(String, String)>) {
+        let mut abstractor = ArrayAbstractor::default();
+        let mut abstracted_commands = vec![];
+
+        for command in &self.commands {
+            abstracted_commands.push(command.clone().accept(&mut abstractor).unwrap());
+        }
+
+        // Add array type definitions at the beginning
+        let mut array_definitions = abstractor.get_array_type_definitions();
+        array_definitions.extend(abstracted_commands);
+
+        // Extract discovered types from the abstractor
+        let discovered_types: Vec<(String, String)> = abstractor.array_types.into_iter().collect();
+
+        (
+            SMTLIBProblem::from_commands(array_definitions).unwrap(),
+            discovered_types,
+        )
+    }
+
+    /// Get assertion terms for subterm extraction
+    pub fn get_assertion_terms(&self) -> Vec<Term> {
+        self.assertions
+            .iter()
+            .filter_map(|cmd| match cmd {
+                Command::Assert { term } => Some(term.clone()),
+                _ => None,
+            })
+            .collect()
     }
 }
 
@@ -345,5 +384,123 @@ impl SMTLIBSolver {
     /// Get solver statistics
     pub fn get_statistics(&self) -> &SolverStatistics {
         &self.solver_statistics
+    }
+
+    /// Execute with abstract/concrete strategy (refinement loop)
+    /// This is the strategy-based solving mode with refinement
+    #[allow(clippy::borrowed_box)]
+    pub fn execute_with_strategy<S>(
+        problem: &SMTLIBProblem,
+        mut strategy: Box<dyn ProofStrategy<'_, S>>,
+        max_refinements: u32,
+        //  instantiation_strategy: Box<dyn InstantiationStrategy>,
+    ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
+        use log::info;
+
+        // 1. Abstract if needed
+        let (working_problem, array_types) = if strategy.get_theory_support().requires_abstraction()
+        {
+            info!("Abstracting array theory");
+            let (abs_problem, types) = problem.abstract_array_theory();
+            info!("Discovered array types: {:?}", types);
+            (abs_problem, types)
+        } else {
+            (problem.clone(), vec![])
+        };
+
+        // Store the abstracted problem for potential output
+        let abstracted_problem = if strategy.get_theory_support().requires_abstraction() {
+            Some(working_problem.clone())
+        } else {
+            None
+        };
+
+        info!(
+            "Starting refinement loop with max {} iterations",
+            max_refinements
+        );
+
+        // 2. Create wrapper with array types for correct logic string
+        let mut smt_problem = SMTLIBSMTProblem::new_with_array_types(
+            &working_problem,
+            &strategy,
+            false, // track_instantiations - TODO: make this configurable
+            //instantiation_strategy,
+            array_types,
+        );
+
+        // 3. Refinement loop (similar to Driver::check_strategy but no depths)
+        let mut found_proof = false;
+        let mut counterexample = false;
+
+        for refinement_step in 0..max_refinements {
+            info!("Refinement iteration {}", refinement_step + 1);
+
+            let mut state = strategy.setup(&smt_problem, 0)?;
+
+            let action = match smt_problem.check() {
+                z3::SatResult::Unsat => {
+                    info!("  Result: UNSAT");
+                    strategy.unsat(&mut state, &smt_problem)?
+                }
+                z3::SatResult::Sat => {
+                    info!("  Result: SAT");
+                    strategy.sat(&mut state, &smt_problem, refinement_step)?
+                }
+                z3::SatResult::Unknown => {
+                    info!(
+                        "  Result: UNKNOWN - {}",
+                        smt_problem
+                            .get_reason_unknown()
+                            .unwrap_or_else(|| "no reason given".to_string())
+                    );
+                    strategy.unknown(&mut state, &smt_problem)?
+                }
+            };
+
+            match action {
+                ProofAction::Continue => {
+                    info!("  Action: Continue refinement");
+                    strategy.finish(state, &mut smt_problem)?;
+                }
+                ProofAction::FoundProof => {
+                    info!("  Action: Found proof!");
+                    found_proof = true;
+                    strategy.finish(state, &mut smt_problem)?;
+                    break;
+                }
+                ProofAction::NextDepth => {
+                    // For SMTLIB (no depths), treat this as completion
+                    info!("  Action: Refinement complete");
+                    strategy.finish(state, &mut smt_problem)?;
+                    break;
+                }
+                ProofAction::FoundCounterexample => {
+                    info!("  Action: Found counterexample");
+                    counterexample = true;
+                    strategy.finish(state, &mut smt_problem)?;
+                    break;
+                }
+            }
+        }
+
+        // 4. Build result
+        info!(
+            "Refinement complete. Total instantiations: {}",
+            smt_problem.get_number_instantiations_added()
+        );
+
+        Ok((
+            ProofLoopResult {
+                model: None, // No VMT model in SMTLIB mode
+                used_instances: smt_problem.get_instantiations(),
+                const_instances: vec![], // TODO: track const instances separately if needed
+                total_instantiations_added: smt_problem.get_number_instantiations_added(),
+                solver_statistics: smt_problem.get_solver_statistics(),
+                counterexample,
+                found_proof,
+            },
+            abstracted_problem,
+        ))
     }
 }
