@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use num::{BigUint, Zero};
 
 use crate::concrete::{Command, Identifier, Sort, Symbol, SyntaxBuilder, Term};
+use crate::visitors::Index;
 
 use super::utils::simple_identifier_with_name;
 
@@ -24,8 +25,31 @@ impl Default for ArrayAbstractor {
     }
 }
 
+/// Convert a stringified sort name back to a proper Sort object.
+/// Handles indexed sorts like "BitVec32" -> (_ BitVec 32)
+pub fn string_to_sort(name: &str) -> Sort {
+    // Check for BitVec pattern: "BitVec" followed by a number
+    if let Some(suffix) = name.strip_prefix("BitVec") {
+        if let Ok(width) = suffix.parse::<u64>() {
+            return Sort::Simple {
+                identifier: Identifier::Indexed {
+                    symbol: Symbol("BitVec".to_string()),
+                    indices: vec![Index::Numeral(BigUint::from(width))],
+                },
+            };
+        }
+    }
+
+    // Default: treat as a simple sort (Int, Bool, Real, or user-defined)
+    Sort::Simple {
+        identifier: Identifier::Simple {
+            symbol: Symbol(name.to_string()),
+        },
+    }
+}
+
 impl ArrayAbstractor {
-    pub(crate) fn get_array_type_definitions(&self) -> Vec<Command> {
+    pub fn get_array_type_definitions(&self) -> Vec<Command> {
         let mut commands = vec![];
         for (index, value) in &self.array_types {
             let arr_sort = Sort::Simple {
@@ -33,16 +57,10 @@ impl ArrayAbstractor {
                     symbol: Symbol(format!("Array_{index}_{value}")),
                 },
             };
-            let index_sort = Sort::Simple {
-                identifier: Identifier::Simple {
-                    symbol: Symbol(index.to_string()),
-                },
-            };
-            let value_sort = Sort::Simple {
-                identifier: Identifier::Simple {
-                    symbol: Symbol(value.to_string()),
-                },
-            };
+            // Convert stringified sort names back to proper Sort objects
+            let index_sort = string_to_sort(index);
+            let value_sort = string_to_sort(value);
+
             let sort_definition = Command::DeclareSort {
                 symbol: Symbol(format!("Array_{index}_{value}")),
                 arity: BigUint::zero(),

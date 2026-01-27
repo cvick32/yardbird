@@ -2,7 +2,7 @@ use smt2parser::vmt::VMTModel;
 
 use crate::{
     driver::{self, Error},
-    smt_problem::SMTProblem,
+    solver_interface::SolverInterface,
     theory_support::TheorySupport,
     ProofLoopResult,
 };
@@ -31,28 +31,28 @@ pub trait ProofStrategy<'ctx, S> {
         250
     }
 
-    fn setup(&mut self, smt: &SMTProblem, depth: u16) -> driver::Result<S>;
+    fn setup(&mut self, smt: &dyn SolverInterface, depth: u16) -> driver::Result<S>;
 
-    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction>;
+    fn unsat(&mut self, state: &mut S, smt: &dyn SolverInterface) -> driver::Result<ProofAction>;
 
     fn sat(
         &mut self,
         state: &mut S,
-        smt: &SMTProblem,
+        smt: &dyn SolverInterface,
         refinement_step: u32,
     ) -> driver::Result<ProofAction>;
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> driver::Result<ProofAction> {
+    fn unknown(&mut self, state: &mut S, smt: &dyn SolverInterface) -> driver::Result<ProofAction> {
         Err(Error::SolverUnknown(smt.get_reason_unknown()))
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, state: S, smt: &mut SMTProblem) -> driver::Result<()> {
+    fn finish(&mut self, state: S, smt: &mut dyn SolverInterface) -> driver::Result<()> {
         Ok(())
     }
 
-    fn result(&mut self, model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult;
+    fn result(&mut self, model: &mut VMTModel, smt: &dyn SolverInterface) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond
@@ -61,17 +61,22 @@ pub trait ProofStrategy<'ctx, S> {
 /// to a proof strategy.
 pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
-    fn unsat(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
+    fn unsat(&mut self, state: &mut S, smt: &dyn SolverInterface) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn sat(&mut self, state: &mut S, smt: &SMTProblem, refinement_step: u32) -> anyhow::Result<()> {
+    fn sat(
+        &mut self,
+        state: &mut S,
+        smt: &dyn SolverInterface,
+        refinement_step: u32,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, smt: &SMTProblem) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, smt: &dyn SolverInterface) -> anyhow::Result<()> {
         Ok(())
     }
 

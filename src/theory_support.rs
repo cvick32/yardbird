@@ -1,6 +1,7 @@
 use std::vec;
 
 use smt2parser::concrete::{Command, Identifier, QualIdentifier, Sort, Symbol, Term};
+use smt2parser::vmt::array_abstractor::string_to_sort;
 use smt2parser::vmt::VMTModel;
 
 /// Trait for providing theory-specific function declarations and model abstractions
@@ -19,6 +20,12 @@ pub trait TheorySupport {
 
     /// Returns true if this theory requires abstraction
     fn requires_abstraction(&self) -> bool;
+
+    /// Returns true if this theory support uses quantified axioms
+    /// (e.g., read-after-write axiom for arrays)
+    fn uses_quantified_axioms(&self) -> bool {
+        false // Default: no axioms
+    }
 }
 
 /// A function declaration for Z3
@@ -160,6 +167,13 @@ impl ArrayTheorySupport {
     }
 }
 
+/// Check if any array type involves bitvectors
+fn has_bitvector_types(array_types: &[(String, String)]) -> bool {
+    array_types
+        .iter()
+        .any(|(idx, val)| idx.starts_with("BitVec") || val.starts_with("BitVec"))
+}
+
 pub fn get_uninterpreted_array_functions(
     array_types: &[(String, String)],
 ) -> Vec<FunctionDeclaration> {
@@ -168,16 +182,9 @@ pub fn get_uninterpreted_array_functions(
     // Generate functions for each discovered array type
     for (index_sort, value_sort) in array_types {
         let array_sort_type = array_sort(index_sort, value_sort);
-        let index_sort_type = Sort::Simple {
-            identifier: Identifier::Simple {
-                symbol: Symbol(index_sort.clone()),
-            },
-        };
-        let value_sort_type = Sort::Simple {
-            identifier: Identifier::Simple {
-                symbol: Symbol(value_sort.clone()),
-            },
-        };
+        // Use string_to_sort to handle indexed sorts like BitVec
+        let index_sort_type = string_to_sort(index_sort);
+        let value_sort_type = string_to_sort(value_sort);
 
         functions.push(FunctionDeclaration::new(
             format!("Read_{}_{}", index_sort, value_sort),
@@ -211,7 +218,13 @@ impl TheorySupport for ArrayTheorySupport {
     }
 
     fn get_logic_string(&self) -> String {
-        "UFLIA".to_string()
+        if has_bitvector_types(&self.array_types) {
+            // Use AUFBV for arrays with bitvector indices or values
+            // The UF is implicit in AUFBV (arrays + uninterpreted functions + bitvectors)
+            "AUFBV".to_string()
+        } else {
+            "UFLIA".to_string()
+        }
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -244,7 +257,12 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     }
 
     fn get_logic_string(&self) -> String {
-        "UFLIA".into()
+        if has_bitvector_types(&self.array_types) {
+            // Use AUFBV for arrays with bitvector indices or values
+            "AUFBV".to_string()
+        } else {
+            "UFLIA".to_string()
+        }
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -266,20 +284,16 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
 
         axioms
     }
-}
 
-fn sort_from_string(name: &str) -> Sort {
-    Sort::Simple {
-        identifier: Identifier::Simple {
-            symbol: Symbol(name.to_string()),
-        },
+    fn uses_quantified_axioms(&self) -> bool {
+        true
     }
 }
 
 fn generate_read_after_write_axiom(index_sort: &str, value_sort: &str) -> Command {
-    let array_sort = sort_from_string(&format!("Array_{}_{}", index_sort, value_sort));
-    let idx_sort = sort_from_string(index_sort);
-    let val_sort = sort_from_string(value_sort);
+    let array_sort = string_to_sort(&format!("Array_{}_{}", index_sort, value_sort));
+    let idx_sort = string_to_sort(index_sort);
+    let val_sort = string_to_sort(value_sort);
 
     let read_fn = format!("Read_{}_{}", index_sort, value_sort);
     let write_fn = format!("Write_{}_{}", index_sort, value_sort);
@@ -379,9 +393,9 @@ fn generate_read_after_write_axiom(index_sort: &str, value_sort: &str) -> Comman
 }
 
 fn generate_write_preserves_other_axiom(index_sort: &str, value_sort: &str) -> Command {
-    let array_sort = sort_from_string(&format!("Array_{}_{}", index_sort, value_sort));
-    let idx_sort = sort_from_string(index_sort);
-    let val_sort = sort_from_string(value_sort);
+    let array_sort = string_to_sort(&format!("Array_{}_{}", index_sort, value_sort));
+    let idx_sort = string_to_sort(index_sort);
+    let val_sort = string_to_sort(value_sort);
 
     let read_fn = format!("Read_{}_{}", index_sort, value_sort);
     let write_fn = format!("Write_{}_{}", index_sort, value_sort);
@@ -500,8 +514,8 @@ fn generate_write_preserves_other_axiom(index_sort: &str, value_sort: &str) -> C
 }
 
 fn generate_const_array_axiom(index_sort: &str, value_sort: &str) -> Command {
-    let idx_sort = sort_from_string(index_sort);
-    let val_sort = sort_from_string(value_sort);
+    let idx_sort = string_to_sort(index_sort);
+    let val_sort = string_to_sort(value_sort);
 
     let read_fn = format!("Read_{}_{}", index_sort, value_sort);
     let const_arr_fn = format!("ConstArr_{}_{}", index_sort, value_sort);
@@ -824,21 +838,23 @@ mod tests {
     }
 
     #[test]
-    fn test_sort_from_string_helper() {
+    fn test_string_to_sort_helper() {
         // Test the helper function creates correct sorts
-        let int_sort = sort_from_string("Int");
+        let int_sort = string_to_sort("Int");
         assert_eq!(
             format!("{:?}", int_sort),
             "Simple { identifier: Simple { symbol: Symbol(\"Int\") } }"
         );
 
-        let bitvec_sort = sort_from_string("BitVec32");
+        // BitVec32 is correctly parsed as an indexed sort (_ BitVec 32)
+        let bitvec_sort = string_to_sort("BitVec32");
         assert_eq!(
             format!("{:?}", bitvec_sort),
-            "Simple { identifier: Simple { symbol: Symbol(\"BitVec32\") } }"
+            "Simple { identifier: Indexed { symbol: Symbol(\"BitVec\"), indices: [Numeral(32)] } }"
         );
 
-        let nested_sort = sort_from_string("Array_Int_Int");
+        // Non-bitvector sorts remain as simple identifiers
+        let nested_sort = string_to_sort("Array_Int_Int");
         assert_eq!(
             format!("{:?}", nested_sort),
             "Simple { identifier: Simple { symbol: Symbol(\"Array_Int_Int\") } }"

@@ -11,7 +11,7 @@ use crate::{
     driver::{self},
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    smt_problem::SMTProblem,
+    solver_interface::SolverInterface,
     theories::list::list_axioms::{expr_to_term, translate_term, ListExpr, ListLanguage},
     theory_support::{ListTheorySupport, TheorySupport},
     ProofLoopResult,
@@ -27,7 +27,7 @@ where
     const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
-    cost_fn_factory: fn(&SMTProblem, u32) -> F,
+    cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
 }
 
 impl<F> ListAbstract<F>
@@ -37,7 +37,7 @@ where
     pub fn new(
         _bmc_depth: u16,
         run_ic3ia: bool,
-        cost_fn_factory: fn(&SMTProblem, u32) -> F,
+        cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
     ) -> Self {
         Self {
             _bmc_depth,
@@ -59,7 +59,7 @@ impl ListRefinementState {
     pub fn update_with_subterms(
         &mut self,
         model: &z3::Model,
-        smt: &SMTProblem,
+        smt: &dyn crate::solver_interface::SolverInterface,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
             let z3_term = smt.rewrite_term(term);
@@ -86,7 +86,11 @@ where
         abs_model
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ListRefinementState> {
+    fn setup(
+        &mut self,
+        _smt: &dyn crate::solver_interface::SolverInterface,
+        depth: u16,
+    ) -> driver::Result<ListRefinementState> {
         let egraph = egg::EGraph::new(());
         Ok(ListRefinementState {
             depth,
@@ -99,7 +103,7 @@ where
     fn unsat(
         &mut self,
         state: &mut ListRefinementState,
-        _solver: &SMTProblem,
+        _solver: &dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -108,7 +112,7 @@ where
     fn sat(
         &mut self,
         state: &mut ListRefinementState,
-        smt: &SMTProblem,
+        smt: &dyn crate::solver_interface::SolverInterface,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         let model = match smt.get_model() {
@@ -125,7 +129,11 @@ where
     }
 
     #[allow(clippy::unnecessary_fold)]
-    fn finish(&mut self, state: ListRefinementState, smt: &mut SMTProblem) -> driver::Result<()> {
+    fn finish(
+        &mut self,
+        state: ListRefinementState,
+        smt: &mut dyn crate::solver_interface::SolverInterface,
+    ) -> driver::Result<()> {
         self.const_instantiations
             .extend(state.const_instantiations.into_iter().map(expr_to_term));
 
@@ -134,7 +142,7 @@ where
             .into_iter()
             .flat_map(|inst| inst.to_string().parse())
             .collect();
-        let variables = smt.variables.clone();
+        let variables = smt.get_variables().to_vec();
         let _ = terms
             .into_iter()
             .flat_map(|term| {
@@ -146,7 +154,11 @@ where
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+    fn result(
+        &mut self,
+        vmt_model: &mut VMTModel,
+        smt: &dyn crate::solver_interface::SolverInterface,
+    ) -> ProofLoopResult {
         for instantiation_term in &smt.get_instantiations() {
             vmt_model.add_instantiation(instantiation_term);
         }

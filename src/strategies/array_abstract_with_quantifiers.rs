@@ -4,7 +4,6 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     driver::{self},
     ic3ia::{self, ic3ia_output_contains_proof},
-    smt_problem::SMTProblem,
     strategies::ArrayRefinementState,
     theory_support::{ArrayWithQuantifiersTheorySupport, TheorySupport},
     z3_ext::ModelExt,
@@ -40,7 +39,11 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
         model
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
+    fn setup(
+        &mut self,
+        _smt: &dyn crate::solver_interface::SolverInterface,
+        depth: u16,
+    ) -> driver::Result<ArrayRefinementState> {
         Ok(ArrayRefinementState {
             depth,
             egraph: egg::EGraph::default(),
@@ -53,7 +56,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn unsat(
         &mut self,
         state: &mut ArrayRefinementState,
-        _solver: &SMTProblem,
+        _solver: &dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -62,7 +65,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn sat(
         &mut self,
         state: &mut ArrayRefinementState,
-        smt: &SMTProblem,
+        smt: &dyn crate::solver_interface::SolverInterface,
         _: u32,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
@@ -75,11 +78,19 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     }
 
     #[allow(clippy::unnecessary_fold)]
-    fn finish(&mut self, _: ArrayRefinementState, _: &mut SMTProblem) -> driver::Result<()> {
+    fn finish(
+        &mut self,
+        _: ArrayRefinementState,
+        _: &mut dyn crate::solver_interface::SolverInterface,
+    ) -> driver::Result<()> {
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+    fn result(
+        &mut self,
+        vmt_model: &mut VMTModel,
+        smt: &dyn crate::solver_interface::SolverInterface,
+    ) -> ProofLoopResult {
         let found_proof = if self.run_ic3ia {
             match ic3ia::call_ic3ia(vmt_model.clone()) {
                 Ok(out) => {

@@ -7,7 +7,7 @@ use crate::{
         prefer_constants::ArrayPreferConstants, prefer_read::ArrayPreferRead,
         prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost, symbol_cost::ArrayBMCCost,
     },
-    smt_problem::SMTProblem,
+    solver_interface::SolverInterface,
 };
 
 pub mod adaptive_cost;
@@ -18,7 +18,7 @@ pub mod prefer_write;
 pub mod split_cost;
 pub mod symbol_cost;
 
-pub fn array_bmc_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBMCCost {
+pub fn array_bmc_cost_factory(smt: &dyn SolverInterface, depth: u32) -> ArrayBMCCost {
     let init_and_transition_system_terms: FxHashSet<Symbol> = smt
         .get_init_and_transition_subterms()
         .into_iter()
@@ -39,7 +39,7 @@ pub fn array_bmc_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayBMCCost {
     )
 }
 
-pub fn array_ast_size_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayAstSize {
+pub fn array_ast_size_cost_factory(smt: &dyn SolverInterface, depth: u32) -> ArrayAstSize {
     ArrayAstSize {
         current_bmc_depth: depth,
         init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
@@ -48,7 +48,7 @@ pub fn array_ast_size_cost_factory(smt: &SMTProblem, depth: u32) -> ArrayAstSize
     }
 }
 
-pub fn adaptive_array_cost_factory(smt: &SMTProblem, depth: u32) -> AdaptiveArrayCost {
+pub fn adaptive_array_cost_factory(smt: &dyn SolverInterface, depth: u32) -> AdaptiveArrayCost {
     AdaptiveArrayCost::new(
         depth,
         smt.get_init_and_transition_subterms(),
@@ -57,7 +57,7 @@ pub fn adaptive_array_cost_factory(smt: &SMTProblem, depth: u32) -> AdaptiveArra
     )
 }
 
-pub fn split_array_cost_factory(smt: &SMTProblem, depth: u32) -> SplitArrayCost {
+pub fn split_array_cost_factory(smt: &dyn SolverInterface, depth: u32) -> SplitArrayCost {
     SplitArrayCost::new(
         depth,
         smt.get_init_and_transition_subterms(),
@@ -66,7 +66,7 @@ pub fn split_array_cost_factory(smt: &SMTProblem, depth: u32) -> SplitArrayCost 
     )
 }
 
-pub fn array_prefer_read_factory(smt: &SMTProblem, depth: u32) -> ArrayPreferRead {
+pub fn array_prefer_read_factory(smt: &dyn SolverInterface, depth: u32) -> ArrayPreferRead {
     ArrayPreferRead {
         current_bmc_depth: depth,
         init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
@@ -75,7 +75,7 @@ pub fn array_prefer_read_factory(smt: &SMTProblem, depth: u32) -> ArrayPreferRea
     }
 }
 
-pub fn array_prefer_write_factory(smt: &SMTProblem, depth: u32) -> ArrayPreferWrite {
+pub fn array_prefer_write_factory(smt: &dyn SolverInterface, depth: u32) -> ArrayPreferWrite {
     ArrayPreferWrite {
         current_bmc_depth: depth,
         init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
@@ -84,7 +84,7 @@ pub fn array_prefer_write_factory(smt: &SMTProblem, depth: u32) -> ArrayPreferWr
     }
 }
 
-pub fn array_prefer_constants(smt: &SMTProblem, depth: u32) -> ArrayPreferConstants {
+pub fn array_prefer_constants(smt: &dyn SolverInterface, depth: u32) -> ArrayPreferConstants {
     ArrayPreferConstants {
         current_bmc_depth: depth,
         init_and_transition_system_terms: smt.get_init_and_transition_subterms(),

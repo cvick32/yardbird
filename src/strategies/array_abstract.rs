@@ -10,7 +10,7 @@ use crate::{
     cost_functions::YardbirdCostFunction,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    smt_problem::SMTProblem,
+    solver_interface::SolverInterface,
     theories::array::{
         array_axioms::{
             expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
@@ -31,7 +31,7 @@ where
     const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
-    cost_fn_factory: fn(&SMTProblem, u32) -> F,
+    cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
     discovered_array_types: Vec<(String, String)>,
 }
 
@@ -42,7 +42,7 @@ where
     pub fn new(
         bmc_depth: u16,
         run_ic3ia: bool,
-        cost_fn_factory: fn(&SMTProblem, u32) -> F,
+        cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
     ) -> Self {
         Self {
             _bmc_depth: bmc_depth,
@@ -67,7 +67,7 @@ impl ArrayRefinementState {
     pub fn update_with_subterms(
         &mut self,
         model: &z3::Model,
-        smt: &SMTProblem,
+        smt: &dyn crate::solver_interface::SolverInterface,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
             let z3_term = smt.rewrite_term(term);
@@ -98,21 +98,32 @@ where
         //     .abstract_constants_over(self.bmc_depth)
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
+    fn setup(
+        &mut self,
+        smt: &dyn crate::solver_interface::SolverInterface,
+        depth: u16,
+    ) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(());
+        // Use discovered_array_types if available (VMT mode via configure_model),
+        // otherwise get from SolverInterface (SMTLIB mode)
+        let array_types = if self.discovered_array_types.is_empty() {
+            smt.get_array_types()
+        } else {
+            self.discovered_array_types.clone()
+        };
         Ok(ArrayRefinementState {
             depth,
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
-            array_types: self.discovered_array_types.clone(),
+            array_types,
         })
     }
 
     fn unsat(
         &mut self,
         state: &mut ArrayRefinementState,
-        _solver: &SMTProblem,
+        _solver: &dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -121,7 +132,7 @@ where
     fn sat(
         &mut self,
         state: &mut ArrayRefinementState,
-        smt: &SMTProblem,
+        smt: &dyn crate::solver_interface::SolverInterface,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         let model = match smt.get_model() {
@@ -142,13 +153,17 @@ where
     }
 
     #[allow(clippy::unnecessary_fold)]
-    fn finish(&mut self, state: ArrayRefinementState, smt: &mut SMTProblem) -> driver::Result<()> {
+    fn finish(
+        &mut self,
+        state: ArrayRefinementState,
+        smt: &mut dyn crate::solver_interface::SolverInterface,
+    ) -> driver::Result<()> {
         let const_terms: Vec<Term> = state
             .const_instantiations
             .iter()
             .map(|inst| expr_to_term(inst.clone()))
             .collect();
-        let variables = smt.variables.clone();
+        let variables = smt.get_variables().to_vec();
         for term in &const_terms {
             if let Some(inst) =
                 UnquantifiedInstantiator::rewrite_unquantified(term.clone(), variables.clone())
@@ -160,7 +175,7 @@ where
             .extend(state.const_instantiations.into_iter().map(expr_to_term));
 
         let terms: Vec<Term> = state.instantiations.into_iter().map(expr_to_term).collect();
-        let variables = smt.variables.clone();
+        let variables = smt.get_variables().to_vec();
         let _ = terms
             .into_iter()
             .flat_map(|term| {
@@ -172,7 +187,11 @@ where
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+    fn result(
+        &mut self,
+        vmt_model: &mut VMTModel,
+        smt: &dyn crate::solver_interface::SolverInterface,
+    ) -> ProofLoopResult {
         for instantiation_term in &smt.get_instantiations() {
             vmt_model.add_instantiation(instantiation_term);
         }

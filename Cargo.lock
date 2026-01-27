@@ -2760,6 +2760,7 @@ dependencies = [
  "insta",
  "itertools 0.14.0",
  "log",
+ "num",
  "rand 0.9.2",
  "reqwest",
  "rustc-hash",

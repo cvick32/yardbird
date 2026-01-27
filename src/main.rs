@@ -5,8 +5,8 @@ use yardbird::{
     logger, model_from_options,
     problem::Problem,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
-    strategies::{Interpolating, Repl},
-    Driver, Theory, YardbirdOptions,
+    strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
+    CostFunction, Driver, Strategy, Theory, YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -48,21 +48,71 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     );
 
     if options.print_file {
-        use std::fs::File;
-        use std::io::Write;
         let mut output = File::create("original.smt2").unwrap();
         let _ = output.write(problem.as_smt2_string().as_bytes());
         info!("Wrote preprocessed SMT2 to original.smt2");
     }
 
-    // Create and execute solver
-    let mut solver = SMTLIBSolver::new(problem.get_logic());
-    solver.execute(&problem);
+    // Detect if we should use strategy mode
+    let use_strategy = should_use_strategy_mode(options);
 
-    // Print results
+    if use_strategy {
+        info!(
+            "Using strategy-based solving: strategy={}, cost-function={}",
+            options.strategy, options.cost_function
+        );
+        run_smtlib_with_strategy(&problem, options)?;
+    } else {
+        info!("Using simple mode (no refinement)");
+        run_smtlib_simple(&problem, options)?;
+    }
+
+    Ok(())
+}
+
+/// Determine if we should use strategy-based solving
+fn should_use_strategy_mode(options: &YardbirdOptions) -> bool {
+    // Use strategy mode if:
+    // 1. Strategy is not Concrete (Abstract strategies need refinement)
+    // 2. Cost function is not BmcCost (indicates user wants specific cost function)
+    !matches!(options.strategy, Strategy::Concrete)
+        || !matches!(options.cost_function, CostFunction::BmcCost)
+}
+
+/// Run SMTLIB with strategy-based refinement
+fn run_smtlib_with_strategy(
+    problem: &SMTLIBProblem,
+    options: &YardbirdOptions,
+) -> anyhow::Result<()> {
+    let strategy = build_smtlib_strategy(options);
+    //let instantiation_strategy = options.build_instantiation_strategy();
+
+    let (result, abstracted_problem) = SMTLIBSolver::execute_with_strategy(
+        problem, strategy,
+        250, // max refinements (like VMT mode)
+            //instantiation_strategy,
+    )?;
+
+    // Print abstracted output if requested
+    if options.print_file {
+        if let Some(abs_problem) = abstracted_problem {
+            let mut output = File::create("abstracted.smt2")?;
+            let _ = output.write(abs_problem.as_smt2_string().as_bytes());
+            info!("Wrote abstracted SMT2 to abstracted.smt2");
+        }
+    }
+
+    print_strategy_results(&result, options)?;
+    Ok(())
+}
+
+/// Run SMTLIB in simple mode (no refinement)
+fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyhow::Result<()> {
+    let mut solver = SMTLIBSolver::new(problem.get_logic());
+    solver.execute(problem);
+
     let results = solver.get_results();
     if options.json_output {
-        // JSON output for garden
         let json_output = serde_json::json!({
             "mode": "smtlib",
             "num_check_sats": results.len(),
@@ -76,7 +126,6 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
         });
         println!("{}", serde_json::to_string(&json_output)?);
     } else {
-        // Human-readable output
         info!("SMTLIB Execution Complete!");
         info!("Check-sat results:");
         for (idx, result) in results.iter().enumerate() {
@@ -90,6 +139,78 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
         info!("Solver statistics: {:#?}", solver.get_statistics());
     }
 
+    Ok(())
+}
+
+/// Build a strategy for SMTLIB mode based on options
+fn build_smtlib_strategy(
+    options: &YardbirdOptions,
+) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
+    use yardbird::cost_functions::array::*;
+    use yardbird::strategies::{Abstract, AbstractArrayWithQuantifiers, ConcreteArrayZ3};
+
+    match options.strategy {
+        Strategy::Abstract => match options.cost_function {
+            CostFunction::BmcCost => Box::new(Abstract::new(
+                0, // depth=0 for SMTLIB (no temporal unrolling)
+                options.run_ic3ia,
+                array_bmc_cost_factory,
+            )),
+            CostFunction::AstSize => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                array_ast_size_cost_factory,
+            )),
+            CostFunction::AdaptiveCost => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                adaptive_array_cost_factory,
+            )),
+            CostFunction::SplitCost => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                split_array_cost_factory,
+            )),
+            CostFunction::PreferRead => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                array_prefer_read_factory,
+            )),
+            CostFunction::PreferWrite => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                array_prefer_write_factory,
+            )),
+            CostFunction::PreferConstants => {
+                Box::new(Abstract::new(0, options.run_ic3ia, array_prefer_constants))
+            }
+        },
+        Strategy::AbstractWithQuantifiers => {
+            Box::new(AbstractArrayWithQuantifiers::new(options.run_ic3ia))
+        }
+        Strategy::Concrete => Box::new(ConcreteArrayZ3::new(options.run_ic3ia)),
+    }
+}
+
+/// Print results from strategy-based solving
+fn print_strategy_results(
+    result: &yardbird::ProofLoopResult,
+    options: &YardbirdOptions,
+) -> anyhow::Result<()> {
+    if options.json_output {
+        println!("{}", serde_json::to_string(result)?);
+    } else {
+        info!("Strategy-based solving complete!");
+        info!(
+            "Total instantiations added: {}",
+            result.total_instantiations_added
+        );
+        info!("Used instances: {}", result.used_instances.len());
+        info!("Const instances: {}", result.const_instances.len());
+        info!("Found proof: {}", result.found_proof);
+        info!("Found counterexample: {}", result.counterexample);
+        log::debug!("Solver statistics: {:#?}", result.solver_statistics);
+    }
     Ok(())
 }
 
