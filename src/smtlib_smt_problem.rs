@@ -177,7 +177,13 @@ impl SMTLIBSMTProblem {
     ) -> Self {
         let theory = strategy.get_theory_support();
         let solver = z3::Solver::new_for_logic(theory.get_logic_string()).unwrap();
-        Self::init_common(problem, theory.as_ref(), solver, track_instantiations, vec![])
+        Self::init_common(
+            problem,
+            theory.as_ref(),
+            solver,
+            track_instantiations,
+            vec![],
+        )
     }
 
     /// Create a new SMTLIBSMTProblem with explicit array types for correct logic detection.
@@ -208,7 +214,13 @@ impl SMTLIBSMTProblem {
         debug!("Using logic: {}", logic_string);
         let solver = z3::Solver::new_for_logic(logic_string.as_str()).unwrap();
 
-        Self::init_common(problem, theory.as_ref(), solver, track_instantiations, stored_array_types)
+        Self::init_common(
+            problem,
+            theory.as_ref(),
+            solver,
+            track_instantiations,
+            stored_array_types,
+        )
     }
 
     /// Add all assertions to the solver
