@@ -4,7 +4,6 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     driver,
     ic3ia::{self, ic3ia_output_contains_proof},
-    smt_problem::SMTProblem,
     theory_support::{ConcreteArrayTheory, TheorySupport},
     z3_ext::ModelExt,
     ProofLoopResult,
@@ -17,7 +16,7 @@ pub struct ConcreteArrayZ3 {
     run_ic3ia: bool,
 }
 impl ConcreteArrayZ3 {
-    pub(crate) fn new(run_ic3ia: bool) -> Self {
+    pub fn new(run_ic3ia: bool) -> Self {
         Self { run_ic3ia }
     }
 }
@@ -27,7 +26,11 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
         1
     }
 
-    fn setup(&mut self, _smt: &SMTProblem, depth: u16) -> driver::Result<ArrayRefinementState> {
+    fn setup(
+        &mut self,
+        _smt: &dyn crate::solver_interface::SolverInterface,
+        depth: u16,
+    ) -> driver::Result<ArrayRefinementState> {
         Ok(ArrayRefinementState {
             depth,
             egraph: egg::EGraph::default(),
@@ -40,7 +43,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
     fn sat(
         &mut self,
         state: &mut ArrayRefinementState,
-        smt: &SMTProblem,
+        smt: &dyn crate::solver_interface::SolverInterface,
         _refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
@@ -55,12 +58,16 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
     fn finish(
         &mut self,
         _state: ArrayRefinementState,
-        _smt: &mut SMTProblem,
+        _smt: &mut dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<()> {
         Ok(())
     }
 
-    fn result(&mut self, vmt_model: &mut VMTModel, smt: &SMTProblem) -> ProofLoopResult {
+    fn result(
+        &mut self,
+        vmt_model: &mut VMTModel,
+        smt: &dyn crate::solver_interface::SolverInterface,
+    ) -> ProofLoopResult {
         let found_proof = if self.run_ic3ia {
             match ic3ia::call_ic3ia(vmt_model.clone()) {
                 Ok(out) => {
@@ -86,7 +93,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
     fn unsat(
         &mut self,
         state: &mut ArrayRefinementState,
-        _smt: &SMTProblem,
+        _smt: &dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)

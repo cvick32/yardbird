@@ -35,6 +35,8 @@ pub mod problem;
 mod proof_tree;
 pub mod smt_problem;
 pub mod smtlib_problem;
+pub mod smtlib_smt_problem;
+pub mod solver_interface;
 pub mod strategies;
 mod subterm_handler;
 pub mod theories;

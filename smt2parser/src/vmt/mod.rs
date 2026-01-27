@@ -25,7 +25,7 @@ static TRANSITION_ATTRIBUTE: &str = "trans";
 static INITIAL_ATTRIBUTE: &str = "init";
 
 mod action;
-mod array_abstractor;
+pub mod array_abstractor;
 mod array_axiom_frame_num_getter;
 mod axiom;
 pub mod bmc;

@@ -8,8 +8,17 @@ use super::{ArrayRefinementState, ProofStrategyExt};
 pub struct Interpolating;
 
 impl ProofStrategyExt<ArrayRefinementState> for Interpolating {
-    fn unsat(&mut self, _state: &mut ArrayRefinementState, smt: &SMTProblem) -> anyhow::Result<()> {
-        let interpolants = run_smtinterpol(smt);
+    fn unsat(
+        &mut self,
+        _state: &mut ArrayRefinementState,
+        smt: &dyn crate::solver_interface::SolverInterface,
+    ) -> anyhow::Result<()> {
+        // Downcast to SMTProblem for VMT-specific interpolation
+        let smt_problem = smt
+            .as_any()
+            .downcast_ref::<SMTProblem>()
+            .expect("Interpolation requires SMTProblem");
+        let interpolants = run_smtinterpol(smt_problem);
         match interpolants {
             Ok(interps) => {
                 for interp in interps {
@@ -34,8 +43,17 @@ impl ProofStrategyExt<ArrayRefinementState> for Interpolating {
 }
 
 impl ProofStrategyExt<ListRefinementState> for Interpolating {
-    fn unsat(&mut self, _state: &mut ListRefinementState, smt: &SMTProblem) -> anyhow::Result<()> {
-        let interpolants = run_smtinterpol(smt);
+    fn unsat(
+        &mut self,
+        _state: &mut ListRefinementState,
+        smt: &dyn crate::solver_interface::SolverInterface,
+    ) -> anyhow::Result<()> {
+        // Downcast to SMTProblem for VMT-specific interpolation
+        let smt_problem = smt
+            .as_any()
+            .downcast_ref::<SMTProblem>()
+            .expect("Interpolation requires SMTProblem");
+        let interpolants = run_smtinterpol(smt_problem);
         match interpolants {
             Ok(interps) => {
                 for interp in interps {

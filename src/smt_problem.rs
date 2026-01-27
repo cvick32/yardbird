@@ -9,8 +9,8 @@ use z3::ast::Dynamic;
 
 use crate::{
     instantiation_strategy::InstantiationStrategy, problem::Problem, proof_tree::ProofTree,
-    strategies::ProofStrategy, subterm_handler::SubtermHandler, utils::SolverStatistics,
-    z3_var_context::Z3VarContext,
+    solver_interface::SolverInterface, strategies::ProofStrategy, subterm_handler::SubtermHandler,
+    utils::SolverStatistics, z3_var_context::Z3VarContext,
 };
 
 pub struct SMTProblem {
@@ -198,55 +198,12 @@ impl SMTProblem {
         // Return true if a new instantiation was added
         self.instantiations.len() > initial_count
     }
-
-    pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver_statistcs.clone()
-    }
-
-    pub(crate) fn get_reason_unknown(&self) -> Option<String> {
-        self.solver.get_reason_unknown()
-    }
-
-    pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.z3_var_context.rewrite_term(term)
-    }
-
-    pub(crate) fn get_property_subterms(&self) -> Vec<String> {
-        self.subterm_handler.get_property_subterms()
-    }
-
-    pub(crate) fn get_reads_and_writes(&self) -> smt2parser::vmt::ReadsAndWrites {
-        self.subterm_handler.get_reads_and_writes()
-    }
-
-    pub(crate) fn get_all_subterms(&self) -> Vec<&Term> {
-        self.subterm_handler.get_all_subterms()
-    }
-
     pub(crate) fn to_smtinterpol(&self) -> String {
         todo!()
     }
 
-    pub(crate) fn get_instantiations(&self) -> Vec<Term> {
-        self.instantiations
-            .iter()
-            .map(|inst| inst.get_term().clone())
-            .collect()
-    }
-
     pub(crate) fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
-    }
-
-    pub(crate) fn get_init_and_transition_subterms(&self) -> Vec<String> {
-        let mut trans = self.subterm_handler.get_transition_system_subterms();
-        trans.extend(self.subterm_handler.get_initial_subterms());
-        trans.extend(self.subterm_handler.get_instantiation_subterms());
-        trans
-    }
-
-    pub(crate) fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.z3_var_context.get_interpretation(model, z3_term)
     }
 
     /// Dump the solver state to an SMT2 file
@@ -421,5 +378,73 @@ impl Problem for SMTProblem {
 
     fn add_instantiation(&self, _term: &Term) {
         todo!()
+    }
+}
+
+impl SolverInterface for SMTProblem {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn get_model(&self) -> &Option<z3::Model> {
+        &self.newest_model
+    }
+
+    fn rewrite_term(&self, term: &Term) -> Dynamic {
+        self.z3_var_context.rewrite_term(term)
+    }
+
+    fn get_all_subterms(&self) -> Vec<&Term> {
+        self.subterm_handler.get_all_subterms()
+    }
+
+    fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
+        self.z3_var_context.get_interpretation(model, z3_term)
+    }
+
+    fn get_solver_statistics(&self) -> SolverStatistics {
+        self.solver_statistcs.clone()
+    }
+
+    fn get_reason_unknown(&self) -> Option<String> {
+        self.solver.get_reason_unknown()
+    }
+
+    fn add_instantiation(&mut self, inst: Instance) -> bool {
+        self.add_instantiation(inst)
+    }
+
+    #[allow(unconditional_recursion)]
+    fn get_instantiations(&self) -> Vec<Term> {
+        self.get_instantiations()
+    }
+
+    fn get_variables(&self) -> &[Variable] {
+        &self.variables
+    }
+
+    fn get_number_instantiations_added(&self) -> u64 {
+        self.get_number_instantiations_added()
+    }
+
+    fn get_init_and_transition_subterms(&self) -> Vec<String> {
+        let mut trans = self.subterm_handler.get_transition_system_subterms();
+        trans.extend(self.subterm_handler.get_initial_subterms());
+        trans.extend(self.subterm_handler.get_instantiation_subterms());
+        trans
+    }
+
+    fn get_property_subterms(&self) -> Vec<String> {
+        self.subterm_handler.get_property_subterms()
+    }
+
+    fn get_reads_and_writes(&self) -> smt2parser::vmt::ReadsAndWrites {
+        self.subterm_handler.get_reads_and_writes()
+    }
+
+    fn get_array_types(&self) -> Vec<(String, String)> {
+        // For VMT mode, array types are managed by the strategy's discovered_array_types
+        // This is a fallback that returns empty - VMT mode uses configure_model instead
+        vec![]
     }
 }
