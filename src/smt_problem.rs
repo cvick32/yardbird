@@ -414,9 +414,11 @@ impl SolverInterface for SMTProblem {
         self.add_instantiation(inst)
     }
 
-    #[allow(unconditional_recursion)]
     fn get_instantiations(&self) -> Vec<Term> {
-        self.get_instantiations()
+        self.instantiations
+            .iter()
+            .map(|inst| inst.get_term().clone())
+            .collect()
     }
 
     fn get_variables(&self) -> &[Variable] {
