@@ -10,6 +10,20 @@ use crate::{
     utils::SolverStatistics,
 };
 
+/// Information about the unsat core when tracking is enabled
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnsatCoreInfo {
+    pub core_size: usize,
+    pub core_instantiations: Vec<CoreInstantiation>,
+}
+
+/// A single instantiation in the unsat core
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoreInstantiation {
+    pub label: String,
+    pub term: String,
+}
+
 #[derive(Debug, Default)]
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
@@ -19,6 +33,7 @@ pub struct ProofLoopResult {
     pub total_instantiations_added: u64,
     pub counterexample: bool,
     pub found_proof: bool,
+    pub unsat_core: Option<UnsatCoreInfo>,
 }
 
 impl ProofLoopResult {
@@ -35,7 +50,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 6)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 7)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -59,6 +74,7 @@ impl Serialize for ProofLoopResult {
         )?;
         state.serialize_field("counterexample", &self.counterexample)?;
         state.serialize_field("found_proof", &self.found_proof)?;
+        state.serialize_field("unsat_core", &self.unsat_core)?;
         state.end()
     }
 }
@@ -79,6 +95,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             TotalInstantiationsAdded,
             Counterexample,
             FoundProof,
+            UnsatCore,
         }
 
         struct ProofLoopResultVisitor;
@@ -100,6 +117,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                 let mut total_instantiations_added = None;
                 let mut counterexample = None;
                 let mut found_proof = None;
+                let mut unsat_core = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -120,6 +138,9 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         }
                         Field::FoundProof => {
                             found_proof = Some(map.next_value()?);
+                        }
+                        Field::UnsatCore => {
+                            unsat_core = Some(map.next_value()?);
                         }
                     }
                 }
@@ -150,6 +171,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         .ok_or_else(|| serde::de::Error::missing_field("counterexample"))?,
                     found_proof: found_proof
                         .ok_or_else(|| serde::de::Error::missing_field("found_proof"))?,
+                    unsat_core: unsat_core.flatten(),
                 })
             }
         }
@@ -161,6 +183,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             "total_instantiations_added",
             "counterexample",
             "found_proof",
+            "unsat_core",
         ];
         deserializer.deserialize_struct("ProofLoopResult", FIELDS, ProofLoopResultVisitor)
     }
@@ -313,14 +336,46 @@ impl<'ctx, S> Driver<'ctx, S> {
                     ProofAction::NextDepth => continue 'bmc,
                     ProofAction::FoundCounterexample => return Err(Error::Counterexample),
                     ProofAction::FoundProof => {
-                        return Ok(strat.result(&mut self.vmt_model.clone(), &smt_problem))
+                        let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
+                        result.unsat_core = self.build_unsat_core_info(&smt_problem);
+                        return Ok(result);
                     }
                 }
             }
             return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
-        Ok(strat.result(&mut self.vmt_model.clone(), &smt_problem))
+        let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
+        result.unsat_core = self.build_unsat_core_info(&smt_problem);
+        Ok(result)
+    }
+
+    /// Build UnsatCoreInfo from the SMT problem if tracking is enabled
+    fn build_unsat_core_info(
+        &self,
+        smt_problem: &crate::smt_problem::SMTProblem,
+    ) -> Option<UnsatCoreInfo> {
+        if !self.track_instantiations {
+            return None;
+        }
+
+        smt_problem.get_unsat_core().map(|core_labels| {
+            use std::collections::HashSet;
+            let core_set: HashSet<_> = core_labels.iter().collect();
+            let core_instantiations = smt_problem
+                .get_tracked_labels()
+                .iter()
+                .filter(|(label, _)| core_set.contains(label))
+                .map(|(label, term)| CoreInstantiation {
+                    label: label.clone(),
+                    term: term.to_string(),
+                })
+                .collect::<Vec<_>>();
+            UnsatCoreInfo {
+                core_size: core_instantiations.len(),
+                core_instantiations,
+            }
+        })
     }
 }
 

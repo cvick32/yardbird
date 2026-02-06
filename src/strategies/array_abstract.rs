@@ -214,6 +214,7 @@ where
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
+            unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
         }
     }
 }

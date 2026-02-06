@@ -229,6 +229,11 @@ impl SMTProblem {
         Some(core_labels)
     }
 
+    /// Get the tracked labels for unsat core analysis
+    pub(crate) fn get_tracked_labels(&self) -> &[(String, Term)] {
+        &self.tracked_labels
+    }
+
     /// Export unsat core analysis to JSON
     pub(crate) fn export_unsat_core_json(&self, path: &str) -> anyhow::Result<()> {
         use std::fs::File;

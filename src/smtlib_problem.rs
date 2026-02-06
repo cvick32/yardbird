@@ -393,6 +393,7 @@ impl SMTLIBSolver {
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
         max_refinements: u32,
+        track_instantiations: bool,
         //  instantiation_strategy: Box<dyn InstantiationStrategy>,
     ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
         use log::info;
@@ -424,7 +425,7 @@ impl SMTLIBSolver {
         let mut smt_problem = SMTLIBSMTProblem::new_with_array_types(
             &working_problem,
             &strategy,
-            false, // track_instantiations - TODO: make this configurable
+            track_instantiations,
             //instantiation_strategy,
             array_types,
         );
@@ -490,6 +491,30 @@ impl SMTLIBSolver {
             smt_problem.get_number_instantiations_added()
         );
 
+        // Build unsat core info if tracking is enabled and we didn't find a counterexample
+        // (meaning we either found a proof or completed refinement without SAT)
+        let unsat_core = if track_instantiations && !counterexample {
+            smt_problem.get_unsat_core().map(|core_labels| {
+                use std::collections::HashSet;
+                let core_set: HashSet<_> = core_labels.iter().collect();
+                let core_instantiations = smt_problem
+                    .get_tracked_labels()
+                    .iter()
+                    .filter(|(label, _)| core_set.contains(label))
+                    .map(|(label, term)| crate::driver::CoreInstantiation {
+                        label: label.clone(),
+                        term: term.to_string(),
+                    })
+                    .collect::<Vec<_>>();
+                crate::driver::UnsatCoreInfo {
+                    core_size: core_instantiations.len(),
+                    core_instantiations,
+                }
+            })
+        } else {
+            None
+        };
+
         Ok((
             ProofLoopResult {
                 model: None, // No VMT model in SMTLIB mode
@@ -499,6 +524,7 @@ impl SMTLIBSolver {
                 solver_statistics: smt_problem.get_solver_statistics(),
                 counterexample,
                 found_proof,
+                unsat_core,
             },
             abstracted_problem,
         ))

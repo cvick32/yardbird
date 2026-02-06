@@ -88,9 +88,11 @@ fn run_smtlib_with_strategy(
     //let instantiation_strategy = options.build_instantiation_strategy();
 
     let (result, abstracted_problem) = SMTLIBSolver::execute_with_strategy(
-        problem, strategy,
+        problem,
+        strategy,
         250, // max refinements (like VMT mode)
-            //instantiation_strategy,
+        options.track_instantiations,
+        //instantiation_strategy,
     )?;
 
     // Print abstracted output if requested

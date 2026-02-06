@@ -248,11 +248,11 @@ impl SMTLIBSMTProblem {
             let label_name = format!("inst_{}", self.num_quantifiers_instantiated);
             self.tracked_labels.push((label_name.clone(), term.clone()));
 
-            // Create labeled assertion
+            // Use assert_and_track so the label appears in unsat core
             let z3_term = self.z3_var_context.rewrite_term(term);
-            let label = z3::ast::Bool::fresh_const(&label_name);
-            let labeled = z3::ast::Bool::implies(&label, z3_term.as_bool().unwrap());
-            self.solver.assert(&labeled);
+            let tracked_bool = z3::ast::Bool::new_const(label_name.as_str());
+            self.solver
+                .assert_and_track(z3_term.as_bool().unwrap(), &tracked_bool);
         } else {
             let z3_term = self.z3_var_context.rewrite_term(term);
             self.solver.assert(z3_term.as_bool().unwrap());
@@ -338,6 +338,11 @@ impl SMTLIBSMTProblem {
         let core_labels: Vec<String> = core_asts.iter().map(|ast| ast.to_string()).collect();
 
         Some(core_labels)
+    }
+
+    /// Get the tracked labels for unsat core analysis
+    pub fn get_tracked_labels(&self) -> &[(String, Term)] {
+        &self.tracked_labels
     }
 
     /// Generate SMT2 string with abstracted functions and added instantiations
