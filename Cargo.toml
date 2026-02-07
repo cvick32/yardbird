@@ -10,8 +10,9 @@ default-run = "yardbird"
 anstyle = "1.0.10"
 anyhow = { workspace = true }
 baml_rust = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive", "env"] }
 dialoguer = "0.12.0"
+dotenvy = "0.15"
 egg = "0.10.0"
 env_logger = "0.11.5"
 itertools = "0.14.0"
@@ -27,6 +28,13 @@ tempfile = "3.17.1"
 thiserror = "2.0.17"
 tokio = { version = "1.0", features = ["full"] }
 z3 = { workspace = true }
+
+# Optional: only included when training feature is enabled
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
+
+[features]
+default = []
+training = ["sqlx"]
 
 [workspace.dependencies]
 anyhow = "1.0.93"
