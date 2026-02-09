@@ -15,7 +15,7 @@ pub mod term_hash;
 
 pub use config::TrainingConfig;
 pub use logger::{NoOpLogger, TrainingLogger};
-pub use schema::{CandidateRecord, DecisionRecord};
+pub use schema::{CandidateRecord, DecisionRecord, IndexedInstantiationRecord};
 pub use term_features::TermFeatures;
 pub use term_hash::{canonical_term_hash, canonical_term_hash_from_string};
 

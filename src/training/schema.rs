@@ -59,3 +59,19 @@ impl CandidateRecord {
         }
     }
 }
+
+/// Record for a single indexed instantiation (unrolled across BMC depths).
+/// Each abstract instantiation gets unrolled to multiple depth-indexed versions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexedInstantiationRecord {
+    /// The label used for assert_and_track (e.g., "inst_0_1", "inst_5_depth_3")
+    pub label: String,
+    /// String representation of the indexed term (with frame indices like @0, @1)
+    pub term: String,
+    /// Canonical hash for matching to unsat core
+    pub term_hash: String,
+    /// BMC depth at which this indexed instantiation was added
+    pub depth: u16,
+    /// Index within the unroll (0 = deepest, counting back)
+    pub unroll_index: u16,
+}

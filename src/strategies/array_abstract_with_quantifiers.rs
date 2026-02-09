@@ -111,6 +111,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             found_proof,
             total_instantiations_added: 0,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
+            decision_data: vec![],
+            indexed_instantiations: vec![],
         }
     }
 }
