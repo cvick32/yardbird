@@ -34,6 +34,8 @@ pub struct ProofLoopResult {
     pub counterexample: bool,
     pub found_proof: bool,
     pub unsat_core: Option<UnsatCoreInfo>,
+    pub decision_data: Vec<crate::training::DecisionRecord>,
+    pub indexed_instantiations: Vec<crate::training::IndexedInstantiationRecord>,
 }
 
 impl ProofLoopResult {
@@ -50,7 +52,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 7)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 9)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -75,6 +77,8 @@ impl Serialize for ProofLoopResult {
         state.serialize_field("counterexample", &self.counterexample)?;
         state.serialize_field("found_proof", &self.found_proof)?;
         state.serialize_field("unsat_core", &self.unsat_core)?;
+        state.serialize_field("decision_data", &self.decision_data)?;
+        state.serialize_field("indexed_instantiations", &self.indexed_instantiations)?;
         state.end()
     }
 }
@@ -172,6 +176,8 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     found_proof: found_proof
                         .ok_or_else(|| serde::de::Error::missing_field("found_proof"))?,
                     unsat_core: unsat_core.flatten(),
+                    decision_data: vec![],
+                    indexed_instantiations: vec![],
                 })
             }
         }
@@ -338,6 +344,8 @@ impl<'ctx, S> Driver<'ctx, S> {
                     ProofAction::FoundProof => {
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
                         result.unsat_core = self.build_unsat_core_info(&smt_problem);
+                        result.indexed_instantiations =
+                            self.build_indexed_instantiation_records(&smt_problem);
                         return Ok(result);
                     }
                 }
@@ -347,6 +355,7 @@ impl<'ctx, S> Driver<'ctx, S> {
 
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
         result.unsat_core = self.build_unsat_core_info(&smt_problem);
+        result.indexed_instantiations = self.build_indexed_instantiation_records(&smt_problem);
         Ok(result)
     }
 
@@ -376,6 +385,59 @@ impl<'ctx, S> Driver<'ctx, S> {
                 core_instantiations,
             }
         })
+    }
+
+    /// Build indexed instantiation records from the SMT problem's tracked labels.
+    /// Each record represents a single indexed instantiation added to the solver.
+    fn build_indexed_instantiation_records(
+        &self,
+        smt_problem: &crate::smt_problem::SMTProblem,
+    ) -> Vec<crate::training::IndexedInstantiationRecord> {
+        if !self.track_instantiations {
+            return vec![];
+        }
+
+        smt_problem
+            .get_tracked_labels()
+            .iter()
+            .map(|(label, term)| {
+                let term_str = term.to_string();
+                let term_hash = crate::training::canonical_term_hash_from_string(&term_str);
+
+                // Parse depth and unroll_index from label format:
+                // "inst_N_M" (on_generate) or "inst_N_depth_D" (on_loop)
+                let (depth, unroll_index) = parse_label_indices(label);
+
+                crate::training::IndexedInstantiationRecord {
+                    label: label.clone(),
+                    term: term_str,
+                    term_hash,
+                    depth,
+                    unroll_index,
+                }
+            })
+            .collect()
+    }
+}
+
+/// Parse depth and unroll_index from instantiation label.
+/// Label formats:
+/// - "inst_N_M" from on_generate (N = inst_num, M = unroll_index within that inst)
+/// - "inst_N_depth_D" from on_loop (N = inst_num, D = depth)
+fn parse_label_indices(label: &str) -> (u16, u16) {
+    let parts: Vec<&str> = label.split('_').collect();
+    if parts.len() >= 3 {
+        if parts.len() == 4 && parts[2] == "depth" {
+            // Format: inst_N_depth_D
+            let depth = parts[3].parse().unwrap_or(0);
+            (depth, 0)
+        } else {
+            // Format: inst_N_M
+            let unroll_index = parts[2].parse().unwrap_or(0);
+            (0, unroll_index)
+        }
+    } else {
+        (0, 0)
     }
 }
 
