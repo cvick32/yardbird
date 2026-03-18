@@ -182,6 +182,8 @@ where
             found_proof,
             total_instantiations_added: smt.get_number_instantiations_added(),
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
+            decision_data: vec![],
+            indexed_instantiations: vec![],
         }
     }
 }

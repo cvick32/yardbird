@@ -41,6 +41,7 @@ pub mod strategies;
 mod subterm_handler;
 pub mod theories;
 pub mod theory_support;
+pub mod training;
 mod utils;
 pub mod z3_ext;
 mod z3_var_context;
@@ -102,6 +103,14 @@ pub struct YardbirdOptions {
     /// Dump unsat core to JSON file when tracking is enabled and unsat is reached
     #[arg(long)]
     pub dump_unsat_core: Option<String>,
+
+    /// Enable training data logging to database
+    #[arg(long, default_value_t = false)]
+    pub train: bool,
+
+    /// Database URL for training data (e.g., postgres://user:pass@host/db)
+    #[arg(long, env = "YARDBIRD_DATABASE_URL")]
+    pub database_url: Option<String>,
 }
 
 impl Default for YardbirdOptions {
@@ -121,6 +130,8 @@ impl Default for YardbirdOptions {
             dump_solver: None,
             track_instantiations: false,
             dump_unsat_core: None,
+            train: false,
+            database_url: None,
         }
     }
 }

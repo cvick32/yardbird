@@ -525,6 +525,8 @@ impl SMTLIBSolver {
                 counterexample,
                 found_proof,
                 unsat_core,
+                decision_data: vec![],
+                indexed_instantiations: vec![],
             },
             abstracted_problem,
         ))

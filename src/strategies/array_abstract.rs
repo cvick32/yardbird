@@ -215,6 +215,8 @@ where
             counterexample: false,
             found_proof,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
+            decision_data: vec![],
+            indexed_instantiations: vec![],
         }
     }
 }
