@@ -331,6 +331,8 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 dump_unsat_core: None,
                                 instantiation_strategy:
                                     yardbird::InstantiationStrategyType::FullUnroll,
+                                train: false,
+                                database_url: None,
                             },
                             retry,
                             timeout,
@@ -447,6 +449,8 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         track_instantiations: false,
                         dump_unsat_core: None,
                         instantiation_strategy: yardbird::InstantiationStrategyType::FullUnroll,
+                        train: false,
+                        database_url: None,
                     },
                     config.global.retry_count,
                     run.timeout_seconds,
