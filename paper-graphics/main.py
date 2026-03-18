@@ -31,6 +31,20 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
 
     print(f"Available strategies: {sorted(strategy_keys)}")
 
+    # Generate all-benchmarks table (every benchmark × every strategy with solve times)
+    print(f"\n{'=' * 60}")
+    print("Generating all-benchmarks solve time table")
+    print(f"{'=' * 60}")
+
+    all_benchmarks_table = TableTikzGenerator.generate_all_benchmarks_table(
+        grouped,
+        strategy_keys,
+        baseline_strategy="concrete",
+    )
+    all_benchmarks_file = output_dir / "all_benchmarks_table.tex"
+    all_benchmarks_file.write_text(all_benchmarks_table)
+    print(f"  Saved: {all_benchmarks_file}")
+
     # Generate summary statistics table for all strategies
     print(f"\n{'=' * 60}")
     print("Generating summary statistics table")

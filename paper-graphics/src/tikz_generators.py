@@ -923,3 +923,112 @@ Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
 """
 
         return table_code
+
+    @staticmethod
+    def generate_all_benchmarks_table(
+        grouped_results: Dict[str, Dict[str, any]],
+        strategy_keys: set[str],
+        baseline_strategy: str = "concrete",
+    ) -> str:
+        """Generate a comprehensive table listing every benchmark with solve time per strategy.
+
+        Columns: Benchmark | Strategy1 | Strategy2 | ... | StrategyN
+        Cell values: runtime in seconds, "T/O" for timeouts, "ERR" for errors.
+
+        Args:
+            grouped_results: Dict mapping example names to strategy results
+            strategy_keys: Set of all strategy keys
+            baseline_strategy: Strategy listed first (default: "concrete")
+
+        Returns:
+            LaTeX longtable code
+        """
+        # Order strategies: baseline first, then sorted
+        def sort_key(s):
+            if s == baseline_strategy:
+                return (0, s)
+            elif s == "abstract-with-quantifiers":
+                return (1, s)
+            else:
+                return (2, s)
+
+        sorted_strategies = sorted(strategy_keys, key=sort_key)
+
+        # Build display name mapping
+        display_names = {}
+        for strategy_key in sorted_strategies:
+            for _example_name, strategies in grouped_results.items():
+                if strategy_key in strategies:
+                    display_names[strategy_key] = strategies[strategy_key].get_display_name()
+                    break
+            if strategy_key not in display_names:
+                display_names[strategy_key] = strategy_key
+
+        num_strategies = len(sorted_strategies)
+        col_spec = "l" + "r" * num_strategies
+
+        # Header row with strategy display names
+        header_cells = " & ".join(display_names[s] for s in sorted_strategies)
+        header_row = f"Benchmark & {header_cells} \\\\"
+
+        table_code = f"""
+\\begin{{longtable}}{{{col_spec}}}
+\\caption{{Benchmark solve times (seconds) for all strategies. T/O = timeout (120s), ERR = error.}} \\\\
+\\toprule
+{header_row}
+\\midrule
+\\endfirsthead
+\\multicolumn{{{num_strategies + 1}}}{{c}}{{\\tablename\\ \\thetable\\ -- continued from previous page}} \\\\
+\\toprule
+{header_row}
+\\midrule
+\\endhead
+\\midrule
+\\multicolumn{{{num_strategies + 1}}}{{r}}{{Continued on next page}} \\\\
+\\endfoot
+\\bottomrule
+\\endlastfoot
+"""
+
+        # Sort benchmarks by baseline strategy runtime (successes ascending, then T/O, then ERR)
+        def benchmark_sort_key(example_name):
+            strategies = grouped_results[example_name]
+            if baseline_strategy not in strategies:
+                return (2, 0, example_name)  # missing → sort last
+            result = strategies[baseline_strategy]
+            if result.success:
+                return (0, result.runtime_ms, example_name)
+            elif result.result_type == "Timeout":
+                return (1, 0, example_name)
+            else:
+                return (1, 1, example_name)
+
+        sorted_examples = sorted(grouped_results.keys(), key=benchmark_sort_key)
+
+        for example_name in sorted_examples:
+            strategies = grouped_results[example_name]
+            # Clean benchmark name
+            clean_name = example_name.replace("examples/", "").replace(".vmt", "")
+            # Escape underscores for LaTeX
+            clean_name = clean_name.replace("_", "\\_")
+
+            cells = []
+            for strategy_key in sorted_strategies:
+                if strategy_key not in strategies:
+                    cells.append("---")
+                    continue
+                result = strategies[strategy_key]
+                if result.success:
+                    runtime_s = result.runtime_ms / 1000.0
+                    cells.append(f"{runtime_s:.2f}")
+                elif result.result_type == "Timeout":
+                    cells.append("T/O")
+                else:
+                    cells.append("ERR")
+
+            row = " & ".join(cells)
+            table_code += f"{clean_name} & {row} \\\\\n"
+
+        table_code += "\\end{longtable}\n"
+
+        return table_code
