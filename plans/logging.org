@@ -1,0 +1,683 @@
+#+title: Logging and ML Plan for Yardbird
+
+* Purpose
+
+This file is shared state for planning the next round of logging work and the
+first ML experiments on top of it.
+
+The immediate goal is not "do ML everywhere". The immediate goal is:
+
+1. make the logging path complete and trustworthy,
+2. export a dataset that matches the decisions Yardbird actually makes,
+3. train a few simple baselines that answer narrow questions first,
+4. use those results to decide whether heavier models are worth the complexity.
+
+* Current State of the Code
+
+** Status snapshot (March 2026)
+
+The logging pipeline is now in a good enough state to begin a light
+data-collection pass and try simple offline models.
+
+What is true today:
+
+- training sessions are wired from CLI entry points in both VMT and SMTLIB modes
+- Postgres logger creation runs migrations automatically
+- array refinement logs decision records with candidate features
+- provenance is recorded from:
+  - decision
+  - abstract instantiation
+  - indexed solver assertion
+  - unsat-core membership
+- SMTLIB strategy mode now exports the same logging artifacts as VMT mode
+- there are regression tests for:
+  - VMT logging
+  - SMTLIB logging
+  - DB persistence integration
+
+Bottom line:
+
+- the logging infrastructure is ready for basic testing and initial ML baselines
+- it is not yet the final "paper dataset pipeline" described below
+
+** Checklist
+
+- [X] 1. Introduce a real training session object
+- [X] 2. Wire logger initialization from CLI
+- [-] 3. Capture decision points inside the extractor/scheduler boundary
+- [X] 4. Record provenance from decision to abstract instantiation
+- [X] 5. Record provenance from abstract instantiation to indexed assertions
+- [-] 6. Flush incrementally
+- [-] 7. Expand benchmark metadata
+- [ ] 8. Add stronger structural features
+- [ ] 9. Add labels beyond unsat core
+- [X] 10. Add end-to-end tests
+- [ ] 11. Add data sanity scripts
+
+** What already exists
+
+- CLI flags exist for training:
+  - ~--train~
+  - ~--database-url~
+  - see ~src/lib.rs~
+- There is already a training module:
+  - ~src/training/config.rs~
+  - ~src/training/schema.rs~
+  - ~src/training/logger.rs~
+  - ~src/training/db.rs~
+  - ~src/training/term_features.rs~
+  - ~src/training/term_hash.rs~
+  - ~src/training/migrations/001_initial.sql~
+- The database schema already covers:
+  - benchmark metadata
+  - decision points
+  - candidate terms
+  - core appearances by term hash
+- There are helper scripts for setup and batch collection:
+  - ~scripts/setup-training.sh~
+  - ~scripts/run-training.sh~
+  - ~scripts/README.md~
+- Unsat-core tracking already exists in the solver path:
+  - ~SMTProblem~ tracks labels when ~--track-instantiations~ is enabled
+  - ~Driver~ can build ~UnsatCoreInfo~
+  - indexed instantiation records are partially reconstructed from tracked labels
+- The best place to observe term-selection decisions is the array refinement path:
+  - ~src/theories/array/array_term_extractor.rs~
+  - ~src/theories/array/array_conflict_scheduler.rs~
+
+** What remains open before calling logging "complete"
+
+- Candidate logging is not yet configurable as:
+  - top ~X~ ranked candidates
+  - full e-class candidate dump
+- The benchmark/run metadata is still thinner than the long-term plan wants.
+  In particular, we do not yet distinguish all outcome kinds as first-class
+  statuses such as timeout, solver-unknown, too-many-refinements, etc.
+- The stronger structural features in Phase 2 are still missing.
+- There are not yet dataset sanity scripts that quickly detect broken logging.
+- The helper scripts and docs still describe the old schema in places and need
+  a cleanup pass before we treat them as canonical documentation.
+
+** What is now implemented end-to-end
+
+- ~TrainingSession~ exists and owns benchmark start/finish bookkeeping.
+- ~main~ initializes training runs for both VMT and SMTLIB strategy execution.
+- ~ProofLoopResult.decision_data~ is populated for array refinement runs.
+- ~ProofLoopResult.abstract_instantiations~ is populated.
+- ~ProofLoopResult.indexed_instantiations~ is exported from solver tracking with
+  abstract-instantiation ids attached.
+- Unsat-core membership is propagated backward onto abstract instantiations.
+- The specialized ~Read~/~Write~ reconstruction path now emits provenance too.
+- There is a feature-gated DB integration test that checks a single benchmark
+  persists provenance rows.
+
+** Important architectural observation
+
+The actual learning problem in the current implementation is not
+"predict the whole proof". It is much narrower and more tractable:
+
+- given an e-class and slot in a candidate axiom instantiation,
+- rank or choose the term that is most likely to lead to a productive refinement.
+
+That is good news. It means we can start with simple supervised learning.
+
+One important dataset requirement is that the DB must support *multiple runs of
+the same benchmark*. We want repeated executions with:
+
+- different cost functions
+- different strategies
+- different depths
+- slightly perturbed heuristic settings
+
+so that one benchmark can contribute many supervised examples rather than only
+one row.
+
+* Recommended Work Breakdown
+
+** Phase 0: Clarify the logging target
+
+Before changing code, decide exactly what a row in the dataset means.
+
+Recommended unit of supervision:
+
+- one *decision point* = one quantified variable / slot selection during rule reification
+- one *candidate row* = one candidate term available for that slot at that moment
+- one label = whether that candidate contributed to a productive instantiation
+
+Recommended productivity labels:
+
+1. *chosen*:
+   - whether the current heuristic selected it
+2. *led_to_current_instantiation_in_core*:
+   - whether the *original abstract instantiation* built from this decision is core-relevant
+3. *led_to_indexed_instantiation_in_core*:
+   - whether any indexed unrolling of the emitted instantiation appeared in the unsat core
+4. *benchmark_success*:
+   - whether the full run ended in proof / bounded proof rather than counterexample or timeout
+
+The most useful first label is probably:
+
+- *chosen_and_core_relevant*
+
+because it is closest to the "productive term choice" story in the proposal.
+
+The dataset should explicitly model the three-level provenance chain:
+
+- term decision
+- original abstract instantiation
+- indexed solver instantiation
+
+This should be visible in the schema, not reconstructed informally later. A
+small enum or type tag is appropriate here, e.g. ~INST_TYPE.ORIGINAL~ vs
+~INST_TYPE.INDEXED~.
+
+** Phase 1: Finish the logging pipeline
+
+*** [X] 1. Introduce a real training session object
+
+Add a small orchestration layer that lives above the proof loop and owns:
+
+- benchmark id
+- training logger instance
+- in-memory decision records for the current run
+- mapping tables needed for later core matching
+
+Likely placement:
+
+- new file such as ~src/training/session.rs~
+
+This should hide the no-op vs Postgres split so the rest of the code does not
+need many ~#[cfg(feature = "training")]~ branches.
+
+*** [X] 2. Wire logger initialization from CLI
+
+At the start of ~main~ / VMT execution:
+
+- build ~TrainingConfig~ from ~YardbirdOptions~
+- if training is enabled:
+  - create the logger
+  - run migrations if needed
+  - start a benchmark row
+
+Need to decide behavior when:
+
+- ~--train~ is set without ~--database-url~
+- the binary is built without the ~training~ feature
+
+Recommended behavior:
+
+- fail fast with a clear message
+
+*** [-] 3. Capture decision points inside the extractor/scheduler boundary
+
+Status:
+
+- implemented for the array refinement path
+- candidate logging is present, but configurability is still open
+
+The most important code path is:
+
+- ~ArrayTermExtractor::extract~
+- ~find_best_variable_substitution~
+- ~reify_pattern_ast~
+- ~ArrayConflictScheduler::apply_rewrite~
+
+What needs to be logged here:
+
+- depth
+- refinement step
+- axiom name
+- slot / variable name
+- e-class id
+- candidate set considered
+- per-candidate features
+- which candidate was chosen
+- whether choice came from precomputed term_map or fallback extraction
+
+Important detail:
+
+Right now the code only logs the chosen term implicitly through extraction.
+For ML we should make candidate logging *configurable*.
+
+Recommended policy:
+
+- default: log the top ~X~ ranked candidates for each decision
+- optional "full" mode: log the entire e-class candidate set
+
+So the extractor likely needs a new method roughly like:
+
+- return ranked candidates for an e-class at refinement step
+- separate "candidate generation" from "pick current heuristic winner"
+
+*** [X] 4. Record provenance from decision to abstract instantiation
+
+Status:
+
+- implemented
+
+For each abstract instantiation emitted by ~ArrayConflictScheduler~, store:
+
+- instantiation string
+- canonical hash
+- axiom name
+- which slot decisions produced it
+- depth / refinement step
+
+This is the key join table that is currently missing.
+
+Without provenance, unsat-core logging only tells us that some final indexed
+instantiation mattered, but not which upstream slot choices deserve credit.
+
+*** [X] 5. Record provenance from abstract instantiation to indexed assertions
+
+Status:
+
+- implemented
+
+The instantiation strategies currently create labels like:
+
+- ~inst_N_M~
+- ~inst_N_depth_D~
+
+These labels are not rich enough for training.
+
+Recommended improvement:
+
+- include an abstract instantiation id in the tracked label and DB rows
+
+That will let us propagate unsat-core membership backward from solver labels to
+abstract instantiations and then to slot decisions.
+
+*** [-] 6. Flush incrementally
+
+Status:
+
+- benchmark completion is persisted at the end of each run
+- failure completion is also recorded
+- per-refinement-step flushing is still future work
+
+The proposal is right that incremental writes matter because the interesting
+cases include timeouts and divergence.
+
+Recommended granularity:
+
+- flush after every refinement step
+- flush on drop / graceful exit
+- mark benchmark final status separately
+
+Possible statuses:
+
+- proved
+- bounded-unsat
+- counterexample
+- timeout
+- too-many-refinements
+- solver-unknown
+- crashed
+
+*** [-] 7. Expand benchmark metadata
+
+Status:
+
+- partially implemented
+- enough metadata exists for a light pass, but not yet the richer portfolio and
+  reproducibility metadata listed here
+
+The current benchmark row is too small for portfolio learning and reproducibility.
+
+Add at least:
+
+- filename
+- theory
+- strategy
+- cost function
+- instantiation strategy
+- requested depth
+- actual reached depth
+- refinement count
+- timestamp
+- success / outcome kind
+
+Also store program text when it is small enough to be practical. The simplest
+policy is probably:
+
+- store full text if file size <= configurable threshold
+- otherwise store a hash plus path plus optional truncated prefix
+
+Before adding new columns, audit the existing benchmark schema so we do not
+duplicate fields that are already present.
+
+Nice to have:
+
+- solver statistics snapshot
+- counts of candidate rows and instantiations
+- whether unsat-core tracking was enabled
+
+** Phase 2: Improve labels and features
+
+*** [ ] 8. Add stronger structural features
+
+Current features in ~TermFeatures~ are a good start:
+
+- constant
+- variable
+- property vocab
+- transition vocab
+- frame index
+- AST size
+
+Add next:
+
+- root operator
+- number of ~Read~/~Write~/~ConstArr~ nodes
+- whether term contains arithmetic
+- whether term shares symbols with the violated axiom pattern
+- frame-distance from current BMC depth
+- more precise origin flags beyond the current property/transition vocabulary booleans
+- typed sort features
+- whether term came from the pre-ranked term map or from fallback extraction
+
+Very likely useful for the history/prophecy direction:
+
+- locality features:
+  - min frame
+  - max frame
+  - frame span
+  - number of distinct frames mentioned
+
+These would let us quantify non-locality directly from logged decisions.
+
+*** [ ] 9. Add labels beyond unsat core
+
+Unsat core membership should be treated as the *primary* supervision signal.
+We plan to track all indexed assertions, and we should prefer core-based labels
+over weaker proxies whenever possible.
+
+Additional metadata is still worth logging, but as metadata rather than as the
+main target:
+
+- whether an instantiation is ~ORIGINAL~ or ~INDEXED~
+- whether the indexed instantiation is in the core
+- whether the original abstract instantiation is in the core
+- whether the overall run succeeded
+
+Eventually we may want step-local rewards such as:
+
+- delta in solver time
+- delta in number of further refinements needed
+
+** Phase 3: Validate the dataset before ML
+
+*** [X] 10. Add end-to-end tests
+
+Status:
+
+- implemented at a basic level
+- we now have:
+  - a VMT logging test
+  - an SMTLIB logging test
+  - a feature-gated DB integration test
+- what is still missing is a stronger DB-level assertion that candidate/core
+  propagation is exactly what we expect for a fixed benchmark
+
+We need at least a small deterministic test that runs one simple benchmark and checks:
+
+- benchmark row created
+- some decisions logged
+- some candidates logged
+- chosen candidate marked
+- tracked labels created when ~--track-instantiations~ is on
+- core membership gets propagated back to candidate rows
+
+These tests do not need to run in CI initially; local integration tests are fine.
+
+If a real Postgres dependency is too heavy for CI, add one of:
+
+- integration test behind a feature flag
+- testcontainers
+- a local export-to-JSON logger for testing
+
+*** [ ] 11. Add data sanity scripts
+
+Status:
+
+- still open
+
+* Recommended immediate next step
+
+Run a small collection pass first rather than a full benchmark sweep.
+
+Suggested first pass:
+
+1. one small array benchmark family
+2. two or three cost functions
+3. depth 8 to 12
+4. ~--track-instantiations~ always on
+5. both VMT and a small SMTLIB sample if we want to sanity-check parity
+
+The point of this pass is to answer:
+
+- are rows being written for every run?
+- do we see non-empty decisions and abstract instantiations?
+- do enough runs produce unsat cores to make the labels usable?
+- is the class imbalance manageable for a first baseline?
+
+Before training models, run automatic checks for:
+
+- percent of decisions with empty candidate sets
+- percent of runs with no core labels
+- percent of chosen candidates ever labeled productive
+- cardinality of duplicate hashes
+- label imbalance
+- per-benchmark row counts
+
+Output should make it obvious when logging is silently broken.
+
+* First ML Experiments
+
+** ML Track A: Portfolio classifier for cost-function selection
+
+This is the cleanest first experiment and probably the fastest path to a paper-quality result.
+
+Formulation:
+
+- input: benchmark/problem-level features
+- output: which cost function to use
+
+Candidate labels:
+
+- best cost function by solve time
+- best cost function by number of instantiations
+- best cost function among those that prove within timeout
+
+Problem features could include:
+
+- benchmark family / filename tokens
+- counts of array reads/writes
+- counts of arithmetic operations
+- number of variables
+- number of loops / depth proxies if available
+- property vocabulary size
+- transition vocabulary size
+- non-locality summary statistics from logged frames
+
+Baseline models:
+
+- majority-class baseline
+- logistic regression
+- random forest / XGBoost
+
+Why this is attractive:
+
+- easy supervision
+- easy offline evaluation
+- no runtime overhead in the refinement hot path
+- compatible with the existing cost-function portfolio story
+
+Recommended order:
+
+1. gather matrix results over the benchmark suite and cost functions
+2. train a benchmark-level classifier
+3. deploy as a pre-run selector
+
+Because the benchmark set is not huge, we need an explicit story for train vs
+eval splits. Good default options:
+
+- split by benchmark family if families are known
+- otherwise grouped split by filename stem / benchmark template
+- use repeated runs of the same underlying benchmark only within one split, never across train and eval
+
+** ML Track B: Candidate ranking inside the refinement loop
+
+Formulation:
+
+- input: candidate features for one slot decision
+- output: score for each candidate
+
+This matches the existing architecture better than a generative model.
+
+Initial baselines:
+
+- logistic regression on candidate features
+- gradient-boosted trees
+- pairwise ranking loss if needed later
+
+Offline evaluation:
+
+- accuracy on chosen productive term
+- top-k recall for core-relevant terms
+- MRR / NDCG on candidate ranking
+
+Online evaluation:
+
+- replace or re-rank the existing heuristic on a held-out benchmark set
+- compare:
+  - proof rate
+  - median solve time
+  - instantiation count
+  - refinement count
+
+Recommended deployment shape:
+
+- do not replace the existing cost function immediately
+- first use ML to rerank top-k heuristic candidates
+
+That is lower risk and easier to debug.
+
+** ML Track C: Cost-function synthesis / distillation
+
+This is a strong medium-term direction.
+
+Pipeline:
+
+1. collect candidate-level labels
+2. train a more expressive offline model
+3. approximate it with a simple symbolic or Rust-native scoring function
+4. compile that into Yardbird as a new cost function
+
+This lines up nicely with the existing match-based Rust cost-function design.
+
+It also avoids inference overhead in the hot loop.
+
+** ML Track D: GNN over terms or e-graphs
+
+This is exciting, but should probably come after the simpler baselines above.
+
+Recommended first GNN scope:
+
+- term AST only, not the whole e-graph
+- binary prediction: "does this candidate appear in a productive instantiation?"
+
+Why start here:
+
+- the graph construction is straightforward
+- supervision already matches candidate rows
+- easier than end-to-end policy learning
+
+Longer-term variants:
+
+- e-class graph encoder
+- violated-axiom plus candidate cross-encoder
+- whole-refinement-state GNN
+
+My recommendation is to treat the GNN as an offline oracle first and distill it later.
+
+* Logging Needed for the History/Prophecy Direction
+
+If we want the logs to support auxiliary-variable synthesis work, we should add a
+few fields now rather than retrofit them later.
+
+Needed signals:
+
+- frame span of each candidate term
+- frame span of each emitted instantiation
+- whether an instantiation is local to one transition or spans many frames
+- repeated families of instantiations that differ only by frame/index symbols
+- clusters of near-duplicate instantiations across depths
+
+That would let us ask questions like:
+
+- which benchmarks generate many non-local instantiations?
+- where do repeated ground instances appear that look subsumable?
+- can we detect "same proof fact at many depths" automatically?
+
+This is probably the bridge between the ML work and the auxiliary-variable work:
+
+- use the logs to detect repeated non-local refinement patterns
+- then decide whether to generalize them via prophecy/history variables rather than more ground instantiations
+
+* Concrete Implementation Plan
+
+** Near-term coding order
+
+1. Add a training session abstraction.
+2. Wire session creation from CLI and ~main~.
+3. Refactor candidate extraction so the full candidate set is observable.
+4. Log decision points from the array refinement path.
+5. Add provenance from decision -> abstract instantiation.
+6. Add provenance from abstract instantiation -> tracked solver labels.
+7. Propagate unsat-core membership backward into candidate labels.
+8. Add end-to-end tests and sanity-check scripts.
+9. Export a first dataset from the array benchmark suite.
+10. Train simple offline baselines for:
+    - cost-function portfolio selection
+    - candidate productivity prediction
+
+** Suggested experimental order
+
+1. Portfolio classifier over existing cost functions.
+2. Candidate-level classifier/ranker using hand-built features.
+3. Distilled learned cost function.
+4. Offline GNN on term ASTs.
+5. GNN-guided synthesis / auxiliary-variable triggers.
+
+* Decisions So Far
+
+These points are now established from the code and prior discussion.
+
+1. We should support logging in *both* VMT and SMTLIB mode from the start.
+2. Postgres is the intended long-term store.
+3. The logging PR already added:
+   - CLI flags
+   - the ~src/training~ module
+   - the SQL migration
+   - helper scripts
+   - ~indexed_instantiations~ in ~ProofLoopResult~
+   but it did *not* yet wire the logger into the proof loop.
+4. Unsat-core appearance is the strongest supervision signal and should be treated as the primary label.
+5. For the portfolio experiment, the target metric should be a weighted combination:
+   - solve time: 75%
+   - number of instantiations: 20%
+   - solve under timeout: 5%
+
+* My Recommendation
+
+If we want momentum quickly, the best first milestone is:
+
+- finish logging on array VMT mode and SMTLIB mode,
+- collect a clean dataset on the existing benchmark suite,
+- run a portfolio classifier and a candidate-level logistic-regression baseline,
+- use those results to decide whether the GNN path is earning its complexity.
+
+That gets us something publishable and diagnostic before we commit to the harder
+parts of learned in-loop guidance or auxiliary-variable synthesis.
