@@ -4,14 +4,16 @@ use rustc_hash::FxHashSet;
 use crate::{
     cost_functions::array::{
         adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize,
-        prefer_constants::ArrayPreferConstants, prefer_read::ArrayPreferRead,
-        prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost, symbol_cost::ArrayBMCCost,
+        index_aware_cost::IndexAwareArrayCost, prefer_constants::ArrayPreferConstants,
+        prefer_read::ArrayPreferRead, prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost,
+        symbol_cost::ArrayBMCCost,
     },
     solver_interface::SolverInterface,
 };
 
 pub mod adaptive_cost;
 pub mod ast_size;
+pub mod index_aware_cost;
 pub mod prefer_constants;
 pub mod prefer_read;
 pub mod prefer_write;
@@ -62,6 +64,30 @@ pub fn split_array_cost_factory(smt: &dyn SolverInterface, depth: u32) -> SplitA
         depth,
         smt.get_init_and_transition_subterms(),
         smt.get_property_subterms(),
+        smt.get_reads_and_writes(),
+    )
+}
+
+pub fn index_aware_array_cost_factory(
+    smt: &dyn SolverInterface,
+    depth: u32,
+) -> IndexAwareArrayCost {
+    let init_and_transition_system_terms: FxHashSet<Symbol> = smt
+        .get_init_and_transition_subterms()
+        .into_iter()
+        .map(|s| s.into())
+        .collect();
+
+    let property_terms: FxHashSet<Symbol> = smt
+        .get_property_subterms()
+        .into_iter()
+        .map(|s| s.into())
+        .collect();
+
+    IndexAwareArrayCost::new(
+        depth,
+        init_and_transition_system_terms,
+        property_terms,
         smt.get_reads_and_writes(),
     )
 }

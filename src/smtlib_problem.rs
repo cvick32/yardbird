@@ -386,6 +386,19 @@ impl SMTLIBSolver {
         &self.solver_statistics
     }
 
+    fn annotate_abstract_instantiation_core_membership(result: &mut ProofLoopResult) {
+        let core_ids: std::collections::HashSet<String> = result
+            .indexed_instantiations
+            .iter()
+            .filter(|record| record.in_unsat_core)
+            .filter_map(|record| record.abstract_instantiation_id.clone())
+            .collect();
+        for instantiation in &mut result.abstract_instantiations {
+            instantiation.in_unsat_core =
+                core_ids.contains(&instantiation.abstract_instantiation_id);
+        }
+    }
+
     /// Execute with abstract/concrete strategy (refinement loop)
     /// This is the strategy-based solving mode with refinement
     #[allow(clippy::borrowed_box)]
@@ -433,9 +446,11 @@ impl SMTLIBSolver {
         // 3. Refinement loop (similar to Driver::check_strategy but no depths)
         let mut found_proof = false;
         let mut counterexample = false;
+        let mut total_refinement_steps = 0;
 
         for refinement_step in 0..max_refinements {
             info!("Refinement iteration {}", refinement_step + 1);
+            total_refinement_steps += 1;
 
             let mut state = strategy.setup(&smt_problem, 0)?;
 
@@ -493,6 +508,7 @@ impl SMTLIBSolver {
 
         // Build unsat core info if tracking is enabled and we didn't find a counterexample
         // (meaning we either found a proof or completed refinement without SAT)
+        info!("Collecting unsat core metadata");
         let unsat_core = if track_instantiations && !counterexample {
             smt_problem.get_unsat_core().map(|core_labels| {
                 use std::collections::HashSet;
@@ -500,10 +516,10 @@ impl SMTLIBSolver {
                 let core_instantiations = smt_problem
                     .get_tracked_labels()
                     .iter()
-                    .filter(|(label, _)| core_set.contains(label))
-                    .map(|(label, term)| crate::driver::CoreInstantiation {
-                        label: label.clone(),
-                        term: term.to_string(),
+                    .filter(|record| core_set.contains(&record.label))
+                    .map(|record| crate::driver::CoreInstantiation {
+                        label: record.label.clone(),
+                        term: record.term.clone(),
                     })
                     .collect::<Vec<_>>();
                 crate::driver::UnsatCoreInfo {
@@ -515,20 +531,41 @@ impl SMTLIBSolver {
             None
         };
 
-        Ok((
-            ProofLoopResult {
-                model: None, // No VMT model in SMTLIB mode
-                used_instances: smt_problem.get_instantiations(),
-                const_instances: vec![], // TODO: track const instances separately if needed
-                total_instantiations_added: smt_problem.get_number_instantiations_added(),
-                solver_statistics: smt_problem.get_solver_statistics(),
-                counterexample,
-                found_proof,
-                unsat_core,
-                decision_data: vec![],
-                indexed_instantiations: vec![],
-            },
-            abstracted_problem,
-        ))
+        info!("Collecting indexed instantiation records");
+        let core_set: std::collections::HashSet<String> = smt_problem
+            .get_unsat_core()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        let indexed_instantiations = smt_problem
+            .get_tracked_labels()
+            .iter()
+            .cloned()
+            .map(|record| crate::training::IndexedInstantiationRecord {
+                in_unsat_core: core_set.contains(&record.label),
+                ..record
+            })
+            .collect();
+        let (decision_data, abstract_instantiations) = strategy.take_logging_artifacts();
+
+        info!("Building final SMTLIB result");
+        let mut result = ProofLoopResult {
+            model: None, // No VMT model in SMTLIB mode
+            used_instances: smt_problem.get_instantiations(),
+            const_instances: vec![], // TODO: track const instances separately if needed
+            total_instantiations_added: smt_problem.get_number_instantiations_added(),
+            total_refinement_steps,
+            solver_statistics: smt_problem.get_solver_statistics(),
+            counterexample,
+            found_proof,
+            unsat_core,
+            decision_data,
+            abstract_instantiations,
+            indexed_instantiations,
+        };
+        Self::annotate_abstract_instantiation_core_membership(&mut result);
+        info!("Final SMTLIB result is ready");
+
+        Ok((result, abstracted_problem))
     }
 }

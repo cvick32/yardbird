@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use egg::*;
-use log::debug;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
@@ -226,8 +225,14 @@ pub fn saturate_with_array_types<CF, N>(
     egraph: &mut EGraph<ArrayLanguage, N>,
     cost_fn: CF,
     refinement_step: u32,
+    depth: u16,
     array_types: &[(String, String)],
-) -> (Vec<ArrayExpr>, Vec<ArrayExpr>)
+) -> (
+    Vec<ArrayExpr>,
+    Vec<ArrayExpr>,
+    Vec<crate::training::DecisionRecord>,
+    Vec<crate::training::AbstractInstantiationRecord>,
+)
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
@@ -236,10 +241,12 @@ where
     let scheduler = ArrayConflictScheduler::new(
         BackoffScheduler::default(),
         cost_fn.clone(),
-        ArrayTermExtractor::new(&taken_egraph, cost_fn, refinement_step),
+        ArrayTermExtractor::new(&taken_egraph, cost_fn, refinement_step, depth),
     );
     let instantiations = scheduler.instantiations();
     let const_instantiations = scheduler.instantiations_w_constants();
+    let decisions = scheduler.decisions();
+    let abstract_instantiations = scheduler.abstract_instantiations();
     let axioms = array_axioms_with_types(array_types);
 
     #[cfg(debug_assertions)]
@@ -251,7 +258,7 @@ where
                     || node_str.contains("Write")
                     || node_str.contains("Symbol(\"Int\")")
                 {
-                    debug!("ClassID={:?}, Node: {:?}", class.id, node);
+                    log::debug!("ClassID={:?}, Node: {:?}", class.id, node);
                 }
             }
         }
@@ -266,22 +273,31 @@ where
 
     let final_insts = Rc::into_inner(instantiations).unwrap().into_inner();
     let final_const_insts = Rc::into_inner(const_instantiations).unwrap().into_inner();
+    let final_decisions = Rc::into_inner(decisions).unwrap().into_inner();
+    let final_abstract_instantiations = Rc::into_inner(abstract_instantiations)
+        .unwrap()
+        .into_inner();
 
     #[cfg(debug_assertions)]
     {
-        debug!("=== FINAL INSTANTIATIONS ===");
-        debug!("Regular: {}", final_insts.len());
+        log::debug!("=== FINAL INSTANTIATIONS ===");
+        log::debug!("Regular: {}", final_insts.len());
         for (i, inst) in final_insts.iter().enumerate() {
-            debug!("  [{}]: {}", i, inst);
+            log::debug!("  [{}]: {}", i, inst);
         }
-        debug!("Const: {}", final_const_insts.len());
+        log::debug!("Const: {}", final_const_insts.len());
         for (i, inst) in final_const_insts.iter().enumerate() {
-            debug!("  [{}]: {}", i, inst);
+            log::debug!("  [{}]: {}", i, inst);
         }
-        debug!("============================\n");
+        log::debug!("============================\n");
     }
 
-    (final_insts, final_const_insts)
+    (
+        final_insts,
+        final_const_insts,
+        final_decisions,
+        final_abstract_instantiations,
+    )
 }
 
 /// Generate array axioms for a specific type pair (index_sort, value_sort).

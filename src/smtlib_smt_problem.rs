@@ -6,9 +6,9 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    problem::Problem, smtlib_problem::SMTLIBProblem, solver_interface::SolverInterface,
-    strategies::ProofStrategy, subterm_handler::SubtermHandler, utils::SolverStatistics,
-    z3_var_context::Z3VarContext,
+    instantiation_strategy::StoredInstantiation, problem::Problem, smtlib_problem::SMTLIBProblem,
+    solver_interface::SolverInterface, strategies::ProofStrategy, subterm_handler::SubtermHandler,
+    training::IndexedInstantiationRecord, utils::SolverStatistics, z3_var_context::Z3VarContext,
 };
 
 /// Helper to create a "true" boolean term
@@ -29,12 +29,12 @@ pub struct SMTLIBSMTProblem {
     original_problem: SMTLIBProblem,
     assertions: Vec<Term>,
     depth: u16, // Always 0 (no temporal unrolling)
-    instantiations: Vec<Instance>,
+    instantiations: Vec<StoredInstantiation>,
     subterm_handler: SubtermHandler,
     newest_model: Option<z3::Model>,
     num_quantifiers_instantiated: u64,
     track_instantiations: bool,
-    tracked_labels: Vec<(String, Term)>,
+    tracked_labels: Vec<IndexedInstantiationRecord>,
     //instantiation_strategy: Box<dyn InstantiationStrategy>,
     /// Discovered array types (index_sort, value_sort) pairs
     array_types: Vec<(String, String)>,
@@ -235,7 +235,11 @@ impl SMTLIBSMTProblem {
         &self.newest_model
     }
 
-    pub fn add_instantiation(&mut self, inst: Instance) -> bool {
+    pub fn add_instantiation(
+        &mut self,
+        inst: Instance,
+        abstract_instantiation_id: Option<String>,
+    ) -> bool {
         let initial_count = self.instantiations.len();
 
         // For SMTLIB, we don't have a BMCBuilder, so we pass dummy values
@@ -246,19 +250,31 @@ impl SMTLIBSMTProblem {
         if self.track_instantiations {
             // Generate a unique label for tracking
             let label_name = format!("inst_{}", self.num_quantifiers_instantiated);
-            self.tracked_labels.push((label_name.clone(), term.clone()));
 
             // Use assert_and_track so the label appears in unsat core
             let z3_term = self.z3_var_context.rewrite_term(term);
             let tracked_bool = z3::ast::Bool::new_const(label_name.as_str());
             self.solver
                 .assert_and_track(z3_term.as_bool().unwrap(), &tracked_bool);
+            let term_string = term.to_string();
+            self.tracked_labels.push(IndexedInstantiationRecord {
+                label: label_name,
+                term: term_string.clone(),
+                term_hash: crate::training::canonical_term_hash_from_string(&term_string),
+                depth: 0,
+                unroll_index: 0,
+                abstract_instantiation_id: abstract_instantiation_id.clone(),
+                in_unsat_core: false,
+            });
         } else {
             let z3_term = self.z3_var_context.rewrite_term(term);
             self.solver.assert(z3_term.as_bool().unwrap());
         }
 
-        self.instantiations.push(inst);
+        self.instantiations.push(StoredInstantiation {
+            inst,
+            abstract_instantiation_id,
+        });
         self.num_quantifiers_instantiated += 1;
 
         // Return true if a new instantiation was added
@@ -285,7 +301,7 @@ impl SMTLIBSMTProblem {
     pub fn get_instantiations(&self) -> Vec<Term> {
         self.instantiations
             .iter()
-            .map(|inst| inst.get_term().clone())
+            .map(|stored| stored.inst.get_term().clone())
             .collect()
     }
 
@@ -341,7 +357,7 @@ impl SMTLIBSMTProblem {
     }
 
     /// Get the tracked labels for unsat core analysis
-    pub fn get_tracked_labels(&self) -> &[(String, Term)] {
+    pub fn get_tracked_labels(&self) -> &[IndexedInstantiationRecord] {
         &self.tracked_labels
     }
 
@@ -371,7 +387,7 @@ impl SMTLIBSMTProblem {
         // Add instantiations as asserts
         for inst in &self.instantiations {
             commands.push(Command::Assert {
-                term: inst.get_term().clone(),
+                term: inst.inst.get_term().clone(),
             });
         }
 
@@ -415,8 +431,12 @@ impl SolverInterface for SMTLIBSMTProblem {
         self.solver.get_reason_unknown()
     }
 
-    fn add_instantiation(&mut self, inst: Instance) -> bool {
-        self.add_instantiation(inst)
+    fn add_instantiation(
+        &mut self,
+        inst: Instance,
+        abstract_instantiation_id: Option<String>,
+    ) -> bool {
+        self.add_instantiation(inst, abstract_instantiation_id)
     }
 
     fn get_instantiations(&self) -> Vec<Term> {

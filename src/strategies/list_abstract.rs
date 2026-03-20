@@ -148,7 +148,7 @@ where
             .flat_map(|term| {
                 UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
             })
-            .map(|inst| !smt.add_instantiation(inst))
+            .map(|inst| !smt.add_instantiation(inst, None))
             .fold(true, |a, b| a && b);
 
         Ok(())
@@ -181,8 +181,10 @@ where
             counterexample: false,
             found_proof,
             total_instantiations_added: smt.get_number_instantiations_added(),
+            total_refinement_steps: 0,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
             decision_data: vec![],
+            abstract_instantiations: vec![],
             indexed_instantiations: vec![],
         }
     }

@@ -1,12 +1,13 @@
 use log::debug;
-use smt2parser::{
-    concrete::Term,
-    vmt::{bmc::BMCBuilder, quantified_instantiator::Instance},
+use smt2parser::concrete::Term;
+use smt2parser::vmt::{bmc::BMCBuilder, quantified_instantiator::Instance};
+
+use crate::{
+    subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
+    z3_var_context::Z3VarContext,
 };
 
-use crate::{subterm_handler::SubtermHandler, z3_var_context::Z3VarContext};
-
-use super::InstantiationStrategy;
+use super::{InstantiationStrategy, StoredInstantiation};
 
 #[derive(Clone, Debug)]
 pub struct NoUnrollOnLoop;
@@ -31,18 +32,22 @@ impl InstantiationStrategy for NoUnrollOnLoop {
     fn on_generate(
         &mut self,
         inst: Instance,
-        instantiations: &mut Vec<Instance>,
+        instantiations: &mut Vec<StoredInstantiation>,
+        abstract_instantiation_id: Option<String>,
         _depth: u16,
         bmc_builder: &mut BMCBuilder,
         z3_var_context: &mut Z3VarContext,
         solver: &mut z3::Solver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
-        tracked_labels: &mut Vec<(String, Term)>,
+        tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         num_quantifiers_instantiated: &mut u64,
     ) {
         debug!("USED INSTANCE: {}", inst);
-        instantiations.push(inst.clone());
+        instantiations.push(StoredInstantiation {
+            inst: inst.clone(),
+            abstract_instantiation_id: abstract_instantiation_id.clone(),
+        });
 
         // Add quantified variables to Z3VarContext
         if let Term::Forall { vars, term: _ } = inst.get_term() {
@@ -82,7 +87,16 @@ impl InstantiationStrategy for NoUnrollOnLoop {
                 let label = format!("inst_{}_{}", inst_num, idx);
                 let tracked_bool = z3::ast::Bool::new_const(label.as_str());
                 solver.assert_and_track(z3_inst, &tracked_bool);
-                tracked_labels.push((label, indexed_term.clone()));
+                let term_string = indexed_term.to_string();
+                tracked_labels.push(IndexedInstantiationRecord {
+                    label,
+                    term: term_string.clone(),
+                    term_hash: crate::training::canonical_term_hash_from_string(&term_string),
+                    depth: cur_depth,
+                    unroll_index: idx as u16,
+                    abstract_instantiation_id: abstract_instantiation_id.clone(),
+                    in_unsat_core: false,
+                });
             }
         } else {
             // Combine all into one assertion
@@ -99,12 +113,12 @@ impl InstantiationStrategy for NoUnrollOnLoop {
     fn on_loop(
         &mut self,
         _depth: u16,
-        _instantiations: &[Instance],
+        _instantiations: &[StoredInstantiation],
         _bmc_builder: &mut BMCBuilder,
         _z3_var_context: &mut Z3VarContext,
         _solver: &mut z3::Solver,
         _track_instantiations: bool,
-        _tracked_labels: &mut Vec<(String, Term)>,
+        _tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         _num_quantifiers_instantiated: &mut u64,
     ) {
     }

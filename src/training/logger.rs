@@ -5,7 +5,7 @@
 
 use crate::driver::UnsatCoreInfo;
 
-use super::schema::DecisionRecord;
+use super::schema::{AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord};
 
 /// Result type for training logger operations.
 pub type LoggerResult<T> = Result<T, LoggerError>;
@@ -36,6 +36,29 @@ pub trait TrainingLogger: Send {
     ///
     /// Returns a decision ID.
     fn log_decision(&mut self, benchmark_id: i64, decision: &DecisionRecord) -> LoggerResult<i64>;
+    fn set_decision_key(&mut self, decision_id: i64, decision_key: &str) -> LoggerResult<()>;
+
+    /// Log an original abstract instantiation.
+    fn log_abstract_instantiation(
+        &mut self,
+        benchmark_id: i64,
+        instantiation: &AbstractInstantiationRecord,
+    ) -> LoggerResult<i64>;
+
+    /// Link an abstract instantiation back to a decision row.
+    fn link_abstract_instantiation_decision(
+        &mut self,
+        abstract_instantiation_id: i64,
+        decision_id: i64,
+    ) -> LoggerResult<()>;
+
+    /// Log an indexed solver assertion that came from an abstract instantiation.
+    fn log_indexed_instantiation(
+        &mut self,
+        benchmark_id: i64,
+        instantiation: &IndexedInstantiationRecord,
+        abstract_instantiation_id: Option<i64>,
+    ) -> LoggerResult<()>;
 
     /// Complete a benchmark with final status and unsat core info.
     fn complete_benchmark(
@@ -80,6 +103,39 @@ impl TrainingLogger for NoOpLogger {
     }
 
     #[inline(always)]
+    fn set_decision_key(&mut self, _decision_id: i64, _decision_key: &str) -> LoggerResult<()> {
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn log_abstract_instantiation(
+        &mut self,
+        _benchmark_id: i64,
+        _instantiation: &AbstractInstantiationRecord,
+    ) -> LoggerResult<i64> {
+        Ok(0)
+    }
+
+    #[inline(always)]
+    fn link_abstract_instantiation_decision(
+        &mut self,
+        _abstract_instantiation_id: i64,
+        _decision_id: i64,
+    ) -> LoggerResult<()> {
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn log_indexed_instantiation(
+        &mut self,
+        _benchmark_id: i64,
+        _instantiation: &IndexedInstantiationRecord,
+        _abstract_instantiation_id: Option<i64>,
+    ) -> LoggerResult<()> {
+        Ok(())
+    }
+
+    #[inline(always)]
     fn complete_benchmark(
         &mut self,
         _benchmark_id: i64,
@@ -107,44 +163,50 @@ mod postgres_impl {
     /// Logger that writes training data to a Postgres database.
     pub struct PostgresLogger {
         db: DbConnection,
+        runtime: tokio::runtime::Runtime,
         /// Buffer for decisions to batch insert
         decision_buffer: Vec<(i64, DecisionRecord)>,
-        /// Number of decisions to buffer before flushing
-        buffer_size: usize,
     }
 
     impl PostgresLogger {
-        /// Create a new PostgresLogger with the given database connection.
-        pub fn new(db: DbConnection) -> Self {
-            PostgresLogger {
-                db,
-                decision_buffer: Vec::new(),
-                buffer_size: 100, // Flush every 100 decisions
-            }
-        }
-
         /// Create a PostgresLogger from a database URL.
-        pub async fn from_url(database_url: &str) -> LoggerResult<Self> {
-            let db = DbConnection::new(database_url).await.map_err(|e| {
-                LoggerError::Database(format!("Failed to connect to database: {}", e))
+        pub fn from_url(database_url: &str) -> LoggerResult<Self> {
+            let runtime = tokio::runtime::Runtime::new()
+                .map_err(|e| LoggerError::Config(format!("Failed to create runtime: {}", e)))?;
+            let db = runtime.block_on(async {
+                let db = DbConnection::new(database_url).await.map_err(|e| {
+                    LoggerError::Database(format!("Failed to connect to database: {}", e))
+                })?;
+                db.run_migrations().await.map_err(|e| {
+                    LoggerError::Database(format!("Failed to run migrations: {}", e))
+                })?;
+                Ok::<DbConnection, LoggerError>(db)
             })?;
-            Ok(PostgresLogger::new(db))
+
+            Ok(PostgresLogger {
+                db,
+                runtime,
+                decision_buffer: Vec::new(),
+            })
         }
 
         /// Flush buffered decisions to the database.
-        async fn flush_buffer(&mut self) -> LoggerResult<()> {
+        fn flush_buffer(&mut self) -> LoggerResult<()> {
             if self.decision_buffer.is_empty() {
                 return Ok(());
             }
 
-            for (benchmark_id, decision) in self.decision_buffer.drain(..) {
-                self.db
-                    .insert_decision(benchmark_id, &decision)
-                    .await
-                    .map_err(|e| LoggerError::Database(e.to_string()))?;
-            }
+            let pending = std::mem::take(&mut self.decision_buffer);
+            let db = &self.db;
+            self.runtime.block_on(async {
+                for (benchmark_id, decision) in pending {
+                    db.insert_decision(benchmark_id, &decision)
+                        .await
+                        .map_err(|e| LoggerError::Database(e.to_string()))?;
+                }
 
-            Ok(())
+                Ok(())
+            })
         }
     }
 
@@ -155,11 +217,9 @@ mod postgres_impl {
                 name, cost_fn
             );
 
-            // Use tokio runtime to run async code
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                self.db
-                    .insert_benchmark(name, cost_fn)
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.insert_benchmark(name, cost_fn)
                     .await
                     .map_err(|e| LoggerError::Database(e.to_string()))
             })
@@ -170,15 +230,65 @@ mod postgres_impl {
             benchmark_id: i64,
             decision: &DecisionRecord,
         ) -> LoggerResult<i64> {
-            self.decision_buffer.push((benchmark_id, decision.clone()));
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.insert_decision(benchmark_id, decision)
+                    .await
+                    .map_err(|e| LoggerError::Database(e.to_string()))
+            })
+        }
 
-            if self.decision_buffer.len() >= self.buffer_size {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(self.flush_buffer())?;
-            }
+        fn set_decision_key(&mut self, decision_id: i64, decision_key: &str) -> LoggerResult<()> {
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.set_decision_key(decision_id, decision_key)
+                    .await
+                    .map_err(|e| LoggerError::Database(e.to_string()))
+            })
+        }
 
-            // Return a placeholder ID since we're buffering
-            Ok(self.decision_buffer.len() as i64)
+        fn log_abstract_instantiation(
+            &mut self,
+            benchmark_id: i64,
+            instantiation: &AbstractInstantiationRecord,
+        ) -> LoggerResult<i64> {
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.insert_abstract_instantiation(benchmark_id, instantiation)
+                    .await
+                    .map_err(|e| LoggerError::Database(e.to_string()))
+            })
+        }
+
+        fn link_abstract_instantiation_decision(
+            &mut self,
+            abstract_instantiation_id: i64,
+            decision_id: i64,
+        ) -> LoggerResult<()> {
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.link_abstract_instantiation_decision(abstract_instantiation_id, decision_id)
+                    .await
+                    .map_err(|e| LoggerError::Database(e.to_string()))
+            })
+        }
+
+        fn log_indexed_instantiation(
+            &mut self,
+            benchmark_id: i64,
+            instantiation: &IndexedInstantiationRecord,
+            abstract_instantiation_id: Option<i64>,
+        ) -> LoggerResult<()> {
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.insert_indexed_instantiation(
+                    benchmark_id,
+                    instantiation,
+                    abstract_instantiation_id,
+                )
+                .await
+                .map_err(|e| LoggerError::Database(e.to_string()))
+            })
         }
 
         fn complete_benchmark(
@@ -189,14 +299,11 @@ mod postgres_impl {
             time_ms: u64,
             core: Option<&UnsatCoreInfo>,
         ) -> LoggerResult<()> {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                // Flush any remaining buffered decisions
-                self.flush_buffer().await?;
+            self.flush_buffer()?;
 
-                // Update benchmark status
-                self.db
-                    .complete_benchmark(benchmark_id, success, refinements, time_ms)
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.complete_benchmark(benchmark_id, success, refinements, time_ms)
                     .await
                     .map_err(|e| LoggerError::Database(e.to_string()))?;
 
@@ -205,8 +312,7 @@ mod postgres_impl {
                     for inst in &core_info.core_instantiations {
                         let term_hash =
                             crate::training::canonical_term_hash_from_string(&inst.term);
-                        self.db
-                            .insert_core_appearance(benchmark_id, &term_hash)
+                        db.insert_core_appearance(benchmark_id, &term_hash)
                             .await
                             .map_err(|e| LoggerError::Database(e.to_string()))?;
                     }
@@ -217,8 +323,7 @@ mod postgres_impl {
         }
 
         fn flush(&mut self) -> LoggerResult<()> {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(self.flush_buffer())
+            self.flush_buffer()
         }
     }
 }

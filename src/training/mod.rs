@@ -10,12 +10,16 @@ mod config;
 mod db;
 mod logger;
 mod schema;
+mod session;
 mod term_features;
 pub mod term_hash;
 
 pub use config::TrainingConfig;
 pub use logger::{NoOpLogger, TrainingLogger};
-pub use schema::{CandidateRecord, DecisionRecord, IndexedInstantiationRecord};
+pub use schema::{
+    AbstractInstantiationRecord, CandidateRecord, DecisionRecord, IndexedInstantiationRecord,
+};
+pub use session::{reset_training_database, TrainingSession};
 pub use term_features::TermFeatures;
 pub use term_hash::{canonical_term_hash, canonical_term_hash_from_string};
 

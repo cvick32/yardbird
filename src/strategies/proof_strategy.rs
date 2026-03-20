@@ -4,6 +4,7 @@ use crate::{
     driver::{self, Error},
     solver_interface::SolverInterface,
     theory_support::TheorySupport,
+    training::{AbstractInstantiationRecord, DecisionRecord},
     ProofLoopResult,
 };
 
@@ -50,6 +51,12 @@ pub trait ProofStrategy<'ctx, S> {
     #[allow(unused_variables)]
     fn finish(&mut self, state: S, smt: &mut dyn SolverInterface) -> driver::Result<()> {
         Ok(())
+    }
+
+    fn take_logging_artifacts(
+        &mut self,
+    ) -> (Vec<DecisionRecord>, Vec<AbstractInstantiationRecord>) {
+        (vec![], vec![])
     }
 
     fn result(&mut self, model: &mut VMTModel, smt: &dyn SolverInterface) -> ProofLoopResult;

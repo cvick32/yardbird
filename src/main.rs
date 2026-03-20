@@ -6,15 +6,24 @@ use yardbird::{
     problem::Problem,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
+    training::{reset_training_database, TrainingSession},
     CostFunction, Driver, Strategy, Theory, YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
     logger::init_logger(log::Level::Info);
     let options = YardbirdOptions::parse();
 
+    if options.train_reset {
+        reset_training_database(options.database_url.as_deref())?;
+        info!("Training database reset complete");
+        return Ok(());
+    }
+
     // Auto-detect mode based on file extension
-    let path = Path::new(&options.filename);
+    let filename = options.require_filename()?;
+    let path = Path::new(filename);
     let extension = path.extension().and_then(|s| s.to_str());
 
     match extension {
@@ -38,7 +47,7 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     info!("Running in SMTLIB mode");
 
     // Parse SMTLIB problem
-    let problem = SMTLIBProblem::from_path(&options.filename)
+    let problem = SMTLIBProblem::from_path(options.require_filename()?)
         .map_err(|e| anyhow::anyhow!("Failed to parse SMTLIB file: {:?}", e))?;
 
     info!(
@@ -84,16 +93,29 @@ fn run_smtlib_with_strategy(
     problem: &SMTLIBProblem,
     options: &YardbirdOptions,
 ) -> anyhow::Result<()> {
+    let mut training_session = TrainingSession::from_options(options)?;
     let strategy = build_smtlib_strategy(options);
     //let instantiation_strategy = options.build_instantiation_strategy();
 
-    let (result, abstracted_problem) = SMTLIBSolver::execute_with_strategy(
+    let (result, abstracted_problem) = match SMTLIBSolver::execute_with_strategy(
         problem,
         strategy,
         250, // max refinements (like VMT mode)
         options.track_instantiations,
         //instantiation_strategy,
-    )?;
+    ) {
+        Ok(res) => res,
+        Err(err) => {
+            if let Some(session) = training_session.as_mut() {
+                session.complete_failure()?;
+            }
+            return Err(err);
+        }
+    };
+
+    if let Some(session) = training_session.as_mut() {
+        session.complete_result(&result)?;
+    }
 
     // Print abstracted output if requested
     if options.print_file {
@@ -186,6 +208,11 @@ fn build_smtlib_strategy(
             CostFunction::PreferConstants => {
                 Box::new(Abstract::new(0, options.run_ic3ia, array_prefer_constants))
             }
+            CostFunction::IndexAware => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                index_aware_array_cost_factory,
+            )),
         },
         Strategy::AbstractWithQuantifiers => {
             Box::new(AbstractArrayWithQuantifiers::new(options.run_ic3ia))
@@ -220,6 +247,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     info!("Running in VMT mode");
     let vmt_model = model_from_options(options);
     let instantiation_strategy = options.build_instantiation_strategy();
+    let mut training_session = TrainingSession::from_options(options)?;
 
     //let cfg = z3::Config::new();
     //cfg.set_proof_generation(true);
@@ -236,7 +264,18 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             if options.interpolate {
                 driver.add_extension(Interpolating);
             }
-            let res = driver.check_strategy(options.depth, options.build_array_strategy())?;
+            let res = match driver.check_strategy(options.depth, options.build_array_strategy()) {
+                Ok(res) => res,
+                Err(err) => {
+                    if let Some(session) = training_session.as_mut() {
+                        session.complete_failure()?;
+                    }
+                    return Err(err.into());
+                }
+            };
+            if let Some(session) = training_session.as_mut() {
+                session.complete_result(&res)?;
+            }
             print_file_results(res, options)?;
         }
         Theory::BvList => {
@@ -254,7 +293,18 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             if options.interpolate {
                 driver.add_extension(Interpolating);
             }
-            let res = driver.check_strategy(options.depth, options.build_list_strategy())?;
+            let res = match driver.check_strategy(options.depth, options.build_list_strategy()) {
+                Ok(res) => res,
+                Err(err) => {
+                    if let Some(session) = training_session.as_mut() {
+                        session.complete_failure()?;
+                    }
+                    return Err(err.into());
+                }
+            };
+            if let Some(session) = training_session.as_mut() {
+                session.complete_result(&res)?;
+            }
             print_file_results(res, options)?;
         }
     };

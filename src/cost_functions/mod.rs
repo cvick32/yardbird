@@ -10,6 +10,12 @@ where
     L: egg::Language + egg::FromOp,
 {
     fn get_string_terms(&self) -> Vec<String>;
+    fn get_transition_terms(&self) -> Vec<String> {
+        vec![]
+    }
+    fn get_property_terms(&self) -> Vec<String> {
+        vec![]
+    }
     fn get_reads_and_writes(&self) -> ReadsAndWrites;
 
     /// Get pre-parsed terms as RecExprs. Default implementation parses from strings,

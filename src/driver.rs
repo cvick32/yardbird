@@ -31,10 +31,12 @@ pub struct ProofLoopResult {
     pub const_instances: Vec<Term>,
     pub solver_statistics: SolverStatistics,
     pub total_instantiations_added: u64,
+    pub total_refinement_steps: u32,
     pub counterexample: bool,
     pub found_proof: bool,
     pub unsat_core: Option<UnsatCoreInfo>,
     pub decision_data: Vec<crate::training::DecisionRecord>,
+    pub abstract_instantiations: Vec<crate::training::AbstractInstantiationRecord>,
     pub indexed_instantiations: Vec<crate::training::IndexedInstantiationRecord>,
 }
 
@@ -52,7 +54,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 9)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 11)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -74,10 +76,12 @@ impl Serialize for ProofLoopResult {
             "total_instantiations_added",
             &self.total_instantiations_added,
         )?;
+        state.serialize_field("total_refinement_steps", &self.total_refinement_steps)?;
         state.serialize_field("counterexample", &self.counterexample)?;
         state.serialize_field("found_proof", &self.found_proof)?;
         state.serialize_field("unsat_core", &self.unsat_core)?;
         state.serialize_field("decision_data", &self.decision_data)?;
+        state.serialize_field("abstract_instantiations", &self.abstract_instantiations)?;
         state.serialize_field("indexed_instantiations", &self.indexed_instantiations)?;
         state.end()
     }
@@ -97,9 +101,13 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             ConstInstances,
             SolverStatistics,
             TotalInstantiationsAdded,
+            TotalRefinementSteps,
             Counterexample,
             FoundProof,
             UnsatCore,
+            DecisionData,
+            AbstractInstantiations,
+            IndexedInstantiations,
         }
 
         struct ProofLoopResultVisitor;
@@ -119,6 +127,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                 let mut const_instances: Option<Vec<String>> = None;
                 let mut solver_statistics = None;
                 let mut total_instantiations_added = None;
+                let mut total_refinement_steps = None;
                 let mut counterexample = None;
                 let mut found_proof = None;
                 let mut unsat_core = None;
@@ -137,6 +146,9 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         Field::TotalInstantiationsAdded => {
                             total_instantiations_added = Some(map.next_value()?);
                         }
+                        Field::TotalRefinementSteps => {
+                            total_refinement_steps = Some(map.next_value()?);
+                        }
                         Field::Counterexample => {
                             counterexample = Some(map.next_value()?);
                         }
@@ -145,6 +157,11 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         }
                         Field::UnsatCore => {
                             unsat_core = Some(map.next_value()?);
+                        }
+                        Field::DecisionData
+                        | Field::AbstractInstantiations
+                        | Field::IndexedInstantiations => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
                         }
                     }
                 }
@@ -171,12 +188,15 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     total_instantiations_added: total_instantiations_added.ok_or_else(|| {
                         serde::de::Error::missing_field("total_instantiations_added")
                     })?,
+                    total_refinement_steps: total_refinement_steps
+                        .ok_or_else(|| serde::de::Error::missing_field("total_refinement_steps"))?,
                     counterexample: counterexample
                         .ok_or_else(|| serde::de::Error::missing_field("counterexample"))?,
                     found_proof: found_proof
                         .ok_or_else(|| serde::de::Error::missing_field("found_proof"))?,
                     unsat_core: unsat_core.flatten(),
                     decision_data: vec![],
+                    abstract_instantiations: vec![],
                     indexed_instantiations: vec![],
                 })
             }
@@ -187,6 +207,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             "const_instances",
             "solver_statistics",
             "total_instantiations_added",
+            "total_refinement_steps",
             "counterexample",
             "found_proof",
             "unsat_core",
@@ -288,6 +309,7 @@ impl<'ctx, S> Driver<'ctx, S> {
     ) -> Result<ProofLoopResult> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
+        let mut total_refinement_steps = 0;
 
         let mut smt_problem = crate::smt_problem::SMTProblem::new(
             &self.vmt_model,
@@ -300,6 +322,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             info!("STARTING BMC FOR DEPTH {depth}");
             for refinement_step in 0..n_refines {
                 info!("  refining loop: {}/{n_refines}", refinement_step + 1);
+                total_refinement_steps += 1;
                 smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
@@ -342,10 +365,16 @@ impl<'ctx, S> Driver<'ctx, S> {
                     ProofAction::NextDepth => continue 'bmc,
                     ProofAction::FoundCounterexample => return Err(Error::Counterexample),
                     ProofAction::FoundProof => {
+                        info!("Building final proof result");
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
+                        result.total_refinement_steps = total_refinement_steps;
+                        info!("Collecting unsat core metadata");
                         result.unsat_core = self.build_unsat_core_info(&smt_problem);
+                        info!("Collecting indexed instantiation records");
                         result.indexed_instantiations =
                             self.build_indexed_instantiation_records(&smt_problem);
+                        self.annotate_instantiation_core_membership(&mut result);
+                        info!("Final proof result is ready");
                         return Ok(result);
                     }
                 }
@@ -353,9 +382,15 @@ impl<'ctx, S> Driver<'ctx, S> {
             return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
+        info!("Building final proof result");
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
+        result.total_refinement_steps = total_refinement_steps;
+        info!("Collecting unsat core metadata");
         result.unsat_core = self.build_unsat_core_info(&smt_problem);
+        info!("Collecting indexed instantiation records");
         result.indexed_instantiations = self.build_indexed_instantiation_records(&smt_problem);
+        self.annotate_instantiation_core_membership(&mut result);
+        info!("Final proof result is ready");
         Ok(result)
     }
 
@@ -374,10 +409,10 @@ impl<'ctx, S> Driver<'ctx, S> {
             let core_instantiations = smt_problem
                 .get_tracked_labels()
                 .iter()
-                .filter(|(label, _)| core_set.contains(label))
-                .map(|(label, term)| CoreInstantiation {
-                    label: label.clone(),
-                    term: term.to_string(),
+                .filter(|record| core_set.contains(&record.label))
+                .map(|record| CoreInstantiation {
+                    label: record.label.clone(),
+                    term: record.term.clone(),
                 })
                 .collect::<Vec<_>>();
             UnsatCoreInfo {
@@ -397,47 +432,34 @@ impl<'ctx, S> Driver<'ctx, S> {
             return vec![];
         }
 
+        let core_set: std::collections::HashSet<String> = smt_problem
+            .get_unsat_core()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+
         smt_problem
             .get_tracked_labels()
             .iter()
-            .map(|(label, term)| {
-                let term_str = term.to_string();
-                let term_hash = crate::training::canonical_term_hash_from_string(&term_str);
-
-                // Parse depth and unroll_index from label format:
-                // "inst_N_M" (on_generate) or "inst_N_depth_D" (on_loop)
-                let (depth, unroll_index) = parse_label_indices(label);
-
-                crate::training::IndexedInstantiationRecord {
-                    label: label.clone(),
-                    term: term_str,
-                    term_hash,
-                    depth,
-                    unroll_index,
-                }
+            .cloned()
+            .map(|record| crate::training::IndexedInstantiationRecord {
+                in_unsat_core: core_set.contains(&record.label),
+                ..record
             })
             .collect()
     }
-}
 
-/// Parse depth and unroll_index from instantiation label.
-/// Label formats:
-/// - "inst_N_M" from on_generate (N = inst_num, M = unroll_index within that inst)
-/// - "inst_N_depth_D" from on_loop (N = inst_num, D = depth)
-fn parse_label_indices(label: &str) -> (u16, u16) {
-    let parts: Vec<&str> = label.split('_').collect();
-    if parts.len() >= 3 {
-        if parts.len() == 4 && parts[2] == "depth" {
-            // Format: inst_N_depth_D
-            let depth = parts[3].parse().unwrap_or(0);
-            (depth, 0)
-        } else {
-            // Format: inst_N_M
-            let unroll_index = parts[2].parse().unwrap_or(0);
-            (0, unroll_index)
+    fn annotate_instantiation_core_membership(&self, result: &mut ProofLoopResult) {
+        let core_ids: std::collections::HashSet<String> = result
+            .indexed_instantiations
+            .iter()
+            .filter(|record| record.in_unsat_core)
+            .filter_map(|record| record.abstract_instantiation_id.clone())
+            .collect();
+        for instantiation in &mut result.abstract_instantiations {
+            instantiation.in_unsat_core =
+                core_ids.contains(&instantiation.abstract_instantiation_id);
         }
-    } else {
-        (0, 0)
     }
 }
 

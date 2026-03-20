@@ -11,6 +11,7 @@ use crate::{
         array_axioms::{ArrayExpr, ArrayLanguage},
         array_term_extractor::ArrayTermExtractor,
     },
+    training::{AbstractInstantiationRecord, DecisionRecord},
 };
 
 /// Preprocess array operation strings for egg parsing.
@@ -91,6 +92,8 @@ where
     /// need to use interior mutability.
     instantiations: Rc<RefCell<Vec<ArrayExpr>>>,
     instantiations_w_constants: Rc<RefCell<Vec<ArrayExpr>>>,
+    decisions: Rc<RefCell<Vec<DecisionRecord>>>,
+    abstract_instantiations: Rc<RefCell<Vec<AbstractInstantiationRecord>>>,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
 }
@@ -104,6 +107,8 @@ where
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
             instantiations_w_constants: Rc::new(RefCell::new(vec![])),
+            decisions: Rc::new(RefCell::new(vec![])),
+            abstract_instantiations: Rc::new(RefCell::new(vec![])),
             cost_fn,
             extractor,
         }
@@ -115,6 +120,14 @@ where
 
     pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ArrayExpr>>> {
         Rc::clone(&self.instantiations_w_constants)
+    }
+
+    pub fn decisions(&self) -> Rc<RefCell<Vec<DecisionRecord>>> {
+        Rc::clone(&self.decisions)
+    }
+
+    pub fn abstract_instantiations(&self) -> Rc<RefCell<Vec<AbstractInstantiationRecord>>> {
+        Rc::clone(&self.abstract_instantiations)
     }
 }
 
@@ -165,12 +178,21 @@ where
                         // construct a new term by instantiating variables in the pattern ast with terms
                         // from the substitution.
                         let mut memo = HashMap::default();
+                        let mut slot_index = 0;
+                        let mut decisions = self.decisions.borrow_mut();
+                        let decision_start = decisions.len();
+                        let mut ctx = DecisionLogContext {
+                            decisions: &mut decisions,
+                            axiom_name: rewrite.name.as_str(),
+                            slot_index: &mut slot_index,
+                        };
                         let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
                             searcher_ast.as_ref(),
                             egraph,
                             subst,
                             &self.extractor,
                             &mut memo,
+                            &mut ctx,
                         ));
 
                         let new_rhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
@@ -179,6 +201,7 @@ where
                             subst,
                             &self.extractor,
                             &mut memo,
+                            &mut ctx,
                         ));
 
                         let rhs_eclass = egraph.lookup_expr(&new_rhs);
@@ -203,12 +226,27 @@ where
                                 } else {
                                     ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
+                            let decision_keys = decisions[decision_start..]
+                                .iter()
+                                .map(|decision| decision.decision_key.clone())
+                                .collect::<Vec<_>>();
+                            let ordinal = self.abstract_instantiations.borrow().len();
+                            let abstract_instantiation =
+                                self.extractor.abstract_instantiation_record(
+                                    rewrite.name.as_str(),
+                                    ordinal,
+                                    &instantiation,
+                                    decision_keys,
+                                );
                             let cost = self.cost_fn.cost_rec(&new_rhs);
                             debug!(
                                 "FOUND VIOLATION (cost {}): \n{}",
                                 cost,
                                 instantiation.pretty(80)
                             );
+                            self.abstract_instantiations
+                                .borrow_mut()
+                                .push(abstract_instantiation);
 
                             if cost >= 100 {
                                 debug!("rejecting because of cost");
@@ -229,6 +267,12 @@ where
     }
 }
 
+struct DecisionLogContext<'a> {
+    decisions: &'a mut Vec<DecisionRecord>,
+    axiom_name: &'a str,
+    slot_index: &'a mut u32,
+}
+
 /// We want to replace all the variables in the pattern with terms extracted from
 /// the egraph. We do this by calling `join_recexprs` on the root of the pattern
 /// ast. For enodes, we want to just return them as is. However, we have to build it
@@ -241,6 +285,7 @@ fn reify_pattern_ast<N, CF>(
     subst: &egg::Subst,
     extractor: &ArrayTermExtractor<CF>,
     memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+    ctx: &mut DecisionLogContext<'_>,
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
@@ -254,7 +299,7 @@ where
                     expr.clone()
                 } else {
                     let eclass = &egraph[*subst.get(*var).unwrap()];
-                    let expr = find_best_variable_substitution(egraph, eclass, extractor);
+                    let expr = find_best_variable_substitution(egraph, eclass, extractor, ctx);
                     memo.insert(*var, expr.clone());
                     expr
                 }
@@ -311,6 +356,31 @@ where
                                         .find(|v| egraph_contains_at(egraph, v, val_ecls.id))
                                     {
                                         let array_expr = egg::RecExpr::from(vec![array_node]);
+                                        // These three choices bypass the normal
+                                        // `find_best_variable_substitution` path. We log them
+                                        // explicitly so the database still sees the full
+                                        // decision -> abstract instantiation provenance chain.
+                                        record_specialized_choice(
+                                            egraph,
+                                            array_ecls.id,
+                                            &array_expr,
+                                            extractor,
+                                            ctx,
+                                        );
+                                        record_specialized_choice(
+                                            egraph,
+                                            index_ecls.id,
+                                            &index_node,
+                                            extractor,
+                                            ctx,
+                                        );
+                                        record_specialized_choice(
+                                            egraph,
+                                            val_ecls.id,
+                                            &val_node,
+                                            extractor,
+                                            ctx,
+                                        );
                                         memo.insert(*array, patternify(&array_expr));
                                         memo.insert(*index, patternify(&index_node));
                                         memo.insert(*val, patternify(&val_node));
@@ -335,6 +405,7 @@ where
                                             subst,
                                             extractor,
                                             memo,
+                                            ctx,
                                         )
                                     }
                                 }
@@ -369,6 +440,22 @@ where
                                     .next()
                                 {
                                     let array_expr = egg::RecExpr::from(vec![array_node]);
+                                    // As above, log the specialized metadata-driven choices so
+                                    // we do not lose provenance for reconstructed Read terms.
+                                    record_specialized_choice(
+                                        egraph,
+                                        array_ecls.id,
+                                        &array_expr,
+                                        extractor,
+                                        ctx,
+                                    );
+                                    record_specialized_choice(
+                                        egraph,
+                                        index_ecls.id,
+                                        &index_node,
+                                        extractor,
+                                        ctx,
+                                    );
                                     memo.insert(*array, patternify(&array_expr));
                                     memo.insert(*index, patternify(&index_node));
                                     patternify(&ArrayLanguage::read_typed(
@@ -394,6 +481,7 @@ where
                                 subst,
                                 extractor,
                                 memo,
+                                ctx,
                             )
                         }
                     }
@@ -402,7 +490,8 @@ where
                             expr.clone()
                         } else {
                             let eclass = &egraph[*subst.get(var).unwrap()];
-                            let expr = find_best_variable_substitution(egraph, eclass, extractor);
+                            let expr =
+                                find_best_variable_substitution(egraph, eclass, extractor, ctx);
                             memo.insert(var, expr.clone());
                             expr
                         }
@@ -478,6 +567,7 @@ fn find_best_variable_substitution<N, CF>(
     egraph: &egg::EGraph<ArrayLanguage, N>,
     eclass: &egg::EClass<ArrayLanguage, <N as Analysis<ArrayLanguage>>::Data>,
     extractor: &ArrayTermExtractor<CF>,
+    ctx: &mut DecisionLogContext<'_>,
 ) -> egg::PatternAst<ArrayLanguage>
 where
     N: egg::Analysis<ArrayLanguage>,
@@ -485,6 +575,14 @@ where
 {
     let expr = extractor.extract(egraph, eclass.id);
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));
+    ctx.decisions.push(extractor.decision_record(
+        egraph,
+        eclass.id,
+        ctx.axiom_name,
+        *ctx.slot_index,
+        &expr,
+    ));
+    *ctx.slot_index += 1;
 
     // wrap everything in an ENodeOrVar so that it still counts as an egg::PatternAst
     expr.as_ref()
@@ -493,4 +591,27 @@ where
         .map(egg::ENodeOrVar::ENode)
         .collect::<Vec<_>>()
         .into()
+}
+
+fn record_specialized_choice<N, CF>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    eclass_id: egg::Id,
+    chosen: &egg::RecExpr<ArrayLanguage>,
+    extractor: &ArrayTermExtractor<CF>,
+    ctx: &mut DecisionLogContext<'_>,
+) where
+    N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
+{
+    // The specialized Read/Write reconstruction path chooses terms by following
+    // read/write metadata instead of the generic e-class extractor. We still log
+    // those selections as decision points so the provenance chain remains complete.
+    ctx.decisions.push(extractor.decision_record(
+        egraph,
+        eclass_id,
+        ctx.axiom_name,
+        *ctx.slot_index,
+        chosen,
+    ));
+    *ctx.slot_index += 1;
 }

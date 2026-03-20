@@ -4,7 +4,7 @@
 
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 
-use super::schema::DecisionRecord;
+use super::schema::{AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord};
 
 /// Database connection wrapper with connection pooling.
 pub struct DbConnection {
@@ -51,12 +51,13 @@ impl DbConnection {
         // Insert the decision
         let row = sqlx::query(
             r#"
-            INSERT INTO decisions (benchmark_id, bmc_depth, axiom_name, slot_index)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO decisions (benchmark_id, decision_key, bmc_depth, axiom_name, slot_index)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id
             "#,
         )
         .bind(benchmark_id)
+        .bind(&decision.decision_key)
         .bind(decision.bmc_depth as i32)
         .bind(&decision.axiom_name)
         .bind(decision.slot_index as i32)
@@ -96,6 +97,107 @@ impl DbConnection {
         tx.commit().await?;
 
         Ok(decision_id)
+    }
+
+    /// Add a stable decision key after the row exists. This keeps migration logic simple.
+    pub async fn set_decision_key(
+        &self,
+        decision_id: i64,
+        decision_key: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            UPDATE decisions
+            SET decision_key = $2
+            WHERE id = $1
+            "#,
+        )
+        .bind(decision_id)
+        .bind(decision_key)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn insert_abstract_instantiation(
+        &self,
+        benchmark_id: i64,
+        record: &AbstractInstantiationRecord,
+    ) -> Result<i64, sqlx::Error> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO abstract_instantiations (
+                benchmark_id, abstract_instantiation_id, term, term_hash,
+                axiom_name, bmc_depth, refinement_step, in_unsat_core
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING id
+            "#,
+        )
+        .bind(benchmark_id)
+        .bind(&record.abstract_instantiation_id)
+        .bind(&record.term)
+        .bind(&record.term_hash)
+        .bind(&record.axiom_name)
+        .bind(record.bmc_depth as i32)
+        .bind(record.refinement_step as i32)
+        .bind(record.in_unsat_core)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.get("id"))
+    }
+
+    pub async fn link_abstract_instantiation_decision(
+        &self,
+        abstract_instantiation_db_id: i64,
+        decision_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO abstract_instantiation_decisions (abstract_instantiation_id, decision_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(abstract_instantiation_db_id)
+        .bind(decision_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn insert_indexed_instantiation(
+        &self,
+        benchmark_id: i64,
+        record: &IndexedInstantiationRecord,
+        abstract_instantiation_db_id: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO indexed_instantiations (
+                benchmark_id, label, term, term_hash, depth, unroll_index,
+                abstract_instantiation_db_id, abstract_instantiation_id, in_unsat_core
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (benchmark_id, label) DO NOTHING
+            "#,
+        )
+        .bind(benchmark_id)
+        .bind(&record.label)
+        .bind(&record.term)
+        .bind(&record.term_hash)
+        .bind(record.depth as i32)
+        .bind(record.unroll_index as i32)
+        .bind(abstract_instantiation_db_id)
+        .bind(&record.abstract_instantiation_id)
+        .bind(record.in_unsat_core)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     /// Update a benchmark with completion status.
@@ -147,9 +249,32 @@ impl DbConnection {
 
     /// Run the database migrations.
     pub async fn run_migrations(&self) -> Result<(), sqlx::Error> {
-        sqlx::query(include_str!("migrations/001_initial.sql"))
+        sqlx::raw_sql(include_str!("migrations/001_initial.sql"))
             .execute(&self.pool)
             .await?;
+        sqlx::raw_sql(include_str!("migrations/002_instantiation_provenance.sql"))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Clear all training tables while preserving the schema.
+    pub async fn reset_training_tables(&self) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            TRUNCATE TABLE
+                indexed_instantiations,
+                abstract_instantiation_decisions,
+                abstract_instantiations,
+                core_appearances,
+                candidates,
+                decisions,
+                benchmarks
+            RESTART IDENTITY CASCADE
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

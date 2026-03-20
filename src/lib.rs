@@ -16,7 +16,7 @@ use crate::{
         array::{
             adaptive_array_cost_factory, array_ast_size_cost_factory, array_bmc_cost_factory,
             array_prefer_constants, array_prefer_read_factory, array_prefer_write_factory,
-            split_array_cost_factory,
+            index_aware_array_cost_factory, split_array_cost_factory,
         },
         list::list_ast_size_cost_factory,
     },
@@ -51,7 +51,7 @@ mod z3_var_context;
 pub struct YardbirdOptions {
     /// Name of the VMT file.
     #[arg(short, long)]
-    pub filename: String,
+    pub filename: Option<String>,
 
     /// BMC depth until quitting.
     #[arg(short, long, default_value_t = 10)]
@@ -108,6 +108,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub train: bool,
 
+    /// Clear all training tables in the configured database and exit.
+    #[arg(long, default_value_t = false)]
+    pub train_reset: bool,
+
     /// Database URL for training data (e.g., postgres://user:pass@host/db)
     #[arg(long, env = "YARDBIRD_DATABASE_URL")]
     pub database_url: Option<String>,
@@ -116,7 +120,7 @@ pub struct YardbirdOptions {
 impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
-            filename: "".into(),
+            filename: None,
             depth: 10,
             print_file: false,
             interpolate: false,
@@ -131,6 +135,7 @@ impl Default for YardbirdOptions {
             track_instantiations: false,
             dump_unsat_core: None,
             train: false,
+            train_reset: false,
             database_url: None,
         }
     }
@@ -139,9 +144,15 @@ impl Default for YardbirdOptions {
 impl YardbirdOptions {
     pub fn from_filename(filename: String) -> Self {
         YardbirdOptions {
-            filename,
+            filename: Some(filename),
             ..Default::default()
         }
+    }
+
+    pub fn require_filename(&self) -> anyhow::Result<&str> {
+        self.filename
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("--filename is required unless --train-reset is used"))
     }
 
     pub fn build_instantiation_strategy(
@@ -195,6 +206,11 @@ impl YardbirdOptions {
                     self.run_ic3ia,
                     array_prefer_constants,
                 )),
+                CostFunction::IndexAware => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    index_aware_array_cost_factory,
+                )),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -239,6 +255,11 @@ impl YardbirdOptions {
                     array_prefer_write_factory,
                 )),
                 CostFunction::PreferConstants => todo!(),
+                CostFunction::IndexAware => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    index_aware_array_cost_factory,
+                )),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -261,6 +282,7 @@ impl YardbirdOptions {
                 CostFunction::PreferRead => todo!(),
                 CostFunction::PreferWrite => todo!(),
                 CostFunction::PreferConstants => todo!(),
+                CostFunction::IndexAware => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 todo!("AbstractWithQuantifiers not yet implemented for List theory")
@@ -273,7 +295,8 @@ impl YardbirdOptions {
 }
 
 pub fn model_from_options(options: &YardbirdOptions) -> VMTModel {
-    let vmt_model = VMTModel::from_path(&options.filename).unwrap();
+    let filename = options.require_filename().unwrap();
+    let vmt_model = VMTModel::from_path(filename).unwrap();
 
     if options.print_file {
         let mut output = File::create("original.vmt").unwrap();
@@ -314,6 +337,7 @@ pub enum CostFunction {
     PreferRead,
     PreferWrite,
     PreferConstants,
+    IndexAware,
 }
 
 impl Display for CostFunction {
@@ -326,6 +350,7 @@ impl Display for CostFunction {
             CostFunction::PreferRead => write!(f, "prefer-read"),
             CostFunction::PreferWrite => write!(f, "prefer-write"),
             CostFunction::PreferConstants => write!(f, "prefer-constants"),
+            CostFunction::IndexAware => write!(f, "index-aware"),
         }
     }
 }

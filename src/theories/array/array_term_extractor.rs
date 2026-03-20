@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 
 use egg::Language;
+use rustc_hash::FxHashSet;
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
     cost_functions::YardbirdCostFunction,
     theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
+    training::{
+        canonical_term_hash, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
+        TermFeatures,
+    },
 };
 
 pub struct ArrayTermExtractor<CF>
@@ -16,6 +21,9 @@ where
     cost_function: CF,
     refinement_step: u32,
     pub reads_and_writes: ReadsAndWrites,
+    property_terms: FxHashSet<String>,
+    transition_terms: FxHashSet<String>,
+    depth: u16,
 }
 
 impl<CF> ArrayTermExtractor<CF>
@@ -26,6 +34,7 @@ where
         egraph: &egg::EGraph<ArrayLanguage, N>,
         mut cost_function: CF,
         refinement_step: u32,
+        depth: u16,
     ) -> Self
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -51,12 +60,129 @@ where
         }
 
         let reads_and_writes = cost_function.get_reads_and_writes();
+        let property_terms = cost_function.get_property_terms().into_iter().collect();
+        let transition_terms = cost_function.get_transition_terms().into_iter().collect();
 
         Self {
             term_map,
             cost_function,
             refinement_step,
             reads_and_writes,
+            property_terms,
+            transition_terms,
+            depth,
+        }
+    }
+
+    pub fn ranked_candidates<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+    ) -> Vec<(ArrayExpr, i32)>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
+            return terms
+                .iter()
+                .map(|(term, cost)| (term.clone(), *cost as i32))
+                .collect();
+        }
+
+        let mut fallback_cost = self.cost_function.clone();
+        let extractor = egg::Extractor::new(egraph, fallback_cost.clone());
+        let (_, expr) = extractor.find_best(eclass);
+        let cost = fallback_cost.cost_rec(&expr) as i32;
+        vec![(expr, cost)]
+    }
+
+    pub fn decision_record<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+        axiom_name: &str,
+        slot_index: u32,
+        chosen_term: &ArrayExpr,
+    ) -> DecisionRecord
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        let chosen_hash = canonical_term_hash(chosen_term);
+        let mut candidates = self
+            .ranked_candidates(egraph, eclass)
+            .into_iter()
+            .map(|(term, cost)| {
+                let features =
+                    TermFeatures::extract(&term, &self.property_terms, &self.transition_terms);
+                CandidateRecord {
+                    term: term.to_string(),
+                    term_hash: canonical_term_hash(&term),
+                    is_constant: features.is_constant,
+                    is_variable: features.is_variable,
+                    in_property_vocab: features.in_property_vocab,
+                    in_transition_vocab: features.in_transition_vocab,
+                    frame_index: features.frame_index,
+                    ast_size: features.ast_size,
+                    current_cost: cost,
+                    was_chosen: canonical_term_hash(&term) == chosen_hash,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // The specialized Read/Write reconstruction path can choose a term that did not come
+        // from the ranked term-map candidates. When that happens, append the chosen term so the
+        // provenance chain still has an explicit "winner" candidate to point to.
+        if !candidates.iter().any(|candidate| candidate.was_chosen) {
+            let features =
+                TermFeatures::extract(chosen_term, &self.property_terms, &self.transition_terms);
+            candidates.push(CandidateRecord {
+                term: chosen_term.to_string(),
+                term_hash: chosen_hash.clone(),
+                is_constant: features.is_constant,
+                is_variable: features.is_variable,
+                in_property_vocab: features.in_property_vocab,
+                in_transition_vocab: features.in_transition_vocab,
+                frame_index: features.frame_index,
+                ast_size: features.ast_size,
+                current_cost: {
+                    let mut cost_fn = self.cost_function.clone();
+                    cost_fn.cost_rec(chosen_term) as i32
+                },
+                was_chosen: true,
+            });
+        }
+
+        DecisionRecord {
+            decision_key: format!(
+                "{}:{}:{}:{}:{}",
+                axiom_name, self.depth, self.refinement_step, slot_index, eclass
+            ),
+            bmc_depth: self.depth,
+            axiom_name: axiom_name.to_string(),
+            slot_index,
+            candidates,
+        }
+    }
+
+    pub fn abstract_instantiation_record(
+        &self,
+        axiom_name: &str,
+        ordinal: usize,
+        instantiation: &ArrayExpr,
+        decision_keys: Vec<String>,
+    ) -> AbstractInstantiationRecord {
+        AbstractInstantiationRecord {
+            abstract_instantiation_id: format!(
+                "{}:{}:{}:{}",
+                axiom_name, self.depth, self.refinement_step, ordinal
+            ),
+            term: instantiation.to_string(),
+            term_hash: canonical_term_hash(instantiation),
+            axiom_name: axiom_name.to_string(),
+            bmc_depth: self.depth,
+            refinement_step: self.refinement_step,
+            decision_keys,
+            in_unsat_core: false,
         }
     }
 

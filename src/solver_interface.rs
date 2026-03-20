@@ -18,7 +18,11 @@ pub trait SolverInterface {
     fn get_reason_unknown(&self) -> Option<String>;
 
     // Methods for instantiation management
-    fn add_instantiation(&mut self, inst: Instance) -> bool;
+    fn add_instantiation(
+        &mut self,
+        inst: Instance,
+        abstract_instantiation_id: Option<String>,
+    ) -> bool;
     fn get_instantiations(&self) -> Vec<Term>;
     fn get_variables(&self) -> &[Variable];
     fn get_number_instantiations_added(&self) -> u64;

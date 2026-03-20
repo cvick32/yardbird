@@ -199,6 +199,14 @@ impl YardbirdCostFunction<ArrayLanguage> for AdaptiveArrayCost {
             .collect::<Vec<String>>()
     }
 
+    fn get_transition_terms(&self) -> Vec<String> {
+        self.init_and_transition_system_terms.clone()
+    }
+
+    fn get_property_terms(&self) -> Vec<String> {
+        self.property_terms.clone()
+    }
+
     fn get_reads_and_writes(&self) -> ReadsAndWrites {
         self.reads_writes.clone()
     }

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 /// Record for a single instantiation decision point.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionRecord {
+    /// Stable key for joining decisions to later instantiations within a run
+    pub decision_key: String,
     /// BMC depth at which this decision was made
     pub bmc_depth: u16,
     /// Name of the axiom being instantiated (e.g., "write-does-not-overwrite-Int-Int")
@@ -60,6 +62,27 @@ impl CandidateRecord {
     }
 }
 
+/// Record for a single original abstract instantiation before BMC unrolling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AbstractInstantiationRecord {
+    /// Stable identifier for this abstract instantiation within a benchmark run
+    pub abstract_instantiation_id: String,
+    /// String representation of the unindexed instantiation term
+    pub term: String,
+    /// Canonical hash for matching and deduplication
+    pub term_hash: String,
+    /// Name of the source axiom / rewrite
+    pub axiom_name: String,
+    /// BMC depth at which this abstract instantiation was synthesized
+    pub bmc_depth: u16,
+    /// Refinement step at which this abstract instantiation was synthesized
+    pub refinement_step: u32,
+    /// Decision keys that were used to build this instantiation
+    pub decision_keys: Vec<String>,
+    /// Whether any tracked solver assertion derived from this instantiation appeared in the core
+    pub in_unsat_core: bool,
+}
+
 /// Record for a single indexed instantiation (unrolled across BMC depths).
 /// Each abstract instantiation gets unrolled to multiple depth-indexed versions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,4 +97,8 @@ pub struct IndexedInstantiationRecord {
     pub depth: u16,
     /// Index within the unroll (0 = deepest, counting back)
     pub unroll_index: u16,
+    /// Stable id of the original abstract instantiation this indexed assertion came from
+    pub abstract_instantiation_id: Option<String>,
+    /// Whether this tracked indexed instantiation appeared in the unsat core
+    pub in_unsat_core: bool,
 }

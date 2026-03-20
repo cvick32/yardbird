@@ -8,9 +8,15 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    instantiation_strategy::InstantiationStrategy, problem::Problem, proof_tree::ProofTree,
-    solver_interface::SolverInterface, strategies::ProofStrategy, subterm_handler::SubtermHandler,
-    utils::SolverStatistics, z3_var_context::Z3VarContext,
+    instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
+    problem::Problem,
+    proof_tree::ProofTree,
+    solver_interface::SolverInterface,
+    strategies::ProofStrategy,
+    subterm_handler::SubtermHandler,
+    training::IndexedInstantiationRecord,
+    utils::SolverStatistics,
+    z3_var_context::Z3VarContext,
 };
 
 pub struct SMTProblem {
@@ -19,7 +25,7 @@ pub struct SMTProblem {
     init_assertion: Term,
     trans_assertion: Term,
     depth: u16,
-    instantiations: Vec<Instance>,
+    instantiations: Vec<StoredInstantiation>,
     subterm_handler: SubtermHandler,
     pub variables: Vec<Variable>,
     solver: z3::Solver,
@@ -27,7 +33,7 @@ pub struct SMTProblem {
     newest_model: Option<z3::Model>,
     num_quantifiers_instantiated: u64,
     track_instantiations: bool,
-    tracked_labels: Vec<(String, Term)>, // (label, instantiation_term)
+    tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
 }
 
@@ -179,12 +185,17 @@ impl SMTProblem {
         self.solver.assert(&z3_prop_negated);
     }
 
-    pub(crate) fn add_instantiation(&mut self, inst: Instance) -> bool {
+    pub(crate) fn add_instantiation(
+        &mut self,
+        inst: Instance,
+        abstract_instantiation_id: Option<String>,
+    ) -> bool {
         let initial_count = self.instantiations.len();
 
         self.instantiation_strategy.on_generate(
             inst,
             &mut self.instantiations,
+            abstract_instantiation_id,
             self.depth,
             &mut self.bmc_builder,
             &mut self.z3_var_context,
@@ -230,7 +241,7 @@ impl SMTProblem {
     }
 
     /// Get the tracked labels for unsat core analysis
-    pub(crate) fn get_tracked_labels(&self) -> &[(String, Term)] {
+    pub(crate) fn get_tracked_labels(&self) -> &[IndexedInstantiationRecord] {
         &self.tracked_labels
     }
 
@@ -268,10 +279,10 @@ impl SMTProblem {
         let tracked_instantiations: Vec<TrackedInst> = self
             .tracked_labels
             .iter()
-            .map(|(label, term)| TrackedInst {
-                label: label.clone(),
-                term: term.to_string(),
-                in_core: core_set.contains(label),
+            .map(|record| TrackedInst {
+                label: record.label.clone(),
+                term: record.term.clone(),
+                in_core: core_set.contains(&record.label),
             })
             .collect();
 
@@ -366,7 +377,7 @@ impl Problem for SMTProblem {
 
             // Call instantiation strategy's on_loop hook to handle instantiations at this depth
             if !self.instantiations.is_empty() {
-                let instantiations_snapshot: Vec<Instance> = self.instantiations.clone();
+                let instantiations_snapshot: Vec<StoredInstantiation> = self.instantiations.clone();
                 self.instantiation_strategy.on_loop(
                     self.depth,
                     &instantiations_snapshot,
@@ -415,14 +426,18 @@ impl SolverInterface for SMTProblem {
         self.solver.get_reason_unknown()
     }
 
-    fn add_instantiation(&mut self, inst: Instance) -> bool {
-        self.add_instantiation(inst)
+    fn add_instantiation(
+        &mut self,
+        inst: Instance,
+        abstract_instantiation_id: Option<String>,
+    ) -> bool {
+        self.add_instantiation(inst, abstract_instantiation_id)
     }
 
     fn get_instantiations(&self) -> Vec<Term> {
         self.instantiations
             .iter()
-            .map(|inst| inst.get_term().clone())
+            .map(|stored| stored.inst.get_term().clone())
             .collect()
     }
 

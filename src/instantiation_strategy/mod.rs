@@ -1,11 +1,17 @@
 pub mod full_unroll;
 pub mod no_unroll_on_loop;
-use smt2parser::{
-    concrete::Term,
-    vmt::{bmc::BMCBuilder, quantified_instantiator::Instance},
+use smt2parser::vmt::{bmc::BMCBuilder, quantified_instantiator::Instance};
+
+use crate::{
+    subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
+    z3_var_context::Z3VarContext,
 };
 
-use crate::{subterm_handler::SubtermHandler, z3_var_context::Z3VarContext};
+#[derive(Clone, Debug)]
+pub struct StoredInstantiation {
+    pub inst: Instance,
+    pub abstract_instantiation_id: Option<String>,
+}
 
 /// Trait for controlling how quantifier instantiations are added and unrolled in BMC problems.
 pub trait InstantiationStrategy: std::fmt::Debug + Send {
@@ -22,14 +28,15 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
     fn on_generate(
         &mut self,
         inst: Instance,
-        instantiations: &mut Vec<Instance>,
+        instantiations: &mut Vec<StoredInstantiation>,
+        abstract_instantiation_id: Option<String>,
         depth: u16,
         bmc_builder: &mut BMCBuilder,
         z3_var_context: &mut Z3VarContext,
         solver: &mut z3::Solver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
-        tracked_labels: &mut Vec<(String, Term)>,
+        tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         num_quantifiers_instantiated: &mut u64,
     );
 
@@ -41,12 +48,12 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
     fn on_loop(
         &mut self,
         depth: u16,
-        instantiations: &[Instance],
+        instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
         z3_var_context: &mut Z3VarContext,
         solver: &mut z3::Solver,
         track_instantiations: bool,
-        tracked_labels: &mut Vec<(String, Term)>,
+        tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         num_quantifiers_instantiated: &mut u64,
     );
 }
