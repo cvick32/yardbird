@@ -1,0 +1,138 @@
+  Statistics Structure
+
+  The counters are defined in src/smt/theory_array.h:27-34:
+
+  struct theory_array_stats {
+      unsigned m_num_axiom1, m_num_axiom2a, m_num_axiom2b, m_num_extensionality, m_num_eq_splits;
+      unsigned m_num_map_axiom, m_num_default_map_axiom;
+      unsigned m_num_select_const_axiom, m_num_default_store_axiom, m_num_default_const_axiom, m_num_default_as_array_axiom;
+      unsigned m_num_select_as_array_axiom, m_num_default_lambda_axiom;
+      void reset() { memset(this, 0, sizeof(theory_array_stats)); }
+  };
+
+  The theory_array class holds an m_stats member of this type (line 51).
+
+  The 13 Tracked Axiom Counters
+
+  Basic axioms (src/smt/theory_array.cpp)
+  ┌──────────────────────┬─────────────────┬────────────────────────────────────────────────┬──────────────────────┐
+  │       Counter        │  Display Name   │                     Axiom                      │    Incremented at    │
+  ├──────────────────────┼─────────────────┼────────────────────────────────────────────────┼──────────────────────┤
+  │ m_num_axiom1         │ "array ax1"     │ select(store(a,i,v), i) = v                    │ theory_array.cpp:200 │
+  ├──────────────────────┼─────────────────┼────────────────────────────────────────────────┼──────────────────────┤
+  │ m_num_axiom2a        │ "array ax2"     │ select-store congruence (indices may be equal) │ theory_array.cpp:209 │
+  ├──────────────────────┼─────────────────┼────────────────────────────────────────────────┼──────────────────────┤
+  │ m_num_axiom2b        │ "array exp ax2" │ i≠j ⇒ select(store(a,i,v), j) = select(a,j)    │ theory_array.cpp:217 │
+  ├──────────────────────┼─────────────────┼────────────────────────────────────────────────┼──────────────────────┤
+  │ m_num_extensionality │ "array ext ax"  │ extensionality via Skolem index                │ theory_array.cpp:228 │
+  ├──────────────────────┼─────────────────┼────────────────────────────────────────────────┼──────────────────────┤
+  │ m_num_eq_splits      │ "array splits"  │ interface equality splits at final check       │ theory_array.cpp:451 │
+  └──────────────────────┴─────────────────┴────────────────────────────────────────────────┴──────────────────────┘
+  Extended axioms (src/smt/theory_array_full.cpp)
+  ┌──────────────────────────────┬──────────────────────┬────────────────────────────────────────────────────────┬───────────────────────────┐
+  │           Counter            │     Display Name     │                         Axiom                          │      Incremented at       │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_map_axiom              │ "array map ax"       │ select(map[f](a₁…a2),i) = f(select(a₁,i)…select(ar2,i))│ theory_array_full.cpp:477 │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_default_map_axiom      │ (not reported)       │ default(map[f](a…d)) = f(default(a)…default(d))        │ theory_array_full.cpp:532 │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_select_const_axiom     │ "array sel const"    │ select(const(v), i) = v                                │ theory_array_full.cpp:612 │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_default_store_axiom    │ "array def store"    │ default-store relationship                             │ theory_array_full.cpp:677 │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_default_const_axiom    │ "array def const"    │ default(const(v)) = v                                  │ theory_array_full.cpp:554 │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_default_as_array_axiom │ "array def as-array" │ default of as-array (currently disabled)               │ —                         │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_select_as_array_axiom  │ "array sel as-array" │ select(as-array(f), i) = f(i)                          │ theory_array_full.cpp:646 │
+  ├──────────────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┼───────────────────────────┤
+  │ m_num_default_lambda_axiom   │ "array def lambda"   │ default value of lambda arrays                         │ theory_array_full.cpp:575 │
+  └──────────────────────────────┴──────────────────────┴────────────────────────────────────────────────────────┴───────────────────────────┘
+  How Statistics Are Reported
+
+  The base class reports in theory_array.cpp:503-509:
+  void theory_array::collect_statistics(::statistics & st) const {
+      st.update("array ax1",    m_stats.m_num_axiom1);
+      st.update("array ax2",    m_stats.m_num_axiom2a);
+      st.update("array exp ax2", m_stats.m_num_axiom2b);
+      st.update("array ext ax", m_stats.m_num_extensionality);
+      st.update("array splits", m_stats.m_num_eq_splits);
+  }
+
+  The full theory extends this in theory_array_full.cpp:833-842, calling the base method first and then appending the map/const/as-array/lambda
+  counters.
+
+  When Axioms Get Instantiated
+
+  Each counter is incremented inside a dedicated instantiate_* method. The trigger points are:
+
+  1. Variable creation (mk_var) — if the term is a store and laziness() <= 1, axiom1 fires immediately.
+  2. Select added as parent (add_parent_select) — axiom2a fires against all stores in the equivalence class; axiom2b fires unless array_delay_exp_axiom
+  is set.
+  3. Store added (add_store) — axiom2a fires against all parent selects of the array.
+  4. Disequality (new_diseq_eh) — extensionality fires.
+  5. Final check (final_check_eh) — delayed axiom2b instances are asserted; interface equalities are created (incrementing m_num_eq_splits).
+
+  Deduplication via Fingerprinting
+
+  Redundant instantiations are prevented using ctx.add_fingerprint() calls in theory_array_base.cpp. Each axiom type uses a unique fingerprint key — for
+   example, store axiom2 fingerprints with the store owner ID and select arguments (line 229), and the extended axioms use dedicated constants like
+  m_default_map_fingerprint = UINT_MAX - 112 (theory_array_full.h:41-45).
+
+  Key Files
+  ┌───────────────────────────────┬─────────────────────────────────────────────────────────────────────────┐
+  │             File              │                                  Role                                   │
+  ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ src/smt/theory_array.h        │ Stats struct, class declaration                                         │
+  ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ src/smt/theory_array.cpp      │ Basic axiom triggers + collect_statistics                               │
+  ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ src/smt/theory_array_base.h   │ Axiom todo queues (m_axiom1_todo, m_axiom2_todo, m_extensionality_todo) │
+  ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ src/smt/theory_array_base.cpp │ Core axiom assertion logic (the actual formulas)                        │
+  ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ src/smt/theory_array_full.h   │ Extended var_data, fingerprint constants                                │
+  ├───────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
+  │ src/smt/theory_array_full.cpp │ Map/const/as-array/lambda axioms + extended collect_statistics          │
+  └───────────────────────────────┴─────────────────────────────────────────────────────────────────────────┘
+
+✻ Brewed for 1m 35s
+
+❯ so each time the counter is incremented an instantiation is actually added to the solver
+
+⏺ Let me verify that by checking the actual instantiation methods to confirm the counter increments are tightly coupled with assertions.
+
+⏺ Read(src/smt/theory_array.cpp)
+  ⎿  Read 45 lines
+
+⏺ Read(src/smt/theory_array_base.cpp)
+  ⎿  Read 120 lines
+
+⏺ Not exactly — there's a nuance. The pattern differs depending on the axiom:
+
+  Axiom1 (theory_array.cpp:197-202) increments unconditionally and then calls assert_store_axiom1:
+  void theory_array::instantiate_axiom1(enode * store) {
+      m_stats.m_num_axiom1++;
+      assert_store_axiom1(store);
+  }
+  Here the counter always increments, and the assertion always happens. They're 1:1.
+
+  Axiom2a, Axiom2b, and Extensionality are guarded — the counter only increments if the assert function returns true:
+  if (assert_store_axiom2(store, select))
+      m_stats.m_num_axiom2a++;
+  if (assert_store_axiom2(store, select)) {
+      m_stats.m_num_axiom2b++;
+      return true;
+  }
+  if (m_params.m_array_extensional && assert_extensionality(a1, a2))
+      m_stats.m_num_extensionality++;
+
+  The assert_store_axiom2 function (theory_array_base.cpp:221) uses ctx.add_fingerprint() as a deduplication gate — it returns false if the fingerprint
+  already exists, meaning the axiom was already instantiated for that term pair. So the counter only increments when a new, non-duplicate instantiation
+  actually gets added.
+
+  The same pattern holds for the extended axioms in theory_array_full.cpp — each instantiate_select_map_axiom, instantiate_default_const_axiom, etc.
+  uses fingerprinting and only increments the counter when the fingerprint check passes and the axiom is actually asserted.
+
+  So yes, each counter increment corresponds to an axiom actually being added to the solver — but not every call to instantiate_* results in an
+  increment, because duplicates are filtered out by the fingerprinting mechanism first.
