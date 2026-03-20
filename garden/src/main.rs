@@ -55,6 +55,15 @@ struct GardenOptions {
 
     #[arg(short, long)]
     pub cost_function: Option<yardbird::CostFunction>,
+
+    #[arg(long, default_value_t = false)]
+    pub train: bool,
+
+    #[arg(long)]
+    pub database_url: Option<String>,
+
+    #[arg(long, default_value_t = false)]
+    pub track_instantiations: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -107,17 +116,37 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         })
         .expect("Failed to find yardbird binary path");
 
+    let filename = options
+        .filename
+        .as_deref()
+        .expect("garden only spawns yardbird with a filename");
+
     // Build command line arguments for yardbird with JSON output
-    let mut child = Command::new(&yardbird_bin)
+    let mut command = Command::new(&yardbird_bin);
+    command
         .arg("--filename")
-        .arg(&options.filename)
+        .arg(filename)
         .arg("--depth")
         .arg(options.depth.to_string())
         .arg("--strategy")
         .arg(options.strategy.to_string())
         .arg("--cost-function")
         .arg(options.cost_function.to_string())
-        .arg("--json-output")
+        .arg("--json-output");
+
+    if options.train {
+        command.arg("--train");
+    }
+
+    if options.track_instantiations {
+        command.arg("--track-instantiations");
+    }
+
+    if let Some(database_url) = &options.database_url {
+        command.arg("--database-url").arg(database_url);
+    }
+
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -208,7 +237,11 @@ fn run_single(
 
     for _ in 0..retry {
         let now = Instant::now();
-        let filename = options.filename.to_string();
+        let filename = options
+            .filename
+            .as_deref()
+            .expect("run_single requires a filename")
+            .to_string();
 
         // Run yardbird in subprocess with timeout
         status_code = Some(run_yardbird_subprocess(
@@ -316,7 +349,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                         println!("  using strat: {strat:?}");
                         run_single(
                             YardbirdOptions {
-                                filename: filename.clone(),
+                                filename: Some(filename.clone()),
                                 depth,
                                 print_file: false,
                                 interpolate: false,
@@ -327,12 +360,13 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 theory: yardbird::Theory::Array,
                                 json_output: false,
                                 dump_solver: None,
-                                track_instantiations: false,
+                                track_instantiations: options.track_instantiations,
                                 dump_unsat_core: None,
                                 instantiation_strategy:
                                     yardbird::InstantiationStrategyType::FullUnroll,
-                                train: false,
-                                database_url: None,
+                                train: options.train,
+                                train_reset: false,
+                                database_url: options.database_url.clone(),
                             },
                             retry,
                             timeout,
@@ -435,7 +469,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                 println!("  [{}/{}] {filename}", idx + 1, benchmarks.len());
                 let result = run_single(
                     YardbirdOptions {
-                        filename: filename.clone(),
+                        filename: Some(filename.clone()),
                         depth: run.depth,
                         print_file: false,
                         interpolate: false,
@@ -446,11 +480,12 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         theory: yardbird::Theory::Array,
                         json_output: false,
                         dump_solver: None,
-                        track_instantiations: false,
+                        track_instantiations: options.track_instantiations,
                         dump_unsat_core: None,
                         instantiation_strategy: yardbird::InstantiationStrategyType::FullUnroll,
-                        train: false,
-                        database_url: None,
+                        train: options.train,
+                        train_reset: false,
+                        database_url: options.database_url.clone(),
                     },
                     config.global.retry_count,
                     run.timeout_seconds,

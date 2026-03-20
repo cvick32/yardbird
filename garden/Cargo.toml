@@ -3,6 +3,10 @@ name = "garden"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+training = ["yardbird/training"]
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
