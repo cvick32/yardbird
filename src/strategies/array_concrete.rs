@@ -92,6 +92,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
             decision_data: vec![],
             abstract_instantiations: vec![],
             indexed_instantiations: vec![],
+            unsat_events: vec![],
         }
     }
 

@@ -115,6 +115,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             decision_data: vec![],
             abstract_instantiations: vec![],
             indexed_instantiations: vec![],
+            unsat_events: vec![],
         }
     }
 }

@@ -100,6 +100,12 @@ impl TrainingSession {
         }
         info!("Persisted indexed instantiation rows");
 
+        for unsat_event in &result.unsat_events {
+            self.logger
+                .log_unsat_event(self.benchmark_id, unsat_event)?;
+        }
+        info!("Persisted unsat event rows");
+
         let success = !result.counterexample;
         self.logger.complete_benchmark(
             self.benchmark_id,

@@ -6,7 +6,9 @@ use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 use crate::{
     instantiation_strategy::InstantiationStrategy,
     problem::Problem,
+    solver_interface::SolverInterface,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
+    training::UnsatEventRecord,
     utils::SolverStatistics,
 };
 
@@ -38,6 +40,7 @@ pub struct ProofLoopResult {
     pub decision_data: Vec<crate::training::DecisionRecord>,
     pub abstract_instantiations: Vec<crate::training::AbstractInstantiationRecord>,
     pub indexed_instantiations: Vec<crate::training::IndexedInstantiationRecord>,
+    pub unsat_events: Vec<UnsatEventRecord>,
 }
 
 impl ProofLoopResult {
@@ -54,7 +57,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 11)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 12)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -83,6 +86,7 @@ impl Serialize for ProofLoopResult {
         state.serialize_field("decision_data", &self.decision_data)?;
         state.serialize_field("abstract_instantiations", &self.abstract_instantiations)?;
         state.serialize_field("indexed_instantiations", &self.indexed_instantiations)?;
+        state.serialize_field("unsat_events", &self.unsat_events)?;
         state.end()
     }
 }
@@ -108,6 +112,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             DecisionData,
             AbstractInstantiations,
             IndexedInstantiations,
+            UnsatEvents,
         }
 
         struct ProofLoopResultVisitor;
@@ -160,7 +165,8 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         }
                         Field::DecisionData
                         | Field::AbstractInstantiations
-                        | Field::IndexedInstantiations => {
+                        | Field::IndexedInstantiations
+                        | Field::UnsatEvents => {
                             let _: serde::de::IgnoredAny = map.next_value()?;
                         }
                     }
@@ -198,6 +204,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     decision_data: vec![],
                     abstract_instantiations: vec![],
                     indexed_instantiations: vec![],
+                    unsat_events: vec![],
                 })
             }
         }
@@ -260,6 +267,61 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Clone, Debug, Default)]
+struct UnsatEventTracker {
+    events: Vec<UnsatEventRecord>,
+    last_unsat_instantiation_count: u64,
+    last_unsat_stats: Option<SolverStatistics>,
+}
+
+impl UnsatEventTracker {
+    fn record_vmt_event(
+        &mut self,
+        smt_problem: &crate::smt_problem::SMTProblem,
+        bmc_depth: u16,
+        global_refinement_step: u32,
+        track_instantiations: bool,
+    ) {
+        let solver_statistics = smt_problem.get_solver_statistics();
+        let total_instantiations_added = smt_problem.get_number_instantiations_added();
+        let instantiations_since_last_unsat =
+            total_instantiations_added.saturating_sub(self.last_unsat_instantiation_count);
+        let solver_stats_snapshot = solver_statistics.to_json_value();
+        let solver_stats_delta = self
+            .last_unsat_stats
+            .as_ref()
+            .map(|previous| solver_statistics.delta_since(previous))
+            .unwrap_or_else(|| solver_statistics.delta_since(&SolverStatistics::new()));
+        let core_size = if track_instantiations {
+            smt_problem.get_unsat_core().map(|core| core.len() as u32)
+        } else {
+            None
+        };
+
+        self.events.push(UnsatEventRecord {
+            event_index: self.events.len() as u32,
+            bmc_depth: Some(bmc_depth),
+            global_refinement_step: Some(global_refinement_step),
+            check_sat_index: None,
+            total_instantiations_added,
+            instantiations_since_last_unsat,
+            core_size,
+            conflicts: solver_statistics.get_f64("conflicts"),
+            decisions: solver_statistics.get_f64("decisions"),
+            restarts: solver_statistics.get_f64("restarts"),
+            propagations: solver_statistics.get_f64("propagations"),
+            array_ax1: solver_statistics.get_f64("array ax1"),
+            array_ax2: solver_statistics.get_f64("array ax2"),
+            array_ext_ax: solver_statistics.get_f64("array ext ax"),
+            solver_stats_snapshot,
+            solver_stats_delta,
+        });
+
+        self.last_unsat_instantiation_count = total_instantiations_added;
+        self.last_unsat_stats = Some(solver_statistics);
+    }
+}
+
 impl<'ctx, S> Driver<'ctx, S> {
     pub fn new(
         vmt_model: VMTModel,
@@ -310,6 +372,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(self.vmt_model.clone());
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;
+        let mut unsat_event_tracker = UnsatEventTracker::default();
 
         let mut smt_problem = crate::smt_problem::SMTProblem::new(
             &self.vmt_model,
@@ -327,6 +390,12 @@ impl<'ctx, S> Driver<'ctx, S> {
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
                     z3::SatResult::Unsat => {
+                        unsat_event_tracker.record_vmt_event(
+                            &smt_problem,
+                            depth,
+                            total_refinement_steps,
+                            self.track_instantiations,
+                        );
                         // Handle solver dumping if requested
                         if let Some(ref path) = self.dump_solver_path {
                             info!("Dumping solver to: {}", path);
@@ -368,6 +437,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                         info!("Building final proof result");
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
                         result.total_refinement_steps = total_refinement_steps;
+                        result.unsat_events = unsat_event_tracker.events.clone();
                         info!("Collecting unsat core metadata");
                         result.unsat_core = self.build_unsat_core_info(&smt_problem);
                         info!("Collecting indexed instantiation records");
@@ -385,6 +455,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         info!("Building final proof result");
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
         result.total_refinement_steps = total_refinement_steps;
+        result.unsat_events = unsat_event_tracker.events;
         info!("Collecting unsat core metadata");
         result.unsat_core = self.build_unsat_core_info(&smt_problem);
         info!("Collecting indexed instantiation records");

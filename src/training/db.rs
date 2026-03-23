@@ -4,7 +4,9 @@
 
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 
-use super::schema::{AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord};
+use super::schema::{
+    AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord, UnsatEventRecord,
+};
 
 /// Database connection wrapper with connection pooling.
 pub struct DbConnection {
@@ -200,6 +202,53 @@ impl DbConnection {
         Ok(())
     }
 
+    pub async fn insert_unsat_event(
+        &self,
+        benchmark_id: i64,
+        record: &UnsatEventRecord,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO unsat_events (
+                benchmark_id, event_index, bmc_depth, global_refinement_step, check_sat_index,
+                total_instantiations_added, instantiations_since_last_unsat, core_size,
+                conflicts, decisions, restarts, propagations,
+                array_ax1, array_ax2, array_ext_ax,
+                solver_stats_snapshot, solver_stats_delta
+            )
+            VALUES (
+                $1, $2, $3, $4, $5,
+                $6, $7, $8,
+                $9, $10, $11, $12,
+                $13, $14, $15,
+                $16, $17
+            )
+            ON CONFLICT (benchmark_id, event_index) DO NOTHING
+            "#,
+        )
+        .bind(benchmark_id)
+        .bind(record.event_index as i32)
+        .bind(record.bmc_depth.map(i32::from))
+        .bind(record.global_refinement_step.map(|step| step as i32))
+        .bind(record.check_sat_index.map(|index| index as i32))
+        .bind(record.total_instantiations_added as i64)
+        .bind(record.instantiations_since_last_unsat as i64)
+        .bind(record.core_size.map(|size| size as i32))
+        .bind(record.conflicts)
+        .bind(record.decisions)
+        .bind(record.restarts)
+        .bind(record.propagations)
+        .bind(record.array_ax1)
+        .bind(record.array_ax2)
+        .bind(record.array_ext_ax)
+        .bind(sqlx::types::Json(record.solver_stats_snapshot.clone()))
+        .bind(sqlx::types::Json(record.solver_stats_delta.clone()))
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     /// Update a benchmark with completion status.
     pub async fn complete_benchmark(
         &self,
@@ -255,6 +304,9 @@ impl DbConnection {
         sqlx::raw_sql(include_str!("migrations/002_instantiation_provenance.sql"))
             .execute(&self.pool)
             .await?;
+        sqlx::raw_sql(include_str!("migrations/003_unsat_events.sql"))
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -264,6 +316,7 @@ impl DbConnection {
             r#"
             TRUNCATE TABLE
                 indexed_instantiations,
+                unsat_events,
                 abstract_instantiation_decisions,
                 abstract_instantiations,
                 core_appearances,

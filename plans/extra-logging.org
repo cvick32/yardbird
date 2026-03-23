@@ -1,0 +1,495 @@
+#+title: Extra Logging Plan for Unsat Events
+
+* Purpose
+
+This file captures the design for the next round of logging work around
+*unsat-event logging*.
+
+The goal is to preserve more information about solver behavior during a run,
+not just the final outcome. In particular, we want to know:
+
+- how many instantiations were added since the previous unsat point
+- which solver statistics were observed at each unsat point
+- which solver statistics changed between consecutive unsat points
+
+This should help us reason about:
+
+- how difficult each unsat attempt was
+- whether progress is coming from array-specific reasoning or general SAT search
+- whether a run is converging cleanly or thrashing
+
+* Scope
+
+This plan covers:
+
+- VMT strategy runs
+- SMTLIB execution with multiple ~check-sat~ / ~check-sat-assuming~ commands
+- training logging persistence
+- DB schema additions
+- runtime data structures needed to export unsat-event records
+
+This plan does *not* attempt to redesign the rest of the logging pipeline.
+It is intentionally focused on adding a first-class notion of an *unsat
+event inside a run*.
+
+* Summary of Agreed Design
+
+We will add a new ~UnsatEvent~ record that is emitted on *every unsat query*.
+
+Meaning of "every unsat query":
+
+- in VMT mode:
+  - every time the proof loop checks the solver and receives ~Unsat~
+- in SMTLIB mode:
+  - every ~check-sat~ or ~check-sat-assuming~ command that returns ~Unsat~
+
+Each unsat event will record:
+
+- its position in the run
+- the global refinement count or SMTLIB check index
+- the total number of instantiations seen so far
+- the number of instantiations added since the previous unsat event
+- a selected set of hard-coded solver statistics
+- a JSON snapshot of all available solver statistics
+- a JSON delta versus the previous unsat event
+
+We will use *global refinement count* for VMT runs rather than per-depth
+refinement index.
+
+* Why a New UnsatEvent Record
+
+The current logging path models:
+
+- benchmark-level metadata
+- decision rows
+- abstract instantiations
+- indexed instantiations
+- final unsat-core membership
+
+What it does *not* model today is an intermediate event such as:
+
+- "this was the 7th unsat seen in the run"
+- "since the 6th unsat we added 114 more instantiations"
+- "conflicts increased by 2,400 and array ax2 increased by 15,000"
+
+Trying to pack this into the final benchmark row would lose the temporal
+structure that makes the information useful. A dedicated ~UnsatEvent~ record
+keeps this data explicit and queryable.
+
+* Proposed Data Model
+
+** New in-memory record
+
+Add a new schema type:
+
+- ~UnsatEventRecord~
+
+Recommended fields:
+
+- ~event_index: u32~
+  - 0-based or 1-based is fine, but choose one and document it
+  - recommendation: 0-based internally, ordered by occurrence
+- ~bmc_depth: Option<u16>~
+  - ~Some(depth)~ for VMT mode
+  - ~None~ for SMTLIB mode if depth does not apply
+- ~global_refinement_step: Option<u32>~
+  - populated for VMT mode
+- ~check_sat_index: Option<u32>~
+  - populated for SMTLIB mode
+- ~total_instantiations_added: u64~
+- ~instantiations_since_last_unsat: u64~
+- ~core_size: Option<u32>~
+  - available when tracking is enabled and unsat core can be queried
+- ~conflicts: Option<f64>~
+- ~decisions: Option<f64>~
+- ~restarts: Option<f64>~
+- ~propagations: Option<f64>~
+- ~array_ax1: Option<f64>~
+- ~array_ax2: Option<f64>~
+- ~array_ext_ax: Option<f64>~
+- ~solver_stats_snapshot: serde_json::Value~
+- ~solver_stats_delta: serde_json::Value~
+
+Notes:
+
+- We should use ~Option<f64>~ for typed stats rather than mixing integer and
+  float field types in the schema layer.
+- Z3 statistics sometimes surface as integers and sometimes as floating-point
+  values, so normalizing to numeric ~f64~ values is the least painful choice.
+- The JSON blobs remain the source of truth for the full raw stats surface.
+
+** New DB table
+
+Add a new table:
+
+- ~unsat_events~
+
+Recommended columns:
+
+- ~id BIGSERIAL PRIMARY KEY~
+- ~benchmark_id BIGINT NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE~
+- ~event_index INTEGER NOT NULL~
+- ~bmc_depth INTEGER~
+- ~global_refinement_step INTEGER~
+- ~check_sat_index INTEGER~
+- ~total_instantiations_added BIGINT NOT NULL~
+- ~instantiations_since_last_unsat BIGINT NOT NULL~
+- ~core_size INTEGER~
+- ~conflicts DOUBLE PRECISION~
+- ~decisions DOUBLE PRECISION~
+- ~restarts DOUBLE PRECISION~
+- ~propagations DOUBLE PRECISION~
+- ~array_ax1 DOUBLE PRECISION~
+- ~array_ax2 DOUBLE PRECISION~
+- ~array_ext_ax DOUBLE PRECISION~
+- ~solver_stats_snapshot JSONB NOT NULL~
+- ~solver_stats_delta JSONB NOT NULL~
+- ~created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP~
+
+Constraints and indexes:
+
+- ~UNIQUE (benchmark_id, event_index)~
+- index on ~benchmark_id~
+- optional index on ~global_refinement_step~
+- optional index on ~check_sat_index~
+
+* Hard-Coded Solver Statistics
+
+We agreed to hard-code only a small subset of solver statistics that are
+especially useful for quick analysis.
+
+The initial hard-coded metrics are:
+
+- ~conflicts~
+- ~decisions~
+- ~restarts~
+- ~propagations~
+- ~array ax1~
+- ~array ax2~
+- ~array ext ax~
+
+Recommended normalized field mapping:
+
+- ~"conflicts" -> conflicts~
+- ~"decisions" -> decisions~
+- ~"restarts" -> restarts~
+- ~"propagations" -> propagations~
+- ~"array ax1" -> array_ax1~
+- ~"array ax2" -> array_ax2~
+- ~"array ext ax" -> array_ext_ax~
+
+We will *not* treat the hard-coded fields as authoritative. They exist for:
+
+- easy SQL aggregation
+- easier plotting and debugging
+- stable analysis code for the metrics we know we care about
+
+The JSON blobs should always preserve the complete raw statistics snapshot.
+
+* Snapshot vs Delta
+
+We should store both:
+
+1. *snapshot*
+   - the solver statistics as observed at the current unsat event
+2. *delta*
+   - the numeric difference from the previous unsat event
+
+This is important because Z3 statistics are cumulative. A value like:
+
+- ~conflicts = 32016~
+
+is much less informative than:
+
+- ~conflicts increased by 2400 since the previous unsat~
+
+Recommended delta rule:
+
+- for each numeric key present in the current snapshot:
+  - if the same key exists in the previous unsat snapshot, record
+    ~current - previous~
+  - otherwise record the current value itself
+
+This "missing previous means delta = current" rule is especially appropriate
+for the first unsat event of a run.
+
+If a key disappears between snapshots:
+
+- simplest plan:
+  - omit it from the delta JSON
+
+There is no strong need to encode negative deltas for missing keys unless we
+later discover a use case for that.
+
+* Instantiations Since Last Unsat
+
+This metric is one of the most important additions.
+
+For each unsat event, compute:
+
+- ~instantiations_since_last_unsat =
+  total_instantiations_added_now - total_instantiations_added_at_previous_unsat~
+
+Runtime state needed:
+
+- ~last_unsat_instantiation_count: u64~
+
+Algorithm:
+
+1. start with ~last_unsat_instantiation_count = 0~
+2. when an unsat event occurs:
+   - query current total instantiation count from the solver
+   - subtract the saved previous count
+   - emit the event record
+   - update ~last_unsat_instantiation_count~
+
+Interpretation:
+
+- small value:
+  - solver reached another unsat point quickly after little new work
+- large value:
+  - solver needed many more instantiations before returning to unsat
+
+This is not a perfect measure of proof complexity, but it is a good and cheap
+proxy for "difficulty since previous unsat."
+
+* Runtime Integration Plan
+
+** 1. Extend ~SolverStatistics~
+
+Today ~SolverStatistics~ wraps a map of statistic names to numeric values.
+We should add helper methods for:
+
+- extracting a stat as ~Option<f64>~
+- exporting the full map as JSON
+- computing a delta against another ~SolverStatistics~
+
+Recommended helpers:
+
+- ~fn get_f64(&self, key: &str) -> Option<f64>~
+- ~fn to_json_value(&self) -> serde_json::Value~
+- ~fn delta_since(&self, previous: &SolverStatistics) -> serde_json::Value~
+
+This keeps the unsat-event collection code simple and avoids duplicating
+stat-parsing logic in multiple call sites.
+
+** 2. Extend ~ProofLoopResult~
+
+Add:
+
+- ~unsat_events: Vec<UnsatEventRecord>~
+
+This keeps unsat-event logging aligned with the rest of the exported run data.
+
+The result object should contain the full list of unsat events observed during
+the run.
+
+** 3. Add unsat-event collection in VMT driver mode
+
+In the VMT proof loop, every branch where the solver returns ~Unsat~ should
+append a new ~UnsatEventRecord~.
+
+The event should capture:
+
+- ~event_index~
+- current ~bmc_depth~
+- current global refinement count
+- total instantiations so far
+- instantiations since previous unsat
+- current solver statistics snapshot
+- delta from previous unsat snapshot
+- optional core size if tracking is enabled and the core is available
+
+This likely belongs in a small helper owned by the driver so that the logic is
+not duplicated at multiple return sites.
+
+Recommended driver-local state:
+
+- ~unsat_events: Vec<UnsatEventRecord>~
+- ~last_unsat_instantiation_count: u64~
+- ~last_unsat_stats: Option<SolverStatistics>~
+
+** 4. Add unsat-event collection in SMTLIB mode
+
+SMTLIB mode already has a natural notion of repeated ~check-sat~ commands.
+For each ~check-sat~ or ~check-sat-assuming~ result that is ~Unsat~, emit an
+~UnsatEventRecord~.
+
+Event fields in SMTLIB mode:
+
+- ~event_index~
+- ~check_sat_index~
+- no ~bmc_depth~
+- no ~global_refinement_step~
+- total instantiations so far
+- instantiations since previous unsat
+- snapshot + delta stats
+- optional core size
+
+This may be easiest to implement near the command execution path where
+~CheckSatResult~ objects are already produced.
+
+** 5. Persist unsat events through the training logger
+
+Extend ~TrainingLogger~ with a new method:
+
+- ~log_unsat_event(benchmark_id, event: &UnsatEventRecord)~
+
+Then:
+
+- add a DB insertion method
+- implement it in the Postgres logger
+- implement a no-op version for the disabled logger
+
+Finally:
+
+- persist all ~result.unsat_events~ from ~TrainingSession::complete_result~
+
+** 6. Add a migration for the new table
+
+Create a new migration, for example:
+
+- ~003_unsat_events.sql~
+
+This should create the new table and indexes without disturbing the existing
+schema.
+
+* Core Size Handling
+
+We also discussed collecting solver statistics "at every unsat point," along
+with related metadata. ~core_size~ is useful but slightly different from the
+other stats because it depends on tracking support.
+
+Recommended behavior:
+
+- if ~--track-instantiations~ is enabled and unsat core retrieval is available:
+  - record ~core_size~
+- otherwise:
+  - store ~NULL~
+
+We should not make unsat-event logging depend on unsat-core tracking. The core
+size is supplemental metadata, not the primary payload.
+
+* Event Ordering
+
+We need a clear ordering guarantee.
+
+Recommended conventions:
+
+- ~event_index~ is monotone across the entire benchmark run
+- VMT mode:
+  - also store ~global_refinement_step~
+- SMTLIB mode:
+  - also store ~check_sat_index~
+
+This allows:
+
+- stable replay of run history
+- simple plotting of unsat event number versus difficulty metrics
+- joins against per-check SMTLIB data if needed later
+
+* Open Implementation Notes
+
+** Numeric normalization
+
+Z3 statistics can appear as either integer or floating-point values.
+
+Recommendation:
+
+- normalize all extracted typed statistics to ~Option<f64>~
+- keep raw JSON values numeric as well
+
+This reduces branching and avoids having to mirror Z3's internal stat typing in
+our own schema.
+
+** JSON encoding
+
+We should use ~JSONB~ in Postgres for:
+
+- ~solver_stats_snapshot~
+- ~solver_stats_delta~
+
+That keeps future analysis flexible while still permitting indexed queries if
+we later decide to materialize particular JSON paths.
+
+** Missing typed metrics
+
+If a hard-coded statistic is absent in a snapshot:
+
+- store ~NULL~ in the typed column
+
+Do not silently coerce missing values to zero. Missing and zero mean different
+things.
+
+* Testing Plan
+
+We should add tests at three levels.
+
+** 1. Unit tests for ~SolverStatistics~
+
+Test:
+
+- extracting ~f64~ from integer and floating stats
+- JSON export format
+- delta computation between two snapshots
+- behavior when keys are missing on one side
+
+** 2. Result-construction tests
+
+Add focused tests for:
+
+- VMT unsat events:
+  - event ordering
+  - global refinement count recording
+  - instantiations since last unsat
+- SMTLIB unsat events:
+  - ~check_sat_index~ recording
+  - repeated unsat queries in one script
+
+** 3. DB persistence integration tests
+
+Verify that:
+
+- unsat events are inserted
+- typed columns contain expected values
+- JSON blobs round-trip
+- the first unsat event gets sensible deltas
+
+* Recommended Rollout Order
+
+1. extend ~SolverStatistics~ with JSON/delta helpers
+2. add ~UnsatEventRecord~ to training schema and ~ProofLoopResult~
+3. implement VMT unsat-event collection
+4. implement SMTLIB unsat-event collection
+5. add ~TrainingLogger~ and DB persistence support
+6. add migration
+7. add tests
+8. update ~plans/logging.org~ later if we want the main logging plan to point at
+   this design
+
+* Success Criteria
+
+We can consider this work complete when:
+
+- every unsat query produces an in-memory ~UnsatEventRecord~
+- benchmark persistence writes those rows to the database
+- each row includes:
+  - event ordering metadata
+  - total instantiations
+  - instantiations since previous unsat
+  - typed high-value solver statistics
+  - raw JSON snapshot
+  - JSON delta
+- both VMT and SMTLIB execution paths are covered by tests
+
+* Non-Goals
+
+This plan does not yet propose:
+
+- new ML labels derived from unsat-event data
+- online adaptive heuristics based on unsat-event behavior
+- compression or sampling of solver statistics
+- logging on ~Sat~ or ~Unknown~ results
+
+Those may become interesting later, but the immediate goal is to make unsat
+behavior observable and queryable.

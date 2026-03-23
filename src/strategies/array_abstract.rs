@@ -261,6 +261,7 @@ where
             decision_data: mem::take(&mut self.decision_data),
             abstract_instantiations: mem::take(&mut self.abstract_instantiations),
             indexed_instantiations: vec![],
+            unsat_events: vec![],
         }
     }
 }

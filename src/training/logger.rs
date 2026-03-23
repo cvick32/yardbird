@@ -5,7 +5,9 @@
 
 use crate::driver::UnsatCoreInfo;
 
-use super::schema::{AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord};
+use super::schema::{
+    AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord, UnsatEventRecord,
+};
 
 /// Result type for training logger operations.
 pub type LoggerResult<T> = Result<T, LoggerError>;
@@ -58,6 +60,13 @@ pub trait TrainingLogger: Send {
         benchmark_id: i64,
         instantiation: &IndexedInstantiationRecord,
         abstract_instantiation_id: Option<i64>,
+    ) -> LoggerResult<()>;
+
+    /// Log an unsat event observed during the run.
+    fn log_unsat_event(
+        &mut self,
+        benchmark_id: i64,
+        unsat_event: &UnsatEventRecord,
     ) -> LoggerResult<()>;
 
     /// Complete a benchmark with final status and unsat core info.
@@ -131,6 +140,15 @@ impl TrainingLogger for NoOpLogger {
         _benchmark_id: i64,
         _instantiation: &IndexedInstantiationRecord,
         _abstract_instantiation_id: Option<i64>,
+    ) -> LoggerResult<()> {
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn log_unsat_event(
+        &mut self,
+        _benchmark_id: i64,
+        _unsat_event: &UnsatEventRecord,
     ) -> LoggerResult<()> {
         Ok(())
     }
@@ -288,6 +306,19 @@ mod postgres_impl {
                 )
                 .await
                 .map_err(|e| LoggerError::Database(e.to_string()))
+            })
+        }
+
+        fn log_unsat_event(
+            &mut self,
+            benchmark_id: i64,
+            unsat_event: &UnsatEventRecord,
+        ) -> LoggerResult<()> {
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.insert_unsat_event(benchmark_id, unsat_event)
+                    .await
+                    .map_err(|e| LoggerError::Database(e.to_string()))
             })
         }
 

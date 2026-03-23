@@ -3,6 +3,7 @@
 //! These types correspond to the database schema defined in the migrations.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Record for a single instantiation decision point.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,4 +102,34 @@ pub struct IndexedInstantiationRecord {
     pub abstract_instantiation_id: Option<String>,
     /// Whether this tracked indexed instantiation appeared in the unsat core
     pub in_unsat_core: bool,
+}
+
+/// Record for a single unsat event observed during a run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnsatEventRecord {
+    /// Monotone event index within the benchmark run.
+    pub event_index: u32,
+    /// BMC depth for VMT mode.
+    pub bmc_depth: Option<u16>,
+    /// Global refinement step for VMT mode.
+    pub global_refinement_step: Option<u32>,
+    /// Original command index of the SMTLIB check-sat command.
+    pub check_sat_index: Option<u32>,
+    /// Total instantiations added so far at this unsat point.
+    pub total_instantiations_added: u64,
+    /// Instantiations added since the previous unsat event.
+    pub instantiations_since_last_unsat: u64,
+    /// Size of the unsat core if available.
+    pub core_size: Option<u32>,
+    pub conflicts: Option<f64>,
+    pub decisions: Option<f64>,
+    pub restarts: Option<f64>,
+    pub propagations: Option<f64>,
+    pub array_ax1: Option<f64>,
+    pub array_ax2: Option<f64>,
+    pub array_ext_ax: Option<f64>,
+    /// Complete solver statistics snapshot for this event.
+    pub solver_stats_snapshot: Value,
+    /// Delta versus the previous unsat event.
+    pub solver_stats_delta: Value,
 }

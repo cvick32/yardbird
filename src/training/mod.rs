@@ -18,6 +18,7 @@ pub use config::TrainingConfig;
 pub use logger::{NoOpLogger, TrainingLogger};
 pub use schema::{
     AbstractInstantiationRecord, CandidateRecord, DecisionRecord, IndexedInstantiationRecord,
+    UnsatEventRecord,
 };
 pub use session::{reset_training_database, TrainingSession};
 pub use term_features::TermFeatures;

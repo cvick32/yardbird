@@ -1,5 +1,6 @@
 use crate::{interpolant::Interpolant, smt_problem::SMTProblem};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use smt2parser::{get_term_from_term_string, let_extract::LetExtract};
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -86,6 +87,15 @@ impl Display for StatisticsValue {
     }
 }
 
+impl StatisticsValue {
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            StatisticsValue::UInt(int) => *int as f64,
+            StatisticsValue::Double(float) => *float,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SolverStatistics {
     stats: BTreeMap<String, StatisticsValue>,
@@ -120,5 +130,33 @@ impl SolverStatistics {
             self.stats
                 .insert(key.to_string(), StatisticsValue::Double(duration_secs));
         }
+    }
+
+    pub fn get_f64(&self, key: &str) -> Option<f64> {
+        self.stats.get(key).map(StatisticsValue::as_f64)
+    }
+
+    pub fn to_json_value(&self) -> JsonValue {
+        let object = self
+            .stats
+            .iter()
+            .filter_map(|(key, value)| {
+                JsonNumber::from_f64(value.as_f64())
+                    .map(|number| (key.clone(), JsonValue::Number(number)))
+            })
+            .collect::<JsonMap<String, JsonValue>>();
+        JsonValue::Object(object)
+    }
+
+    pub fn delta_since(&self, previous: &SolverStatistics) -> JsonValue {
+        let object = self
+            .stats
+            .iter()
+            .filter_map(|(key, value)| {
+                let delta = value.as_f64() - previous.get_f64(key).unwrap_or(0.0);
+                JsonNumber::from_f64(delta).map(|number| (key.clone(), JsonValue::Number(number)))
+            })
+            .collect::<JsonMap<String, JsonValue>>();
+        JsonValue::Object(object)
     }
 }

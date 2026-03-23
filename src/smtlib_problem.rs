@@ -7,6 +7,7 @@ use std::path::Path;
 use crate::problem::Problem;
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
 use crate::strategies::{ProofAction, ProofStrategy};
+use crate::training::UnsatEventRecord;
 use crate::utils::SolverStatistics;
 use crate::z3_var_context::Z3VarContext;
 use crate::ProofLoopResult;
@@ -399,6 +400,48 @@ impl SMTLIBSolver {
         }
     }
 
+    fn build_unsat_event(
+        event_index: u32,
+        command_index: u32,
+        smt_problem: &SMTLIBSMTProblem,
+        previous_instantiation_count: u64,
+        previous_stats: Option<&SolverStatistics>,
+        track_instantiations: bool,
+    ) -> UnsatEventRecord {
+        let solver_statistics = smt_problem.get_solver_statistics();
+        let total_instantiations_added = smt_problem.get_number_instantiations_added();
+        let instantiations_since_last_unsat =
+            total_instantiations_added.saturating_sub(previous_instantiation_count);
+        let solver_stats_snapshot = solver_statistics.to_json_value();
+        let solver_stats_delta = previous_stats
+            .map(|previous| solver_statistics.delta_since(previous))
+            .unwrap_or_else(|| solver_statistics.delta_since(&SolverStatistics::new()));
+        let core_size = if track_instantiations {
+            smt_problem.get_unsat_core().map(|core| core.len() as u32)
+        } else {
+            None
+        };
+
+        UnsatEventRecord {
+            event_index,
+            bmc_depth: None,
+            global_refinement_step: None,
+            check_sat_index: Some(command_index),
+            total_instantiations_added,
+            instantiations_since_last_unsat,
+            core_size,
+            conflicts: solver_statistics.get_f64("conflicts"),
+            decisions: solver_statistics.get_f64("decisions"),
+            restarts: solver_statistics.get_f64("restarts"),
+            propagations: solver_statistics.get_f64("propagations"),
+            array_ax1: solver_statistics.get_f64("array ax1"),
+            array_ax2: solver_statistics.get_f64("array ax2"),
+            array_ext_ax: solver_statistics.get_f64("array ext ax"),
+            solver_stats_snapshot,
+            solver_stats_delta,
+        }
+    }
+
     /// Execute with abstract/concrete strategy (refinement loop)
     /// This is the strategy-based solving mode with refinement
     #[allow(clippy::borrowed_box)]
@@ -447,6 +490,9 @@ impl SMTLIBSolver {
         let mut found_proof = false;
         let mut counterexample = false;
         let mut total_refinement_steps = 0;
+        let mut unsat_events = Vec::new();
+        let mut last_unsat_instantiation_count = 0;
+        let mut last_unsat_stats: Option<SolverStatistics> = None;
 
         for refinement_step in 0..max_refinements {
             info!("Refinement iteration {}", refinement_step + 1);
@@ -457,6 +503,16 @@ impl SMTLIBSolver {
             let action = match smt_problem.check() {
                 z3::SatResult::Unsat => {
                     info!("  Result: UNSAT");
+                    unsat_events.push(Self::build_unsat_event(
+                        unsat_events.len() as u32,
+                        refinement_step,
+                        &smt_problem,
+                        last_unsat_instantiation_count,
+                        last_unsat_stats.as_ref(),
+                        track_instantiations,
+                    ));
+                    last_unsat_instantiation_count = smt_problem.get_number_instantiations_added();
+                    last_unsat_stats = Some(smt_problem.get_solver_statistics());
                     strategy.unsat(&mut state, &smt_problem)?
                 }
                 z3::SatResult::Sat => {
@@ -562,6 +618,7 @@ impl SMTLIBSolver {
             decision_data,
             abstract_instantiations,
             indexed_instantiations,
+            unsat_events,
         };
         Self::annotate_abstract_instantiation_core_membership(&mut result);
         info!("Final SMTLIB result is ready");
