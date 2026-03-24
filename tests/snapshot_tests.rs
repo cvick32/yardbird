@@ -70,11 +70,19 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     }
 }
 
+fn benchmark_path(test_name: &str) -> String {
+    if test_name.starts_with("array2dim_") {
+        format!("examples/two_dimensional_array/{test_name}.vmt")
+    } else {
+        format!("examples/array/{test_name}.vmt")
+    }
+}
+
 macro_rules! create_array_snapshot_test {
     ($test:ident) => {
         #[test]
         fn $test() {
-            let path = format!("examples/array/{}.vmt", stringify!($test));
+            let path = benchmark_path(stringify!($test));
             assert_debug_snapshot!(stringify!($test), run_benchmark(&path));
         }
     };
