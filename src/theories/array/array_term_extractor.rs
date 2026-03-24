@@ -13,6 +13,15 @@ use crate::{
     },
 };
 
+fn compare_terms_with_cost(
+    left: (&ArrayExpr, u32),
+    right: (&ArrayExpr, u32),
+) -> std::cmp::Ordering {
+    left.1
+        .cmp(&right.1)
+        .then_with(|| left.0.to_string().cmp(&right.0.to_string()))
+}
+
 pub struct ArrayTermExtractor<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
@@ -75,7 +84,9 @@ where
 
         // Pre-sort all term vectors by cost for faster extraction
         for terms in term_map.values_mut() {
-            terms.sort_by_key(|(_, cost)| *cost);
+            terms.sort_by(|(left_term, left_cost), (right_term, right_cost)| {
+                compare_terms_with_cost((left_term, *left_cost), (right_term, *right_cost))
+            });
         }
 
         let reads_and_writes = cost_function.get_reads_and_writes();
@@ -245,8 +256,42 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::deindex_abstract_term;
-    use crate::theories::array::array_axioms::ArrayExpr;
+    use super::{compare_terms_with_cost, deindex_abstract_term, ArrayTermExtractor};
+    use crate::{
+        cost_functions::YardbirdCostFunction,
+        theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
+    };
+    use smt2parser::vmt::ReadsAndWrites;
+
+    #[derive(Clone)]
+    struct ZeroCostTerms {
+        terms: Vec<ArrayExpr>,
+    }
+
+    impl egg::CostFunction<ArrayLanguage> for ZeroCostTerms {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            0
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for ZeroCostTerms {
+        fn get_string_terms(&self) -> Vec<String> {
+            self.terms.iter().map(ToString::to_string).collect()
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+
+        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<ArrayLanguage>> {
+            self.terms.clone()
+        }
+    }
 
     #[test]
     fn deindex_abstract_term_removes_frame_suffixes() {
@@ -262,5 +307,36 @@ mod tests {
             normalized,
             "(= (Read Int Int (Write Int Int b i (Read Int Int a i)) Z) (Read Int Int b Z))"
         );
+    }
+
+    #[test]
+    fn compare_terms_with_cost_breaks_ties_lexicographically() {
+        let a: ArrayExpr = "a".parse().unwrap();
+        let b: ArrayExpr = "b".parse().unwrap();
+
+        assert!(compare_terms_with_cost((&a, 1), (&b, 1)).is_lt());
+        assert!(compare_terms_with_cost((&b, 0), (&a, 1)).is_lt());
+    }
+
+    #[test]
+    fn extractor_uses_deterministic_order_for_equal_cost_terms() {
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let b: ArrayExpr = "b".parse().unwrap();
+        let a: ArrayExpr = "a".parse().unwrap();
+        let b_id = egraph.add_expr(&b);
+        let a_id = egraph.add_expr(&a);
+        egraph.union(b_id, a_id);
+        egraph.rebuild();
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCostTerms {
+                terms: vec![b.clone(), a.clone()],
+            },
+            0,
+            0,
+        );
+
+        assert_eq!(extractor.extract(&egraph, b_id).to_string(), "a");
     }
 }

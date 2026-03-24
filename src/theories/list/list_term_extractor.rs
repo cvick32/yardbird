@@ -8,6 +8,12 @@ use crate::{
     theories::list::list_axioms::{ListExpr, ListLanguage},
 };
 
+fn compare_terms_with_cost(left: (&ListExpr, u32), right: (&ListExpr, u32)) -> std::cmp::Ordering {
+    left.1
+        .cmp(&right.1)
+        .then_with(|| left.0.to_string().cmp(&right.0.to_string()))
+}
+
 pub struct ListTermExtractor<CF>
 where
     CF: YardbirdCostFunction<ListLanguage>,
@@ -44,6 +50,12 @@ where
             };
         }
 
+        for terms in term_map.values_mut() {
+            terms.sort_by(|(left_term, left_cost), (right_term, right_cost)| {
+                compare_terms_with_cost((left_term, *left_cost), (right_term, *right_cost))
+            });
+        }
+
         let reads_and_writes = cost_function.get_reads_and_writes();
 
         Self {
@@ -63,7 +75,7 @@ where
         N: egg::Analysis<ListLanguage>,
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
-            let (best_term, _) = terms.iter().min_by_key(|(_term, cost)| cost).unwrap();
+            let (best_term, _) = terms.first().unwrap();
             log::debug!("term exists: {eclass} -> {}", best_term);
             best_term.clone()
         } else {
