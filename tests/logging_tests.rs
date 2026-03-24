@@ -103,6 +103,20 @@ fn array_strategy_populates_decision_data() {
             .any(|inst| inst.abstract_instantiation_id.is_some()),
         "expected indexed instantiations to carry abstract instantiation ids"
     );
+    assert!(
+        result
+            .abstract_instantiations
+            .iter()
+            .all(|inst| !inst.term.contains('@')),
+        "abstract instantiation terms should be deindexed before logging"
+    );
+    assert!(
+        result
+            .indexed_instantiations
+            .iter()
+            .any(|inst| inst.term.contains('@')),
+        "indexed instantiation terms should preserve frame indices"
+    );
     assert!(result.total_refinement_steps > 0);
 }
 

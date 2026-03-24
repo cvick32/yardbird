@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use egg::Language;
 use rustc_hash::FxHashSet;
-use smt2parser::vmt::ReadsAndWrites;
+use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
     cost_functions::YardbirdCostFunction,
@@ -24,6 +24,25 @@ where
     property_terms: FxHashSet<String>,
     transition_terms: FxHashSet<String>,
     depth: u16,
+}
+
+fn deindex_abstract_term(instantiation: &ArrayExpr) -> ArrayExpr {
+    let nodes = instantiation
+        .as_ref()
+        .iter()
+        .map(|node| match node {
+            ArrayLanguage::Symbol(sym) => {
+                let normalized = match sym.as_str().split_once(VARIABLE_FRAME_DELIMITER) {
+                    Some((base, suffix)) if suffix.parse::<u32>().is_ok() => base.into(),
+                    _ => *sym,
+                };
+                ArrayLanguage::Symbol(normalized)
+            }
+            _ => node.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    ArrayExpr::from(nodes)
 }
 
 impl<CF> ArrayTermExtractor<CF>
@@ -171,12 +190,13 @@ where
         instantiation: &ArrayExpr,
         decision_keys: Vec<String>,
     ) -> AbstractInstantiationRecord {
+        let abstract_term = deindex_abstract_term(instantiation);
         AbstractInstantiationRecord {
             abstract_instantiation_id: format!(
                 "{}:{}:{}:{}",
                 axiom_name, self.depth, self.refinement_step, ordinal
             ),
-            term: instantiation.to_string(),
+            term: abstract_term.to_string(),
             term_hash: canonical_term_hash(instantiation),
             axiom_name: axiom_name.to_string(),
             bmc_depth: self.depth,
@@ -220,5 +240,27 @@ where
         let node = extractor.find_best_node(eclass);
         log::debug!("recursing: {eclass} -> {node}");
         node.join_recexprs(|id| self.extract(egraph, id))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::deindex_abstract_term;
+    use crate::theories::array::array_axioms::ArrayExpr;
+
+    #[test]
+    fn deindex_abstract_term_removes_frame_suffixes() {
+        let expr: ArrayExpr =
+            "(= (Read Int Int (Write Int Int b@2 i@2 (Read Int Int a@2 i@2)) Z@3) (Read Int Int b@2 Z@3))"
+                .parse()
+                .unwrap();
+
+        let normalized = deindex_abstract_term(&expr).to_string();
+
+        assert!(!normalized.contains("@"));
+        assert_eq!(
+            normalized,
+            "(= (Read Int Int (Write Int Int b i (Read Int Int a i)) Z) (Read Int Int b Z))"
+        );
     }
 }
