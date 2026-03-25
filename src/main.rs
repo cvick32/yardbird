@@ -12,8 +12,12 @@ use yardbird::{
 
 fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    logger::init_logger(log::Level::Info);
     let options = YardbirdOptions::parse();
+    logger::init_logger(if options.verbose {
+        log::Level::Trace
+    } else {
+        log::Level::Info
+    });
 
     if options.train_reset {
         reset_training_database(options.database_url.as_deref())?;

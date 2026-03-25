@@ -8,7 +8,7 @@ use crate::problem::Problem;
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
 use crate::strategies::{ProofAction, ProofStrategy};
 use crate::training::UnsatEventRecord;
-use crate::utils::SolverStatistics;
+use crate::utils::{configure_z3_solver, SolverStatistics};
 use crate::z3_var_context::Z3VarContext;
 use crate::ProofLoopResult;
 
@@ -263,6 +263,7 @@ impl SMTLIBSolver {
             // Default to QF_UFLIA if no logic specified
             z3::Solver::new_for_logic("QF_UFLIA").unwrap()
         };
+        configure_z3_solver(&solver);
 
         SMTLIBSolver {
             z3_var_context: Z3VarContext::new(),

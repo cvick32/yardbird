@@ -104,6 +104,10 @@ pub struct YardbirdOptions {
     #[arg(long)]
     pub dump_unsat_core: Option<String>,
 
+    /// Enable very verbose conflict scheduler and instantiation tracing.
+    #[arg(long, default_value_t = false)]
+    pub verbose: bool,
+
     /// Enable training data logging to database
     #[arg(long, default_value_t = false)]
     pub train: bool,
@@ -134,6 +138,7 @@ impl Default for YardbirdOptions {
             dump_solver: None,
             track_instantiations: false,
             dump_unsat_core: None,
+            verbose: false,
             train: false,
             train_reset: false,
             database_url: None,

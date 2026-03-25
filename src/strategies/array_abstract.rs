@@ -1,6 +1,6 @@
 use std::mem;
 
-use log::info;
+use log::{info, trace};
 use smt2parser::{
     concrete::Term,
     vmt::{quantified_instantiator::UnquantifiedInstantiator, VMTModel},
@@ -23,6 +23,14 @@ use crate::{
 };
 
 use super::{ProofAction, ProofStrategy};
+
+fn trace_conflicts_enabled() -> bool {
+    log::log_enabled!(log::Level::Trace)
+}
+
+fn trace_instantiations_enabled() -> bool {
+    log::log_enabled!(log::Level::Trace)
+}
 
 /// Global state carried across different BMC depths
 pub struct Abstract<F>
@@ -140,6 +148,14 @@ where
         smt: &dyn crate::solver_interface::SolverInterface,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
+        if trace_conflicts_enabled() {
+            trace!(
+                "[yardbird::conflict-trace] sat depth={} refinement_step={} eclasses_before={}",
+                state.depth,
+                refinement_step,
+                state.egraph.number_of_classes()
+            );
+        }
         let model = match smt.get_model() {
             Some(model) => model,
             None => todo!("No Z3 model available for SAT instance"),
@@ -157,6 +173,17 @@ where
         state.const_instantiations.extend_from_slice(&const_insts);
         self.decision_data.extend(decisions);
         self.abstract_instantiations.extend(abstract_instantiations);
+        if trace_conflicts_enabled() {
+            trace!(
+                "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} total_regular={} total_const={}",
+                state.depth,
+                refinement_step,
+                insts.len(),
+                const_insts.len(),
+                state.instantiations.len(),
+                state.const_instantiations.len()
+            );
+        }
         Ok(ProofAction::Continue)
     }
 
@@ -166,6 +193,7 @@ where
         state: ArrayRefinementState,
         smt: &mut dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<()> {
+        let trace_instantiations = trace_instantiations_enabled();
         let const_pairs: Vec<(String, Term)> = state
             .const_instantiations
             .iter()
@@ -178,6 +206,13 @@ where
             .collect();
         let variables = smt.get_variables().to_vec();
         for (term_hash, term) in &const_pairs {
+            if trace_instantiations {
+                trace!(
+                    "[yardbird::inst-trace] const abstract-hash={} abstract-term={}",
+                    term_hash,
+                    term
+                );
+            }
             if let Some(inst) =
                 UnquantifiedInstantiator::rewrite_unquantified(term.clone(), variables.clone())
             {
@@ -186,7 +221,25 @@ where
                     .iter()
                     .find(|record| record.term_hash == *term_hash)
                     .map(|record| record.abstract_instantiation_id.clone());
-                smt.add_instantiation(inst, abstract_id);
+                if trace_instantiations {
+                    trace!(
+                        "[yardbird::inst-trace] const concrete abstract-hash={} abstract-id={abstract_id:?} concrete-term={}",
+                        term_hash,
+                        inst
+                    );
+                }
+                let added = smt.add_instantiation(inst, abstract_id);
+                if trace_instantiations {
+                    trace!(
+                        "[yardbird::inst-trace] const add-result abstract-hash={} added={added}",
+                        term_hash
+                    );
+                }
+            } else if trace_instantiations {
+                trace!(
+                    "[yardbird::inst-trace] const rewrite-none abstract-hash={}",
+                    term_hash
+                );
             }
         }
         self.const_instantiations
@@ -204,8 +257,15 @@ where
         let _ = terms
             .into_iter()
             .flat_map(|(term_hash, term)| {
-                UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
-                    .map(|inst| (term_hash.clone(), inst))
+                if trace_instantiations {
+                    trace!(
+                        "[yardbird::inst-trace] regular abstract-hash={} abstract-term={}",
+                        term_hash, term
+                    );
+                }
+                UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone()).map(
+                    move |inst| (term_hash.clone(), inst),
+                )
             })
             .map(|(term_hash, inst)| {
                 let abstract_id = self
@@ -213,7 +273,21 @@ where
                     .iter()
                     .find(|record| record.term_hash == term_hash)
                     .map(|record| record.abstract_instantiation_id.clone());
-                !smt.add_instantiation(inst, abstract_id)
+                if trace_instantiations {
+                    trace!(
+                        "[yardbird::inst-trace] regular concrete abstract-hash={} abstract-id={abstract_id:?} concrete-term={}",
+                        term_hash,
+                        inst
+                    );
+                }
+                let added = smt.add_instantiation(inst, abstract_id);
+                if trace_instantiations {
+                    trace!(
+                        "[yardbird::inst-trace] regular add-result abstract-hash={} added={added}",
+                        term_hash
+                    );
+                }
+                !added
             })
             .fold(true, |a, b| a && b);
 

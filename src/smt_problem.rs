@@ -15,7 +15,7 @@ use crate::{
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
-    utils::SolverStatistics,
+    utils::{configure_z3_solver, SolverStatistics},
     z3_var_context::Z3VarContext,
 };
 
@@ -73,6 +73,7 @@ impl SMTProblem {
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
         let solver =
             z3::Solver::new_for_logic(strategy.get_theory_support().get_logic_string()).unwrap();
+        configure_z3_solver(&solver);
 
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
@@ -190,7 +191,10 @@ impl SMTProblem {
         inst: Instance,
         abstract_instantiation_id: Option<String>,
     ) -> bool {
+        let trace_instantiations = log::log_enabled!(log::Level::Trace);
         let initial_count = self.instantiations.len();
+        let inst_text = trace_instantiations.then(|| inst.to_string());
+        let abstract_id_for_log = trace_instantiations.then(|| abstract_instantiation_id.clone());
 
         self.instantiation_strategy.on_generate(
             inst,
@@ -207,7 +211,17 @@ impl SMTProblem {
         );
 
         // Return true if a new instantiation was added
-        self.instantiations.len() > initial_count
+        let added = self.instantiations.len() > initial_count;
+        if trace_instantiations {
+            log::trace!(
+                "[yardbird::inst-trace] solver-add abstract-id={abstract_instantiation_id:?} added={added} before={before} after={after} term={term}",
+                before = initial_count,
+                after = self.instantiations.len(),
+                term = inst_text.unwrap_or_default(),
+                abstract_instantiation_id = abstract_id_for_log.unwrap_or_default(),
+            );
+        }
+        added
     }
     pub(crate) fn to_smtinterpol(&self) -> String {
         todo!()

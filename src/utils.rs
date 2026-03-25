@@ -9,6 +9,17 @@ use std::{fmt::Display, fs::File, io::Error, process::Command};
 use z3::Statistics;
 static INTERPOLANT_FILENAME: &str = "interpolant-out.smt2";
 
+pub(crate) fn configure_z3_solver(solver: &z3::Solver) {
+    // Yardbird's abstraction is model-driven, so pin the solver seed to keep
+    // counterexample models reproducible across runs.
+    z3::set_global_param("smt.random_seed", "0");
+    z3::set_global_param("sat.random_seed", "0");
+
+    let mut params = z3::Params::new();
+    params.set_u32("random_seed", 0);
+    solver.set_params(&params);
+}
+
 /// Run with COMMAND_TIME_LIMIT so that we don't keep zombie ic3ia
 /// runs.
 pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {

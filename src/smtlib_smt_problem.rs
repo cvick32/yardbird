@@ -6,9 +6,15 @@ use smt2parser::{
 use z3::ast::Dynamic;
 
 use crate::{
-    instantiation_strategy::StoredInstantiation, problem::Problem, smtlib_problem::SMTLIBProblem,
-    solver_interface::SolverInterface, strategies::ProofStrategy, subterm_handler::SubtermHandler,
-    training::IndexedInstantiationRecord, utils::SolverStatistics, z3_var_context::Z3VarContext,
+    instantiation_strategy::StoredInstantiation,
+    problem::Problem,
+    smtlib_problem::SMTLIBProblem,
+    solver_interface::SolverInterface,
+    strategies::ProofStrategy,
+    subterm_handler::SubtermHandler,
+    training::IndexedInstantiationRecord,
+    utils::{configure_z3_solver, SolverStatistics},
+    z3_var_context::Z3VarContext,
 };
 
 /// Helper to create a "true" boolean term
@@ -177,6 +183,7 @@ impl SMTLIBSMTProblem {
     ) -> Self {
         let theory = strategy.get_theory_support();
         let solver = z3::Solver::new_for_logic(theory.get_logic_string()).unwrap();
+        configure_z3_solver(&solver);
         Self::init_common(
             problem,
             theory.as_ref(),
@@ -213,6 +220,7 @@ impl SMTLIBSMTProblem {
         let logic_string = theory.get_logic_string();
         debug!("Using logic: {}", logic_string);
         let solver = z3::Solver::new_for_logic(logic_string.as_str()).unwrap();
+        configure_z3_solver(&solver);
 
         Self::init_common(
             problem,
