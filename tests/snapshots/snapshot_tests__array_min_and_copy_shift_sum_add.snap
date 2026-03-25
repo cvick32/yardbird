@@ -6,7 +6,11 @@ BenchmarkResult {
     example_name: "examples/array/array_min_and_copy_shift_sum_add.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int b+0 0 19620) 0) 19620)",
+        "(= (Read_Int_Int (Write_Int_Int b+0 N 0) 0) (Read_Int_Int b+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 N 0) N) 0)",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (- (Read_Int_Int a+0 i+0) j+0)) 0) (Read_Int_Int b+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (- (Read_Int_Int a+0 i+0) j+0)) N) (Read_Int_Int b+0 N))",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (- (Read_Int_Int a+0 i+0) j+0)) i+0) (- (Read_Int_Int a+0 i+0) j+0))",
     ],
 }

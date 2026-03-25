@@ -6,11 +6,12 @@ BenchmarkResult {
     example_name: "examples/array/array_hybr_sum.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 0 0) 0) 0)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 0 0) 1) (Read_Int_Int a+0 1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 0) (Read_Int_Int a+0 0))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 1) (Read_Int_Int a+0 1))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 2) (Read_Int_Int a+0 2))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) N) (Read_Int_Int a+0 N))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 1) (Read_Int_Int a+0 1))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 0) (Read_Int_Int a+0 0))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 2) (Read_Int_Int a+0 2))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+6) (Read_Int_Int a+0 i+6))",
     ],
 }

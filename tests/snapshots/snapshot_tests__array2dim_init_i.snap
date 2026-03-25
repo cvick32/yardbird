@@ -1,9 +1,9 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(&path)
+expression: run_benchmark(& path)
 ---
 BenchmarkResult {
-    example_name: "examples/array2dim_init_i.vmt",
-    status: Panic,
+    example_name: "examples/two_dimensional_array/array2dim_init_i.vmt",
+    status: Good,
     used_instantiations: [],
 }

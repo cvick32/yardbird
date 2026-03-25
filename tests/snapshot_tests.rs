@@ -2,6 +2,7 @@ use insta::assert_debug_snapshot;
 use std::{
     path::Path,
     sync::mpsc::{self, RecvTimeoutError},
+    sync::Mutex,
     thread,
     time::Duration,
 };
@@ -46,27 +47,37 @@ struct BenchmarkResult {
     used_instantiations: Vec<String>,
 }
 
+static SNAPSHOT_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
-    let vmt_model = model_from_options(&options);
-    let instantiation_strategy = options.build_instantiation_strategy();
     let (status, used_instantiations) = run_with_timeout(
         move || {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy);
-            let strat: Box<dyn ProofStrategy<_>> =
-                Box::new(Abstract::new(10, false, array_bmc_cost_factory));
-            let res = driver.check_strategy(options.depth, strat).unwrap();
-            res.used_instances
+            let mut cfg = z3::Config::new();
+            cfg.set_model_generation(true);
+
+            z3::with_z3_config(&cfg, move || {
+                let vmt_model = model_from_options(&options);
+                let instantiation_strategy = options.build_instantiation_strategy();
+                let mut driver = Driver::new(vmt_model, instantiation_strategy);
+                let strat: Box<dyn ProofStrategy<_>> =
+                    Box::new(Abstract::new(10, false, array_bmc_cost_factory));
+                let res = driver.check_strategy(options.depth, strat).unwrap();
+                res.used_instances
+            })
         },
         Duration::from_secs(20),
     );
+    let mut used_instantiations = used_instantiations
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    used_instantiations.sort();
+
     BenchmarkResult {
         example_name: filename.as_ref().to_string_lossy().to_string(),
         status,
-        used_instantiations: used_instantiations
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        used_instantiations,
     }
 }
 
@@ -82,6 +93,9 @@ macro_rules! create_array_snapshot_test {
     ($test:ident) => {
         #[test]
         fn $test() {
+            let _guard = SNAPSHOT_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let path = benchmark_path(stringify!($test));
             assert_debug_snapshot!(stringify!($test), run_benchmark(&path));
         }

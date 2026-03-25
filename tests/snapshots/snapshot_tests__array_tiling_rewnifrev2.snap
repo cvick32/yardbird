@@ -6,9 +6,9 @@ BenchmarkResult {
     example_name: "examples/array/array_tiling_rewnifrev2.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
         "(= (Read_Int_Int (Write_Int_Int a1+0 (+ i+0 1) (+ i+0 1)) (+ i+0 1)) (+ i+0 1))",
         "(= (Read_Int_Int (Write_Int_Int a1+0 (+ i+0 1) (+ i+0 1)) Z) (Read_Int_Int a1+0 Z))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
     ],
 }

@@ -6,9 +6,10 @@ BenchmarkResult {
     example_name: "examples/array/array_even_odd_2.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
-        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
-        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int c+0 Z))",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z 2) Z) 2)",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z 4) Z) 4)",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int c+0 Z))",
     ],
 }

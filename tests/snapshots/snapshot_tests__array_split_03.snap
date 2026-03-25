@@ -6,12 +6,10 @@ BenchmarkResult {
     example_name: "examples/array/array_split_03.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- i+0 N)) N) (Read_Int_Int a+0 N))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- i+0 N)) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- i+0 N)) i+0) (- i+0 N))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) N) (Read_Int_Int a+0 N))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 2) (Read_Int_Int a+0 2))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 1) (Read_Int_Int a+0 1))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- i+0 N)) 1) (Read_Int_Int a+0 1))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- i+0 N)) i+0) (- i+0 N))",
     ],
 }

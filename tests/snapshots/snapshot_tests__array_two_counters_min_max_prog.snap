@@ -6,9 +6,9 @@ BenchmarkResult {
     example_name: "examples/array/array_two_counters_min_max_prog.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read_Int_Int (Write_Int_Int c+0 j+0 n+1) Z) (Read_Int_Int c+0 Z))",
-        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 m+1) i+0) m+1)",
-        "(= (Read_Int_Int (Write_Int_Int c+0 j+0 n+1) j+0) n+1)",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 m+1) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 m+1) i+0) m+1)",
+        "(= (Read_Int_Int (Write_Int_Int c+0 j+0 n+1) Z) (Read_Int_Int c+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 j+0 n+1) j+0) n+1)",
     ],
 }

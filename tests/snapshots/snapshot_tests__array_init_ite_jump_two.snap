@@ -6,12 +6,10 @@ BenchmarkResult {
     example_name: "examples/array/array_init_ite_jump_two.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 10) Z) (Read_Int_Int a+0 Z))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 10) i+0) 10)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+0) 0)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 0) (Read_Int_Int a+0 0))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 0) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+0) 0)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 10) i+0) 10)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
     ],
 }

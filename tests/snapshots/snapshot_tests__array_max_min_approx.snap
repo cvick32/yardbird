@@ -6,9 +6,11 @@ BenchmarkResult {
     example_name: "examples/array/array_max_min_approx.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 min+0) i+0) min+0)",
-        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 min+0) Z) (Read_Int_Int b+0 Z))",
-        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 max+0) i+0) max+0)",
+        "(= (Read_Int_Int (Write_Int_Int b+0 0 min+4) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 N min+4) Z) (Read_Int_Int b+0 Z))",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 max+0) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 max+0) i+0) max+0)",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 min+0) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 min+0) i+0) min+0)",
     ],
 }
