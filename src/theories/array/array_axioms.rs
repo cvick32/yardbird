@@ -465,7 +465,13 @@ where
 pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
     fn inner(term: Term, expr: &mut egg::RecExpr<ArrayLanguage>) -> Option<egg::Id> {
         match term {
-            Term::Constant(c) => Some(expr.add(ArrayLanguage::Symbol(c.to_string().into()))),
+            Term::Constant(c) => match c {
+                Constant::Numeral(value) => match value.clone().try_into() {
+                    Ok(value) => Some(expr.add(ArrayLanguage::Num(value))),
+                    Err(_) => Some(expr.add(ArrayLanguage::Symbol(value.to_string().into()))),
+                },
+                other => Some(expr.add(ArrayLanguage::Symbol(other.to_string().into()))),
+            },
             Term::QualIdentifier(qi) => {
                 Some(expr.add(ArrayLanguage::Symbol(qi.to_string().into())))
             }
@@ -805,6 +811,19 @@ mod test {
             )]));
         let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 0)".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_none())
+    }
+
+    #[test]
+    fn translate_term_uses_same_numeric_encoding_as_parser() {
+        let translated = translate_term(Term::Constant(Constant::Numeral(10u64.into()))).unwrap();
+        let parsed: RecExpr<ArrayLanguage> = "10".parse().unwrap();
+
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let translated_id = egraph.add_expr(&translated);
+        let parsed_id = egraph.add_expr(&parsed);
+        egraph.rebuild();
+
+        assert_eq!(egraph.find(translated_id), egraph.find(parsed_id));
     }
 
     // #[test]

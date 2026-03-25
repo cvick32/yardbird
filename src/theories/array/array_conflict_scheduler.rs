@@ -1,8 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use egg::{Analysis, Language};
-use itertools::Itertools;
-use log::debug;
+use log::{debug, trace};
 
 use crate::{
     cost_functions::YardbirdCostFunction,
@@ -13,6 +12,14 @@ use crate::{
     },
     training::{AbstractInstantiationRecord, DecisionRecord},
 };
+
+fn trace_conflicts_enabled() -> bool {
+    log::log_enabled!(log::Level::Trace)
+}
+
+fn trace_conflicts(message: impl AsRef<str>) {
+    trace!("[yardbird::conflict-trace] {}", message.as_ref());
+}
 
 /// Preprocess array operation strings for egg parsing.
 /// Converts: "(Read_Int_Int a b)" -> "(Read Int Int a b)"
@@ -147,16 +154,35 @@ where
         egraph: &egg::EGraph<ArrayLanguage, N>,
         rewrite: &'a egg::Rewrite<ArrayLanguage, N>,
     ) -> Vec<egg::SearchMatches<'a, ArrayLanguage>> {
-        self.inner.search_rewrite(iteration, egraph, rewrite)
+        let matches = self.inner.search_rewrite(iteration, egraph, rewrite);
+        if trace_conflicts_enabled() {
+            trace_conflicts(format!(
+                "search iteration={iteration} rewrite={} eclasses={} matches={} existing_insts={}",
+                rewrite.name,
+                egraph.number_of_classes(),
+                matches.len(),
+                self.instantiations.borrow().len()
+            ));
+            for (match_ix, search_match) in matches.iter().enumerate() {
+                trace_conflicts(format!(
+                    "  match[{match_ix}] eclass={} subst_count={} has_ast={}",
+                    search_match.eclass,
+                    search_match.substs.len(),
+                    search_match.ast.is_some()
+                ));
+            }
+        }
+        matches
     }
 
     fn apply_rewrite(
         &mut self,
-        _iteration: usize,
+        iteration: usize,
         egraph: &mut egg::EGraph<ArrayLanguage, N>,
         rewrite: &egg::Rewrite<ArrayLanguage, N>,
         matches: Vec<egg::SearchMatches<ArrayLanguage>>,
     ) -> usize {
+        let tracing = trace_conflicts_enabled();
         debug!("======>");
         debug!(
             "apply_rewrite: {} with {} matches, inst_count={}",
@@ -164,15 +190,36 @@ where
             matches.len(),
             self.instantiations.borrow().len()
         );
+        if tracing {
+            trace_conflicts(format!(
+                "apply iteration={iteration} rewrite={} matches={} existing_insts={}",
+                rewrite.name,
+                matches.len(),
+                self.instantiations.borrow().len()
+            ));
+        }
         if !self.instantiations.borrow().is_empty() {
             // don't try to keep applying rewrites if we've found an inst
+            if tracing {
+                trace_conflicts("  skipping because a regular instantiation already exists");
+            }
             return 0;
         }
-        for m in &matches {
+        for (match_ix, m) in matches.iter().enumerate() {
             if let Some(searcher_ast) = &m.ast {
                 debug!("Number of subs: {}", m.substs.len());
-                for subst in &m.substs {
+                if tracing {
+                    trace_conflicts(format!(
+                        "  exploring match[{match_ix}] eclass={} subst_count={}",
+                        m.eclass,
+                        m.substs.len()
+                    ));
+                }
+                for (subst_ix, subst) in m.substs.iter().enumerate() {
                     debug!("Current Sub: {:?}", subst);
+                    if tracing {
+                        trace_conflicts(format!("    subst[{subst_ix}] raw={subst:?}"));
+                    }
 
                     if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
                         // construct a new term by instantiating variables in the pattern ast with terms
@@ -189,6 +236,7 @@ where
                         let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
                             searcher_ast.as_ref(),
                             egraph,
+                            Some(m.eclass),
                             subst,
                             &self.extractor,
                             &mut memo,
@@ -198,6 +246,7 @@ where
                         let new_rhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
                             applier_ast,
                             egraph,
+                            None,
                             subst,
                             &self.extractor,
                             &mut memo,
@@ -205,6 +254,14 @@ where
                         ));
 
                         let rhs_eclass = egraph.lookup_expr(&new_rhs);
+                        if tracing {
+                            trace_conflicts(format!(
+                                "    subst[{subst_ix}] lhs={} rhs={} lhs_eclass={} rhs_eclass={rhs_eclass:?}",
+                                new_lhs,
+                                new_rhs,
+                                m.eclass
+                            ));
+                        }
                         // the eclass that we would have inserted from this pattern
                         // would cause a union from `rhs_eclass` to `eclass`. This means it
                         // is creating an equality that wouldn't otherwise be in the
@@ -239,6 +296,12 @@ where
                                     decision_keys,
                                 );
                             let cost = self.cost_fn.cost_rec(&new_rhs);
+                            if tracing {
+                                trace_conflicts(format!(
+                                    "    subst[{subst_ix}] conflict cost={} instantiation={}",
+                                    cost, instantiation
+                                ));
+                            }
                             debug!(
                                 "FOUND VIOLATION (cost {}): \n{}",
                                 cost,
@@ -250,12 +313,25 @@ where
 
                             if cost >= 100 {
                                 debug!("rejecting because of cost");
+                                if tracing {
+                                    trace_conflicts(
+                                        "    classified as const/high-cost instantiation",
+                                    );
+                                }
                                 self.instantiations_w_constants
                                     .borrow_mut()
                                     .push(instantiation);
                             } else {
+                                if tracing {
+                                    trace_conflicts("    accepted as regular instantiation");
+                                }
                                 self.instantiations.borrow_mut().push(instantiation);
                             }
+                        } else if tracing {
+                            trace_conflicts(format!(
+                                "    subst[{subst_ix}] no conflict because rhs already maps to eclass {}",
+                                m.eclass
+                            ));
                         }
                     }
                 }
@@ -282,6 +358,7 @@ struct DecisionLogContext<'a> {
 fn reify_pattern_ast<N, CF>(
     pattern: &egg::PatternAst<ArrayLanguage>,
     egraph: &egg::EGraph<ArrayLanguage, N>,
+    expected_eclass: Option<egg::Id>,
     subst: &egg::Subst,
     extractor: &ArrayTermExtractor<CF>,
     memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
@@ -291,6 +368,31 @@ where
     N: egg::Analysis<ArrayLanguage>,
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
+    if expected_eclass.is_some() {
+        if let Some(expr) = reify_expected_write(
+            pattern,
+            egraph,
+            expected_eclass,
+            subst,
+            extractor,
+            memo,
+            ctx,
+        ) {
+            return expr;
+        }
+        if let Some(expr) = reify_expected_read(
+            pattern,
+            egraph,
+            expected_eclass,
+            subst,
+            extractor,
+            memo,
+            ctx,
+        ) {
+            return expr;
+        }
+    }
+
     match pattern.as_ref() {
         [node] => match node {
             x @ egg::ENodeOrVar::ENode(_) => vec![x.clone()].into(),
@@ -298,257 +400,521 @@ where
                 if let Some(expr) = memo.get(var) {
                     expr.clone()
                 } else {
-                    let eclass = &egraph[*subst.get(*var).unwrap()];
+                    let eclass = &egraph[expected_eclass.unwrap_or(*subst.get(*var).unwrap())];
                     let expr = find_best_variable_substitution(egraph, eclass, extractor, ctx);
                     memo.insert(*var, expr.clone());
                     expr
                 }
             }
         },
-        _ => {
-            use egg::ENodeOrVar as E;
-            pattern
-                .rooted()
-                .clone()
-                .join_recexprs(|id| match pattern[id].clone() {
-                    x @ E::ENode(ArrayLanguage::WriteTyped(
-                        [idx_sort, val_sort, array, index, val],
-                    )) => {
-                        match (
-                            &pattern[idx_sort],
-                            &pattern[val_sort],
-                            &pattern[array],
-                            &pattern[index],
-                            &pattern[val],
-                        ) {
-                            (
-                                E::ENode(idx_sort),
-                                E::ENode(val_sort),
-                                E::Var(array),
-                                E::Var(index),
-                                E::Var(val),
-                            ) => {
-                                let array_ecls = &egraph[*subst.get(*array).unwrap()];
-                                let index_ecls = &egraph[*subst.get(*index).unwrap()];
-                                let val_ecls = &egraph[*subst.get(*val).unwrap()];
-
-                                // TODO: this only works for stores into a variable
-                                if let Some((array_node, index_node)) = array_ecls
-                                    .nodes
-                                    .iter()
-                                    .flat_map(|node| {
-                                        extractor
-                                            .reads_and_writes
-                                            .write_array(node)
-                                            // only keep items contained in index eclass
-                                            .flat_map(|idx| preprocess_array_expr(&idx).parse())
-                                            .filter(|idx| {
-                                                egraph_contains_at(egraph, idx, index_ecls.id)
-                                            })
-                                            .map(|idx| (node.clone(), idx))
-                                    })
-                                    .next()
-                                {
-                                    if let Some(val_node) = extractor
-                                        .reads_and_writes
-                                        .write_array_index(array_node.clone(), index_node.clone())
-                                        .flat_map(|v| preprocess_array_expr(&v).parse())
-                                        .find(|v| egraph_contains_at(egraph, v, val_ecls.id))
-                                    {
-                                        let array_expr = egg::RecExpr::from(vec![array_node]);
-                                        // These three choices bypass the normal
-                                        // `find_best_variable_substitution` path. We log them
-                                        // explicitly so the database still sees the full
-                                        // decision -> abstract instantiation provenance chain.
-                                        record_specialized_choice(
-                                            egraph,
-                                            array_ecls.id,
-                                            &array_expr,
-                                            extractor,
-                                            ctx,
-                                        );
-                                        record_specialized_choice(
-                                            egraph,
-                                            index_ecls.id,
-                                            &index_node,
-                                            extractor,
-                                            ctx,
-                                        );
-                                        record_specialized_choice(
-                                            egraph,
-                                            val_ecls.id,
-                                            &val_node,
-                                            extractor,
-                                            ctx,
-                                        );
-                                        memo.insert(*array, patternify(&array_expr));
-                                        memo.insert(*index, patternify(&index_node));
-                                        memo.insert(*val, patternify(&val_node));
-                                        patternify(&ArrayLanguage::write_typed(
-                                            &idx_sort.to_string(),
-                                            &val_sort.to_string(),
-                                            array_expr,
-                                            index_node,
-                                            val_node,
-                                        ))
-                                    } else {
-                                        todo!("{}, {}", idx_sort, val_sort)
-                                    }
-                                } else {
-                                    // TODO: temporary fallback until we can handle array expressions that aren't variables
-                                    if x.is_leaf() {
-                                        vec![x].into()
-                                    } else {
-                                        reify_pattern_ast(
-                                            &x.build_recexpr(|id| pattern[id].clone()),
-                                            egraph,
-                                            subst,
-                                            extractor,
-                                            memo,
-                                            ctx,
-                                        )
-                                    }
-                                }
-                            }
-                            _ => todo!("{}", x),
-                        }
+        _ => pattern
+            .rooted()
+            .clone()
+            .join_recexprs(|id| match pattern[id].clone() {
+                x @ egg::ENodeOrVar::ENode(_) => {
+                    if x.is_leaf() {
+                        vec![x].into()
+                    } else {
+                        reify_pattern_ast(
+                            &x.build_recexpr(|id| pattern[id].clone()),
+                            egraph,
+                            None,
+                            subst,
+                            extractor,
+                            memo,
+                            ctx,
+                        )
                     }
-                    E::ENode(ArrayLanguage::ReadTyped([idx_sort, val_sort, array, index])) => {
-                        match (
-                            &pattern[idx_sort],
-                            &pattern[val_sort],
-                            &pattern[array],
-                            &pattern[index],
-                        ) {
-                            (E::Var(idx_sort), E::Var(val_sort), E::Var(array), E::Var(index)) => {
-                                let array_ecls = &egraph[*subst.get(*array).unwrap()];
-                                let index_ecls = &egraph[*subst.get(*index).unwrap()];
-
-                                if let Some((array_node, index_node)) = array_ecls
-                                    .nodes
-                                    .iter()
-                                    .flat_map(|node| {
-                                        extractor
-                                            .reads_and_writes
-                                            .read_array(node)
-                                            .flat_map(|idx| preprocess_array_expr(&idx).parse())
-                                            .filter(|idx| {
-                                                egraph_contains_at(egraph, idx, index_ecls.id)
-                                            })
-                                            .map(|idx| (node.clone(), idx))
-                                    })
-                                    .next()
-                                {
-                                    let array_expr = egg::RecExpr::from(vec![array_node]);
-                                    // As above, log the specialized metadata-driven choices so
-                                    // we do not lose provenance for reconstructed Read terms.
-                                    record_specialized_choice(
-                                        egraph,
-                                        array_ecls.id,
-                                        &array_expr,
-                                        extractor,
-                                        ctx,
-                                    );
-                                    record_specialized_choice(
-                                        egraph,
-                                        index_ecls.id,
-                                        &index_node,
-                                        extractor,
-                                        ctx,
-                                    );
-                                    memo.insert(*array, patternify(&array_expr));
-                                    memo.insert(*index, patternify(&index_node));
-                                    patternify(&ArrayLanguage::read_typed(
-                                        &idx_sort.to_string(),
-                                        &val_sort.to_string(),
-                                        array_expr,
-                                        index_node,
-                                    ))
-                                } else {
-                                    todo!()
-                                }
-                            }
-                            _ => todo!(),
-                        }
+                }
+                egg::ENodeOrVar::Var(var) => {
+                    if let Some(expr) = memo.get(&var) {
+                        expr.clone()
+                    } else {
+                        let eclass = &egraph[*subst.get(var).unwrap()];
+                        let expr = find_best_variable_substitution(egraph, eclass, extractor, ctx);
+                        memo.insert(var, expr.clone());
+                        expr
                     }
-                    x @ egg::ENodeOrVar::ENode(_) => {
-                        if x.is_leaf() {
-                            vec![x].into()
-                        } else {
-                            reify_pattern_ast(
-                                &x.build_recexpr(|id| pattern[id].clone()),
-                                egraph,
-                                subst,
-                                extractor,
-                                memo,
-                                ctx,
-                            )
-                        }
-                    }
-                    egg::ENodeOrVar::Var(var) => {
-                        if let Some(expr) = memo.get(&var) {
-                            expr.clone()
-                        } else {
-                            let eclass = &egraph[*subst.get(var).unwrap()];
-                            let expr =
-                                find_best_variable_substitution(egraph, eclass, extractor, ctx);
-                            memo.insert(var, expr.clone());
-                            expr
-                        }
-                    }
-                })
-        }
+                }
+            }),
     }
 }
 
-/// Check if the `egraph` contains a `rec_expr` that is rooted at
-/// eclass `eclass_id`.
-fn egraph_contains_at<N>(
+fn reify_expected_write<N, CF>(
+    pattern: &egg::PatternAst<ArrayLanguage>,
     egraph: &egg::EGraph<ArrayLanguage, N>,
-    rec_expr: &egg::RecExpr<ArrayLanguage>,
-    eclass_id: egg::Id,
-) -> bool
+    expected_eclass: Option<egg::Id>,
+    subst: &egg::Subst,
+    extractor: &ArrayTermExtractor<CF>,
+    memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+    ctx: &mut DecisionLogContext<'_>,
+) -> Option<egg::PatternAst<ArrayLanguage>>
 where
     N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    let expr_id = rec_expr.as_ref().len() - 1;
-    egraph_contains_at_helper(egraph, rec_expr, eclass_id, expr_id.into())
-}
+    let expected_eclass = expected_eclass?;
+    let egg::ENodeOrVar::ENode(ArrayLanguage::WriteTyped(
+        [index_sort, value_sort, array, index, value],
+    )) = pattern.rooted().clone()
+    else {
+        return None;
+    };
 
-fn egraph_contains_at_helper<N>(
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    rec_expr: &egg::RecExpr<ArrayLanguage>,
-    eclass_id: egg::Id,
-    expr_id: egg::Id,
-) -> bool
-where
-    N: egg::Analysis<ArrayLanguage>,
-{
-    egraph[eclass_id]
-        .nodes
-        .iter()
-        .filter(|node| node.matches(&rec_expr[expr_id]))
-        .all(|node| {
-            if node.is_leaf() {
-                node == &rec_expr[expr_id]
+    let index_sort = pattern_sort_symbol(pattern, index_sort)?;
+    let value_sort = pattern_sort_symbol(pattern, value_sort)?;
+    let array_pattern = subpattern(pattern, array);
+    let index_pattern = subpattern(pattern, index);
+    let value_pattern = subpattern(pattern, value);
+
+    choose_best_expected_candidate(
+        extractor,
+        memo,
+        ctx,
+        egraph[expected_eclass]
+            .nodes
+            .iter()
+            .filter_map(|node| match node {
+                ArrayLanguage::WriteTyped([_, _, array_id, index_id, value_id]) => {
+                    let candidate = (*array_id, *index_id, Some(*value_id));
+                    child_patterns_compatible(
+                        egraph,
+                        subst,
+                        [&array_pattern, &index_pattern, &value_pattern],
+                        [candidate.0, candidate.1, candidate.2.unwrap()],
+                    )
+                    .then_some(candidate)
+                }
+                _ => None,
+            }),
+        |candidate, candidate_memo, candidate_ctx| {
+            let array_expr = unpatternify(reify_pattern_ast(
+                &array_pattern,
+                egraph,
+                Some(candidate.0),
+                subst,
+                extractor,
+                candidate_memo,
+                candidate_ctx,
+            ));
+            let exact_children = best_matching_write_children(
+                egraph,
+                extractor,
+                &array_expr,
+                index_sort.as_str(),
+                value_sort.as_str(),
+                candidate.1,
+                candidate.2.unwrap(),
+            );
+            let index_expr = if let Some((index_expr, _)) = exact_children.as_ref() {
+                if is_single_variable_pattern(&index_pattern) {
+                    unpatternify(reify_exact_variable_substitution(
+                        &index_pattern,
+                        candidate.1,
+                        index_expr,
+                        egraph,
+                        extractor,
+                        candidate_memo,
+                        candidate_ctx,
+                    ))
+                } else {
+                    unpatternify(reify_pattern_ast(
+                        &index_pattern,
+                        egraph,
+                        Some(candidate.1),
+                        subst,
+                        extractor,
+                        candidate_memo,
+                        candidate_ctx,
+                    ))
+                }
             } else {
-                node.children()
-                    .iter()
-                    .zip_eq(rec_expr[expr_id].children())
-                    .all(|(eclass_id, expr_id)| {
-                        egraph_contains_at_helper(egraph, rec_expr, *eclass_id, *expr_id)
-                    })
-            }
-        })
+                unpatternify(reify_pattern_ast(
+                    &index_pattern,
+                    egraph,
+                    Some(candidate.1),
+                    subst,
+                    extractor,
+                    candidate_memo,
+                    candidate_ctx,
+                ))
+            };
+            let value_expr = if let Some((_, value_expr)) = exact_children.as_ref() {
+                if is_single_variable_pattern(&value_pattern) {
+                    unpatternify(reify_exact_variable_substitution(
+                        &value_pattern,
+                        candidate.2.unwrap(),
+                        value_expr,
+                        egraph,
+                        extractor,
+                        candidate_memo,
+                        candidate_ctx,
+                    ))
+                } else {
+                    unpatternify(reify_pattern_ast(
+                        &value_pattern,
+                        egraph,
+                        candidate.2,
+                        subst,
+                        extractor,
+                        candidate_memo,
+                        candidate_ctx,
+                    ))
+                }
+            } else {
+                unpatternify(reify_pattern_ast(
+                    &value_pattern,
+                    egraph,
+                    candidate.2,
+                    subst,
+                    extractor,
+                    candidate_memo,
+                    candidate_ctx,
+                ))
+            };
+
+            ArrayLanguage::write_typed(
+                index_sort.as_str(),
+                value_sort.as_str(),
+                array_expr,
+                index_expr,
+                value_expr,
+            )
+        },
+    )
 }
 
-fn patternify(expr: &egg::RecExpr<ArrayLanguage>) -> egg::PatternAst<ArrayLanguage> {
+fn reify_expected_read<N, CF>(
+    pattern: &egg::PatternAst<ArrayLanguage>,
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    expected_eclass: Option<egg::Id>,
+    subst: &egg::Subst,
+    extractor: &ArrayTermExtractor<CF>,
+    memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+    ctx: &mut DecisionLogContext<'_>,
+) -> Option<egg::PatternAst<ArrayLanguage>>
+where
+    N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
+{
+    let expected_eclass = expected_eclass?;
+    let egg::ENodeOrVar::ENode(ArrayLanguage::ReadTyped([index_sort, value_sort, array, index])) =
+        pattern.rooted().clone()
+    else {
+        return None;
+    };
+
+    let index_sort = pattern_sort_symbol(pattern, index_sort)?;
+    let value_sort = pattern_sort_symbol(pattern, value_sort)?;
+    let array_pattern = subpattern(pattern, array);
+    let index_pattern = subpattern(pattern, index);
+
+    choose_best_expected_candidate(
+        extractor,
+        memo,
+        ctx,
+        egraph[expected_eclass]
+            .nodes
+            .iter()
+            .filter_map(|node| match node {
+                ArrayLanguage::ReadTyped([_, _, array_id, index_id]) => {
+                    let candidate = (*array_id, *index_id, None);
+                    child_patterns_compatible(
+                        egraph,
+                        subst,
+                        [&array_pattern, &index_pattern],
+                        [candidate.0, candidate.1],
+                    )
+                    .then_some(candidate)
+                }
+                _ => None,
+            }),
+        |candidate, candidate_memo, candidate_ctx| {
+            let array_expr = unpatternify(reify_pattern_ast(
+                &array_pattern,
+                egraph,
+                Some(candidate.0),
+                subst,
+                extractor,
+                candidate_memo,
+                candidate_ctx,
+            ));
+            let index_expr = unpatternify(reify_pattern_ast(
+                &index_pattern,
+                egraph,
+                Some(candidate.1),
+                subst,
+                extractor,
+                candidate_memo,
+                candidate_ctx,
+            ));
+
+            ArrayLanguage::read_typed(
+                index_sort.as_str(),
+                value_sort.as_str(),
+                array_expr,
+                index_expr,
+            )
+        },
+    )
+}
+
+fn choose_best_expected_candidate<CF, I, F>(
+    extractor: &ArrayTermExtractor<CF>,
+    memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+    ctx: &mut DecisionLogContext<'_>,
+    candidates: I,
+    build_expr: F,
+) -> Option<egg::PatternAst<ArrayLanguage>>
+where
+    CF: YardbirdCostFunction<ArrayLanguage>,
+    I: IntoIterator<Item = (egg::Id, egg::Id, Option<egg::Id>)>,
+    F: Fn(
+        (egg::Id, egg::Id, Option<egg::Id>),
+        &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+        &mut DecisionLogContext<'_>,
+    ) -> ArrayExpr,
+{
+    type ExpectedCandidate = (
+        u32,
+        String,
+        egg::PatternAst<ArrayLanguage>,
+        HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+        Vec<DecisionRecord>,
+        u32,
+    );
+
+    let mut best: Option<ExpectedCandidate> = None;
+
+    for candidate in candidates {
+        let mut candidate_memo = memo.clone();
+        let mut candidate_decisions = Vec::new();
+        let mut candidate_slot_index = *ctx.slot_index;
+        let expr = build_expr(
+            candidate,
+            &mut candidate_memo,
+            &mut DecisionLogContext {
+                decisions: &mut candidate_decisions,
+                axiom_name: ctx.axiom_name,
+                slot_index: &mut candidate_slot_index,
+            },
+        );
+
+        let cost = extractor.cost_of(&expr);
+        let rendered = expr.to_string();
+        let should_replace = best
+            .as_ref()
+            .is_none_or(|(best_cost, best_rendered, _, _, _, _)| {
+                (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
+            });
+
+        if should_replace {
+            best = Some((
+                cost,
+                rendered,
+                patternify(&expr),
+                candidate_memo,
+                candidate_decisions,
+                candidate_slot_index,
+            ));
+        }
+    }
+
+    let (_, _, chosen_pattern, chosen_memo, chosen_decisions, chosen_slot_index) = best?;
+    *memo = chosen_memo;
+    ctx.decisions.extend(chosen_decisions);
+    *ctx.slot_index = chosen_slot_index;
+    Some(chosen_pattern)
+}
+
+fn subpattern(
+    pattern: &egg::PatternAst<ArrayLanguage>,
+    root: egg::Id,
+) -> egg::PatternAst<ArrayLanguage> {
+    let node = pattern[root].clone();
+    if node.is_leaf() {
+        vec![node].into()
+    } else {
+        node.build_recexpr(|id| pattern[id].clone())
+    }
+}
+
+fn pattern_sort_symbol(pattern: &egg::PatternAst<ArrayLanguage>, id: egg::Id) -> Option<String> {
+    match &pattern[id] {
+        egg::ENodeOrVar::ENode(ArrayLanguage::Symbol(symbol)) => Some(symbol.to_string()),
+        _ => None,
+    }
+}
+
+fn patternify(expr: &ArrayExpr) -> egg::PatternAst<ArrayLanguage> {
     expr.as_ref()
         .iter()
         .cloned()
         .map(egg::ENodeOrVar::ENode)
         .collect::<Vec<_>>()
         .into()
+}
+
+fn best_matching_write_children<N, CF>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    extractor: &ArrayTermExtractor<CF>,
+    array_expr: &ArrayExpr,
+    index_sort: &str,
+    value_sort: &str,
+    index_eclass: egg::Id,
+    value_eclass: egg::Id,
+) -> Option<(ArrayExpr, ArrayExpr)>
+where
+    N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
+{
+    let mut best: Option<(u32, String, ArrayExpr, ArrayExpr)> = None;
+
+    for raw_index in extractor.reads_and_writes.write_array(array_expr) {
+        let Ok(index_expr) = preprocess_array_expr(&raw_index).parse::<ArrayExpr>() else {
+            continue;
+        };
+        if !egraph_contains_at(egraph, &index_expr, index_eclass) {
+            continue;
+        }
+
+        for raw_value in extractor
+            .reads_and_writes
+            .write_array_index(array_expr, &index_expr)
+        {
+            let Ok(value_expr) = preprocess_array_expr(&raw_value).parse::<ArrayExpr>() else {
+                continue;
+            };
+            if !egraph_contains_at(egraph, &value_expr, value_eclass) {
+                continue;
+            }
+
+            let write_expr = ArrayLanguage::write_typed(
+                index_sort,
+                value_sort,
+                array_expr.clone(),
+                index_expr.clone(),
+                value_expr.clone(),
+            );
+            let cost = extractor.cost_of(&write_expr);
+            let rendered = write_expr.to_string();
+            let should_replace = best
+                .as_ref()
+                .is_none_or(|(best_cost, best_rendered, _, _)| {
+                    (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
+                });
+            if should_replace {
+                best = Some((cost, rendered, index_expr.clone(), value_expr.clone()));
+            }
+        }
+    }
+
+    best.map(|(_, _, index_expr, value_expr)| (index_expr, value_expr))
+}
+
+fn reify_exact_variable_substitution<N, CF>(
+    pattern: &egg::PatternAst<ArrayLanguage>,
+    eclass: egg::Id,
+    expr: &ArrayExpr,
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    extractor: &ArrayTermExtractor<CF>,
+    memo: &mut HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
+    ctx: &mut DecisionLogContext<'_>,
+) -> egg::PatternAst<ArrayLanguage>
+where
+    N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
+{
+    match pattern.as_ref() {
+        [egg::ENodeOrVar::Var(var)] => {
+            if let Some(existing) = memo.get(var) {
+                return existing.clone();
+            }
+
+            if trace_conflicts_enabled() {
+                trace_conflicts(format!(
+                    "      choice slot={} axiom={} eclass={} expr={}",
+                    *ctx.slot_index, ctx.axiom_name, eclass, expr
+                ));
+            }
+            ctx.decisions.push(extractor.decision_record(
+                egraph,
+                eclass,
+                ctx.axiom_name,
+                *ctx.slot_index,
+                expr,
+            ));
+            *ctx.slot_index += 1;
+
+            let pattern_expr = patternify(expr);
+            memo.insert(*var, pattern_expr.clone());
+            pattern_expr
+        }
+        _ => unreachable!("exact substitutions are only used for variable patterns"),
+    }
+}
+
+fn is_single_variable_pattern(pattern: &egg::PatternAst<ArrayLanguage>) -> bool {
+    matches!(pattern.as_ref(), [egg::ENodeOrVar::Var(_)])
+}
+
+fn egraph_contains_at<N>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    expr: &ArrayExpr,
+    expected_eclass: egg::Id,
+) -> bool
+where
+    N: egg::Analysis<ArrayLanguage>,
+{
+    egraph
+        .lookup_expr(expr)
+        .is_some_and(|actual| egraph.find(actual) == egraph.find(expected_eclass))
+}
+
+fn child_patterns_compatible<const N_CHILDREN: usize, N>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    subst: &egg::Subst,
+    patterns: [&egg::PatternAst<ArrayLanguage>; N_CHILDREN],
+    candidate_eclasses: [egg::Id; N_CHILDREN],
+) -> bool
+where
+    N: egg::Analysis<ArrayLanguage>,
+{
+    patterns
+        .into_iter()
+        .zip(candidate_eclasses)
+        .all(|(pattern, candidate_eclass)| {
+            pattern_matches_eclass(pattern, candidate_eclass, egraph, subst)
+        })
+}
+
+fn pattern_matches_eclass<N>(
+    pattern: &egg::PatternAst<ArrayLanguage>,
+    candidate_eclass: egg::Id,
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    subst: &egg::Subst,
+) -> bool
+where
+    N: egg::Analysis<ArrayLanguage>,
+{
+    match pattern.rooted() {
+        egg::ENodeOrVar::Var(var) => {
+            egraph.find(candidate_eclass) == egraph.find(*subst.get(*var).unwrap())
+        }
+        egg::ENodeOrVar::ENode(pattern_node) => egraph[candidate_eclass].nodes.iter().any(|node| {
+            pattern_node.matches(node)
+                && pattern_node.children().iter().zip(node.children()).all(
+                    |(pattern_child, candidate_child)| {
+                        pattern_matches_eclass(
+                            &subpattern(pattern, *pattern_child),
+                            *candidate_child,
+                            egraph,
+                            subst,
+                        )
+                    },
+                )
+        }),
+    }
 }
 
 fn unpatternify(pattern: egg::PatternAst<ArrayLanguage>) -> egg::RecExpr<ArrayLanguage> {
@@ -574,6 +940,12 @@ where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
     let expr = extractor.extract(egraph, eclass.id);
+    if trace_conflicts_enabled() {
+        trace_conflicts(format!(
+            "      choice slot={} axiom={} eclass={} expr={}",
+            *ctx.slot_index, ctx.axiom_name, eclass.id, expr
+        ));
+    }
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));
     ctx.decisions.push(extractor.decision_record(
         egraph,
@@ -591,27 +963,4 @@ where
         .map(egg::ENodeOrVar::ENode)
         .collect::<Vec<_>>()
         .into()
-}
-
-fn record_specialized_choice<N, CF>(
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    eclass_id: egg::Id,
-    chosen: &egg::RecExpr<ArrayLanguage>,
-    extractor: &ArrayTermExtractor<CF>,
-    ctx: &mut DecisionLogContext<'_>,
-) where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
-{
-    // The specialized Read/Write reconstruction path chooses terms by following
-    // read/write metadata instead of the generic e-class extractor. We still log
-    // those selections as decision points so the provenance chain remains complete.
-    ctx.decisions.push(extractor.decision_record(
-        egraph,
-        eclass_id,
-        ctx.axiom_name,
-        *ctx.slot_index,
-        chosen,
-    ));
-    *ctx.slot_index += 1;
 }

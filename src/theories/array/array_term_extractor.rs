@@ -126,6 +126,11 @@ where
         vec![(expr, cost)]
     }
 
+    pub fn cost_of(&self, expr: &ArrayExpr) -> u32 {
+        let mut cost_fn = self.cost_function.clone();
+        cost_fn.cost_rec(expr)
+    }
+
     pub fn decision_record<N>(
         &self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
