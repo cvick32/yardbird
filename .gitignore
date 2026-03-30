@@ -21,3 +21,4 @@ benchmark_results
 *.pyc
 run_all_benchmarks.sh
 ubuntu*
+examples/bitwuzla/
