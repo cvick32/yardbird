@@ -31,6 +31,7 @@
 #[macro_use]
 extern crate pomelo;
 
+pub mod analysis;
 pub mod concrete;
 mod constant_abstraction;
 pub mod let_extract;
@@ -65,20 +66,26 @@ use vmt::{VMTError, VMTModel};
 pub fn get_vmt_from_path(input: &PathBuf) -> Result<VMTModel, VMTError> {
     let filename = String::from(input.to_str().unwrap());
     let content = std::io::BufReader::new(std::fs::File::open(input).unwrap());
-    let commands = get_commands(content, filename);
+    let commands = get_commands(content, filename).map_err(VMTError::from)?;
     VMTModel::checked_from(commands)
 }
 
-pub fn get_commands(content: BufReader<File>, filename: String) -> Vec<Command> {
+pub fn get_commands(content: BufReader<File>, filename: String) -> Result<Vec<Command>, Error> {
     let command_stream = CommandStream::new(content, SyntaxBuilder, Some(filename));
     let mut commands = vec![];
     for result in command_stream {
         match result {
             Ok(command) => commands.push(command),
-            Err(err) => todo!("Command Error: {}", err),
+            Err(err) => return Err(err),
         }
     }
-    commands
+    Ok(commands)
+}
+
+pub fn get_commands_from_path(input: &PathBuf) -> Result<Vec<Command>, Error> {
+    let filename = String::from(input.to_str().unwrap());
+    let content = std::io::BufReader::new(std::fs::File::open(input).unwrap());
+    get_commands(content, filename)
 }
 
 pub fn get_term_from_term_string(term: &str) -> Term {

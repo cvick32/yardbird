@@ -28,7 +28,6 @@ yardbird/                       # Root workspace
     egg_utils.rs                # E-graph utility helpers
     problem.rs                  # Problem trait (get_sorts, check, unroll)
     logger.rs                   # env_logger init
-    baml_client.rs              # BAML AI verification client
     utils.rs                    # SolverStatistics, general utils
     strategies/
       mod.rs                    # Re-exports all strategies
@@ -105,8 +104,6 @@ yardbird/                       # Root workspace
   to_vmt/                       # VMT code gen from Rust annotations
     vmt_macros/                 # #[ensures(...)] proc macro
     vmtil/                      # VMT Intermediate Language
-  baml_rust/                    # BAML AI verification API client
-  baml_schemas/                 # BAML schema definitions
   examples/
     array/                      # ~191 VMT array benchmarks
     list/                       # 11 list theory examples
@@ -579,8 +576,6 @@ Extensions (via `ProofStrategyExt`):
 | to_vmt | `./to_vmt` | VMT code generation from Rust |
 | vmt_macros | `./to_vmt/vmt_macros` | `#[ensures(...)]` proc macro |
 | vmtil | `./to_vmt/vmtil` | VMT Intermediate Language |
-| baml_rust | `./baml_rust` | BAML AI verification API client |
-
 ---
 
 ## Build & Run
