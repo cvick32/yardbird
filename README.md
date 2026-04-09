@@ -53,6 +53,34 @@ cargo build -p garden --release
 
 This runs all array benchmarks at depth 10 with both BMC Cost and Z3 array theory strategies, generating a JSON file with detailed results.
 
+### 4. Use The Unified Evaluation Entry Point
+
+`main_eval.py` is the top-level orchestration script for benchmark runs and reports.
+
+```bash
+# Local run with a combined workbook report
+python3 main_eval.py \
+  --env local \
+  --benchmark-type deep-abstract \
+  --benchmark-type deep-concrete \
+  --name paper-smoke
+
+# AWS launch only: records a local run manifest and exits immediately
+python3 main_eval.py \
+  --env aws \
+  --benchmark-type deep-abstract \
+  --benchmark-type deep-concrete \
+  --name paper-aws
+
+# Later, refresh status for an AWS-backed run
+python3 main_eval.py --aws-run-id <run-id> --status
+
+# When the AWS run is complete, download artifacts and build the report
+python3 main_eval.py --aws-run-id <run-id> --generate-report
+```
+
+Artifacts are stored under `benchmark_results/main_eval/<run-id>/`. Raw benchmark JSON files land in per-matrix `raw/` directories using `MM_DD_YYYY_HH_MM.json` names, while generated figures and the Typst workbook live under `report/`.
+
 ## Reproducing Paper Results
 
 To fully reproduce the paper's evaluation:
