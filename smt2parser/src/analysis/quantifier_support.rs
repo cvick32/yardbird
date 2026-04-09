@@ -132,9 +132,7 @@ impl FileAnalysisAccumulator {
                 self.has_arrays |= function_sig_has_array(sig);
             }
             Command::DefineFunsRec { funs } => {
-                self.has_arrays |= funs
-                    .iter()
-                    .any(|(sig, _)| function_sig_has_array(sig));
+                self.has_arrays |= funs.iter().any(|(sig, _)| function_sig_has_array(sig));
             }
             Command::DefineSort { sort, .. } => self.has_arrays |= sort_has_array(sort),
             Command::Push { .. } | Command::Pop { .. } => self.uses_push_pop = true,
@@ -331,9 +329,7 @@ fn sort_has_array(sort: &Sort) -> bool {
         Sort::Parameterized {
             identifier,
             parameters,
-        } => {
-            identifier.to_string() == "Array" || parameters.iter().any(sort_has_array)
-        }
+        } => identifier.to_string() == "Array" || parameters.iter().any(sort_has_array),
     }
 }
 
@@ -550,9 +546,7 @@ mod tests {
     #[test]
     fn detects_arrays_from_declare_fun_parameter_sort() {
         let commands = [
-            get_command_from_command_string(
-                b"(declare-fun f ((Array Int Int) Int) Bool)",
-            ),
+            get_command_from_command_string(b"(declare-fun f ((Array Int Int) Int) Bool)"),
             get_command_from_command_string(b"(assert true)"),
         ];
         let mut acc = FileAnalysisAccumulator::default();
