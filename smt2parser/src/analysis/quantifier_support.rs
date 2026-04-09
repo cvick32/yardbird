@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::nnf::to_nnf,
-    concrete::{Command, Term},
+    concrete::{Command, FunctionDec, Sort, Term},
     let_extract::LetExtract,
     visitors::AttributeValue,
 };
@@ -109,6 +109,7 @@ pub struct AnalysisOptions {
 
 #[derive(Default)]
 pub struct FileAnalysisAccumulator {
+    has_arrays: bool,
     asserts: usize,
     forall: usize,
     exists: usize,
@@ -121,6 +122,21 @@ pub struct FileAnalysisAccumulator {
 impl FileAnalysisAccumulator {
     pub fn observe_command(&mut self, command: &Command) {
         match command {
+            Command::DeclareConst { sort, .. } => self.has_arrays |= sort_has_array(sort),
+            Command::DeclareFun {
+                parameters, sort, ..
+            } => {
+                self.has_arrays |= parameters.iter().any(sort_has_array) || sort_has_array(sort);
+            }
+            Command::DefineFun { sig, .. } | Command::DefineFunRec { sig, .. } => {
+                self.has_arrays |= function_sig_has_array(sig);
+            }
+            Command::DefineFunsRec { funs } => {
+                self.has_arrays |= funs
+                    .iter()
+                    .any(|(sig, _)| function_sig_has_array(sig));
+            }
+            Command::DefineSort { sort, .. } => self.has_arrays |= sort_has_array(sort),
             Command::Push { .. } | Command::Pop { .. } => self.uses_push_pop = true,
             Command::CheckSatAssuming { .. } => self.uses_check_sat_assuming = true,
             _ => {}
@@ -146,7 +162,7 @@ impl FileAnalysisAccumulator {
             relative_path: relative_path.to_path_buf(),
             family: family.clone(),
             incrementality,
-            has_arrays: array_family_allowlist().contains(&family.as_str()),
+            has_arrays: self.has_arrays,
             has_quantifiers: self.forall + self.exists > 0,
             has_forall: self.forall > 0,
             has_exists: self.exists > 0,
@@ -309,6 +325,22 @@ struct QuantifierCounts {
     exists: usize,
 }
 
+fn sort_has_array(sort: &Sort) -> bool {
+    match sort {
+        Sort::Simple { .. } => false,
+        Sort::Parameterized {
+            identifier,
+            parameters,
+        } => {
+            identifier.to_string() == "Array" || parameters.iter().any(sort_has_array)
+        }
+    }
+}
+
+fn function_sig_has_array(sig: &FunctionDec) -> bool {
+    sig.parameters.iter().any(|(_, sort)| sort_has_array(sort)) || sort_has_array(&sig.result)
+}
+
 fn count_quantifiers(term: &Term) -> QuantifierCounts {
     match term {
         Term::Forall { term, .. } => {
@@ -434,10 +466,27 @@ pub fn infer_path_metadata(path: &Path) -> (String, String) {
         .components()
         .map(|component| component.as_os_str().to_string_lossy().to_string())
         .collect::<Vec<_>>();
-    if components.len() < 2 {
-        return ("unknown".to_string(), "unknown".to_string());
+    let family = components
+        .iter()
+        .find(|component| array_family_allowlist().contains(&component.as_str()))
+        .cloned();
+    let incrementality = components
+        .iter()
+        .find(|component| matches!(component.as_str(), "incremental" | "non-incremental"))
+        .cloned();
+
+    match (incrementality, family) {
+        (Some(incrementality), Some(family)) => (incrementality, family),
+        (Some(incrementality), None) => (incrementality, "unknown".to_string()),
+        (None, Some(family)) => ("unknown".to_string(), family),
+        (None, None) => {
+            if components.len() >= 2 {
+                (components[0].clone(), components[1].clone())
+            } else {
+                ("unknown".to_string(), "unknown".to_string())
+            }
+        }
     }
-    (components[0].clone(), components[1].clone())
 }
 
 #[cfg(test)]
@@ -479,6 +528,48 @@ mod tests {
     }
 
     #[test]
+    fn detects_arrays_from_declare_fun_sort() {
+        let commands = [
+            get_command_from_command_string(b"(declare-fun a () (Array Int Int))"),
+            get_command_from_command_string(b"(assert true)"),
+        ];
+        let mut acc = FileAnalysisAccumulator::default();
+        for command in commands {
+            match command {
+                Command::Assert { term } => {
+                    let processed = analyze_assertion(0, term, AnalysisOptions::default());
+                    acc.observe_assertion(&processed.analysis);
+                }
+                other => acc.observe_command(&other),
+            }
+        }
+        let file = acc.finish(std::path::Path::new("non-incremental/ABV/test.smt2"));
+        assert!(file.has_arrays);
+    }
+
+    #[test]
+    fn detects_arrays_from_declare_fun_parameter_sort() {
+        let commands = [
+            get_command_from_command_string(
+                b"(declare-fun f ((Array Int Int) Int) Bool)",
+            ),
+            get_command_from_command_string(b"(assert true)"),
+        ];
+        let mut acc = FileAnalysisAccumulator::default();
+        for command in commands {
+            match command {
+                Command::Assert { term } => {
+                    let processed = analyze_assertion(0, term, AnalysisOptions::default());
+                    acc.observe_assertion(&processed.analysis);
+                }
+                other => acc.observe_command(&other),
+            }
+        }
+        let file = acc.finish(std::path::Path::new("non-incremental/ABV/test.smt2"));
+        assert!(file.has_arrays);
+    }
+
+    #[test]
     fn classifies_exists_eliminated_by_nnf() {
         let (file, _) = analyze(&[b"(assert (not (exists ((x Int)) (> x 0))))"]);
         assert!(file.fully_supported);
@@ -509,6 +600,18 @@ mod tests {
             infer_path_metadata(std::path::Path::new("non-incremental/AUFBV/test.smt2"));
         assert_eq!(incrementality, "non-incremental");
         assert_eq!(family, "AUFBV");
+
+        let (incrementality, family) = infer_path_metadata(std::path::Path::new(
+            "20190429-UltimateAutomizerSvcomp2019/example.smt2",
+        ));
+        assert_eq!(incrementality, "20190429-UltimateAutomizerSvcomp2019");
+        assert_eq!(family, "example.smt2");
+
+        let (incrementality, family) = infer_path_metadata(std::path::Path::new(
+            "incremental/QF_ABV/2019-Mann/example.smt2",
+        ));
+        assert_eq!(incrementality, "incremental");
+        assert_eq!(family, "QF_ABV");
 
         let (incrementality, family) = infer_path_metadata(std::path::Path::new("flat.smt2"));
         assert_eq!(incrementality, "unknown");

@@ -191,12 +191,14 @@ fn classify_benchmarks(
     let options = AnalysisOptions {
         include_assertion_text,
     };
+    let metadata_prefix = classify_metadata_prefix(benchmark_root);
 
     for file in collect_smt2_files(benchmark_root)? {
-        let relative_path = file
+        let stripped_path = file
             .strip_prefix(benchmark_root)
             .context("failed to compute benchmark-relative path")?
             .to_path_buf();
+        let relative_path = metadata_prefix.join(stripped_path);
         let file_len = fs::metadata(&file)?.len();
         if file_len > max_bytes {
             let row = FileAnalysis::parse_error(
@@ -225,6 +227,27 @@ fn classify_benchmarks(
 
     write_summary(output_root, &summary)?;
     Ok(())
+}
+
+fn classify_metadata_prefix(benchmark_root: &Path) -> PathBuf {
+    let components = benchmark_root
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    let incrementality = components
+        .iter()
+        .find(|component| matches!(component.as_str(), "incremental" | "non-incremental"));
+    let family = components
+        .iter()
+        .find(|component| array_family_allowlist().contains(&component.as_str()));
+
+    match (incrementality, family) {
+        (Some(incrementality), Some(family)) => PathBuf::from(incrementality).join(family),
+        (Some(incrementality), None) => PathBuf::from(incrementality),
+        (None, Some(family)) => PathBuf::from(family),
+        (None, None) => PathBuf::new(),
+    }
 }
 
 fn process_file(
