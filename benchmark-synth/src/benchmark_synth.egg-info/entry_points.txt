@@ -1,0 +1,2 @@
+[console_scripts]
+benchmark-synth = benchmark_synth.cli:main
