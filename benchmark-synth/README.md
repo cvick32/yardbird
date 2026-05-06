@@ -11,6 +11,12 @@ source .venv/bin/activate
 uv sync
 ```
 
+The default regeneration path from the repo root is:
+
+```bash
+./benchmark-gen.sh
+```
+
 ## Run Tests
 
 ```bash
@@ -45,6 +51,9 @@ PYTHONPATH=src python -m benchmark_synth.cli generate \
   --bug-ratio 0.5
 ```
 
+If you omit `--family`, `--skeleton`, and `--property-family`, generation uses
+the current supported structure mix.
+
 ## Inspect Generated Benchmarks
 
 Generated corpora are written under `generated/corpora/<name>/`.
@@ -73,4 +82,22 @@ target/debug/yardbird \
   --strategy concrete \
   --depth 3 \
   --json-output
+```
+
+## Default Regeneration Script
+
+`../benchmark-gen.sh` deletes the current default corpus and regenerates a new
+mixed benchmark set with sensible defaults.
+
+Defaults:
+
+- output corpus: `generated/corpora/default`
+- seed: `17`
+- count: `72`
+- bug ratio: `0.30`
+
+You can override them with environment variables:
+
+```bash
+BENCHMARK_SEED=21 BENCHMARK_COUNT=96 BENCHMARK_BUG_RATIO=0.4 ./benchmark-gen.sh
 ```
