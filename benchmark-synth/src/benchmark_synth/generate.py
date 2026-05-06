@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 import random
 
-from .families import build_single_loop_copy
+from .families import FamilyBuilder, supported_structures
 from .ir import BenchmarkSpec, FamilyName, PropertyFamily, SkeletonType
 from .lower_vmt import lower_benchmark
 from .manifests import CorpusEntry, CorpusManifest, RejectionEntry
-from .metadata import BenchmarkMetadata
 from .mutators import apply_bug_mutation
 from .naming import benchmark_filename, metadata_filename
 from .validate import validate_structural
@@ -21,19 +20,16 @@ class GenerateConfig:
     output_dir: Path
     seed: int
     count: int
-    family: FamilyName
-    skeleton: SkeletonType
-    property_family: PropertyFamily
-    bug_ratio: float
+    family: FamilyName | None = None
+    skeleton: SkeletonType | None = None
+    property_family: PropertyFamily | None = None
+    bug_ratio: float = 0.0
 
 
 def generate_corpus(config: GenerateConfig) -> CorpusManifest:
-    if config.family != FamilyName.COPY:
-        raise NotImplementedError("only the copy family is implemented in the first slice")
-    if config.skeleton != SkeletonType.SINGLE_LOOP:
-        raise NotImplementedError("only single_loop is implemented in the first slice")
-    if config.property_family != PropertyFamily.POINTWISE:
-        raise NotImplementedError("only pointwise properties are implemented in the first slice")
+    structures = _matching_structures(config)
+    if not structures:
+        raise ValueError("no supported structures match the requested filters")
 
     benchmark_dir = config.output_dir / "benchmarks"
     metadata_dir = config.output_dir / "metadata"
@@ -47,7 +43,8 @@ def generate_corpus(config: GenerateConfig) -> CorpusManifest:
     for ordinal in range(config.count):
         try:
             bug_flag = rng.random() < config.bug_ratio
-            spec = _build_spec(config.seed, ordinal, bug_flag)
+            builder = rng.choice(structures)
+            spec = _build_spec(builder, config.seed, ordinal, bug_flag)
             validate_structural(spec)
             lowered = lower_benchmark(spec)
             metadata = spec.metadata()
@@ -83,8 +80,21 @@ def generate_corpus(config: GenerateConfig) -> CorpusManifest:
     return manifest
 
 
-def _build_spec(seed: int, ordinal: int, bug_flag: bool) -> BenchmarkSpec:
-    spec = build_single_loop_copy(seed=seed, ordinal=ordinal, bug_flag=False)
+def _matching_structures(config: GenerateConfig) -> list[FamilyBuilder]:
+    matches: list[FamilyBuilder] = []
+    for (family, skeleton, property_family), builder in supported_structures().items():
+        if config.family is not None and family != config.family:
+            continue
+        if config.skeleton is not None and skeleton != config.skeleton:
+            continue
+        if config.property_family is not None and property_family != config.property_family:
+            continue
+        matches.append(builder)
+    return matches
+
+
+def _build_spec(builder: FamilyBuilder, seed: int, ordinal: int, bug_flag: bool) -> BenchmarkSpec:
+    spec = builder(seed=seed, ordinal=ordinal, bug_flag=False)
     if bug_flag:
         spec = apply_bug_mutation(spec, bug_kind=spec_bug_kind())
     return spec

@@ -8,7 +8,6 @@ from .ir import (
     Add,
     And,
     ArrayVar,
-    Assignment,
     BenchmarkSpec,
     Eq,
     Expr,
@@ -16,11 +15,14 @@ from .ir import (
     Gt,
     Implies,
     IntConst,
+    Le,
     Lt,
+    Or,
     ScalarVar,
     Select,
     Sort,
     Store,
+    TransitionCase,
     VarRef,
     WitnessVar,
 )
@@ -39,11 +41,7 @@ def lower_benchmark(spec: BenchmarkSpec) -> LoweredBenchmark:
         declarations.extend(_declare_state_var(var))
 
     init_text = _lower_and_block(spec.program.init_constraints)
-    transition_case = spec.program.transition_cases[0]
-    trans_terms = (transition_case.guard,) + tuple(
-        Eq(VarRef(f"{assignment.target}_next"), assignment.expr)
-        for assignment in transition_case.assignments
-    )
+    trans_terms = _lower_transition_terms(spec.program.transition_cases)
     trans_text = _lower_and_block(trans_terms)
     property_text = _lower_and_block((spec.program.property_spec.body,))
 
@@ -66,6 +64,30 @@ def lower_benchmark(spec: BenchmarkSpec) -> LoweredBenchmark:
         ]
     )
     return LoweredBenchmark(benchmark_name=spec.benchmark_name, vmt_text=body)
+
+
+def _lower_transition_terms(transition_cases: tuple[TransitionCase, ...]) -> tuple[Expr, ...]:
+    if len(transition_cases) == 1:
+        case = transition_cases[0]
+        return (case.guard,) + tuple(
+            Eq(VarRef(f"{assignment.target}_next"), assignment.expr)
+            for assignment in case.assignments
+        )
+
+    guard_cover = Or(tuple(case.guard for case in transition_cases))
+    implications = tuple(
+        Implies(
+            case.guard,
+            And(
+                tuple(
+                    Eq(VarRef(f"{assignment.target}_next"), assignment.expr)
+                    for assignment in case.assignments
+                )
+            ),
+        )
+        for case in transition_cases
+    )
+    return (guard_cover,) + implications
 
 
 def _declare_state_var(var: ArrayVar | ScalarVar | WitnessVar) -> list[str]:
@@ -99,10 +121,16 @@ def _lower_expr(expr: Expr) -> str:
         return f"(= {_lower_expr(expr.left)} {_lower_expr(expr.right)})"
     if isinstance(expr, Lt):
         return f"(< {_lower_expr(expr.left)} {_lower_expr(expr.right)})"
+    if isinstance(expr, Le):
+        return f"(<= {_lower_expr(expr.left)} {_lower_expr(expr.right)})"
     if isinstance(expr, Ge):
         return f"(>= {_lower_expr(expr.left)} {_lower_expr(expr.right)})"
     if isinstance(expr, Gt):
         return f"(> {_lower_expr(expr.left)} {_lower_expr(expr.right)})"
+    if isinstance(expr, Or):
+        if len(expr.terms) == 1:
+            return _lower_expr(expr.terms[0])
+        return f"(or {' '.join(_lower_expr(term) for term in expr.terms)})"
     if isinstance(expr, And):
         if len(expr.terms) == 1:
             return _lower_expr(expr.terms[0])

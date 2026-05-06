@@ -135,6 +135,11 @@ class Ge(Expr):
 
 
 @dataclass(frozen=True)
+class Or(Expr):
+    terms: tuple[Expr, ...]
+
+
+@dataclass(frozen=True)
 class And(Expr):
     terms: tuple[Expr, ...]
 
@@ -233,3 +238,16 @@ def validate_benchmark_spec(spec: BenchmarkSpec) -> None:
     }
     if missing_witnesses:
         raise ValueError(f"property references unknown witnesses: {sorted(missing_witnesses)}")
+
+    state_names = set(all_state_var_names(program))
+    for case in program.transition_cases:
+        assigned_names = [assignment.target for assignment in case.assignments]
+        if len(set(assigned_names)) != len(assigned_names):
+            raise ValueError("transition case assigns the same target more than once")
+        if set(assigned_names) != state_names:
+            missing = sorted(state_names - set(assigned_names))
+            extra = sorted(set(assigned_names) - state_names)
+            raise ValueError(
+                "transition case must assign every state variable exactly once; "
+                f"missing={missing}, extra={extra}"
+            )

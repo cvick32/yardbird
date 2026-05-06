@@ -23,19 +23,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--family",
         type=FamilyName,
         choices=list(FamilyName),
-        required=True,
     )
     generate_parser.add_argument(
         "--skeleton",
         type=SkeletonType,
         choices=list(SkeletonType),
-        required=True,
     )
     generate_parser.add_argument(
         "--property-family",
         type=PropertyFamily,
         choices=list(PropertyFamily),
-        required=True,
     )
     generate_parser.add_argument("--bug-ratio", type=float, default=0.0)
 
