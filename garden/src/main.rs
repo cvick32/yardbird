@@ -325,6 +325,7 @@ fn get_git_commit() -> Option<String> {
 
 fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
     let examples = options
+        .clone()
         .examples
         .unwrap_or_else(|| PathBuf::from("examples"));
     let depth = options.depth.unwrap_or(10);
