@@ -1,0 +1,767 @@
+#+title: Benchmark Synthesis Implementation Plan for Yardbird
+
+* Purpose
+
+This document is the implementation plan for a *semantics-first benchmark
+synthesis framework* for Yardbird.
+
+The goal of this work is to create a repeatable pipeline that:
+
+1. generates VMT transition systems from a typed internal semantics,
+2. emits only coarse benchmark metadata,
+3. runs generated benchmarks through Yardbird's logging infrastructure,
+4. exports datasets for later learned cost-function experiments.
+
+This plan is intentionally implementation-oriented. It describes the directory
+layout, module boundaries, data structures, CLI entry points, validation rules,
+and rollout sequence for the first working version.
+
+All synthesis code will live in a new Python workspace rooted at
+~benchmark-synth/~ with its own virtual environment.
+
+* Resolved Decisions
+
+The following decisions are already made and should be treated as requirements:
+
+- the generator is *semantics-first*
+- all work lives in ~benchmark-synth/~
+- environment management uses a local ~.venv~ plus ~uv sync~
+- generated corpora stay *external* to ~examples/~ for now
+- emitted metadata is written as *JSON*
+- metadata must contain:
+  - ~family_name~
+  - ~skeleton_type~
+  - ~property_family~
+  - ~bug_flag~
+  - ~estimated_difficulty~
+- the generator must support *multiple witness variables* from the start
+- VMT lowering should *not* emit ~let~ bindings
+- baseline execution must include the ~concrete~ strategy so we can measure how
+  direct Z3 array reasoning behaves on the generated corpus
+- difficulty calibration from observed logs is explicitly *deferred* until much
+  later
+- the IR and lowering should support up to *4 nested loops*; the initial corpus
+  does not need to emphasize that maximum depth, but the representation should
+  not block it
+
+* Deliverables
+
+This project should produce the following first-class deliverables:
+
+- a standalone Python package in ~benchmark-synth/~
+- a typed internal IR for semantic benchmark generation
+- VMT lowering for array benchmarks
+- a corpus generator with deterministic seeding
+- JSON metadata sidecars
+- validation and rejection filters
+- a Yardbird batch runner
+- a dataset export tool
+- a reproducible corpus snapshot with manifests
+
+* Repository Layout
+
+Create:
+
+- ~benchmark-synth/~
+
+Initial layout:
+
+- ~benchmark-synth/.venv/~
+- ~benchmark-synth/README.md~
+- ~benchmark-synth/pyproject.toml~
+- ~benchmark-synth/src/benchmark_synth/__init__.py~
+- ~benchmark-synth/src/benchmark_synth/cli.py~
+- ~benchmark-synth/src/benchmark_synth/config.py~
+- ~benchmark-synth/src/benchmark_synth/ir.py~
+- ~benchmark-synth/src/benchmark_synth/families.py~
+- ~benchmark-synth/src/benchmark_synth/mutators.py~
+- ~benchmark-synth/src/benchmark_synth/lower_vmt.py~
+- ~benchmark-synth/src/benchmark_synth/metadata.py~
+- ~benchmark-synth/src/benchmark_synth/naming.py~
+- ~benchmark-synth/src/benchmark_synth/generate.py~
+- ~benchmark-synth/src/benchmark_synth/validate.py~
+- ~benchmark-synth/src/benchmark_synth/run_yardbird.py~
+- ~benchmark-synth/src/benchmark_synth/export_dataset.py~
+- ~benchmark-synth/src/benchmark_synth/manifests.py~
+- ~benchmark-synth/tests/test_ir.py~
+- ~benchmark-synth/tests/test_lower_vmt.py~
+- ~benchmark-synth/tests/test_generation.py~
+- ~benchmark-synth/tests/test_validation.py~
+- ~benchmark-synth/generated/~
+
+Module responsibilities:
+
+- ~cli.py~
+  - top-level CLI parser and subcommand dispatch
+- ~config.py~
+  - corpus specs, family quotas, run configs, path settings
+- ~ir.py~
+  - typed dataclasses and enums for the semantic IR
+- ~families.py~
+  - family builders that create correct semantic programs
+- ~mutators.py~
+  - single-step bug mutations derived from correct programs
+- ~lower_vmt.py~
+  - lowering from semantic IR to concrete VMT text
+- ~metadata.py~
+  - metadata schema and JSON serialization
+- ~naming.py~
+  - deterministic symbol and file naming
+- ~generate.py~
+  - corpus generation pipeline
+- ~validate.py~
+  - parse checks, duplicate detection, and execution-based filtering
+- ~run_yardbird.py~
+  - batch execution of Yardbird on generated corpora
+- ~export_dataset.py~
+  - joins generated benchmark metadata with logged run artifacts
+- ~manifests.py~
+  - manifest schema, corpus snapshots, rejection logs, run manifests
+
+* Environment Setup
+
+Use a normal local venv inside ~benchmark-synth/~ and manage dependencies with
+~uv~.
+
+Implementation requirements:
+
+- create ~benchmark-synth/pyproject.toml~
+- define runtime and dev dependencies there
+- commit a ~uv.lock~ for the synthesis workspace once the package stabilizes
+- do not introduce unnecessary framework dependencies in the first pass
+
+Recommended dependencies:
+
+- standard-library ~dataclasses~ and ~enum~
+- ~pytest~
+- ~uv~
+- ~typing-extensions~ only if needed
+- ~pyyaml~ only if config files become useful
+- ~pandas~ only when export and analysis work begins
+
+Bootstrap commands:
+
+- ~cd benchmark-synth~
+- ~python -m venv .venv~
+- ~source .venv/bin/activate~
+- ~uv sync~
+
+The package should install and run from the repo without touching the Rust
+workspace setup.
+
+* CLI Surface
+
+Implement a single CLI with subcommands:
+
+- ~benchmark-synth generate~
+- ~benchmark-synth validate~
+- ~benchmark-synth run-yardbird~
+- ~benchmark-synth export-dataset~
+
+Required flags for ~generate~:
+
+- ~--output-dir~
+- ~--seed~
+- ~--count~
+- ~--family~
+- ~--skeleton~
+- ~--property-family~
+- ~--bug-ratio~
+- ~--difficulty~
+
+Required flags for ~validate~:
+
+- ~--corpus-dir~
+- ~--yardbird-bin~ or infer from repo
+- ~--config~
+
+Required flags for ~run-yardbird~:
+
+- ~--corpus-dir~
+- ~--output-dir~
+- ~--database-url~ when training logging is enabled
+- ~--track-instantiations~
+- ~--strategies~
+- ~--depth~
+
+Required flags for ~export-dataset~:
+
+- ~--corpus-dir~
+- ~--run-manifest~
+- ~--output-file~
+
+The CLI should be thin. All real logic belongs in library modules so it can be
+tested directly.
+
+* Output Layout
+
+Generated corpora should be self-contained snapshots under
+~benchmark-synth/generated/~.
+
+Recommended layout:
+
+- ~benchmark-synth/generated/corpora/<corpus_name>/benchmarks/*.vmt~
+- ~benchmark-synth/generated/corpora/<corpus_name>/metadata/*.json~
+- ~benchmark-synth/generated/corpora/<corpus_name>/manifest.json~
+- ~benchmark-synth/generated/corpora/<corpus_name>/rejections.json~
+- ~benchmark-synth/generated/corpora/<corpus_name>/runs/<run_name>.json~
+- ~benchmark-synth/generated/corpora/<corpus_name>/exports/<dataset_name>.parquet~
+
+Naming requirements:
+
+- benchmark filenames must be deterministic from seed plus generation index
+- benchmark names must be stable across reruns with the same seed
+- manifests must record generator version and generation timestamp
+
+* Metadata Contract
+
+Each benchmark gets a sidecar JSON file.
+
+Required fields:
+
+- ~family_name: str~
+- ~skeleton_type: str~
+- ~property_family: str~
+- ~bug_flag: bool~
+- ~estimated_difficulty: str~
+
+Allowed bookkeeping fields:
+
+- ~generator_version: str~
+- ~seed: int~
+- ~benchmark_name: str~
+
+Disallowed fields in emitted metadata:
+
+- exact index expressions
+- exact guard formulas
+- array counts
+- scalar counts
+- mutator identity
+- critical-term hints
+- any hidden parameters that would let a learner recover the family internals
+
+The metadata serializer should reject unknown fields so we do not accidentally
+start leaking internal information over time.
+
+* Internal Semantic IR
+
+The generator should build benchmarks through a typed IR, not raw string
+templates.
+
+** Enums
+
+Define enums for:
+
+- ~SkeletonType~
+  - ~single_loop~
+  - ~two_phase~
+  - ~dual_counter~
+  - ~nested~
+- ~FamilyName~
+  - ~copy~
+  - ~init~
+  - ~transform~
+  - ~scan~
+  - ~summary~
+  - ~nested~
+- ~PropertyFamily~
+  - ~pointwise~
+  - ~prefix~
+  - ~segment~
+  - ~summary~
+  - ~phase~
+- ~Difficulty~
+  - ~easy~
+  - ~medium~
+  - ~hard~
+- ~BugKind~
+  - internal only
+
+** Core dataclasses
+
+Implement dataclasses for:
+
+- ~BenchmarkSpec~
+  - ~benchmark_name~
+  - ~seed~
+  - ~family_name~
+  - ~skeleton_type~
+  - ~property_family~
+  - ~bug_flag~
+  - ~estimated_difficulty~
+  - ~program: SemanticProgram~
+- ~SemanticProgram~
+  - arrays
+  - scalars
+  - witnesses
+  - counters
+  - phases
+  - init clauses
+  - transition cases
+  - completion condition
+  - property spec
+- ~ArrayVar~
+  - logical name
+  - sort information
+- ~ScalarVar~
+  - logical name
+  - sort
+  - role
+- ~WitnessVar~
+  - logical name
+  - sort
+  - role
+- ~Phase~
+  - phase id
+  - guard
+  - assignments
+  - next phase
+- ~Assignment~
+  - target
+  - expression
+- ~PropertySpec~
+  - family
+  - witnesses used
+  - antecedent
+  - consequent
+
+** Witness support
+
+Witnesses are required from the start.
+
+Implementation requirement:
+
+- the IR must support at least two named witnesses immediately
+- the lowering path must support emitting one or more witness variables into the
+  property
+- property builders must be able to choose between one-witness and
+  multi-witness forms
+
+Do not hard-code the system around a single ~Z~ witness.
+
+** Nesting support
+
+The IR must support nested loops with depth up to 4.
+
+Implementation requirement:
+
+- represent nesting structurally in the IR rather than encoding everything as a
+  flat phase list
+- the lowering path may still compile nested loops to ~pc~-style control, but
+  the semantic representation must preserve the nesting tree
+
+The initial corpus can still bias toward simpler cases, but the representation
+must not need to be redesigned later.
+
+* Benchmark Families
+
+Start with a small but concrete family set.
+
+Initial families to implement:
+
+- ~copy~
+- ~transform~
+- ~summary~
+- ~init~
+
+Initial skeleton coverage:
+
+- ~single_loop~ for ~copy~, ~transform~, ~summary~, ~init~
+- ~two_phase~ for ~copy~, ~transform~, ~init~
+- ~dual_counter~ for ~summary~
+- ~nested~ for one family once the first three are stable
+
+Family responsibilities:
+
+- ~copy~
+  - array-to-array relational updates
+- ~transform~
+  - single-array or two-array updates with arithmetic transformation
+- ~summary~
+  - scalar summary variables coupled to array reads
+- ~init~
+  - array writes proving initialization or segment properties
+
+Do not attempt to cover every interesting family in the first implementation.
+The first version should prefer correctness and clean lowering over breadth.
+
+* Program Generation Pipeline
+
+Generation order for one benchmark:
+
+1. choose family
+2. choose compatible skeleton
+3. sample hidden semantic parameters
+4. build a *correct* semantic program
+5. instantiate a property family
+6. optionally apply a single bug mutation
+7. estimate difficulty from generator-side heuristics
+8. lower to VMT
+9. run structural validation
+10. write benchmark, metadata, and manifest entries
+
+Requirements:
+
+- all generation must be deterministic from seed
+- bugs must be derived from correct programs
+- hidden semantic parameters stay internal
+- generation failures must be recorded with rejection reasons
+
+Do not generate buggy programs independently from scratch.
+
+* Bug Mutation Rules
+
+Buggy benchmarks come from one-step mutations only.
+
+Initial mutation set:
+
+- off-by-one loop guard
+- wrong read index
+- wrong write index
+- wrong branch guard
+- missing scalar update
+- incorrect phase transition
+- weakened or strengthened property bound
+
+Mutation rules:
+
+- apply exactly zero or one mutation per benchmark in the first pass
+- keep the benchmark in the same coarse family
+- preserve syntactic and typing correctness
+- mark only ~bug_flag~ in emitted metadata
+
+Mutation identity remains internal.
+
+* Difficulty Estimation
+
+Difficulty is a static generator-side label for the first implementation.
+
+Use the following rule-based mapping:
+
+- ~easy~
+  - single loop
+  - direct indices
+  - no conditional branching in loop body
+  - pointwise or prefix property
+- ~medium~
+  - shifted or mirrored indices
+  - two-phase control
+  - one scalar summary variable
+  - segment property
+- ~hard~
+  - dual counters
+  - nested control
+  - multiple witnesses
+  - interacting array and scalar invariants
+  - phase properties
+
+Do not calibrate difficulty from logged Yardbird behavior in this phase. That is
+explicitly postponed until much later.
+
+* Lowering to VMT
+
+Lowering should generate VMT that looks close to the current hand-written array
+benchmarks.
+
+Required output:
+
+- current-state declarations
+- next-state declarations
+- ~.x~ definitions with ~:next~
+- ~init-conditions~
+- ~trans-conditions~
+- ~property~ with ~:invar-property 0~
+
+Lowering rules:
+
+- target ~Array Int Int~ only in the first pass
+- use linear integer arithmetic only
+- keep all state updates explicit
+- emit no ~let~ bindings
+- use deterministic symbol names
+- keep formatting stable so diffs are readable
+
+Naming conventions:
+
+- arrays: ~a~, ~b~, ~c~, ...
+- counters: ~i~, ~j~, ~k~, ...
+- witnesses: ~Z~, ~Y~, ~W~, ...
+- control: ~pc~
+
+The lowering layer should be pure: given a ~BenchmarkSpec~, it returns VMT text
+and a metadata object. It should not read or write files directly.
+
+* Validation
+
+Validation has two levels.
+
+** Structural validation
+
+Every generated benchmark must pass:
+
+- IR well-formedness
+- type consistency
+- symbol uniqueness
+- valid lowering output
+- successful parse by Yardbird or ~smt2parser~
+
+** Corpus validation
+
+Once a batch is generated, reject or quarantine benchmarks that are:
+
+- duplicate by normalized VMT text
+- malformed
+- parser-unstable
+- trivial because all tested strategies behave the same and produce no useful
+  refinement behavior
+- permanently timing out under baseline configurations
+
+Validation outputs:
+
+- accepted manifest entries
+- rejected manifest entries with explicit reasons
+
+* Yardbird Execution Plan
+
+Implement a batch runner in Python rather than shelling out ad hoc.
+
+The runner should:
+
+- discover benchmarks from a corpus directory
+- invoke Yardbird with controlled flags
+- capture stdout, stderr, exit status, and duration
+- parse JSON results when ~--json-output~ is used
+- write a run manifest JSON file
+
+Baseline configurations for the first pass:
+
+- ~concrete~
+- ~abstract~ with ~bmc-cost~
+- ~abstract~ with ~ast-size~
+
+Later configurations can be added after the initial corpus is stable.
+
+The runner must support:
+
+- ~--track-instantiations~
+- ~--train~
+- ~--database-url~
+- ~--depth~
+- timeout settings
+
+Run manifest fields:
+
+- benchmark name
+- metadata path
+- strategy
+- cost function
+- depth
+- duration
+- status
+- proof found
+- counterexample found
+- total refinement steps
+- total instantiations added
+- output paths
+
+* Dataset Export Plan
+
+The first export tool should join:
+
+- coarse benchmark metadata
+- corpus manifest
+- Yardbird run manifests
+- logged decision data
+- abstract instantiations
+- indexed instantiations
+- unsat events
+
+The export tool should produce:
+
+- one row-oriented offline dataset file
+- one corpus summary report
+
+Preferred output format:
+
+- ~parquet~ for the joined dataset
+- ~json~ for summary reports
+
+Do not build model-training code into the first export tool. Keep it focused on
+assembling and validating the dataset.
+
+* Testing Plan
+
+Testing must be in place from the start.
+
+** Unit tests
+
+Add tests for:
+
+- enum and dataclass construction
+- witness handling
+- nesting representation
+- family builders
+- bug mutators
+- difficulty estimation
+- metadata serialization
+- VMT lowering
+
+** Snapshot tests
+
+Snapshot a small fixed-seed corpus:
+
+- VMT output
+- metadata JSON
+- corpus manifest
+
+This should catch accidental changes to lowering or naming behavior.
+
+** Integration tests
+
+Add a small generated corpus and assert:
+
+- all files parse in Yardbird
+- the runner can execute them
+- run manifests are produced
+- at least some benchmarks differ in outcomes across baseline strategies
+
+* Implementation Phases
+
+** Phase 1: Workspace bootstrap
+
+Tasks:
+
+- create ~benchmark-synth/~
+- add ~pyproject.toml~
+- add package skeleton
+- add CLI stub
+- add README with setup commands
+
+Acceptance criteria:
+
+- ~uv sync~ succeeds
+- ~benchmark-synth generate --help~ works
+- tests run under the local venv
+
+** Phase 2: IR and metadata schemas
+
+Tasks:
+
+- implement enums
+- implement core dataclasses
+- implement witness support
+- implement nesting support up to depth 4
+- implement metadata JSON schema
+
+Acceptance criteria:
+
+- unit tests cover IR validation and metadata serialization
+- invalid IR combinations fail fast
+
+** Phase 3: First family builders and mutators
+
+Tasks:
+
+- implement ~copy~, ~transform~, ~summary~, and ~init~ family builders
+- implement compatible ~single_loop~ and ~two_phase~ skeleton builders
+- implement ~dual_counter~ builder for ~summary~
+- implement one-step bug mutators
+
+Acceptance criteria:
+
+- generator can produce at least 20 structurally valid benchmarks
+- both safe and buggy cases exist
+- at least one family uses multiple witnesses
+
+** Phase 4: VMT lowering
+
+Tasks:
+
+- implement deterministic naming
+- implement lowering to stable VMT text
+- emit no ~let~ bindings
+- add snapshot tests for emitted VMT
+
+Acceptance criteria:
+
+- generated benchmarks parse in Yardbird
+- emitted metadata contains only allowed fields
+
+** Phase 5: Corpus generation and manifests
+
+Tasks:
+
+- implement seeded generation loops
+- implement output directories
+- implement corpus manifest and rejection log
+- implement duplicate detection
+
+Acceptance criteria:
+
+- a 50-benchmark corpus can be generated reproducibly
+- rerunning with the same seed produces the same accepted benchmarks
+
+** Phase 6: Validation and execution
+
+Tasks:
+
+- implement parser validation
+- implement baseline execution against Yardbird
+- add support for ~concrete~, ~abstract+bmc-cost~, and ~abstract+ast-size~
+- write run manifests
+
+Acceptance criteria:
+
+- generated corpora can be validated and executed end-to-end
+- rejected and accepted cases are recorded clearly
+
+** Phase 7: Dataset export
+
+Tasks:
+
+- implement export joins between metadata, manifests, and logged Yardbird data
+- emit a first ~parquet~ dataset
+- emit a JSON summary report
+
+Acceptance criteria:
+
+- we can inspect per-family counts
+- we can inspect per-strategy success and failure counts
+- we can count logged decision points contributed by each family
+
+* First Milestone
+
+The first milestone is:
+
+- workspace created
+- IR implemented
+- metadata JSON implemented
+- ~copy~ and ~init~ families working on ~single_loop~
+- one bug mutator working
+- VMT lowering implemented without ~let~
+- 50 generated benchmarks
+- successful parse validation
+- baseline execution under:
+  - ~concrete~
+  - ~abstract+bmc-cost~
+  - ~abstract+ast-size~
+
+This is the first end-to-end slice. It is large enough to validate the design
+and small enough to complete without overextending the initial scope.
+
+* Immediate Next Step
+
+Implementation should begin with the following exact sequence:
+
+1. create ~benchmark-synth/~ and package skeleton
+2. add ~pyproject.toml~ and get ~uv sync~ working
+3. implement ~ir.py~, ~metadata.py~, and ~naming.py~
+4. implement one ~single_loop copy~ builder in ~families.py~
+5. implement one bug mutator in ~mutators.py~
+6. implement pure VMT lowering in ~lower_vmt.py~
+7. add snapshot tests for the first generated benchmark
+8. verify the emitted benchmark parses in Yardbird
+
+After that slice is working, proceed to multi-family generation and the batch
+runner.
