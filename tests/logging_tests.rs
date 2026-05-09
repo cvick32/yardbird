@@ -343,6 +343,7 @@ fn single_example_persists_provenance_to_db() {
     options.track_instantiations = true;
     options.train = true;
     options.database_url = Some(database_url.clone());
+    options.training_run_version = Some("logging-test-run".to_string());
 
     let vmt_model = model_from_options(&options);
     let instantiation_strategy = options.build_instantiation_strategy();
@@ -381,6 +382,18 @@ fn single_example_persists_provenance_to_db() {
                 .await
                 .expect("expected benchmark row")
                 .get("id");
+        let training_run = sqlx::query(
+            r#"
+            SELECT tr.run_version, tr.schema_version
+            FROM benchmarks b
+            JOIN training_runs tr ON tr.id = b.training_run_id
+            WHERE b.id = $1
+            "#,
+        )
+        .bind(benchmark_id)
+        .fetch_one(&pool)
+        .await
+        .expect("expected linked training run row");
 
         let decision_count: i64 =
             sqlx::query("SELECT COUNT(*) AS count FROM decisions WHERE benchmark_id = $1")
@@ -450,6 +463,14 @@ fn single_example_persists_provenance_to_db() {
         );
         assert!(link_count > 0, "expected persisted provenance links");
         assert_eq!(unsat_event_count, 10, "expected persisted unsat event rows");
+        assert_eq!(
+            training_run.get::<String, _>("run_version"),
+            "logging-test-run"
+        );
+        assert_eq!(
+            training_run.get::<String, _>("schema_version"),
+            "004_training_runs"
+        );
         assert_eq!(
             final_unsat_event.get::<i64, _>("total_instantiations_added"),
             20
