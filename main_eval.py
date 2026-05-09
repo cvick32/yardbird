@@ -139,6 +139,10 @@ def load_manifest(run_id: str) -> dict[str, Any]:
     return load_json(path)
 
 
+def resolve_run_id(args: argparse.Namespace) -> str | None:
+    return args.run_id or args.aws_run_id
+
+
 def summarize_status(subruns: list[dict[str, Any]]) -> tuple[str, dict[str, int]]:
     counts = {STATUS_RUNNING: 0, STATUS_COMPLETED: 0, STATUS_FAILED: 0}
     for subrun in subruns:
@@ -508,6 +512,26 @@ def build_report_for_run(manifest: dict[str, Any]) -> None:
         save_manifest(manifest)
 
 
+def refresh_existing_run(manifest: dict[str, Any]) -> dict[str, Any]:
+    if manifest["env"] == "aws":
+        return refresh_aws_run(manifest)
+    if manifest["env"] == "local":
+        return manifest
+    raise RuntimeError(f"Run {manifest['run_id']} uses unsupported environment {manifest['env']}")
+
+
+def maybe_generate_report(manifest: dict[str, Any]) -> None:
+    if manifest["status"] != STATUS_COMPLETED:
+        raise RuntimeError(
+            f"Run {manifest['run_id']} is not complete yet; current status is {manifest['status']}"
+        )
+
+    if manifest["env"] == "aws":
+        download_aws_artifacts(manifest)
+
+    build_report_for_run(manifest)
+
+
 def print_run_summary(manifest: dict[str, Any]) -> None:
     print(f"Run ID: {manifest['run_id']}")
     print(f"Name: {manifest.get('name')}")
@@ -558,13 +582,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--name", help="Optional friendly name for the evaluation run")
     parser.add_argument(
-        "--aws-run-id",
-        help="Existing AWS-backed run id to refresh or report on",
+        "--run-id",
+        help="Existing run id to refresh or report on",
     )
+    parser.add_argument("--aws-run-id", help=argparse.SUPPRESS)
     parser.add_argument(
         "--status",
         action="store_true",
-        help="Refresh and print status for an existing AWS run",
+        help="Refresh and print status for an existing run",
     )
     parser.add_argument(
         "--generate-report",
@@ -578,25 +603,18 @@ def main() -> int:
     args = parse_args()
     ensure_dir(BENCHMARK_ROOT)
 
-    if args.aws_run_id:
-        manifest = load_manifest(args.aws_run_id)
-        if manifest["env"] != "aws":
-            raise RuntimeError(f"Run {args.aws_run_id} is not an AWS run")
-
-        manifest = refresh_aws_run(manifest)
+    existing_run_id = resolve_run_id(args)
+    if existing_run_id:
+        manifest = load_manifest(existing_run_id)
+        manifest = refresh_existing_run(manifest)
         if args.generate_report:
-            if manifest["status"] != STATUS_COMPLETED:
-                raise RuntimeError(
-                    f"Run {manifest['run_id']} is not complete yet; current status is {manifest['status']}"
-                )
-            download_aws_artifacts(manifest)
-            build_report_for_run(manifest)
+            maybe_generate_report(manifest)
 
         print_run_summary(manifest)
         return 0
 
     if not args.env:
-        raise RuntimeError("Provide either --env with benchmark types or --aws-run-id")
+        raise RuntimeError("Provide either --env with benchmark types or --run-id")
     if not args.benchmark_type:
         raise RuntimeError("Provide at least one --benchmark-type")
 
