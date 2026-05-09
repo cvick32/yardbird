@@ -1,0 +1,585 @@
+#+title: Lab Evaluation and Training Plan for Yardbird
+
+* Purpose
+
+This file captures the revised plan for running Yardbird evaluations on a
+Proxmox cluster instead of AWS, while still keeping ~main_eval.py~ as the main
+entry point.
+
+The updated goal is broader than "cheap benchmark runs." We want one
+reproducible story that supports both:
+
+1. normal evaluation runs that produce benchmark JSON and reports, and
+2. full logging and training runs that need a live Postgres database.
+
+The key new requirement is that the lab path must support:
+
+- ephemeral worker VMs for benchmark execution
+- optional sidecar Postgres infrastructure for training/logging runs
+- artifact upload to R2
+- clear repo documentation so the whole setup is easy to reproduce later
+
+* Decisions From Review
+
+These are the current anchor decisions:
+
+1. the lab path should be invoked via ~--env lab~
+2. run lookup should use a generic ~--run-id~
+3. we should target *V1 = ephemeral workers*
+4. artifacts can be uploaded directly to R2
+5. for training runs, we should be able to spin up a dedicated Postgres VM in
+   the Proxmox cluster
+6. the logging system should gain a first-class *version id* or run-group id so
+   we do not need to recreate the database for every collection campaign
+
+The last two points change the shape of the plan substantially.
+
+* Current State
+
+** Evaluation orchestration
+
+~main_eval.py~ currently supports:
+
+- ~local~
+- ~aws~
+
+with a flow that already separates:
+
+- launch
+- status refresh
+- artifact collection
+- report generation
+
+That is a good seam for adding ~lab~.
+
+** Training and logging infrastructure
+
+The repo already has a real Postgres-backed training pipeline.
+
+Important pieces found during the code dive:
+
+- CLI flags in ~yardbird~:
+  - ~--train~
+  - ~--train-reset~
+  - ~--database-url~
+  - ~--track-instantiations~
+- ~garden~ already forwards:
+  - ~--train~
+  - ~--database-url~
+  - ~--track-instantiations~
+  to spawned ~yardbird~ subprocesses
+- the training feature is gated by Cargo feature ~training~
+- the DB stack already exists in:
+  - ~src/training/config.rs~
+  - ~src/training/session.rs~
+  - ~src/training/logger.rs~
+  - ~src/training/db.rs~
+  - ~src/training/schema.rs~
+  - ~src/training/migrations/001_initial.sql~
+  - ~src/training/migrations/002_instantiation_provenance.sql~
+  - ~src/training/migrations/003_unsat_events.sql~
+
+What the current schema supports well:
+
+- per-benchmark logging
+- decision and candidate logging
+- abstract and indexed instantiation provenance
+- unsat-event logging
+
+What the current schema *does not* model cleanly:
+
+- a reusable top-level training run
+- a campaign/session identifier across many benchmark rows
+- a version identifier for logging schema or dataset semantics
+
+That is the gap we should close before building the Proxmox training workflow.
+
+* Revised Direction
+
+Add ~lab~ as a new execution environment in ~main_eval.py~, but make it a
+*Proxmox-backed* environment rather than a generic "remote Docker" mode.
+
+The intended split is:
+
+- Proxmox manages ephemeral Ubuntu VMs
+- each worker VM runs Docker locally
+- each benchmark matrix runs inside a container inside a worker VM
+- artifacts are pushed to R2
+- optional training runs also provision a separate Postgres VM
+
+This gives us three clean layers:
+
+- Proxmox = VM lifecycle and isolation
+- Docker inside workers = repeatable benchmark runtime
+- R2 and Postgres = durable outputs
+
+* Why Proxmox Should Be The Center
+
+The design should be centered on Proxmox rather than on remote Docker contexts.
+
+Why:
+
+- you want clean ephemeral workers
+- you want an optional sidecar Postgres machine
+- you want reproducibility in the cluster, not just on one host
+- VM templates are a natural fit for "known-good worker image" and "known-good
+  Postgres image"
+
+So the primary lab control loop should be:
+
+- clone template
+- boot VM
+- run workload
+- collect or observe durable outputs
+- tear VM down
+
+That is the right V1 shape.
+
+* High-Level Architecture
+
+** Control plane
+
+~main_eval.py~ remains the control plane and runs on the developer workstation.
+
+It should orchestrate:
+
+- Proxmox API calls
+- worker VM lifecycle
+- optional Postgres VM lifecycle
+- R2 artifact checks
+- local run manifests
+- final report generation
+
+** Worker plane
+
+Each requested benchmark matrix should get one ephemeral worker VM.
+
+Each worker VM should:
+
+- boot from a prepared Proxmox template
+- have Docker installed
+- pull or run the Yardbird runner container
+- execute exactly one matrix job in V1
+- upload outputs to R2
+- optionally talk to the sidecar Postgres instance if training is enabled
+
+** Database plane
+
+For normal evaluation runs:
+
+- no database VM is required
+
+For full logging or training runs:
+
+- ~main_eval.py~ should be able to provision a dedicated Postgres VM
+- workers should receive a database URL pointing at that VM
+- the Postgres VM should be preserved by default so we can reconnect a DB
+  viewer to it and reuse it across multiple training campaigns
+- teardown of the Postgres VM should be an explicit cleanup action
+
+** Artifact plane
+
+Artifacts should be durable outside the worker lifecycle.
+
+That means:
+
+- benchmark result JSON
+- logs
+- metadata
+- completion markers
+
+should go to R2 rather than relying on worker persistence.
+
+Recommended R2 key layout:
+
+- ~main-eval/<run-id>/<matrix>/results.json~
+- ~main-eval/<run-id>/<matrix>/run.log~
+- ~main-eval/<run-id>/<matrix>/metadata.json~
+- ~main-eval/<run-id>/<matrix>/completion.json~
+
+If training is enabled, we should also emit run-level metadata:
+
+- ~main-eval/<run-id>/training-run.json~
+- ~main-eval/<run-id>/postgres.json~
+
+* Proxmox V1 Design
+
+** VM templates
+
+We should prepare two Proxmox templates:
+
+1. *worker template*
+   - Ubuntu
+   - cloud-init
+   - qemu-guest-agent
+   - Docker
+   - enough build/runtime dependencies for pulling or running the benchmark
+     container
+2. *postgres template*
+   - Ubuntu
+   - cloud-init
+   - qemu-guest-agent
+   - PostgreSQL installed and configured
+
+V1 should strongly prefer template cloning over ad hoc VM creation.
+
+** Worker lifecycle
+
+Per matrix:
+
+1. clone worker template
+2. apply cloud-init config and SSH access
+3. boot VM
+4. wait for guest agent or SSH readiness
+5. run the benchmark container
+6. upload outputs to R2
+7. destroy the worker VM unless a keep/debug flag was requested
+
+** Postgres sidecar lifecycle
+
+Only for training runs:
+
+1. discover an existing preserved Postgres VM, or clone a new one from the
+   template
+2. boot it if needed
+3. wait for DB readiness
+4. create the training database if needed
+5. pass the resulting ~postgres://...~ URL to workers
+6. keep the VM alive until all workers finish
+7. preserve it by default after the run
+8. destroy it only through an explicit cleanup path
+
+This gives us a clean model:
+
+- many workers
+- one optional DB sidecar
+
+* Training And Logging Flow In The Lab
+
+** What already works in code
+
+Today, a worker can already log training data if all of the following are true:
+
+- the binary is built with ~--features training~
+- ~yardbird~ receives ~--train~
+- a usable ~--database-url~ is provided
+- ~--track-instantiations~ is enabled for the richer provenance path
+
+Because ~garden~ already forwards those flags, the lab orchestration does not
+need a second training codepath. It mainly needs to provide the environment and
+the right flags.
+
+** What lab mode needs to add
+
+Lab mode should add a run-level notion like:
+
+- standard evaluation run
+- training evaluation run
+
+If training is enabled, ~main_eval.py~ should:
+
+- provision the Postgres VM first
+- create or discover the database URL
+- inject that URL into worker jobs
+- pass:
+  - ~--train~
+  - ~--database-url~
+  - ~--track-instantiations~
+  to the worker benchmark command
+
+** Why a version id makes sense
+
+Yes, this makes sense, and it is more than just a convenience flag.
+
+Right now the DB is benchmark-centric. The current schema mostly says:
+
+- insert one benchmark row
+- attach decisions, candidates, instantiations, and unsat events to it
+
+That works for logging, but it is weak for long-lived data collection because
+it does not let us clearly separate:
+
+- training campaign A
+- training campaign B
+- schema semantics before or after a feature change
+- data collected from different lab setups
+
+So we should add a first-class run-group identifier.
+
+* Proposed Logging Versioning Model
+
+The right abstraction is probably not just a bare "version id" column on
+~benchmarks~.
+
+The better model is a new top-level entity, for example:
+
+- ~training_runs~
+- or ~dataset_versions~
+
+Recommended fields:
+
+- ~id~
+- ~run_version~
+- ~created_at~
+- ~git_commit~
+- ~dirty_worktree~
+- ~cost_function_set~
+- ~strategy_set~
+- ~config_path~
+- ~benchmark_matrix~
+- ~lab_run_id~ if launched through ~main_eval.py~
+- ~notes~ or ~label~
+- ~schema_version~
+
+Then each benchmark row would carry:
+
+- ~training_run_id~ foreign key
+
+Recommended semantics for ~run_version~:
+
+- accept a human-provided value when the user wants a stable campaign name like
+  ~paper-baseline-v1~
+- otherwise auto-generate one from the lab run, such as from ~run_id~ plus a
+  timestamp
+
+This is the simplest interpretation of the earlier "user-supplied vs
+auto-generated" question.
+
+This would let us reuse one Postgres database for multiple campaigns without
+having to nuke it between runs.
+
+** Why this is better than always recreating the DB
+
+If we always recreate the DB:
+
+- we lose historical comparisons
+- we make incremental collection harder
+- we make debugging regressions harder
+
+If we instead version training campaigns:
+
+- one database can hold many runs
+- queries can restrict to one run version
+- we can compare old and new heuristics directly
+- ~--train-reset~ becomes an explicit destructive maintenance tool, not the
+  normal workflow
+
+That is a much healthier long-term story.
+
+* Proposed Schema Direction For Versioned Logging
+
+Add a new migration that:
+
+1. creates a ~training_runs~ table
+2. adds ~training_run_id~ to ~benchmarks~
+
+Recommended sketch:
+
+#+begin_src sql
+CREATE TABLE training_runs (
+    id BIGSERIAL PRIMARY KEY,
+    run_version TEXT NOT NULL,
+    label TEXT,
+    git_commit TEXT,
+    dirty_worktree BOOLEAN,
+    schema_version TEXT,
+    config_path TEXT,
+    benchmark_matrix TEXT,
+    lab_run_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE benchmarks
+ADD COLUMN training_run_id BIGINT REFERENCES training_runs(id) ON DELETE SET NULL;
+#+end_src
+
+Then update training session startup so that:
+
+- a training run row is created once
+- each benchmark logged in that session points back to it
+
+This should be the default path for all future training collection.
+
+* CLI And Manifest Proposal
+
+** CLI
+
+Recommended direction:
+
+- ~--env {local,aws,lab}~
+- ~--run-id~
+- ~--status~
+- ~--generate-report~
+
+Lab-specific options should expand to cover Proxmox and training:
+
+- ~--lab-proxmox-node~
+- ~--lab-worker-template~
+- ~--lab-postgres-template~
+- ~--lab-r2-prefix~
+- ~--lab-keep-vms~
+- ~--lab-postgres~
+  - provision sidecar Postgres VM
+- ~--lab-train~
+  - convenience switch for a full logging run
+- ~--lab-training-version <id>~
+  - human-controlled version or campaign id
+- ~--lab-destroy-postgres~
+  - explicit cleanup for the preserved Postgres VM when we no longer want it
+
+Possible behavior:
+
+- ~--lab-train~ implies:
+  - ~--train~
+  - ~--track-instantiations~
+  - Postgres sidecar provisioning
+- if ~--lab-training-version~ is omitted, generate one automatically
+
+** Manifest
+
+The top-level run manifest should now carry more explicit lab metadata:
+
+- ~run_id~
+- ~env = "lab"~
+- ~training_enabled~
+- ~training_version~
+- ~postgres_sidecar~
+- ~r2_prefix~
+- ~worker_template~
+- ~postgres_template~
+- ~subruns~
+
+The sidecar block should include:
+
+- VMID
+- node
+- hostname
+- database name
+- database URL redacted form
+- status
+- created_at
+- destroyed_at
+
+Each subrun should include:
+
+- benchmark matrix
+- worker VMID
+- worker node
+- R2 prefix
+- status
+- completion marker location
+- result location
+
+* Artifact And Completion Model
+
+For normal evaluation runs:
+
+- completion is based on the R2 completion marker and presence of
+  ~results.json~
+
+For training runs:
+
+- completion is still based on R2 artifacts for benchmark output
+- DB completeness should be validated separately
+
+We should not use database rows alone as the run completion signal.
+
+Instead:
+
+- worker uploads result artifacts to R2
+- worker emits metadata indicating whether training logging was enabled
+- control plane may also run a final DB sanity query before report generation
+
+* Reproducibility Requirements
+
+This needs to be documented clearly enough that you can rebuild the whole setup
+later without guessing.
+
+That means the repo should eventually include:
+
+1. a Proxmox section
+   - worker template creation
+   - Postgres template creation
+   - required cloud-init settings
+2. a lab runner section
+   - container image build
+   - worker boot workflow
+3. an R2 section
+   - expected bucket layout
+   - object naming convention
+4. a training section
+   - required Cargo features
+   - required flags
+   - sidecar Postgres behavior
+   - training version semantics
+5. a reset and cleanup section
+   - when to use ~--train-reset~
+   - when to destroy or preserve the Postgres VM
+
+* Suggested Rollout
+
+** Phase 1: control-plane cleanup
+
+- add ~lab~ to ~main_eval.py~
+- standardize run lookup on ~--run-id~
+- add manifest support for Proxmox-backed lab runs
+
+** Phase 2: evaluation-only lab path
+
+- provision ephemeral Proxmox workers
+- run one matrix per worker
+- upload outputs to R2
+- generate report from downloaded R2 artifacts
+
+** Phase 3: training sidecar support
+
+- provision optional Postgres VM
+- pass DB URLs into workers
+- enable full logging flow with ~garden~ and ~yardbird~
+- preserve the Postgres VM by default for later inspection and reuse
+
+** Phase 4: versioned logging
+
+- add ~training_runs~ or equivalent schema
+- thread training version ids through the logger
+- update helper scripts and docs to use versioned collection instead of DB
+  recreation
+- add a final DB sanity query before marking training runs complete
+
+** Phase 5: documentation hardening
+
+- write end-to-end repo docs for Proxmox + R2 + Postgres sidecar + training
+- make the "full reproduction" path explicit and boring
+
+* Remaining Small Decisions
+
+The major architecture choices now look settled. The remaining questions are
+small implementation details rather than blockers:
+
+1. what exact payload should the worker upload in ~completion.json~?
+2. what exact DB sanity query should ~main_eval.py~ run before declaring a
+   training run complete?
+3. how should the preserved Postgres VM be named and rediscovered across future
+   runs?
+
+* Recommended Initial Answers
+
+My recommendation after your edits and the repo dive is:
+
+- ephemeral worker VMs by default
+- preserved Postgres VM by default for training runs
+- R2 as the durable benchmark artifact store
+- one reused database with versioned ~training_runs~ rows
+- user-supplied training version when you want a memorable campaign name, with
+  auto-generation as the fallback
+- ~--lab-train~ should imply ~--track-instantiations~
+- ~main_eval.py~ should run a final DB sanity check before marking a training
+  run complete
+
+That gives us a coherent V1:
+
+- Proxmox for compute
+- Docker in workers for runtime consistency
+- a reusable Postgres sidecar only when training is enabled
+- R2 for durable outputs
+- versioned logging so we stop treating DB reset as the normal workflow

@@ -98,6 +98,52 @@ Bottom line:
 - The helper scripts and docs still describe the old schema in places and need
   a cleanup pass before we treat them as canonical documentation.
 
+** New requirement from lab orchestration planning
+
+The logging pipeline now has an additional operational requirement:
+
+- we want to run full training collection in the Proxmox lab path
+- those runs may use an ephemeral sidecar Postgres VM
+- we do *not* want database recreation to be the normal way of separating one
+  collection campaign from another
+
+That means the logging schema needs a first-class notion of a *training run* or
+*dataset version* above the current benchmark rows.
+
+The current implementation is benchmark-centric:
+
+- ~TrainingSession~ starts by creating one benchmark row
+- decisions, candidates, abstract instantiations, indexed instantiations, and
+  unsat events all hang off that benchmark row
+
+What is missing is a durable top-level grouping construct that answers:
+
+- which collection campaign did this benchmark belong to?
+- which lab run launched it?
+- which schema or feature version produced these rows?
+- which commit/config/matrix combination should be associated with this data?
+
+Recommended direction:
+
+- add a ~training_runs~ table
+- add ~training_run_id~ to ~benchmarks~
+- thread a user-visible run or version id through the CLI and session startup
+
+Suggested fields for ~training_runs~:
+
+- ~run_version~
+- ~label~
+- ~git_commit~
+- ~dirty_worktree~
+- ~schema_version~
+- ~config_path~
+- ~benchmark_matrix~
+- ~lab_run_id~
+- ~created_at~
+
+This is better than always using ~--train-reset~ because it lets one database
+hold many comparable collection campaigns over time.
+
 ** What is now implemented end-to-end
 
 - ~TrainingSession~ exists and owns benchmark start/finish bookkeeping.
@@ -207,6 +253,8 @@ Need to decide behavior when:
 Recommended behavior:
 
 - fail fast with a clear message
+- once the run-group concept exists, create or attach to a top-level
+  ~training_runs~ row before the first benchmark row is inserted
 
 *** [-] 3. Capture decision points inside the extractor/scheduler boundary
 
