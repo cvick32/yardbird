@@ -18,6 +18,7 @@ DEPTH="${DEPTH:-10}"
 TIMEOUT="${TIMEOUT:-60}"
 COST_FUNCTIONS="${COST_FUNCTIONS:-bmc-cost ast-size prefer-read prefer-write prefer-constants}"
 STRATEGY="${STRATEGY:-abstract}"
+TRAINING_RUN_VERSION="${TRAINING_RUN_VERSION:-training-$(date +%Y%m%d_%H%M%S)}"
 
 # Check database URL
 if [ -z "$YARDBIRD_DATABASE_URL" ]; then
@@ -40,6 +41,7 @@ echo "Depth: $DEPTH"
 echo "Timeout: ${TIMEOUT}s"
 echo "Strategy: $STRATEGY"
 echo "Cost functions: $COST_FUNCTIONS"
+echo "Training run version: $TRAINING_RUN_VERSION"
 echo "Database: ${YARDBIRD_DATABASE_URL%%@*}@..." # Hide password
 echo ""
 
@@ -69,6 +71,7 @@ for COST_FN in $COST_FUNCTIONS; do
         START=$(date +%s)
         if timeout "$TIMEOUT" "$YARDBIRD" \
             --train \
+            --training-run-version "$TRAINING_RUN_VERSION" \
             --strategy "$STRATEGY" \
             --cost-function "$COST_FN" \
             --depth "$DEPTH" \

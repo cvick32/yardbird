@@ -10,7 +10,6 @@ Scripts for collecting training data for learning cost functions.
 
 # 2. Create database (if needed)
 createdb yardbird_training
-psql -d yardbird_training -f src/training/migrations/001_initial.sql
 
 # 3. Update .env with your database URL
 echo "YARDBIRD_DATABASE_URL=postgres://user:pass@localhost/yardbird_training" > .env
@@ -30,6 +29,8 @@ One-time setup script that:
 
 ### `run-training.sh`
 Runs yardbird on all benchmarks with `--train` flag to collect training data.
+The script now assigns one shared `TRAINING_RUN_VERSION` to the whole batch so
+all benchmark rows land under the same logical training campaign.
 
 **Options (via environment variables):**
 ```bash
@@ -47,12 +48,17 @@ STRATEGY=concrete ./scripts/run-training.sh
 
 # Cost functions to run (default: all)
 COST_FUNCTIONS="bmc-cost ast-size" ./scripts/run-training.sh
+
+# Stable training campaign identifier (default: generated timestamp)
+TRAINING_RUN_VERSION=paper-baseline-v1 ./scripts/run-training.sh
 ```
 
 ## Database Schema
 
-The training data is stored in four tables:
+The training data is stored in tables centered on benchmarks plus a top-level
+training run grouping:
 
+- **training_runs**: One row per collection campaign / version id
 - **benchmarks**: Metadata about each run (name, cost function, success, timing)
 - **decisions**: Each instantiation decision point (axiom, depth, slot)
 - **candidates**: Terms considered for each decision with features
@@ -62,10 +68,11 @@ The training data is stored in four tables:
 
 ```sql
 -- Count benchmarks
-SELECT cost_function, COUNT(*),
+SELECT tr.run_version, b.cost_function, COUNT(*),
        SUM(CASE WHEN success THEN 1 ELSE 0 END) as successes
-FROM benchmarks
-GROUP BY cost_function;
+FROM benchmarks b
+LEFT JOIN training_runs tr ON tr.id = b.training_run_id
+GROUP BY tr.run_version, b.cost_function;
 
 -- Get decisions with chosen terms
 SELECT b.name, d.axiom_name, c.term, c.current_cost
