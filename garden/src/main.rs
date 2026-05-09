@@ -64,6 +64,9 @@ struct GardenOptions {
 
     #[arg(long, default_value_t = false)]
     pub track_instantiations: bool,
+
+    #[arg(long)]
+    pub training_run_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,6 +108,27 @@ struct StrategyResult {
     depth: u16,
 }
 
+fn default_training_run_version() -> String {
+    format!(
+        "garden-training-{}-pid{}",
+        Utc::now().format("%Y%m%d_%H%M%S"),
+        std::process::id()
+    )
+}
+
+fn effective_training_run_version(options: &GardenOptions) -> Option<String> {
+    if !options.train {
+        return None;
+    }
+
+    Some(
+        options
+            .training_run_version
+            .clone()
+            .unwrap_or_else(default_training_run_version),
+    )
+}
+
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
     // Get the path to the yardbird binary (in target/release/)
     let yardbird_bin = std::env::current_exe()
@@ -144,6 +168,12 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
 
     if let Some(database_url) = &options.database_url {
         command.arg("--database-url").arg(database_url);
+    }
+
+    if let Some(training_run_version) = &options.training_run_version {
+        command
+            .arg("--training-run-version")
+            .arg(training_run_version);
     }
 
     let mut child = command
@@ -303,6 +333,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
     let cost_function = options
         .cost_function
         .unwrap_or(yardbird::CostFunction::BmcCost);
+    let training_run_version = effective_training_run_version(&options);
 
     let include: Vec<_> = options
         .include
@@ -367,6 +398,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 train: options.train,
                                 train_reset: false,
                                 database_url: options.database_url.clone(),
+                                training_run_version: training_run_version.clone(),
                                 verbose: false,
                             },
                             retry,
@@ -409,6 +441,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
 
 fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
     let runs = config.generate_benchmark_runs(options.matrix.as_deref())?;
+    let training_run_version = effective_training_run_version(&options);
 
     println!("Running {} benchmark configurations", runs.len());
 
@@ -487,6 +520,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         train: options.train,
                         train_reset: false,
                         database_url: options.database_url.clone(),
+                        training_run_version: training_run_version.clone(),
                         verbose: false,
                     },
                     config.global.retry_count,
