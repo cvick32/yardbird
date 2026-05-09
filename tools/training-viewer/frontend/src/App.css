@@ -1,0 +1,360 @@
+.layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Panes */
+.pane {
+  overflow-y: auto;
+  padding: 16px;
+  border-right: 1px solid var(--border);
+  box-sizing: border-box;
+}
+.pane:last-child {
+  border-right: none;
+}
+
+.pane-left {
+  width: 280px;
+  min-width: 280px;
+  flex-shrink: 0;
+}
+.pane-middle {
+  flex: 1;
+  min-width: 300px;
+}
+.pane-right {
+  flex: 1;
+  min-width: 0;
+}
+
+.pane h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Search & Filters */
+.search-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 14px;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+.search-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.filter-row select {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+/* Benchmark list */
+.benchmark-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.benchmark-item {
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.benchmark-item:hover {
+  background: var(--accent-bg);
+}
+.benchmark-item.active {
+  background: var(--accent-bg);
+  border-left: 3px solid var(--accent);
+  padding-left: 7px;
+}
+.benchmark-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.benchmark-meta {
+  font-size: 11px;
+  color: var(--text);
+  margin-top: 2px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.success-badge {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+/* Tags */
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--code-bg);
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text);
+}
+.cost-tags {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+/* Tables */
+.table-scroll {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text);
+  padding: 6px 8px;
+  border-bottom: 2px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.clickable {
+  cursor: pointer;
+}
+.clickable:hover {
+  background: var(--accent-bg);
+}
+tr.active {
+  background: var(--accent-bg);
+}
+
+.run-count {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+/* Term cells */
+.term-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* Detail header */
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.detail-header h2 {
+  margin: 0;
+}
+.back-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.back-btn:hover {
+  background: var(--accent-bg);
+}
+
+/* Summary cards */
+.summary-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.card {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 80px;
+}
+.card-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.card-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-h);
+  font-family: var(--mono);
+}
+.core-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: #22c55e;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 12px;
+}
+.tab {
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover {
+  color: var(--text-h);
+}
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Decision / candidate specifics */
+.bad-shape {
+  background: rgba(239, 68, 68, 0.1);
+}
+.chosen-candidate {
+  background: rgba(34, 197, 94, 0.1);
+  font-weight: 500;
+}
+.candidate-header td {
+  padding: 0;
+}
+.candidate-table {
+  margin: 4px 0 4px 24px;
+  font-size: 12px;
+}
+.candidate-table th {
+  font-size: 10px;
+  padding: 3px 6px;
+}
+.candidate-table td {
+  padding: 3px 6px;
+}
+
+/* Core highlight */
+.in-core {
+  background: rgba(34, 197, 94, 0.08);
+}
+.core-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #22c55e;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Provenance */
+.provenance-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.provenance-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+.provenance-decision {
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--text-h);
+}
+.provenance-abstract {
+  margin-left: 16px;
+  margin-bottom: 6px;
+}
+.provenance-abstract-header {
+  font-size: 12px;
+  color: var(--text);
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+.provenance-abstract-header.in-core {
+  border-left: 3px solid #22c55e;
+}
+.provenance-term {
+  margin: 2px 0 4px 6px;
+}
+.provenance-indexed-list {
+  margin-left: 16px;
+}
+.provenance-indexed {
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  margin-bottom: 2px;
+}
+.provenance-indexed.in-core {
+  border-left: 3px solid #22c55e;
+}
+.indexed-label {
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+/* Empty states */
+.empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text);
+  font-size: 14px;
+}
