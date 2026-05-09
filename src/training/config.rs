@@ -11,6 +11,8 @@ pub struct TrainingConfig {
     pub database_url: Option<String>,
     /// Name of the cost function being used
     pub cost_function_name: String,
+    /// Stable grouping key for a whole training campaign
+    pub training_run_version: Option<String>,
 }
 
 impl TrainingConfig {
@@ -20,6 +22,7 @@ impl TrainingConfig {
             enabled: options.train,
             database_url: options.database_url.clone(),
             cost_function_name: options.cost_function.to_string(),
+            training_run_version: options.training_run_version.clone(),
         }
     }
 

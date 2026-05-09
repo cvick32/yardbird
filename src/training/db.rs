@@ -5,7 +5,8 @@
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 
 use super::schema::{
-    AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord, UnsatEventRecord,
+    AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord, TrainingRunRecord,
+    UnsatEventRecord,
 };
 
 /// Database connection wrapper with connection pooling.
@@ -24,15 +25,56 @@ impl DbConnection {
         Ok(DbConnection { pool })
     }
 
-    /// Insert a new benchmark and return its ID.
-    pub async fn insert_benchmark(&self, name: &str, cost_fn: &str) -> Result<i64, sqlx::Error> {
+    /// Insert or reuse a top-level training run and return its ID.
+    pub async fn insert_or_get_training_run(
+        &self,
+        record: &TrainingRunRecord,
+    ) -> Result<i64, sqlx::Error> {
         let row = sqlx::query(
             r#"
-            INSERT INTO benchmarks (name, cost_function, success, total_refinements, total_time_ms)
-            VALUES ($1, $2, NULL, NULL, NULL)
+            INSERT INTO training_runs (
+                run_version, label, git_commit, dirty_worktree, schema_version, lab_run_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (run_version)
+            DO UPDATE SET
+                label = COALESCE(training_runs.label, EXCLUDED.label),
+                git_commit = COALESCE(training_runs.git_commit, EXCLUDED.git_commit),
+                dirty_worktree = training_runs.dirty_worktree OR EXCLUDED.dirty_worktree,
+                schema_version = COALESCE(training_runs.schema_version, EXCLUDED.schema_version),
+                lab_run_id = COALESCE(training_runs.lab_run_id, EXCLUDED.lab_run_id)
             RETURNING id
             "#,
         )
+        .bind(&record.run_version)
+        .bind(&record.label)
+        .bind(&record.git_commit)
+        .bind(record.dirty_worktree)
+        .bind(&record.schema_version)
+        .bind(&record.lab_run_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.get("id"))
+    }
+
+    /// Insert a new benchmark and return its ID.
+    pub async fn insert_benchmark(
+        &self,
+        training_run_id: Option<i64>,
+        name: &str,
+        cost_fn: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let row = sqlx::query(
+            r#"
+            INSERT INTO benchmarks (
+                training_run_id, name, cost_function, success, total_refinements, total_time_ms
+            )
+            VALUES ($1, $2, $3, NULL, NULL, NULL)
+            RETURNING id
+            "#,
+        )
+        .bind(training_run_id)
         .bind(name)
         .bind(cost_fn)
         .fetch_one(&self.pool)
@@ -307,6 +349,9 @@ impl DbConnection {
         sqlx::raw_sql(include_str!("migrations/003_unsat_events.sql"))
             .execute(&self.pool)
             .await?;
+        sqlx::raw_sql(include_str!("migrations/004_training_runs.sql"))
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -322,7 +367,8 @@ impl DbConnection {
                 core_appearances,
                 candidates,
                 decisions,
-                benchmarks
+                benchmarks,
+                training_runs
             RESTART IDENTITY CASCADE
             "#,
         )

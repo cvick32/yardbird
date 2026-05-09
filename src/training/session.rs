@@ -8,8 +8,20 @@ use crate::{training::TrainingLogger, ProofLoopResult, YardbirdOptions};
 
 use super::{NoOpLogger, TrainingConfig};
 
+#[cfg(feature = "training")]
+use super::TrainingRunRecord;
+#[cfg(feature = "training")]
+use std::process::Command;
+#[cfg(feature = "training")]
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(feature = "training")]
+const TRAINING_SCHEMA_VERSION: &str = "004_training_runs";
+
 pub struct TrainingSession {
     logger: Box<dyn TrainingLogger>,
+    training_run_id: i64,
+    training_run_version: String,
     benchmark_id: i64,
     started_at: Instant,
 }
@@ -17,9 +29,48 @@ pub struct TrainingSession {
 impl std::fmt::Debug for TrainingSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TrainingSession")
+            .field("training_run_id", &self.training_run_id)
+            .field("training_run_version", &self.training_run_version)
             .field("benchmark_id", &self.benchmark_id)
             .finish_non_exhaustive()
     }
+}
+
+#[cfg(feature = "training")]
+fn auto_training_run_version() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+    format!("training-run-{timestamp}-pid{}", std::process::id())
+}
+
+#[cfg(feature = "training")]
+fn git_output(args: &[&str]) -> Option<String> {
+    let output = Command::new("git").args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let value = String::from_utf8(output.stdout).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+#[cfg(feature = "training")]
+fn git_commit() -> Option<String> {
+    git_output(&["rev-parse", "HEAD"])
+}
+
+#[cfg(feature = "training")]
+fn git_dirty_worktree() -> bool {
+    git_output(&["status", "--porcelain"])
+        .map(|stdout| !stdout.is_empty())
+        .unwrap_or(false)
 }
 
 impl TrainingSession {
@@ -43,12 +94,29 @@ impl TrainingSession {
                 anyhow::anyhow!("--train requires --database-url or YARDBIRD_DATABASE_URL")
             })?;
             let benchmark_name = options.require_filename()?;
+            let training_run_version = config
+                .training_run_version
+                .clone()
+                .unwrap_or_else(auto_training_run_version);
             let mut logger = Box::new(super::PostgresLogger::from_url(&database_url)?)
                 as Box<dyn TrainingLogger>;
-            let benchmark_id =
-                logger.start_benchmark(benchmark_name, &config.cost_function_name)?;
+            let training_run_id = logger.start_training_run(&TrainingRunRecord {
+                run_version: training_run_version.clone(),
+                label: None,
+                git_commit: git_commit(),
+                dirty_worktree: git_dirty_worktree(),
+                schema_version: TRAINING_SCHEMA_VERSION.to_string(),
+                lab_run_id: None,
+            })?;
+            let benchmark_id = logger.start_benchmark(
+                Some(training_run_id),
+                benchmark_name,
+                &config.cost_function_name,
+            )?;
             Ok(Some(Self {
                 logger,
+                training_run_id,
+                training_run_version,
                 benchmark_id,
                 started_at: Instant::now(),
             }))
@@ -136,6 +204,8 @@ impl Default for TrainingSession {
     fn default() -> Self {
         Self {
             logger: Box::new(NoOpLogger::new()),
+            training_run_id: 0,
+            training_run_version: "noop-training-run".to_string(),
             benchmark_id: 0,
             started_at: Instant::now(),
         }

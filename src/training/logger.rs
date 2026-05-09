@@ -6,7 +6,8 @@
 use crate::driver::UnsatCoreInfo;
 
 use super::schema::{
-    AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord, UnsatEventRecord,
+    AbstractInstantiationRecord, DecisionRecord, IndexedInstantiationRecord, TrainingRunRecord,
+    UnsatEventRecord,
 };
 
 /// Result type for training logger operations.
@@ -29,10 +30,18 @@ pub enum LoggerError {
 /// - `NoOpLogger` for when training is disabled (zero overhead)
 /// - `PostgresLogger` for actual database logging
 pub trait TrainingLogger: Send {
+    /// Start or attach to a training campaign.
+    fn start_training_run(&mut self, training_run: &TrainingRunRecord) -> LoggerResult<i64>;
+
     /// Start logging a new benchmark.
     ///
     /// Returns a benchmark ID that should be used for subsequent logging calls.
-    fn start_benchmark(&mut self, name: &str, cost_fn: &str) -> LoggerResult<i64>;
+    fn start_benchmark(
+        &mut self,
+        training_run_id: Option<i64>,
+        name: &str,
+        cost_fn: &str,
+    ) -> LoggerResult<i64>;
 
     /// Log a decision point with candidate terms.
     ///
@@ -98,7 +107,17 @@ impl NoOpLogger {
 
 impl TrainingLogger for NoOpLogger {
     #[inline(always)]
-    fn start_benchmark(&mut self, _name: &str, _cost_fn: &str) -> LoggerResult<i64> {
+    fn start_training_run(&mut self, _training_run: &TrainingRunRecord) -> LoggerResult<i64> {
+        Ok(0)
+    }
+
+    #[inline(always)]
+    fn start_benchmark(
+        &mut self,
+        _training_run_id: Option<i64>,
+        _name: &str,
+        _cost_fn: &str,
+    ) -> LoggerResult<i64> {
         Ok(0)
     }
 
@@ -229,7 +248,26 @@ mod postgres_impl {
     }
 
     impl TrainingLogger for PostgresLogger {
-        fn start_benchmark(&mut self, name: &str, cost_fn: &str) -> LoggerResult<i64> {
+        fn start_training_run(&mut self, training_run: &TrainingRunRecord) -> LoggerResult<i64> {
+            info!(
+                "Starting or reusing training run: {}",
+                training_run.run_version
+            );
+
+            let db = &self.db;
+            self.runtime.block_on(async {
+                db.insert_or_get_training_run(training_run)
+                    .await
+                    .map_err(|e| LoggerError::Database(e.to_string()))
+            })
+        }
+
+        fn start_benchmark(
+            &mut self,
+            training_run_id: Option<i64>,
+            name: &str,
+            cost_fn: &str,
+        ) -> LoggerResult<i64> {
             info!(
                 "Starting benchmark logging: {} with cost function {}",
                 name, cost_fn
@@ -237,7 +275,7 @@ mod postgres_impl {
 
             let db = &self.db;
             self.runtime.block_on(async {
-                db.insert_benchmark(name, cost_fn)
+                db.insert_benchmark(training_run_id, name, cost_fn)
                     .await
                     .map_err(|e| LoggerError::Database(e.to_string()))
             })

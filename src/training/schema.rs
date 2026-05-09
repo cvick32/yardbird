@@ -5,6 +5,23 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Record for a top-level training campaign that groups many benchmark rows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingRunRecord {
+    /// Stable human-readable or generated version identifier for the campaign.
+    pub run_version: String,
+    /// Optional label or notes for the campaign.
+    pub label: Option<String>,
+    /// Git commit used to collect the data when known.
+    pub git_commit: Option<String>,
+    /// Whether the worktree had local modifications when data collection began.
+    pub dirty_worktree: bool,
+    /// Logical schema version for dataset semantics.
+    pub schema_version: String,
+    /// Optional lab orchestration run id.
+    pub lab_run_id: Option<String>,
+}
+
 /// Record for a single instantiation decision point.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecisionRecord {

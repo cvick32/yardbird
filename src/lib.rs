@@ -118,6 +118,10 @@ pub struct YardbirdOptions {
     /// Database URL for training data (e.g., postgres://user:pass@host/db)
     #[arg(long, env = "YARDBIRD_DATABASE_URL")]
     pub database_url: Option<String>,
+
+    /// Stable identifier that groups many benchmark rows into one training campaign
+    #[arg(long, env = "YARDBIRD_TRAINING_RUN_VERSION")]
+    pub training_run_version: Option<String>,
 }
 
 impl Default for YardbirdOptions {
@@ -141,6 +145,7 @@ impl Default for YardbirdOptions {
             train: false,
             train_reset: false,
             database_url: None,
+            training_run_version: None,
         }
     }
 }
