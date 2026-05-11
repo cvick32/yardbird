@@ -943,6 +943,7 @@ Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
         Returns:
             LaTeX longtable code
         """
+
         # Order strategies: baseline first, then sorted
         def sort_key(s):
             if s == baseline_strategy:
@@ -959,7 +960,9 @@ Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
         for strategy_key in sorted_strategies:
             for _example_name, strategies in grouped_results.items():
                 if strategy_key in strategies:
-                    display_names[strategy_key] = strategies[strategy_key].get_display_name()
+                    display_names[strategy_key] = strategies[
+                        strategy_key
+                    ].get_display_name()
                     break
             if strategy_key not in display_names:
                 display_names[strategy_key] = strategy_key
