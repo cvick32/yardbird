@@ -10,7 +10,9 @@ from .lower_vmt import lower_benchmark
 
 def normalized_vmt_hash(spec: BenchmarkSpec) -> str:
     lowered = lower_benchmark(spec)
-    normalized = "\n".join(line.strip() for line in lowered.vmt_text.splitlines() if line.strip())
+    normalized = "\n".join(
+        line.strip() for line in lowered.vmt_text.splitlines() if line.strip()
+    )
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 

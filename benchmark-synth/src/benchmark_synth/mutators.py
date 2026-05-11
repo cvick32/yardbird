@@ -21,11 +21,19 @@ def apply_bug_mutation(spec: BenchmarkSpec, bug_kind: BugKind) -> BenchmarkSpec:
         return build_single_loop_copy(seed=spec.seed, ordinal=ordinal, bug_flag=True)
     if spec.family_name.value == "init" and spec.skeleton_type.value == "single_loop":
         return build_single_loop_init(seed=spec.seed, ordinal=ordinal, bug_flag=True)
-    if spec.family_name.value == "transform" and spec.skeleton_type.value == "single_loop":
-        return build_single_loop_transform(seed=spec.seed, ordinal=ordinal, bug_flag=True)
+    if (
+        spec.family_name.value == "transform"
+        and spec.skeleton_type.value == "single_loop"
+    ):
+        return build_single_loop_transform(
+            seed=spec.seed, ordinal=ordinal, bug_flag=True
+        )
     if spec.family_name.value == "copy" and spec.skeleton_type.value == "dual_counter":
         return build_dual_counter_copy(seed=spec.seed, ordinal=ordinal, bug_flag=True)
-    if spec.family_name.value == "transform" and spec.skeleton_type.value == "two_phase":
+    if (
+        spec.family_name.value == "transform"
+        and spec.skeleton_type.value == "two_phase"
+    ):
         return build_two_phase_transform(seed=spec.seed, ordinal=ordinal, bug_flag=True)
 
     raise NotImplementedError(

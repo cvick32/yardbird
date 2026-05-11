@@ -237,7 +237,9 @@ def validate_benchmark_spec(spec: BenchmarkSpec) -> None:
         witness.name for witness in program.witnesses
     }
     if missing_witnesses:
-        raise ValueError(f"property references unknown witnesses: {sorted(missing_witnesses)}")
+        raise ValueError(
+            f"property references unknown witnesses: {sorted(missing_witnesses)}"
+        )
 
     state_names = set(all_state_var_names(program))
     for case in program.transition_cases:

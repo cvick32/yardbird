@@ -39,7 +39,9 @@ def test_generate_mixed_corpus_uses_multiple_structures(tmp_path) -> None:
     )
 
     metadata_payloads = [
-        json.loads((output_dir / "metadata" / f"{entry.benchmark_name}.json").read_text())
+        json.loads(
+            (output_dir / "metadata" / f"{entry.benchmark_name}.json").read_text()
+        )
         for entry in manifest.entries
     ]
     families = {payload["family_name"] for payload in metadata_payloads}

@@ -37,16 +37,30 @@ from .naming import benchmark_name
 FamilyBuilder = Callable[[int, int, bool], BenchmarkSpec]
 
 
-def supported_structures() -> dict[tuple[FamilyName, SkeletonType, PropertyFamily], FamilyBuilder]:
+def supported_structures() -> dict[
+    tuple[FamilyName, SkeletonType, PropertyFamily], FamilyBuilder
+]:
     return {
-        (FamilyName.COPY, SkeletonType.SINGLE_LOOP, PropertyFamily.POINTWISE): build_single_loop_copy,
-        (FamilyName.INIT, SkeletonType.SINGLE_LOOP, PropertyFamily.SEGMENT): build_single_loop_init,
+        (
+            FamilyName.COPY,
+            SkeletonType.SINGLE_LOOP,
+            PropertyFamily.POINTWISE,
+        ): build_single_loop_copy,
+        (
+            FamilyName.INIT,
+            SkeletonType.SINGLE_LOOP,
+            PropertyFamily.SEGMENT,
+        ): build_single_loop_init,
         (
             FamilyName.TRANSFORM,
             SkeletonType.SINGLE_LOOP,
             PropertyFamily.POINTWISE,
         ): build_single_loop_transform,
-        (FamilyName.COPY, SkeletonType.DUAL_COUNTER, PropertyFamily.POINTWISE): build_dual_counter_copy,
+        (
+            FamilyName.COPY,
+            SkeletonType.DUAL_COUNTER,
+            PropertyFamily.POINTWISE,
+        ): build_dual_counter_copy,
         (
             FamilyName.TRANSFORM,
             SkeletonType.TWO_PHASE,
@@ -55,7 +69,9 @@ def supported_structures() -> dict[tuple[FamilyName, SkeletonType, PropertyFamil
     }
 
 
-def build_single_loop_copy(*, seed: int, ordinal: int, bug_flag: bool = False) -> BenchmarkSpec:
+def build_single_loop_copy(
+    *, seed: int, ordinal: int, bug_flag: bool = False
+) -> BenchmarkSpec:
     arrays = (ArrayVar("a"), ArrayVar("b"))
     scalars = (ScalarVar("i", role="counter"), ScalarVar("n", role="bound"))
     witnesses = _common_witnesses()
@@ -65,7 +81,9 @@ def build_single_loop_copy(*, seed: int, ordinal: int, bug_flag: bool = False) -
         guard=Lt(VarRef("i"), VarRef("n")),
         assignments=(
             Assignment("a", VarRef("a")),
-            Assignment("b", Store(VarRef("b"), write_index, Select(VarRef("a"), VarRef("i")))),
+            Assignment(
+                "b", Store(VarRef("b"), write_index, Select(VarRef("a"), VarRef("i")))
+            ),
             Assignment("i", Add(VarRef("i"), IntConst(1))),
             Assignment("n", VarRef("n")),
             Assignment("Y", VarRef("Y")),
@@ -112,7 +130,9 @@ def build_single_loop_copy(*, seed: int, ordinal: int, bug_flag: bool = False) -
     )
 
 
-def build_single_loop_init(*, seed: int, ordinal: int, bug_flag: bool = False) -> BenchmarkSpec:
+def build_single_loop_init(
+    *, seed: int, ordinal: int, bug_flag: bool = False
+) -> BenchmarkSpec:
     arrays = (ArrayVar("a"),)
     scalars = (ScalarVar("i", role="counter"), ScalarVar("n", role="bound"))
     witnesses = _common_witnesses()
@@ -168,7 +188,9 @@ def build_single_loop_init(*, seed: int, ordinal: int, bug_flag: bool = False) -
     )
 
 
-def build_single_loop_transform(*, seed: int, ordinal: int, bug_flag: bool = False) -> BenchmarkSpec:
+def build_single_loop_transform(
+    *, seed: int, ordinal: int, bug_flag: bool = False
+) -> BenchmarkSpec:
     arrays = (ArrayVar("a"), ArrayVar("b"))
     scalars = (ScalarVar("i", role="counter"), ScalarVar("n", role="bound"))
     witnesses = _common_witnesses()
@@ -238,7 +260,9 @@ def build_single_loop_transform(*, seed: int, ordinal: int, bug_flag: bool = Fal
     )
 
 
-def build_dual_counter_copy(*, seed: int, ordinal: int, bug_flag: bool = False) -> BenchmarkSpec:
+def build_dual_counter_copy(
+    *, seed: int, ordinal: int, bug_flag: bool = False
+) -> BenchmarkSpec:
     arrays = (ArrayVar("a"), ArrayVar("b"))
     scalars = (
         ScalarVar("i", role="left_counter"),
@@ -311,7 +335,9 @@ def build_dual_counter_copy(*, seed: int, ordinal: int, bug_flag: bool = False) 
     )
 
 
-def build_two_phase_transform(*, seed: int, ordinal: int, bug_flag: bool = False) -> BenchmarkSpec:
+def build_two_phase_transform(
+    *, seed: int, ordinal: int, bug_flag: bool = False
+) -> BenchmarkSpec:
     arrays = (ArrayVar("a"), ArrayVar("b"))
     scalars = (
         ScalarVar("i", role="counter"),
@@ -326,7 +352,9 @@ def build_two_phase_transform(*, seed: int, ordinal: int, bug_flag: bool = False
         guard=And((Eq(VarRef("pc"), IntConst(0)), Lt(VarRef("i"), VarRef("n")))),
         assignments=(
             Assignment("a", VarRef("a")),
-            Assignment("b", Store(VarRef("b"), VarRef("i"), Select(VarRef("a"), VarRef("i")))),
+            Assignment(
+                "b", Store(VarRef("b"), VarRef("i"), Select(VarRef("a"), VarRef("i")))
+            ),
             Assignment("i", Add(VarRef("i"), IntConst(1))),
             Assignment("n", VarRef("n")),
             Assignment("pc", VarRef("pc")),
@@ -380,7 +408,9 @@ def build_two_phase_transform(*, seed: int, ordinal: int, bug_flag: bool = False
 
     property = Implies(
         _ordered_witness_guard(
-            done_guard=And((Eq(VarRef("pc"), IntConst(1)), Ge(VarRef("i"), VarRef("n"))))
+            done_guard=And(
+                (Eq(VarRef("pc"), IntConst(1)), Ge(VarRef("i"), VarRef("n")))
+            )
         ),
         And(
             (
@@ -419,7 +449,12 @@ def build_two_phase_transform(*, seed: int, ordinal: int, bug_flag: bool = False
                 Eq(VarRef("pc"), IntConst(0)),
                 Ge(VarRef("n"), IntConst(2)),
             ),
-            transition_cases=(phase_zero_step, phase_switch, phase_one_step, done_stutter),
+            transition_cases=(
+                phase_zero_step,
+                phase_switch,
+                phase_one_step,
+                done_stutter,
+            ),
             property_spec=PropertySpec(
                 family=PropertyFamily.POINTWISE,
                 witness_names=("Y", "Z"),
@@ -438,7 +473,14 @@ def _basic_init_constraints() -> tuple[Eq | Ge, ...]:
 
 
 def _ordered_witness_guard(*, done_guard) -> And:
-    return And((done_guard, Ge(VarRef("Y"), IntConst(0)), Gt(VarRef("Z"), VarRef("Y")), Lt(VarRef("Z"), VarRef("n"))))
+    return And(
+        (
+            done_guard,
+            Ge(VarRef("Y"), IntConst(0)),
+            Gt(VarRef("Z"), VarRef("Y")),
+            Lt(VarRef("Z"), VarRef("n")),
+        )
+    )
 
 
 def _finalize_spec(

@@ -87,13 +87,18 @@ def _matching_structures(config: GenerateConfig) -> list[FamilyBuilder]:
             continue
         if config.skeleton is not None and skeleton != config.skeleton:
             continue
-        if config.property_family is not None and property_family != config.property_family:
+        if (
+            config.property_family is not None
+            and property_family != config.property_family
+        ):
             continue
         matches.append(builder)
     return matches
 
 
-def _build_spec(builder: FamilyBuilder, seed: int, ordinal: int, bug_flag: bool) -> BenchmarkSpec:
+def _build_spec(
+    builder: FamilyBuilder, seed: int, ordinal: int, bug_flag: bool
+) -> BenchmarkSpec:
     spec = builder(seed=seed, ordinal=ordinal, bug_flag=False)
     if bug_flag:
         spec = apply_bug_mutation(spec, bug_kind=spec_bug_kind())

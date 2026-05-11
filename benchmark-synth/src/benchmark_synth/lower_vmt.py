@@ -36,7 +36,11 @@ class LoweredBenchmark:
 
 def lower_benchmark(spec: BenchmarkSpec) -> LoweredBenchmark:
     declarations: list[str] = []
-    state_vars = list(spec.program.arrays) + list(spec.program.scalars) + list(spec.program.witnesses)
+    state_vars = (
+        list(spec.program.arrays)
+        + list(spec.program.scalars)
+        + list(spec.program.witnesses)
+    )
     for var in state_vars:
         declarations.extend(_declare_state_var(var))
 
@@ -66,7 +70,9 @@ def lower_benchmark(spec: BenchmarkSpec) -> LoweredBenchmark:
     return LoweredBenchmark(benchmark_name=spec.benchmark_name, vmt_text=body)
 
 
-def _lower_transition_terms(transition_cases: tuple[TransitionCase, ...]) -> tuple[Expr, ...]:
+def _lower_transition_terms(
+    transition_cases: tuple[TransitionCase, ...],
+) -> tuple[Expr, ...]:
     if len(transition_cases) == 1:
         case = transition_cases[0]
         return (case.guard,) + tuple(
