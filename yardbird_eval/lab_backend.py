@@ -431,14 +431,53 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                 private_key_path,
                 remote_bootstrap_path,
             )
-            ssh_run(
+            verification = ssh_run(
+                worker_user,
+                worker_ip,
+                private_key_path,
+                (
+                    f"test -f {shlex.quote(remote_config_path)} && "
+                    f"test -f {shlex.quote(remote_bootstrap_path)} && "
+                    f"echo READY"
+                ),
+                capture_output=True,
+            )
+            if verification.stdout.strip() != "READY":
+                raise RuntimeError(
+                    "Remote worker files were not present after upload; "
+                    f"stdout={verification.stdout!r} stderr={verification.stderr!r}"
+                )
+
+            launch = ssh_run(
                 worker_user,
                 worker_ip,
                 private_key_path,
                 (
                     f"chmod +x {shlex.quote(remote_bootstrap_path)} && "
                     f"nohup bash {shlex.quote(remote_bootstrap_path)} "
-                    ">/dev/null 2>&1 </dev/null &"
+                    f">{shlex.quote(remote_run_root + '/launcher.stdout.log')} "
+                    f"2>{shlex.quote(remote_run_root + '/launcher.stderr.log')} "
+                    "</dev/null & "
+                    "echo $!"
+                ),
+                capture_output=True,
+            )
+            launch_pid = launch.stdout.strip()
+            if not launch_pid.isdigit():
+                raise RuntimeError(
+                    "Remote bootstrap launch did not return a PID; "
+                    f"stdout={launch.stdout!r} stderr={launch.stderr!r}"
+                )
+
+            probe = ssh_run(
+                worker_user,
+                worker_ip,
+                private_key_path,
+                (
+                    "sleep 2; "
+                    f"if [ -f {shlex.quote(remote_run_root + '/run.log')} ]; then echo LOG_READY; "
+                    f"elif ps -p {launch_pid} >/dev/null 2>&1; then echo PID_RUNNING; "
+                    "else echo LAUNCH_FAILED; fi"
                 ),
                 capture_output=True,
             )
