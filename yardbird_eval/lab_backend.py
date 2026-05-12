@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import urllib.parse
 from pathlib import Path
 from string import Template
 from typing import Any
@@ -43,6 +44,14 @@ DEFAULT_LAB_WORKER_USER = "yardbird"
 
 def env_default(name: str, fallback: str | None = None) -> str | None:
     return os.environ.get(name, fallback)
+
+
+def r2_credentials() -> dict[str, str | None]:
+    return {
+        "access_key_id": os.environ.get("YARDBIRD_R2_ACCESS_KEY_ID"),
+        "secret_access_key": os.environ.get("YARDBIRD_R2_SECRET_ACCESS_KEY"),
+        "session_token": os.environ.get("YARDBIRD_R2_SESSION_TOKEN"),
+    }
 
 
 def normalize_r2_prefix(prefix: str) -> str:
@@ -229,6 +238,7 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
     )
     r2_region = args.lab_r2_region or DEFAULT_LAB_R2_REGION
     r2_prefix = normalize_r2_prefix(args.lab_r2_prefix or DEFAULT_LAB_R2_PREFIX)
+    creds = r2_credentials()
     repo_url = git_origin_url()
     repo_commit = git_head_commit()
 
@@ -251,6 +261,7 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
         "r2_region": r2_region,
         "r2_endpoint_url": r2_endpoint_url,
         "r2_prefix": r2_prefix,
+        "r2_access_key_configured": bool(creds["access_key_id"] and creds["secret_access_key"]),
         "repo_url": repo_url,
         "repo_commit": repo_commit,
     }
@@ -387,6 +398,9 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                     "r2_bucket": r2_bucket,
                     "r2_region": r2_region,
                     "r2_endpoint_url": r2_endpoint_url,
+                    "r2_access_key_id": creds["access_key_id"] or "",
+                    "r2_secret_access_key": creds["secret_access_key"] or "",
+                    "r2_session_token": creds["session_token"] or "",
                     "r2_results_key": subrun["r2_results_key"],
                     "r2_log_key": subrun["r2_log_key"],
                     "r2_metadata_key": subrun["r2_metadata_key"],
@@ -428,6 +442,31 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                 ),
                 capture_output=True,
             )
+            probe_state = probe.stdout.strip()
+            if probe_state not in {"LOG_READY", "PID_RUNNING"}:
+                diagnostics = ssh_run(
+                    worker_user,
+                    worker_ip,
+                    private_key_path,
+                    (
+                        f"echo '--- ls ---'; ls -lah {shlex.quote(remote_run_root)}; "
+                        f"echo '--- launcher stdout ---'; "
+                        f"if [ -f {shlex.quote(remote_run_root + '/launcher.stdout.log')} ]; then "
+                        f"tail -n 100 {shlex.quote(remote_run_root + '/launcher.stdout.log')}; fi; "
+                        f"echo '--- launcher stderr ---'; "
+                        f"if [ -f {shlex.quote(remote_run_root + '/launcher.stderr.log')} ]; then "
+                        f"tail -n 100 {shlex.quote(remote_run_root + '/launcher.stderr.log')}; fi"
+                    ),
+                    capture_output=True,
+                    check=False,
+                )
+                raise RuntimeError(
+                    "Remote bootstrap exited before creating a run log. "
+                    f"Probe={probe_state!r}. Diagnostics:\n{diagnostics.stdout}\n{diagnostics.stderr}"
+                )
+
+            subrun["launcher_pid"] = int(launch_pid)
+            subrun["launcher_probe_state"] = probe_state
             subrun["worker_started_at"] = iso_now()
             subrun["last_observed_vm_state"] = "running"
             refresh_progress(manifest)

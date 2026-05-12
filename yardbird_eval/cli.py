@@ -9,6 +9,7 @@ from .common import (
     build_report_for_run,
     ensure_dir,
     load_manifest,
+    load_dotenv,
     print_run_summary,
     resolve_run_id,
 )
@@ -155,6 +156,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    load_dotenv()
     args = parse_args()
     ensure_dir(BENCHMARK_ROOT)
 

@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .common import ensure_dir, run_command
+
+
+def r2_aws_env() -> dict[str, str] | None:
+    access_key = os.environ.get("YARDBIRD_R2_ACCESS_KEY_ID")
+    secret_key = os.environ.get("YARDBIRD_R2_SECRET_ACCESS_KEY")
+    session_token = os.environ.get("YARDBIRD_R2_SESSION_TOKEN")
+    if not access_key or not secret_key:
+        return None
+
+    env = os.environ.copy()
+    env["AWS_ACCESS_KEY_ID"] = access_key
+    env["AWS_SECRET_ACCESS_KEY"] = secret_key
+    env["AWS_DEFAULT_REGION"] = os.environ.get("LAB_R2_REGION", "auto")
+    if session_token:
+        env["AWS_SESSION_TOKEN"] = session_token
+    return env
 
 
 def object_store_head_object(
@@ -26,7 +43,7 @@ def object_store_head_object(
             region,
         ]
     )
-    result = run_command(command, check=False)
+    result = run_command(command, check=False, env=r2_aws_env() if endpoint_url else None)
     return result.returncode == 0
 
 
@@ -51,7 +68,12 @@ def object_store_download(
             region,
         ]
     )
-    run_command(command, check=True, capture_output=True)
+    run_command(
+        command,
+        check=True,
+        capture_output=True,
+        env=r2_aws_env() if endpoint_url else None,
+    )
 
 
 def s3_object_exists(bucket: str, key: str, region: str) -> bool:

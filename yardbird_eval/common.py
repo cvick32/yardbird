@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 from datetime import datetime
@@ -70,12 +72,14 @@ def run_command(
     cwd: Path | None = None,
     check: bool = True,
     capture_output: bool = True,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
         cwd=str(cwd) if cwd else None,
         text=True,
         capture_output=capture_output,
+        env=env,
     )
     if check and result.returncode != 0:
         stderr = result.stderr.strip() if result.stderr else ""
@@ -91,6 +95,33 @@ def choose_report_python() -> str:
     if PAPER_GRAPHICS_VENV_PY.exists():
         return str(PAPER_GRAPHICS_VENV_PY)
     return shutil.which("python3") or sys.executable
+
+
+def load_dotenv(path: Path | None = None) -> None:
+    dotenv_path = path or ROOT / ".env"
+    if not dotenv_path.exists():
+        return
+
+    for raw_line in dotenv_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+        if value and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        else:
+            parts = shlex.split(value, comments=False, posix=True)
+            if len(parts) == 1:
+                value = parts[0]
+        os.environ[key] = value
 
 
 def read_index() -> dict[str, Any]:
