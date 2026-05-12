@@ -170,10 +170,8 @@ where
         while let Some(token) = self.lexer.next() {
             match &token {
                 parser::Token::LeftParen => unmatched_paren += 1,
-                parser::Token::RightParen => {
-                    if unmatched_paren > 0 {
-                        unmatched_paren -= 1;
-                    }
+                parser::Token::RightParen if unmatched_paren > 0 => {
+                    unmatched_paren -= 1;
                 }
                 _ => (),
             }
