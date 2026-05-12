@@ -84,8 +84,11 @@ done
 
 python3 -m pip install --user z3-solver==4.15.3 >/dev/null
 Z3_SITE_DIR="$$(python3 -c 'import site; print(site.getusersitepackages())')"
+Z3_LIB_DIR="$${Z3_SITE_DIR}/z3/lib"
 export Z3_SYS_Z3_HEADER="$${Z3_SITE_DIR}/z3/include/z3.h"
-export LD_LIBRARY_PATH="$${Z3_SITE_DIR}/z3/lib:$${LD_LIBRARY_PATH:-}"
+export Z3_LIBRARY_PATH_OVERRIDE="$${Z3_LIB_DIR}"
+export LIBRARY_PATH="$${Z3_LIB_DIR}:$${LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$${Z3_LIB_DIR}:$${LD_LIBRARY_PATH:-}"
 
 WORKTREE_DIR="$${RUN_ROOT}/repo"
 if [ ! -d "$${WORKTREE_DIR}/.git" ]; then

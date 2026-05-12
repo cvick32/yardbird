@@ -1,0 +1,727 @@
+#+title: Prophecy and History Variable Synthesis Plan for Yardbird
+
+* Purpose
+
+This document is the implementation plan for adding *prophecy and history
+variable synthesis* to Yardbird.
+
+The goal is to reuse Yardbird's existing abstract-array CEGAR loop as much as
+possible while adding a new refinement option: when repeated or non-local array
+instantiations suggest that bounded ground refinement is doing the work of a
+missing auxiliary variable, Yardbird should be able to synthesize prophecy and
+conditional history variables into the abstracted VMT model.
+
+The first milestone is intentionally narrow:
+
+- VMT mode only
+- array theory only
+- abstracted VMT model only
+- bounded Yardbird loop only
+- synthesis driven by existing conflict-scheduler output
+- configurable trigger policies for experimentation
+
+This is *not* an exact port of CondHist. It is a Yardbird-native adaptation of
+the main idea: use failed abstract traces and array-axiom conflicts to introduce
+auxiliary state that makes non-local proof obligations more local.
+
+* Background From The Thesis
+
+Chapter 2 of ~thesis.pdf~ describes the prior technique.
+
+The key ingredients are:
+
+- abstract arrays into uninterpreted functions
+- inspect abstract counterexamples
+- identify violated array axiom instances
+- if an instance is local to one initial/transition frame, add it directly
+- if an instance spans many frames, localize it with auxiliary variables
+- use prophecy variables to carry future-relevant values into the property
+- use conditional history variables to remember values when a capture guard holds
+- mine capture guards from property-directed array reasoning and, later,
+  interpolants
+
+The important shift for Yardbird is that we already have a productive source of
+array-axiom conflicts: the e-graph conflict scheduler. The first implementation
+should use those emitted conflicts rather than rebuilding the full trigger-form
+backward search from the paper.
+
+* Resolved Decisions
+
+The following decisions are fixed for the first planning pass:
+
+- target only *VMT array mode*
+- do not support SMTLIB mode initially
+- do not support list or bv-list theory initially
+- make synthesis trigger policy configurable
+- begin from *existing conflict scheduler output*
+- do not attempt an exact recreation of the original algorithm
+- instrument only the *abstracted VMT model*
+- record auxiliary variables that were added
+- do not rewrite the original native-array VMT model
+- keep the first milestone inside Yardbird's bounded loop
+- do not require IC3IA for the first milestone
+
+* Current Yardbird Surface
+
+The relevant current flow is:
+
+1. ~Driver::check_strategy~ calls ~strat.configure_model~ once.
+2. ~Abstract::configure_model~ abstracts native arrays to uninterpreted
+   ~Read_*~, ~Write_*~, and ~ConstArr_*~ symbols.
+3. ~SMTProblem::new~ builds the incremental Z3 state from that abstracted model.
+4. each SAT abstract counterexample calls ~ArrayRefinementState::update_with_subterms~.
+5. ~saturate_with_array_types~ runs e-graph matching over array axioms.
+6. ~ArrayConflictScheduler~ records axiom instances that would create new
+   equalities.
+7. ~Abstract::finish~ converts selected abstract instances to solver
+   instantiations through ~UnquantifiedInstantiator~.
+
+Important files:
+
+- ~src/driver.rs~
+- ~src/strategies/array_abstract.rs~
+- ~src/theories/array/array_conflict_scheduler.rs~
+- ~src/theories/array/array_axioms.rs~
+- ~src/smt_problem.rs~
+- ~smt2parser/src/vmt/mod.rs~
+- ~smt2parser/src/vmt/array_axiom_frame_num_getter.rs~
+- ~smt2parser/src/vmt/quantified_instantiator.rs~
+- ~smt2parser/src/vmt/smt.rs~
+- ~src/utils.rs~
+- ~src/strategies/interpolate.rs~
+
+* Key Gaps
+
+** Solver rebuild after model mutation
+
+Today the driver constructs one ~SMTProblem~ after model configuration. Ground
+instantiations can be added to that solver incrementally, but synthesized
+history/prophecy variables require mutating the VMT model itself.
+
+Therefore the synthesis path needs one of:
+
+- a new driver action that says "replace the current model and rebuild solver"
+- a side-channel extension that mutates the model and forces a restart
+- a wrapper strategy that owns a model-rebuild protocol
+
+Recommendation: add an explicit proof action:
+
+- ~ProofAction::RestartWithModel~
+
+or a more precise name:
+
+- ~ProofAction::RebuildSolver~
+
+The driver should then rebuild ~SMTProblem~ from the current ~vmt_model~ and
+restart the current BMC depth.
+
+** SMTInterpol bridge
+
+The parser-side BMC object already implements ~to_smtinterpol~ in
+~smt2parser/src/vmt/smt.rs~.
+
+The active Yardbird runtime object has:
+
+- ~src/smt_problem.rs::to_smtinterpol~
+
+but it is currently ~todo!()~.
+
+This must be implemented before interpolant-derived guard mining can become a
+reliable part of synthesis. It is not required for the first non-interpolant
+synthesis milestone, but it should be an early foundation task.
+
+** Model instrumentation API
+
+~VMTModel~ currently supports adding ground instantiations to init/trans, but it
+does not expose a first-class method for adding auxiliary state variables.
+
+We need APIs that can:
+
+- add a prophecy constant or state-like symbol
+- add a history state variable with current and next declarations
+- add the VMT ~:next~ relationship for the history variable
+- conjoin the history update into the transition condition
+- conjoin any prophecy/property link into the property condition
+- record metadata about synthesized auxiliaries
+
+* Core Concepts
+
+** Auxiliary variable kinds
+
+Prophecy variable:
+
+- predicts the final value of a selected term
+- first milestone can model this as an uninterpreted constant in the abstracted
+  VMT vocabulary, or as an immutable state variable if that fits existing VMT
+  conventions better
+- participates in a property-side equality/link to the captured history value
+
+History variable:
+
+- fresh state-holding variable
+- has current and next declarations
+- transition update:
+  - ~hist_next = ite(capture_guard, captured_term, hist)~
+- sort matches the captured term
+
+Auxiliary metadata:
+
+- stable id
+- kind: prophecy or history
+- sort
+- source instantiation hash
+- source axiom name if available
+- capture guard
+- captured term
+- trigger policy that introduced it
+- BMC depth and refinement step where it was introduced
+
+** Locality
+
+For the first implementation, locality should be measured by frame span.
+
+Useful helper:
+
+- ~VariableOffsetGetter~ in ~smt2parser/src/vmt/array_axiom_frame_num_getter.rs~
+
+Definitions:
+
+- local initial fact: only frame ~0~
+- local transition fact: spans at most adjacent frames, after normalization
+- non-local fact: frame span greater than ~1~, or otherwise not representable as
+  one transition instance
+
+The synthesis trigger should initially focus on non-local emitted
+instantiations.
+
+** Capture guard
+
+Initial guard choices, in order:
+
+1. ~true~ as a correctness baseline
+2. conjunction of local preconditions from the selected array axiom when
+   available
+3. conjunction of local equalities/disequalities already present in the
+   instantiation
+4. later: predicates mined from interpolants
+
+The first implementation can start with a deliberately simple guard strategy so
+that the instrumentation path is proven end-to-end before making guard mining
+clever.
+
+* Configurable Trigger Policies
+
+Synthesis should be controlled by a CLI option so experiments can compare
+policies.
+
+Recommended initial option:
+
+- ~--synthesis-trigger <mode>~
+
+Initial modes:
+
+- ~off~
+  - default until stable
+- ~non-local~
+  - synthesize when the selected conflict spans more than one transition
+- ~refinement-limit~
+  - synthesize when the current depth is near or at the refinement limit
+- ~repeated-pattern~
+  - synthesize when similar instantiations recur across depths/refinement steps
+- ~manual-after-n~
+  - synthesize after N ordinary refinement steps at a depth
+
+Recommended companion options:
+
+- ~--enable-aux-synthesis~
+- ~--synthesis-max-vars <N>~
+- ~--synthesis-max-per-depth <N>~
+- ~--synthesis-guard-policy <true|axiom-local|interpolant>~
+- ~--dump-aux-vars <PATH>~
+
+It is fine if the initial CLI surface is smaller, but the architecture should
+not bake in a single trigger.
+
+* Proposed Architecture
+
+** New module: ~src/auxiliary_synthesis/~
+
+Create:
+
+- ~src/auxiliary_synthesis/mod.rs~
+- ~src/auxiliary_synthesis/config.rs~
+- ~src/auxiliary_synthesis/locality.rs~
+- ~src/auxiliary_synthesis/candidate.rs~
+- ~src/auxiliary_synthesis/guard.rs~
+- ~src/auxiliary_synthesis/instrument.rs~
+- ~src/auxiliary_synthesis/records.rs~
+
+Responsibilities:
+
+- classify emitted instantiations by frame locality
+- decide whether a trigger policy fires
+- convert a chosen non-local instantiation into synthesis candidates
+- select captured terms
+- select capture guards
+- instrument the abstracted ~VMTModel~
+- emit structured records for logging and debugging
+
+** New data structures
+
+~AuxSynthesisConfig~:
+
+- enabled
+- trigger mode
+- guard policy
+- max total auxiliary vars
+- max vars per depth
+- repeated-pattern threshold
+- manual-after-n threshold
+- dump path
+
+~AuxSynthesisCandidate~:
+
+- source abstract instantiation
+- source concrete term
+- axiom name
+- frame span
+- min frame
+- max frame
+- candidate captured terms
+- candidate prophecy links
+- candidate guard
+
+~AuxiliaryVariableRecord~:
+
+- id
+- kind
+- name
+- sort
+- source term hash
+- source axiom
+- depth
+- refinement step
+- guard
+- captured term
+- property link
+
+~AuxSynthesisDecision~:
+
+- trigger mode
+- fired or skipped
+- reason
+- candidate count
+- selected candidate
+- model was changed
+
+** Scheduler output changes
+
+The conflict scheduler currently records:
+
+- instantiations
+- const/high-cost instantiations
+- decision records
+- abstract instantiation records
+
+For synthesis we need richer provenance for each emitted conflict:
+
+- axiom name
+- full abstract instantiation as ~ArrayExpr~
+- converted ~Term~
+- frame span metadata
+- whether it is local
+- pattern variable bindings if feasible
+
+Recommendation: do not overload training records. Add a runtime
+~ArrayConflictRecord~ and then derive existing training records from it.
+
+** Driver action changes
+
+Add a path for model-level refinements.
+
+Possible shape:
+
+- strategy SAT step returns ~ProofAction::Continue~ for normal ground refinement
+- synthesis returns ~ProofAction::RebuildSolver~
+- before rebuilding, the strategy or synthesis module mutates ~driver.vmt_model~
+- driver reconstructs ~SMTProblem::new~
+- driver restarts the same depth, preserving global logs and auxiliary metadata
+
+Important behavior:
+
+- ordinary ground instantiations added only to the old solver may be lost on
+  rebuild unless they are also recorded into ~vmt_model~
+- decide whether rebuild carries forward previous instantiations
+
+Recommendation:
+
+- when rebuilding for synthesis, first materialize existing solver
+  instantiations into the VMT model, using the same mechanism currently used in
+  ~Abstract::result~
+- then instrument auxiliary variables
+- then rebuild
+
+This avoids losing useful refinements.
+
+* Instrumentation Semantics
+
+** History refinement
+
+Given:
+
+- fresh history variable ~H~
+- captured term ~t~
+- capture guard ~g~
+
+Add:
+
+- current declaration ~H~
+- next declaration ~H_next~
+- VMT next relationship for ~H~
+- transition conjunct:
+  - ~(= H_next (ite g t H))~
+
+The sort of ~H~ is the sort of ~t~.
+
+** Prophecy refinement
+
+Given:
+
+- fresh prophecy symbol ~P~
+- term to predict or history value to relate
+
+First milestone option:
+
+- add ~P~ as a fresh immutable symbol/constant
+- add property-side implication/equality that relates ~P~ and ~H~
+
+The exact encoding should be validated against Yardbird's VMT conventions before
+implementation.
+
+Open design detail:
+
+- whether prophecy variables should be state variables with stuttering
+  transition ~P_next = P~, or pure declared constants
+
+Recommendation:
+
+- start with immutable state variables if that makes BMC indexing and Z3
+  declaration management more uniform.
+
+** Property link
+
+For the scattering-style pattern, the property can be strengthened with a guard:
+
+- old property remains as the thing being checked
+- auxiliary condition narrows the bad witness case
+- link prophecy to history when the relevant guard holds
+
+For the first Yardbird milestone, we may not have the original universal
+property/witness structure. Therefore the initial property link should be
+minimal and tied to the selected non-local instantiation:
+
+- introduce the auxiliary variables
+- add a localized version of the selected axiom instance to transition
+- use prophecy/history equalities to replace far-frame terms
+
+This is closer to "localize one emitted instance" than "rewrite the whole
+safety property."
+
+* Interpolation Plan
+
+Interpolation is not required for the first synthesis pass, but we should plan
+for it early.
+
+** Foundation task
+
+Implement:
+
+- ~src/smt_problem.rs::to_smtinterpol~
+
+by reusing the same structure already present in:
+
+- ~smt2parser/src/vmt/smt.rs::to_smtinterpol~
+
+Potential issue:
+
+- the runtime ~SMTProblem~ has incremental solver state but does not currently
+  expose all declarations/assertions in the same way as parser-side
+  ~SMTProblem~.
+
+Possible implementation approaches:
+
+1. teach runtime ~SMTProblem~ to retain indexed declarations/assertions as
+   structured terms
+2. reconstruct an unrolled parser-side ~SMTProblem~ from the current abstracted
+   ~VMTModel~ and depth
+3. use solver ~to_string~ as a fallback only for debugging, not interpolation
+
+Recommendation:
+
+- use structured reconstruction from the abstracted ~VMTModel~ for correctness
+  and stable named partitions.
+
+** Guard mining
+
+Once interpolants are available:
+
+- parse sequence interpolants into ~Term~
+- extract atomic predicates and negations
+- filter predicates by frame locality
+- evaluate candidate guards in the current model
+- prefer non-interpolant guards first, then interpolant-derived guards
+
+Initial guard-policy modes:
+
+- ~true~
+- ~axiom-local~
+- ~interpolant~
+
+* Milestones
+
+** Phase 0: Observability
+
+Goal: make non-locality visible without changing solver behavior.
+
+Tasks:
+
+- add frame-span metadata to emitted instantiations
+- log whether each abstract instantiation is local or non-local
+- add summary counts per depth:
+  - local instantiations
+  - non-local instantiations
+  - repeated-pattern candidates
+- optionally export records to JSON
+
+Validation:
+
+- run a few array benchmarks
+- confirm non-local conflicts are detected
+- confirm no behavior changes when synthesis is off
+
+** Phase 1: SMTInterpol bridge
+
+Goal: make ~--interpolate~ usable in current VMT array mode.
+
+Tasks:
+
+- implement ~src/smt_problem.rs::to_smtinterpol~
+- avoid writing to a fixed global ~interpolant-out.smt2~ when possible
+- parse SMTInterpol output robustly
+- add a small smoke test if feasible
+
+Validation:
+
+- run Yardbird with ~--interpolate~ on a small unsat array benchmark
+- confirm interpolants are produced and simplified
+
+** Phase 2: Model rebuild action
+
+Goal: allow strategies to mutate the abstracted VMT model and continue bounded
+checking.
+
+Tasks:
+
+- add a ~ProofAction~ variant for solver rebuild
+- update ~Driver::check_strategy~ to rebuild ~SMTProblem~
+- preserve existing ground instantiations across rebuild
+- ensure depth/refinement accounting remains understandable
+- add trace/debug logging around rebuilds
+
+Validation:
+
+- create a no-op model mutation test path
+- confirm rebuild produces the same result as no rebuild
+
+** Phase 3: Auxiliary instrumentation API
+
+Goal: add history/prophecy variables to the abstracted VMT model.
+
+Tasks:
+
+- add ~VMTModel~ helper methods or a separate instrumenter
+- generate fresh stable names
+- construct current/next declarations
+- construct VMT ~:next~ relationships
+- conjoin transition updates
+- conjoin localized axiom/property links
+- record auxiliary metadata
+
+Validation:
+
+- unit test generated VMT text for one simple history variable
+- parse the generated VMT back through ~VMTModel::checked_from~
+
+** Phase 4: First synthesis policy
+
+Goal: synthesize from existing conflict scheduler output.
+
+Initial policy:
+
+- trigger on selected non-local instantiation
+- use ~true~ guard
+- synthesize one history variable and one prophecy variable as needed
+- rebuild solver
+- continue at the same BMC depth
+
+Tasks:
+
+- convert conflict records into ~AuxSynthesisCandidate~
+- classify non-local terms
+- choose captured terms conservatively
+- instrument model
+- cap number of synthesized variables
+
+Validation:
+
+- run with synthesis off and on
+- confirm synthesis changes the abstracted VMT model
+- confirm bounded loop continues after rebuild
+- inspect dumped auxiliary variable records
+
+** Phase 5: Guard policies
+
+Goal: improve performance beyond unconditional history.
+
+Tasks:
+
+- implement axiom-local guard extraction
+- add model evaluation for candidate guards
+- implement interpolant-derived guard extraction
+- rank guards:
+  1. local axiom guard
+  2. branch/control guard if available
+  3. interpolant predicate
+  4. true
+
+Validation:
+
+- compare against unconditional guard on multi-loop benchmarks
+- measure auxiliary variable count and refinement count
+
+** Phase 6: Experimental trigger policies
+
+Goal: make detection strategies easy to compare.
+
+Tasks:
+
+- implement ~non-local~
+- implement ~manual-after-n~
+- implement ~refinement-limit~
+- implement ~repeated-pattern~
+- expose all through CLI/config
+- include trigger mode in JSON output and auxiliary records
+
+Validation:
+
+- run a matrix over small benchmark set
+- compare proof rate, solve time, refinement count, aux var count
+
+* Testing Strategy
+
+Unit tests:
+
+- frame-span/locality classification
+- auxiliary name generation
+- VMT instrumentation for history variables
+- VMT instrumentation round-trip parse
+- guard extraction from simple terms
+
+Integration tests:
+
+- synthesis disabled preserves current behavior
+- non-local trigger causes a rebuild on a crafted benchmark
+- generated auxiliary variables appear in final abstracted VMT
+- bounded loop continues after rebuild
+
+Regression benchmarks:
+
+- choose a small set of array VMT examples where non-local instantiations occur
+- add generated/synthetic examples if existing examples do not expose the right
+  shape reliably
+
+* Open Questions
+
+** Prophecy encoding
+
+Should prophecy symbols be:
+
+- immutable state variables with ~P_next = P~
+- pure declared constants
+- action variables
+
+Recommendation for first pass:
+
+- immutable state variables, because Yardbird's BMC and variable indexing
+  machinery already understands state variables.
+
+** Carrying previous instantiations across rebuild
+
+Should all existing ground instantiations be materialized into the VMT model
+before rebuild?
+
+Recommendation:
+
+- yes for the first implementation, because it is simpler and avoids losing
+  progress.
+
+Potential later optimization:
+
+- keep only instantiations that were useful, especially if unsat-core tracking is
+  enabled.
+
+** Source of sort information
+
+Captured term sort inference needs to be robust.
+
+Options:
+
+- infer from variable declarations
+- infer from array operation signatures
+- use Z3 AST sorts when available
+- add sort annotation during ~ArrayExpr~ to ~Term~ conversion
+
+Recommendation:
+
+- start with declarations and typed array operation names; add Z3-sort fallback
+  only if needed.
+
+** Interaction with training logs
+
+Auxiliary synthesis should eventually be logged alongside instantiation
+decisions.
+
+First pass:
+
+- emit JSON records or include records in ~ProofLoopResult~
+
+Later:
+
+- add DB tables for synthesis decisions and auxiliary variables
+
+* First Implementation Order
+
+1. Add locality metadata to conflict scheduler output.
+2. Add synthesis config and CLI flags, defaulting to off.
+3. Add proof action / driver support for rebuilding the solver.
+4. Add VMT instrumentation helpers for abstracted models.
+5. Implement a minimal non-local synthesis policy with true guards.
+6. Preserve existing ground instantiations across rebuild.
+7. Add auxiliary-variable records to JSON output.
+8. Implement ~SMTProblem::to_smtinterpol~.
+9. Add axiom-local guard policy.
+10. Add interpolant guard policy.
+11. Add repeated-pattern and refinement-limit trigger policies.
+
+* Success Criteria For First Milestone
+
+The first milestone is successful when:
+
+- ~--enable-aux-synthesis --synthesis-trigger non-local~ works in VMT array mode
+- synthesis is off by default
+- a non-local emitted conflict can cause auxiliary instrumentation
+- Yardbird rebuilds the solver and continues the same bounded run
+- the final JSON output records synthesized auxiliary variables
+- existing array benchmarks still behave the same with synthesis disabled
+- no original native-array VMT rewriting is required
+
