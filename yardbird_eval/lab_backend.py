@@ -343,7 +343,8 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                 proxmox["token_secret"],
                 params={
                     "ciuser": worker_user,
-                    "sshkeys": public_key,
+                    # Proxmox expects the sshkeys field itself to be URL-encoded.
+                    "sshkeys": urllib.parse.quote(public_key, safe=""),
                     "ipconfig0": "ip=dhcp",
                 },
                 insecure=proxmox["insecure"],
@@ -381,7 +382,10 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                 insecure=proxmox["insecure"],
             )
             subrun["worker_ip"] = worker_ip
+            save_manifest(manifest)
             wait_for_ssh(worker_user, worker_ip, private_key_path)
+            subrun["worker_ssh_ready_at"] = iso_now()
+            save_manifest(manifest)
 
             rendered_bootstrap = render_worker_bootstrap(
                 {
