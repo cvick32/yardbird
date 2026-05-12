@@ -44,7 +44,13 @@ export LAB_R2_BUCKET="yardbird-lab"
 export LAB_R2_ENDPOINT_URL="https://<account>.r2.cloudflarestorage.com"
 export LAB_R2_REGION="auto"
 export LAB_R2_PREFIX="main-eval"
+export YARDBIRD_R2_ACCESS_KEY_ID="..."
+export YARDBIRD_R2_SECRET_ACCESS_KEY="..."
 ```
+
+`main_eval.py` loads the repo-root `.env` file automatically before parsing arguments. Existing shell environment variables still win over `.env` values.
+
+The `YARDBIRD_R2_*` variables are used for the lab R2 flow specifically, so they do not clobber unrelated AWS credentials you may still need for the older AWS-backed path.
 
 If the public key is not at `${LAB_WORKER_SSH_KEY}.pub`, also set:
 
@@ -58,8 +64,7 @@ export LAB_WORKER_SSH_PUBLIC_KEY="$HOME/.ssh/yardbird_lab.pub"
 python3 main_eval.py \
   --env lab \
   --name proxmox-smoke \
-  --benchmark-type quick_test \
-  --benchmark-type standard_eval
+  --benchmark-type quick
 ```
 
 That creates a local manifest under `benchmark_results/main_eval/<run-id>/run.json`.
