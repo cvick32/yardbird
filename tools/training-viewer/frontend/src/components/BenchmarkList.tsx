@@ -38,6 +38,9 @@ export default function BenchmarkList() {
   return (
     <div className="pane pane-left">
       <h2>Benchmarks</h2>
+      <button className="nav-link-btn" onClick={() => navigate("/eval-runs")}>
+        Eval Runs
+      </button>
       <input
         type="text"
         placeholder="Search benchmarks..."

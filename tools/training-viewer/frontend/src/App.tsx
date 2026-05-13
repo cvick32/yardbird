@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import BenchmarkList from "./components/BenchmarkList";
+import EvalRunsPage from "./components/EvalRunsPage";
 import RunList from "./components/RunList";
 import RunDetail from "./components/RunDetail";
 import "./App.css";
@@ -18,6 +19,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/eval-runs" element={<EvalRunsPage />} />
         <Route path="/" element={<Layout />} />
         <Route path="/benchmarks/:benchmarkName" element={<Layout />} />
         <Route

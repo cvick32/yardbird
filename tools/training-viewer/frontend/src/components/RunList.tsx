@@ -8,17 +8,17 @@ type SortKey = keyof RunSummary;
 export default function RunList() {
   const { benchmarkName, runId } = useParams();
   const navigate = useNavigate();
-  const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [runState, setRunState] = useState<{
+    benchmarkName: string | null;
+    runs: RunSummary[];
+  }>({ benchmarkName: null, runs: [] });
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortAsc, setSortAsc] = useState(false);
 
   useEffect(() => {
     if (!benchmarkName) return;
-    setLoading(true);
     api.runs(benchmarkName).then((data) => {
-      setRuns(data);
-      setLoading(false);
+      setRunState({ benchmarkName, runs: data });
     });
   }, [benchmarkName]);
 
@@ -37,6 +37,9 @@ export default function RunList() {
       setSortAsc(true);
     }
   };
+
+  const loading = benchmarkName != null && runState.benchmarkName !== benchmarkName;
+  const runs = loading ? [] : runState.runs;
 
   const sorted = [...runs].sort((a, b) => {
     const av = a[sortKey];

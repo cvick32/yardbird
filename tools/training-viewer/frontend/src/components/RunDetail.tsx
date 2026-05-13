@@ -14,44 +14,45 @@ import IndexedTable from "./IndexedTable";
 import ProvenanceView from "./ProvenanceView";
 
 type Tab = "decisions" | "abstract" | "indexed" | "provenance";
+type LoadedRows<T> = { runId: number; rows: T[] };
 
 export default function RunDetail() {
   const { runId, benchmarkName } = useParams();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<RunDetailType | null>(null);
   const [tab, setTab] = useState<Tab>("decisions");
-  const [decisions, setDecisions] = useState<Decision[] | null>(null);
-  const [abstracts, setAbstracts] = useState<AbstractInstantiation[] | null>(null);
-  const [indexed, setIndexed] = useState<IndexedInstantiation[] | null>(null);
-  const [provenance, setProvenance] = useState<ProvenanceRow[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [decisions, setDecisions] = useState<LoadedRows<Decision> | null>(null);
+  const [abstracts, setAbstracts] =
+    useState<LoadedRows<AbstractInstantiation> | null>(null);
+  const [indexed, setIndexed] =
+    useState<LoadedRows<IndexedInstantiation> | null>(null);
+  const [provenance, setProvenance] =
+    useState<LoadedRows<ProvenanceRow> | null>(null);
 
   const id = runId ? parseInt(runId) : null;
 
   useEffect(() => {
     if (id == null) return;
-    setLoading(true);
-    setDecisions(null);
-    setAbstracts(null);
-    setIndexed(null);
-    setProvenance(null);
     api.runSummary(id).then((data) => {
       setDetail(data);
-      setLoading(false);
     });
   }, [id]);
 
   // Load tab data on demand
   useEffect(() => {
     if (id == null) return;
-    if (tab === "decisions" && decisions == null) {
-      api.decisions(id).then(setDecisions);
-    } else if (tab === "abstract" && abstracts == null) {
-      api.abstractInstantiations(id).then(setAbstracts);
-    } else if (tab === "indexed" && indexed == null) {
-      api.indexedInstantiations(id).then(setIndexed);
-    } else if (tab === "provenance" && provenance == null) {
-      api.provenance(id).then(setProvenance);
+    if (tab === "decisions" && decisions?.runId !== id) {
+      api.decisions(id).then((rows) => setDecisions({ runId: id, rows }));
+    } else if (tab === "abstract" && abstracts?.runId !== id) {
+      api
+        .abstractInstantiations(id)
+        .then((rows) => setAbstracts({ runId: id, rows }));
+    } else if (tab === "indexed" && indexed?.runId !== id) {
+      api
+        .indexedInstantiations(id)
+        .then((rows) => setIndexed({ runId: id, rows }));
+    } else if (tab === "provenance" && provenance?.runId !== id) {
+      api.provenance(id).then((rows) => setProvenance({ runId: id, rows }));
     }
   }, [id, tab, decisions, abstracts, indexed, provenance]);
 
@@ -60,6 +61,8 @@ export default function RunDetail() {
       navigate(`/benchmarks/${encodeURIComponent(benchmarkName)}`);
     }
   };
+
+  const loading = id != null && detail?.benchmark.id !== id;
 
   if (loading || !detail) {
     return (
@@ -179,18 +182,26 @@ export default function RunDetail() {
 
       <div className="tab-content">
         {tab === "decisions" &&
-          (decisions ? (
-            <DecisionTable decisions={decisions} runId={id!} />
+          (decisions?.runId === id ? (
+            <DecisionTable decisions={decisions.rows} runId={id!} />
           ) : (
             "Loading..."
           ))}
         {tab === "abstract" &&
-          (abstracts ? <AbstractTable rows={abstracts} /> : "Loading...")}
+          (abstracts?.runId === id ? (
+            <AbstractTable rows={abstracts.rows} />
+          ) : (
+            "Loading..."
+          ))}
         {tab === "indexed" &&
-          (indexed ? <IndexedTable rows={indexed} /> : "Loading...")}
+          (indexed?.runId === id ? (
+            <IndexedTable rows={indexed.rows} />
+          ) : (
+            "Loading..."
+          ))}
         {tab === "provenance" &&
-          (provenance ? (
-            <ProvenanceView rows={provenance} />
+          (provenance?.runId === id ? (
+            <ProvenanceView rows={provenance.rows} />
           ) : (
             "Loading..."
           ))}

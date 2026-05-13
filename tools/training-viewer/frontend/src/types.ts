@@ -112,3 +112,97 @@ export interface ProvenanceRow {
   indexed_depth: number | null;
   indexed_label: string | null;
 }
+
+export type EvalEnvironment = "local" | "aws" | "lab";
+export type EvalStatus = "RUNNING" | "COMPLETED" | "FAILED";
+
+export interface EvalRunIndexEntry {
+  run_id: string;
+  name: string | null;
+  env: EvalEnvironment;
+  status: EvalStatus;
+  started_at: string;
+  updated_at: string;
+  benchmark_types: string[];
+  manifest_path: string;
+}
+
+export interface EvalRunsIndex {
+  runs: EvalRunIndexEntry[];
+}
+
+export interface EvalSubrun {
+  benchmark_type: string;
+  status: EvalStatus;
+  started_at: string;
+  completed_at: string | null;
+  mode: EvalEnvironment;
+  worker_vmid?: number;
+  worker_node?: string;
+  worker_name?: string;
+  worker_ip?: string | null;
+  worker_destroyed_at?: string;
+  keep_vm?: boolean;
+  cleanup_pending?: boolean;
+  cleanup_error?: string;
+  last_observed_vm_state?: string;
+  last_checked_at?: string;
+  r2_bucket?: string;
+  r2_prefix?: string;
+  r2_results_key?: string;
+  r2_completion_key?: string;
+  r2_failure_key?: string;
+  result_path?: string;
+  download_dir?: string;
+  error?: string;
+}
+
+export interface EvalRunManifest {
+  run_id: string;
+  name: string;
+  env: EvalEnvironment;
+  status: EvalStatus;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  benchmark_types: string[];
+  config_path: string;
+  run_dir: string;
+  manifest_path: string;
+  progress: {
+    completed: number;
+    failed: number;
+    running: number;
+    total: number;
+  };
+  report: null | Record<string, unknown>;
+  subruns: EvalSubrun[];
+  training_enabled?: boolean;
+  training_version?: string | null;
+  postgres_sidecar?: unknown;
+  lab?: Record<string, unknown>;
+}
+
+export interface LaunchEvalRunRequest {
+  env: EvalEnvironment;
+  benchmarkTypes: string[];
+  name?: string;
+  config?: string;
+  lab?: {
+    proxmoxInsecure?: boolean;
+    workerTemplate?: string;
+    workerUser?: string;
+    workerSshKey?: string;
+    r2Prefix?: string;
+    keepVms?: boolean;
+  };
+}
+
+export interface EvalRunActionResult {
+  command: {
+    stdout: string;
+    stderr: string;
+  };
+  manifest?: EvalRunManifest;
+  index?: EvalRunsIndex;
+}
