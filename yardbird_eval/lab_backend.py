@@ -599,6 +599,36 @@ def refresh_lab_run(manifest: dict[str, Any], args: Any) -> dict[str, Any]:
     return manifest
 
 
+def teardown_lab_subrun(
+    manifest: dict[str, Any], args: Any, subrun_index: int
+) -> dict[str, Any]:
+    if manifest.get("env") != "lab":
+        raise RuntimeError(
+            f"Run {manifest['run_id']} uses environment {manifest.get('env')}, not lab"
+        )
+    if subrun_index < 0 or subrun_index >= len(manifest["subruns"]):
+        raise IndexError(
+            f"Subrun index {subrun_index} is out of range for run {manifest['run_id']}"
+        )
+
+    subrun = manifest["subruns"][subrun_index]
+    if subrun.get("worker_destroyed_at"):
+        save_manifest(manifest)
+        return manifest
+    if subrun.get("status") not in {STATUS_COMPLETED, STATUS_FAILED}:
+        raise RuntimeError(
+            "Only completed or failed lab subruns can be torn down from the viewer; "
+            "refresh status first if the worker has finished"
+        )
+
+    proxmox = lab_proxmox_settings(args, manifest=manifest, require_credentials=True)
+    subrun["keep_vm"] = False
+    maybe_destroy_lab_worker(subrun, proxmox)
+    refresh_progress(manifest)
+    save_manifest(manifest)
+    return manifest
+
+
 def download_lab_artifacts(manifest: dict[str, Any]) -> None:
     for subrun in manifest["subruns"]:
         if subrun["status"] != STATUS_COMPLETED:

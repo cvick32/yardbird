@@ -21,6 +21,7 @@ from .lab_backend import (
     env_default,
     launch_lab_run,
     refresh_lab_run,
+    teardown_lab_subrun,
 )
 from .local_backend import launch_local_run
 
@@ -49,6 +50,14 @@ def maybe_generate_report(manifest: dict) -> None:
         download_lab_artifacts(manifest)
 
     build_report_for_run(manifest)
+
+
+def maybe_teardown_subrun(manifest: dict, args: argparse.Namespace) -> dict:
+    if manifest["env"] != "lab":
+        raise RuntimeError(
+            f"Run {manifest['run_id']} uses unsupported environment {manifest['env']} for teardown"
+        )
+    return teardown_lab_subrun(manifest, args, args.teardown_subrun_index)
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,6 +90,11 @@ def parse_args() -> argparse.Namespace:
         "--generate-report",
         action="store_true",
         help="For an existing completed run, download artifacts if needed and build the report",
+    )
+    parser.add_argument(
+        "--teardown-subrun-index",
+        type=int,
+        help="For an existing lab run, destroy one completed or failed worker VM by subrun index",
     )
     parser.add_argument(
         "--lab-proxmox-api-url",
@@ -163,7 +177,10 @@ def main() -> int:
     existing_run_id = resolve_run_id(args)
     if existing_run_id:
         manifest = load_manifest(existing_run_id)
-        manifest = refresh_existing_run(manifest, args)
+        if args.teardown_subrun_index is not None:
+            manifest = maybe_teardown_subrun(manifest, args)
+        else:
+            manifest = refresh_existing_run(manifest, args)
         if args.generate_report:
             maybe_generate_report(manifest)
 
