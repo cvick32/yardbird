@@ -12,18 +12,24 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     export $(grep -v '^#' "$PROJECT_ROOT/.env" | xargs)
 fi
 
+# Lab runs use LAB_DATABASE_URL as the canonical remote Postgres endpoint.
+# Yardbird itself still reads YARDBIRD_DATABASE_URL, so bridge it here.
+if [ -z "$YARDBIRD_DATABASE_URL" ] && [ -n "$LAB_DATABASE_URL" ]; then
+    export YARDBIRD_DATABASE_URL="$LAB_DATABASE_URL"
+fi
+
 # Configuration
 EXAMPLES_DIR="${1:-$PROJECT_ROOT/examples/array}"
 DEPTH="${DEPTH:-10}"
 TIMEOUT="${TIMEOUT:-60}"
 COST_FUNCTIONS="${COST_FUNCTIONS:-bmc-cost ast-size prefer-read prefer-write prefer-constants}"
 STRATEGY="${STRATEGY:-abstract}"
-TRAINING_RUN_VERSION="${TRAINING_RUN_VERSION:-training-$(date +%Y%m%d_%H%M%S)}"
+TRAINING_RUN_VERSION="${TRAINING_RUN_VERSION:-lab-training-$(date +%Y%m%d_%H%M%S)}"
 
 # Check database URL
 if [ -z "$YARDBIRD_DATABASE_URL" ]; then
-    echo "Error: YARDBIRD_DATABASE_URL not set"
-    echo "Please create a .env file with your database URL or set the environment variable"
+    echo "Error: neither YARDBIRD_DATABASE_URL nor LAB_DATABASE_URL is set"
+    echo "Please create a .env file with LAB_DATABASE_URL or set YARDBIRD_DATABASE_URL"
     exit 1
 fi
 

@@ -239,6 +239,9 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
     r2_region = args.lab_r2_region or DEFAULT_LAB_R2_REGION
     r2_prefix = normalize_r2_prefix(args.lab_r2_prefix or DEFAULT_LAB_R2_PREFIX)
     creds = r2_credentials()
+    lab_database_url = os.environ.get("LAB_DATABASE_URL") or os.environ.get(
+        "YARDBIRD_DATABASE_URL", ""
+    )
     repo_url = git_origin_url()
     repo_commit = git_head_commit()
 
@@ -247,8 +250,8 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
     run_dir = Path(manifest["run_dir"])
     lab_launch_dir = run_dir / "lab"
     lab_launch_dir.mkdir(parents=True, exist_ok=True)
-    manifest["training_enabled"] = False
-    manifest["training_version"] = None
+    manifest["training_enabled"] = bool(lab_database_url)
+    manifest["training_version"] = run_id if lab_database_url else None
     manifest["postgres_sidecar"] = None
     manifest["lab"] = {
         "proxmox_api_url": proxmox["api_url"],
@@ -410,6 +413,8 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                     "r2_metadata_key": subrun["r2_metadata_key"],
                     "r2_completion_key": subrun["r2_completion_key"],
                     "r2_failure_key": subrun["r2_failure_key"],
+                    "lab_database_url": lab_database_url,
+                    "training_run_version": f"{run_id}-{matrix_slug}",
                 }
             )
             local_bootstrap_script.write_text(rendered_bootstrap)

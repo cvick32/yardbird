@@ -22,6 +22,8 @@ R2_LOG_KEY=${r2_log_key}
 R2_METADATA_KEY=${r2_metadata_key}
 R2_COMPLETION_KEY=${r2_completion_key}
 R2_FAILURE_KEY=${r2_failure_key}
+LAB_DATABASE_URL=${lab_database_url}
+TRAINING_RUN_VERSION=${training_run_version}
 
 export MATRIX_NAME
 export REPO_COMMIT
@@ -74,6 +76,12 @@ echo "[INFO] Starting Yardbird lab worker bootstrap"
 echo "[INFO] Matrix: $${MATRIX_NAME}"
 echo "[INFO] Repo: $${REPO_URL}"
 echo "[INFO] Ref: origin/main (launcher commit: $${REPO_COMMIT})"
+if [ -n "$${LAB_DATABASE_URL}" ]; then
+    echo "[INFO] Training logging: enabled"
+    echo "[INFO] Training run version: $${TRAINING_RUN_VERSION}"
+else
+    echo "[INFO] Training logging: disabled"
+fi
 
 for cmd in git cargo python3 aws; do
     if ! command -v "$${cmd}" >/dev/null 2>&1; then
@@ -104,14 +112,26 @@ export REPO_COMMIT
 echo "[INFO] Using origin/main at $${REPO_COMMIT}"
 
 echo "[INFO] Building yardbird and garden"
-cargo build --release -p yardbird
-cargo build --release -p garden
+cargo build --release -p yardbird --features training
+cargo build --release -p garden --features training
 
 echo "[INFO] Running garden"
-./target/release/garden \
-    --config "$${CONFIG_PATH}" \
-    --matrix "$${MATRIX_NAME}" \
+GARDEN_ARGS=(
+    --config "$${CONFIG_PATH}"
+    --matrix "$${MATRIX_NAME}"
     --output "$${RESULT_PATH}"
+)
+
+if [ -n "$${LAB_DATABASE_URL}" ]; then
+    GARDEN_ARGS+=(
+        --train
+        --track-instantiations
+        --database-url "$${LAB_DATABASE_URL}"
+        --training-run-version "$${TRAINING_RUN_VERSION}"
+    )
+fi
+
+./target/release/garden "$${GARDEN_ARGS[@]}"
 
 python3 - <<'PY' > "$${METADATA_PATH}"
 import json
