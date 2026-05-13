@@ -73,6 +73,7 @@ def run_command(
     check: bool = True,
     capture_output: bool = True,
     env: dict[str, str] | None = None,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         args,
@@ -80,6 +81,7 @@ def run_command(
         text=True,
         capture_output=capture_output,
         env=env,
+        timeout=timeout,
     )
     if check and result.returncode != 0:
         stderr = result.stderr.strip() if result.stderr else ""

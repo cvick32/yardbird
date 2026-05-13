@@ -463,13 +463,19 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                 private_key_path,
                 (
                     f"chmod +x {shlex.quote(remote_bootstrap_path)} && "
-                    f"nohup bash {shlex.quote(remote_bootstrap_path)} "
-                    f">{shlex.quote(remote_run_root + '/launcher.stdout.log')} "
-                    f"2>{shlex.quote(remote_run_root + '/launcher.stderr.log')} "
-                    "</dev/null & "
+                    "setsid -f sh -c "
+                    + shlex.quote(
+                        "exec bash "
+                        f"{shlex.quote(remote_bootstrap_path)} "
+                        f">{shlex.quote(remote_run_root + '/launcher.stdout.log')} "
+                        f"2>{shlex.quote(remote_run_root + '/launcher.stderr.log')} "
+                        "</dev/null"
+                    )
+                    + " & "
                     "echo $!"
                 ),
                 capture_output=True,
+                timeout_seconds=30,
             )
             launch_pid = launch.stdout.strip()
             if not launch_pid.isdigit():

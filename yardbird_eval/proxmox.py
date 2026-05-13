@@ -264,6 +264,7 @@ def proxmox_wait_for_guest_ip(
 
 def ssh_option_args(private_key_path: Path) -> list[str]:
     return [
+        "-n",
         "-o",
         "BatchMode=yes",
         "-o",
@@ -285,11 +286,13 @@ def ssh_run(
     *,
     capture_output: bool = True,
     check: bool = True,
+    timeout_seconds: int | None = None,
 ):
     return run_command(
         ["ssh", *ssh_option_args(private_key_path), f"{user}@{host}", command],
         check=check,
         capture_output=capture_output,
+        timeout=timeout_seconds,
     )
 
 
