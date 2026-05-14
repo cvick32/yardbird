@@ -264,7 +264,9 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
         "r2_region": r2_region,
         "r2_endpoint_url": r2_endpoint_url,
         "r2_prefix": r2_prefix,
-        "r2_access_key_configured": bool(creds["access_key_id"] and creds["secret_access_key"]),
+        "r2_access_key_configured": bool(
+            creds["access_key_id"] and creds["secret_access_key"]
+        ),
         "repo_url": repo_url,
         "repo_commit": repo_commit,
     }
@@ -414,7 +416,7 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
                     "r2_completion_key": subrun["r2_completion_key"],
                     "r2_failure_key": subrun["r2_failure_key"],
                     "lab_database_url": lab_database_url,
-                    "training_run_version": f"{run_id}-{matrix_slug}",
+                    "training_run_version": run_id,
                 }
             )
             local_bootstrap_script.write_text(rendered_bootstrap)
