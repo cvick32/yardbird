@@ -1,5 +1,5 @@
 import { Router } from "express";
-import pool from "../db.js";
+import { queryForRequest } from "../db.js";
 
 const router = Router();
 
@@ -8,7 +8,8 @@ router.get("/:id/summary", async (req, res) => {
   try {
     const id = req.params.id;
 
-    const benchmarkRes = await pool.query(
+    const benchmarkRes = await queryForRequest(
+      req,
       `SELECT * FROM benchmarks WHERE id = $1`,
       [id],
     );
@@ -17,7 +18,8 @@ router.get("/:id/summary", async (req, res) => {
       return;
     }
 
-    const countsRes = await pool.query(
+    const countsRes = await queryForRequest(
+      req,
       `
       SELECT
         (SELECT COUNT(*)::int FROM decisions WHERE benchmark_id = $1) AS decision_count,
@@ -44,7 +46,8 @@ router.get("/:id/summary", async (req, res) => {
 // GET /api/runs/:id/decisions
 router.get("/:id/decisions", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await queryForRequest(
+      req,
       `
       SELECT
         d.id, d.decision_key, d.bmc_depth, d.axiom_name, d.slot_index, d.created_at,
@@ -69,7 +72,8 @@ router.get("/:id/decisions", async (req, res) => {
 // GET /api/runs/:id/decisions/:decisionId/candidates
 router.get("/:id/decisions/:decisionId/candidates", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await queryForRequest(
+      req,
       `
       SELECT * FROM candidates
       WHERE decision_id = $1
@@ -87,7 +91,8 @@ router.get("/:id/decisions/:decisionId/candidates", async (req, res) => {
 // GET /api/runs/:id/abstract-instantiations
 router.get("/:id/abstract-instantiations", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await queryForRequest(
+      req,
       `
       SELECT
         ai.*,
@@ -109,7 +114,8 @@ router.get("/:id/abstract-instantiations", async (req, res) => {
 // GET /api/runs/:id/indexed-instantiations
 router.get("/:id/indexed-instantiations", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await queryForRequest(
+      req,
       `
       SELECT
         ii.*,
@@ -130,7 +136,8 @@ router.get("/:id/indexed-instantiations", async (req, res) => {
 // GET /api/runs/:id/provenance
 router.get("/:id/provenance", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await queryForRequest(
+      req,
       `
       SELECT
         d.id AS decision_id, d.axiom_name, d.bmc_depth AS decision_depth, d.slot_index,

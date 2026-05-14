@@ -7,6 +7,8 @@ import type {
   AbstractInstantiation,
   IndexedInstantiation,
   ProvenanceRow,
+  TrainingDatabaseId,
+  TrainingDatabaseOption,
   EvalRunsIndex,
   EvalRunManifest,
   LaunchEvalRunRequest,
@@ -15,8 +17,17 @@ import type {
 
 const BASE = "/api";
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+function withDatabase(path: string, database?: TrainingDatabaseId): string {
+  if (!database) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}db=${encodeURIComponent(database)}`;
+}
+
+async function get<T>(
+  path: string,
+  database?: TrainingDatabaseId,
+): Promise<T> {
+  const res = await fetch(`${BASE}${withDatabase(path, database)}`);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -39,26 +50,48 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
-  benchmarks: () => get<BenchmarkSummary[]>("/benchmarks"),
+  trainingDatabases: () =>
+    get<TrainingDatabaseOption[]>("/training-databases"),
 
-  runs: (benchmarkName: string) =>
-    get<RunSummary[]>(`/benchmarks/${encodeURIComponent(benchmarkName)}/runs`),
+  benchmarks: (database: TrainingDatabaseId) =>
+    get<BenchmarkSummary[]>("/benchmarks", database),
 
-  runSummary: (id: number) => get<RunDetail>(`/runs/${id}/summary`),
+  runs: (benchmarkName: string, database: TrainingDatabaseId) =>
+    get<RunSummary[]>(
+      `/benchmarks/${encodeURIComponent(benchmarkName)}/runs`,
+      database,
+    ),
 
-  decisions: (id: number) => get<Decision[]>(`/runs/${id}/decisions`),
+  runSummary: (id: number, database: TrainingDatabaseId) =>
+    get<RunDetail>(`/runs/${id}/summary`, database),
 
-  candidates: (runId: number, decisionId: number) =>
-    get<Candidate[]>(`/runs/${runId}/decisions/${decisionId}/candidates`),
+  decisions: (id: number, database: TrainingDatabaseId) =>
+    get<Decision[]>(`/runs/${id}/decisions`, database),
 
-  abstractInstantiations: (id: number) =>
-    get<AbstractInstantiation[]>(`/runs/${id}/abstract-instantiations`),
+  candidates: (
+    runId: number,
+    decisionId: number,
+    database: TrainingDatabaseId,
+  ) =>
+    get<Candidate[]>(
+      `/runs/${runId}/decisions/${decisionId}/candidates`,
+      database,
+    ),
 
-  indexedInstantiations: (id: number) =>
-    get<IndexedInstantiation[]>(`/runs/${id}/indexed-instantiations`),
+  abstractInstantiations: (id: number, database: TrainingDatabaseId) =>
+    get<AbstractInstantiation[]>(
+      `/runs/${id}/abstract-instantiations`,
+      database,
+    ),
 
-  provenance: (id: number) =>
-    get<ProvenanceRow[]>(`/runs/${id}/provenance`),
+  indexedInstantiations: (id: number, database: TrainingDatabaseId) =>
+    get<IndexedInstantiation[]>(
+      `/runs/${id}/indexed-instantiations`,
+      database,
+    ),
+
+  provenance: (id: number, database: TrainingDatabaseId) =>
+    get<ProvenanceRow[]>(`/runs/${id}/provenance`, database),
 
   evalRuns: () => get<EvalRunsIndex>("/eval-runs"),
 

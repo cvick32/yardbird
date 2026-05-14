@@ -1,12 +1,12 @@
 import { Router } from "express";
-import pool from "../db.js";
+import { queryForRequest } from "../db.js";
 
 const router = Router();
 
 // GET /api/benchmarks
 router.get("/", async (_req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const { rows } = await queryForRequest(_req, `
       SELECT
         name,
         COUNT(*)::int AS run_count,
@@ -28,7 +28,8 @@ router.get("/", async (_req, res) => {
 // GET /api/benchmarks/:name/runs
 router.get("/:name/runs", async (req, res) => {
   try {
-    const { rows } = await pool.query(
+    const { rows } = await queryForRequest(
+      req,
       `
       SELECT
         b.id, b.cost_function, b.success, b.total_refinements, b.total_time_ms, b.created_at,
