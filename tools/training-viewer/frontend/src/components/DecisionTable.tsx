@@ -1,25 +1,42 @@
 import { useEffect, useState, Fragment } from "react";
 import { api } from "../api";
-import type { Decision, Candidate } from "../types";
+import type { Decision, Candidate, TrainingDatabaseId } from "../types";
 
 function CandidateList({
   runId,
   decisionId,
+  database,
 }: {
   runId: number;
   decisionId: number;
+  database: TrainingDatabaseId;
 }) {
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [candidateState, setCandidateState] = useState<{
+    runId: number;
+    decisionId: number;
+    database: TrainingDatabaseId;
+    candidates: Candidate[];
+  } | null>(null);
 
   useEffect(() => {
-    api.candidates(runId, decisionId).then((data) => {
-      setCandidates(data);
-      setLoading(false);
+    api.candidates(runId, decisionId, database).then((data) => {
+      setCandidateState({
+        runId,
+        decisionId,
+        database,
+        candidates: data,
+      });
     });
-  }, [runId, decisionId]);
+  }, [runId, decisionId, database]);
 
-  if (loading || !candidates)
+  const candidates =
+    candidateState?.runId === runId &&
+    candidateState.decisionId === decisionId &&
+    candidateState.database === database
+      ? candidateState.candidates
+      : null;
+
+  if (!candidates)
     return (
       <tr>
         <td colSpan={6}>Loading candidates...</td>
@@ -72,9 +89,11 @@ function CandidateList({
 export default function DecisionTable({
   decisions,
   runId,
+  database,
 }: {
   decisions: Decision[];
   runId: number;
+  database: TrainingDatabaseId;
 }) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -108,7 +127,11 @@ export default function DecisionTable({
                 <td className="term-cell">{d.decision_key ?? ""}</td>
               </tr>
               {expandedId === d.id && (
-                <CandidateList runId={runId} decisionId={d.id} />
+                <CandidateList
+                  runId={runId}
+                  decisionId={d.id}
+                  database={database}
+                />
               )}
             </Fragment>
           ))}

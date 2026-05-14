@@ -3,6 +3,7 @@ import BenchmarkList from "./components/BenchmarkList";
 import EvalRunsPage from "./components/EvalRunsPage";
 import RunList from "./components/RunList";
 import RunDetail from "./components/RunDetail";
+import { TrainingDatabaseProvider } from "./TrainingDatabaseProvider";
 import "./App.css";
 
 function Layout() {
@@ -17,16 +18,18 @@ function Layout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/eval-runs" element={<EvalRunsPage />} />
-        <Route path="/" element={<Layout />} />
-        <Route path="/benchmarks/:benchmarkName" element={<Layout />} />
-        <Route
-          path="/benchmarks/:benchmarkName/runs/:runId"
-          element={<Layout />}
-        />
-      </Routes>
-    </BrowserRouter>
+    <TrainingDatabaseProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/eval-runs" element={<EvalRunsPage />} />
+          <Route path="/" element={<Layout />} />
+          <Route path="/benchmarks/:benchmarkName" element={<Layout />} />
+          <Route
+            path="/benchmarks/:benchmarkName/runs/:runId"
+            element={<Layout />}
+          />
+        </Routes>
+      </BrowserRouter>
+    </TrainingDatabaseProvider>
   );
 }

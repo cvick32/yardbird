@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useTrainingDatabase } from "../trainingDatabase";
+import type { TrainingDatabaseId } from "../types";
 import type { RunSummary } from "../types";
 
 type SortKey = keyof RunSummary;
@@ -10,17 +12,19 @@ export default function RunList() {
   const navigate = useNavigate();
   const [runState, setRunState] = useState<{
     benchmarkName: string | null;
+    database: TrainingDatabaseId;
     runs: RunSummary[];
-  }>({ benchmarkName: null, runs: [] });
+  }>({ benchmarkName: null, database: "local", runs: [] });
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortAsc, setSortAsc] = useState(false);
+  const { selectedDatabase } = useTrainingDatabase();
 
   useEffect(() => {
     if (!benchmarkName) return;
-    api.runs(benchmarkName).then((data) => {
-      setRunState({ benchmarkName, runs: data });
+    api.runs(benchmarkName, selectedDatabase).then((data) => {
+      setRunState({ benchmarkName, database: selectedDatabase, runs: data });
     });
-  }, [benchmarkName]);
+  }, [benchmarkName, selectedDatabase]);
 
   if (!benchmarkName) {
     return (
@@ -38,7 +42,10 @@ export default function RunList() {
     }
   };
 
-  const loading = benchmarkName != null && runState.benchmarkName !== benchmarkName;
+  const loading =
+    benchmarkName != null &&
+    (runState.benchmarkName !== benchmarkName ||
+      runState.database !== selectedDatabase);
   const runs = loading ? [] : runState.runs;
 
   const sorted = [...runs].sort((a, b) => {

@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useTrainingDatabase } from "../trainingDatabase";
 import type {
   RunDetail as RunDetailType,
   Decision,
   AbstractInstantiation,
   IndexedInstantiation,
   ProvenanceRow,
+  TrainingDatabaseId,
 } from "../types";
 import DecisionTable from "./DecisionTable";
 import AbstractTable from "./AbstractTable";
@@ -14,12 +16,16 @@ import IndexedTable from "./IndexedTable";
 import ProvenanceView from "./ProvenanceView";
 
 type Tab = "decisions" | "abstract" | "indexed" | "provenance";
-type LoadedRows<T> = { runId: number; rows: T[] };
+type LoadedRows<T> = { runId: number; database: TrainingDatabaseId; rows: T[] };
 
 export default function RunDetail() {
   const { runId, benchmarkName } = useParams();
   const navigate = useNavigate();
-  const [detail, setDetail] = useState<RunDetailType | null>(null);
+  const [detailState, setDetailState] = useState<{
+    runId: number;
+    database: TrainingDatabaseId;
+    detail: RunDetailType;
+  } | null>(null);
   const [tab, setTab] = useState<Tab>("decisions");
   const [decisions, setDecisions] = useState<LoadedRows<Decision> | null>(null);
   const [abstracts, setAbstracts] =
@@ -28,33 +34,72 @@ export default function RunDetail() {
     useState<LoadedRows<IndexedInstantiation> | null>(null);
   const [provenance, setProvenance] =
     useState<LoadedRows<ProvenanceRow> | null>(null);
+  const { selectedDatabase } = useTrainingDatabase();
 
   const id = runId ? parseInt(runId) : null;
 
   useEffect(() => {
     if (id == null) return;
-    api.runSummary(id).then((data) => {
-      setDetail(data);
+    let cancelled = false;
+    api.runSummary(id, selectedDatabase).then((data) => {
+      if (!cancelled) {
+        setDetailState({ runId: id, database: selectedDatabase, detail: data });
+      }
     });
-  }, [id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [id, selectedDatabase]);
 
   // Load tab data on demand
   useEffect(() => {
     if (id == null) return;
-    if (tab === "decisions" && decisions?.runId !== id) {
-      api.decisions(id).then((rows) => setDecisions({ runId: id, rows }));
-    } else if (tab === "abstract" && abstracts?.runId !== id) {
+    if (
+      tab === "decisions" &&
+      (decisions?.runId !== id || decisions.database !== selectedDatabase)
+    ) {
       api
-        .abstractInstantiations(id)
-        .then((rows) => setAbstracts({ runId: id, rows }));
-    } else if (tab === "indexed" && indexed?.runId !== id) {
+        .decisions(id, selectedDatabase)
+        .then((rows) =>
+          setDecisions({ runId: id, database: selectedDatabase, rows }),
+        );
+    } else if (
+      tab === "abstract" &&
+      (abstracts?.runId !== id || abstracts.database !== selectedDatabase)
+    ) {
       api
-        .indexedInstantiations(id)
-        .then((rows) => setIndexed({ runId: id, rows }));
-    } else if (tab === "provenance" && provenance?.runId !== id) {
-      api.provenance(id).then((rows) => setProvenance({ runId: id, rows }));
+        .abstractInstantiations(id, selectedDatabase)
+        .then((rows) =>
+          setAbstracts({ runId: id, database: selectedDatabase, rows }),
+        );
+    } else if (
+      tab === "indexed" &&
+      (indexed?.runId !== id || indexed.database !== selectedDatabase)
+    ) {
+      api
+        .indexedInstantiations(id, selectedDatabase)
+        .then((rows) =>
+          setIndexed({ runId: id, database: selectedDatabase, rows }),
+        );
+    } else if (
+      tab === "provenance" &&
+      (provenance?.runId !== id || provenance.database !== selectedDatabase)
+    ) {
+      api
+        .provenance(id, selectedDatabase)
+        .then((rows) =>
+          setProvenance({ runId: id, database: selectedDatabase, rows }),
+        );
     }
-  }, [id, tab, decisions, abstracts, indexed, provenance]);
+  }, [
+    id,
+    tab,
+    decisions,
+    abstracts,
+    indexed,
+    provenance,
+    selectedDatabase,
+  ]);
 
   const goBack = () => {
     if (benchmarkName) {
@@ -62,7 +107,11 @@ export default function RunDetail() {
     }
   };
 
-  const loading = id != null && detail?.benchmark.id !== id;
+  const detail =
+    detailState?.runId === id && detailState.database === selectedDatabase
+      ? detailState.detail
+      : null;
+  const loading = id != null && !detail;
 
   if (loading || !detail) {
     return (
@@ -182,25 +231,32 @@ export default function RunDetail() {
 
       <div className="tab-content">
         {tab === "decisions" &&
-          (decisions?.runId === id ? (
-            <DecisionTable decisions={decisions.rows} runId={id!} />
+          (decisions?.runId === id &&
+          decisions.database === selectedDatabase ? (
+            <DecisionTable
+              decisions={decisions.rows}
+              runId={id!}
+              database={selectedDatabase}
+            />
           ) : (
             "Loading..."
           ))}
         {tab === "abstract" &&
-          (abstracts?.runId === id ? (
+          (abstracts?.runId === id &&
+          abstracts.database === selectedDatabase ? (
             <AbstractTable rows={abstracts.rows} />
           ) : (
             "Loading..."
           ))}
         {tab === "indexed" &&
-          (indexed?.runId === id ? (
+          (indexed?.runId === id && indexed.database === selectedDatabase ? (
             <IndexedTable rows={indexed.rows} />
           ) : (
             "Loading..."
           ))}
         {tab === "provenance" &&
-          (provenance?.runId === id ? (
+          (provenance?.runId === id &&
+          provenance.database === selectedDatabase ? (
             <ProvenanceView rows={provenance.rows} />
           ) : (
             "Loading..."

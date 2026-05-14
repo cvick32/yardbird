@@ -1,23 +1,44 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import type { BenchmarkSummary } from "../types";
+import { useTrainingDatabase } from "../trainingDatabase";
+import type { BenchmarkSummary, TrainingDatabaseId } from "../types";
 
 export default function BenchmarkList() {
-  const [benchmarks, setBenchmarks] = useState<BenchmarkSummary[]>([]);
+  const [benchmarkState, setBenchmarkState] = useState<{
+    database: TrainingDatabaseId | null;
+    benchmarks: BenchmarkSummary[];
+  }>({ database: null, benchmarks: [] });
   const [search, setSearch] = useState("");
   const [filterSuccess, setFilterSuccess] = useState<string>("all");
   const [filterCost, setFilterCost] = useState<string>("all");
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { benchmarkName } = useParams();
+  const { selectedDatabase, options, setSelectedDatabase } =
+    useTrainingDatabase();
 
   useEffect(() => {
-    api.benchmarks().then((data) => {
-      setBenchmarks(data);
-      setLoading(false);
-    });
-  }, []);
+    let cancelled = false;
+    api
+      .benchmarks(selectedDatabase)
+      .then((data) => {
+        if (!cancelled) {
+          setBenchmarkState({ database: selectedDatabase, benchmarks: data });
+        }
+      })
+      .catch((err) => {
+        console.error("Unable to load benchmarks:", err);
+        if (!cancelled) {
+          setBenchmarkState({ database: selectedDatabase, benchmarks: [] });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDatabase]);
+
+  const loading = benchmarkState.database !== selectedDatabase;
+  const benchmarks = loading ? [] : benchmarkState.benchmarks;
 
   const allCostFunctions = [
     ...new Set(benchmarks.flatMap((b) => b.cost_functions)),
@@ -33,71 +54,99 @@ export default function BenchmarkList() {
     return true;
   });
 
-  if (loading) return <div className="pane pane-left">Loading...</div>;
-
   return (
     <div className="pane pane-left">
-      <h2>Benchmarks</h2>
-      <button className="nav-link-btn" onClick={() => navigate("/eval-runs")}>
-        Eval Runs
-      </button>
-      <input
-        type="text"
-        placeholder="Search benchmarks..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="search-input"
-      />
-      <div className="filter-row">
+      <div className="pane-title-row">
+        <h2>Benchmarks</h2>
         <select
-          value={filterSuccess}
-          onChange={(e) => setFilterSuccess(e.target.value)}
+          aria-label="Training database"
+          className="db-select"
+          value={selectedDatabase}
+          onChange={(event) =>
+            setSelectedDatabase(event.target.value as TrainingDatabaseId)
+          }
         >
-          <option value="all">All results</option>
-          <option value="success">Has success</option>
-          <option value="failure">Has failure</option>
-        </select>
-        <select
-          value={filterCost}
-          onChange={(e) => setFilterCost(e.target.value)}
-        >
-          <option value="all">All cost fns</option>
-          {allCostFunctions.map((cf) => (
-            <option key={cf} value={cf}>
-              {cf}
+          {options.map((option) => (
+            <option
+              key={option.id}
+              value={option.id}
+              disabled={!option.configured}
+            >
+              {option.configured
+                ? option.label
+                : `${option.label} unavailable`}
             </option>
           ))}
         </select>
       </div>
-      <div className="benchmark-list">
-        {filtered.map((b) => (
-          <div
-            key={b.name}
-            className={`benchmark-item ${b.name === benchmarkName ? "active" : ""}`}
-            onClick={() => navigate(`/benchmarks/${encodeURIComponent(b.name)}`)}
-          >
-            <div className="benchmark-name" title={b.name}>
-              {b.name.split("/").pop()}
-            </div>
-            <div className="benchmark-meta">
-              <span>{b.run_count} runs</span>
-              <span className="success-badge">
-                {b.success_count}/{b.run_count}
-              </span>
-              <span className="cost-tags">
-                {b.cost_functions.map((cf) => (
-                  <span key={cf} className="tag">
-                    {cf}
-                  </span>
-                ))}
-              </span>
-            </div>
+      <button className="nav-link-btn" onClick={() => navigate("/eval-runs")}>
+        Eval Runs
+      </button>
+      {loading ? (
+        <div className="empty">Loading...</div>
+      ) : (
+        <>
+          <input
+            type="text"
+            placeholder="Search benchmarks..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="search-input"
+          />
+          <div className="filter-row">
+            <select
+              value={filterSuccess}
+              onChange={(e) => setFilterSuccess(e.target.value)}
+            >
+              <option value="all">All results</option>
+              <option value="success">Has success</option>
+              <option value="failure">Has failure</option>
+            </select>
+            <select
+              value={filterCost}
+              onChange={(e) => setFilterCost(e.target.value)}
+            >
+              <option value="all">All cost fns</option>
+              {allCostFunctions.map((cf) => (
+                <option key={cf} value={cf}>
+                  {cf}
+                </option>
+              ))}
+            </select>
           </div>
-        ))}
-        {filtered.length === 0 && (
-          <div className="empty">No benchmarks match filters</div>
-        )}
-      </div>
+          <div className="benchmark-list">
+            {filtered.map((b) => (
+              <div
+                key={b.name}
+                className={`benchmark-item ${b.name === benchmarkName ? "active" : ""}`}
+                onClick={() =>
+                  navigate(`/benchmarks/${encodeURIComponent(b.name)}`)
+                }
+              >
+                <div className="benchmark-name" title={b.name}>
+                  {b.name.split("/").pop()}
+                </div>
+                <div className="benchmark-meta">
+                  <span>{b.run_count} runs</span>
+                  <span className="success-badge">
+                    {b.success_count}/{b.run_count}
+                  </span>
+                  <span className="cost-tags">
+                    {b.cost_functions.map((cf) => (
+                      <span key={cf} className="tag">
+                        {cf}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div className="empty">No benchmarks match filters</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

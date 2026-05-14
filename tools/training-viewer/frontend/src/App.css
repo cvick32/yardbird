@@ -36,6 +36,25 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.pane-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pane-title-row h2 {
+  flex: 1;
+  margin: 0;
+}
+.db-select {
+  min-width: 116px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 12px;
+}
 
 /* Search & Filters */
 .search-input {
