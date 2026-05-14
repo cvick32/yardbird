@@ -113,6 +113,14 @@ export interface ProvenanceRow {
   indexed_label: string | null;
 }
 
+export type TrainingDatabaseId = "local" | "lab";
+
+export interface TrainingDatabaseOption {
+  id: TrainingDatabaseId;
+  label: string;
+  configured: boolean;
+}
+
 export type EvalEnvironment = "local" | "aws" | "lab";
 export type EvalStatus = "RUNNING" | "COMPLETED" | "FAILED";
 

@@ -1,6 +1,10 @@
 import express from "express";
 import cors from "cors";
 import benchmarksRouter from "./routes/benchmarks.js";
+import {
+  getTrainingDatabaseOptions,
+  trainingDatabaseMiddleware,
+} from "./db.js";
 import evalRunsRouter from "./routes/evalRuns.js";
 import runsRouter from "./routes/runs.js";
 
@@ -10,8 +14,12 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-app.use("/api/benchmarks", benchmarksRouter);
-app.use("/api/runs", runsRouter);
+app.get("/api/training-databases", (_req, res) => {
+  res.json(getTrainingDatabaseOptions());
+});
+
+app.use("/api/benchmarks", trainingDatabaseMiddleware, benchmarksRouter);
+app.use("/api/runs", trainingDatabaseMiddleware, runsRouter);
 app.use("/api/eval-runs", evalRunsRouter);
 
 app.get("/api/openapi.json", (_req, res) => {
@@ -48,6 +56,11 @@ app.get("/api/openapi.json", (_req, res) => {
       "/api/eval-runs/{runId}/subruns/{subrunIndex}/teardown": {
         post: {
           summary: "Destroy one completed or failed lab worker VM",
+        },
+      },
+      "/api/training-databases": {
+        get: {
+          summary: "List selectable training databases",
         },
       },
     },
