@@ -43,7 +43,9 @@ def object_store_head_object(
             region,
         ]
     )
-    result = run_command(command, check=False, env=r2_aws_env() if endpoint_url else None)
+    result = run_command(
+        command, check=False, env=r2_aws_env() if endpoint_url else None
+    )
     return result.returncode == 0
 
 
