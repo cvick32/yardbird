@@ -81,6 +81,7 @@ pub struct ArrayRefinementState {
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
     pub instantiations: Vec<ArrayExpr>,
     pub const_instantiations: Vec<ArrayExpr>,
+    pub conflict_records: Vec<ArrayConflictRecord>,
     pub array_types: Vec<(String, String)>,
 }
 
@@ -137,6 +138,7 @@ where
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
+            conflict_records: vec![],
             array_types,
         })
     }
@@ -170,24 +172,28 @@ where
         };
         state.update_with_subterms(model, smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
-        let (insts, const_insts, decisions, abstract_instantiations) = saturate_with_array_types(
-            &mut state.egraph,
-            cost_fn,
-            refinement_step,
-            state.depth,
-            &state.array_types,
-        );
+        let (insts, const_insts, conflicts, decisions, abstract_instantiations) =
+            saturate_with_array_types(
+                &mut state.egraph,
+                cost_fn,
+                refinement_step,
+                state.depth,
+                &state.array_types,
+            );
         state.instantiations.extend_from_slice(&insts);
         state.const_instantiations.extend_from_slice(&const_insts);
+        state.conflict_records.extend(conflicts.clone());
         self.decision_data.extend(decisions);
         self.abstract_instantiations.extend(abstract_instantiations);
+        self.handle_aux_synthesis_detection(state, &conflicts, refinement_step);
         if trace_conflicts_enabled() {
             trace!(
-                "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} total_regular={} total_const={}",
+                "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
                 state.depth,
                 refinement_step,
                 insts.len(),
                 const_insts.len(),
+                conflicts.len(),
                 state.instantiations.len(),
                 state.const_instantiations.len()
             );
@@ -344,6 +350,61 @@ where
             abstract_instantiations: mem::take(&mut self.abstract_instantiations),
             indexed_instantiations: vec![],
             unsat_events: vec![],
+        }
+    }
+}
+
+impl<F> Abstract<F>
+where
+    F: YardbirdCostFunction<ArrayLanguage> + 'static,
+{
+    fn handle_aux_synthesis_detection(
+        &mut self,
+        state: &ArrayRefinementState,
+        conflicts: &[ArrayConflictRecord],
+        refinement_step: u32,
+    ) {
+        if self.aux_config.is_off() {
+            return;
+        }
+        let decision =
+            self.aux_trigger_state
+                .decide(&self.aux_config, conflicts, refinement_step, 250);
+        if decision.detected_conflicts.is_empty()
+            && self.aux_config.trigger == SynthesisTrigger::Detect
+        {
+            info!(
+                "AUX-SYNTH detect depth={} refinement_step={}: no non-local conflicts",
+                state.depth, refinement_step
+            );
+            return;
+        }
+        info!(
+            "AUX-SYNTH trigger={} guard={} depth={} refinement_step={} fired={} reason={} detected={}",
+            self.aux_config.trigger,
+            self.aux_config.guard_policy,
+            state.depth,
+            refinement_step,
+            decision.fired,
+            decision.reason,
+            decision.detected_conflicts.len()
+        );
+        for conflict_id in &decision.detected_conflicts {
+            if let Some(conflict) = conflicts
+                .iter()
+                .find(|conflict| conflict.conflict_id == *conflict_id)
+            {
+                info!(
+                    "AUX-SYNTH detected conflict={} axiom={} span={} frames={:?} cost={} class={:?} term={}",
+                    conflict.conflict_id,
+                    conflict.axiom_name,
+                    conflict.frame_span.span,
+                    conflict.frame_span.frames,
+                    conflict.cost,
+                    conflict.classification,
+                    conflict.term
+                );
+            }
         }
     }
 }
