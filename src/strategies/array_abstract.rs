@@ -7,6 +7,9 @@ use smt2parser::{
 };
 
 use crate::{
+    auxiliary_synthesis::{
+        ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState, SynthesisTrigger,
+    },
     cost_functions::YardbirdCostFunction,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
@@ -44,6 +47,8 @@ where
     discovered_array_types: Vec<(String, String)>,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
+    aux_config: AuxSynthesisConfig,
+    aux_trigger_state: AuxTriggerState,
 }
 
 impl<F> Abstract<F>
@@ -54,15 +59,18 @@ where
         bmc_depth: u16,
         run_ic3ia: bool,
         cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
+        aux_config: AuxSynthesisConfig,
     ) -> Self {
         Self {
             _bmc_depth: bmc_depth,
             run_ic3ia,
+            aux_config,
             const_instantiations: vec![],
             cost_fn_factory,
             discovered_array_types: vec![],
             decision_data: vec![],
             abstract_instantiations: vec![],
+            aux_trigger_state: AuxTriggerState::default(),
         }
     }
 }

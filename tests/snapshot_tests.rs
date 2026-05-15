@@ -8,6 +8,7 @@ use std::{
 };
 use yardbird::{
     self,
+    auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::array_bmc_cost_factory,
     model_from_options,
     strategies::{Abstract, ProofStrategy},
@@ -60,8 +61,12 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
                 let vmt_model = model_from_options(&options);
                 let instantiation_strategy = options.build_instantiation_strategy();
                 let mut driver = Driver::new(vmt_model, instantiation_strategy);
-                let strat: Box<dyn ProofStrategy<_>> =
-                    Box::new(Abstract::new(10, false, array_bmc_cost_factory));
+                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                    10,
+                    false,
+                    array_bmc_cost_factory,
+                    AuxSynthesisConfig::default(),
+                ));
                 let res = driver.check_strategy(options.depth, strat).unwrap();
                 res.used_instances
             })
