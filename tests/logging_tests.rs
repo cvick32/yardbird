@@ -8,6 +8,7 @@ use std::{
 use std::env;
 
 use yardbird::{
+    auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::array_bmc_cost_factory,
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
@@ -36,8 +37,12 @@ fn run_array_copy_logging_result() -> yardbird::ProofLoopResult {
         move || {
             let mut driver = Driver::new(vmt_model, instantiation_strategy)
                 .with_tracking_options(None, true, None);
-            let strat: Box<dyn ProofStrategy<_>> =
-                Box::new(Abstract::new(10, false, array_bmc_cost_factory));
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                10,
+                false,
+                array_bmc_cost_factory,
+                AuxSynthesisConfig::default(),
+            ));
             driver
                 .check_strategy(options.depth, strat)
                 .unwrap_or_default()
@@ -279,8 +284,12 @@ fn smtlib_strategy_populates_logging_artifacts() {
         move || {
             let problem = SMTLIBProblem::from_path("examples/smt2/array_bitvec_simple.smt2")
                 .expect("should parse SMT-LIB example");
-            let strategy: Box<dyn ProofStrategy<_>> =
-                Box::new(Abstract::new(0, false, array_bmc_cost_factory));
+            let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                0,
+                false,
+                array_bmc_cost_factory,
+                AuxSynthesisConfig::default(),
+            ));
             SMTLIBSolver::execute_with_strategy(&problem, strategy, 50, true)
                 .expect("SMT-LIB strategy run should complete")
                 .0

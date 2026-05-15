@@ -4,10 +4,11 @@ use egg::{Analysis, Language};
 use log::{debug, trace};
 
 use crate::{
+    auxiliary_synthesis::{ArrayConflictRecord, ConflictClassification},
     cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
     theories::array::{
-        array_axioms::{ArrayExpr, ArrayLanguage},
+        array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::ArrayTermExtractor,
     },
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -99,25 +100,37 @@ where
     /// need to use interior mutability.
     instantiations: Rc<RefCell<Vec<ArrayExpr>>>,
     instantiations_w_constants: Rc<RefCell<Vec<ArrayExpr>>>,
+    conflicts: Rc<RefCell<Vec<ArrayConflictRecord>>>,
     decisions: Rc<RefCell<Vec<DecisionRecord>>>,
     abstract_instantiations: Rc<RefCell<Vec<AbstractInstantiationRecord>>>,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
+    refinement_step: u32,
+    depth: u16,
 }
 
 impl<S, CF> ArrayConflictScheduler<S, CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    pub fn new(scheduler: S, cost_fn: CF, extractor: ArrayTermExtractor<CF>) -> Self {
+    pub fn new(
+        scheduler: S,
+        cost_fn: CF,
+        extractor: ArrayTermExtractor<CF>,
+        refinement_step: u32,
+        depth: u16,
+    ) -> Self {
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
             instantiations_w_constants: Rc::new(RefCell::new(vec![])),
+            conflicts: Rc::new(RefCell::new(vec![])),
             decisions: Rc::new(RefCell::new(vec![])),
             abstract_instantiations: Rc::new(RefCell::new(vec![])),
             cost_fn,
             extractor,
+            refinement_step,
+            depth,
         }
     }
 
@@ -127,6 +140,10 @@ where
 
     pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ArrayExpr>>> {
         Rc::clone(&self.instantiations_w_constants)
+    }
+
+    pub fn conflicts(&self) -> Rc<RefCell<Vec<ArrayConflictRecord>>> {
+        Rc::clone(&self.conflicts)
     }
 
     pub fn decisions(&self) -> Rc<RefCell<Vec<DecisionRecord>>> {
@@ -296,6 +313,22 @@ where
                                     decision_keys,
                                 );
                             let cost = self.cost_fn.cost_rec(&new_rhs);
+                            let classification = if cost >= 100 {
+                                ConflictClassification::ConstOrHighCost
+                            } else {
+                                ConflictClassification::Regular
+                            };
+                            let conflict_record = ArrayConflictRecord::new(
+                                ordinal,
+                                rewrite.name.as_str(),
+                                instantiation.clone(),
+                                expr_to_term(instantiation.clone()),
+                                self.depth,
+                                self.refinement_step,
+                                cost,
+                                classification,
+                                abstract_instantiation.decision_keys.clone(),
+                            );
                             if tracing {
                                 trace_conflicts(format!(
                                     "    subst[{subst_ix}] conflict cost={} instantiation={}",
@@ -310,6 +343,7 @@ where
                             self.abstract_instantiations
                                 .borrow_mut()
                                 .push(abstract_instantiation);
+                            self.conflicts.borrow_mut().push(conflict_record);
 
                             if cost >= 100 {
                                 debug!("rejecting because of cost");

@@ -49,6 +49,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             egraph: egg::EGraph::default(),
             instantiations: vec![],
             const_instantiations: vec![],
+            conflict_records: vec![],
             array_types: vec![],
         })
     }

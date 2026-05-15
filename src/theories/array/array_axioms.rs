@@ -4,6 +4,7 @@ use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
+    auxiliary_synthesis::ArrayConflictRecord,
     cost_functions::YardbirdCostFunction,
     theories::array::{
         array_conflict_scheduler::ArrayConflictScheduler, array_term_extractor::ArrayTermExtractor,
@@ -40,6 +41,14 @@ define_language! {
 
 pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
+
+pub type ArraySaturationResult = (
+    Vec<ArrayExpr>,
+    Vec<ArrayExpr>,
+    Vec<ArrayConflictRecord>,
+    Vec<crate::training::DecisionRecord>,
+    Vec<crate::training::AbstractInstantiationRecord>,
+);
 
 impl ArrayLanguage {
     pub fn equals(lhs: &ArrayExpr, rhs: &ArrayExpr) -> ArrayExpr {
@@ -227,12 +236,7 @@ pub fn saturate_with_array_types<CF, N>(
     refinement_step: u32,
     depth: u16,
     array_types: &[(String, String)],
-) -> (
-    Vec<ArrayExpr>,
-    Vec<ArrayExpr>,
-    Vec<crate::training::DecisionRecord>,
-    Vec<crate::training::AbstractInstantiationRecord>,
-)
+) -> ArraySaturationResult
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
@@ -242,9 +246,12 @@ where
         BackoffScheduler::default(),
         cost_fn.clone(),
         ArrayTermExtractor::new(&taken_egraph, cost_fn, refinement_step, depth),
+        refinement_step,
+        depth,
     );
     let instantiations = scheduler.instantiations();
     let const_instantiations = scheduler.instantiations_w_constants();
+    let conflicts = scheduler.conflicts();
     let decisions = scheduler.decisions();
     let abstract_instantiations = scheduler.abstract_instantiations();
     let axioms = array_axioms_with_types(array_types);
@@ -273,6 +280,7 @@ where
 
     let final_insts = Rc::into_inner(instantiations).unwrap().into_inner();
     let final_const_insts = Rc::into_inner(const_instantiations).unwrap().into_inner();
+    let final_conflicts = Rc::into_inner(conflicts).unwrap().into_inner();
     let final_decisions = Rc::into_inner(decisions).unwrap().into_inner();
     let final_abstract_instantiations = Rc::into_inner(abstract_instantiations)
         .unwrap()
@@ -295,6 +303,7 @@ where
     (
         final_insts,
         final_const_insts,
+        final_conflicts,
         final_decisions,
         final_abstract_instantiations,
     )
