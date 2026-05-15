@@ -10,7 +10,10 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use yardbird::{ProofLoopResult, YardbirdOptions};
+use yardbird::{
+    auxiliary_synthesis::{GuardPolicy, SynthesisTrigger},
+    ProofLoopResult, YardbirdOptions,
+};
 
 mod config;
 use config::BenchmarkConfig;
@@ -67,6 +70,21 @@ struct GardenOptions {
 
     #[arg(long)]
     pub training_run_version: Option<String>,
+
+    #[arg(long, value_enum, default_value_t = SynthesisTrigger::Off)]
+    pub synthesis_trigger: SynthesisTrigger,
+
+    #[arg(long, value_enum, default_value_t = GuardPolicy::True)]
+    pub synthesis_guard_policy: GuardPolicy,
+
+    #[arg(long)]
+    pub synthesis_after: Option<u32>,
+
+    #[arg(long)]
+    pub synthesis_refinement_limit_window: Option<u32>,
+
+    #[arg(long)]
+    pub synthesis_repeated_pattern_threshold: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -156,7 +174,29 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .arg(options.strategy.to_string())
         .arg("--cost-function")
         .arg(options.cost_function.to_string())
+        .arg("--synthesis-trigger")
+        .arg(options.synthesis_trigger.to_string())
+        .arg("--synthesis-guard-policy")
+        .arg(options.synthesis_guard_policy.to_string())
         .arg("--json-output");
+
+    if let Some(synthesis_after) = options.synthesis_after {
+        command
+            .arg("--synthesis-after")
+            .arg(synthesis_after.to_string());
+    }
+
+    if let Some(window) = options.synthesis_refinement_limit_window {
+        command
+            .arg("--synthesis-refinement-limit-window")
+            .arg(window.to_string());
+    }
+
+    if let Some(threshold) = options.synthesis_repeated_pattern_threshold {
+        command
+            .arg("--synthesis-repeated-pattern-threshold")
+            .arg(threshold.to_string());
+    }
 
     if options.train {
         command.arg("--train");
@@ -401,6 +441,13 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 database_url: options.database_url.clone(),
                                 training_run_version: training_run_version.clone(),
                                 verbose: false,
+                                synthesis_trigger: options.synthesis_trigger,
+                                synthesis_guard_policy: options.synthesis_guard_policy,
+                                synthesis_after: options.synthesis_after,
+                                synthesis_refinement_limit_window: options
+                                    .synthesis_refinement_limit_window,
+                                synthesis_repeated_pattern_threshold: options
+                                    .synthesis_repeated_pattern_threshold,
                             },
                             retry,
                             timeout,
@@ -523,6 +570,13 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         database_url: options.database_url.clone(),
                         training_run_version: training_run_version.clone(),
                         verbose: false,
+                        synthesis_trigger: options.synthesis_trigger,
+                        synthesis_guard_policy: options.synthesis_guard_policy,
+                        synthesis_after: options.synthesis_after,
+                        synthesis_refinement_limit_window: options
+                            .synthesis_refinement_limit_window,
+                        synthesis_repeated_pattern_threshold: options
+                            .synthesis_repeated_pattern_threshold,
                     },
                     config.global.retry_count,
                     run.timeout_seconds,
