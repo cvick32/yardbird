@@ -2,6 +2,7 @@
 
 use std::{fmt::Display, fs::File, io::Write};
 
+use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,7 @@ use crate::{
     strategies::ListRefinementState,
 };
 
+pub mod auxiliary_synthesis;
 pub mod cost_functions;
 mod driver;
 mod egg_utils;
@@ -122,6 +124,26 @@ pub struct YardbirdOptions {
     /// Stable identifier that groups many benchmark rows into one training campaign
     #[arg(long, env = "YARDBIRD_TRAINING_RUN_VERSION")]
     pub training_run_version: Option<String>,
+
+    /// When to trigger auxiliary prophecy/history synthesis.
+    #[arg(long, value_enum, default_value_t = SynthesisTrigger::Off)]
+    pub synthesis_trigger: SynthesisTrigger,
+
+    /// How to synthesize capture guards for auxiliary history variables.
+    #[arg(long, value_enum, default_value_t = GuardPolicy::True)]
+    pub synthesis_guard_policy: GuardPolicy,
+
+    /// Refinement step threshold for --synthesis-trigger manual-after-n.
+    #[arg(long)]
+    pub synthesis_after: Option<u32>,
+
+    /// Remaining-refinement window for --synthesis-trigger refinement-limit.
+    #[arg(long)]
+    pub synthesis_refinement_limit_window: Option<u32>,
+
+    /// Repetition threshold for --synthesis-trigger repeated-pattern.
+    #[arg(long)]
+    pub synthesis_repeated_pattern_threshold: Option<u32>,
 }
 
 impl Default for YardbirdOptions {
@@ -146,6 +168,11 @@ impl Default for YardbirdOptions {
             train_reset: false,
             database_url: None,
             training_run_version: None,
+            synthesis_trigger: SynthesisTrigger::Off,
+            synthesis_guard_policy: GuardPolicy::True,
+            synthesis_after: None,
+            synthesis_refinement_limit_window: None,
+            synthesis_repeated_pattern_threshold: None,
         }
     }
 }
@@ -177,48 +204,67 @@ impl YardbirdOptions {
         }
     }
 
+    pub fn build_aux_synthesis_config(&self) -> AuxSynthesisConfig {
+        AuxSynthesisConfig {
+            trigger: self.synthesis_trigger,
+            guard_policy: self.synthesis_guard_policy,
+            manual_after: self.synthesis_after,
+            refinement_limit_window: self.synthesis_refinement_limit_window,
+            repeated_pattern_threshold: self.synthesis_repeated_pattern_threshold,
+        }
+    }
+
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
+        let aux_config = self.build_aux_synthesis_config();
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
                 CostFunction::BmcCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_bmc_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::AstSize => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_ast_size_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::AdaptiveCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     adaptive_array_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::SplitCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     split_array_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::PreferRead => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_prefer_read_factory,
+                    aux_config,
                 )),
                 CostFunction::PreferWrite => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_prefer_write_factory,
+                    aux_config,
                 )),
                 CostFunction::PreferConstants => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_prefer_constants,
+                    aux_config,
                 )),
                 CostFunction::IndexAware => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     index_aware_array_cost_factory,
+                    aux_config,
                 )),
             },
             Strategy::AbstractWithQuantifiers => {
@@ -229,6 +275,7 @@ impl YardbirdOptions {
     }
 
     pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
+        let aux_config = self.build_aux_synthesis_config();
         // For now, use the same strategy structure as arrays
         // TODO: Create proper bit-vector list strategy
         match self.strategy {
@@ -237,37 +284,44 @@ impl YardbirdOptions {
                     self.depth,
                     self.run_ic3ia,
                     array_bmc_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::AstSize => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_ast_size_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::AdaptiveCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     adaptive_array_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::SplitCost => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     split_array_cost_factory,
+                    aux_config,
                 )),
                 CostFunction::PreferRead => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_prefer_read_factory,
+                    aux_config,
                 )),
                 CostFunction::PreferWrite => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     array_prefer_write_factory,
+                    aux_config,
                 )),
                 CostFunction::PreferConstants => todo!(),
                 CostFunction::IndexAware => Box::new(Abstract::new(
                     self.depth,
                     self.run_ic3ia,
                     index_aware_array_cost_factory,
+                    aux_config,
                 )),
             },
             Strategy::AbstractWithQuantifiers => {
