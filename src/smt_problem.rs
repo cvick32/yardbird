@@ -642,4 +642,94 @@ impl SolverInterface for SMTProblem {
         // This is a fallback that returns empty - VMT mode uses configure_model instead
         vec![]
     }
+
+    fn install_auxiliary_specs(&mut self, specs: Vec<AuxiliarySpec>) -> anyhow::Result<()> {
+        self.install_auxiliary_specs(specs)
+    }
+
+    fn get_auxiliary_records(&self) -> Vec<AuxiliaryRecord> {
+        self.get_auxiliary_records().to_vec()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smt2parser::{
+        concrete::{QualIdentifier, Sort, Term},
+        vmt::VMTModel,
+    };
+
+    use crate::{
+        auxiliary_synthesis::{
+            AuxiliarySpec, GuardPolicy, HistorySpec, ProphecySpec, SynthesisTrigger,
+        },
+        cost_functions::array::array_bmc_cost_factory,
+        instantiation_strategy::full_unroll::FullUnrollStrategy,
+        problem::Problem,
+        strategies::{Abstract, ArrayRefinementState, ProofStrategy},
+    };
+
+    use super::*;
+
+    #[test]
+    fn installs_auxiliary_specs_for_existing_and_future_frames() {
+        let model = VMTModel::from_path("./examples/array/array_copy.vmt").unwrap();
+        let mut concrete_strategy = Abstract::new(
+            4,
+            false,
+            array_bmc_cost_factory,
+            crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
+        );
+        let model = concrete_strategy.configure_model(model);
+        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(concrete_strategy);
+        let mut smt = SMTProblem::new(
+            &model,
+            &strategy,
+            false,
+            Box::new(FullUnrollStrategy::new()),
+        );
+
+        smt.unroll(1);
+        smt.unroll(2);
+        let int_sort = Sort::Simple {
+            identifier: smt2parser::concrete::Identifier::Simple {
+                symbol: smt2parser::concrete::Symbol("Int".to_string()),
+            },
+        };
+        let spec = AuxiliarySpec {
+            aux_id: "aux_test".to_string(),
+            source_conflict_id: "conflict-test".to_string(),
+            source_term_hash: "hash-test".to_string(),
+            depth_created: 2,
+            refinement_step_created: 0,
+            history: HistorySpec {
+                name: "yb_hist_test".to_string(),
+                next_name: "yb_hist_test_next".to_string(),
+                sort: int_sort.clone(),
+                capture_term: Term::QualIdentifier(QualIdentifier::simple("i")),
+                capture_guard: Term::QualIdentifier(QualIdentifier::simple("true")),
+                initial_value: None,
+            },
+            prophecy: Some(ProphecySpec {
+                name: "yb_prop_test".to_string(),
+                next_name: "yb_prop_test_next".to_string(),
+                sort: int_sort,
+                initial_value: None,
+            }),
+            localized_axiom: None,
+            property_constraint: None,
+            guard_policy: GuardPolicy::True,
+            trigger: SynthesisTrigger::NonLocal,
+        };
+
+        smt.install_auxiliary_specs(vec![spec]).unwrap();
+        assert_eq!(smt.get_auxiliary_records().len(), 1);
+        assert!(smt.to_smtinterpol().contains("yb_hist_test@2"));
+
+        smt.unroll(3);
+        let interpolant_problem = smt.to_smtinterpol();
+        assert!(interpolant_problem.contains("yb_hist_test@3"));
+        assert!(interpolant_problem.contains("yb_prop_test@3"));
+    }
 }
