@@ -35,6 +35,7 @@ define_language! {
         "-" = Negate(Box<[Id]>),
         "*" = Times(Box<[Id]>),
         "/" = Div([Id; 2]),
+        "ite" = Ite([Id; 3]),
         Symbol(Symbol),
     }
 }
@@ -643,6 +644,14 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                         let lhs = inner(arguments.pop().unwrap(), expr)?;
                         Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
                     }
+                    "ite" => {
+                        assert!(arguments.len() == 3);
+                        // args popped in reverse order
+                        let else_term = inner(arguments.pop().unwrap(), expr)?;
+                        let then_term = inner(arguments.pop().unwrap(), expr)?;
+                        let condition = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::Ite([condition, then_term, else_term])))
+                    }
                     x => todo!("Unsupported operator: {x}"),
                 }
             }
@@ -771,6 +780,14 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
                 qual_identifier: QualIdentifier::simple("/"),
                 arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
             },
+            ArrayLanguage::Ite([condition, then_term, else_term]) => Term::Application {
+                qual_identifier: QualIdentifier::simple("ite"),
+                arguments: vec![
+                    inner(expr, *condition),
+                    inner(expr, *then_term),
+                    inner(expr, *else_term),
+                ],
+            },
             ArrayLanguage::Symbol(sym) => Term::QualIdentifier(QualIdentifier::simple(sym)),
         }
     }
@@ -833,6 +850,21 @@ mod test {
         egraph.rebuild();
 
         assert_eq!(egraph.find(translated_id), egraph.find(parsed_id));
+    }
+
+    #[test]
+    fn translate_term_supports_ite() {
+        let term = "(ite true x y)".parse().unwrap();
+        let translated = translate_term(term).unwrap();
+        let parsed: RecExpr<ArrayLanguage> = "(ite true x y)".parse().unwrap();
+
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let translated_id = egraph.add_expr(&translated);
+        let parsed_id = egraph.add_expr(&parsed);
+        egraph.rebuild();
+
+        assert_eq!(egraph.find(translated_id), egraph.find(parsed_id));
+        assert_eq!(expr_to_term(translated).to_string(), "(ite true x y)");
     }
 
     // #[test]

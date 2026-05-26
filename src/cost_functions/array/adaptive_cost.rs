@@ -114,6 +114,7 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
             ArrayLanguage::Times(_) => self.arithmetic_complexity("Times"),
             ArrayLanguage::Mod(_) => self.arithmetic_complexity("Mod"),
             ArrayLanguage::Div(_) => self.arithmetic_complexity("Div"),
+            ArrayLanguage::Ite(_) => 5,
 
             ArrayLanguage::Symbol(sym) => {
                 let symbol_str = sym.as_str().to_string();
