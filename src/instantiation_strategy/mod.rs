@@ -37,6 +37,7 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
+        asserted_instantiations: &mut Vec<smt2parser::concrete::Term>,
         num_quantifiers_instantiated: &mut u64,
     );
 
@@ -54,6 +55,7 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         solver: &mut z3::Solver,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
+        asserted_instantiations: &mut Vec<smt2parser::concrete::Term>,
         num_quantifiers_instantiated: &mut u64,
     );
 }

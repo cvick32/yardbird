@@ -49,6 +49,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
+        asserted_instantiations: &mut Vec<Term>,
         num_quantifiers_instantiated: &mut u64,
     ) {
         // Check for duplicates
@@ -85,6 +86,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
 
             // Register subterms from this instantiation
             subterm_handler.register_instantiation_term(indexed_inst.clone());
+            asserted_instantiations.push(indexed_inst.clone());
 
             let z3_inst = z3_var_context.rewrite_term(&indexed_inst);
             all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
@@ -134,6 +136,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         solver: &mut z3::Solver,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
+        asserted_instantiations: &mut Vec<Term>,
         num_quantifiers_instantiated: &mut u64,
     ) {
         // At each new depth, we need to add all existing instantiations for that depth
@@ -146,6 +149,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         for stored in instantiations {
             bmc_builder.set_width(stored.inst.width());
             let indexed_inst = stored.inst.rewrite(bmc_builder);
+            asserted_instantiations.push(indexed_inst.clone());
             let z3_inst = z3_var_context.rewrite_term(&indexed_inst);
             all_z3_insts.push((
                 z3_inst.as_bool().unwrap(),

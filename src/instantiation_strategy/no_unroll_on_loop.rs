@@ -41,6 +41,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
+        asserted_instantiations: &mut Vec<Term>,
         num_quantifiers_instantiated: &mut u64,
     ) {
         debug!("USED INSTANCE: {}", inst);
@@ -71,6 +72,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
 
             // Register subterms from this instantiation
             subterm_handler.register_instantiation_term(indexed_inst.clone());
+            asserted_instantiations.push(indexed_inst.clone());
 
             let z3_inst = z3_var_context.rewrite_term(&indexed_inst);
             all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
@@ -119,6 +121,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         _solver: &mut z3::Solver,
         _track_instantiations: bool,
         _tracked_labels: &mut Vec<IndexedInstantiationRecord>,
+        _asserted_instantiations: &mut Vec<Term>,
         _num_quantifiers_instantiated: &mut u64,
     ) {
     }
