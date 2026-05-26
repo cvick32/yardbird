@@ -4,6 +4,7 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
 use crate::{
+    auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
     problem::Problem,
     solver_interface::SolverInterface,
@@ -41,6 +42,7 @@ pub struct ProofLoopResult {
     pub abstract_instantiations: Vec<crate::training::AbstractInstantiationRecord>,
     pub indexed_instantiations: Vec<crate::training::IndexedInstantiationRecord>,
     pub unsat_events: Vec<UnsatEventRecord>,
+    pub auxiliary_records: Vec<AuxiliaryRecord>,
 }
 
 impl ProofLoopResult {
@@ -57,7 +59,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 12)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 13)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -87,6 +89,7 @@ impl Serialize for ProofLoopResult {
         state.serialize_field("abstract_instantiations", &self.abstract_instantiations)?;
         state.serialize_field("indexed_instantiations", &self.indexed_instantiations)?;
         state.serialize_field("unsat_events", &self.unsat_events)?;
+        state.serialize_field("auxiliary_records", &self.auxiliary_records)?;
         state.end()
     }
 }
@@ -113,6 +116,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             AbstractInstantiations,
             IndexedInstantiations,
             UnsatEvents,
+            AuxiliaryRecords,
         }
 
         struct ProofLoopResultVisitor;
@@ -136,6 +140,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                 let mut counterexample = None;
                 let mut found_proof = None;
                 let mut unsat_core = None;
+                let mut auxiliary_records = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -162,6 +167,9 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         }
                         Field::UnsatCore => {
                             unsat_core = Some(map.next_value()?);
+                        }
+                        Field::AuxiliaryRecords => {
+                            auxiliary_records = Some(map.next_value()?);
                         }
                         Field::DecisionData
                         | Field::AbstractInstantiations
@@ -205,6 +213,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     abstract_instantiations: vec![],
                     indexed_instantiations: vec![],
                     unsat_events: vec![],
+                    auxiliary_records: auxiliary_records.unwrap_or_default(),
                 })
             }
         }
@@ -218,6 +227,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             "counterexample",
             "found_proof",
             "unsat_core",
+            "auxiliary_records",
         ];
         deserializer.deserialize_struct("ProofLoopResult", FIELDS, ProofLoopResultVisitor)
     }

@@ -620,6 +620,7 @@ impl SMTLIBSolver {
             abstract_instantiations,
             indexed_instantiations,
             unsat_events,
+            auxiliary_records: vec![],
         };
         Self::annotate_abstract_instantiation_core_membership(&mut result);
         info!("Final SMTLIB result is ready");

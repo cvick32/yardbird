@@ -3,7 +3,10 @@ use smt2parser::vmt::{quantified_instantiator::Instance, variable::Variable, Rea
 use std::any::Any;
 use z3::ast::Dynamic;
 
-use crate::utils::SolverStatistics;
+use crate::{
+    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
+    utils::SolverStatistics,
+};
 
 /// Common interface for solvers that strategies can work with
 /// Implemented by both SMTProblem and SMTLIBSMTProblem
@@ -37,4 +40,12 @@ pub trait SolverInterface {
 
     /// Get discovered array types (index_sort, value_sort) pairs
     fn get_array_types(&self) -> Vec<(String, String)>;
+
+    fn install_auxiliary_specs(&mut self, _specs: Vec<AuxiliarySpec>) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    fn get_auxiliary_records(&self) -> Vec<AuxiliaryRecord> {
+        vec![]
+    }
 }
