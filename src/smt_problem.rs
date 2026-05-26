@@ -224,7 +224,41 @@ impl SMTProblem {
         added
     }
     pub(crate) fn to_smtinterpol(&self) -> String {
-        todo!()
+        let sort_names = unique_command_lines(&self.sorts);
+        let function_definitions = unique_command_lines(&self.function_definitions);
+        let variable_definitions = unique_command_lines(&self.variable_definitions);
+
+        let mut assertion_index = 0;
+        let init_and_trans_asserts = self
+            .init_and_transition_assertions
+            .iter()
+            .map(|assertion| {
+                let named = smtinterpol_utils::assert_term_interpolant(assertion_index, assertion);
+                assertion_index += 1;
+                named
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        let instantiation_asserts = self
+            .asserted_instantiation_terms
+            .iter()
+            .map(|assertion| {
+                let named = smtinterpol_utils::assert_term_interpolant(assertion_index, assertion);
+                assertion_index += 1;
+                named
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        let property_assert = smtinterpol_utils::assert_negation_interpolant(
+            assertion_index,
+            &self.subterm_handler.get_property_assert(),
+        );
+        let interpolant_command = smtinterpol_utils::get_interpolant_command(assertion_index);
+
+        format!(
+            "{options}\n{sort_names}\n{function_definitions}\n{variable_definitions}\n{init_and_trans_asserts}\n{instantiation_asserts}\n{property_assert}\n{interpolant_command}",
+            options = smtinterpol_utils::SMT_INTERPOL_OPTIONS
+        )
     }
 
     pub(crate) fn get_number_instantiations_added(&self) -> u64 {

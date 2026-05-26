@@ -35,7 +35,7 @@ pub mod numbered_to_symbolic;
 pub mod quantified_instantiator;
 mod reads_and_write;
 mod smt;
-mod smtinterpol_utils;
+pub mod smtinterpol_utils;
 mod utils;
 pub mod variable;
 
@@ -487,6 +487,10 @@ impl VMTModel {
 
     pub fn get_function_definitions(&self) -> Vec<Command> {
         self.function_definitions.clone()
+    }
+
+    pub fn get_sorts(&self) -> Vec<Command> {
+        self.sorts.clone()
     }
 }
 
