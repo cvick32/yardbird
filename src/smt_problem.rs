@@ -1,13 +1,17 @@
-use std::vec;
+use std::{collections::HashSet, vec};
 
 use log::debug;
 use smt2parser::{
-    concrete::Term,
-    vmt::{bmc::BMCBuilder, quantified_instantiator::Instance, variable::Variable, VMTModel},
+    concrete::{Command, Term},
+    vmt::{
+        bmc::BMCBuilder, quantified_instantiator::Instance, smtinterpol_utils, variable::Variable,
+        VMTModel,
+    },
 };
 use z3::ast::Dynamic;
 
 use crate::{
+    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
     instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
     problem::Problem,
     proof_tree::ProofTree,
@@ -22,8 +26,16 @@ use crate::{
 pub struct SMTProblem {
     z3_var_context: Z3VarContext,
     bmc_builder: BMCBuilder,
+    sorts: Vec<Command>,
+    function_definitions: Vec<Command>,
+    variable_definitions: Vec<Command>,
     init_assertion: Term,
     trans_assertion: Term,
+    init_and_transition_assertions: Vec<Term>,
+    asserted_instantiation_terms: Vec<Term>,
+    auxiliary_specs: Vec<AuxiliarySpec>,
+    auxiliary_records: Vec<AuxiliaryRecord>,
+    auxiliary_transition_assertions: Vec<Term>,
     depth: u16,
     instantiations: Vec<StoredInstantiation>,
     subterm_handler: SubtermHandler,
@@ -77,6 +89,9 @@ impl SMTProblem {
 
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
+            sorts: vmt_model.get_sorts(),
+            function_definitions: vmt_model.get_function_definitions(),
+            variable_definitions: vec![],
             subterm_handler: SubtermHandler::new(
                 init_assertion.clone(),
                 trans_assertion.clone(),
@@ -84,6 +99,11 @@ impl SMTProblem {
             ),
             init_assertion,
             trans_assertion,
+            init_and_transition_assertions: vec![],
+            asserted_instantiation_terms: vec![],
+            auxiliary_specs: vec![],
+            auxiliary_records: vec![],
+            auxiliary_transition_assertions: vec![],
             instantiations: vec![],
             depth: 0,
             bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
@@ -109,7 +129,8 @@ impl SMTProblem {
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            let _ = command.accept(&mut smt.z3_var_context);
+            let _ = command.clone().accept(&mut smt.z3_var_context);
+            smt.function_definitions.push(command);
         }
 
         // Add axioms declared by the theory
@@ -127,14 +148,7 @@ impl SMTProblem {
         }
 
         // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.
-        for variable in &smt.variables {
-            let bmc_variable = variable
-                .current
-                .clone()
-                .accept(&mut smt.bmc_builder)
-                .unwrap();
-            let _ = bmc_variable.accept(&mut smt.z3_var_context);
-        }
+        smt.add_z3_variables();
         // Generate initial subterms.
         smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
         debug!("{:#?}", smt);
@@ -145,13 +159,9 @@ impl SMTProblem {
 
     /// Adds in all variables at the current depth that is recorded in self.bmc_builder.
     fn add_z3_variables(&mut self) {
-        for variable in &self.variables {
-            let bmc_variable = variable
-                .current
-                .clone()
-                .accept(&mut self.bmc_builder)
-                .unwrap();
-            let _ = bmc_variable.accept(&mut self.z3_var_context);
+        let variables = self.variables.clone();
+        for variable in &variables {
+            self.add_variable_declaration_at_current_depth(variable);
         }
     }
 
@@ -166,6 +176,7 @@ impl SMTProblem {
                 .index_single_step_term(self.init_assertion.clone());
             let z3_init = self.z3_var_context.rewrite_term(&init);
             self.solver.assert(z3_init.as_bool().unwrap());
+            self.init_and_transition_assertions.push(init);
         }
         if self.depth != 0 {
             let trans = self
@@ -173,6 +184,12 @@ impl SMTProblem {
                 .index_transition_term(self.trans_assertion.clone());
             let z3_trans = self.z3_var_context.rewrite_term(&trans);
             self.solver.assert(z3_trans.as_bool().unwrap());
+            self.init_and_transition_assertions.push(trans);
+            let auxiliary_transitions = self.auxiliary_transition_assertions.clone();
+            for transition in auxiliary_transitions {
+                let indexed_transition = self.bmc_builder.index_transition_term(transition);
+                self.assert_auxiliary_term(indexed_transition);
+            }
         }
         // Note: Instantiation handling at each depth is now delegated to
         // the instantiation strategy's on_loop hook, called from unroll()
@@ -207,6 +224,7 @@ impl SMTProblem {
             &mut self.subterm_handler,
             self.track_instantiations,
             &mut self.tracked_labels,
+            &mut self.asserted_instantiation_terms,
             &mut self.num_quantifiers_instantiated,
         );
 
@@ -263,6 +281,45 @@ impl SMTProblem {
 
     pub(crate) fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
+    }
+
+    pub(crate) fn install_auxiliary_specs(
+        &mut self,
+        specs: Vec<AuxiliarySpec>,
+    ) -> anyhow::Result<()> {
+        for spec in specs {
+            if self
+                .auxiliary_specs
+                .iter()
+                .any(|existing| existing.aux_id == spec.aux_id)
+            {
+                continue;
+            }
+
+            for variable in spec.variables() {
+                self.install_auxiliary_variable(variable);
+            }
+
+            for init_term in spec.init_terms() {
+                self.assert_auxiliary_init_at_depth_zero(init_term);
+            }
+
+            for transition in spec.transition_terms() {
+                self.auxiliary_transition_assertions
+                    .push(transition.clone());
+                for depth in 1..=self.depth {
+                    self.assert_auxiliary_transition_at_depth(transition.clone(), depth);
+                }
+            }
+
+            self.auxiliary_records.push(spec.record(self.depth));
+            self.auxiliary_specs.push(spec);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn get_auxiliary_records(&self) -> &[AuxiliaryRecord] {
+        &self.auxiliary_records
     }
 
     /// Dump the solver state to an SMT2 file
@@ -356,6 +413,73 @@ impl SMTProblem {
     }
 }
 
+fn unique_command_lines(commands: &[Command]) -> String {
+    let mut seen = HashSet::new();
+    commands
+        .iter()
+        .map(ToString::to_string)
+        .filter(|command| seen.insert(command.clone()))
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+impl SMTProblem {
+    fn add_variable_declaration_at_current_depth(&mut self, variable: &Variable) {
+        let bmc_variable = variable
+            .current
+            .clone()
+            .accept(&mut self.bmc_builder)
+            .unwrap();
+        let _ = bmc_variable.clone().accept(&mut self.z3_var_context);
+        self.variable_definitions.push(bmc_variable);
+    }
+
+    fn install_auxiliary_variable(&mut self, variable: Variable) {
+        let current_name = variable.get_current_variable_name().clone();
+        let next_name = variable.get_next_variable_name().clone();
+        if !self.bmc_builder.current_variables.contains(&current_name) {
+            self.bmc_builder
+                .current_variables
+                .push(current_name.clone());
+        }
+        self.bmc_builder
+            .next_variables
+            .insert(next_name, current_name);
+
+        let current_depth = self.bmc_builder.depth;
+        for depth in 0..=self.depth {
+            self.bmc_builder.set_depth(depth);
+            self.add_variable_declaration_at_current_depth(&variable);
+        }
+        self.bmc_builder.set_depth(current_depth);
+        self.variables.push(variable);
+    }
+
+    fn assert_auxiliary_transition_at_depth(&mut self, transition: Term, depth: u16) {
+        let current_depth = self.bmc_builder.depth;
+        self.bmc_builder.set_depth(depth);
+        let indexed_transition = self.bmc_builder.index_transition_term(transition);
+        self.assert_auxiliary_term(indexed_transition);
+        self.bmc_builder.set_depth(current_depth);
+    }
+
+    fn assert_auxiliary_init_at_depth_zero(&mut self, init_term: Term) {
+        let current_depth = self.bmc_builder.depth;
+        self.bmc_builder.set_depth(0);
+        let indexed_init = self.bmc_builder.index_single_step_term(init_term);
+        self.assert_auxiliary_term(indexed_init);
+        self.bmc_builder.set_depth(current_depth);
+    }
+
+    fn assert_auxiliary_term(&mut self, term: Term) {
+        let z3_term = self.z3_var_context.rewrite_term(&term);
+        self.solver.assert(z3_term.as_bool().unwrap());
+        self.subterm_handler
+            .register_instantiation_term(term.clone());
+        self.init_and_transition_assertions.push(term);
+    }
+}
+
 impl Problem for SMTProblem {
     fn get_sorts(&self) -> Vec<smt2parser::concrete::Command> {
         todo!()
@@ -434,6 +558,7 @@ impl Problem for SMTProblem {
                     &mut self.solver,
                     self.track_instantiations,
                     &mut self.tracked_labels,
+                    &mut self.asserted_instantiation_terms,
                     &mut self.num_quantifiers_instantiated,
                 );
             }
