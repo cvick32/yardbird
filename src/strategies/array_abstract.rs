@@ -1,6 +1,6 @@
-use std::mem;
+use std::{collections::HashSet, mem};
 
-use log::{info, trace};
+use log::{info, trace, warn};
 use smt2parser::{
     concrete::Term,
     vmt::{quantified_instantiator::UnquantifiedInstantiator, VMTModel},
@@ -8,7 +8,7 @@ use smt2parser::{
 
 use crate::{
     auxiliary_synthesis::{
-        ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState, SynthesisTrigger,
+        ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState, AuxiliarySpec, SynthesisTrigger,
     },
     cost_functions::YardbirdCostFunction,
     driver::{self},
@@ -49,6 +49,8 @@ where
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     aux_config: AuxSynthesisConfig,
     aux_trigger_state: AuxTriggerState,
+    pending_aux_specs: Vec<AuxiliarySpec>,
+    installed_aux_conflicts: HashSet<String>,
 }
 
 impl<F> Abstract<F>
@@ -71,6 +73,8 @@ where
             decision_data: vec![],
             abstract_instantiations: vec![],
             aux_trigger_state: AuxTriggerState::default(),
+            pending_aux_specs: vec![],
+            installed_aux_conflicts: HashSet::new(),
         }
     }
 }
@@ -185,7 +189,7 @@ where
         state.conflict_records.extend(conflicts.clone());
         self.decision_data.extend(decisions);
         self.abstract_instantiations.extend(abstract_instantiations);
-        self.handle_aux_synthesis_detection(state, &conflicts, refinement_step);
+        self.handle_aux_synthesis_detection(state, smt, &conflicts, refinement_step);
         if trace_conflicts_enabled() {
             trace!(
                 "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
@@ -305,6 +309,12 @@ where
             })
             .fold(true, |a, b| a && b);
 
+        if !self.pending_aux_specs.is_empty() {
+            let specs = mem::take(&mut self.pending_aux_specs);
+            info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
+            smt.install_auxiliary_specs(specs)?;
+        }
+
         Ok(())
     }
 
@@ -350,6 +360,7 @@ where
             abstract_instantiations: mem::take(&mut self.abstract_instantiations),
             indexed_instantiations: vec![],
             unsat_events: vec![],
+            auxiliary_records: smt.get_auxiliary_records(),
         }
     }
 }
@@ -361,6 +372,7 @@ where
     fn handle_aux_synthesis_detection(
         &mut self,
         state: &ArrayRefinementState,
+        smt: &dyn crate::solver_interface::SolverInterface,
         conflicts: &[ArrayConflictRecord],
         refinement_step: u32,
     ) {
@@ -405,6 +417,50 @@ where
                     conflict.term
                 );
             }
+        }
+        if !decision.fired {
+            return;
+        }
+        let Some(selected_conflict_id) = decision.selected_conflict_id else {
+            return;
+        };
+        if self.installed_aux_conflicts.contains(&selected_conflict_id) {
+            return;
+        }
+        let Some(conflict) = conflicts
+            .iter()
+            .find(|conflict| conflict.conflict_id == selected_conflict_id)
+        else {
+            warn!("AUX-SYNTH selected conflict {selected_conflict_id} was not found");
+            return;
+        };
+        if self.aux_config.guard_policy != crate::auxiliary_synthesis::GuardPolicy::True {
+            warn!(
+                "AUX-SYNTH guard policy {} is not implemented for installation yet; using true",
+                self.aux_config.guard_policy
+            );
+        }
+        match AuxiliarySpec::from_conflict(
+            conflict,
+            smt.get_variables(),
+            self.aux_config.trigger,
+            self.aux_config.guard_policy,
+        ) {
+            Ok(spec) => {
+                info!(
+                    "AUX-SYNTH queued aux_id={} source_conflict={} history={} prophecy={:?}",
+                    spec.aux_id,
+                    spec.source_conflict_id,
+                    spec.history.name,
+                    spec.prophecy.as_ref().map(|prophecy| prophecy.name.clone())
+                );
+                self.installed_aux_conflicts.insert(selected_conflict_id);
+                self.pending_aux_specs.push(spec);
+            }
+            Err(err) => warn!(
+                "AUX-SYNTH could not build auxiliary spec for conflict {}: {err}",
+                conflict.conflict_id
+            ),
         }
     }
 }
