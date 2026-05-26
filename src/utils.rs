@@ -3,11 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use smt2parser::{get_term_from_term_string, let_extract::LetExtract};
 use std::collections::BTreeMap;
-use std::io::Write;
-use std::{fmt::Display, fs::File, io::Error, process::Command};
+use std::io::{Error, ErrorKind, Write};
+use std::{fmt::Display, process::Command};
 
 use z3::Statistics;
-static INTERPOLANT_FILENAME: &str = "interpolant-out.smt2";
 
 pub(crate) fn configure_z3_solver(solver: &z3::Solver) {
     // Yardbird's abstraction is model-driven, so pin the solver seed to keep
@@ -37,30 +36,55 @@ pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
 
 pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Error> {
     let interpolant_problem = smt_problem.to_smtinterpol();
-    let mut temp_file = File::create(INTERPOLANT_FILENAME)?;
+    let mut temp_file = tempfile::NamedTempFile::new()?;
     writeln!(temp_file, "{interpolant_problem}")?;
+    let temp_path = temp_file
+        .path()
+        .to_str()
+        .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "non-UTF8 SMTInterpol temp path"))?;
     let interp_out = match run_command(
         "java",
         &[
             "-jar",
             "./tools/smtinterpol-2.5-1386-gcca67e02.jar",
             "-w",
-            INTERPOLANT_FILENAME,
+            temp_path,
         ],
     ) {
         Ok(out) => out,
-        Err(err) => panic!("{err}"),
+        Err(err) => return Err(Error::other(err)),
     };
 
-    let stdout = interp_out
-        .split("\n")
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
+    parse_smtinterpol_output(&interp_out)
+}
 
+fn parse_smtinterpol_output(interp_out: &str) -> Result<Vec<Interpolant>, Error> {
+    let stdout = interp_out
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
     // First element should always be 'unsat' from (check-sat) call.
-    assert_eq!(stdout[0], "unsat");
-    // Second element is the sequent interpolant.
-    let mut interpolants = stdout[1].clone();
+    let Some(status) = stdout.first() else {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "SMTInterpol produced no output",
+        ));
+    };
+    if *status != "unsat" {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("SMTInterpol did not return unsat: {status}"),
+        ));
+    }
+    // The sequent interpolant may span multiple lines.
+    let mut interpolants = stdout[1..].join(" ");
+    if !interpolants.starts_with('(') {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!("unexpected SMTInterpol interpolant output: {interpolants}"),
+        ));
+    }
     // Have to add `and` to the interpolant to make it valid smt2
     interpolants.insert_str(1, "and ");
     // Format it to `assert` call so smt2parser can handle it.

@@ -1,5 +1,5 @@
 use egg::*;
-use log::info;
+use log::{info, warn};
 use smt2parser::{concrete::Term, get_term_from_term_string};
 use std::fmt::Debug;
 
@@ -28,7 +28,13 @@ impl Debug for Interpolant {
 
 fn simplify_smtinterpol_interpolant(interpolant: String) -> String {
     // parse the expression, the type annotation tells it which Language to use
-    let expr: RecExpr<ArrayInterpolantLanguage> = interpolant.parse().unwrap();
+    let expr: RecExpr<ArrayInterpolantLanguage> = match interpolant.parse() {
+        Ok(expr) => expr,
+        Err(err) => {
+            warn!("Could not simplify SMTInterpol interpolant `{interpolant}`: {err}");
+            return interpolant;
+        }
+    };
 
     // simplify the expression using a Runner, which creates an e-graph with
     // the given expression and runs the given rules over it
@@ -57,7 +63,7 @@ define_language! {
     pub enum ArrayInterpolantLanguage {
         Num(i64),
         "ConstArr_Int_Int" = ConstArr([Id; 1]),
-        "Read_Int_Int" = Write([Id; 3]),
+        "Write_Int_Int" = Write([Id; 3]),
         "Read_Int_Int" = Read([Id; 2]),
         "and" = And(Box<[Id]>),
         "not" = Not(Id),
@@ -90,9 +96,9 @@ fn interpolant_rewrites() -> Vec<Rewrite<ArrayInterpolantLanguage, ()>> {
         rewrite!("def-lte"; "(<= ?a ?a)" => "true"),
         rewrite!("def-gte"; "(>= ?a ?a)" => "true"),
         rewrite!("constant-array"; "(Read_Int_Int (ConstArr_Int_Int ?a) ?b)" => "?a"),
-        rewrite!("read-after-write"; "(Read_Int_Int (Read_Int_Int ?a ?idx ?val) ?idx)" => "?val"),
+        rewrite!("read-after-write"; "(Read_Int_Int (Write_Int_Int ?a ?idx ?val) ?idx)" => "?val"),
         rewrite!(
-            "write-does-not-overwrite"; "(Read_Int_Int (Read_Int_Int ?a ?idx ?val) ?c)" => "(Read_Int_Int ?a ?c)" if not_equal("?idx", "?c")
+            "write-does-not-overwrite"; "(Read_Int_Int (Write_Int_Int ?a ?idx ?val) ?c)" => "(Read_Int_Int ?a ?c)" if not_equal("?idx", "?c")
         ),
     ]
 }
@@ -104,4 +110,15 @@ fn not_equal(
     let var_0 = index_0.parse().unwrap();
     let var_1 = index_1.parse().unwrap();
     move |egraph, _, subst| egraph.find(subst[var_0]) != egraph.find(subst[var_1])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simplify_handles_write_interpolants() {
+        let interpolant = "(= (Read_Int_Int (Write_Int_Int a i v) i) v)".to_string();
+        assert_eq!(simplify_smtinterpol_interpolant(interpolant), "true");
+    }
 }
