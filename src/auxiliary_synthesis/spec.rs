@@ -5,7 +5,7 @@ use smt2parser::concrete::{
 };
 use smt2parser::vmt::{variable::var_is_immutable, variable::Variable, VARIABLE_FRAME_DELIMITER};
 
-use crate::auxiliary_synthesis::{ArrayConflictRecord, GuardPolicy, SynthesisTrigger};
+use crate::auxiliary_synthesis::{ArrayConflictRecord, FrameSpan, GuardPolicy, SynthesisTrigger};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistorySpec {
@@ -38,6 +38,7 @@ pub struct AuxiliarySpec {
     pub property_constraint: Option<Term>,
     pub guard_policy: GuardPolicy,
     pub trigger: SynthesisTrigger,
+    pub non_monotonicity_check: NonMonotonicityCheckRecord,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -54,6 +55,28 @@ pub struct AuxiliaryRecord {
     pub prophecy_name: Option<String>,
     pub capture_term: String,
     pub capture_guard: String,
+    pub source_instantiation: String,
+    pub localized_axiom: Option<String>,
+    pub source_frame_span: FrameSpan,
+    pub localized_frame_span: Option<FrameSpan>,
+    pub non_monotonicity_check: NonMonotonicityCheckRecord,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NonMonotonicityCheckRecord {
+    pub status: NonMonotonicityStatus,
+    pub source_term: String,
+    pub localized_term: Option<String>,
+    pub source_frame_span: FrameSpan,
+    pub localized_frame_span: Option<FrameSpan>,
+    pub note: String,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NonMonotonicityStatus {
+    Pending,
+    Skipped,
 }
 
 impl AuxiliarySpec {
@@ -71,6 +94,21 @@ impl AuxiliarySpec {
         let prophecy_name = format!("yb_prop_{safe_id}");
         let capture_term = Term::QualIdentifier(QualIdentifier::simple(&capture.base_name));
         let capture_guard = true_term();
+        let localized_axiom = replace_framed_symbol(
+            &conflict.term,
+            &capture.base_name,
+            capture.frame,
+            &prophecy_name,
+        );
+        let localized_frame_span = FrameSpan::from_term(&localized_axiom);
+        let non_monotonicity_check = NonMonotonicityCheckRecord {
+            status: NonMonotonicityStatus::Pending,
+            source_term: conflict.term.to_string(),
+            localized_term: Some(localized_axiom.to_string()),
+            source_frame_span: conflict.frame_span.clone(),
+            localized_frame_span: Some(localized_frame_span),
+            note: "localized axiom replaces a framed term with a stuttering prophecy variable; semantic monotonicity not checked yet".to_string(),
+        };
 
         Ok(Self {
             aux_id,
@@ -92,10 +130,11 @@ impl AuxiliarySpec {
                 sort: capture.sort,
                 initial_value: None,
             }),
-            localized_axiom: None,
+            localized_axiom: Some(localized_axiom),
             property_constraint: None,
             guard_policy,
             trigger,
+            non_monotonicity_check,
         })
     }
 
@@ -155,6 +194,11 @@ impl AuxiliarySpec {
             prophecy_name: self.prophecy.as_ref().map(|prophecy| prophecy.name.clone()),
             capture_term: self.history.capture_term.to_string(),
             capture_guard: self.history.capture_guard.to_string(),
+            source_instantiation: self.non_monotonicity_check.source_term.clone(),
+            localized_axiom: self.localized_axiom.as_ref().map(ToString::to_string),
+            source_frame_span: self.non_monotonicity_check.source_frame_span.clone(),
+            localized_frame_span: self.non_monotonicity_check.localized_frame_span.clone(),
+            non_monotonicity_check: self.non_monotonicity_check.clone(),
         }
     }
 }
@@ -199,6 +243,7 @@ fn auxiliary_variable(name: &str, next_name: &str, sort: &Sort) -> Variable {
 #[derive(Clone, Debug)]
 struct CaptureVariable {
     base_name: String,
+    frame: i64,
     sort: Sort,
 }
 
@@ -230,12 +275,125 @@ fn select_capture_variable(
         .filter(|(_, frame)| *frame == target_frame)
         .filter(|(base, _)| !var_is_immutable(base))
         .find_map(|(base_name, _)| {
-            variable_sorts
-                .get(&base_name)
-                .cloned()
-                .map(|sort| CaptureVariable { base_name, sort })
+            variable_sorts.get(&base_name).and_then(|sort| {
+                (!sort_is_array(sort)).then(|| CaptureVariable {
+                    base_name,
+                    frame: target_frame,
+                    sort: sort.clone(),
+                })
+            })
         })
-        .ok_or_else(|| anyhow!("no declared state variable found at frame {target_frame}"))
+        .ok_or_else(|| anyhow!("no declared scalar state variable found at frame {target_frame}"))
+}
+
+fn sort_is_array(sort: &Sort) -> bool {
+    match sort {
+        Sort::Simple { identifier } => identifier_name(identifier).starts_with("Array"),
+        Sort::Parameterized {
+            identifier,
+            parameters: _,
+        } => identifier_name(identifier) == "Array",
+    }
+}
+
+fn identifier_name(identifier: &Identifier) -> &str {
+    match identifier {
+        Identifier::Simple { symbol } | Identifier::Indexed { symbol, indices: _ } => &symbol.0,
+    }
+}
+
+fn replace_framed_symbol(term: &Term, base_name: &str, frame: i64, replacement: &str) -> Term {
+    match term {
+        Term::Constant(_) => term.clone(),
+        Term::QualIdentifier(qi) => {
+            let name = qi.get_name();
+            if split_framed_symbol(&name) == Some((base_name.to_string(), frame)) {
+                symbol_term(replacement)
+            } else {
+                term.clone()
+            }
+        }
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => Term::Application {
+            qual_identifier: qual_identifier.clone(),
+            arguments: arguments
+                .iter()
+                .map(|argument| replace_framed_symbol(argument, base_name, frame, replacement))
+                .collect(),
+        },
+        Term::Let { var_bindings, term } => Term::Let {
+            var_bindings: var_bindings
+                .iter()
+                .map(|(symbol, binding)| {
+                    (
+                        symbol.clone(),
+                        replace_framed_symbol(binding, base_name, frame, replacement),
+                    )
+                })
+                .collect(),
+            term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
+        },
+        Term::Forall { vars, term } => Term::Forall {
+            vars: vars.clone(),
+            term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
+        },
+        Term::Exists { vars, term } => Term::Exists {
+            vars: vars.clone(),
+            term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
+        },
+        Term::Match { term, cases } => Term::Match {
+            term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
+            cases: cases
+                .iter()
+                .map(|(symbols, case_term)| {
+                    (
+                        symbols.clone(),
+                        replace_framed_symbol(case_term, base_name, frame, replacement),
+                    )
+                })
+                .collect(),
+        },
+        Term::Attributes { term, attributes } => Term::Attributes {
+            term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
+            attributes: attributes.clone(),
+        },
+    }
+}
+
+pub fn term_contains_auxiliary_symbol(term: &Term) -> bool {
+    match term {
+        Term::Constant(_) => false,
+        Term::QualIdentifier(qi) => is_auxiliary_symbol_name(&qi.get_name()),
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            is_auxiliary_symbol_name(&qual_identifier.get_name())
+                || arguments.iter().any(term_contains_auxiliary_symbol)
+        }
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| term_contains_auxiliary_symbol(binding))
+                || term_contains_auxiliary_symbol(term)
+        }
+        Term::Forall { term, .. } | Term::Exists { term, .. } => {
+            term_contains_auxiliary_symbol(term)
+        }
+        Term::Match { term, cases } => {
+            term_contains_auxiliary_symbol(term)
+                || cases
+                    .iter()
+                    .any(|(_, case_term)| term_contains_auxiliary_symbol(case_term))
+        }
+        Term::Attributes { term, .. } => term_contains_auxiliary_symbol(term),
+    }
+}
+
+fn is_auxiliary_symbol_name(name: &str) -> bool {
+    name.starts_with("yb_hist_") || name.starts_with("yb_prop_")
 }
 
 fn collect_framed_symbols(term: &Term, symbols: &mut Vec<(String, i64)>) {
@@ -383,6 +541,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(spec.history.capture_term.to_string(), "y");
+        assert_eq!(
+            spec.localized_axiom.as_ref().unwrap().to_string(),
+            "(= x@0 yb_prop_conflict_2_3_0)"
+        );
         assert_eq!(spec.transition_terms().len(), 2);
+        assert_eq!(
+            spec.non_monotonicity_check.status,
+            NonMonotonicityStatus::Pending
+        );
+    }
+
+    #[test]
+    fn detects_auxiliary_symbols_in_terms() {
+        let original: Term = "(= (Read_Int_Int a@0 i@0) (Read_Int_Int a@0 i@1))"
+            .parse()
+            .unwrap();
+        let auxiliary: Term =
+            "(= (Read_Int_Int a@0 yb_prop_conflict_2_0_0@0) (Read_Int_Int a@0 i@1))"
+                .parse()
+                .unwrap();
+
+        assert!(!term_contains_auxiliary_symbol(&original));
+        assert!(term_contains_auxiliary_symbol(&auxiliary));
     }
 }

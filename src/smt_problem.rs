@@ -312,6 +312,10 @@ impl SMTProblem {
                 }
             }
 
+            if let Some(localized_axiom) = &spec.localized_axiom {
+                self.assert_auxiliary_localized_axiom(&spec, localized_axiom.clone());
+            }
+
             self.auxiliary_records.push(spec.record(self.depth));
             self.auxiliary_specs.push(spec);
         }
@@ -477,6 +481,25 @@ impl SMTProblem {
         self.subterm_handler
             .register_instantiation_term(term.clone());
         self.init_and_transition_assertions.push(term);
+    }
+
+    fn assert_auxiliary_localized_axiom(&mut self, spec: &AuxiliarySpec, localized_axiom: Term) {
+        let current_depth = self.bmc_builder.depth;
+        let target_depth = spec
+            .non_monotonicity_check
+            .source_frame_span
+            .max_frame
+            .and_then(|frame| u16::try_from(frame).ok())
+            .filter(|frame| *frame <= self.depth)
+            .unwrap_or(self.depth);
+        self.bmc_builder.set_depth(target_depth);
+        let indexed_axiom = self.bmc_builder.index_single_step_term(localized_axiom);
+        self.assert_auxiliary_term(indexed_axiom);
+        self.bmc_builder.set_depth(current_depth);
+        log::info!(
+            "AUX-SYNTH localized axiom aux_id={} asserted_at_depth={target_depth}",
+            spec.aux_id
+        );
     }
 }
 
@@ -661,7 +684,8 @@ mod tests {
 
     use crate::{
         auxiliary_synthesis::{
-            AuxiliarySpec, GuardPolicy, HistorySpec, ProphecySpec, SynthesisTrigger,
+            AuxiliarySpec, FrameSpan, GuardPolicy, HistorySpec, NonMonotonicityCheckRecord,
+            NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
         },
         cost_functions::array::array_bmc_cost_factory,
         instantiation_strategy::full_unroll::FullUnrollStrategy,
@@ -717,15 +741,30 @@ mod tests {
                 sort: int_sort,
                 initial_value: None,
             }),
-            localized_axiom: None,
+            localized_axiom: Some(
+                "(= (Read_Int_Int (Write_Int_Int a@0 i@0 i@0) yb_prop_test) (Read_Int_Int a@0 yb_prop_test))"
+                    .parse()
+                    .unwrap(),
+            ),
             property_constraint: None,
             guard_policy: GuardPolicy::True,
             trigger: SynthesisTrigger::NonLocal,
+            non_monotonicity_check: NonMonotonicityCheckRecord {
+                status: NonMonotonicityStatus::Pending,
+                source_term: "(= i@0 i@2)".to_string(),
+                localized_term: Some("(= i@0 yb_prop_test)".to_string()),
+                source_frame_span: FrameSpan::from_term(&"(= i@0 i@2)".parse().unwrap()),
+                localized_frame_span: Some(FrameSpan::from_term(
+                    &"(= i@0 yb_prop_test)".parse().unwrap(),
+                )),
+                note: "test".to_string(),
+            },
         };
 
         smt.install_auxiliary_specs(vec![spec]).unwrap();
         assert_eq!(smt.get_auxiliary_records().len(), 1);
         assert!(smt.to_smtinterpol().contains("yb_hist_test@2"));
+        assert!(smt.to_smtinterpol().contains("yb_prop_test@0"));
 
         smt.unroll(3);
         let interpolant_problem = smt.to_smtinterpol();
