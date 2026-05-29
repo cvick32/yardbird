@@ -232,18 +232,6 @@ where
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
             log::debug!("NUMBER OF OPTIONS: {}", terms.len());
-
-            // Terms are already sorted by cost, use direct indexing
-            if let Some((term, cost)) = terms.get(self.refinement_step as usize) {
-                log::debug!(
-                    "term #{}: {eclass} -> {}={}",
-                    self.refinement_step,
-                    term,
-                    cost
-                );
-                return term.clone();
-            }
-
             // Fallback to best (first) term if refinement_step is out of bounds
             if let Some((best_term, best_cost)) = terms.first() {
                 log::debug!("Just using best_term: {} cost: {}", best_term, best_cost);
