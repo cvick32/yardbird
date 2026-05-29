@@ -1,0 +1,17 @@
+---
+source: tests/snapshot_tests.rs
+expression: "run_smt2_strategy_benchmark(\"examples/smt2/array_bitvec_simple.smt2\")"
+---
+Smt2StrategyResult {
+    example_name: "examples/smt2/array_bitvec_simple.smt2",
+    status: Good,
+    outcome: Smt2StrategyOutcome {
+        total_refinement_steps: 2,
+        total_instantiations_added: 1,
+        found_proof: false,
+        counterexample: false,
+        used_instantiations: [
+            "(= (Read_BitVec5_BitVec32 (Write_BitVec5_BitVec32 arr idx val) idx) val)",
+        ],
+    },
+}

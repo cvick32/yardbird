@@ -1,6 +1,7 @@
 use insta::assert_debug_snapshot;
 use std::{
     path::Path,
+    process::Command,
     sync::mpsc::{self, RecvTimeoutError},
     sync::Mutex,
     thread,
@@ -11,6 +12,8 @@ use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::array_bmc_cost_factory,
     model_from_options,
+    problem::Problem,
+    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
     Driver, YardbirdOptions,
 };
@@ -46,6 +49,65 @@ struct BenchmarkResult {
     example_name: String,
     status: BenchStatus,
     used_instantiations: Vec<String>,
+}
+
+#[allow(unused)]
+#[derive(Debug, Default)]
+struct Smt2StrategyOutcome {
+    total_refinement_steps: u32,
+    total_instantiations_added: u64,
+    found_proof: bool,
+    counterexample: bool,
+    used_instantiations: Vec<String>,
+}
+
+impl From<yardbird::ProofLoopResult> for Smt2StrategyOutcome {
+    fn from(result: yardbird::ProofLoopResult) -> Self {
+        let mut used_instantiations = result
+            .used_instances
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        used_instantiations.sort();
+
+        Self {
+            total_refinement_steps: result.total_refinement_steps,
+            total_instantiations_added: result.total_instantiations_added,
+            found_proof: result.found_proof,
+            counterexample: result.counterexample,
+            used_instantiations,
+        }
+    }
+}
+
+#[allow(unused)]
+#[derive(Debug)]
+struct Smt2StrategyResult {
+    example_name: String,
+    status: BenchStatus,
+    outcome: Smt2StrategyOutcome,
+}
+
+#[allow(unused)]
+#[derive(Debug, Default)]
+struct Smt2SimpleOutcome {
+    results: Vec<String>,
+}
+
+#[allow(unused)]
+#[derive(Debug)]
+struct Smt2SimpleResult {
+    example_name: String,
+    status: BenchStatus,
+    outcome: Smt2SimpleOutcome,
+}
+
+#[allow(unused)]
+#[derive(Debug)]
+struct CliResult {
+    status_code: Option<i32>,
+    stdout: String,
+    stderr: String,
 }
 
 static SNAPSHOT_TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -86,6 +148,83 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     }
 }
 
+fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult {
+    let example_name = filename.as_ref().to_string_lossy().to_string();
+    let path = example_name.clone();
+    let (status, outcome) = run_with_timeout(
+        move || {
+            let mut cfg = z3::Config::new();
+            cfg.set_model_generation(true);
+
+            z3::with_z3_config(&cfg, move || {
+                let problem = SMTLIBProblem::from_path(&path).unwrap();
+                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                    0,
+                    false,
+                    array_bmc_cost_factory,
+                    AuxSynthesisConfig::default(),
+                ));
+                let (result, _abstracted_problem) =
+                    SMTLIBSolver::execute_with_strategy(&problem, strat, 250, false).unwrap();
+                Smt2StrategyOutcome::from(result)
+            })
+        },
+        Duration::from_secs(20),
+    );
+
+    Smt2StrategyResult {
+        example_name,
+        status,
+        outcome,
+    }
+}
+
+fn run_smt2_simple_benchmark(filename: impl AsRef<Path>) -> Smt2SimpleResult {
+    let example_name = filename.as_ref().to_string_lossy().to_string();
+    let path = example_name.clone();
+    let (status, outcome) = run_with_timeout(
+        move || {
+            let mut cfg = z3::Config::new();
+            cfg.set_model_generation(true);
+
+            z3::with_z3_config(&cfg, move || {
+                let problem = SMTLIBProblem::from_path(&path).unwrap();
+                let mut solver = SMTLIBSolver::new(problem.get_logic());
+                solver.execute(&problem);
+                let results = solver
+                    .get_results()
+                    .iter()
+                    .map(|result| format!("{:?}@{}", result.result, result.command_index))
+                    .collect();
+
+                Smt2SimpleOutcome { results }
+            })
+        },
+        Duration::from_secs(20),
+    );
+
+    Smt2SimpleResult {
+        example_name,
+        status,
+        outcome,
+    }
+}
+
+fn run_yardbird_cli(args: &[&str]) -> CliResult {
+    let output = Command::new(env!("CARGO_BIN_EXE_yardbird"))
+        .args(args)
+        .env("RUST_LOG", "off")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .output()
+        .unwrap();
+
+    CliResult {
+        status_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    }
+}
+
 fn benchmark_path(test_name: &str) -> String {
     if test_name.starts_with("array2dim_") {
         format!("examples/two_dimensional_array/{test_name}.vmt")
@@ -105,6 +244,44 @@ macro_rules! create_array_snapshot_test {
             assert_debug_snapshot!(stringify!($test), run_benchmark(&path));
         }
     };
+}
+
+#[test]
+fn smt2_array_bitvec_simple_strategy() {
+    let _guard = SNAPSHOT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert_debug_snapshot!(
+        "smt2_array_bitvec_simple_strategy",
+        run_smt2_strategy_benchmark("examples/smt2/array_bitvec_simple.smt2")
+    );
+}
+
+#[test]
+fn smt2_array_bitvec_minimal_simple() {
+    let _guard = SNAPSHOT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert_debug_snapshot!(
+        "smt2_array_bitvec_minimal_simple",
+        run_smt2_simple_benchmark("examples/smt2/array_bitvec_minimal.smt2")
+    );
+}
+
+#[test]
+fn smt2_auxiliary_synthesis_trigger_rejected() {
+    let _guard = SNAPSHOT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert_debug_snapshot!(
+        "smt2_auxiliary_synthesis_trigger_rejected",
+        run_yardbird_cli(&[
+            "--filename",
+            "examples/smt2/array_bitvec_simple.smt2",
+            "--synthesis-trigger",
+            "non-local",
+        ])
+    );
 }
 
 // TODO: would be nice to automatically generate this
