@@ -214,6 +214,16 @@ impl YardbirdOptions {
         }
     }
 
+    pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
+        if self.synthesis_trigger != SynthesisTrigger::Off {
+            anyhow::bail!(
+                "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until SMTLIBSMTProblem can install auxiliary specs",
+                self.synthesis_trigger
+            );
+        }
+        Ok(())
+    }
+
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
         let aux_config = self.build_aux_synthesis_config();
         match self.strategy {
