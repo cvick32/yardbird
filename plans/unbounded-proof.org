@@ -1,0 +1,209 @@
+#+title: Unbounded Proof Planning Notes
+
+* Status
+
+This is a conversation scratchpad, not the implementation plan yet.
+
+Current working direction:
+
+- Do not build on the old external IC3IA export path.
+- Design an internal IC3/PDR proof phase for VMT transition systems.
+- Treat SMTLIB support as a separate input-format question, because current
+  SMTLIB mode is stateless satisfiability rather than a transition-system
+  problem.
+- Use the existing instantiation provenance pipeline to measure how selected
+  quantifier instantiations affect unbounded proof success.
+
+* Current Repo Findings
+
+Yardbird already has a stale ~--run-ic3ia~ flag, but it is only a final-result
+callback:
+
+- strategies add discovered instantiations back into a ~VMTModel~
+- ~src/ic3ia.rs~ writes a temporary VMT file
+- Yardbird shells out to ~ic3ia -w~
+- success is detected by checking whether stdout contains ~invariant~
+
+This path should not be treated as a correctness boundary.
+
+Important concern:
+
+- stored instantiations use Yardbird's normalized offset notation, such as
+  ~a+0~, ~i+1~, and ~a+2~
+- snapshots show those terms in final ~used_instantiations~
+- adding these directly back to a VMT model is probably not a principled export
+  format for an unbounded prover
+
+The better internal boundary is a typed transition-system representation:
+
+- sorts
+- function declarations
+- state variables
+- input/action variables
+- initial condition
+- transition relation
+- safety property
+- theory support declarations
+- selected instantiation constraints with frame-width metadata
+
+* External Context
+
+IC3IA is based on IC3 modulo theories with implicit predicate abstraction. The
+key idea is to run IC3 over Boolean abstraction predicates while SMT handles
+theory checks.
+
+Z3's SPACER is a PDR engine for Horn clauses. It supports arithmetic and Boolean
+domains, and the Z3 guide states it also works with arrays, algebraic data
+types, and bit-vectors.
+
+Useful references:
+
+- https://es-static.fbk.eu/people/griggio/ic3ia/
+- https://arxiv.org/abs/1310.6847
+- https://microsoft.github.io/z3guide/docs/fixedpoints/engineforpdr/
+
+Rust note:
+
+- the ~z3~ crate in this repo does not expose a high-level Fixedpoint wrapper
+- ~z3-sys~ does expose the fixedpoint C API
+- using SPACER internally would require either a small wrapper or emitting CHC
+  SMT-LIB and invoking Z3 through a controlled internal runner
+
+* Integration Options
+
+** Option A: Downstream PDR Phase
+
+Run BMC/refinement as Yardbird does today. After the bounded phase reaches a
+configured point, pass the current abstract transition system plus selected
+instantiations to an internal PDR engine.
+
+Pros:
+
+- smallest disruption to the current CEGAR loop
+- good first platform for instantiation ablations
+- works with existing logging and unsat-core provenance
+
+Cons:
+
+- PDR does not help decide which instantiations to generate yet
+- proof attempts may happen late
+
+** Option B: Opportunistic PDR Phase
+
+Run the same PDR engine after meaningful events:
+
+- after each BMC depth is ruled out
+- after each new batch of instantiations
+- after an unsat core has been collected
+
+Pros:
+
+- better for measuring when a proof becomes possible
+- still reasonably isolated
+
+Cons:
+
+- needs careful time budgeting
+- requires stable incremental proof-result reporting
+
+** Option C: Fully Interleaved PDR and Refinement
+
+Let PDR counterexamples drive abstraction refinement. Failed inductiveness
+checks would produce proof obligations that can ask Yardbird for new array
+instantiations.
+
+Pros:
+
+- most principled long-term design
+- closest to IC3IA-style implicit abstraction
+
+Cons:
+
+- largest change
+- requires designing PDR obligations, clause generalization, and abstraction
+  refinement together
+- higher risk before we have baseline data
+
+* Current Recommendation
+
+Start with Option A or B, not Option C.
+
+The internal module should be shaped so Option C is possible later:
+
+- define a ~TransitionSystem~ boundary first
+- define an ~UnboundedProver~ trait
+- implement proof-result and proof-attempt logging independent of the BMC loop
+- keep instantiation selection explicit and reproducible
+
+Possible first trait shape:
+
+#+begin_src rust
+pub trait UnboundedProver {
+    fn prove(&mut self, system: &TransitionSystem, instances: &InstantiationSet)
+        -> anyhow::Result<UnboundedProofResult>;
+}
+#+end_src
+
+* Questions To Settle Before Implementation Planning
+
+1. What should SMTLIB support mean?
+
+   Current SMTLIB mode is not temporal. IC3/PDR needs an init/trans/property
+   shape. Options:
+
+   - support only VMT first
+   - accept SMTLIB files with VMT-style annotations
+   - support CHC/Horn SMTLIB as a separate mode
+   - define a Yardbird-specific transition-system convention for SMTLIB
+
+2. What is the first internal engine?
+
+   Options:
+
+   - implement concrete PDR over SMT formulas directly
+   - implement predicate-abstraction IC3, closer to IC3IA
+   - add a Z3 Fixedpoint/SPACER backend as a baseline while building our own
+
+3. What counts as "targeted quantifier instantiation"?
+
+   Candidate interpretations:
+
+   - instantiations whose selected terms overlap property vocabulary
+   - instantiations that appeared in bounded unsat cores
+   - instantiations selected by a cost function designed for the property
+   - instantiations requested by failed inductiveness checks
+
+4. Should the first proof phase use native arrays or Yardbird's abstracted array
+   functions?
+
+   Using abstracted arrays plus selected instances is more aligned with the
+   current tool. Native arrays may be useful as a concrete comparison but does
+   not answer the instantiation question as directly.
+
+5. What is the minimum useful result object?
+
+   Likely fields:
+
+   - status: proved, counterexample, unknown, timeout, unsupported
+   - engine
+   - selected instance profile
+   - runtime
+   - number of solver queries
+   - number of frames
+   - invariant if available
+   - counterexample trace if available
+
+* Initial Effort Estimate
+
+Assuming we roll our own internal PDR infrastructure:
+
+- Transition-system boundary and cleanup: 2-4 days
+- Internal proof-result types, CLI, JSON, and garden plumbing: 1-2 days
+- VMT-only downstream proof phase skeleton: 1 week
+- Basic SMT-backed PDR with limited generalization: 2-4 weeks
+- Predicate-abstraction IC3 closer to IC3IA: 4-8 weeks
+- SMTLIB temporal input support: 1-3 weeks depending format choice
+- Instantiation ablation harness and reports: 1-2 weeks
+
+The riskiest part is not calling Z3. It is clause/cube generalization over
+theories and making instantiations frame-correct in an unbounded setting.
