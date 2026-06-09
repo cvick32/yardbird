@@ -1,6 +1,7 @@
 use std::{collections::HashSet, mem};
 
 use log::{info, trace, warn};
+use rustc_hash::FxHashMap;
 use smt2parser::{
     concrete::Term,
     vmt::{quantified_instantiator::UnquantifiedInstantiator, VMTModel},
@@ -47,6 +48,8 @@ where
     discovered_array_types: Vec<(String, String)>,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
+    term_selection_counts: FxHashMap<String, u32>,
+    counted_abstract_instantiations: usize,
     aux_config: AuxSynthesisConfig,
     aux_trigger_state: AuxTriggerState,
     pending_aux_specs: Vec<AuxiliarySpec>,
@@ -72,6 +75,8 @@ where
             discovered_array_types: vec![],
             decision_data: vec![],
             abstract_instantiations: vec![],
+            term_selection_counts: FxHashMap::default(),
+            counted_abstract_instantiations: 0,
             aux_trigger_state: AuxTriggerState::default(),
             pending_aux_specs: vec![],
             installed_aux_conflicts: HashSet::new(),
@@ -181,6 +186,7 @@ where
                 &mut state.egraph,
                 cost_fn,
                 refinement_step,
+                self.term_selection_counts.clone(),
                 state.depth,
                 &state.array_types,
             );
@@ -309,6 +315,8 @@ where
             })
             .fold(true, |a, b| a && b);
 
+        self.record_term_selection_history();
+
         if !self.pending_aux_specs.is_empty() {
             let specs = mem::take(&mut self.pending_aux_specs);
             info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
@@ -369,6 +377,39 @@ impl<F> Abstract<F>
 where
     F: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
+    fn record_term_selection_history(&mut self) {
+        let new_instantiations =
+            &self.abstract_instantiations[self.counted_abstract_instantiations..];
+        if new_instantiations.is_empty() {
+            return;
+        }
+
+        let decisions_by_key: FxHashMap<&str, &DecisionRecord> = self
+            .decision_data
+            .iter()
+            .map(|decision| (decision.decision_key.as_str(), decision))
+            .collect();
+
+        for instantiation in new_instantiations {
+            for decision_key in &instantiation.decision_keys {
+                if let Some(decision) = decisions_by_key.get(decision_key.as_str()) {
+                    if let Some(chosen) = decision
+                        .candidates
+                        .iter()
+                        .find(|candidate| candidate.was_chosen)
+                    {
+                        *self
+                            .term_selection_counts
+                            .entry(chosen.term_hash.clone())
+                            .or_default() += 1;
+                    }
+                }
+            }
+        }
+
+        self.counted_abstract_instantiations = self.abstract_instantiations.len();
+    }
+
     fn handle_aux_synthesis_detection(
         &mut self,
         state: &ArrayRefinementState,
