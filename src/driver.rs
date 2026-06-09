@@ -140,6 +140,10 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                 let mut counterexample = None;
                 let mut found_proof = None;
                 let mut unsat_core = None;
+                let mut decision_data = None;
+                let mut abstract_instantiations = None;
+                let mut indexed_instantiations = None;
+                let mut unsat_events = None;
                 let mut auxiliary_records = None;
 
                 while let Some(key) = map.next_key()? {
@@ -168,14 +172,20 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         Field::UnsatCore => {
                             unsat_core = Some(map.next_value()?);
                         }
+                        Field::DecisionData => {
+                            decision_data = Some(map.next_value()?);
+                        }
+                        Field::AbstractInstantiations => {
+                            abstract_instantiations = Some(map.next_value()?);
+                        }
+                        Field::IndexedInstantiations => {
+                            indexed_instantiations = Some(map.next_value()?);
+                        }
+                        Field::UnsatEvents => {
+                            unsat_events = Some(map.next_value()?);
+                        }
                         Field::AuxiliaryRecords => {
                             auxiliary_records = Some(map.next_value()?);
-                        }
-                        Field::DecisionData
-                        | Field::AbstractInstantiations
-                        | Field::IndexedInstantiations
-                        | Field::UnsatEvents => {
-                            let _: serde::de::IgnoredAny = map.next_value()?;
                         }
                     }
                 }
@@ -209,10 +219,10 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     found_proof: found_proof
                         .ok_or_else(|| serde::de::Error::missing_field("found_proof"))?,
                     unsat_core: unsat_core.flatten(),
-                    decision_data: vec![],
-                    abstract_instantiations: vec![],
-                    indexed_instantiations: vec![],
-                    unsat_events: vec![],
+                    decision_data: decision_data.unwrap_or_default(),
+                    abstract_instantiations: abstract_instantiations.unwrap_or_default(),
+                    indexed_instantiations: indexed_instantiations.unwrap_or_default(),
+                    unsat_events: unsat_events.unwrap_or_default(),
                     auxiliary_records: auxiliary_records.unwrap_or_default(),
                 })
             }
@@ -227,6 +237,10 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             "counterexample",
             "found_proof",
             "unsat_core",
+            "decision_data",
+            "abstract_instantiations",
+            "indexed_instantiations",
+            "unsat_events",
             "auxiliary_records",
         ];
         deserializer.deserialize_struct("ProofLoopResult", FIELDS, ProofLoopResultVisitor)
