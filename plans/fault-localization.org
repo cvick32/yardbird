@@ -1,0 +1,716 @@
+#+title: Fault Localization Prototype Plan for Yardbird
+
+* Purpose
+
+This plan describes a small, implementation-oriented prototype for using
+Yardbird as a backend for consistency-based software diagnosis and repair-aware
+benchmarking.
+
+
+1. run a few ~h~-guarded fault-localization encodings through Yardbird,
+2. compute minimal sets of source lines / repair sites whose health assumptions
+   must be relaxed,
+3. expose Yardbird's array instantiation and refinement data for those
+   diagnoses,
+4. ingest Tool's's benchmark metadata and reference outputs so Yardbird runs
+   can be compared against them,
+5. clarify how much of the CBMC-to-SMT2 path works before bit-blasting.
+
+The motivating idea is that Tool's's WCNF/CNF pipeline gives line-number
+diagnoses, but Yardbird can additionally expose *which array instantiations and
+refinement choices made those diagnoses possible*. That is the part that could
+become a genuinely Yardbird-specific research direction.
+
+* Core Thesis
+
+Tool's encodes software diagnosis by adding Boolean health variables to the
+bounded encoding of a program. A health variable ~H_i~ says that source statement
+or repair site ~i~ behaves according to the original program. Setting all
+~H_i = true~ should make the failing test plus expected postcondition
+unsatisfiable. Relaxing a small set of ~H_i~ variables asks whether changing
+those source lines could make the property hold.
+
+Yardbird can use the same diagnosis idea, but at SMT/VMT level instead of
+bit-blasted WCNF:
+
+- hard constraints: program semantics, test inputs, expected postcondition,
+  repair-model constraints
+- soft / assumption constraints: ~H_i~ for each repairable statement
+- diagnosis: a subset-minimal set of health variables to omit/relax so the
+  formula becomes satisfiable
+- Yardbird-specific signal: array axiom instantiations, refinement steps,
+  unsat-core membership, cost-function decisions, and SAT models
+
+* Evidence From Tool's Artifact
+
+The artifact README says Tool's has three components:
+
+- ~faultLoc.py~ invokes the modified CBMC fork, writes a WCNF formula, calls the
+  HSD solver, maps activation variables back to line numbers, and prints JSON.
+  Source: [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::52][Tool's artifact README: tool components]]
+- the modified CBMC fork instruments the program with one ~h~-variable per
+  source line and encodes the diagnosis problem as WCNF. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::59][Tool's artifact README: modified CBMC]]
+- multiple test cases are represented with
+  ~__CPROVER_observation_begin()~ / ~__CPROVER_observation_end()~ markers.
+  Source: [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::61][Tool's artifact README: observations]]
+- the artifact includes C-Pack-IPAs, example programs, experiment scripts, and
+  reference data. TCAS and schedule are not redistributed because of SIR
+  licensing. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::81][Tool's artifact README: layout]]
+
+Important practical data:
+
+- full C-Pack run: 486 instrumented programs from lab02 in years 1-3. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::227][Tool's artifact README: full review]]
+- paper reports the bounds-check configuration ~Tool'sBA~. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::232][Tool's artifact README: Tool'sBA]]
+- reference outputs live in
+  ~/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/experiments/cpacks/ref_output/sherloc_results.json~
+  and
+  ~/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/experiments/cpacks/ref_output/cfaults_results.json~.
+  Source: [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::245][Tool's artifact README: result files]]
+- user-facing Tool's runs use ~--no-propagation~, optional
+  ~--bounds-check~ / ~--pointer-check~, and ~--unwind N~. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/README.md::472][Tool's artifact README: using Tool's]]
+
+* Evidence From Tool's CBMC Fork
+
+The diagnosis instrumentation is currently tied to the WCNF conversion path,
+but it is inserted at the symbolic equation level before bit-blasting. That
+makes SMT2 output plausible with a small fork patch.
+
+Relevant source locations:
+
+- solver selection chooses WCNF before SMT2 when ~--wcnf~ is set. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/sherloc/dependencies/cbmc/src/goto-checker/solver_factory.cpp::136][CBMC solver_factory.cpp: get_solver]]
+- normal SMT2 output exists and uses logic ~QF_AUFBV~. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/sherloc/dependencies/cbmc/src/goto-checker/solver_factory.cpp::456][CBMC solver_factory.cpp: get_smt2 outfile]]
+- ~convert_without_assertions~ calls ~convert_assignments_wcnf~ only when the
+  WCNF flag is active. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/sherloc/dependencies/cbmc/src/goto-symex/symex_target_equation.cpp::357][CBMC symex_target_equation.cpp: WCNF assignment conversion]]
+- ~convert_wcnf_assignment_step~ decides which assignments are repairable and
+  wraps the original assignment condition as ~(=> compHealthy::<file>::<line>
+  original_constraint)~. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/sherloc/dependencies/cbmc/src/goto-symex/symex_target_equation.cpp::469][CBMC symex_target_equation.cpp: healthy variable insertion]]
+- observation blocks are rewritten into ~WCNF_OBS_*~ variables during
+  ~convert_assignments_wcnf~. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/sherloc/dependencies/cbmc/src/goto-symex/symex_target_equation.cpp::525][CBMC symex_target_equation.cpp: observation conversion]]
+- ~faultLoc.py~ parses WCNF comments between
+  ~c ACTIVATION_VARIABLES_BEGIN~ and ~c ACTIVATION_VARIABLES_END~ to map SAT
+  variables back to source line numbers. Source:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/sherloc/faultLoc.py::78][Tool's faultLoc.py: activation variable mapping]]
+
+* Current Yardbird Surfaces To Reuse
+
+Yardbird already exposes enough artifacts to make the prototype useful.
+
+- CLI options include JSON output, solver dumps, instantiation tracking, and
+  unsat-core dumping. Source:
+  [[file:/Users/cvick-admin/Documents/research/yardbird/src/lib.rs::92][YardbirdOptions in src/lib.rs]]
+- ~ProofLoopResult~ already records used instances, const instances, solver
+  stats, unsat core metadata, decision data, abstract instantiations, indexed
+  instantiations, and unsat events. Source:
+  [[file:/Users/cvick-admin/Documents/research/yardbird/src/driver.rs::29][ProofLoopResult in src/driver.rs]]
+- the main BMC/CEGAR loop is centralized in ~Driver::check_strategy~. Source:
+  [[file:/Users/cvick-admin/Documents/research/yardbird/src/driver.rs::367][Driver::check_strategy]]
+- the array strategy collects subterms from SAT models, runs e-graph
+  saturation, and obtains instantiations/conflicts. Source:
+  [[file:/Users/cvick-admin/Documents/research/yardbird/src/strategies/array_abstract.rs::169][Array abstract strategy SAT handling]]
+- the conflict scheduler records each array axiom instantiation when a rewrite
+  would force a new equality. Source:
+  [[file:/Users/cvick-admin/Documents/research/yardbird/src/theories/array/array_conflict_scheduler.rs::287][ArrayConflictScheduler conflict detection]]
+
+* Prototype Scope
+
+The first prototype should be intentionally narrow.
+
+Include:
+
+- SMT-LIB inputs first
+- array theory first
+- single-file benchmark harness
+- health variables with names compatible with Tool's:
+  ~compHealthy::<file>::<line>~
+- single-test diagnosis first
+- multiple-test handling after the single-test loop works
+- core-guided diagnosis search outside Z3/Yardbird
+- JSON result output compatible enough to compare with Tool's's
+  ~solutions~ and ~aggregatedSolutions~
+
+Defer:
+
+- source-code repair synthesis
+- pointer repair models
+- full C memory model support
+- floats and varargs-heavy C-Pack programs
+- TCAS import unless SIR data is available
+- a high-performance HSD implementation
+- learned cost functions
+- replacing Tool's end-to-end
+
+* Milestone 0: Create A Tiny Manual SMT-LIB Corpus
+
+** Goal
+
+Create 2-3 hand-written SMT-LIB files that encode the paper/Tool's examples
+with explicit health variables. These avoid the CBMC patch at first and prove
+the Yardbird diagnosis loop independently.
+
+Initial examples:
+
+1. ~maxplusone~
+   - integer-only, no arrays
+   - exercises branch and assignment health variables
+   - expected diagnoses: one branch/condition repair or two assignment repairs
+2. ~array_bounds~
+   - array write/read behavior
+   - exercises Yardbird array abstraction
+   - repair-model constraint should prevent the invalid "set index out of
+     bounds" diagnosis
+3. optional ~dead_code~
+   - useful for checking the paper's warning about optimizations and source
+     structure
+
+** Files To Add
+
+Create:
+
+- ~examples/smtlib/fault-localization/maxplusone.smt2~
+- ~examples/smtlib/fault-localization/array_bounds.smt2~
+- ~examples/smtlib/fault-localization/dead_code.smt2~
+- ~examples/smtlib/fault-localization/README.md~
+
+Keep the encodings small and readable. Do not try to mirror CBMC's full SSA
+format yet.
+
+** Encoding Pattern
+
+For an assignment:
+
+#+begin_src smt2
+(declare-const compHealthy::example.c::24 Bool)
+(assert (=> compHealthy::example.c::24 (= x_2 (+ a_1 1))))
+(assert (=> (not compHealthy::example.c::24) repair_model_for_x_2))
+#+end_src
+
+For a branch condition:
+
+#+begin_src smt2
+(declare-const compHealthy::example.c::20 Bool)
+(declare-const branch_20 Bool)
+(assert (=> compHealthy::example.c::20 (= branch_20 (< a_1 b_1))))
+#+end_src
+
+For initial prototype queries, health variables can be handled as assumptions
+from the diagnosis engine rather than asserted directly in the SMT-LIB file.
+
+** Validation
+
+Run:
+
+- Yardbird concrete SMT-LIB mode if possible
+- Yardbird abstract SMT-LIB mode for the array example
+- Z3 directly as a sanity check if Yardbird parsing blocks on syntax
+
+Expected output:
+
+- all-health query is UNSAT for failing examples
+- relaxing expected diagnoses makes the formula SAT
+- relaxing invalid diagnoses remains UNSAT when repair-model constraints are
+  present
+
+* Milestone 1: Add A Minimal Diagnosis Engine In Yardbird
+
+** Goal
+
+Implement a small Rust-side core-guided diagnosis loop over health variables.
+This is the replacement/prototype for Tool's's Python + HSD stage.
+
+** New Module Layout
+
+Create:
+
+- ~src/fault_localization/mod.rs~
+- ~src/fault_localization/config.rs~
+- ~src/fault_localization/health.rs~
+- ~src/fault_localization/query.rs~
+- ~src/fault_localization/core.rs~
+- ~src/fault_localization/hsd.rs~
+- ~src/fault_localization/result.rs~
+
+Responsibilities:
+
+- ~config.rs~
+  - CLI and runtime config
+- ~health.rs~
+  - health variable discovery and source-location parsing
+- ~query.rs~
+  - solver query construction and assumption management
+- ~core.rs~
+  - project unsat cores to health variables
+  - optionally shrink cores by deletion
+- ~hsd.rs~
+  - minimal hitting-set / diagnosis search
+- ~result.rs~
+  - JSON output compatible with Tool's enough for comparison
+
+** CLI Options
+
+Add options to ~YardbirdOptions~:
+
+- ~--fault-localization~
+  - enable diagnosis mode
+- ~--health-prefix <PREFIX>~
+  - default: ~compHealthy::~
+- ~--diagnosis-limit <N>~
+  - optional cap on number of diagnoses
+- ~--minimize-cores~
+  - deletion-minimize health-variable cores before feeding HSD
+- ~--diagnosis-json-output <PATH>~
+  - optional file output, distinct from existing proof JSON
+
+Keep these options disabled by default.
+
+** Initial Algorithm
+
+Use a simple Reiter/HSD-style loop.
+
+Definitions:
+
+- ~H~ = set of health variables
+- ~D~ = candidate diagnosis, meaning these health assumptions are relaxed
+- query ~(H \ D)~ = solve with all health variables except ~D~ asserted true
+
+Algorithm:
+
+1. Query with all health assumptions enabled.
+2. If SAT, return ~allHealthy~.
+3. If UNSAT, extract a core projected to health variables.
+4. Maintain a set of discovered health cores.
+5. Enumerate subset-minimal hitting sets of discovered cores.
+6. For each candidate hitting set ~D~:
+   - query with ~D~ relaxed
+   - if SAT, emit ~D~ as a diagnosis
+   - if UNSAT, add the projected core and continue
+7. Stop when no new minimal hitting sets remain or ~--diagnosis-limit~ is hit.
+
+This does not need to be maximally optimized in V1. The design should make it
+easy to replace the enumerator later.
+
+** Solver Interface Needs
+
+The diagnosis engine needs:
+
+- a way to assert health variables as assumptions or tracked assertions
+- a way to retrieve an unsat core over those assumptions
+- a way to run repeated SAT checks with different health relaxations
+- a way to preserve or replay Yardbird-generated array instantiations
+
+Implementation options:
+
+1. use Z3 assumptions directly in a new local API around Yardbird's SMTLIB
+   solver path;
+2. use push/pop plus ~assert_and_track~ labels;
+3. for the first manual corpus, regenerate a fresh solver per candidate query
+   and prioritize clarity over performance.
+
+Prefer option 3 for the first few days if it avoids invasive changes.
+
+* Milestone 2: Make Yardbird's SMT-LIB Mode Diagnosis-Friendly
+
+** Goal
+
+Run diagnosis queries over SMT-LIB problems without losing Yardbird's
+instantiation data.
+
+** Work Items
+
+1. Inspect ~src/smtlib_problem.rs~ and ~src/smtlib_smt_problem.rs~ for the
+   cleanest repeated-query API.
+2. Add health-variable discovery from declarations and/or assertion labels.
+3. Add a way to build a solver instance from parsed commands plus a health
+   relaxation set.
+4. Ensure strategy mode still collects:
+   - ~used_instances~
+   - ~const_instances~
+   - ~decision_data~
+   - ~abstract_instantiations~
+   - ~indexed_instantiations~
+   - ~unsat_events~
+5. Decide whether instantiations should be:
+   - recomputed independently per diagnosis query in V1, or
+   - cached globally and replayed across queries.
+
+V1 recommendation: recompute independently, but persist all per-query
+instantiation artifacts in the result JSON so we can inspect behavior.
+
+* Milestone 3: Patch CBMC Fork To Emit Guarded SMT2
+
+** Goal
+
+Modify the Tool's CBMC fork enough to emit SMT2 formulas that include the
+same health-variable guarded assignment constraints currently used for WCNF.
+
+** Proposed CBMC Change
+
+Add a flag such as:
+
+- ~--fault-loc-instrument~
+
+Semantics:
+
+- enables health-variable instrumentation of repairable assignments
+- enables observation handling
+- does *not* force WCNF
+- can be combined with ~--smt2 --outfile <file>~
+- can still be combined with ~--wcnf~ for compatibility if desired
+
+Implementation approach:
+
+1. Split the current WCNF boolean through the symex equation conversion layer:
+   - current: ~wcnfIsSet~
+   - proposed: ~faultLocInstrument~
+2. Rename/generalize:
+   - ~convert_assignments_wcnf~ -> ~convert_assignments_fault_loc~
+   - ~convert_wcnf_assignment_step~ -> ~convert_fault_loc_assignment_step~
+   - ~convert_observation_step~ can keep WCNF names internally at first, but
+     should eventually use neutral names.
+3. In solver selection, allow SMT2 to be selected when
+   ~--fault-loc-instrument --smt2~ is passed.
+4. Preserve source-location-compatible health variable names:
+   ~compHealthy::<file>::<line>~.
+5. Add a mapping dump for health variables in SMT2 output if CBMC's symbol
+   names become escaped or difficult to recover.
+
+** Expected Command
+
+#+begin_src sh
+cbmc example_sherloc.c \
+  --fault-loc-instrument \
+  --smt2 \
+  --outfile example_faultloc.smt2 \
+  --no-propagation \
+  --bounds-check \
+  --unwind 4
+#+end_src
+
+** First Test Inputs
+
+Use artifact examples:
+
+- [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/examples/maxplusone.c][maxplusone.c]]
+- [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/examples/array_bounds.c][array_bounds.c]]
+- [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/examples/dead_code.c][dead_code.c]]
+- [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/examples/pointer.c][pointer.c]]
+- [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/examples/inlining.c][inlining.c]]
+
+** Acceptance Criteria
+
+For at least ~maxplusone.c~:
+
+- CBMC emits SMT2 with ~compHealthy::*~ symbols
+- all-health query is UNSAT
+- relaxing the expected source lines is SAT
+- Yardbird can parse or the incompatibilities are documented precisely
+
+For ~array_bounds.c~:
+
+- CBMC emits array or memory constraints at SMT2 level
+- Yardbird either parses them or reports a concrete unsupported SMT-LIB feature
+- if parsing succeeds, Yardbird abstract mode produces instantiation data
+
+* Milestone 4: Benchmark Ingestion
+
+** Goal
+
+Turn the Tool's artifact into a Yardbird-side benchmark manifest and comparison
+dataset.
+
+** Data Sources
+
+- C-Pack instrumented programs:
+  ~/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/benchmarks/cpacks~
+- C-Pack reference Tool's results:
+  ~/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/experiments/cpacks/ref_output/sherloc_results.json~
+- C-Pack reference CFaults results:
+  ~/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/experiments/cpacks/ref_output/cfaults_results.json~
+- C-Pack experiment script:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/experiments/cpacks/run_experiment.py][run_experiment.py]]
+- C-Pack instrumentation script:
+  [[file:/Users/cvick-admin/Documents/research/cav-artifact-2026/sherloc_artifact/evaluation/experiments/cpacks/instrument_cpacks.py][instrument_cpacks.py]]
+
+** New Utility
+
+Create:
+
+- ~tools/fault_loc_import_sherloc.py~ or a Rust garden subcommand later
+
+V1 can be Python to move quickly.
+
+Outputs:
+
+- ~benchmark_results/fault-localization/sherloc_cpacks_manifest.json~
+- optional CSV summary for quick analysis
+
+Manifest fields:
+
+- benchmark id, e.g. ~year-1/lab02/ex01/ex01-stu_007-sub_003~
+- source path to ~*_sherloc.c~
+- exercise name
+- unwind depth if known
+- Tool's status
+- Tool'sBA status
+- Tool'sBA ~solutions~
+- Tool'sBA ~aggregatedSolutions~
+- runtime fields from reference JSON
+- whether the result has non-empty diagnoses
+- whether bounds-check variant differs from non-bounds variant
+
+** Initial Stats To Record
+
+From the already inspected reference JSON:
+
+- 486 total C-Pack benchmark entries
+- 320 ~allHealthy~ entries in both Tool's and Tool'sBA
+- 164 ~foundSol~ entries in both Tool's and Tool'sBA
+- 2 entries in the reference JSON appear to contain only ~faultLocTime~
+- 85 entries have non-empty aggregated solutions
+
+The import tool should recompute these numbers rather than hard-coding them.
+
+* Milestone 5: Run Yardbird On Generated / Manual Encodings
+
+** Goal
+
+Produce the first comparison table between:
+
+- Tool's expected diagnoses
+- Yardbird diagnosis output
+- Yardbird instantiation/refinement metrics
+
+** Result Format
+
+Add or generate JSON with:
+
+- benchmark id
+- input path
+- health variables
+- diagnoses as health ids
+- diagnoses as source line strings
+- diagnosis status:
+  - ~foundSol~
+  - ~allHealthy~
+  - ~noSol~
+  - ~unsupported~
+  - ~timeout~
+- Yardbird strategy
+- cost function
+- total refinement steps
+- total instantiations
+- used instances
+- unsat events
+- per-diagnosis query statistics
+- unsupported SMT-LIB feature, if any
+
+** First Runs
+
+Run matrix:
+
+- ~maxplusone.smt2~
+  - concrete
+  - abstract if accepted
+- ~array_bounds.smt2~
+  - concrete
+  - abstract with ~bmc-cost~
+  - abstract with ~index-aware~ if relevant
+- CBMC-generated SMT2 once available
+  - same matrix
+
+* Milestone 6: Repair-Aware Cost Function Experiments
+
+** Goal
+
+Use fault-localization metadata to bias Yardbird's array instantiation choices
+toward terms that are likely to expose small diagnoses.
+
+** New Cost Function
+
+Add:
+
+- ~src/cost_functions/array/repair_aware.rs~
+
+Inputs:
+
+- current BMC depth
+- normal transition/property vocab
+- reads/writes
+- health variable metadata
+- optional current candidate diagnosis or unsat health core
+- optional source-line-to-term ownership map
+
+Initial scoring ideas:
+
+- discount terms appearing in postcondition/assertion vocabulary
+- discount array indices appearing near repair sites in the current health core
+- discount reads/writes whose SSA/source location maps to suspicious lines
+- penalize terms unrelated to any health core
+- keep the existing "avoid pc" behavior from current BMC/index-aware costs
+
+V1 can be heuristic. The point is to see whether diagnosis-aware term selection
+reduces refinement steps or produces smaller/more stable cores.
+
+** Required Metadata
+
+The manual SMT corpus can include comments or a sidecar mapping:
+
+#+begin_src json
+{
+  "health": {
+    "compHealthy::array_bounds.c::24": {
+      "line": "24",
+      "kind": "array-write",
+      "symbols": ["a_1", "i_1"]
+    }
+  }
+}
+#+end_src
+
+CBMC-generated SMT2 may need a sidecar file because source locations and SSA
+symbols can be hard to recover from SMT2 names alone.
+
+* Milestone 7: Decide How Far To Push CBMC SMT2
+
+** Goal
+
+After 1-2 days of experiments, classify CBMC SMT2 output into buckets.
+
+Buckets:
+
+1. Yardbird parses and solves directly.
+2. Yardbird parses after small SMT-LIB parser/Z3VarContext fixes.
+3. Yardbird needs theory support we can reasonably add.
+4. CBMC output is too memory-model-specific or bit-vector-heavy for this path.
+
+Likely blockers:
+
+- bit-vector operations not currently covered in Yardbird's SMT-LIB path
+- arrays indexed by bit-vectors instead of ints
+- C memory objects encoded as structs/datatypes
+- floating-point theory from C-Pack examples
+- varargs wrappers in instrumented C-Pack programs
+- pointer checks and bounds checks generating formulas outside Yardbird's
+  current supported fragment
+
+Document every unsupported construct with:
+
+- the benchmark that triggered it
+- the smallest extracted SMT2 snippet
+- whether Z3 accepts it
+- whether adding support to Yardbird is worth it
+
+* Three-Day Prototype Schedule
+
+** Day 1
+
+- add manual SMT-LIB corpus for ~maxplusone~ and ~array_bounds~
+- write a tiny standalone diagnosis driver or Yardbird module skeleton
+- prove all-health UNSAT and expected relaxations SAT
+- parse Tool's C-Pack reference JSON into a manifest
+
+** Day 2
+
+- integrate diagnosis loop with Yardbird SMT-LIB execution enough to run the
+  manual corpus
+- emit JSON with diagnoses and Yardbird instantiation metrics
+- inspect per-query instantiations for the array example
+- begin CBMC fork patch to separate fault-localization instrumentation from
+  WCNF output
+
+** Day 3
+
+- make CBMC emit at least one ~h~-guarded SMT2 file
+- run that SMT2 through Z3 and Yardbird
+- record all parser/theory blockers
+- compare Yardbird diagnosis output to Tool's example expectations
+- decide whether to continue with CBMC SMT2, manual VMT lowering, or a hybrid
+  sidecar translator
+
+* Open Design Questions
+
+- Should Yardbird's diagnosis mode live in the main binary or in a separate
+  experimental binary under ~src/bin/~?
+- Should the first solver loop rebuild a fresh solver per candidate diagnosis,
+  or should it push/pop assumptions on a persistent solver?
+- Should array instantiations be cached across diagnosis candidates?
+- Should health variables be represented as assumptions, tracked assertions, or
+  ordinary symbols asserted through push/pop?
+- Should CBMC emit one SMT2 file plus a metadata sidecar, or should all mapping
+  information be embedded in SMT-LIB comments?
+- How much CBMC SMT2 support should Yardbird absorb before it stops being a
+  clean research prototype?
+- Do we want compatibility with Tool's's exact JSON output or a richer
+  Yardbird-native result with a Tool's compatibility view?
+
+* Risks And Mitigations
+
+** CBMC SMT2 may be too hard for Yardbird
+
+Mitigation:
+
+- start with manual SMT-LIB examples
+- classify blockers precisely
+- use CBMC output as a benchmark discovery tool even when Yardbird cannot parse
+  it directly
+- consider a restricted C-to-VMT/SMT translator for tiny array examples if CBMC
+  emits too much memory-model machinery
+
+** WCNF instrumentation assumptions may not transfer cleanly to SMT2
+
+Mitigation:
+
+- patch at the symex equation level, where health implications already exist
+- test with ~maxplusone.c~ first
+- preserve WCNF behavior while adding a separate ~--fault-loc-instrument~ path
+
+** Minimal diagnosis search may become solver-call dominated
+
+Mitigation:
+
+- implement the simplest correct loop first
+- add core minimization only behind a flag
+- cache parsed problems and, later, solver states
+- reuse Yardbird instantiations across related queries after correctness is
+  established
+
+** Source-line mapping may be fragile
+
+Mitigation:
+
+- use Tool's's ~compHealthy::<file>::<line>~ naming convention
+- emit explicit sidecar metadata from CBMC if SMT2 escaping makes names awkward
+- compare line-number sets against Tool's's reference JSON early
+
+** Repair model constraints may be underspecified
+
+Mitigation:
+
+- first support the general repair model
+- add bounds-safe array repair constraints manually for ~array_bounds~
+- treat pointer-safe repairs as a later phase
+
+* Definition Of Done For The First Prototype
+
+The prototype is successful if we can show:
+
+1. a manual ~h~-guarded SMT-LIB array example runs through Yardbird,
+2. Yardbird reports at least one minimal diagnosis matching the expected line
+   set,
+3. the result includes Yardbird instantiation/refinement metadata,
+4. Tool's C-Pack reference data is imported into a manifest,
+5. a patched or clearly specified CBMC path can emit guarded SMT2 for at least
+   one tiny example, or the blockers are documented with exact source locations
+   and SMT-LIB snippets.
+
+That is enough to decide whether this direction should become a real Yardbird
+feature, a benchmark ingestion project, or a paper-experiment side branch.

@@ -49,6 +49,7 @@ fn main() -> anyhow::Result<()> {
 
 fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     info!("Running in SMTLIB mode");
+    options.validate_smtlib_mode()?;
 
     // Parse SMTLIB problem
     let problem = SMTLIBProblem::from_path(options.require_filename()?)

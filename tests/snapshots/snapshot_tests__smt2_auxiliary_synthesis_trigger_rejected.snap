@@ -1,0 +1,11 @@
+---
+source: tests/snapshot_tests.rs
+expression: "run_yardbird_cli(&[\"--filename\", \"examples/smt2/array_bitvec_simple.smt2\",\n\"--synthesis-trigger\", \"non-local\",])"
+---
+CliResult {
+    status_code: Some(
+        1,
+    ),
+    stdout: "",
+    stderr: "Error: SMT-LIB mode does not support --synthesis-trigger non-local yet; use --synthesis-trigger off until SMTLIBSMTProblem can install auxiliary specs",
+}

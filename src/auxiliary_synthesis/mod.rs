@@ -7,5 +7,8 @@ pub mod trigger;
 pub use config::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 pub use conflict::{ArrayConflictRecord, ConflictClassification};
 pub use locality::FrameSpan;
-pub use spec::{AuxiliaryRecord, AuxiliarySpec, HistorySpec, ProphecySpec};
+pub use spec::{
+    term_contains_auxiliary_symbol, AuxiliaryRecord, AuxiliarySpec, HistorySpec,
+    NonMonotonicityCheckRecord, NonMonotonicityStatus, ProphecySpec,
+};
 pub use trigger::{AuxTriggerState, TriggerDecision};

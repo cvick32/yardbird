@@ -9,7 +9,8 @@ use smt2parser::{
 
 use crate::{
     auxiliary_synthesis::{
-        ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState, AuxiliarySpec, SynthesisTrigger,
+        term_contains_auxiliary_symbol, ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState,
+        AuxiliarySpec, SynthesisTrigger,
     },
     cost_functions::YardbirdCostFunction,
     driver::{self},
@@ -54,6 +55,7 @@ where
     aux_trigger_state: AuxTriggerState,
     pending_aux_specs: Vec<AuxiliarySpec>,
     installed_aux_conflicts: HashSet<String>,
+    aux_covered_term_hashes: HashSet<String>,
 }
 
 impl<F> Abstract<F>
@@ -80,6 +82,7 @@ where
             aux_trigger_state: AuxTriggerState::default(),
             pending_aux_specs: vec![],
             installed_aux_conflicts: HashSet::new(),
+            aux_covered_term_hashes: HashSet::new(),
         }
     }
 }
@@ -218,7 +221,12 @@ where
         smt: &mut dyn crate::solver_interface::SolverInterface,
     ) -> driver::Result<()> {
         let trace_instantiations = trace_instantiations_enabled();
-        let const_pairs: Vec<(String, Term)> = state
+        if !self.pending_aux_specs.is_empty() {
+            let specs = mem::take(&mut self.pending_aux_specs);
+            info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
+            smt.install_auxiliary_specs(specs)?;
+        }
+        let raw_const_pairs: Vec<(String, Term)> = state
             .const_instantiations
             .iter()
             .map(|inst| {
@@ -228,6 +236,31 @@ where
                 )
             })
             .collect();
+        let skipped_const_aux_symbol = raw_const_pairs
+            .iter()
+            .filter(|(_, term)| term_contains_auxiliary_symbol(term))
+            .count();
+        let const_pairs: Vec<(String, Term)> = raw_const_pairs
+            .into_iter()
+            .filter(|(term_hash, _)| !self.aux_covered_term_hashes.contains(term_hash))
+            .filter(|(_, term)| !term_contains_auxiliary_symbol(term))
+            .collect();
+        let skipped_const_aux_covered = state
+            .const_instantiations
+            .iter()
+            .filter(|inst| {
+                self.aux_covered_term_hashes
+                    .contains(&crate::training::canonical_term_hash(inst))
+            })
+            .count();
+        if skipped_const_aux_covered > 0 {
+            info!("AUX-SYNTH skipped {skipped_const_aux_covered} aux-covered const instantiations");
+        }
+        if skipped_const_aux_symbol > 0 {
+            info!(
+                "AUX-SYNTH skipped {skipped_const_aux_symbol} const instantiations containing auxiliary symbols"
+            );
+        }
         let variables = smt.get_variables().to_vec();
         for (term_hash, term) in &const_pairs {
             if trace_instantiations {
@@ -267,16 +300,43 @@ where
             }
         }
         self.const_instantiations
-            .extend(state.const_instantiations.into_iter().map(expr_to_term));
+            .extend(const_pairs.iter().map(|(_, term)| term.clone()));
 
-        let terms: Vec<(String, Term)> = state
+        let raw_terms: Vec<(String, Term)> = state
             .instantiations
-            .into_iter()
+            .iter()
             .map(|inst| {
-                let hash = crate::training::canonical_term_hash(&inst);
-                (hash, expr_to_term(inst))
+                let hash = crate::training::canonical_term_hash(inst);
+                (hash, expr_to_term(inst.clone()))
             })
             .collect();
+        let skipped_regular_aux_symbol = raw_terms
+            .iter()
+            .filter(|(_, term)| term_contains_auxiliary_symbol(term))
+            .count();
+        let terms: Vec<(String, Term)> = raw_terms
+            .into_iter()
+            .filter(|(term_hash, _)| !self.aux_covered_term_hashes.contains(term_hash))
+            .filter(|(_, term)| !term_contains_auxiliary_symbol(term))
+            .collect();
+        let skipped_regular_aux_covered = state
+            .instantiations
+            .iter()
+            .filter(|inst| {
+                self.aux_covered_term_hashes
+                    .contains(&crate::training::canonical_term_hash(inst))
+            })
+            .count();
+        if skipped_regular_aux_covered > 0 {
+            info!(
+                "AUX-SYNTH skipped {skipped_regular_aux_covered} aux-covered regular instantiations"
+            );
+        }
+        if skipped_regular_aux_symbol > 0 {
+            info!(
+                "AUX-SYNTH skipped {skipped_regular_aux_symbol} regular instantiations containing auxiliary symbols"
+            );
+        }
         let variables = smt.get_variables().to_vec();
         let _ = terms
             .into_iter()
@@ -420,9 +480,23 @@ where
         if self.aux_config.is_off() {
             return;
         }
-        let decision =
-            self.aux_trigger_state
-                .decide(&self.aux_config, conflicts, refinement_step, 250);
+        let eligible_conflicts = conflicts
+            .iter()
+            .filter(|conflict| !term_contains_auxiliary_symbol(&conflict.term))
+            .cloned()
+            .collect::<Vec<_>>();
+        let ignored_aux_conflicts = conflicts.len().saturating_sub(eligible_conflicts.len());
+        if ignored_aux_conflicts > 0 {
+            info!(
+                "AUX-SYNTH ignored {ignored_aux_conflicts} conflicts containing auxiliary symbols"
+            );
+        }
+        let decision = self.aux_trigger_state.decide(
+            &self.aux_config,
+            &eligible_conflicts,
+            refinement_step,
+            250,
+        );
         if decision.detected_conflicts.is_empty()
             && self.aux_config.trigger == SynthesisTrigger::Detect
         {
@@ -443,7 +517,7 @@ where
             decision.detected_conflicts.len()
         );
         for conflict_id in &decision.detected_conflicts {
-            if let Some(conflict) = conflicts
+            if let Some(conflict) = eligible_conflicts
                 .iter()
                 .find(|conflict| conflict.conflict_id == *conflict_id)
             {
@@ -468,7 +542,7 @@ where
         if self.installed_aux_conflicts.contains(&selected_conflict_id) {
             return;
         }
-        let Some(conflict) = conflicts
+        let Some(conflict) = eligible_conflicts
             .iter()
             .find(|conflict| conflict.conflict_id == selected_conflict_id)
         else {
@@ -496,6 +570,8 @@ where
                     spec.prophecy.as_ref().map(|prophecy| prophecy.name.clone())
                 );
                 self.installed_aux_conflicts.insert(selected_conflict_id);
+                self.aux_covered_term_hashes
+                    .insert(spec.source_term_hash.clone());
                 self.pending_aux_specs.push(spec);
             }
             Err(err) => warn!(
