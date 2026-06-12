@@ -13,7 +13,10 @@ use yardbird::{
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
-    training::{reset_training_database, TrainingSession},
+    training::{
+        reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
+        IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,
+    },
     Driver, YardbirdOptions,
 };
 
@@ -123,6 +126,74 @@ fn array_strategy_populates_decision_data() {
         "indexed instantiation terms should preserve frame indices"
     );
     assert!(result.total_refinement_steps > 0);
+}
+
+#[test]
+fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
+    let mut chosen_candidate = CandidateRecord::new("i@0".to_string(), "term-hash".to_string());
+    chosen_candidate.was_chosen = true;
+
+    let result = yardbird::ProofLoopResult {
+        decision_data: vec![DecisionRecord {
+            decision_key: "decision-key".to_string(),
+            bmc_depth: 3,
+            axiom_name: "read-after-write".to_string(),
+            slot_index: 1,
+            candidates: vec![chosen_candidate],
+        }],
+        abstract_instantiations: vec![AbstractInstantiationRecord {
+            abstract_instantiation_id: "abstract-inst".to_string(),
+            term: "(= x y)".to_string(),
+            term_hash: "abstract-hash".to_string(),
+            axiom_name: "read-after-write".to_string(),
+            bmc_depth: 3,
+            refinement_step: 4,
+            decision_keys: vec!["decision-key".to_string()],
+            in_unsat_core: true,
+        }],
+        indexed_instantiations: vec![IndexedInstantiationRecord {
+            label: "inst_0_3".to_string(),
+            term: "(= x@0 y@0)".to_string(),
+            term_hash: "indexed-hash".to_string(),
+            depth: 3,
+            unroll_index: 0,
+            abstract_instantiation_id: Some("abstract-inst".to_string()),
+            in_unsat_core: true,
+        }],
+        unsat_events: vec![UnsatEventRecord {
+            event_index: 0,
+            bmc_depth: Some(3),
+            global_refinement_step: Some(4),
+            check_sat_index: None,
+            total_instantiations_added: 7,
+            instantiations_since_last_unsat: 2,
+            core_size: Some(1),
+            conflicts: Some(5.0),
+            decisions: Some(8.0),
+            restarts: None,
+            propagations: Some(13.0),
+            array_ax1: None,
+            array_ax2: None,
+            array_ext_ax: None,
+            solver_stats_snapshot: serde_json::json!({ "conflicts": 5.0 }),
+            solver_stats_delta: serde_json::json!({ "conflicts": 2.0 }),
+        }],
+        ..Default::default()
+    };
+
+    let encoded = serde_json::to_string(&result).expect("should serialize proof result");
+    let decoded: yardbird::ProofLoopResult =
+        serde_json::from_str(&encoded).expect("should deserialize proof result");
+
+    assert_eq!(decoded.decision_data.len(), 1);
+    assert_eq!(decoded.abstract_instantiations.len(), 1);
+    assert_eq!(decoded.indexed_instantiations.len(), 1);
+    assert_eq!(decoded.unsat_events.len(), 1);
+    assert_eq!(
+        decoded.abstract_instantiations[0].decision_keys,
+        vec!["decision-key"]
+    );
+    assert_eq!(decoded.unsat_events[0].total_instantiations_added, 7);
 }
 
 #[test]

@@ -5,6 +5,7 @@ use glob::Pattern;
 use serde::Serialize;
 use std::{
     fs::{read_dir, OpenOptions},
+    io::Read,
     path::PathBuf,
     process::{Command, Stdio},
     thread,
@@ -147,6 +148,24 @@ fn effective_training_run_version(options: &GardenOptions) -> Option<String> {
     )
 }
 
+fn read_pipe_in_background<R>(mut pipe: R) -> thread::JoinHandle<String>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut output = String::new();
+        let _ = pipe.read_to_string(&mut output);
+        output
+    })
+}
+
+fn collect_reader(reader: &mut Option<thread::JoinHandle<String>>) -> String {
+    reader
+        .take()
+        .and_then(|reader| reader.join().ok())
+        .unwrap_or_default()
+}
+
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
     // Get the path to the yardbird binary (in target/release/)
     let yardbird_bin = std::env::current_exe()
@@ -179,6 +198,10 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .arg("--synthesis-guard-policy")
         .arg(options.synthesis_guard_policy.to_string())
         .arg("--json-output");
+
+    if options.run_ic3ia {
+        command.arg("--run-ic3ia");
+    }
 
     if let Some(synthesis_after) = options.synthesis_after {
         command
@@ -223,6 +246,8 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .spawn()
         .expect("Failed to spawn yardbird subprocess");
 
+    let mut stdout_reader = child.stdout.take().map(read_pipe_in_background);
+    let mut stderr_reader = child.stderr.take().map(read_pipe_in_background);
     let pid = child.id();
     let start = Instant::now();
 
@@ -230,12 +255,9 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                // Process completed, read stdout for JSON
-                let mut stdout = String::new();
-                if let Some(mut pipe) = child.stdout.take() {
-                    use std::io::Read;
-                    let _ = pipe.read_to_string(&mut stdout);
-                }
+                // Process completed, collect output that was drained while it ran.
+                let stdout = collect_reader(&mut stdout_reader);
+                let stderr = collect_reader(&mut stderr_reader);
 
                 if status.success() {
                     // Parse JSON output from yardbird
@@ -249,18 +271,11 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
                         }
                         Err(e) => {
                             return BenchmarkResult::Error(format!(
-                                "Failed to parse JSON from yardbird: {e}\nOutput: {stdout}"
+                                "Failed to parse JSON from yardbird: {e}\nOutput: {stdout}\nStderr: {stderr}"
                             ));
                         }
                     }
                 } else {
-                    // Check stderr for error messages
-                    let mut stderr = String::new();
-                    if let Some(mut pipe) = child.stderr.take() {
-                        use std::io::Read;
-                        let _ = pipe.read_to_string(&mut stderr);
-                    }
-
                     // Parse common yardbird errors
                     if stderr.contains("No progress") {
                         return BenchmarkResult::NoProgress(ProofLoopResult::default());
@@ -279,6 +294,8 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
                     eprintln!("Timeout reached for PID {pid}, killing process");
                     let _ = child.kill();
                     let _ = child.wait();
+                    let _ = collect_reader(&mut stdout_reader);
+                    let _ = collect_reader(&mut stderr_reader);
                     return BenchmarkResult::Timeout(timeout.as_millis());
                 }
                 // Sleep briefly before checking again

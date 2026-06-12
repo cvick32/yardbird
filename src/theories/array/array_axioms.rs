@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use egg::*;
+use rustc_hash::FxHashMap;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
 use crate::{
@@ -235,6 +236,7 @@ pub fn saturate_with_array_types<CF, N>(
     egraph: &mut EGraph<ArrayLanguage, N>,
     cost_fn: CF,
     refinement_step: u32,
+    selection_counts: FxHashMap<String, u32>,
     depth: u16,
     array_types: &[(String, String)],
 ) -> ArraySaturationResult
@@ -246,7 +248,13 @@ where
     let scheduler = ArrayConflictScheduler::new(
         BackoffScheduler::default(),
         cost_fn.clone(),
-        ArrayTermExtractor::new(&taken_egraph, cost_fn, refinement_step, depth),
+        ArrayTermExtractor::new(
+            &taken_egraph,
+            cost_fn,
+            refinement_step,
+            selection_counts,
+            depth,
+        ),
         refinement_step,
         depth,
     );
