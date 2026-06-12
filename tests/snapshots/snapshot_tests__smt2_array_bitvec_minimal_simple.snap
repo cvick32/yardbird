@@ -1,0 +1,13 @@
+---
+source: tests/snapshot_tests.rs
+expression: "run_smt2_simple_benchmark(\"examples/smt2/array_bitvec_minimal.smt2\")"
+---
+Smt2SimpleResult {
+    example_name: "examples/smt2/array_bitvec_minimal.smt2",
+    status: Good,
+    outcome: Smt2SimpleOutcome {
+        results: [
+            "Sat@5",
+        ],
+    },
+}
