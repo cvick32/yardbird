@@ -229,6 +229,12 @@ fn build_smtlib_strategy(
                 index_aware_array_cost_factory,
                 aux_config,
             )),
+            CostFunction::Generated => Box::new(Abstract::new(
+                0,
+                options.run_ic3ia,
+                generated_array_cost_factory,
+                aux_config,
+            )),
         },
         Strategy::AbstractWithQuantifiers => {
             Box::new(AbstractArrayWithQuantifiers::new(options.run_ic3ia))

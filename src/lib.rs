@@ -2,7 +2,10 @@
 
 use std::{fmt::Display, fs::File, io::Write};
 
-use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
+use crate::{
+    auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger},
+    cost_functions::array::generated_array_cost_factory,
+};
 use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
@@ -276,6 +279,12 @@ impl YardbirdOptions {
                     index_aware_array_cost_factory,
                     aux_config,
                 )),
+                CostFunction::Generated => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    generated_array_cost_factory,
+                    aux_config,
+                )),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -333,6 +342,7 @@ impl YardbirdOptions {
                     index_aware_array_cost_factory,
                     aux_config,
                 )),
+                CostFunction::Generated => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -356,6 +366,7 @@ impl YardbirdOptions {
                 CostFunction::PreferWrite => todo!(),
                 CostFunction::PreferConstants => todo!(),
                 CostFunction::IndexAware => todo!(),
+                CostFunction::Generated => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 todo!("AbstractWithQuantifiers not yet implemented for List theory")
@@ -411,6 +422,7 @@ pub enum CostFunction {
     PreferWrite,
     PreferConstants,
     IndexAware,
+    Generated,
 }
 
 impl Display for CostFunction {
@@ -424,6 +436,7 @@ impl Display for CostFunction {
             CostFunction::PreferWrite => write!(f, "prefer-write"),
             CostFunction::PreferConstants => write!(f, "prefer-constants"),
             CostFunction::IndexAware => write!(f, "index-aware"),
+            CostFunction::Generated => write!(f, "generated"),
         }
     }
 }
