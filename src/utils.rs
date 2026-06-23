@@ -6,19 +6,6 @@ use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind, Write};
 use std::{fmt::Display, process::Command};
 
-use z3::Statistics;
-
-pub(crate) fn configure_z3_solver(solver: &z3::Solver) {
-    // Yardbird's abstraction is model-driven, so pin the solver seed to keep
-    // counterexample models reproducible across runs.
-    z3::set_global_param("smt.random_seed", "0");
-    z3::set_global_param("sat.random_seed", "0");
-
-    let mut params = z3::Params::new();
-    params.set_u32("random_seed", 0);
-    solver.set_params(&params);
-}
-
 /// Run with COMMAND_TIME_LIMIT so that we don't keep zombie ic3ia
 /// runs.
 pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
@@ -143,15 +130,8 @@ impl SolverStatistics {
         }
     }
 
-    pub fn join_from_z3_statistics(&mut self, z3_stats: Statistics) {
-        for entry in z3_stats.entries() {
-            let key = entry.key;
-            let value = match entry.value {
-                z3::StatisticsValue::UInt(int_num) => StatisticsValue::UInt(int_num),
-                z3::StatisticsValue::Double(float_num) => StatisticsValue::Double(float_num),
-            };
-            self.stats.insert(key, value);
-        }
+    pub(crate) fn insert(&mut self, key: String, value: StatisticsValue) {
+        self.stats.insert(key, value);
     }
 
     /// Add or accumulate a custom timing measurement (in seconds)
