@@ -69,6 +69,26 @@ impl Z3SolverBackend {
             .assert_and_track(z3_term.as_bool().unwrap(), &tracked_bool);
     }
 
+    pub(crate) fn assert_terms_conjunctively(&mut self, terms: &[Term]) {
+        match terms {
+            [] => {}
+            [term] => self.assert_term(term),
+            _ => {
+                let z3_terms = terms
+                    .iter()
+                    .map(|term| {
+                        self.z3_var_context
+                            .rewrite_term(term)
+                            .as_bool()
+                            .expect("[Z3] instantiation term must be boolean")
+                    })
+                    .collect();
+                let conjunction = self.z3_var_context.make_and(z3_terms);
+                self.solver.assert(&conjunction);
+            }
+        }
+    }
+
     pub(crate) fn push(&mut self) {
         self.solver.push();
     }
@@ -91,8 +111,7 @@ impl Z3SolverBackend {
     }
 
     pub(crate) fn record_statistics_since(&mut self, start_time: Instant) {
-        self.solver_statistics
-            .join_from_z3_statistics(self.solver.get_statistics());
+        join_from_z3_statistics(&mut self.solver_statistics, self.solver.get_statistics());
         self.solver_statistics
             .add_time("solver_time", start_time.elapsed().as_secs_f64());
     }
@@ -106,11 +125,10 @@ impl Z3SolverBackend {
         }
     }
 
-    pub(crate) fn get_model(&self) -> &Option<z3::Model> {
-        &self.newest_model
+    pub(crate) fn has_model(&self) -> bool {
+        self.newest_model.is_some()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn model_to_string(&self) -> anyhow::Result<String> {
         match &self.newest_model {
             Some(model) => model.dump_sorted(),
@@ -118,12 +136,14 @@ impl Z3SolverBackend {
         }
     }
 
-    pub(crate) fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.z3_var_context.rewrite_term(term)
-    }
-
-    pub(crate) fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.z3_var_context.get_interpretation(model, z3_term)
+    pub(crate) fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
+        let model = self
+            .newest_model
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("no solver model is available"))?;
+        let solver_term = self.z3_var_context.rewrite_term(term);
+        let interpretation = self.z3_var_context.get_interpretation(model, &solver_term);
+        Ok(interpretation.to_string())
     }
 
     pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
