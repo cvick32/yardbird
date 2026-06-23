@@ -9,12 +9,12 @@ use crate::{
     instantiation_strategy::StoredInstantiation,
     problem::Problem,
     smtlib_problem::SMTLIBProblem,
+    solver::{SolverCheckResult, Z3SolverBackend},
     solver_interface::SolverInterface,
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
-    utils::{configure_z3_solver, SolverStatistics},
-    z3_var_context::Z3VarContext,
+    utils::SolverStatistics,
 };
 
 /// Helper to create a "true" boolean term
@@ -29,15 +29,12 @@ fn make_true_term() -> Term {
 /// Wrapper around SMTLIBProblem that provides the interface strategies expect
 /// Similar to SMTProblem but for stateless SMTLIB problems (no temporal reasoning)
 pub struct SMTLIBSMTProblem {
-    z3_var_context: Z3VarContext,
-    solver: z3::Solver,
-    solver_statistics: SolverStatistics,
+    solver: Z3SolverBackend,
     original_problem: SMTLIBProblem,
     assertions: Vec<Term>,
     depth: u16, // Always 0 (no temporal unrolling)
     instantiations: Vec<StoredInstantiation>,
     subterm_handler: SubtermHandler,
-    newest_model: Option<z3::Model>,
     num_quantifiers_instantiated: u64,
     track_instantiations: bool,
     tracked_labels: Vec<IndexedInstantiationRecord>,
@@ -105,7 +102,7 @@ impl SMTLIBSMTProblem {
     fn init_common(
         problem: &SMTLIBProblem,
         theory: &dyn crate::theory_support::TheorySupport,
-        solver: z3::Solver,
+        solver: Z3SolverBackend,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
     ) -> Self {
@@ -122,9 +119,6 @@ impl SMTLIBSMTProblem {
             instantiations: vec![],
             depth: 0,
             solver,
-            solver_statistics: SolverStatistics::new(),
-            z3_var_context: Z3VarContext::new(),
-            newest_model: None,
             num_quantifiers_instantiated: 0,
             track_instantiations,
             tracked_labels: vec![],
@@ -135,19 +129,19 @@ impl SMTLIBSMTProblem {
         // Handle theory-specific function declarations
         if theory.requires_abstraction() {
             for function_def in problem.get_function_definitions() {
-                let _ = function_def.accept(&mut smt.z3_var_context);
+                smt.solver.accept_command(function_def);
             }
         }
 
         // Add sort declarations
         for sort_decl in problem.get_sorts() {
-            let _ = sort_decl.accept(&mut smt.z3_var_context);
+            smt.solver.accept_command(sort_decl);
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            let _ = command.accept(&mut smt.z3_var_context);
+            smt.solver.accept_command(command);
         }
 
         // Add axioms declared by the theory
@@ -159,11 +153,10 @@ impl SMTLIBSMTProblem {
             if let Command::Assert { term } = axiom_command {
                 if let Term::Forall { vars, term: _ } = &term {
                     for (symbol, sort) in vars {
-                        smt.z3_var_context.create_variable(symbol, sort);
+                        smt.solver.create_variable(symbol, sort);
                     }
                 }
-                let z3_axiom = smt.z3_var_context.rewrite_term(&term);
-                smt.solver.assert(z3_axiom.as_bool().unwrap());
+                smt.solver.assert_term(&term);
             }
         }
 
@@ -182,8 +175,7 @@ impl SMTLIBSMTProblem {
         track_instantiations: bool,
     ) -> Self {
         let theory = strategy.get_theory_support();
-        let solver = z3::Solver::new_for_logic(theory.get_logic_string()).unwrap();
-        configure_z3_solver(&solver);
+        let solver = Z3SolverBackend::new(&theory.get_logic_string());
         Self::init_common(
             problem,
             theory.as_ref(),
@@ -219,8 +211,7 @@ impl SMTLIBSMTProblem {
 
         let logic_string = theory.get_logic_string();
         debug!("Using logic: {}", logic_string);
-        let solver = z3::Solver::new_for_logic(logic_string.as_str()).unwrap();
-        configure_z3_solver(&solver);
+        let solver = Z3SolverBackend::new(logic_string.as_str());
 
         Self::init_common(
             problem,
@@ -234,13 +225,12 @@ impl SMTLIBSMTProblem {
     /// Add all assertions to the solver
     fn add_assertions(&mut self) {
         for term in &self.assertions {
-            let z3_term = self.z3_var_context.rewrite_term(term);
-            self.solver.assert(z3_term.as_bool().unwrap());
+            self.solver.assert_term(term);
         }
     }
 
     pub fn get_model(&self) -> &Option<z3::Model> {
-        &self.newest_model
+        self.solver.get_model()
     }
 
     pub fn add_instantiation(
@@ -260,10 +250,7 @@ impl SMTLIBSMTProblem {
             let label_name = format!("inst_{}", self.num_quantifiers_instantiated);
 
             // Use assert_and_track so the label appears in unsat core
-            let z3_term = self.z3_var_context.rewrite_term(term);
-            let tracked_bool = z3::ast::Bool::new_const(label_name.as_str());
-            self.solver
-                .assert_and_track(z3_term.as_bool().unwrap(), &tracked_bool);
+            self.solver.assert_tracked_term(term, label_name.as_str());
             let term_string = term.to_string();
             self.tracked_labels.push(IndexedInstantiationRecord {
                 label: label_name,
@@ -275,8 +262,7 @@ impl SMTLIBSMTProblem {
                 in_unsat_core: false,
             });
         } else {
-            let z3_term = self.z3_var_context.rewrite_term(term);
-            self.solver.assert(z3_term.as_bool().unwrap());
+            self.solver.assert_term(term);
         }
 
         self.instantiations.push(StoredInstantiation {
@@ -290,7 +276,7 @@ impl SMTLIBSMTProblem {
     }
 
     pub fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver_statistics.clone()
+        self.solver.get_solver_statistics()
     }
 
     pub fn get_reason_unknown(&self) -> Option<String> {
@@ -298,7 +284,7 @@ impl SMTLIBSMTProblem {
     }
 
     pub fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.z3_var_context.rewrite_term(term)
+        self.solver.rewrite_term(term)
     }
 
     pub fn get_all_subterms(&self) -> Vec<&Term> {
@@ -318,27 +304,13 @@ impl SMTLIBSMTProblem {
     }
 
     pub fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.z3_var_context.get_interpretation(model, z3_term)
+        self.solver.get_interpretation(model, z3_term)
     }
 
     /// Check satisfiability of the current problem
     /// Unlike SMTProblem, we don't push/pop property since all assertions are already in the solver
-    pub fn check(&mut self) -> z3::SatResult {
-        let start_time = std::time::Instant::now();
-
-        let sat_result = self.solver.check();
-        self.newest_model = self.solver.get_model();
-
-        // Update statistics
-        self.solver_statistics
-            .join_from_z3_statistics(self.solver.get_statistics());
-
-        // Track total check time
-        let check_duration = start_time.elapsed();
-        self.solver_statistics
-            .add_time("solver_time", check_duration.as_secs_f64());
-
-        sat_result
+    pub fn check(&mut self) -> SolverCheckResult {
+        self.solver.check_and_record_statistics()
     }
 
     /// Dump the solver state to an SMT2 file
@@ -346,7 +318,7 @@ impl SMTLIBSMTProblem {
         use std::fs::File;
         use std::io::Write;
 
-        let smt2_string = self.solver.to_string();
+        let smt2_string = self.solver.to_smt2_string();
         let mut file = File::create(path)?;
         file.write_all(smt2_string.as_bytes())?;
         Ok(())
@@ -358,10 +330,7 @@ impl SMTLIBSMTProblem {
             return None;
         }
 
-        let core_asts = self.solver.get_unsat_core();
-        let core_labels: Vec<String> = core_asts.iter().map(|ast| ast.to_string()).collect();
-
-        Some(core_labels)
+        Some(self.solver.get_unsat_core())
     }
 
     /// Get the tracked labels for unsat core analysis
@@ -416,11 +385,11 @@ impl SolverInterface for SMTLIBSMTProblem {
     }
 
     fn get_model(&self) -> &Option<z3::Model> {
-        &self.newest_model
+        self.solver.get_model()
     }
 
     fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.z3_var_context.rewrite_term(term)
+        self.solver.rewrite_term(term)
     }
 
     fn get_all_subterms(&self) -> Vec<&Term> {
@@ -428,11 +397,11 @@ impl SolverInterface for SMTLIBSMTProblem {
     }
 
     fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.z3_var_context.get_interpretation(model, z3_term)
+        self.solver.get_interpretation(model, z3_term)
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver_statistics.clone()
+        self.solver.get_solver_statistics()
     }
 
     fn get_reason_unknown(&self) -> Option<String> {

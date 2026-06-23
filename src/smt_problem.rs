@@ -14,17 +14,15 @@ use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
     instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
     problem::Problem,
-    proof_tree::ProofTree,
+    solver::{SolverCheckResult, Z3SolverBackend},
     solver_interface::SolverInterface,
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
-    utils::{configure_z3_solver, SolverStatistics},
-    z3_var_context::Z3VarContext,
+    utils::SolverStatistics,
 };
 
 pub struct SMTProblem {
-    z3_var_context: Z3VarContext,
     bmc_builder: BMCBuilder,
     sorts: Vec<Command>,
     function_definitions: Vec<Command>,
@@ -40,9 +38,7 @@ pub struct SMTProblem {
     instantiations: Vec<StoredInstantiation>,
     subterm_handler: SubtermHandler,
     pub variables: Vec<Variable>,
-    solver: z3::Solver,
-    solver_statistcs: SolverStatistics,
-    newest_model: Option<z3::Model>,
+    solver: Z3SolverBackend,
     num_quantifiers_instantiated: u64,
     track_instantiations: bool,
     tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
@@ -83,9 +79,7 @@ impl SMTProblem {
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
-        let solver =
-            z3::Solver::new_for_logic(strategy.get_theory_support().get_logic_string()).unwrap();
-        configure_z3_solver(&solver);
+        let solver = Z3SolverBackend::new(&strategy.get_theory_support().get_logic_string());
 
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
@@ -109,9 +103,6 @@ impl SMTProblem {
             bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
             variables: vmt_model.get_state_holding_variables(),
             solver,
-            solver_statistcs: SolverStatistics::new(),
-            z3_var_context: Z3VarContext::new(),
-            newest_model: None,
             num_quantifiers_instantiated: 0,
             track_instantiations,
             tracked_labels: vec![],
@@ -122,14 +113,14 @@ impl SMTProblem {
         if theory.requires_abstraction() {
             // Add in abstracted function definitions from VMT model
             for function_def in vmt_model.get_function_definitions() {
-                let _ = function_def.accept(&mut smt.z3_var_context);
+                smt.solver.accept_command(function_def);
             }
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            let _ = command.clone().accept(&mut smt.z3_var_context);
+            smt.solver.accept_command(command.clone());
             smt.function_definitions.push(command);
         }
 
@@ -139,11 +130,10 @@ impl SMTProblem {
                 // Register quantified variables if this is a forall term
                 if let smt2parser::concrete::Term::Forall { vars, term: _ } = &term {
                     for (symbol, sort) in vars {
-                        smt.z3_var_context.create_variable(symbol, sort);
+                        smt.solver.create_variable(symbol, sort);
                     }
                 }
-                let z3_axiom = smt.z3_var_context.rewrite_term(&term);
-                smt.solver.assert(z3_axiom.as_bool().unwrap());
+                smt.solver.assert_term(&term);
             }
         }
 
@@ -166,7 +156,7 @@ impl SMTProblem {
     }
 
     pub fn get_model(&self) -> &Option<z3::Model> {
-        &self.newest_model
+        self.solver.get_model()
     }
 
     fn add_assertion(&mut self) {
@@ -174,16 +164,14 @@ impl SMTProblem {
             let init = self
                 .bmc_builder
                 .index_single_step_term(self.init_assertion.clone());
-            let z3_init = self.z3_var_context.rewrite_term(&init);
-            self.solver.assert(z3_init.as_bool().unwrap());
+            self.solver.assert_term(&init);
             self.init_and_transition_assertions.push(init);
         }
         if self.depth != 0 {
             let trans = self
                 .bmc_builder
                 .index_transition_term(self.trans_assertion.clone());
-            let z3_trans = self.z3_var_context.rewrite_term(&trans);
-            self.solver.assert(z3_trans.as_bool().unwrap());
+            self.solver.assert_term(&trans);
             self.init_and_transition_assertions.push(trans);
             let auxiliary_transitions = self.auxiliary_transition_assertions.clone();
             for transition in auxiliary_transitions {
@@ -198,9 +186,7 @@ impl SMTProblem {
     fn push_property(&mut self) {
         self.solver.push();
         let prop = self.subterm_handler.get_property_assert();
-        let z3_prop_negated =
-            z3::ast::Bool::not(&self.z3_var_context.rewrite_term(&prop).as_bool().unwrap());
-        self.solver.assert(&z3_prop_negated);
+        self.solver.assert_not_term(&prop);
     }
 
     pub(crate) fn add_instantiation(
@@ -213,14 +199,15 @@ impl SMTProblem {
         let inst_text = trace_instantiations.then(|| inst.to_string());
         let abstract_id_for_log = trace_instantiations.then(|| abstract_instantiation_id.clone());
 
+        let (z3_var_context, solver) = self.solver.z3_parts_mut();
         self.instantiation_strategy.on_generate(
             inst,
             &mut self.instantiations,
             abstract_instantiation_id,
             self.depth,
             &mut self.bmc_builder,
-            &mut self.z3_var_context,
-            &mut self.solver,
+            z3_var_context,
+            solver,
             &mut self.subterm_handler,
             self.track_instantiations,
             &mut self.tracked_labels,
@@ -331,7 +318,7 @@ impl SMTProblem {
         use std::fs::File;
         use std::io::Write;
 
-        let smt2_string = self.solver.to_string();
+        let smt2_string = self.solver.to_smt2_string();
         let mut file = File::create(path)?;
         file.write_all(smt2_string.as_bytes())?;
         Ok(())
@@ -343,10 +330,7 @@ impl SMTProblem {
             return None;
         }
 
-        let core_asts = self.solver.get_unsat_core();
-        let core_labels: Vec<String> = core_asts.iter().map(|ast| ast.to_string()).collect();
-
-        Some(core_labels)
+        Some(self.solver.get_unsat_core())
     }
 
     /// Get the tracked labels for unsat core analysis
@@ -434,7 +418,7 @@ impl SMTProblem {
             .clone()
             .accept(&mut self.bmc_builder)
             .unwrap();
-        let _ = bmc_variable.clone().accept(&mut self.z3_var_context);
+        self.solver.accept_command(bmc_variable.clone());
         self.variable_definitions.push(bmc_variable);
     }
 
@@ -476,8 +460,7 @@ impl SMTProblem {
     }
 
     fn assert_auxiliary_term(&mut self, term: Term) {
-        let z3_term = self.z3_var_context.rewrite_term(&term);
-        self.solver.assert(z3_term.as_bool().unwrap());
+        self.solver.assert_term(&term);
         self.subterm_handler
             .register_instantiation_term(term.clone());
         self.init_and_transition_assertions.push(term);
@@ -530,28 +513,16 @@ impl Problem for SMTProblem {
     ///
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
-    fn check(&mut self) -> z3::SatResult {
+    fn check(&mut self) -> SolverCheckResult {
         let start_time = std::time::Instant::now();
 
         // Push property back on top of the solver.
         self.push_property();
         let sat_result = self.solver.check();
-        self.newest_model = self.solver.get_model();
-        match self.solver.get_proof() {
-            Some(proof) => {
-                ProofTree::new(proof);
-            }
-            None => debug!("NO PROOF!"),
-        }
+        self.solver.inspect_last_proof();
         // Popping property off.
         self.solver.pop(1);
-        self.solver_statistcs
-            .join_from_z3_statistics(self.solver.get_statistics());
-
-        // Track total check time
-        let check_duration = start_time.elapsed();
-        self.solver_statistcs
-            .add_time("solver_time", check_duration.as_secs_f64());
+        self.solver.record_statistics_since(start_time);
 
         sat_result
     }
@@ -573,12 +544,13 @@ impl Problem for SMTProblem {
             // Call instantiation strategy's on_loop hook to handle instantiations at this depth
             if !self.instantiations.is_empty() {
                 let instantiations_snapshot: Vec<StoredInstantiation> = self.instantiations.clone();
+                let (z3_var_context, solver) = self.solver.z3_parts_mut();
                 self.instantiation_strategy.on_loop(
                     self.depth,
                     &instantiations_snapshot,
                     &mut self.bmc_builder,
-                    &mut self.z3_var_context,
-                    &mut self.solver,
+                    z3_var_context,
+                    solver,
                     self.track_instantiations,
                     &mut self.tracked_labels,
                     &mut self.asserted_instantiation_terms,
@@ -599,11 +571,11 @@ impl SolverInterface for SMTProblem {
     }
 
     fn get_model(&self) -> &Option<z3::Model> {
-        &self.newest_model
+        self.solver.get_model()
     }
 
     fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.z3_var_context.rewrite_term(term)
+        self.solver.rewrite_term(term)
     }
 
     fn get_all_subterms(&self) -> Vec<&Term> {
@@ -611,11 +583,11 @@ impl SolverInterface for SMTProblem {
     }
 
     fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.z3_var_context.get_interpretation(model, z3_term)
+        self.solver.get_interpretation(model, z3_term)
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver_statistcs.clone()
+        self.solver.get_solver_statistics()
     }
 
     fn get_reason_unknown(&self) -> Option<String> {

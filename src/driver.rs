@@ -7,6 +7,7 @@ use crate::{
     auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
     problem::Problem,
+    solver::SolverCheckResult,
     solver_interface::SolverInterface,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
@@ -399,7 +400,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
-                    z3::SatResult::Unsat => {
+                    SolverCheckResult::Unsat => {
                         unsat_event_tracker.record_vmt_event(
                             &smt_problem,
                             depth,
@@ -425,11 +426,11 @@ impl<'ctx, S> Driver<'ctx, S> {
                         self.extensions.unsat(&mut state, &smt_problem)?;
                         strat.unsat(&mut state, &smt_problem)?
                     }
-                    z3::SatResult::Unknown => {
+                    SolverCheckResult::Unknown => {
                         self.extensions.unknown(&mut state, &smt_problem)?;
                         strat.unknown(&mut state, &smt_problem)?
                     }
-                    z3::SatResult::Sat => {
+                    SolverCheckResult::Sat => {
                         self.extensions
                             .sat(&mut state, &smt_problem, refinement_step)?;
                         strat.sat(&mut state, &smt_problem, refinement_step)?

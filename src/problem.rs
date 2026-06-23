@@ -1,5 +1,7 @@
 use smt2parser::concrete::{Command, Term};
 
+use crate::solver::SolverCheckResult;
+
 /// Trait representing a verification problem that can be solved by yardbird.
 /// This abstracts over different input formats (VMT, SMTLIB) and allows
 /// strategies to work generically over problem types.
@@ -22,7 +24,7 @@ pub trait Problem: Clone + std::fmt::Debug {
     /// Used for model transformation and abstraction
     fn as_commands(&self) -> Vec<Command>;
 
-    fn check(&mut self) -> z3::SatResult;
+    fn check(&mut self) -> SolverCheckResult;
 
     fn unroll(&mut self, depth: u16);
 
