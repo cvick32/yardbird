@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use yardbird::{CostFunction, Strategy};
+use yardbird::{CostFunction, SolverBackend, Strategy};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
@@ -29,16 +29,28 @@ impl Default for GlobalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParameterMatrix {
     pub depths: Vec<u16>,
+    #[serde(default = "default_solvers")]
+    pub solvers: Vec<SolverBackend>,
     pub strategies: Vec<Strategy>,
     pub cost_functions: Vec<CostFunction>,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
 
+fn default_solver() -> SolverBackend {
+    SolverBackend::Z3
+}
+
+fn default_solvers() -> Vec<SolverBackend> {
+    vec![SolverBackend::Z3]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
     pub name: String,
     pub depth: u16,
+    #[serde(default = "default_solver")]
+    pub solver: SolverBackend,
     pub strategy: Strategy,
     pub cost_function: CostFunction,
     #[serde(default)]
@@ -99,6 +111,7 @@ pub struct BenchmarkConfig {
 pub struct BenchmarkRun {
     pub name: String,
     pub depth: u16,
+    pub solver: SolverBackend,
     pub strategy: Strategy,
     pub cost_function: CostFunction,
     pub timeout_seconds: u64,
@@ -120,20 +133,23 @@ impl BenchmarkConfig {
             // If a specific matrix is requested, only run that matrix
             if let Some(matrix) = self.parameter_matrices.get(matrix_name) {
                 for &depth in &matrix.depths {
-                    for &strategy in &matrix.strategies {
-                        for &cost_function in &matrix.cost_functions {
-                            runs.push(BenchmarkRun {
-                                name: format!(
-                                    "{}_d{}_s{:?}_c{:?}",
-                                    matrix_name, depth, strategy, cost_function
-                                ),
-                                depth,
-                                strategy,
-                                cost_function,
-                                timeout_seconds: matrix
-                                    .timeout_seconds
-                                    .unwrap_or(self.global.timeout_seconds),
-                            });
+                    for &solver in &matrix.solvers {
+                        for &strategy in &matrix.strategies {
+                            for &cost_function in &matrix.cost_functions {
+                                runs.push(BenchmarkRun {
+                                    name: format!(
+                                        "{}_d{}_solver{:?}_s{:?}_c{:?}",
+                                        matrix_name, depth, solver, strategy, cost_function
+                                    ),
+                                    depth,
+                                    solver,
+                                    strategy,
+                                    cost_function,
+                                    timeout_seconds: matrix
+                                        .timeout_seconds
+                                        .unwrap_or(self.global.timeout_seconds),
+                                });
+                            }
                         }
                     }
                 }
@@ -146,6 +162,7 @@ impl BenchmarkConfig {
                 runs.push(BenchmarkRun {
                     name: config.name.clone(),
                     depth: config.depth,
+                    solver: config.solver,
                     strategy: config.strategy,
                     cost_function: config.cost_function,
                     timeout_seconds: config
@@ -157,20 +174,23 @@ impl BenchmarkConfig {
             // Generate all matrices if none specified
             for (matrix_name, matrix) in &self.parameter_matrices {
                 for &depth in &matrix.depths {
-                    for &strategy in &matrix.strategies {
-                        for &cost_function in &matrix.cost_functions {
-                            runs.push(BenchmarkRun {
-                                name: format!(
-                                    "{}_d{}_s{:?}_c{:?}",
-                                    matrix_name, depth, strategy, cost_function
-                                ),
-                                depth,
-                                strategy,
-                                cost_function,
-                                timeout_seconds: matrix
-                                    .timeout_seconds
-                                    .unwrap_or(self.global.timeout_seconds),
-                            });
+                    for &solver in &matrix.solvers {
+                        for &strategy in &matrix.strategies {
+                            for &cost_function in &matrix.cost_functions {
+                                runs.push(BenchmarkRun {
+                                    name: format!(
+                                        "{}_d{}_solver{:?}_s{:?}_c{:?}",
+                                        matrix_name, depth, solver, strategy, cost_function
+                                    ),
+                                    depth,
+                                    solver,
+                                    strategy,
+                                    cost_function,
+                                    timeout_seconds: matrix
+                                        .timeout_seconds
+                                        .unwrap_or(self.global.timeout_seconds),
+                                });
+                            }
                         }
                     }
                 }

@@ -56,8 +56,11 @@ struct GardenOptions {
     #[arg(long)]
     pub retry: Option<usize>,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub cost_function: Option<yardbird::CostFunction>,
+
+    #[arg(long, value_enum, default_value_t = yardbird::SolverBackend::Z3)]
+    pub solver: yardbird::SolverBackend,
 
     #[arg(long, default_value_t = false)]
     pub train: bool,
@@ -119,6 +122,7 @@ struct SuiteMetadata {
 
 #[derive(Debug, Serialize)]
 struct StrategyResult {
+    solver: yardbird::SolverBackend,
     strategy: yardbird::Strategy,
     cost_function: yardbird::CostFunction,
     result: BenchmarkResult,
@@ -174,6 +178,8 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .arg(options.strategy.to_string())
         .arg("--cost-function")
         .arg(options.cost_function.to_string())
+        .arg("--solver")
+        .arg(options.solver.to_string())
         .arg("--synthesis-trigger")
         .arg(options.synthesis_trigger.to_string())
         .arg("--synthesis-guard-policy")
@@ -337,6 +343,7 @@ fn run_single(
 
     match status_code {
         Some(result) => Ok(StrategyResult {
+            solver: options.solver,
             strategy: options.strategy,
             result,
             cost_function: options.cost_function,
@@ -429,6 +436,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 strategy: *strat,
                                 run_ic3ia: options.run_ic3ia,
                                 cost_function,
+                                solver: options.solver,
                                 theory: yardbird::Theory::Array,
                                 json_output: false,
                                 dump_solver: None,
@@ -559,6 +567,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         strategy: run.strategy,
                         run_ic3ia: options.run_ic3ia,
                         cost_function: run.cost_function,
+                        solver: run.solver,
                         theory: yardbird::Theory::Array,
                         json_output: false,
                         dump_solver: None,
