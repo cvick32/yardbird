@@ -8,7 +8,6 @@ use smt2parser::{
         VMTModel,
     },
 };
-use z3::ast::Dynamic;
 
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
@@ -61,9 +60,9 @@ impl std::fmt::Debug for SMTProblem {
 
 impl Clone for SMTProblem {
     fn clone(&self) -> Self {
-        // SMTProblem contains non-cloneable Z3 objects (Solver, Model)
-        // Clone is required by the Problem trait but should not be used in practice
-        unimplemented!("SMTProblem::clone() is not implemented due to non-cloneable Z3 objects")
+        // SMTProblem contains non-cloneable solver objects and models. Clone is
+        // required by the Problem trait but should not be used in practice.
+        unimplemented!("SMTProblem::clone() is not implemented")
     }
 }
 
@@ -138,7 +137,7 @@ impl SMTProblem {
         }
 
         // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.
-        smt.add_z3_variables();
+        smt.add_solver_variables();
         // Generate initial subterms.
         smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
         debug!("{:#?}", smt);
@@ -148,15 +147,11 @@ impl SMTProblem {
     }
 
     /// Adds in all variables at the current depth that is recorded in self.bmc_builder.
-    fn add_z3_variables(&mut self) {
+    fn add_solver_variables(&mut self) {
         let variables = self.variables.clone();
         for variable in &variables {
             self.add_variable_declaration_at_current_depth(variable);
         }
-    }
-
-    pub fn get_model(&self) -> &Option<z3::Model> {
-        self.solver.get_model()
     }
 
     fn add_assertion(&mut self) {
@@ -199,15 +194,13 @@ impl SMTProblem {
         let inst_text = trace_instantiations.then(|| inst.to_string());
         let abstract_id_for_log = trace_instantiations.then(|| abstract_instantiation_id.clone());
 
-        let (z3_var_context, solver) = self.solver.z3_parts_mut();
         self.instantiation_strategy.on_generate(
             inst,
             &mut self.instantiations,
             abstract_instantiation_id,
             self.depth,
             &mut self.bmc_builder,
-            z3_var_context,
-            solver,
+            &mut self.solver,
             &mut self.subterm_handler,
             self.track_instantiations,
             &mut self.tracked_labels,
@@ -536,21 +529,19 @@ impl Problem for SMTProblem {
             // Generate subterms.
             self.subterm_handler
                 .generate_subterms(&mut self.bmc_builder);
-            // Add new variables to Z3VarContext for depth.
-            self.add_z3_variables();
+            // Add new variables for this depth to the solver backend.
+            self.add_solver_variables();
             // Add assertion for current depth.
             self.add_assertion();
 
             // Call instantiation strategy's on_loop hook to handle instantiations at this depth
             if !self.instantiations.is_empty() {
                 let instantiations_snapshot: Vec<StoredInstantiation> = self.instantiations.clone();
-                let (z3_var_context, solver) = self.solver.z3_parts_mut();
                 self.instantiation_strategy.on_loop(
                     self.depth,
                     &instantiations_snapshot,
                     &mut self.bmc_builder,
-                    z3_var_context,
-                    solver,
+                    &mut self.solver,
                     self.track_instantiations,
                     &mut self.tracked_labels,
                     &mut self.asserted_instantiation_terms,
@@ -570,20 +561,20 @@ impl SolverInterface for SMTProblem {
         self
     }
 
-    fn get_model(&self) -> &Option<z3::Model> {
-        self.solver.get_model()
+    fn has_model(&self) -> bool {
+        self.solver.has_model()
     }
 
-    fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.solver.rewrite_term(term)
+    fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
+        self.solver.eval_to_string(term)
+    }
+
+    fn model_to_string(&self) -> anyhow::Result<String> {
+        self.solver.model_to_string()
     }
 
     fn get_all_subterms(&self) -> Vec<&Term> {
         self.subterm_handler.get_all_subterms()
-    }
-
-    fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.solver.get_interpretation(model, z3_term)
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
@@ -614,7 +605,7 @@ impl SolverInterface for SMTProblem {
     }
 
     fn get_number_instantiations_added(&self) -> u64 {
-        self.get_number_instantiations_added()
+        self.num_quantifiers_instantiated
     }
 
     fn get_init_and_transition_subterms(&self) -> Vec<String> {

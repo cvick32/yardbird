@@ -3,7 +3,6 @@ use smt2parser::{
     concrete::{Command, Identifier, QualIdentifier, Symbol, Term},
     vmt::{quantified_instantiator::Instance, ReadsAndWrites},
 };
-use z3::ast::Dynamic;
 
 use crate::{
     instantiation_strategy::StoredInstantiation,
@@ -59,9 +58,9 @@ impl std::fmt::Debug for SMTLIBSMTProblem {
 
 impl Clone for SMTLIBSMTProblem {
     fn clone(&self) -> Self {
-        // SMTLIBSMTProblem contains non-cloneable Z3 objects (Solver, Model)
+        // SMTLIBSMTProblem contains non-cloneable solver objects and models.
         unimplemented!(
-            "SMTLIBSMTProblem::clone() is not implemented due to non-cloneable Z3 objects"
+            "SMTLIBSMTProblem::clone() is not implemented due to non-cloneable solver objects"
         )
     }
 }
@@ -229,10 +228,6 @@ impl SMTLIBSMTProblem {
         }
     }
 
-    pub fn get_model(&self) -> &Option<z3::Model> {
-        self.solver.get_model()
-    }
-
     pub fn add_instantiation(
         &mut self,
         inst: Instance,
@@ -283,8 +278,8 @@ impl SMTLIBSMTProblem {
         self.solver.get_reason_unknown()
     }
 
-    pub fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.solver.rewrite_term(term)
+    pub fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
+        self.solver.eval_to_string(term)
     }
 
     pub fn get_all_subterms(&self) -> Vec<&Term> {
@@ -301,10 +296,6 @@ impl SMTLIBSMTProblem {
 
     pub fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
-    }
-
-    pub fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.solver.get_interpretation(model, z3_term)
     }
 
     /// Check satisfiability of the current problem
@@ -384,20 +375,20 @@ impl SolverInterface for SMTLIBSMTProblem {
         self
     }
 
-    fn get_model(&self) -> &Option<z3::Model> {
-        self.solver.get_model()
+    fn has_model(&self) -> bool {
+        self.solver.has_model()
     }
 
-    fn rewrite_term(&self, term: &Term) -> Dynamic {
-        self.solver.rewrite_term(term)
+    fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
+        self.solver.eval_to_string(term)
+    }
+
+    fn model_to_string(&self) -> anyhow::Result<String> {
+        self.solver.model_to_string()
     }
 
     fn get_all_subterms(&self) -> Vec<&Term> {
         self.assertions.iter().collect()
-    }
-
-    fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic {
-        self.solver.get_interpretation(model, z3_term)
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
@@ -426,7 +417,7 @@ impl SolverInterface for SMTLIBSMTProblem {
     }
 
     fn get_number_instantiations_added(&self) -> u64 {
-        self.get_number_instantiations_added()
+        self.num_quantifiers_instantiated
     }
 
     fn get_init_and_transition_subterms(&self) -> Vec<String> {
