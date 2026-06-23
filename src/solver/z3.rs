@@ -1,14 +1,24 @@
 use smt2parser::concrete::{Command, Term};
 use std::time::Instant;
-use z3::ast::{Bool, Dynamic};
+use z3::ast::Bool;
 
+use super::{z3_ext::ModelExt, z3_var_context::Z3VarContext};
 use crate::{
+    instantiation_strategy::InstantiationAssertionSink,
     proof_tree::ProofTree,
     solver::SolverCheckResult,
-    utils::{configure_z3_solver, SolverStatistics},
-    z3_ext::ModelExt,
-    z3_var_context::Z3VarContext,
+    utils::{SolverStatistics, StatisticsValue},
 };
+
+impl From<z3::SatResult> for SolverCheckResult {
+    fn from(result: z3::SatResult) -> Self {
+        match result {
+            z3::SatResult::Sat => SolverCheckResult::Sat,
+            z3::SatResult::Unsat => SolverCheckResult::Unsat,
+            z3::SatResult::Unknown => SolverCheckResult::Unknown,
+        }
+    }
+}
 
 pub struct Z3SolverBackend {
     z3_var_context: Z3VarContext,
