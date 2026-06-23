@@ -2,12 +2,9 @@ use log::debug;
 use smt2parser::concrete::Term;
 use smt2parser::vmt::{bmc::BMCBuilder, quantified_instantiator::Instance};
 
-use crate::{
-    subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
-    z3_var_context::Z3VarContext,
-};
+use crate::{subterm_handler::SubtermHandler, training::IndexedInstantiationRecord};
 
-use super::{InstantiationStrategy, StoredInstantiation};
+use super::{InstantiationAssertionSink, InstantiationStrategy, StoredInstantiation};
 
 #[derive(Clone, Debug)]
 pub struct NoUnrollOnLoop;
@@ -36,8 +33,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         abstract_instantiation_id: Option<String>,
         _depth: u16,
         bmc_builder: &mut BMCBuilder,
-        z3_var_context: &mut Z3VarContext,
-        solver: &mut z3::Solver,
+        assertion_sink: &mut dyn InstantiationAssertionSink,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
@@ -50,16 +46,11 @@ impl InstantiationStrategy for NoUnrollOnLoop {
             abstract_instantiation_id: abstract_instantiation_id.clone(),
         });
 
-        // Add quantified variables to Z3VarContext
-        if let Term::Forall { vars, term: _ } = inst.get_term() {
-            for (symbol, sort) in vars {
-                z3_var_context.create_variable(symbol, sort);
-            }
-        }
+        assertion_sink.register_quantified_variables(inst.get_term());
 
         // Unroll the instantiation from 0 to current depth
         // (This is the logic from SMTProblem::unroll_instantiation)
-        let mut all_z3_insts = vec![];
+        let mut all_indexed_insts = vec![];
         let cur_depth = bmc_builder.depth;
 
         for i in (0..=cur_depth).rev() {
@@ -74,21 +65,19 @@ impl InstantiationStrategy for NoUnrollOnLoop {
             subterm_handler.register_instantiation_term(indexed_inst.clone());
             asserted_instantiations.push(indexed_inst.clone());
 
-            let z3_inst = z3_var_context.rewrite_term(&indexed_inst);
-            all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
+            all_indexed_insts.push(indexed_inst);
         }
 
         // Reset depth
         bmc_builder.set_depth(cur_depth);
-        *num_quantifiers_instantiated += all_z3_insts.len() as u64;
+        *num_quantifiers_instantiated += all_indexed_insts.len() as u64;
 
         if track_instantiations {
             // Use assert_and_track for each instantiation
-            for (idx, (z3_inst, indexed_term)) in all_z3_insts.iter().enumerate() {
+            for (idx, indexed_term) in all_indexed_insts.iter().enumerate() {
                 let inst_num = tracked_labels.len();
                 let label = format!("inst_{}_{}", inst_num, idx);
-                let tracked_bool = z3::ast::Bool::new_const(label.as_str());
-                solver.assert_and_track(z3_inst, &tracked_bool);
+                assertion_sink.assert_tracked_instantiation(label.as_str(), indexed_term);
                 let term_string = indexed_term.to_string();
                 tracked_labels.push(IndexedInstantiationRecord {
                     label,
@@ -101,14 +90,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
                 });
             }
         } else {
-            // Combine all into one assertion
-            let inst_and = z3_var_context.make_and(
-                all_z3_insts
-                    .into_iter()
-                    .map(|(z3_inst, _)| z3_inst)
-                    .collect(),
-            );
-            solver.assert(&inst_and);
+            assertion_sink.assert_instantiation_batch(&all_indexed_insts);
         }
     }
 
@@ -117,8 +99,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         _depth: u16,
         _instantiations: &[StoredInstantiation],
         _bmc_builder: &mut BMCBuilder,
-        _z3_var_context: &mut Z3VarContext,
-        _solver: &mut z3::Solver,
+        _assertion_sink: &mut dyn InstantiationAssertionSink,
         _track_instantiations: bool,
         _tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         _asserted_instantiations: &mut Vec<Term>,
