@@ -48,8 +48,6 @@ pub mod theories;
 pub mod theory_support;
 pub mod training;
 mod utils;
-pub mod z3_ext;
-mod z3_var_context;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
