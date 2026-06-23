@@ -273,8 +273,6 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     let instantiation_strategy = options.build_instantiation_strategy();
     let mut training_session = TrainingSession::from_options(options)?;
 
-    //let cfg = z3::Config::new();
-    //cfg.set_proof_generation(true);
     match options.theory {
         Theory::Array => {
             let mut driver = Driver::new(vmt_model, instantiation_strategy).with_tracking_options(
