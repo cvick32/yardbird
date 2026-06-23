@@ -24,6 +24,7 @@ fn main() -> anyhow::Result<()> {
         info!("Training database reset complete");
         return Ok(());
     }
+    options.validate_solver_backend()?;
 
     // Auto-detect mode based on file extension
     let filename = options.require_filename()?;
@@ -48,7 +49,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
-    info!("Running in SMTLIB mode");
+    info!("Running in SMTLIB mode with {} solver", options.solver);
     options.validate_smtlib_mode()?;
 
     // Parse SMTLIB problem
@@ -144,6 +145,7 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
     if options.json_output {
         let json_output = serde_json::json!({
             "mode": "smtlib",
+            "solver": options.solver.to_string(),
             "num_check_sats": results.len(),
             "results": results.iter().map(|r| {
                 serde_json::json!({
@@ -266,7 +268,7 @@ fn print_strategy_results(
 }
 
 fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
-    info!("Running in VMT mode");
+    info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
     let instantiation_strategy = options.build_instantiation_strategy();
     let mut training_session = TrainingSession::from_options(options)?;

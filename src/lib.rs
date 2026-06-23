@@ -92,6 +92,10 @@ pub struct YardbirdOptions {
     #[arg(long, value_enum, default_value_t = InstantiationStrategyType::FullUnroll)]
     pub instantiation_strategy: InstantiationStrategyType,
 
+    /// Solver backend to use.
+    #[arg(long, value_enum, default_value_t = SolverBackend::Z3)]
+    pub solver: SolverBackend,
+
     /// Output ProofLoopResult as JSON to stdout (for garden integration)
     #[arg(long, default_value_t = false)]
     pub json_output: bool,
@@ -162,6 +166,7 @@ impl Default for YardbirdOptions {
             cost_function: CostFunction::BmcCost,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
+            solver: SolverBackend::Z3,
             json_output: false,
             dump_solver: None,
             track_instantiations: false,
@@ -225,6 +230,15 @@ impl YardbirdOptions {
             );
         }
         Ok(())
+    }
+
+    pub fn validate_solver_backend(&self) -> anyhow::Result<()> {
+        match self.solver {
+            SolverBackend::Z3 => Ok(()),
+            SolverBackend::Cvc5 => anyhow::bail!(
+                "--solver cvc5 is accepted for planning/configuration, but the CVC5 backend is not implemented until a later phase"
+            ),
+        }
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
@@ -449,6 +463,24 @@ pub enum Theory {
     Array,
     BvList,
     List,
+}
+
+/// Describes the solver backends available.
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum SolverBackend {
+    Z3,
+    Cvc5,
+}
+
+impl Display for SolverBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SolverBackend::Z3 => write!(f, "z3"),
+            SolverBackend::Cvc5 => write!(f, "cvc5"),
+        }
+    }
 }
 
 /// Describes the instantiation strategies available.
