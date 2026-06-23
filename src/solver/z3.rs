@@ -169,8 +169,43 @@ impl Z3SolverBackend {
     pub(crate) fn to_smt2_string(&self) -> String {
         self.solver.to_string()
     }
+}
 
-    pub(crate) fn z3_parts_mut(&mut self) -> (&mut Z3VarContext, &mut z3::Solver) {
-        (&mut self.z3_var_context, &mut self.solver)
+fn configure_z3_solver(solver: &z3::Solver) {
+    // Yardbird's abstraction is model-driven, so pin the solver seed to keep
+    // counterexample models reproducible across runs.
+    z3::set_global_param("smt.random_seed", "0");
+    z3::set_global_param("sat.random_seed", "0");
+
+    let mut params = z3::Params::new();
+    params.set_u32("random_seed", 0);
+    solver.set_params(&params);
+}
+
+fn join_from_z3_statistics(stats: &mut SolverStatistics, z3_stats: z3::Statistics) {
+    for entry in z3_stats.entries() {
+        let value = match entry.value {
+            z3::StatisticsValue::UInt(int_num) => StatisticsValue::UInt(int_num),
+            z3::StatisticsValue::Double(float_num) => StatisticsValue::Double(float_num),
+        };
+        stats.insert(entry.key, value);
+    }
+}
+
+impl InstantiationAssertionSink for Z3SolverBackend {
+    fn register_quantified_variables(&mut self, term: &Term) {
+        if let Term::Forall { vars, term: _ } = term {
+            for (symbol, sort) in vars {
+                self.create_variable(symbol, sort);
+            }
+        }
+    }
+
+    fn assert_instantiation_batch(&mut self, terms: &[Term]) {
+        self.assert_terms_conjunctively(terms);
+    }
+
+    fn assert_tracked_instantiation(&mut self, label: &str, term: &Term) {
+        self.assert_tracked_term(term, label);
     }
 }
