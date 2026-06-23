@@ -1,7 +1,6 @@
 use smt2parser::concrete::Term;
 use smt2parser::vmt::{quantified_instantiator::Instance, variable::Variable, ReadsAndWrites};
 use std::any::Any;
-use z3::ast::Dynamic;
 
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
@@ -13,10 +12,10 @@ use crate::{
 pub trait SolverInterface {
     /// Enable downcasting to concrete types
     fn as_any(&self) -> &dyn Any;
-    fn get_model(&self) -> &Option<z3::Model>;
-    fn rewrite_term(&self, term: &Term) -> Dynamic;
+    fn has_model(&self) -> bool;
+    fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
+    fn model_to_string(&self) -> anyhow::Result<String>;
     fn get_all_subterms(&self) -> Vec<&Term>;
-    fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic;
     fn get_solver_statistics(&self) -> SolverStatistics;
     fn get_reason_unknown(&self) -> Option<String>;
 
