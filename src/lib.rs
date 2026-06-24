@@ -234,9 +234,15 @@ impl YardbirdOptions {
     pub fn validate_solver_backend_for_vmt_mode(&self) -> anyhow::Result<()> {
         match self.solver {
             SolverBackend::Z3 => Ok(()),
-            SolverBackend::Cvc5 => anyhow::bail!(
-                "--solver cvc5 is available for SMT-LIB simple mode in this phase, but VMT mode is not implemented until a later phase"
-            ),
+            SolverBackend::Cvc5 => {
+                if !matches!(self.theory, Theory::Array) {
+                    anyhow::bail!(
+                        "--solver cvc5 in VMT mode currently supports array theory only; {:?} theory is not implemented yet",
+                        self.theory
+                    );
+                }
+                Ok(())
+            }
         }
     }
 
