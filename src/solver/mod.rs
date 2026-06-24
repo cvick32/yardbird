@@ -1,13 +1,13 @@
 pub mod api;
-pub mod cvc5;
-pub mod z3;
+mod cvc5;
+mod z3;
 mod z3_ext;
 mod z3_var_context;
 
 use crate::SolverBackend;
 
-pub use self::cvc5::Cvc5SolverBackend;
-pub use self::z3::Z3SolverBackend;
+use self::cvc5::Cvc5SolverBackend;
+use self::z3::Z3SolverBackend;
 pub use api::{SolverCheckResult, YardbirdSolver};
 
 pub fn new_solver_backend(backend: SolverBackend, logic: &str) -> Box<dyn YardbirdSolver> {

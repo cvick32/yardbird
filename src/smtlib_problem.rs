@@ -438,6 +438,7 @@ impl SMTLIBSolver {
     pub fn execute_with_strategy<S>(
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
+        solver_backend: SolverBackend,
         max_refinements: u32,
         track_instantiations: bool,
         //  instantiation_strategy: Box<dyn InstantiationStrategy>,
@@ -471,6 +472,7 @@ impl SMTLIBSolver {
         let mut smt_problem = SMTLIBSMTProblem::new_with_array_types(
             &working_problem,
             &strategy,
+            solver_backend,
             track_instantiations,
             //instantiation_strategy,
             array_types,

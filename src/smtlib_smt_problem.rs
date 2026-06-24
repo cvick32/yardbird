@@ -8,12 +8,13 @@ use crate::{
     instantiation_strategy::StoredInstantiation,
     problem::Problem,
     smtlib_problem::SMTLIBProblem,
-    solver::{SolverCheckResult, Z3SolverBackend},
+    solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
     solver_interface::SolverInterface,
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
     utils::SolverStatistics,
+    SolverBackend,
 };
 
 /// Helper to create a "true" boolean term
@@ -28,7 +29,7 @@ fn make_true_term() -> Term {
 /// Wrapper around SMTLIBProblem that provides the interface strategies expect
 /// Similar to SMTProblem but for stateless SMTLIB problems (no temporal reasoning)
 pub struct SMTLIBSMTProblem {
-    solver: Z3SolverBackend,
+    solver: Box<dyn YardbirdSolver>,
     original_problem: SMTLIBProblem,
     assertions: Vec<Term>,
     depth: u16, // Always 0 (no temporal unrolling)
@@ -101,7 +102,7 @@ impl SMTLIBSMTProblem {
     fn init_common(
         problem: &SMTLIBProblem,
         theory: &dyn crate::theory_support::TheorySupport,
-        solver: Z3SolverBackend,
+        solver: Box<dyn YardbirdSolver>,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
     ) -> Self {
@@ -128,19 +129,25 @@ impl SMTLIBSMTProblem {
         // Handle theory-specific function declarations
         if theory.requires_abstraction() {
             for function_def in problem.get_function_definitions() {
-                smt.solver.accept_command(function_def);
+                smt.solver
+                    .accept_command(&function_def)
+                    .expect("solver should accept SMT-LIB function declarations");
             }
         }
 
         // Add sort declarations
         for sort_decl in problem.get_sorts() {
-            smt.solver.accept_command(sort_decl);
+            smt.solver
+                .accept_command(&sort_decl)
+                .expect("solver should accept SMT-LIB sort declarations");
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            smt.solver.accept_command(command);
+            smt.solver
+                .accept_command(&command)
+                .expect("solver should accept theory function declarations");
         }
 
         // Add axioms declared by the theory
@@ -152,10 +159,14 @@ impl SMTLIBSMTProblem {
             if let Command::Assert { term } = axiom_command {
                 if let Term::Forall { vars, term: _ } = &term {
                     for (symbol, sort) in vars {
-                        smt.solver.create_variable(symbol, sort);
+                        smt.solver
+                            .create_variable(symbol, sort)
+                            .expect("solver should create quantified axiom variables");
                     }
                 }
-                smt.solver.assert_term(&term);
+                smt.solver
+                    .assert_term(&term)
+                    .expect("solver should assert theory axioms");
             }
         }
 
@@ -171,10 +182,11 @@ impl SMTLIBSMTProblem {
     pub fn new<S>(
         problem: &SMTLIBProblem,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
+        solver_backend: SolverBackend,
         track_instantiations: bool,
     ) -> Self {
         let theory = strategy.get_theory_support();
-        let solver = Z3SolverBackend::new(&theory.get_logic_string());
+        let solver = new_solver_backend(solver_backend, &theory.get_logic_string());
         Self::init_common(
             problem,
             theory.as_ref(),
@@ -189,6 +201,7 @@ impl SMTLIBSMTProblem {
     pub fn new_with_array_types<S>(
         problem: &SMTLIBProblem,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
+        solver_backend: SolverBackend,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
     ) -> Self {
@@ -210,7 +223,7 @@ impl SMTLIBSMTProblem {
 
         let logic_string = theory.get_logic_string();
         debug!("Using logic: {}", logic_string);
-        let solver = Z3SolverBackend::new(logic_string.as_str());
+        let solver = new_solver_backend(solver_backend, logic_string.as_str());
 
         Self::init_common(
             problem,
@@ -224,7 +237,9 @@ impl SMTLIBSMTProblem {
     /// Add all assertions to the solver
     fn add_assertions(&mut self) {
         for term in &self.assertions {
-            self.solver.assert_term(term);
+            self.solver
+                .assert_term(term)
+                .expect("solver should assert SMT-LIB assertions");
         }
     }
 
@@ -245,7 +260,9 @@ impl SMTLIBSMTProblem {
             let label_name = format!("inst_{}", self.num_quantifiers_instantiated);
 
             // Use assert_and_track so the label appears in unsat core
-            self.solver.assert_tracked_term(term, label_name.as_str());
+            self.solver
+                .assert_tracked_term(term, label_name.as_str())
+                .expect("solver should assert tracked SMT-LIB instantiations");
             let term_string = term.to_string();
             self.tracked_labels.push(IndexedInstantiationRecord {
                 label: label_name,
@@ -257,7 +274,9 @@ impl SMTLIBSMTProblem {
                 in_unsat_core: false,
             });
         } else {
-            self.solver.assert_term(term);
+            self.solver
+                .assert_term(term)
+                .expect("solver should assert SMT-LIB instantiations");
         }
 
         self.instantiations.push(StoredInstantiation {
@@ -309,7 +328,7 @@ impl SMTLIBSMTProblem {
         use std::fs::File;
         use std::io::Write;
 
-        let smt2_string = self.solver.to_smt2_string();
+        let smt2_string = self.solver.to_smt2_string()?;
         let mut file = File::create(path)?;
         file.write_all(smt2_string.as_bytes())?;
         Ok(())
@@ -321,7 +340,7 @@ impl SMTLIBSMTProblem {
             return None;
         }
 
-        Some(self.solver.get_unsat_core())
+        self.solver.get_unsat_core().ok()
     }
 
     /// Get the tracked labels for unsat core analysis

@@ -15,7 +15,7 @@ use yardbird::{
     problem::Problem,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
-    Driver, YardbirdOptions,
+    Driver, SolverBackend, YardbirdOptions,
 };
 
 #[derive(Debug)]
@@ -122,7 +122,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
             z3::with_z3_config(&cfg, move || {
                 let vmt_model = model_from_options(&options);
                 let instantiation_strategy = options.build_instantiation_strategy();
-                let mut driver = Driver::new(vmt_model, instantiation_strategy);
+                let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3);
                 let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
                     10,
                     false,
@@ -164,8 +164,14 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
                     array_bmc_cost_factory,
                     AuxSynthesisConfig::default(),
                 ));
-                let (result, _abstracted_problem) =
-                    SMTLIBSolver::execute_with_strategy(&problem, strat, 250, false).unwrap();
+                let (result, _abstracted_problem) = SMTLIBSolver::execute_with_strategy(
+                    &problem,
+                    strat,
+                    SolverBackend::Z3,
+                    250,
+                    false,
+                )
+                .unwrap();
                 Smt2StrategyOutcome::from(result)
             })
         },

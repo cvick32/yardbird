@@ -12,6 +12,7 @@ use crate::{
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
     utils::SolverStatistics,
+    SolverBackend,
 };
 
 /// Information about the unsat core when tracking is enabled
@@ -244,6 +245,7 @@ pub struct Driver<'ctx, S> {
     track_instantiations: bool,
     dump_unsat_core_path: Option<String>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    solver_backend: SolverBackend,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -337,6 +339,7 @@ impl<'ctx, S> Driver<'ctx, S> {
     pub fn new(
         vmt_model: VMTModel,
         instantiation_strategy: Box<dyn InstantiationStrategy>,
+        solver_backend: SolverBackend,
     ) -> Self {
         Self {
             used_instances: vec![],
@@ -347,6 +350,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             track_instantiations: false,
             dump_unsat_core_path: None,
             instantiation_strategy,
+            solver_backend,
         }
     }
 
@@ -388,6 +392,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         let mut smt_problem = crate::smt_problem::SMTProblem::new(
             &self.vmt_model,
             &strat,
+            self.solver_backend,
             self.track_instantiations,
             self.instantiation_strategy.clone_box(),
         );

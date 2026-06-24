@@ -105,6 +105,7 @@ fn run_smtlib_with_strategy(
     let (result, abstracted_problem) = match SMTLIBSolver::execute_with_strategy(
         problem,
         strategy,
+        options.solver,
         250, // max refinements (like VMT mode)
         options.track_instantiations,
         //instantiation_strategy,
@@ -275,11 +276,12 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
 
     match options.theory {
         Theory::Array => {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy).with_tracking_options(
-                options.dump_solver.clone(),
-                options.track_instantiations,
-                options.dump_unsat_core.clone(),
-            );
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
+                .with_tracking_options(
+                    options.dump_solver.clone(),
+                    options.track_instantiations,
+                    options.dump_unsat_core.clone(),
+                );
             if options.repl {
                 driver.add_extension(Repl);
             }
@@ -304,11 +306,12 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             todo!("Implement BVList!")
         }
         Theory::List => {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy).with_tracking_options(
-                options.dump_solver.clone(),
-                options.track_instantiations,
-                options.dump_unsat_core.clone(),
-            );
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
+                .with_tracking_options(
+                    options.dump_solver.clone(),
+                    options.track_instantiations,
+                    options.dump_unsat_core.clone(),
+                );
             if options.repl {
                 driver.add_extension(Repl);
             }

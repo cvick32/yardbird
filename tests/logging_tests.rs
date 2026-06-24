@@ -14,7 +14,7 @@ use yardbird::{
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
     training::{reset_training_database, TrainingSession},
-    Driver, YardbirdOptions,
+    Driver, SolverBackend, YardbirdOptions,
 };
 
 #[cfg(feature = "training")]
@@ -35,7 +35,7 @@ fn run_array_copy_logging_result() -> yardbird::ProofLoopResult {
 
     run_with_timeout(
         move || {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy)
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
             let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
                 10,
@@ -290,7 +290,7 @@ fn smtlib_strategy_populates_logging_artifacts() {
                 array_bmc_cost_factory,
                 AuxSynthesisConfig::default(),
             ));
-            SMTLIBSolver::execute_with_strategy(&problem, strategy, 50, true)
+            SMTLIBSolver::execute_with_strategy(&problem, strategy, SolverBackend::Z3, 50, true)
                 .expect("SMT-LIB strategy run should complete")
                 .0
         },
@@ -362,7 +362,7 @@ fn single_example_persists_provenance_to_db() {
             let mut session = TrainingSession::from_options(&options)
                 .expect("training session setup failed")
                 .expect("training session should be enabled");
-            let mut driver = Driver::new(vmt_model, instantiation_strategy)
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
             let strat: Box<dyn ProofStrategy<_>> =
                 Box::new(Abstract::new(10, false, array_bmc_cost_factory));
