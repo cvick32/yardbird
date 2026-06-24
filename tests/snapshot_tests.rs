@@ -190,7 +190,7 @@ fn run_smt2_simple_benchmark(filename: impl AsRef<Path>) -> Smt2SimpleResult {
             z3::with_z3_config(&cfg, move || {
                 let problem = SMTLIBProblem::from_path(&path).unwrap();
                 let mut solver = SMTLIBSolver::new(problem.get_logic());
-                solver.execute(&problem);
+                solver.execute(&problem).unwrap();
                 let results = solver
                     .get_results()
                     .iter()

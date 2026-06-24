@@ -6,11 +6,11 @@ use std::path::Path;
 
 use crate::problem::Problem;
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
-use crate::solver::{SolverCheckResult, Z3SolverBackend};
+use crate::solver::{new_solver_backend, SolverCheckResult, YardbirdSolver};
 use crate::strategies::{ProofAction, ProofStrategy};
 use crate::training::UnsatEventRecord;
 use crate::utils::SolverStatistics;
-use crate::ProofLoopResult;
+use crate::{ProofLoopResult, SolverBackend};
 
 /// Represents an SMTLIB problem (non-transition system)
 /// Supports both incremental (multiple check-sat with push/pop) and
@@ -248,45 +248,45 @@ pub struct CheckSatResult {
 /// Solver for executing SMTLIB problems
 /// Handles incremental solving with push/pop and multiple check-sat commands
 pub struct SMTLIBSolver {
-    solver: Z3SolverBackend,
+    solver: Box<dyn YardbirdSolver>,
     check_sat_results: Vec<CheckSatResult>,
 }
 
 impl SMTLIBSolver {
-    /// Create a new SMTLIB solver with the given logic
+    /// Create a new SMTLIB solver with the given logic, defaulting to Z3.
     pub fn new(logic: Option<String>) -> Self {
-        let solver = if let Some(logic_str) = logic {
-            Z3SolverBackend::new(logic_str.as_str())
-        } else {
-            // Default to QF_UFLIA if no logic specified
-            Z3SolverBackend::new("QF_UFLIA")
-        };
+        Self::new_with_backend(logic, SolverBackend::Z3)
+    }
 
+    /// Create a new SMTLIB solver with the given logic and backend.
+    pub fn new_with_backend(logic: Option<String>, backend: SolverBackend) -> Self {
+        let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
         SMTLIBSolver {
-            solver,
+            solver: new_solver_backend(backend, logic.as_str()),
             check_sat_results: Vec::new(),
         }
     }
 
     /// Execute all commands from an SMTLIB problem
-    pub fn execute(&mut self, problem: &SMTLIBProblem) {
+    pub fn execute(&mut self, problem: &SMTLIBProblem) -> anyhow::Result<()> {
         for (idx, command) in problem.get_commands().iter().enumerate() {
-            self.execute_command(command, idx);
+            self.execute_command(command, idx)?;
         }
+        Ok(())
     }
 
     /// Execute a single command
-    fn execute_command(&mut self, command: &Command, command_index: usize) {
+    fn execute_command(&mut self, command: &Command, command_index: usize) -> anyhow::Result<()> {
         match command {
             Command::Assert { term } => {
-                self.handle_assert(term);
+                self.handle_assert(term)?;
             }
             Command::CheckSat => {
                 let result = self.handle_check_sat(command_index);
                 self.check_sat_results.push(result);
             }
             Command::CheckSatAssuming { literals } => {
-                let result = self.handle_check_sat_assuming(command_index, literals);
+                let result = self.handle_check_sat_assuming(command_index, literals)?;
                 self.check_sat_results.push(result);
             }
             Command::Push { level } => {
@@ -304,20 +304,21 @@ impl SMTLIBSolver {
             | Command::DefineFun { .. }
             | Command::DeclareSort { .. } => {
                 // Handle declarations through the backend term context.
-                self.solver.accept_command(command.clone());
+                self.solver.accept_command(command)?;
             }
             Command::SetLogic { .. } | Command::SetOption { .. } | Command::SetInfo { .. } => {
-                // Ignore these - already handled during problem construction
+                // Logic and metadata are handled during problem construction/backend setup.
             }
             _ => {
                 // Ignore other commands (get-model, exit, etc.)
             }
         }
+        Ok(())
     }
 
     /// Handle an assert command
-    fn handle_assert(&mut self, term: &Term) {
-        self.solver.assert_term(term);
+    fn handle_assert(&mut self, term: &Term) -> anyhow::Result<()> {
+        self.solver.assert_term(term)
     }
 
     /// Handle a check-sat command
@@ -336,7 +337,7 @@ impl SMTLIBSolver {
         &mut self,
         command_index: usize,
         literals: &[(smt2parser::concrete::Symbol, bool)],
-    ) -> CheckSatResult {
+    ) -> anyhow::Result<CheckSatResult> {
         use smt2parser::concrete::{Identifier, QualIdentifier};
 
         // Convert assumptions to terms and assert them temporarily
@@ -351,15 +352,15 @@ impl SMTLIBSolver {
             let term = Term::QualIdentifier(qual_id);
 
             if *polarity {
-                self.solver.assert_term(&term);
+                self.solver.assert_term(&term)?;
             } else {
-                self.solver.assert_not_term(&term);
+                self.solver.assert_not_term(&term)?;
             }
         }
 
         let result = self.handle_check_sat(command_index);
         self.solver.pop(1);
-        result
+        Ok(result)
     }
 
     /// Get all check-sat results
