@@ -446,6 +446,20 @@ impl Cvc5SolverBackend {
         let width = single_numeral_index("bitvector literal", indices)?;
         Ok(self.tm.mk_bv_from_str(width, value, 10))
     }
+
+    fn current_unsat_core_labels(&self) -> Vec<String> {
+        self.solver
+            .get_unsat_assumptions()
+            .iter()
+            .map(|assumption| {
+                self.tracked_labels
+                    .iter()
+                    .find(|(_, label_term)| label_term == assumption)
+                    .map(|(label, _)| label.clone())
+                    .unwrap_or_else(|| assumption.to_string())
+            })
+            .collect()
+    }
 }
 
 impl YardbirdSolver for Cvc5SolverBackend {
@@ -575,6 +589,12 @@ impl YardbirdSolver for Cvc5SolverBackend {
             self.solver.check_sat_assuming(&assumptions)
         };
         let check_result = SolverCheckResult::from_cvc5(&result);
+        self.unsat_core_cache =
+            if check_result == SolverCheckResult::Unsat && !self.tracked_labels.is_empty() {
+                self.current_unsat_core_labels()
+            } else {
+                vec![]
+            };
         self.last_result = Some(check_result);
         check_result
     }
@@ -649,18 +669,10 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>> {
-        let assumptions = self.solver.get_unsat_assumptions();
-        let labels = assumptions
-            .iter()
-            .map(|assumption| {
-                self.tracked_labels
-                    .iter()
-                    .find(|(_, label_term)| label_term == assumption)
-                    .map(|(label, _)| label.clone())
-                    .unwrap_or_else(|| assumption.to_string())
-            })
-            .collect();
-        Ok(labels)
+        if self.last_result != Some(SolverCheckResult::Unsat) {
+            return Ok(vec![]);
+        }
+        Ok(self.unsat_core_cache.clone())
     }
 
     fn to_smt2_string(&self) -> anyhow::Result<String> {
