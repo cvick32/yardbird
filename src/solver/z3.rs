@@ -6,8 +6,9 @@ use super::{z3_ext::ModelExt, z3_var_context::Z3VarContext};
 use crate::{
     instantiation_strategy::InstantiationAssertionSink,
     proof_tree::ProofTree,
-    solver::SolverCheckResult,
+    solver::{SolverCheckResult, YardbirdSolver},
     utils::{SolverStatistics, StatisticsValue},
+    SolverBackend,
 };
 
 impl From<z3::SatResult> for SolverCheckResult {
@@ -207,5 +208,102 @@ impl InstantiationAssertionSink for Z3SolverBackend {
 
     fn assert_tracked_instantiation(&mut self, label: &str, term: &Term) {
         self.assert_tracked_term(term, label);
+    }
+}
+
+impl YardbirdSolver for Z3SolverBackend {
+    fn backend(&self) -> SolverBackend {
+        SolverBackend::Z3
+    }
+
+    fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {
+        Z3SolverBackend::accept_command(self, command.clone());
+        Ok(())
+    }
+
+    fn create_variable(
+        &mut self,
+        symbol: &smt2parser::concrete::Symbol,
+        sort: &smt2parser::concrete::Sort,
+    ) -> anyhow::Result<()> {
+        Z3SolverBackend::create_variable(self, symbol, sort);
+        Ok(())
+    }
+
+    fn assert_term(&mut self, term: &Term) -> anyhow::Result<()> {
+        Z3SolverBackend::assert_term(self, term);
+        Ok(())
+    }
+
+    fn assert_not_term(&mut self, term: &Term) -> anyhow::Result<()> {
+        Z3SolverBackend::assert_not_term(self, term);
+        Ok(())
+    }
+
+    fn assert_terms_conjunctively(&mut self, terms: &[Term]) -> anyhow::Result<()> {
+        Z3SolverBackend::assert_terms_conjunctively(self, terms);
+        Ok(())
+    }
+
+    fn assert_tracked_term(&mut self, term: &Term, label: &str) -> anyhow::Result<()> {
+        Z3SolverBackend::assert_tracked_term(self, term, label);
+        Ok(())
+    }
+
+    fn push(&mut self) {
+        Z3SolverBackend::push(self);
+    }
+
+    fn pop(&mut self, levels: u32) {
+        Z3SolverBackend::pop(self, levels);
+    }
+
+    fn check(&mut self) -> SolverCheckResult {
+        Z3SolverBackend::check(self)
+    }
+
+    fn check_and_record_statistics(&mut self) -> SolverCheckResult {
+        Z3SolverBackend::check_and_record_statistics(self)
+    }
+
+    fn record_statistics_since(&mut self, start_time: Instant) {
+        Z3SolverBackend::record_statistics_since(self, start_time);
+    }
+
+    fn inspect_last_proof(&self) -> anyhow::Result<()> {
+        Z3SolverBackend::inspect_last_proof(self);
+        Ok(())
+    }
+
+    fn has_model(&self) -> bool {
+        Z3SolverBackend::has_model(self)
+    }
+
+    fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
+        Z3SolverBackend::eval_to_string(self, term)
+    }
+
+    fn model_to_string(&self) -> anyhow::Result<String> {
+        Z3SolverBackend::model_to_string(self)
+    }
+
+    fn get_solver_statistics(&self) -> SolverStatistics {
+        Z3SolverBackend::get_solver_statistics(self)
+    }
+
+    fn statistics_ref(&self) -> &SolverStatistics {
+        Z3SolverBackend::statistics_ref(self)
+    }
+
+    fn get_reason_unknown(&self) -> Option<String> {
+        Z3SolverBackend::get_reason_unknown(self)
+    }
+
+    fn get_unsat_core(&self) -> anyhow::Result<Vec<String>> {
+        Ok(Z3SolverBackend::get_unsat_core(self))
+    }
+
+    fn to_smt2_string(&self) -> anyhow::Result<String> {
+        Ok(Z3SolverBackend::to_smt2_string(self))
     }
 }

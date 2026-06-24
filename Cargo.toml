@@ -10,6 +10,7 @@ default-run = "yardbird"
 anstyle = "1.0.10"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
+cvc5 = { workspace = true }
 dialoguer = "0.12.0"
 dotenvy = "0.15"
 egg = "0.10.0"
@@ -41,6 +42,7 @@ clap = { version = "4.5.20" }
 serde = "1.0.215"
 serde_json = "1.0.133"
 smt2parser = { path = "./smt2parser", version = "0.6.1" }
+cvc5 = { version = "0.4", features = ["static"] }
 z3 = { version = "0.19.3" }
 
 [dev-dependencies]
