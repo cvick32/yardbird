@@ -42,163 +42,6 @@ impl Cvc5SolverBackend {
         }
     }
 
-    pub(crate) fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {
-        match command {
-            Command::DeclareSort { symbol, arity } => {
-                if *arity != 0u32.into() {
-                    anyhow::bail!(
-                        "CVC5 backend only supports zero-arity declare-sort in Phase 4: {symbol}"
-                    );
-                }
-                let sort = self.solver.declare_sort(&symbol.0, 0);
-                self.sorts.insert(symbol.0.clone(), sort);
-                Ok(())
-            }
-            Command::DeclareConst { symbol, sort } => {
-                let cvc5_sort = self.convert_sort(sort)?;
-                let term = self.solver.declare_fun(&symbol.0, &[], cvc5_sort);
-                self.terms.insert(symbol.0.clone(), term);
-                Ok(())
-            }
-            Command::DeclareFun {
-                symbol,
-                parameters,
-                sort,
-            } => {
-                let domain = parameters
-                    .iter()
-                    .map(|sort| self.convert_sort(sort))
-                    .collect::<anyhow::Result<Vec<_>>>()?;
-                let codomain = self.convert_sort(sort)?;
-                let term = self.solver.declare_fun(&symbol.0, &domain, codomain);
-                self.terms.insert(symbol.0.clone(), term);
-                Ok(())
-            }
-            Command::DefineFun { sig, term } if sig.parameters.is_empty() => {
-                let value = self.convert_term(term)?;
-                self.terms.insert(sig.name.0.clone(), value);
-                Ok(())
-            }
-            Command::SetOption { keyword, value } => {
-                if let Some(value) = attribute_value_to_option_string(value) {
-                    self.solver.set_option(&keyword.0, &value);
-                }
-                Ok(())
-            }
-            Command::SetLogic { symbol } => {
-                self.solver.set_logic(&symbol.0);
-                Ok(())
-            }
-            Command::DefineFun { sig, .. } => {
-                anyhow::bail!(
-                    "CVC5 backend only supports zero-argument define-fun in Phase 4: {}",
-                    sig.name.0
-                )
-            }
-            _ => Ok(()),
-        }
-    }
-
-    pub(crate) fn assert_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
-        let cvc5_term = self.convert_term(term)?;
-        self.solver.assert_formula(cvc5_term);
-        Ok(())
-    }
-
-    pub(crate) fn assert_not_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
-        let cvc5_term = self.convert_term(term)?;
-        let not_term = self.tm.mk_term(Kind::Not, &[cvc5_term]);
-        self.solver.assert_formula(not_term);
-        Ok(())
-    }
-
-    pub(crate) fn assert_tracked_term(
-        &mut self,
-        term: &SmtTerm,
-        label: &str,
-    ) -> anyhow::Result<()> {
-        let label_term = self.tm.mk_const(self.tm.boolean_sort(), label);
-        let cvc5_term = self.convert_term(term)?;
-        let implication = self
-            .tm
-            .mk_term(Kind::Implies, &[label_term.clone(), cvc5_term]);
-        self.solver.assert_formula(implication);
-        self.tracked_labels.push((label.to_string(), label_term));
-        Ok(())
-    }
-
-    pub(crate) fn assert_terms_conjunctively(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
-        match terms {
-            [] => Ok(()),
-            [term] => self.assert_term(term),
-            _ => {
-                let children = terms
-                    .iter()
-                    .map(|term| self.convert_term(term))
-                    .collect::<anyhow::Result<Vec<_>>>()?;
-                let conjunction = self.tm.mk_term(Kind::And, &children);
-                self.solver.assert_formula(conjunction);
-                Ok(())
-            }
-        }
-    }
-
-    pub(crate) fn push(&mut self) {
-        self.solver.push(1);
-    }
-
-    pub(crate) fn pop(&mut self, levels: u32) {
-        self.solver.pop(levels);
-    }
-
-    pub(crate) fn check_and_record_statistics(&mut self) -> SolverCheckResult {
-        let start_time = Instant::now();
-        let result = self.check();
-        self.solver_statistics
-            .add_time("solver_time", start_time.elapsed().as_secs_f64());
-        result
-    }
-
-    pub(crate) fn check(&mut self) -> SolverCheckResult {
-        let assumptions = self
-            .tracked_labels
-            .iter()
-            .map(|(_, term)| term.clone())
-            .collect::<Vec<_>>();
-        let result = if assumptions.is_empty() {
-            self.solver.check_sat()
-        } else {
-            self.solver.check_sat_assuming(&assumptions)
-        };
-        let check_result = SolverCheckResult::from_cvc5(&result);
-        self.last_result = Some(check_result);
-        check_result
-    }
-
-    pub(crate) fn eval_to_string(&self, term: &SmtTerm) -> anyhow::Result<String> {
-        if self.last_result != Some(SolverCheckResult::Sat) {
-            anyhow::bail!("CVC5 model values are only available after SAT");
-        }
-        let cvc5_term = self.convert_term(term)?;
-        Ok(self.solver.get_value(cvc5_term).to_string())
-    }
-
-    pub(crate) fn get_unsat_core(&self) -> Vec<String> {
-        self.solver
-            .get_unsat_assumptions()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
-    pub(crate) fn statistics_ref(&self) -> &SolverStatistics {
-        &self.solver_statistics
-    }
-
-    pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver_statistics.clone()
-    }
-
     fn convert_sort(&mut self, sort: &SmtSort) -> anyhow::Result<Sort<'static>> {
         match sort {
             SmtSort::Simple { identifier } => match identifier_name(identifier).as_str() {
@@ -313,7 +156,60 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {
-        Cvc5SolverBackend::accept_command(self, command)
+        match command {
+            Command::DeclareSort { symbol, arity } => {
+                if *arity != 0u32.into() {
+                    anyhow::bail!(
+                        "CVC5 backend only supports zero-arity declare-sort in Phase 4: {symbol}"
+                    );
+                }
+                let sort = self.solver.declare_sort(&symbol.0, 0);
+                self.sorts.insert(symbol.0.clone(), sort);
+                Ok(())
+            }
+            Command::DeclareConst { symbol, sort } => {
+                let cvc5_sort = self.convert_sort(sort)?;
+                let term = self.solver.declare_fun(&symbol.0, &[], cvc5_sort);
+                self.terms.insert(symbol.0.clone(), term);
+                Ok(())
+            }
+            Command::DeclareFun {
+                symbol,
+                parameters,
+                sort,
+            } => {
+                let domain = parameters
+                    .iter()
+                    .map(|sort| self.convert_sort(sort))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let codomain = self.convert_sort(sort)?;
+                let term = self.solver.declare_fun(&symbol.0, &domain, codomain);
+                self.terms.insert(symbol.0.clone(), term);
+                Ok(())
+            }
+            Command::DefineFun { sig, term } if sig.parameters.is_empty() => {
+                let value = self.convert_term(term)?;
+                self.terms.insert(sig.name.0.clone(), value);
+                Ok(())
+            }
+            Command::SetOption { keyword, value } => {
+                if let Some(value) = attribute_value_to_option_string(value) {
+                    self.solver.set_option(&keyword.0, &value);
+                }
+                Ok(())
+            }
+            Command::SetLogic { symbol } => {
+                self.solver.set_logic(&symbol.0);
+                Ok(())
+            }
+            Command::DefineFun { sig, .. } => {
+                anyhow::bail!(
+                    "CVC5 backend only supports zero-argument define-fun in Phase 4: {}",
+                    sig.name.0
+                )
+            }
+            _ => Ok(()),
+        }
     }
 
     fn create_variable(&mut self, symbol: &Symbol, sort: &SmtSort) -> anyhow::Result<()> {
@@ -324,35 +220,75 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn assert_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
-        Cvc5SolverBackend::assert_term(self, term)
+        let cvc5_term = self.convert_term(term)?;
+        self.solver.assert_formula(cvc5_term);
+        Ok(())
     }
 
     fn assert_not_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
-        Cvc5SolverBackend::assert_not_term(self, term)
+        let cvc5_term = self.convert_term(term)?;
+        let not_term = self.tm.mk_term(Kind::Not, &[cvc5_term]);
+        self.solver.assert_formula(not_term);
+        Ok(())
     }
 
     fn assert_terms_conjunctively(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
-        Cvc5SolverBackend::assert_terms_conjunctively(self, terms)
+        match terms {
+            [] => Ok(()),
+            [term] => self.assert_term(term),
+            _ => {
+                let children = terms
+                    .iter()
+                    .map(|term| self.convert_term(term))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let conjunction = self.tm.mk_term(Kind::And, &children);
+                self.solver.assert_formula(conjunction);
+                Ok(())
+            }
+        }
     }
 
     fn assert_tracked_term(&mut self, term: &SmtTerm, label: &str) -> anyhow::Result<()> {
-        Cvc5SolverBackend::assert_tracked_term(self, term, label)
+        let label_term = self.tm.mk_const(self.tm.boolean_sort(), label);
+        let cvc5_term = self.convert_term(term)?;
+        let implication = self
+            .tm
+            .mk_term(Kind::Implies, &[label_term.clone(), cvc5_term]);
+        self.solver.assert_formula(implication);
+        self.tracked_labels.push((label.to_string(), label_term));
+        Ok(())
     }
 
     fn push(&mut self) {
-        Cvc5SolverBackend::push(self);
+        self.solver.push(1);
     }
 
     fn pop(&mut self, levels: u32) {
-        Cvc5SolverBackend::pop(self, levels);
+        self.solver.pop(levels);
     }
 
     fn check(&mut self) -> SolverCheckResult {
-        Cvc5SolverBackend::check(self)
+        let assumptions = self
+            .tracked_labels
+            .iter()
+            .map(|(_, term)| term.clone())
+            .collect::<Vec<_>>();
+        let result = if assumptions.is_empty() {
+            self.solver.check_sat()
+        } else {
+            self.solver.check_sat_assuming(&assumptions)
+        };
+        let check_result = SolverCheckResult::from_cvc5(&result);
+        self.last_result = Some(check_result);
+        check_result
     }
 
     fn check_and_record_statistics(&mut self) -> SolverCheckResult {
-        Cvc5SolverBackend::check_and_record_statistics(self)
+        let start_time = Instant::now();
+        let result = self.check();
+        self.solver_statistics
+            .add_time("solver_time", start_time.elapsed().as_secs_f64());
+        result
     }
 
     fn record_statistics_since(&mut self, start_time: Instant) {
@@ -365,7 +301,11 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn eval_to_string(&self, term: &SmtTerm) -> anyhow::Result<String> {
-        Cvc5SolverBackend::eval_to_string(self, term)
+        if self.last_result != Some(SolverCheckResult::Sat) {
+            anyhow::bail!("CVC5 model values are only available after SAT");
+        }
+        let cvc5_term = self.convert_term(term)?;
+        Ok(self.solver.get_value(cvc5_term).to_string())
     }
 
     fn model_to_string(&self) -> anyhow::Result<String> {
@@ -376,11 +316,11 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
-        Cvc5SolverBackend::get_solver_statistics(self)
+        self.solver_statistics.clone()
     }
 
     fn statistics_ref(&self) -> &SolverStatistics {
-        Cvc5SolverBackend::statistics_ref(self)
+        &self.solver_statistics
     }
 
     fn get_reason_unknown(&self) -> Option<String> {
@@ -388,7 +328,12 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>> {
-        Ok(Cvc5SolverBackend::get_unsat_core(self))
+        Ok(self
+            .solver
+            .get_unsat_assumptions()
+            .iter()
+            .map(ToString::to_string)
+            .collect())
     }
 
     fn to_smt2_string(&self) -> anyhow::Result<String> {

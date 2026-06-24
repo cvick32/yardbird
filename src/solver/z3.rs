@@ -1,10 +1,9 @@
-use smt2parser::concrete::{Command, Term};
+use smt2parser::concrete::{Command, Sort, Symbol, Term};
 use std::time::Instant;
 use z3::ast::Bool;
 
 use super::{z3_ext::ModelExt, z3_var_context::Z3VarContext};
 use crate::{
-    instantiation_strategy::InstantiationAssertionSink,
     proof_tree::ProofTree,
     solver::{SolverCheckResult, YardbirdSolver},
     utils::{SolverStatistics, StatisticsValue},
@@ -39,137 +38,6 @@ impl Z3SolverBackend {
             newest_model: None,
         }
     }
-
-    pub(crate) fn accept_command(&mut self, command: Command) {
-        let _ = command.accept(&mut self.z3_var_context);
-    }
-
-    pub(crate) fn create_variable(
-        &mut self,
-        symbol: &smt2parser::concrete::Symbol,
-        sort: &smt2parser::concrete::Sort,
-    ) {
-        self.z3_var_context.create_variable(symbol, sort);
-    }
-
-    pub(crate) fn assert_term(&mut self, term: &Term) {
-        let z3_term = self.z3_var_context.rewrite_term(term);
-        self.solver.assert(z3_term.as_bool().unwrap());
-    }
-
-    pub(crate) fn assert_not_term(&mut self, term: &Term) {
-        let z3_term = self.z3_var_context.rewrite_term(term);
-        let negated = Bool::not(&z3_term.as_bool().unwrap());
-        self.solver.assert(&negated);
-    }
-
-    pub(crate) fn assert_tracked_term(&mut self, term: &Term, label: &str) {
-        let z3_term = self.z3_var_context.rewrite_term(term);
-        let tracked_bool = Bool::new_const(label);
-        self.solver
-            .assert_and_track(z3_term.as_bool().unwrap(), &tracked_bool);
-    }
-
-    pub(crate) fn assert_terms_conjunctively(&mut self, terms: &[Term]) {
-        match terms {
-            [] => {}
-            [term] => self.assert_term(term),
-            _ => {
-                let z3_terms = terms
-                    .iter()
-                    .map(|term| {
-                        self.z3_var_context
-                            .rewrite_term(term)
-                            .as_bool()
-                            .expect("[Z3] instantiation term must be boolean")
-                    })
-                    .collect();
-                let conjunction = self.z3_var_context.make_and(z3_terms);
-                self.solver.assert(&conjunction);
-            }
-        }
-    }
-
-    pub(crate) fn push(&mut self) {
-        self.solver.push();
-    }
-
-    pub(crate) fn pop(&mut self, levels: u32) {
-        self.solver.pop(levels);
-    }
-
-    pub(crate) fn check(&mut self) -> SolverCheckResult {
-        let result = self.solver.check();
-        self.newest_model = self.solver.get_model();
-        result.into()
-    }
-
-    pub(crate) fn check_and_record_statistics(&mut self) -> SolverCheckResult {
-        let start_time = Instant::now();
-        let result = self.check();
-        self.record_statistics_since(start_time);
-        result
-    }
-
-    pub(crate) fn record_statistics_since(&mut self, start_time: Instant) {
-        join_from_z3_statistics(&mut self.solver_statistics, self.solver.get_statistics());
-        self.solver_statistics
-            .add_time("solver_time", start_time.elapsed().as_secs_f64());
-    }
-
-    pub(crate) fn inspect_last_proof(&self) {
-        match self.solver.get_proof() {
-            Some(proof) => {
-                ProofTree::new(proof);
-            }
-            None => log::debug!("NO PROOF!"),
-        }
-    }
-
-    pub(crate) fn has_model(&self) -> bool {
-        self.newest_model.is_some()
-    }
-
-    pub(crate) fn model_to_string(&self) -> anyhow::Result<String> {
-        match &self.newest_model {
-            Some(model) => model.dump_sorted(),
-            None => Ok("<no model>".to_string()),
-        }
-    }
-
-    pub(crate) fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
-        let model = self
-            .newest_model
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("no solver model is available"))?;
-        let solver_term = self.z3_var_context.rewrite_term(term);
-        let interpretation = self.z3_var_context.get_interpretation(model, &solver_term);
-        Ok(interpretation.to_string())
-    }
-
-    pub(crate) fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver_statistics.clone()
-    }
-
-    pub(crate) fn statistics_ref(&self) -> &SolverStatistics {
-        &self.solver_statistics
-    }
-
-    pub(crate) fn get_reason_unknown(&self) -> Option<String> {
-        self.solver.get_reason_unknown()
-    }
-
-    pub(crate) fn get_unsat_core(&self) -> Vec<String> {
-        self.solver
-            .get_unsat_core()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
-    pub(crate) fn to_smt2_string(&self) -> String {
-        self.solver.to_string()
-    }
 }
 
 fn configure_z3_solver(solver: &z3::Solver) {
@@ -193,117 +61,143 @@ fn join_from_z3_statistics(stats: &mut SolverStatistics, z3_stats: z3::Statistic
     }
 }
 
-impl InstantiationAssertionSink for Z3SolverBackend {
-    fn register_quantified_variables(&mut self, term: &Term) {
-        if let Term::Forall { vars, term: _ } = term {
-            for (symbol, sort) in vars {
-                self.create_variable(symbol, sort);
-            }
-        }
-    }
-
-    fn assert_instantiation_batch(&mut self, terms: &[Term]) {
-        self.assert_terms_conjunctively(terms);
-    }
-
-    fn assert_tracked_instantiation(&mut self, label: &str, term: &Term) {
-        self.assert_tracked_term(term, label);
-    }
-}
-
 impl YardbirdSolver for Z3SolverBackend {
     fn backend(&self) -> SolverBackend {
         SolverBackend::Z3
     }
 
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {
-        Z3SolverBackend::accept_command(self, command.clone());
+        let _ = command.clone().accept(&mut self.z3_var_context);
         Ok(())
     }
 
-    fn create_variable(
-        &mut self,
-        symbol: &smt2parser::concrete::Symbol,
-        sort: &smt2parser::concrete::Sort,
-    ) -> anyhow::Result<()> {
-        Z3SolverBackend::create_variable(self, symbol, sort);
+    fn create_variable(&mut self, symbol: &Symbol, sort: &Sort) -> anyhow::Result<()> {
+        self.z3_var_context.create_variable(symbol, sort);
         Ok(())
     }
 
     fn assert_term(&mut self, term: &Term) -> anyhow::Result<()> {
-        Z3SolverBackend::assert_term(self, term);
+        let z3_term = self.z3_var_context.rewrite_term(term);
+        self.solver.assert(z3_term.as_bool().unwrap());
         Ok(())
     }
 
     fn assert_not_term(&mut self, term: &Term) -> anyhow::Result<()> {
-        Z3SolverBackend::assert_not_term(self, term);
+        let z3_term = self.z3_var_context.rewrite_term(term);
+        let negated = Bool::not(&z3_term.as_bool().unwrap());
+        self.solver.assert(&negated);
         Ok(())
     }
 
     fn assert_terms_conjunctively(&mut self, terms: &[Term]) -> anyhow::Result<()> {
-        Z3SolverBackend::assert_terms_conjunctively(self, terms);
+        match terms {
+            [] => {}
+            [term] => self.assert_term(term)?,
+            _ => {
+                let z3_terms = terms
+                    .iter()
+                    .map(|term| {
+                        self.z3_var_context
+                            .rewrite_term(term)
+                            .as_bool()
+                            .expect("[Z3] instantiation term must be boolean")
+                    })
+                    .collect();
+                let conjunction = self.z3_var_context.make_and(z3_terms);
+                self.solver.assert(&conjunction);
+            }
+        }
         Ok(())
     }
 
     fn assert_tracked_term(&mut self, term: &Term, label: &str) -> anyhow::Result<()> {
-        Z3SolverBackend::assert_tracked_term(self, term, label);
+        let z3_term = self.z3_var_context.rewrite_term(term);
+        let tracked_bool = Bool::new_const(label);
+        self.solver
+            .assert_and_track(z3_term.as_bool().unwrap(), &tracked_bool);
         Ok(())
     }
 
     fn push(&mut self) {
-        Z3SolverBackend::push(self);
+        self.solver.push();
     }
 
     fn pop(&mut self, levels: u32) {
-        Z3SolverBackend::pop(self, levels);
+        self.solver.pop(levels);
     }
 
     fn check(&mut self) -> SolverCheckResult {
-        Z3SolverBackend::check(self)
+        let result = self.solver.check();
+        self.newest_model = self.solver.get_model();
+        result.into()
     }
 
     fn check_and_record_statistics(&mut self) -> SolverCheckResult {
-        Z3SolverBackend::check_and_record_statistics(self)
+        let start_time = Instant::now();
+        let result = self.check();
+        self.record_statistics_since(start_time);
+        result
     }
 
     fn record_statistics_since(&mut self, start_time: Instant) {
-        Z3SolverBackend::record_statistics_since(self, start_time);
+        join_from_z3_statistics(&mut self.solver_statistics, self.solver.get_statistics());
+        self.solver_statistics
+            .add_time("solver_time", start_time.elapsed().as_secs_f64());
     }
 
     fn inspect_last_proof(&self) -> anyhow::Result<()> {
-        Z3SolverBackend::inspect_last_proof(self);
+        match self.solver.get_proof() {
+            Some(proof) => {
+                ProofTree::new(proof);
+            }
+            None => log::debug!("NO PROOF!"),
+        }
         Ok(())
     }
 
     fn has_model(&self) -> bool {
-        Z3SolverBackend::has_model(self)
+        self.newest_model.is_some()
     }
 
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
-        Z3SolverBackend::eval_to_string(self, term)
+        let model = self
+            .newest_model
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("no solver model is available"))?;
+        let solver_term = self.z3_var_context.rewrite_term(term);
+        let interpretation = self.z3_var_context.get_interpretation(model, &solver_term);
+        Ok(interpretation.to_string())
     }
 
     fn model_to_string(&self) -> anyhow::Result<String> {
-        Z3SolverBackend::model_to_string(self)
+        match &self.newest_model {
+            Some(model) => model.dump_sorted(),
+            None => Ok("<no model>".to_string()),
+        }
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
-        Z3SolverBackend::get_solver_statistics(self)
+        self.solver_statistics.clone()
     }
 
     fn statistics_ref(&self) -> &SolverStatistics {
-        Z3SolverBackend::statistics_ref(self)
+        &self.solver_statistics
     }
 
     fn get_reason_unknown(&self) -> Option<String> {
-        Z3SolverBackend::get_reason_unknown(self)
+        self.solver.get_reason_unknown()
     }
 
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>> {
-        Ok(Z3SolverBackend::get_unsat_core(self))
+        Ok(self
+            .solver
+            .get_unsat_core()
+            .iter()
+            .map(ToString::to_string)
+            .collect())
     }
 
     fn to_smt2_string(&self) -> anyhow::Result<String> {
-        Ok(Z3SolverBackend::to_smt2_string(self))
+        Ok(self.solver.to_string())
     }
 }
