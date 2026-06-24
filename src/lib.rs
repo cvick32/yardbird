@@ -231,11 +231,20 @@ impl YardbirdOptions {
         Ok(())
     }
 
-    pub fn validate_solver_backend(&self) -> anyhow::Result<()> {
+    pub fn validate_solver_backend_for_vmt_mode(&self) -> anyhow::Result<()> {
         match self.solver {
             SolverBackend::Z3 => Ok(()),
             SolverBackend::Cvc5 => anyhow::bail!(
-                "--solver cvc5 is accepted for planning/configuration, but the CVC5 backend is not implemented until a later phase"
+                "--solver cvc5 is available for SMT-LIB simple mode in this phase, but VMT mode is not implemented until a later phase"
+            ),
+        }
+    }
+
+    pub fn validate_solver_backend_for_strategy_mode(&self) -> anyhow::Result<()> {
+        match self.solver {
+            SolverBackend::Z3 => Ok(()),
+            SolverBackend::Cvc5 => anyhow::bail!(
+                "--solver cvc5 is available for SMT-LIB simple mode in this phase, but strategy/refinement mode is not implemented until a later phase"
             ),
         }
     }

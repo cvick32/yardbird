@@ -24,8 +24,6 @@ fn main() -> anyhow::Result<()> {
         info!("Training database reset complete");
         return Ok(());
     }
-    options.validate_solver_backend()?;
-
     // Auto-detect mode based on file extension
     let filename = options.require_filename()?;
     let path = Path::new(filename);
@@ -72,6 +70,7 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     let use_strategy = should_use_strategy_mode(options);
 
     if use_strategy {
+        options.validate_solver_backend_for_strategy_mode()?;
         info!(
             "Using strategy-based solving: strategy={}, cost-function={}",
             options.strategy, options.cost_function
@@ -138,8 +137,8 @@ fn run_smtlib_with_strategy(
 
 /// Run SMTLIB in simple mode (no refinement)
 fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyhow::Result<()> {
-    let mut solver = SMTLIBSolver::new(problem.get_logic());
-    solver.execute(problem);
+    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver);
+    solver.execute(problem)?;
 
     let results = solver.get_results();
     if options.json_output {
@@ -268,6 +267,7 @@ fn print_strategy_results(
 }
 
 fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
+    options.validate_solver_backend_for_vmt_mode()?;
     info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
     let instantiation_strategy = options.build_instantiation_strategy();
