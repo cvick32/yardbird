@@ -297,7 +297,11 @@ impl Cvc5SolverBackend {
 
         match name.as_str() {
             "=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Equal, &args)),
+            "and" if args.is_empty() => Ok(self.tm.mk_true()),
+            "and" if args.len() == 1 => Ok(args[0].clone()),
             "and" => Ok(self.tm.mk_term(Kind::And, &args)),
+            "or" if args.is_empty() => Ok(self.tm.mk_false()),
+            "or" if args.len() == 1 => Ok(args[0].clone()),
             "or" => Ok(self.tm.mk_term(Kind::Or, &args)),
             "not" if args.len() == 1 => Ok(self.tm.mk_term(Kind::Not, &args)),
             "=>" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Implies, &args)),
