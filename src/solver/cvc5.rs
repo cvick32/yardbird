@@ -5,6 +5,7 @@ use smt2parser::concrete::{
     AttributeValue, Command, Constant, Identifier, QualIdentifier, Sort as SmtSort, Symbol,
     Term as SmtTerm,
 };
+use smt2parser::visitors::Index;
 
 use crate::{
     solver::{SolverCheckResult, YardbirdSolver},
@@ -29,6 +30,7 @@ impl Cvc5SolverBackend {
         solver.set_option("produce-models", "true");
         solver.set_option("produce-unsat-cores", "true");
         solver.set_option("incremental", "true");
+        solver.set_option("arrays-exp", "true");
         solver.set_logic(logic);
 
         Self {
@@ -44,7 +46,55 @@ impl Cvc5SolverBackend {
 
     fn convert_sort(&mut self, sort: &SmtSort) -> anyhow::Result<Sort<'static>> {
         match sort {
-            SmtSort::Simple { identifier } => match identifier_name(identifier).as_str() {
+            SmtSort::Simple { identifier } => self.convert_simple_sort(identifier),
+            SmtSort::Parameterized {
+                identifier,
+                parameters,
+            } if identifier_name(identifier) == "Array" && parameters.len() == 2 => {
+                let index_sort = self.convert_sort(&parameters[0])?;
+                let element_sort = self.convert_sort(&parameters[1])?;
+                Ok(self.tm.mk_array_sort(index_sort, element_sort))
+            }
+            SmtSort::Parameterized {
+                identifier,
+                parameters,
+            } => {
+                anyhow::bail!(
+                    "unsupported CVC5 parameterized sort: {} with {} parameter(s)",
+                    identifier_name(identifier),
+                    parameters.len()
+                )
+            }
+        }
+    }
+
+    fn convert_sort_ref(&self, sort: &SmtSort) -> anyhow::Result<Sort<'static>> {
+        match sort {
+            SmtSort::Simple { identifier } => self.convert_simple_sort_ref(identifier),
+            SmtSort::Parameterized {
+                identifier,
+                parameters,
+            } if identifier_name(identifier) == "Array" && parameters.len() == 2 => {
+                let index_sort = self.convert_sort_ref(&parameters[0])?;
+                let element_sort = self.convert_sort_ref(&parameters[1])?;
+                Ok(self.tm.mk_array_sort(index_sort, element_sort))
+            }
+            SmtSort::Parameterized {
+                identifier,
+                parameters,
+            } => {
+                anyhow::bail!(
+                    "unsupported CVC5 parameterized sort: {} with {} parameter(s)",
+                    identifier_name(identifier),
+                    parameters.len()
+                )
+            }
+        }
+    }
+
+    fn convert_simple_sort(&mut self, identifier: &Identifier) -> anyhow::Result<Sort<'static>> {
+        match identifier {
+            Identifier::Simple { symbol } => match symbol.0.as_str() {
                 "Bool" => Ok(self.tm.boolean_sort()),
                 "Int" => Ok(self.tm.integer_sort()),
                 name => {
@@ -57,23 +107,40 @@ impl Cvc5SolverBackend {
                     }
                 }
             },
-            SmtSort::Parameterized { identifier, .. } => {
-                anyhow::bail!(
-                    "CVC5 backend does not support parameterized sort {} until Phase 5",
-                    identifier_name(identifier)
-                )
+            Identifier::Indexed { symbol, indices } if symbol.0 == "BitVec" => {
+                let width = single_numeral_index("BitVec sort", indices)?;
+                Ok(self.tm.mk_bv_sort(width))
+            }
+            Identifier::Indexed { symbol, .. } => {
+                anyhow::bail!("unsupported CVC5 indexed sort: {}", symbol.0)
+            }
+        }
+    }
+
+    fn convert_simple_sort_ref(&self, identifier: &Identifier) -> anyhow::Result<Sort<'static>> {
+        match identifier {
+            Identifier::Simple { symbol } => match symbol.0.as_str() {
+                "Bool" => Ok(self.tm.boolean_sort()),
+                "Int" => Ok(self.tm.integer_sort()),
+                name => Ok(self
+                    .sorts
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| self.tm.mk_uninterpreted_sort(name))),
+            },
+            Identifier::Indexed { symbol, indices } if symbol.0 == "BitVec" => {
+                let width = single_numeral_index("BitVec sort", indices)?;
+                Ok(self.tm.mk_bv_sort(width))
+            }
+            Identifier::Indexed { symbol, .. } => {
+                anyhow::bail!("unsupported CVC5 indexed sort: {}", symbol.0)
             }
         }
     }
 
     fn convert_term(&self, term: &SmtTerm) -> anyhow::Result<Term<'static>> {
         match term {
-            SmtTerm::Constant(Constant::Numeral(value)) => {
-                Ok(self.tm.mk_integer_from_str(&value.to_string()))
-            }
-            SmtTerm::Constant(Constant::Decimal(value)) => {
-                Ok(self.tm.mk_real_from_str(&value.to_string()))
-            }
+            SmtTerm::Constant(constant) => self.convert_constant(constant),
             SmtTerm::QualIdentifier(qual_identifier) => {
                 self.convert_qual_identifier(qual_identifier)
             }
@@ -81,16 +148,91 @@ impl Cvc5SolverBackend {
                 qual_identifier,
                 arguments,
             } => self.convert_application(qual_identifier, arguments),
+            SmtTerm::Forall { .. } => {
+                anyhow::bail!("CVC5 forall conversion requires assertion context")
+            }
             SmtTerm::Let { .. }
-            | SmtTerm::Forall { .. }
             | SmtTerm::Exists { .. }
             | SmtTerm::Match { .. }
-            | SmtTerm::Attributes { .. }
-            | SmtTerm::Constant(Constant::Hexadecimal(_))
-            | SmtTerm::Constant(Constant::Binary(_))
-            | SmtTerm::Constant(Constant::String(_)) => {
-                anyhow::bail!("CVC5 backend does not support term in Phase 4: {term}")
+            | SmtTerm::Attributes { .. } => {
+                anyhow::bail!("unsupported CVC5 term: {term}")
             }
+        }
+    }
+
+    fn convert_assertion_term(&mut self, term: &SmtTerm) -> anyhow::Result<Term<'static>> {
+        match term {
+            SmtTerm::Forall { vars, term } => self.convert_forall(vars, term),
+            SmtTerm::Constant(constant) => self.convert_constant(constant),
+            SmtTerm::QualIdentifier(qual_identifier) => {
+                self.convert_qual_identifier(qual_identifier)
+            }
+            SmtTerm::Application {
+                qual_identifier,
+                arguments,
+            } => {
+                let args = arguments
+                    .iter()
+                    .map(|term| self.convert_assertion_term(term))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                self.make_application(qual_identifier, args)
+            }
+            SmtTerm::Let { .. }
+            | SmtTerm::Exists { .. }
+            | SmtTerm::Match { .. }
+            | SmtTerm::Attributes { .. } => {
+                anyhow::bail!("unsupported CVC5 assertion term: {term}")
+            }
+        }
+    }
+
+    fn convert_forall(
+        &mut self,
+        vars: &[(Symbol, SmtSort)],
+        term: &SmtTerm,
+    ) -> anyhow::Result<Term<'static>> {
+        let mut bound_vars = Vec::with_capacity(vars.len());
+        let mut shadowed_terms = Vec::with_capacity(vars.len());
+
+        for (symbol, sort) in vars {
+            let sort = self.convert_sort(sort)?;
+            let var = self.tm.mk_var(sort, &symbol.0);
+            let previous = self.terms.insert(symbol.0.clone(), var.clone());
+            shadowed_terms.push((symbol.0.clone(), previous));
+            bound_vars.push(var);
+        }
+
+        let body_result = self.convert_assertion_term(term);
+
+        for (name, previous) in shadowed_terms.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.terms.insert(name, previous);
+            } else {
+                self.terms.remove(&name);
+            }
+        }
+
+        let body = body_result?;
+        let variable_list = self.tm.mk_term(Kind::VariableList, &bound_vars);
+        Ok(self.tm.mk_term(Kind::Forall, &[variable_list, body]))
+    }
+
+    fn convert_constant(&self, constant: &Constant) -> anyhow::Result<Term<'static>> {
+        match constant {
+            Constant::Numeral(value) => Ok(self.tm.mk_integer_from_str(&value.to_string())),
+            Constant::Decimal(value) => Ok(self.tm.mk_real_from_str(&value.to_string())),
+            Constant::Hexadecimal(hex_bytes) => {
+                let bit_width = (hex_bytes.len() * 4) as u32;
+                let hex_value = hex_bytes
+                    .iter()
+                    .map(|digit| format!("{digit:x}"))
+                    .collect::<String>();
+                Ok(self.tm.mk_bv_from_str(bit_width, &hex_value, 16))
+            }
+            Constant::Binary(_) => {
+                anyhow::bail!("CVC5 binary constants are not part of the current Z3 parity set")
+            }
+            Constant::String(_) => anyhow::bail!("CVC5 string constants are unsupported"),
         }
     }
 
@@ -98,15 +240,22 @@ impl Cvc5SolverBackend {
         &self,
         qual_identifier: &QualIdentifier,
     ) -> anyhow::Result<Term<'static>> {
-        let name = qual_identifier.get_name();
-        match name.as_str() {
-            "true" => Ok(self.tm.mk_true()),
-            "false" => Ok(self.tm.mk_false()),
-            _ => self
-                .terms
-                .get(&name)
-                .cloned()
-                .ok_or_else(|| anyhow::anyhow!("unknown CVC5 term symbol: {name}")),
+        match qual_identifier {
+            QualIdentifier::Simple {
+                identifier: Identifier::Indexed { symbol, indices },
+            } if symbol.0.starts_with("bv") => self.convert_indexed_bv_literal(&symbol.0, indices),
+            _ => {
+                let name = qual_identifier.get_name();
+                match name.as_str() {
+                    "true" => Ok(self.tm.mk_true()),
+                    "false" => Ok(self.tm.mk_false()),
+                    _ => self
+                        .terms
+                        .get(&name)
+                        .cloned()
+                        .ok_or_else(|| anyhow::anyhow!("unknown CVC5 term symbol: {name}")),
+                }
+            }
         }
     }
 
@@ -115,11 +264,31 @@ impl Cvc5SolverBackend {
         qual_identifier: &QualIdentifier,
         arguments: &[SmtTerm],
     ) -> anyhow::Result<Term<'static>> {
-        let name = qual_identifier.get_name();
         let args = arguments
             .iter()
             .map(|term| self.convert_term(term))
             .collect::<anyhow::Result<Vec<_>>>()?;
+
+        self.make_application(qual_identifier, args)
+    }
+
+    fn make_application(
+        &self,
+        qual_identifier: &QualIdentifier,
+        args: Vec<Term<'static>>,
+    ) -> anyhow::Result<Term<'static>> {
+        if let Some((symbol, indices)) = indexed_identifier_parts(qual_identifier) {
+            if symbol.starts_with("bv") {
+                return self.convert_indexed_bv_literal(symbol, indices);
+            }
+            return self.make_indexed_application(symbol, indices, args);
+        }
+
+        let name = qual_identifier.get_name();
+
+        if name == "const" {
+            return self.make_const_array(qual_identifier, args);
+        }
 
         match name.as_str() {
             "=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Equal, &args)),
@@ -132,10 +301,49 @@ impl Cvc5SolverBackend {
             "-" if args.len() == 1 => Ok(self.tm.mk_term(Kind::Neg, &args)),
             "-" => Ok(self.tm.mk_term(Kind::Sub, &args)),
             "*" => Ok(self.tm.mk_term(Kind::Mult, &args)),
+            "/" if args.len() == 2 => Ok(self.tm.mk_term(Kind::IntsDivision, &args)),
+            "mod" if args.len() == 2 => Ok(self.tm.mk_term(Kind::IntsModulus, &args)),
             ">" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Gt, &args)),
             ">=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Geq, &args)),
             "<" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Lt, &args)),
             "<=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Leq, &args)),
+            "select" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Select, &args)),
+            "store" if args.len() == 3 => Ok(self.tm.mk_term(Kind::Store, &args)),
+            "concat" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorConcat, &args)),
+            "bvule" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUle, &args)),
+            "bvult" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUlt, &args)),
+            "bvuge" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUge, &args)),
+            "bvugt" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUgt, &args)),
+            "bvsle" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSle, &args)),
+            "bvslt" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSlt, &args)),
+            "bvsge" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSge, &args)),
+            "bvsgt" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSgt, &args)),
+            "bvadd" if args.len() >= 2 => {
+                self.make_left_associative_bv_term(Kind::BitvectorAdd, args)
+            }
+            "bvsub" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSub, &args)),
+            "bvmul" if args.len() >= 2 => {
+                self.make_left_associative_bv_term(Kind::BitvectorMult, args)
+            }
+            "bvand" if args.len() >= 2 => {
+                self.make_left_associative_bv_term(Kind::BitvectorAnd, args)
+            }
+            "bvor" if args.len() >= 2 => {
+                self.make_left_associative_bv_term(Kind::BitvectorOr, args)
+            }
+            "bvxor" if args.len() >= 2 => {
+                self.make_left_associative_bv_term(Kind::BitvectorXor, args)
+            }
+            "bvnot" if args.len() == 1 => Ok(self.tm.mk_term(Kind::BitvectorNot, &args)),
+            "bvneg" if args.len() == 1 => Ok(self.tm.mk_term(Kind::BitvectorNeg, &args)),
+            "bvlshr" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorLshr, &args)),
+            "bvashr" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorAshr, &args)),
+            "bvshl" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorShl, &args)),
+            "bvudiv" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUdiv, &args)),
+            "bvurem" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUrem, &args)),
+            "bvsdiv" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSdiv, &args)),
+            "bvsrem" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSrem, &args)),
+            "bvsmod" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSmod, &args)),
             _ => {
                 if let Some(function) = self.terms.get(&name) {
                     let children = std::iter::once(function.clone())
@@ -143,10 +351,91 @@ impl Cvc5SolverBackend {
                         .collect::<Vec<_>>();
                     Ok(self.tm.mk_term(Kind::ApplyUf, &children))
                 } else {
-                    anyhow::bail!("unsupported CVC5 application in Phase 4: {name}")
+                    anyhow::bail!("unsupported CVC5 application: {name}")
                 }
             }
         }
+    }
+
+    fn make_const_array(
+        &self,
+        qual_identifier: &QualIdentifier,
+        args: Vec<Term<'static>>,
+    ) -> anyhow::Result<Term<'static>> {
+        if args.len() != 1 {
+            anyhow::bail!("CVC5 const array expects one value argument");
+        }
+
+        let QualIdentifier::Sorted { sort, .. } = qual_identifier else {
+            anyhow::bail!("CVC5 const array requires a sorted `(as const Sort)` identifier");
+        };
+
+        let array_sort = self.convert_sort_ref(sort)?;
+        Ok(self.tm.mk_const_array(array_sort, args[0].clone()))
+    }
+
+    fn make_left_associative_bv_term(
+        &self,
+        kind: Kind,
+        args: Vec<Term<'static>>,
+    ) -> anyhow::Result<Term<'static>> {
+        let mut terms = args.into_iter();
+        let Some(mut result) = terms.next() else {
+            anyhow::bail!("bitvector operation requires at least one argument");
+        };
+
+        for term in terms {
+            result = self.tm.mk_term(kind, &[result, term]);
+        }
+
+        Ok(result)
+    }
+
+    fn make_indexed_application(
+        &self,
+        function_name: &str,
+        indices: &[Index],
+        args: Vec<Term<'static>>,
+    ) -> anyhow::Result<Term<'static>> {
+        match function_name {
+            "extract" if args.len() == 1 && indices.len() == 2 => {
+                let high = numeral_index("extract high", &indices[0])?;
+                let low = numeral_index("extract low", &indices[1])?;
+                let op = self.tm.mk_op(Kind::BitvectorExtract, &[high, low]);
+                Ok(self.tm.mk_term_from_op(op, &args))
+            }
+            "zero_extend" if args.len() == 1 && indices.len() == 1 => {
+                let extension = numeral_index("zero_extend", &indices[0])?;
+                let op = self.tm.mk_op(Kind::BitvectorZeroExtend, &[extension]);
+                Ok(self.tm.mk_term_from_op(op, &args))
+            }
+            "sign_extend" if args.len() == 1 && indices.len() == 1 => {
+                let extension = numeral_index("sign_extend", &indices[0])?;
+                let op = self.tm.mk_op(Kind::BitvectorSignExtend, &[extension]);
+                Ok(self.tm.mk_term_from_op(op, &args))
+            }
+            _ => anyhow::bail!(
+                "unsupported CVC5 indexed application: (_ {function_name} {}) with {} argument(s)",
+                indices
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                args.len()
+            ),
+        }
+    }
+
+    fn convert_indexed_bv_literal(
+        &self,
+        symbol: &str,
+        indices: &[Index],
+    ) -> anyhow::Result<Term<'static>> {
+        let value = symbol
+            .strip_prefix("bv")
+            .ok_or_else(|| anyhow::anyhow!("bitvector literal must start with bv: {symbol}"))?;
+        let width = single_numeral_index("bitvector literal", indices)?;
+        Ok(self.tm.mk_bv_from_str(width, value, 10))
     }
 }
 
@@ -159,9 +448,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
         match command {
             Command::DeclareSort { symbol, arity } => {
                 if *arity != 0u32.into() {
-                    anyhow::bail!(
-                        "CVC5 backend only supports zero-arity declare-sort in Phase 4: {symbol}"
-                    );
+                    anyhow::bail!("CVC5 backend only supports zero-arity declare-sort: {symbol}");
                 }
                 let sort = self.solver.declare_sort(&symbol.0, 0);
                 self.sorts.insert(symbol.0.clone(), sort);
@@ -188,7 +475,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
                 Ok(())
             }
             Command::DefineFun { sig, term } if sig.parameters.is_empty() => {
-                let value = self.convert_term(term)?;
+                let value = self.convert_assertion_term(term)?;
                 self.terms.insert(sig.name.0.clone(), value);
                 Ok(())
             }
@@ -204,7 +491,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
             }
             Command::DefineFun { sig, .. } => {
                 anyhow::bail!(
-                    "CVC5 backend only supports zero-argument define-fun in Phase 4: {}",
+                    "CVC5 backend only supports zero-argument define-fun: {}",
                     sig.name.0
                 )
             }
@@ -220,13 +507,13 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn assert_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
-        let cvc5_term = self.convert_term(term)?;
+        let cvc5_term = self.convert_assertion_term(term)?;
         self.solver.assert_formula(cvc5_term);
         Ok(())
     }
 
     fn assert_not_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
-        let cvc5_term = self.convert_term(term)?;
+        let cvc5_term = self.convert_assertion_term(term)?;
         let not_term = self.tm.mk_term(Kind::Not, &[cvc5_term]);
         self.solver.assert_formula(not_term);
         Ok(())
@@ -239,7 +526,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
             _ => {
                 let children = terms
                     .iter()
-                    .map(|term| self.convert_term(term))
+                    .map(|term| self.convert_assertion_term(term))
                     .collect::<anyhow::Result<Vec<_>>>()?;
                 let conjunction = self.tm.mk_term(Kind::And, &children);
                 self.solver.assert_formula(conjunction);
@@ -250,7 +537,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
 
     fn assert_tracked_term(&mut self, term: &SmtTerm, label: &str) -> anyhow::Result<()> {
         let label_term = self.tm.mk_const(self.tm.boolean_sort(), label);
-        let cvc5_term = self.convert_term(term)?;
+        let cvc5_term = self.convert_assertion_term(term)?;
         let implication = self
             .tm
             .mk_term(Kind::Implies, &[label_term.clone(), cvc5_term]);
@@ -350,6 +637,36 @@ impl SolverCheckResult {
         } else {
             SolverCheckResult::Unknown
         }
+    }
+}
+
+fn indexed_identifier_parts(qual_identifier: &QualIdentifier) -> Option<(&str, &[Index])> {
+    match qual_identifier {
+        QualIdentifier::Simple {
+            identifier: Identifier::Indexed { symbol, indices },
+        }
+        | QualIdentifier::Sorted {
+            identifier: Identifier::Indexed { symbol, indices },
+            ..
+        } => Some((&symbol.0, indices)),
+        _ => None,
+    }
+}
+
+fn single_numeral_index(context: &str, indices: &[Index]) -> anyhow::Result<u32> {
+    if indices.len() != 1 {
+        anyhow::bail!("{context} expects exactly one numeric index");
+    }
+    numeral_index(context, &indices[0])
+}
+
+fn numeral_index(context: &str, index: &Index) -> anyhow::Result<u32> {
+    match index {
+        Index::Numeral(value) => value
+            .to_string()
+            .parse::<u32>()
+            .map_err(|error| anyhow::anyhow!("{context} index is not a u32: {error}")),
+        Index::Symbol(symbol) => anyhow::bail!("{context} index must be numeric: {symbol}"),
     }
 }
 
