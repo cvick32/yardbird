@@ -148,6 +148,40 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     }
 }
 
+fn run_benchmark_with_solver(
+    filename: impl AsRef<Path>,
+    solver_backend: SolverBackend,
+) -> BenchmarkResult {
+    let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
+    let (status, used_instantiations) = run_with_timeout(
+        move || {
+            let vmt_model = model_from_options(&options);
+            let instantiation_strategy = options.build_instantiation_strategy();
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, solver_backend);
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                10,
+                false,
+                array_bmc_cost_factory,
+                AuxSynthesisConfig::default(),
+            ));
+            let res = driver.check_strategy(options.depth, strat).unwrap();
+            res.used_instances
+        },
+        Duration::from_secs(20),
+    );
+    let mut used_instantiations = used_instantiations
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    used_instantiations.sort();
+
+    BenchmarkResult {
+        example_name: filename.as_ref().to_string_lossy().to_string(),
+        status,
+        used_instantiations,
+    }
+}
+
 fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult {
     let example_name = filename.as_ref().to_string_lossy().to_string();
     let path = example_name.clone();
@@ -260,6 +294,17 @@ fn smt2_array_bitvec_simple_strategy() {
     assert_debug_snapshot!(
         "smt2_array_bitvec_simple_strategy",
         run_smt2_strategy_benchmark("examples/smt2/array_bitvec_simple.smt2")
+    );
+}
+
+#[test]
+fn cvc5_vmt_array_copy() {
+    let _guard = SNAPSHOT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert_debug_snapshot!(
+        "cvc5_vmt_array_copy",
+        run_benchmark_with_solver("examples/array/array_copy.vmt", SolverBackend::Cvc5)
     );
 }
 

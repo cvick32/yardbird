@@ -1015,9 +1015,72 @@ mod tests {
             )
             .unwrap();
 
+        solver.push();
         assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        solver.pop(1);
         let core = solver.get_unsat_core().unwrap();
         assert!(core.contains(&"positive_inst".to_string()));
         assert!(core.contains(&"nonpositive_inst".to_string()));
+    }
+
+    #[test]
+    fn cvc5_unsat_core_is_empty_outside_unsat_mode() {
+        let mut solver: Box<dyn YardbirdSolver> = Box::new(Cvc5SolverBackend::new("QF_LIA"));
+        solver
+            .accept_command(&Command::DeclareConst {
+                symbol: Symbol("x".to_string()),
+                sort: int_sort(),
+            })
+            .unwrap();
+        solver
+            .assert_tracked_instantiation(
+                "positive_inst",
+                &app(">", vec![symbol_term("x"), parsed_term("0")]),
+            )
+            .unwrap();
+
+        assert_eq!(solver.check(), SolverCheckResult::Sat);
+        assert!(solver.get_unsat_core().unwrap().is_empty());
+    }
+
+    #[test]
+    fn cvc5_preserves_model_values_across_pop() {
+        let mut solver = Cvc5SolverBackend::new("QF_LIA");
+        let x = symbol_term("x");
+        solver
+            .accept_command(&Command::DeclareConst {
+                symbol: Symbol("x".to_string()),
+                sort: int_sort(),
+            })
+            .unwrap();
+        solver
+            .assert_term(&app("=", vec![x.clone(), parsed_term("7")]))
+            .unwrap();
+
+        solver.push();
+        solver
+            .assert_term(&app(">", vec![x.clone(), parsed_term("0")]))
+            .unwrap();
+        assert_eq!(solver.check(), SolverCheckResult::Sat);
+        solver
+            .preserve_model_values(std::slice::from_ref(&x))
+            .unwrap();
+        solver.pop(1);
+
+        assert_eq!(solver.eval_to_string(&x).unwrap(), "7");
+    }
+
+    #[test]
+    fn cvc5_model_value_normalization_strips_ascriptions() {
+        assert_eq!(
+            normalize_model_value("(as @array_0 Array_Int_Int)".to_string()),
+            "cvc5_array_0"
+        );
+        assert_eq!(
+            normalize_model_value("(as (Write Int Int @array_0 0 1) Array_Int_Int)".to_string()),
+            "(Write Int Int cvc5_array_0 0 1)"
+        );
+        assert_eq!(normalize_model_value("a@0".to_string()), "a@0");
+        assert_eq!(normalize_model_value("42".to_string()), "42");
     }
 }
