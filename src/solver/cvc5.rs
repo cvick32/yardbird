@@ -19,6 +19,8 @@ pub struct Cvc5SolverBackend {
     sorts: HashMap<String, Sort<'static>>,
     terms: HashMap<String, Term<'static>>,
     tracked_labels: Vec<(String, Term<'static>)>,
+    model_value_cache: HashMap<SmtTerm, String>,
+    unsat_core_cache: Vec<String>,
     solver_statistics: SolverStatistics,
     last_result: Option<SolverCheckResult>,
 }
@@ -40,6 +42,8 @@ impl Cvc5SolverBackend {
             sorts: HashMap::new(),
             terms: HashMap::new(),
             tracked_labels: vec![],
+            model_value_cache: HashMap::new(),
+            unsat_core_cache: vec![],
             solver_statistics: SolverStatistics::new(),
             last_result: None,
         }
@@ -588,12 +592,37 @@ impl YardbirdSolver for Cvc5SolverBackend {
         self.last_result == Some(SolverCheckResult::Sat)
     }
 
+    fn preserve_model_values(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
+        if self.last_result != Some(SolverCheckResult::Sat) {
+            self.model_value_cache.clear();
+            return Ok(());
+        }
+
+        let values = terms
+            .iter()
+            .map(|term| {
+                let cvc5_term = self.convert_term(term)?;
+                Ok((
+                    term.clone(),
+                    normalize_model_value(self.solver.get_value(cvc5_term).to_string()),
+                ))
+            })
+            .collect::<anyhow::Result<HashMap<_, _>>>()?;
+        self.model_value_cache = values;
+        Ok(())
+    }
+
     fn eval_to_string(&self, term: &SmtTerm) -> anyhow::Result<String> {
         if self.last_result != Some(SolverCheckResult::Sat) {
             anyhow::bail!("CVC5 model values are only available after SAT");
         }
+        if let Some(value) = self.model_value_cache.get(term) {
+            return Ok(value.clone());
+        }
         let cvc5_term = self.convert_term(term)?;
-        Ok(self.solver.get_value(cvc5_term).to_string())
+        Ok(normalize_model_value(
+            self.solver.get_value(cvc5_term).to_string(),
+        ))
     }
 
     fn model_to_string(&self) -> anyhow::Result<String> {
@@ -675,6 +704,72 @@ fn numeral_index(context: &str, index: &Index) -> anyhow::Result<u32> {
             .map_err(|error| anyhow::anyhow!("{context} index is not a u32: {error}")),
         Index::Symbol(symbol) => anyhow::bail!("{context} index must be numeric: {symbol}"),
     }
+}
+
+fn normalize_model_value(value: String) -> String {
+    let stripped = strip_smtlib_ascription(value.trim())
+        .unwrap_or_else(|| value.trim())
+        .to_string();
+    sanitize_cvc5_generated_symbols(&stripped)
+}
+
+fn strip_smtlib_ascription(input: &str) -> Option<&str> {
+    let inner = input.strip_prefix("(as ")?.strip_suffix(')')?.trim();
+    let (term, rest) = split_first_s_expr(inner)?;
+    if rest.trim().is_empty() {
+        None
+    } else {
+        Some(term)
+    }
+}
+
+fn split_first_s_expr(input: &str) -> Option<(&str, &str)> {
+    let trimmed = input.trim_start();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if !trimmed.starts_with('(') {
+        let end = trimmed
+            .char_indices()
+            .find_map(|(idx, ch)| ch.is_whitespace().then_some(idx))
+            .unwrap_or(trimmed.len());
+        return Some((&trimmed[..end], &trimmed[end..]));
+    }
+
+    let mut depth = 0usize;
+    for (idx, ch) in trimmed.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let end = idx + ch.len_utf8();
+                    return Some((&trimmed[..end], &trimmed[end..]));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn sanitize_cvc5_generated_symbols(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut at_token_start = true;
+
+    for ch in input.chars() {
+        if ch == '@' && at_token_start {
+            result.push_str("cvc5_");
+        } else {
+            result.push(ch);
+        }
+
+        at_token_start = ch.is_whitespace() || ch == '(';
+    }
+
+    result
 }
 
 fn identifier_name(identifier: &Identifier) -> String {

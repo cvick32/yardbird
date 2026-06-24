@@ -50,6 +50,9 @@ pub trait YardbirdSolver {
     }
 
     fn has_model(&self) -> bool;
+    fn preserve_model_values(&mut self, _terms: &[Term]) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn model_to_string(&self) -> anyhow::Result<String>;
 

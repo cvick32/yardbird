@@ -536,6 +536,17 @@ impl Problem for SMTProblem {
         self.push_property();
         let sat_result = self.solver.check();
         let _ = self.solver.inspect_last_proof();
+        if sat_result == SolverCheckResult::Sat {
+            let model_terms = self
+                .subterm_handler
+                .get_all_subterms()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            self.solver
+                .preserve_model_values(&model_terms)
+                .expect("solver should preserve SAT model values before property pop");
+        }
         // Popping property off.
         self.solver.pop(1);
         self.solver.record_statistics_since(start_time);
