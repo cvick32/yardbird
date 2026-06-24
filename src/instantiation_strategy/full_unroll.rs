@@ -2,9 +2,11 @@ use log::debug;
 use smt2parser::concrete::Term;
 use smt2parser::vmt::{bmc::BMCBuilder, quantified_instantiator::Instance};
 
-use crate::{subterm_handler::SubtermHandler, training::IndexedInstantiationRecord};
+use crate::{
+    solver::YardbirdSolver, subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
+};
 
-use super::{InstantiationAssertionSink, InstantiationStrategy, StoredInstantiation};
+use super::{InstantiationStrategy, StoredInstantiation};
 
 /// Default instantiation strategy that fully unrolls all instances from depth 0 to current depth
 /// when they are first added.
@@ -41,7 +43,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         abstract_instantiation_id: Option<String>,
         _depth: u16,
         bmc_builder: &mut BMCBuilder,
-        assertion_sink: &mut dyn InstantiationAssertionSink,
+        solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
@@ -60,7 +62,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
             abstract_instantiation_id: abstract_instantiation_id.clone(),
         });
 
-        assertion_sink.register_quantified_variables(inst.get_term());
+        solver
+            .register_quantified_variables(inst.get_term())
+            .expect("solver should register quantified variables");
 
         // Unroll the instantiation from 0 to current depth
         // (This is the logic from SMTProblem::unroll_instantiation)
@@ -91,7 +95,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
             for (idx, indexed_term) in all_indexed_insts.iter().enumerate() {
                 let inst_num = tracked_labels.len();
                 let label = format!("inst_{}_{}", inst_num, idx);
-                assertion_sink.assert_tracked_instantiation(label.as_str(), indexed_term);
+                solver
+                    .assert_tracked_instantiation(label.as_str(), indexed_term)
+                    .expect("solver should assert tracked instantiations");
                 tracked_labels.push(IndexedInstantiationRecord {
                     label,
                     term: indexed_term.to_string(),
@@ -105,7 +111,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
                 });
             }
         } else {
-            assertion_sink.assert_instantiation_batch(&all_indexed_insts);
+            solver
+                .assert_instantiation_batch(&all_indexed_insts)
+                .expect("solver should assert instantiations");
         }
     }
 
@@ -114,7 +122,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         depth: u16,
         instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
-        assertion_sink: &mut dyn InstantiationAssertionSink,
+        solver: &mut dyn YardbirdSolver,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         asserted_instantiations: &mut Vec<Term>,
@@ -141,7 +149,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
             for (indexed_term, abstract_instantiation_id) in all_indexed_insts {
                 let inst_num = tracked_labels.len();
                 let label = format!("inst_{}_depth_{}", inst_num, depth);
-                assertion_sink.assert_tracked_instantiation(label.as_str(), &indexed_term);
+                solver
+                    .assert_tracked_instantiation(label.as_str(), &indexed_term)
+                    .expect("solver should assert tracked instantiations");
                 let term_string = indexed_term.to_string();
                 tracked_labels.push(IndexedInstantiationRecord {
                     label,
@@ -158,7 +168,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
                 .into_iter()
                 .map(|(indexed_term, _)| indexed_term)
                 .collect::<Vec<_>>();
-            assertion_sink.assert_instantiation_batch(&terms);
+            solver
+                .assert_instantiation_batch(&terms)
+                .expect("solver should assert instantiations");
         }
     }
 }

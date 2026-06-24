@@ -22,6 +22,23 @@ pub trait YardbirdSolver {
     fn assert_terms_conjunctively(&mut self, terms: &[Term]) -> anyhow::Result<()>;
     fn assert_tracked_term(&mut self, term: &Term, label: &str) -> anyhow::Result<()>;
 
+    fn register_quantified_variables(&mut self, term: &Term) -> anyhow::Result<()> {
+        if let Term::Forall { vars, term: _ } = term {
+            for (symbol, sort) in vars {
+                self.create_variable(symbol, sort)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn assert_instantiation_batch(&mut self, terms: &[Term]) -> anyhow::Result<()> {
+        self.assert_terms_conjunctively(terms)
+    }
+
+    fn assert_tracked_instantiation(&mut self, label: &str, term: &Term) -> anyhow::Result<()> {
+        self.assert_tracked_term(term, label)
+    }
+
     fn push(&mut self);
     fn pop(&mut self, levels: u32);
 

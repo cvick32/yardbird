@@ -5,19 +5,14 @@ use smt2parser::{
     vmt::{bmc::BMCBuilder, quantified_instantiator::Instance},
 };
 
-use crate::{subterm_handler::SubtermHandler, training::IndexedInstantiationRecord};
+use crate::{
+    solver::YardbirdSolver, subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
+};
 
 #[derive(Clone, Debug)]
 pub struct StoredInstantiation {
     pub inst: Instance,
     pub abstract_instantiation_id: Option<String>,
-}
-
-/// Backend-neutral assertion operations used by instantiation strategies.
-pub trait InstantiationAssertionSink {
-    fn register_quantified_variables(&mut self, term: &Term);
-    fn assert_instantiation_batch(&mut self, terms: &[Term]);
-    fn assert_tracked_instantiation(&mut self, label: &str, term: &Term);
 }
 
 /// Trait for controlling how quantifier instantiations are added and unrolled in BMC problems.
@@ -39,7 +34,7 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         abstract_instantiation_id: Option<String>,
         depth: u16,
         bmc_builder: &mut BMCBuilder,
-        assertion_sink: &mut dyn InstantiationAssertionSink,
+        solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
@@ -57,7 +52,7 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         depth: u16,
         instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
-        assertion_sink: &mut dyn InstantiationAssertionSink,
+        solver: &mut dyn YardbirdSolver,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         asserted_instantiations: &mut Vec<Term>,
