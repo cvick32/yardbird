@@ -700,6 +700,7 @@ fn attribute_value_to_option_string(
 #[cfg(test)]
 mod tests {
     use smt2parser::concrete::{Command, Identifier, QualIdentifier, Sort, Symbol, Term};
+    use smt2parser::visitors::Index;
 
     use super::*;
 
@@ -708,6 +709,24 @@ mod tests {
             identifier: Identifier::Simple {
                 symbol: Symbol("Int".to_string()),
             },
+        }
+    }
+
+    fn bitvec_sort(width: u32) -> Sort {
+        Sort::Simple {
+            identifier: Identifier::Indexed {
+                symbol: Symbol("BitVec".to_string()),
+                indices: vec![Index::Numeral(width.into())],
+            },
+        }
+    }
+
+    fn array_sort(index: Sort, value: Sort) -> Sort {
+        Sort::Parameterized {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Array".to_string()),
+            },
+            parameters: vec![index, value],
         }
     }
 
@@ -720,6 +739,10 @@ mod tests {
             qual_identifier: QualIdentifier::simple(name),
             arguments: args,
         }
+    }
+
+    fn parsed_term(term: &str) -> Term {
+        term.parse::<Term>().unwrap()
     }
 
     #[test]
@@ -763,5 +786,91 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(solver.check(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
+    fn cvc5_solves_native_array_select_store() {
+        let mut solver = Cvc5SolverBackend::new("ALL");
+        for (name, sort) in [
+            ("arr", array_sort(int_sort(), int_sort())),
+            ("idx", int_sort()),
+            ("val", int_sort()),
+        ] {
+            solver
+                .accept_command(&Command::DeclareConst {
+                    symbol: Symbol(name.to_string()),
+                    sort,
+                })
+                .unwrap();
+        }
+
+        solver
+            .assert_term(&parsed_term(
+                "(not (= (select (store arr idx val) idx) val))",
+            ))
+            .unwrap();
+        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
+    fn cvc5_solves_array_bitvector_select_store() {
+        let mut solver = Cvc5SolverBackend::new("ALL");
+        for (name, sort) in [
+            ("arr", array_sort(bitvec_sort(5), bitvec_sort(32))),
+            ("idx", bitvec_sort(5)),
+            ("val", bitvec_sort(32)),
+        ] {
+            solver
+                .accept_command(&Command::DeclareConst {
+                    symbol: Symbol(name.to_string()),
+                    sort,
+                })
+                .unwrap();
+        }
+
+        solver
+            .assert_term(&parsed_term(
+                "(not (= (select (store arr idx val) idx) val))",
+            ))
+            .unwrap();
+        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
+    fn cvc5_solves_bitvector_literals_and_indexed_ops() {
+        let mut solver = Cvc5SolverBackend::new("ALL");
+        for term in [
+            "(= ((_ extract 3 0) #x2a) (_ bv10 4))",
+            "(= ((_ zero_extend 4) (_ bv15 4)) (_ bv15 8))",
+            "(= ((_ sign_extend 4) (_ bv15 4)) (_ bv255 8))",
+            "(= (concat (_ bv10 4) (_ bv5 4)) (_ bv165 8))",
+            "(= (bvand (_ bv15 4) (_ bv10 4)) (_ bv10 4))",
+            "(= (bvor (_ bv1 4) (_ bv2 4) (_ bv4 4)) (_ bv7 4))",
+            "(= (bvadd (_ bv1 8) (_ bv2 8) (_ bv3 8)) (_ bv6 8))",
+        ] {
+            solver.assert_term(&parsed_term(term)).unwrap();
+        }
+
+        assert_eq!(solver.check(), SolverCheckResult::Sat);
+    }
+
+    #[test]
+    fn cvc5_solves_constant_array() {
+        let mut solver = Cvc5SolverBackend::new("ALL");
+        solver
+            .assert_term(&parsed_term(
+                "(not (= (select ((as const (Array Int Int)) 7) 0) 7))",
+            ))
+            .unwrap();
+        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
+    fn cvc5_solves_forall_assertion() {
+        let mut solver = Cvc5SolverBackend::new("ALL");
+        solver
+            .assert_term(&parsed_term("(forall ((x Int)) (= x x))"))
+            .unwrap();
+        assert_eq!(solver.check(), SolverCheckResult::Sat);
     }
 }
