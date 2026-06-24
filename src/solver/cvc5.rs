@@ -29,6 +29,7 @@ impl Cvc5SolverBackend {
         let mut solver = Solver::new(tm);
         solver.set_option("produce-models", "true");
         solver.set_option("produce-unsat-cores", "true");
+        solver.set_option("produce-unsat-assumptions", "true");
         solver.set_option("incremental", "true");
         solver.set_option("arrays-exp", "true");
         solver.set_logic(logic);
@@ -615,12 +616,18 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>> {
-        Ok(self
-            .solver
-            .get_unsat_assumptions()
+        let assumptions = self.solver.get_unsat_assumptions();
+        let labels = assumptions
             .iter()
-            .map(ToString::to_string)
-            .collect())
+            .map(|assumption| {
+                self.tracked_labels
+                    .iter()
+                    .find(|(_, label_term)| label_term == assumption)
+                    .map(|(label, _)| label.clone())
+                    .unwrap_or_else(|| assumption.to_string())
+            })
+            .collect();
+        Ok(labels)
     }
 
     fn to_smt2_string(&self) -> anyhow::Result<String> {
@@ -872,5 +879,34 @@ mod tests {
             .assert_term(&parsed_term("(forall ((x Int)) (= x x))"))
             .unwrap();
         assert_eq!(solver.check(), SolverCheckResult::Sat);
+    }
+
+    #[test]
+    fn cvc5_recovers_tracked_unsat_core_labels() {
+        let mut solver: Box<dyn YardbirdSolver> = Box::new(Cvc5SolverBackend::new("QF_LIA"));
+        solver
+            .accept_command(&Command::DeclareConst {
+                symbol: Symbol("x".to_string()),
+                sort: int_sort(),
+            })
+            .unwrap();
+
+        solver
+            .assert_tracked_instantiation(
+                "positive_inst",
+                &app(">", vec![symbol_term("x"), parsed_term("0")]),
+            )
+            .unwrap();
+        solver
+            .assert_tracked_instantiation(
+                "nonpositive_inst",
+                &app("<=", vec![symbol_term("x"), parsed_term("0")]),
+            )
+            .unwrap();
+
+        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        let core = solver.get_unsat_core().unwrap();
+        assert!(core.contains(&"positive_inst".to_string()));
+        assert!(core.contains(&"nonpositive_inst".to_string()));
     }
 }
