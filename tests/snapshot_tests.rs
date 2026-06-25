@@ -15,7 +15,7 @@ use yardbird::{
     problem::Problem,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
-    Driver, YardbirdOptions,
+    Driver, SolverBackend, YardbirdOptions,
 };
 
 #[derive(Debug)]
@@ -122,7 +122,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
             z3::with_z3_config(&cfg, move || {
                 let vmt_model = model_from_options(&options);
                 let instantiation_strategy = options.build_instantiation_strategy();
-                let mut driver = Driver::new(vmt_model, instantiation_strategy);
+                let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3);
                 let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
                     10,
                     false,
@@ -132,6 +132,40 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
                 let res = driver.check_strategy(options.depth, strat).unwrap();
                 res.used_instances
             })
+        },
+        Duration::from_secs(20),
+    );
+    let mut used_instantiations = used_instantiations
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    used_instantiations.sort();
+
+    BenchmarkResult {
+        example_name: filename.as_ref().to_string_lossy().to_string(),
+        status,
+        used_instantiations,
+    }
+}
+
+fn run_benchmark_with_solver(
+    filename: impl AsRef<Path>,
+    solver_backend: SolverBackend,
+) -> BenchmarkResult {
+    let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
+    let (status, used_instantiations) = run_with_timeout(
+        move || {
+            let vmt_model = model_from_options(&options);
+            let instantiation_strategy = options.build_instantiation_strategy();
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, solver_backend);
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                10,
+                false,
+                array_bmc_cost_factory,
+                AuxSynthesisConfig::default(),
+            ));
+            let res = driver.check_strategy(options.depth, strat).unwrap();
+            res.used_instances
         },
         Duration::from_secs(20),
     );
@@ -164,8 +198,14 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
                     array_bmc_cost_factory,
                     AuxSynthesisConfig::default(),
                 ));
-                let (result, _abstracted_problem) =
-                    SMTLIBSolver::execute_with_strategy(&problem, strat, 250, false).unwrap();
+                let (result, _abstracted_problem) = SMTLIBSolver::execute_with_strategy(
+                    &problem,
+                    strat,
+                    SolverBackend::Z3,
+                    250,
+                    false,
+                )
+                .unwrap();
                 Smt2StrategyOutcome::from(result)
             })
         },
@@ -190,7 +230,7 @@ fn run_smt2_simple_benchmark(filename: impl AsRef<Path>) -> Smt2SimpleResult {
             z3::with_z3_config(&cfg, move || {
                 let problem = SMTLIBProblem::from_path(&path).unwrap();
                 let mut solver = SMTLIBSolver::new(problem.get_logic());
-                solver.execute(&problem);
+                solver.execute(&problem).unwrap();
                 let results = solver
                     .get_results()
                     .iter()
@@ -254,6 +294,17 @@ fn smt2_array_bitvec_simple_strategy() {
     assert_debug_snapshot!(
         "smt2_array_bitvec_simple_strategy",
         run_smt2_strategy_benchmark("examples/smt2/array_bitvec_simple.smt2")
+    );
+}
+
+#[test]
+fn cvc5_vmt_array_copy() {
+    let _guard = SNAPSHOT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    assert_debug_snapshot!(
+        "cvc5_vmt_array_copy",
+        run_benchmark_with_solver("examples/array/array_copy.vmt", SolverBackend::Cvc5)
     );
 }
 

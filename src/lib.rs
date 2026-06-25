@@ -2,7 +2,10 @@
 
 use std::{fmt::Display, fs::File, io::Write};
 
-use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
+use crate::{
+    auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger},
+    cost_functions::array::generated_array_cost_factory,
+};
 use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
@@ -37,6 +40,7 @@ mod proof_tree;
 pub mod smt_problem;
 pub mod smtlib_problem;
 pub mod smtlib_smt_problem;
+pub mod solver;
 pub mod solver_interface;
 pub mod strategies;
 mod subterm_handler;
@@ -44,8 +48,6 @@ pub mod theories;
 pub mod theory_support;
 pub mod training;
 mod utils;
-pub mod z3_ext;
-mod z3_var_context;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -88,6 +90,10 @@ pub struct YardbirdOptions {
     // Choose Instantiation Strategy
     #[arg(long, value_enum, default_value_t = InstantiationStrategyType::FullUnroll)]
     pub instantiation_strategy: InstantiationStrategyType,
+
+    /// Solver backend to use.
+    #[arg(long, value_enum, default_value_t = SolverBackend::Z3)]
+    pub solver: SolverBackend,
 
     /// Output ProofLoopResult as JSON to stdout (for garden integration)
     #[arg(long, default_value_t = false)]
@@ -159,6 +165,7 @@ impl Default for YardbirdOptions {
             cost_function: CostFunction::BmcCost,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
+            solver: SolverBackend::Z3,
             json_output: false,
             dump_solver: None,
             track_instantiations: false,
@@ -224,6 +231,30 @@ impl YardbirdOptions {
         Ok(())
     }
 
+    pub fn validate_solver_backend_for_vmt_mode(&self) -> anyhow::Result<()> {
+        match self.solver {
+            SolverBackend::Z3 => Ok(()),
+            SolverBackend::Cvc5 => {
+                if !matches!(self.theory, Theory::Array) {
+                    anyhow::bail!(
+                        "--solver cvc5 in VMT mode currently supports array theory only; {:?} theory is not implemented yet",
+                        self.theory
+                    );
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub fn validate_solver_backend_for_strategy_mode(&self) -> anyhow::Result<()> {
+        match self.solver {
+            SolverBackend::Z3 => Ok(()),
+            SolverBackend::Cvc5 => anyhow::bail!(
+                "--solver cvc5 is available for SMT-LIB simple mode in this phase, but strategy/refinement mode is not implemented until a later phase"
+            ),
+        }
+    }
+
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
         let aux_config = self.build_aux_synthesis_config();
         match self.strategy {
@@ -274,6 +305,12 @@ impl YardbirdOptions {
                     self.depth,
                     self.run_ic3ia,
                     index_aware_array_cost_factory,
+                    aux_config,
+                )),
+                CostFunction::Generated => Box::new(Abstract::new(
+                    self.depth,
+                    self.run_ic3ia,
+                    generated_array_cost_factory,
                     aux_config,
                 )),
             },
@@ -333,6 +370,7 @@ impl YardbirdOptions {
                     index_aware_array_cost_factory,
                     aux_config,
                 )),
+                CostFunction::Generated => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -356,6 +394,7 @@ impl YardbirdOptions {
                 CostFunction::PreferWrite => todo!(),
                 CostFunction::PreferConstants => todo!(),
                 CostFunction::IndexAware => todo!(),
+                CostFunction::Generated => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
                 todo!("AbstractWithQuantifiers not yet implemented for List theory")
@@ -411,6 +450,7 @@ pub enum CostFunction {
     PreferWrite,
     PreferConstants,
     IndexAware,
+    Generated,
 }
 
 impl Display for CostFunction {
@@ -424,6 +464,7 @@ impl Display for CostFunction {
             CostFunction::PreferWrite => write!(f, "prefer-write"),
             CostFunction::PreferConstants => write!(f, "prefer-constants"),
             CostFunction::IndexAware => write!(f, "index-aware"),
+            CostFunction::Generated => write!(f, "generated"),
         }
     }
 }
@@ -436,6 +477,24 @@ pub enum Theory {
     Array,
     BvList,
     List,
+}
+
+/// Describes the solver backends available.
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum SolverBackend {
+    Z3,
+    Cvc5,
+}
+
+impl Display for SolverBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SolverBackend::Z3 => write!(f, "z3"),
+            SolverBackend::Cvc5 => write!(f, "cvc5"),
+        }
+    }
 }
 
 /// Describes the instantiation strategies available.

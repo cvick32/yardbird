@@ -7,10 +7,12 @@ use crate::{
     auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
     problem::Problem,
+    solver::SolverCheckResult,
     solver_interface::SolverInterface,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
     utils::SolverStatistics,
+    SolverBackend,
 };
 
 /// Information about the unsat core when tracking is enabled
@@ -257,6 +259,7 @@ pub struct Driver<'ctx, S> {
     track_instantiations: bool,
     dump_unsat_core_path: Option<String>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    solver_backend: SolverBackend,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -350,6 +353,7 @@ impl<'ctx, S> Driver<'ctx, S> {
     pub fn new(
         vmt_model: VMTModel,
         instantiation_strategy: Box<dyn InstantiationStrategy>,
+        solver_backend: SolverBackend,
     ) -> Self {
         Self {
             used_instances: vec![],
@@ -360,6 +364,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             track_instantiations: false,
             dump_unsat_core_path: None,
             instantiation_strategy,
+            solver_backend,
         }
     }
 
@@ -401,6 +406,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         let mut smt_problem = crate::smt_problem::SMTProblem::new(
             &self.vmt_model,
             &strat,
+            self.solver_backend,
             self.track_instantiations,
             self.instantiation_strategy.clone_box(),
         );
@@ -413,7 +419,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
-                    z3::SatResult::Unsat => {
+                    SolverCheckResult::Unsat => {
                         unsat_event_tracker.record_vmt_event(
                             &smt_problem,
                             depth,
@@ -439,11 +445,11 @@ impl<'ctx, S> Driver<'ctx, S> {
                         self.extensions.unsat(&mut state, &smt_problem)?;
                         strat.unsat(&mut state, &smt_problem)?
                     }
-                    z3::SatResult::Unknown => {
+                    SolverCheckResult::Unknown => {
                         self.extensions.unknown(&mut state, &smt_problem)?;
                         strat.unknown(&mut state, &smt_problem)?
                     }
-                    z3::SatResult::Sat => {
+                    SolverCheckResult::Sat => {
                         self.extensions
                             .sat(&mut state, &smt_problem, refinement_step)?;
                         strat.sat(&mut state, &smt_problem, refinement_step)?

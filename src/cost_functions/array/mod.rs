@@ -3,7 +3,7 @@ use rustc_hash::FxHashSet;
 
 use crate::{
     cost_functions::array::{
-        adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize,
+        adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize, generated::ArrayGenerated,
         index_aware_cost::IndexAwareArrayCost, prefer_constants::ArrayPreferConstants,
         prefer_read::ArrayPreferRead, prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost,
         symbol_cost::ArrayBMCCost,
@@ -13,6 +13,7 @@ use crate::{
 
 pub mod adaptive_cost;
 pub mod ast_size;
+pub mod generated;
 pub mod index_aware_cost;
 pub mod prefer_constants;
 pub mod prefer_read;
@@ -112,6 +113,15 @@ pub fn array_prefer_write_factory(smt: &dyn SolverInterface, depth: u32) -> Arra
 
 pub fn array_prefer_constants(smt: &dyn SolverInterface, depth: u32) -> ArrayPreferConstants {
     ArrayPreferConstants {
+        current_bmc_depth: depth,
+        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
+        property_terms: smt.get_property_subterms(),
+        reads_writes: smt.get_reads_and_writes(),
+    }
+}
+
+pub fn generated_array_cost_factory(smt: &dyn SolverInterface, depth: u32) -> ArrayGenerated {
+    ArrayGenerated {
         current_bmc_depth: depth,
         init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
         property_terms: smt.get_property_subterms(),
