@@ -6,11 +6,11 @@ use std::path::Path;
 
 use crate::problem::Problem;
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
+use crate::solver::{new_solver_backend, SolverCheckResult, YardbirdSolver};
 use crate::strategies::{ProofAction, ProofStrategy};
 use crate::training::UnsatEventRecord;
-use crate::utils::{configure_z3_solver, SolverStatistics};
-use crate::z3_var_context::Z3VarContext;
-use crate::ProofLoopResult;
+use crate::utils::SolverStatistics;
+use crate::{ProofLoopResult, SolverBackend};
 
 /// Represents an SMTLIB problem (non-transition system)
 /// Supports both incremental (multiple check-sat with push/pop) and
@@ -221,7 +221,7 @@ impl Problem for SMTLIBProblem {
         self.commands.clone()
     }
 
-    fn check(&mut self) -> z3::SatResult {
+    fn check(&mut self) -> SolverCheckResult {
         todo!()
     }
 
@@ -238,7 +238,7 @@ impl Problem for SMTLIBProblem {
 #[derive(Debug, Clone)]
 pub struct CheckSatResult {
     /// The satisfiability result
-    pub result: z3::SatResult,
+    pub result: SolverCheckResult,
     /// The index of the check-sat command in the original command stream
     pub command_index: usize,
     /// Model if sat (only stored if explicitly requested)
@@ -248,50 +248,45 @@ pub struct CheckSatResult {
 /// Solver for executing SMTLIB problems
 /// Handles incremental solving with push/pop and multiple check-sat commands
 pub struct SMTLIBSolver {
-    z3_var_context: Z3VarContext,
-    solver: z3::Solver,
-    solver_statistics: SolverStatistics,
+    solver: Box<dyn YardbirdSolver>,
     check_sat_results: Vec<CheckSatResult>,
 }
 
 impl SMTLIBSolver {
-    /// Create a new SMTLIB solver with the given logic
+    /// Create a new SMTLIB solver with the given logic, defaulting to Z3.
     pub fn new(logic: Option<String>) -> Self {
-        let solver = if let Some(logic_str) = logic {
-            z3::Solver::new_for_logic(logic_str.as_str()).unwrap()
-        } else {
-            // Default to QF_UFLIA if no logic specified
-            z3::Solver::new_for_logic("QF_UFLIA").unwrap()
-        };
-        configure_z3_solver(&solver);
+        Self::new_with_backend(logic, SolverBackend::Z3)
+    }
 
+    /// Create a new SMTLIB solver with the given logic and backend.
+    pub fn new_with_backend(logic: Option<String>, backend: SolverBackend) -> Self {
+        let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
         SMTLIBSolver {
-            z3_var_context: Z3VarContext::new(),
-            solver,
-            solver_statistics: SolverStatistics::new(),
+            solver: new_solver_backend(backend, logic.as_str()),
             check_sat_results: Vec::new(),
         }
     }
 
     /// Execute all commands from an SMTLIB problem
-    pub fn execute(&mut self, problem: &SMTLIBProblem) {
+    pub fn execute(&mut self, problem: &SMTLIBProblem) -> anyhow::Result<()> {
         for (idx, command) in problem.get_commands().iter().enumerate() {
-            self.execute_command(command, idx);
+            self.execute_command(command, idx)?;
         }
+        Ok(())
     }
 
     /// Execute a single command
-    fn execute_command(&mut self, command: &Command, command_index: usize) {
+    fn execute_command(&mut self, command: &Command, command_index: usize) -> anyhow::Result<()> {
         match command {
             Command::Assert { term } => {
-                self.handle_assert(term);
+                self.handle_assert(term)?;
             }
             Command::CheckSat => {
                 let result = self.handle_check_sat(command_index);
                 self.check_sat_results.push(result);
             }
             Command::CheckSatAssuming { literals } => {
-                let result = self.handle_check_sat_assuming(command_index, literals);
+                let result = self.handle_check_sat_assuming(command_index, literals)?;
                 self.check_sat_results.push(result);
             }
             Command::Push { level } => {
@@ -308,35 +303,27 @@ impl SMTLIBSolver {
             | Command::DeclareConst { .. }
             | Command::DefineFun { .. }
             | Command::DeclareSort { .. } => {
-                // Handle declarations through Z3VarContext
-                let _ = command.clone().accept(&mut self.z3_var_context);
+                // Handle declarations through the backend term context.
+                self.solver.accept_command(command)?;
             }
             Command::SetLogic { .. } | Command::SetOption { .. } | Command::SetInfo { .. } => {
-                // Ignore these - already handled during problem construction
+                // Logic and metadata are handled during problem construction/backend setup.
             }
             _ => {
                 // Ignore other commands (get-model, exit, etc.)
             }
         }
+        Ok(())
     }
 
     /// Handle an assert command
-    fn handle_assert(&mut self, term: &Term) {
-        let z3_term = self.z3_var_context.rewrite_term(term);
-        self.solver.assert(z3_term.as_bool().unwrap());
+    fn handle_assert(&mut self, term: &Term) -> anyhow::Result<()> {
+        self.solver.assert_term(term)
     }
 
     /// Handle a check-sat command
     fn handle_check_sat(&mut self, command_index: usize) -> CheckSatResult {
-        let start_time = std::time::Instant::now();
-        let result = self.solver.check();
-
-        // Update statistics
-        self.solver_statistics
-            .join_from_z3_statistics(self.solver.get_statistics());
-        let check_duration = start_time.elapsed();
-        self.solver_statistics
-            .add_time("solver_time", check_duration.as_secs_f64());
+        let result = self.solver.check_and_record_statistics();
 
         CheckSatResult {
             result,
@@ -350,7 +337,7 @@ impl SMTLIBSolver {
         &mut self,
         command_index: usize,
         literals: &[(smt2parser::concrete::Symbol, bool)],
-    ) -> CheckSatResult {
+    ) -> anyhow::Result<CheckSatResult> {
         use smt2parser::concrete::{Identifier, QualIdentifier};
 
         // Convert assumptions to terms and assert them temporarily
@@ -363,19 +350,17 @@ impl SMTLIBSolver {
                 },
             };
             let term = Term::QualIdentifier(qual_id);
-            let z3_var = self.z3_var_context.rewrite_term(&term);
 
             if *polarity {
-                self.solver.assert(z3_var.as_bool().unwrap());
+                self.solver.assert_term(&term)?;
             } else {
-                self.solver
-                    .assert(z3::ast::Bool::not(&z3_var.as_bool().unwrap()));
+                self.solver.assert_not_term(&term)?;
             }
         }
 
         let result = self.handle_check_sat(command_index);
         self.solver.pop(1);
-        result
+        Ok(result)
     }
 
     /// Get all check-sat results
@@ -385,7 +370,11 @@ impl SMTLIBSolver {
 
     /// Get solver statistics
     pub fn get_statistics(&self) -> &SolverStatistics {
-        &self.solver_statistics
+        self.solver_statistics()
+    }
+
+    fn solver_statistics(&self) -> &SolverStatistics {
+        self.solver.statistics_ref()
     }
 
     fn annotate_abstract_instantiation_core_membership(result: &mut ProofLoopResult) {
@@ -449,6 +438,7 @@ impl SMTLIBSolver {
     pub fn execute_with_strategy<S>(
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
+        solver_backend: SolverBackend,
         max_refinements: u32,
         track_instantiations: bool,
         //  instantiation_strategy: Box<dyn InstantiationStrategy>,
@@ -482,6 +472,7 @@ impl SMTLIBSolver {
         let mut smt_problem = SMTLIBSMTProblem::new_with_array_types(
             &working_problem,
             &strategy,
+            solver_backend,
             track_instantiations,
             //instantiation_strategy,
             array_types,
@@ -502,7 +493,7 @@ impl SMTLIBSolver {
             let mut state = strategy.setup(&smt_problem, 0)?;
 
             let action = match smt_problem.check() {
-                z3::SatResult::Unsat => {
+                SolverCheckResult::Unsat => {
                     info!("  Result: UNSAT");
                     unsat_events.push(Self::build_unsat_event(
                         unsat_events.len() as u32,
@@ -516,11 +507,11 @@ impl SMTLIBSolver {
                     last_unsat_stats = Some(smt_problem.get_solver_statistics());
                     strategy.unsat(&mut state, &smt_problem)?
                 }
-                z3::SatResult::Sat => {
+                SolverCheckResult::Sat => {
                     info!("  Result: SAT");
                     strategy.sat(&mut state, &smt_problem, refinement_step)?
                 }
-                z3::SatResult::Unknown => {
+                SolverCheckResult::Unknown => {
                     info!(
                         "  Result: UNKNOWN - {}",
                         smt_problem

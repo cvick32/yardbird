@@ -58,14 +58,12 @@ pub struct ListRefinementState {
 impl ListRefinementState {
     pub fn update_with_subterms(
         &mut self,
-        model: &z3::Model,
         smt: &dyn crate::solver_interface::SolverInterface,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
-            let z3_term = smt.rewrite_term(term);
-            let model_interp = smt.get_interpretation(model, &z3_term);
+            let model_interp = smt.eval_to_string(term)?;
             let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
-            let interp_id = self.egraph.add_expr(&model_interp.to_string().parse()?);
+            let interp_id = self.egraph.add_expr(&model_interp.parse()?);
             self.egraph.union(term_id, interp_id);
         }
         self.egraph.rebuild();
@@ -115,12 +113,11 @@ where
         smt: &dyn crate::solver_interface::SolverInterface,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
-        let model = match smt.get_model() {
-            Some(model) => model,
-            None => todo!("No Z3 model available for SAT instance"),
-        };
-        info!("{:#?}", model);
-        state.update_with_subterms(model, smt)?;
+        if !smt.has_model() {
+            return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
+        }
+        info!("{}", smt.model_to_string()?);
+        state.update_with_subterms(smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
         let (insts, const_insts) = state.egraph.saturate(cost_fn, refinement_step);
         state.instantiations.extend_from_slice(&insts);

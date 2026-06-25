@@ -3,8 +3,7 @@ use smt2parser::concrete::Term;
 use smt2parser::vmt::{bmc::BMCBuilder, quantified_instantiator::Instance};
 
 use crate::{
-    subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
-    z3_var_context::Z3VarContext,
+    solver::YardbirdSolver, subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
 };
 
 use super::{InstantiationStrategy, StoredInstantiation};
@@ -14,7 +13,7 @@ use super::{InstantiationStrategy, StoredInstantiation};
 ///
 /// This replicates the original behavior from SMTProblem:
 /// - Checks for duplicate instances
-/// - Registers quantified variables with Z3
+/// - Registers quantified variables with the solver backend
 /// - Unrolls the instance from 0 to current depth when added
 /// - Does nothing during on_loop (all unrolling happens in on_generate)
 #[derive(Clone, Debug)]
@@ -44,8 +43,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         abstract_instantiation_id: Option<String>,
         _depth: u16,
         bmc_builder: &mut BMCBuilder,
-        z3_var_context: &mut Z3VarContext,
-        solver: &mut z3::Solver,
+        solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
@@ -64,16 +62,13 @@ impl InstantiationStrategy for FullUnrollStrategy {
             abstract_instantiation_id: abstract_instantiation_id.clone(),
         });
 
-        // Add quantified variables to Z3VarContext
-        if let Term::Forall { vars, term: _ } = inst.get_term() {
-            for (symbol, sort) in vars {
-                z3_var_context.create_variable(symbol, sort);
-            }
-        }
+        solver
+            .register_quantified_variables(inst.get_term())
+            .expect("solver should register quantified variables");
 
         // Unroll the instantiation from 0 to current depth
         // (This is the logic from SMTProblem::unroll_instantiation)
-        let mut all_z3_insts = vec![];
+        let mut all_indexed_insts = vec![];
         let cur_depth = bmc_builder.depth;
 
         for i in (0..=cur_depth).rev() {
@@ -88,21 +83,21 @@ impl InstantiationStrategy for FullUnrollStrategy {
             subterm_handler.register_instantiation_term(indexed_inst.clone());
             asserted_instantiations.push(indexed_inst.clone());
 
-            let z3_inst = z3_var_context.rewrite_term(&indexed_inst);
-            all_z3_insts.push((z3_inst.as_bool().unwrap(), indexed_inst));
+            all_indexed_insts.push(indexed_inst);
         }
 
         // Reset depth
         bmc_builder.set_depth(cur_depth);
-        *num_quantifiers_instantiated += all_z3_insts.len() as u64;
+        *num_quantifiers_instantiated += all_indexed_insts.len() as u64;
 
         if track_instantiations {
             // Use assert_and_track for each instantiation
-            for (idx, (z3_inst, indexed_term)) in all_z3_insts.iter().enumerate() {
+            for (idx, indexed_term) in all_indexed_insts.iter().enumerate() {
                 let inst_num = tracked_labels.len();
                 let label = format!("inst_{}_{}", inst_num, idx);
-                let tracked_bool = z3::ast::Bool::new_const(label.as_str());
-                solver.assert_and_track(z3_inst, &tracked_bool);
+                solver
+                    .assert_tracked_instantiation(label.as_str(), indexed_term)
+                    .expect("solver should assert tracked instantiations");
                 tracked_labels.push(IndexedInstantiationRecord {
                     label,
                     term: indexed_term.to_string(),
@@ -116,14 +111,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
                 });
             }
         } else {
-            // Combine all into one assertion
-            let inst_and = z3_var_context.make_and(
-                all_z3_insts
-                    .into_iter()
-                    .map(|(z3_inst, _)| z3_inst)
-                    .collect(),
-            );
-            solver.assert(&inst_and);
+            solver
+                .assert_instantiation_batch(&all_indexed_insts)
+                .expect("solver should assert instantiations");
         }
     }
 
@@ -132,8 +122,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         depth: u16,
         instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
-        z3_var_context: &mut Z3VarContext,
-        solver: &mut z3::Solver,
+        solver: &mut dyn YardbirdSolver,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         asserted_instantiations: &mut Vec<Term>,
@@ -145,28 +134,24 @@ impl InstantiationStrategy for FullUnrollStrategy {
             return;
         }
 
-        let mut all_z3_insts = vec![];
+        let mut all_indexed_insts = vec![];
         for stored in instantiations {
             bmc_builder.set_width(stored.inst.width());
             let indexed_inst = stored.inst.rewrite(bmc_builder);
             asserted_instantiations.push(indexed_inst.clone());
-            let z3_inst = z3_var_context.rewrite_term(&indexed_inst);
-            all_z3_insts.push((
-                z3_inst.as_bool().unwrap(),
-                indexed_inst,
-                stored.abstract_instantiation_id.clone(),
-            ));
+            all_indexed_insts.push((indexed_inst, stored.abstract_instantiation_id.clone()));
         }
 
-        *num_quantifiers_instantiated += all_z3_insts.len() as u64;
+        *num_quantifiers_instantiated += all_indexed_insts.len() as u64;
 
         if track_instantiations {
             // Use assert_and_track for each instantiation
-            for (z3_inst, indexed_term, abstract_instantiation_id) in all_z3_insts {
+            for (indexed_term, abstract_instantiation_id) in all_indexed_insts {
                 let inst_num = tracked_labels.len();
                 let label = format!("inst_{}_depth_{}", inst_num, depth);
-                let tracked_bool = z3::ast::Bool::new_const(label.as_str());
-                solver.assert_and_track(&z3_inst, &tracked_bool);
+                solver
+                    .assert_tracked_instantiation(label.as_str(), &indexed_term)
+                    .expect("solver should assert tracked instantiations");
                 let term_string = indexed_term.to_string();
                 tracked_labels.push(IndexedInstantiationRecord {
                     label,
@@ -179,14 +164,13 @@ impl InstantiationStrategy for FullUnrollStrategy {
                 });
             }
         } else {
-            // Combine all into one assertion for this depth
-            let inst_and = z3_var_context.make_and(
-                all_z3_insts
-                    .into_iter()
-                    .map(|(z3_inst, _, _)| z3_inst)
-                    .collect(),
-            );
-            solver.assert(&inst_and);
+            let terms = all_indexed_insts
+                .into_iter()
+                .map(|(indexed_term, _)| indexed_term)
+                .collect::<Vec<_>>();
+            solver
+                .assert_instantiation_batch(&terms)
+                .expect("solver should assert instantiations");
         }
     }
 }

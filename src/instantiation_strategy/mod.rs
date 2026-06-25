@@ -1,10 +1,12 @@
 pub mod full_unroll;
 pub mod no_unroll_on_loop;
-use smt2parser::vmt::{bmc::BMCBuilder, quantified_instantiator::Instance};
+use smt2parser::{
+    concrete::Term,
+    vmt::{bmc::BMCBuilder, quantified_instantiator::Instance},
+};
 
 use crate::{
-    subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
-    z3_var_context::Z3VarContext,
+    solver::YardbirdSolver, subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
 };
 
 #[derive(Clone, Debug)]
@@ -21,7 +23,7 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
     ///
     /// This method should:
     /// - Check if the instance should be added (e.g., avoid duplicates)
-    /// - Register any quantified variables with Z3VarContext
+    /// - Register any quantified variables with the solver backend
     /// - Add the instance to the solver with appropriate unrolling
     /// - Register instantiation terms with SubtermHandler
     #[allow(clippy::too_many_arguments)]
@@ -32,12 +34,11 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         abstract_instantiation_id: Option<String>,
         depth: u16,
         bmc_builder: &mut BMCBuilder,
-        z3_var_context: &mut Z3VarContext,
-        solver: &mut z3::Solver,
+        solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
-        asserted_instantiations: &mut Vec<smt2parser::concrete::Term>,
+        asserted_instantiations: &mut Vec<Term>,
         num_quantifiers_instantiated: &mut u64,
     );
 
@@ -51,11 +52,10 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         depth: u16,
         instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
-        z3_var_context: &mut Z3VarContext,
-        solver: &mut z3::Solver,
+        solver: &mut dyn YardbirdSolver,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
-        asserted_instantiations: &mut Vec<smt2parser::concrete::Term>,
+        asserted_instantiations: &mut Vec<Term>,
         num_quantifiers_instantiated: &mut u64,
     );
 }

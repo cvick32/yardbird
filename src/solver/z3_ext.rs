@@ -5,10 +5,6 @@ use itertools::Itertools;
 
 pub trait ModelExt {
     fn dump_sorted(&self) -> anyhow::Result<String>;
-
-    /// Return an iterator over `z3::FuncDecl`s that is sorted by frame numbers (if
-    /// applicable)
-    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl>;
 }
 
 impl ModelExt for z3::Model {
@@ -54,55 +50,7 @@ impl ModelExt for z3::Model {
         // let model_string = format!("{model}");
         Ok(b)
     }
-
-    fn sorted_iter(&self) -> impl Iterator<Item = z3::FuncDecl> {
-        self.iter().map(FuncDeclOrd).sorted().map(|x| x.0)
-    }
 }
-
-pub struct FuncDeclOrd(pub z3::FuncDecl);
-
-impl PartialOrd for FuncDeclOrd {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for FuncDeclOrd {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        let arity_cmp = self.0.arity().cmp(&other.0.arity());
-        if !matches!(arity_cmp, cmp::Ordering::Equal) {
-            return self.0.name().cmp(&other.0.name());
-        }
-
-        let self_name = self.0.name();
-        let other_name = other.0.name();
-        let self_parts = self_name.split_once("@");
-        let other_parts = other_name.split_once("@");
-
-        match (self_parts, other_parts) {
-            (None, None) => cmp::Ordering::Equal,
-            (Some(_), None) => cmp::Ordering::Greater,
-            (None, Some(_)) => cmp::Ordering::Less,
-            (Some((av, an)), Some((bv, bn))) => match av.cmp(bv) {
-                cmp::Ordering::Equal => {
-                    let au32 = an.parse::<u32>().unwrap();
-                    let bu32 = bn.parse::<u32>().unwrap();
-                    au32.cmp(&bu32)
-                }
-                x @ (cmp::Ordering::Less | cmp::Ordering::Greater) => x,
-            },
-        }
-    }
-}
-
-impl PartialEq for FuncDeclOrd {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.name() == other.0.name()
-    }
-}
-
-impl Eq for FuncDeclOrd {}
 
 fn func_decl_cmp(a: &z3::FuncDecl, b: &z3::FuncDecl) -> cmp::Ordering {
     let arity_cmp = a.arity().cmp(&b.arity());

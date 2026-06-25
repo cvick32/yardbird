@@ -43,7 +43,7 @@ pub fn run_model(
     //let cfg = z3::Config::new();
     let instantiation_strategy =
         Box::new(yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy::new());
-    let mut driver = Driver::new(model, instantiation_strategy);
+    let mut driver = Driver::new(model, instantiation_strategy, yardbird::SolverBackend::Z3);
 
     let strat = Box::new(Abstract::new(
         depth,

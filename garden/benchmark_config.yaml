@@ -15,12 +15,14 @@ parameter_matrices:
   # Standard evaluation matrix
   standard:
     depths: [5, 10, 15]
+    solvers: ["z3"]
     strategies: ["abstract", "concrete"]
     cost_functions: ["bmc-cost", "ast-size"]
 
   # Quick test matrix
   quick:
     depths: [5]
+    solvers: ["z3"]
     strategies: ["abstract", "concrete"]
     cost_functions: ["bmc-cost"]
     timeout_seconds: 5
@@ -28,6 +30,7 @@ parameter_matrices:
   # Quick test matrix
   light-review:
     depths: [10]
+    solvers: ["z3"]
     strategies: ["abstract", "concrete"]
     cost_functions: ["bmc-cost"]
     timeout_seconds: 20

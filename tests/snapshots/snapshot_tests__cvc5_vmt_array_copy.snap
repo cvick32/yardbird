@@ -1,0 +1,12 @@
+---
+source: tests/snapshot_tests.rs
+expression: "run_benchmark_with_solver(\"examples/array/array_copy.vmt\",\nSolverBackend::Cvc5)"
+---
+BenchmarkResult {
+    example_name: "examples/array/array_copy.vmt",
+    status: Good,
+    used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) Z) (Read_Int_Int b+0 Z))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (Read_Int_Int a+0 i+0)) i+0) (Read_Int_Int a+0 i+0))",
+    ],
+}

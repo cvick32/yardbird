@@ -5,7 +5,6 @@ use crate::{
     driver,
     ic3ia::{self, ic3ia_output_contains_proof},
     theory_support::{ConcreteArrayTheory, TheorySupport},
-    z3_ext::ModelExt,
     ProofLoopResult,
 };
 
@@ -48,11 +47,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
         _refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
-        let model = match smt.get_model() {
-            Some(model) => model,
-            None => todo!("No Z3 model available for SAT instance"),
-        };
-        info!("Counterexample:\n{}", model.dump_sorted()?);
+        info!("Counterexample:\n{}", smt.model_to_string()?);
         Ok(ProofAction::FoundCounterexample)
     }
 

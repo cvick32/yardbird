@@ -95,13 +95,10 @@ pub struct ArrayRefinementState {
 impl ArrayRefinementState {
     pub fn update_with_subterms(
         &mut self,
-        model: &z3::Model,
         smt: &dyn crate::solver_interface::SolverInterface,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
-            let z3_term = smt.rewrite_term(term);
-            let model_interp = smt.get_interpretation(model, &z3_term);
-            let interp_str = model_interp.to_string();
+            let interp_str = smt.eval_to_string(term)?;
             let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
             let preprocessed = preprocess_array_expr(&interp_str);
             let interp_id = self.egraph.add_expr(&preprocessed.parse()?);
@@ -173,11 +170,10 @@ where
                 state.egraph.number_of_classes()
             );
         }
-        let model = match smt.get_model() {
-            Some(model) => model,
-            None => todo!("No Z3 model available for SAT instance"),
-        };
-        state.update_with_subterms(model, smt)?;
+        if !smt.has_model() {
+            return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
+        }
+        state.update_with_subterms(smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
         let (insts, const_insts, conflicts, decisions, abstract_instantiations) =
             saturate_with_array_types(

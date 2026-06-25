@@ -24,7 +24,6 @@ fn main() -> anyhow::Result<()> {
         info!("Training database reset complete");
         return Ok(());
     }
-
     // Auto-detect mode based on file extension
     let filename = options.require_filename()?;
     let path = Path::new(filename);
@@ -48,7 +47,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
-    info!("Running in SMTLIB mode");
+    info!("Running in SMTLIB mode with {} solver", options.solver);
     options.validate_smtlib_mode()?;
 
     // Parse SMTLIB problem
@@ -71,6 +70,7 @@ fn run_smtlib_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     let use_strategy = should_use_strategy_mode(options);
 
     if use_strategy {
+        options.validate_solver_backend_for_strategy_mode()?;
         info!(
             "Using strategy-based solving: strategy={}, cost-function={}",
             options.strategy, options.cost_function
@@ -105,6 +105,7 @@ fn run_smtlib_with_strategy(
     let (result, abstracted_problem) = match SMTLIBSolver::execute_with_strategy(
         problem,
         strategy,
+        options.solver,
         250, // max refinements (like VMT mode)
         options.track_instantiations,
         //instantiation_strategy,
@@ -137,13 +138,14 @@ fn run_smtlib_with_strategy(
 
 /// Run SMTLIB in simple mode (no refinement)
 fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyhow::Result<()> {
-    let mut solver = SMTLIBSolver::new(problem.get_logic());
-    solver.execute(problem);
+    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver);
+    solver.execute(problem)?;
 
     let results = solver.get_results();
     if options.json_output {
         let json_output = serde_json::json!({
             "mode": "smtlib",
+            "solver": options.solver.to_string(),
             "num_check_sats": results.len(),
             "results": results.iter().map(|r| {
                 serde_json::json!({
@@ -266,20 +268,20 @@ fn print_strategy_results(
 }
 
 fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
-    info!("Running in VMT mode");
+    options.validate_solver_backend_for_vmt_mode()?;
+    info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
     let instantiation_strategy = options.build_instantiation_strategy();
     let mut training_session = TrainingSession::from_options(options)?;
 
-    //let cfg = z3::Config::new();
-    //cfg.set_proof_generation(true);
     match options.theory {
         Theory::Array => {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy).with_tracking_options(
-                options.dump_solver.clone(),
-                options.track_instantiations,
-                options.dump_unsat_core.clone(),
-            );
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
+                .with_tracking_options(
+                    options.dump_solver.clone(),
+                    options.track_instantiations,
+                    options.dump_unsat_core.clone(),
+                );
             if options.repl {
                 driver.add_extension(Repl);
             }
@@ -304,11 +306,12 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             todo!("Implement BVList!")
         }
         Theory::List => {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy).with_tracking_options(
-                options.dump_solver.clone(),
-                options.track_instantiations,
-                options.dump_unsat_core.clone(),
-            );
+            let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
+                .with_tracking_options(
+                    options.dump_solver.clone(),
+                    options.track_instantiations,
+                    options.dump_unsat_core.clone(),
+                );
             if options.repl {
                 driver.add_extension(Repl);
             }
