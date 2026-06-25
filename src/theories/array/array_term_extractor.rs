@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use egg::Language;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
@@ -22,6 +22,37 @@ fn compare_terms_with_cost(
         .then_with(|| left.0.to_string().cmp(&right.0.to_string()))
 }
 
+fn prior_use_count(selection_counts: &FxHashMap<String, u32>, term: &ArrayExpr) -> u32 {
+    selection_counts
+        .get(&canonical_term_hash(term))
+        .copied()
+        .unwrap_or(0)
+}
+
+fn compare_terms_with_history(
+    left: (&ArrayExpr, u32),
+    right: (&ArrayExpr, u32),
+    selection_counts: &FxHashMap<String, u32>,
+    baseline_use_count: u32,
+) -> std::cmp::Ordering {
+    let left_penalty = prior_use_count(selection_counts, left.0).saturating_sub(baseline_use_count);
+    let right_penalty =
+        prior_use_count(selection_counts, right.0).saturating_sub(baseline_use_count);
+
+    left.1
+        .saturating_add(left_penalty)
+        .cmp(&right.1.saturating_add(right_penalty))
+        .then_with(|| compare_terms_with_cost(left, right))
+}
+
+fn is_z3_model_value_node(node: &ArrayLanguage) -> bool {
+    matches!(node, ArrayLanguage::Symbol(symbol) if symbol.as_str().contains("!val!"))
+}
+
+fn contains_z3_model_value(expr: &ArrayExpr) -> bool {
+    expr.as_ref().iter().any(is_z3_model_value_node)
+}
+
 pub struct ArrayTermExtractor<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
@@ -32,6 +63,7 @@ where
     pub reads_and_writes: ReadsAndWrites,
     property_terms: FxHashSet<String>,
     transition_terms: FxHashSet<String>,
+    selection_counts: FxHashMap<String, u32>,
     depth: u16,
 }
 
@@ -62,6 +94,7 @@ where
         egraph: &egg::EGraph<ArrayLanguage, N>,
         mut cost_function: CF,
         refinement_step: u32,
+        selection_counts: FxHashMap<String, u32>,
         depth: u16,
     ) -> Self
     where
@@ -71,6 +104,9 @@ where
 
         // Use pre-parsed terms to avoid parsing in hot path
         for term in cost_function.get_parsed_terms() {
+            if contains_z3_model_value(&term) {
+                continue;
+            }
             let cost = cost_function.cost_rec(&term);
             match egraph.lookup_expr(&term) {
                 // TODO: might want to keep track of all terms that match this node
@@ -100,6 +136,7 @@ where
             reads_and_writes,
             property_terms,
             transition_terms,
+            selection_counts,
             depth,
         }
     }
@@ -113,17 +150,22 @@ where
         N: egg::Analysis<ArrayLanguage>,
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
-            return terms
+            let candidates = terms
                 .iter()
+                .filter(|(term, _)| !contains_z3_model_value(term))
                 .map(|(term, cost)| (term.clone(), *cost as i32))
-                .collect();
+                .collect::<Vec<_>>();
+            if !candidates.is_empty() {
+                return candidates;
+            }
         }
 
-        let mut fallback_cost = self.cost_function.clone();
-        let extractor = egg::Extractor::new(egraph, fallback_cost.clone());
-        let (_, expr) = extractor.find_best(eclass);
-        let cost = fallback_cost.cost_rec(&expr) as i32;
-        vec![(expr, cost)]
+        self.extract_from_egraph(egraph, eclass)
+            .map(|expr| {
+                let cost = self.cost_of(&expr) as i32;
+                vec![(expr, cost)]
+            })
+            .unwrap_or_default()
     }
 
     pub fn cost_of(&self, expr: &ArrayExpr) -> u32 {
@@ -232,28 +274,127 @@ where
     {
         if let Some(terms) = self.term_map.get(&egraph.find(eclass)) {
             log::debug!("NUMBER OF OPTIONS: {}", terms.len());
-            // Fallback to best (first) term if refinement_step is out of bounds
-            if let Some((best_term, best_cost)) = terms.first() {
-                log::debug!("Just using best_term: {} cost: {}", best_term, best_cost);
-                return best_term.clone();
+            let valid_terms = terms
+                .iter()
+                .filter(|(term, _)| !contains_z3_model_value(term))
+                .collect::<Vec<_>>();
+            let baseline_use_count = valid_terms
+                .iter()
+                .map(|(term, _)| prior_use_count(&self.selection_counts, term))
+                .min()
+                .unwrap_or(0);
+            if let Some((term, cost)) = valid_terms.into_iter().min_by(
+                |(left_term, left_cost), (right_term, right_cost)| {
+                    compare_terms_with_history(
+                        (left_term, *left_cost),
+                        (right_term, *right_cost),
+                        &self.selection_counts,
+                        baseline_use_count,
+                    )
+                },
+            ) {
+                let prior_uses = prior_use_count(&self.selection_counts, term);
+                log::debug!(
+                    "history-aware term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
+                    term,
+                    cost,
+                    prior_uses,
+                    prior_uses.saturating_sub(baseline_use_count)
+                );
+                return term.clone();
             }
         }
 
-        // No terms in map, fall back to standard extraction
-        let extractor = egg::Extractor::new(egraph, self.cost_function.clone());
-        let node = extractor.find_best_node(eclass);
-        log::debug!("recursing: {eclass} -> {node}");
-        node.join_recexprs(|id| self.extract(egraph, id))
+        self.extract_from_egraph(egraph, eclass).unwrap_or_else(|| {
+            panic!("No non-Z3-model representative available for e-class {eclass}")
+        })
+    }
+
+    fn extract_from_egraph<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+    ) -> Option<ArrayExpr>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        let mut memo = FxHashMap::default();
+        let mut visiting = FxHashSet::default();
+        self.extract_from_eclass(egraph, eclass, &mut memo, &mut visiting)
+    }
+
+    fn extract_from_eclass<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+        memo: &mut FxHashMap<egg::Id, Option<ArrayExpr>>,
+        visiting: &mut FxHashSet<egg::Id>,
+    ) -> Option<ArrayExpr>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        let eclass = egraph.find(eclass);
+        if let Some(cached) = memo.get(&eclass) {
+            return cached.clone();
+        }
+        if !visiting.insert(eclass) {
+            return None;
+        }
+
+        let mut best: Option<(u32, String, ArrayExpr)> = None;
+        for node in &egraph[eclass].nodes {
+            if is_z3_model_value_node(node) {
+                continue;
+            }
+
+            let mut child_exprs = FxHashMap::default();
+            let mut all_children_available = true;
+            for child in node.children() {
+                if let Some(child_expr) = self.extract_from_eclass(egraph, *child, memo, visiting) {
+                    child_exprs.insert(*child, child_expr);
+                } else {
+                    all_children_available = false;
+                    break;
+                }
+            }
+            if !all_children_available {
+                continue;
+            }
+
+            let expr = node.clone().join_recexprs(|id| child_exprs[&id].clone());
+            if contains_z3_model_value(&expr) {
+                continue;
+            }
+
+            let cost = self.cost_of(&expr);
+            let rendered = expr.to_string();
+            let should_replace = best.as_ref().is_none_or(|(best_cost, best_rendered, _)| {
+                (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
+            });
+            if should_replace {
+                best = Some((cost, rendered, expr));
+            }
+        }
+
+        visiting.remove(&eclass);
+        let result = best.map(|(_, _, expr)| expr);
+        memo.insert(eclass, result.clone());
+        result
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_terms_with_cost, deindex_abstract_term, ArrayTermExtractor};
+    use super::{
+        compare_terms_with_cost, compare_terms_with_history, deindex_abstract_term,
+        ArrayTermExtractor,
+    };
     use crate::{
         cost_functions::YardbirdCostFunction,
         theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
+        training::canonical_term_hash,
     };
+    use rustc_hash::FxHashMap;
     use smt2parser::vmt::ReadsAndWrites;
 
     #[derive(Clone)]
@@ -327,9 +468,94 @@ mod tests {
                 terms: vec![b.clone(), a.clone()],
             },
             0,
+            FxHashMap::default(),
             0,
         );
 
         assert_eq!(extractor.extract(&egraph, b_id).to_string(), "a");
+    }
+
+    #[test]
+    fn history_penalty_preserves_best_term_until_reuse_outweighs_cost_gap() {
+        let a: ArrayExpr = "a".parse().unwrap();
+        let b: ArrayExpr = "b".parse().unwrap();
+        let mut selection_counts = FxHashMap::default();
+        selection_counts.insert(canonical_term_hash(&a), 1);
+
+        assert!(compare_terms_with_history((&a, 0), (&b, 1), &selection_counts, 0).is_lt());
+
+        selection_counts.insert(canonical_term_hash(&a), 2);
+        assert!(compare_terms_with_history((&a, 0), (&b, 1), &selection_counts, 0).is_gt());
+    }
+
+    #[test]
+    fn extractor_uses_history_to_skip_overused_equal_cost_term() {
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let a: ArrayExpr = "a".parse().unwrap();
+        let b: ArrayExpr = "b".parse().unwrap();
+        let a_id = egraph.add_expr(&a);
+        let b_id = egraph.add_expr(&b);
+        egraph.union(a_id, b_id);
+        egraph.rebuild();
+
+        let mut selection_counts = FxHashMap::default();
+        selection_counts.insert(canonical_term_hash(&a), 1);
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCostTerms {
+                terms: vec![a.clone(), b.clone()],
+            },
+            0,
+            selection_counts,
+            0,
+        );
+
+        assert_eq!(extractor.extract(&egraph, a_id).to_string(), "b");
+    }
+
+    #[test]
+    fn extractor_fallback_skips_z3_model_value_symbols() {
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let model_value: ArrayExpr = "Array_Int_Int!val!8".parse().unwrap();
+        let symbolic_array: ArrayExpr = "a".parse().unwrap();
+        let model_id = egraph.add_expr(&model_value);
+        let symbolic_id = egraph.add_expr(&symbolic_array);
+        egraph.union(model_id, symbolic_id);
+        egraph.rebuild();
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCostTerms { terms: vec![] },
+            0,
+            FxHashMap::default(),
+            0,
+        );
+
+        assert_eq!(extractor.extract(&egraph, model_id).to_string(), "a");
+    }
+
+    #[test]
+    fn ranked_fallback_candidates_skip_z3_model_value_symbols() {
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let model_value: ArrayExpr = "Array_Int_Int!val!8".parse().unwrap();
+        let symbolic_array: ArrayExpr = "a".parse().unwrap();
+        let model_id = egraph.add_expr(&model_value);
+        let symbolic_id = egraph.add_expr(&symbolic_array);
+        egraph.union(model_id, symbolic_id);
+        egraph.rebuild();
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCostTerms { terms: vec![] },
+            0,
+            FxHashMap::default(),
+            0,
+        );
+
+        let candidates = extractor.ranked_candidates(&egraph, model_id);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].0.to_string(), "a");
     }
 }
