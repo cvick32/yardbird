@@ -96,7 +96,7 @@ fn parse_smtinterpol_output(interp_out: &str) -> Result<Vec<Interpolant>, Error>
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StatisticsValue {
-    UInt(u32),
+    UInt(u64),
     Double(f64),
 }
 

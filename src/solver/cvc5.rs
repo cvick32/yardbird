@@ -9,7 +9,7 @@ use smt2parser::visitors::Index;
 
 use crate::{
     solver::{SolverCheckResult, YardbirdSolver},
-    utils::SolverStatistics,
+    utils::{SolverStatistics, StatisticsValue},
     SolverBackend,
 };
 
@@ -462,6 +462,111 @@ impl Cvc5SolverBackend {
     }
 }
 
+fn join_from_cvc5_statistics(stats: &mut SolverStatistics, cvc5_stats: cvc5::Statistics) {
+    cvc5_stats.iter_init(true, false);
+    while cvc5_stats.iter_has_next() {
+        let (name, stat) = cvc5_stats.iter_next();
+        if stat.is_histogram() {
+            let histogram = stat.get_histogram();
+            let total = histogram.iter().map(|(_, value)| *value).sum::<u64>();
+            stats.insert(name.clone(), StatisticsValue::UInt(total));
+            for (bucket, value) in histogram {
+                stats.insert(format!("{name}::{bucket}"), StatisticsValue::UInt(value));
+            }
+        } else if stat.is_int() {
+            let value = stat.get_int();
+            if let Ok(value) = u64::try_from(value) {
+                stats.insert(name, StatisticsValue::UInt(value));
+            } else {
+                stats.insert(name, StatisticsValue::Double(value as f64));
+            }
+        } else if stat.is_double() {
+            stats.insert(name, StatisticsValue::Double(stat.get_double()));
+        }
+    }
+
+    alias_cvc5_statistics(stats);
+}
+
+fn alias_cvc5_statistics(stats: &mut SolverStatistics) {
+    copy_first_cvc5_stat(stats, "conflicts", &["sat::conflicts"]);
+    copy_first_cvc5_stat(stats, "decisions", &["sat::decisions"]);
+    copy_first_cvc5_stat(stats, "propagations", &["sat::propagations"]);
+    copy_first_cvc5_stat(
+        stats,
+        "quant instantiations",
+        &["Instantiate::Instantiations_Total"],
+    );
+    copy_first_cvc5_stat(
+        stats,
+        "array ax1",
+        &[
+            "resource::steps::inference-id::ARRAYS_READ_OVER_WRITE_1",
+            "theory::arrays::inferencesFact::ARRAYS_READ_OVER_WRITE_1",
+        ],
+    );
+    if !copy_first_cvc5_stat(
+        stats,
+        "array ax2",
+        &["resource::steps::inference-id::ARRAYS_READ_OVER_WRITE"],
+    ) && !copy_sum_cvc5_stats(
+        stats,
+        "array ax2",
+        &[
+            "theory::arrays::inferencesFact::ARRAYS_READ_OVER_WRITE",
+            "theory::arrays::inferencesLemma::ARRAYS_READ_OVER_WRITE",
+        ],
+    ) {
+        copy_first_cvc5_stat(
+            stats,
+            "array ax2",
+            &["theory::arrays::number of Row lemmas"],
+        );
+    }
+    copy_first_cvc5_stat(
+        stats,
+        "array ext ax",
+        &[
+            "resource::steps::inference-id::ARRAYS_EXT",
+            "theory::arrays::inferencesLemma::ARRAYS_EXT",
+            "theory::arrays::number of Ext lemmas",
+        ],
+    );
+
+    if let Some(starts) = stats.get_f64("sat::starts") {
+        stats.insert(
+            "restarts".to_string(),
+            StatisticsValue::Double((starts - 1.0).max(0.0)),
+        );
+    }
+}
+
+fn copy_first_cvc5_stat(stats: &mut SolverStatistics, alias: &str, source_keys: &[&str]) -> bool {
+    if let Some(value) = source_keys.iter().find_map(|key| stats.get_f64(key)) {
+        stats.insert(alias.to_string(), StatisticsValue::Double(value));
+        true
+    } else {
+        false
+    }
+}
+
+fn copy_sum_cvc5_stats(stats: &mut SolverStatistics, alias: &str, source_keys: &[&str]) -> bool {
+    let mut saw_source = false;
+    let value = source_keys
+        .iter()
+        .filter_map(|key| {
+            let value = stats.get_f64(key);
+            saw_source |= value.is_some();
+            value
+        })
+        .sum::<f64>();
+
+    if saw_source {
+        stats.insert(alias.to_string(), StatisticsValue::Double(value));
+    }
+    saw_source
+}
+
 impl YardbirdSolver for Cvc5SolverBackend {
     fn backend(&self) -> SolverBackend {
         SolverBackend::Cvc5
@@ -602,12 +707,12 @@ impl YardbirdSolver for Cvc5SolverBackend {
     fn check_and_record_statistics(&mut self) -> SolverCheckResult {
         let start_time = Instant::now();
         let result = self.check();
-        self.solver_statistics
-            .add_time("solver_time", start_time.elapsed().as_secs_f64());
+        self.record_statistics_since(start_time);
         result
     }
 
     fn record_statistics_since(&mut self, start_time: Instant) {
+        join_from_cvc5_statistics(&mut self.solver_statistics, self.solver.get_statistics());
         self.solver_statistics
             .add_time("solver_time", start_time.elapsed().as_secs_f64());
     }
@@ -830,6 +935,14 @@ mod tests {
         }
     }
 
+    fn bool_sort() -> Sort {
+        Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Bool".to_string()),
+            },
+        }
+    }
+
     fn bitvec_sort(width: u32) -> Sort {
         Sort::Simple {
             identifier: Identifier::Indexed {
@@ -861,6 +974,46 @@ mod tests {
 
     fn parsed_term(term: &str) -> Term {
         term.parse::<Term>().unwrap()
+    }
+
+    #[test]
+    fn cvc5_aliases_common_statistics() {
+        let mut stats = SolverStatistics::new();
+        stats.insert("sat::conflicts".to_string(), StatisticsValue::UInt(7));
+        stats.insert("sat::decisions".to_string(), StatisticsValue::UInt(9));
+        stats.insert("sat::propagations".to_string(), StatisticsValue::UInt(13));
+        stats.insert("sat::starts".to_string(), StatisticsValue::UInt(3));
+        stats.insert(
+            "Instantiate::Instantiations_Total".to_string(),
+            StatisticsValue::UInt(5),
+        );
+        stats.insert(
+            "theory::arrays::inferencesFact::ARRAYS_READ_OVER_WRITE_1".to_string(),
+            StatisticsValue::UInt(2),
+        );
+        stats.insert(
+            "theory::arrays::number of Row lemmas".to_string(),
+            StatisticsValue::UInt(11),
+        );
+        stats.insert(
+            "resource::steps::inference-id::ARRAYS_READ_OVER_WRITE".to_string(),
+            StatisticsValue::UInt(23),
+        );
+        stats.insert(
+            "theory::arrays::number of Ext lemmas".to_string(),
+            StatisticsValue::UInt(17),
+        );
+
+        alias_cvc5_statistics(&mut stats);
+
+        assert_eq!(stats.get_f64("conflicts"), Some(7.0));
+        assert_eq!(stats.get_f64("decisions"), Some(9.0));
+        assert_eq!(stats.get_f64("propagations"), Some(13.0));
+        assert_eq!(stats.get_f64("restarts"), Some(2.0));
+        assert_eq!(stats.get_f64("quant instantiations"), Some(5.0));
+        assert_eq!(stats.get_f64("array ax1"), Some(2.0));
+        assert_eq!(stats.get_f64("array ax2"), Some(23.0));
+        assert_eq!(stats.get_f64("array ext ax"), Some(17.0));
     }
 
     #[test]
@@ -907,6 +1060,53 @@ mod tests {
     }
 
     #[test]
+    fn cvc5_records_native_sat_statistics() {
+        let mut solver = Cvc5SolverBackend::new("QF_UF");
+        for name in [
+            "p11", "p12", "p13", "p21", "p22", "p23", "p31", "p32", "p33", "p41", "p42", "p43",
+        ] {
+            solver
+                .accept_command(&Command::DeclareConst {
+                    symbol: Symbol(name.to_string()),
+                    sort: bool_sort(),
+                })
+                .unwrap();
+        }
+
+        solver
+            .assert_term(&parsed_term(
+                "(and (or p11 p12 p13) (or p21 p22 p23) (or p31 p32 p33) (or p41 p42 p43))",
+            ))
+            .unwrap();
+        solver
+            .assert_term(&parsed_term(
+                "(and (or (not p11) (not p21)) (or (not p11) (not p31)) (or (not p11) (not p41)) (or (not p21) (not p31)) (or (not p21) (not p41)) (or (not p31) (not p41)))",
+            ))
+            .unwrap();
+        solver
+            .assert_term(&parsed_term(
+                "(and (or (not p12) (not p22)) (or (not p12) (not p32)) (or (not p12) (not p42)) (or (not p22) (not p32)) (or (not p22) (not p42)) (or (not p32) (not p42)))",
+            ))
+            .unwrap();
+        solver
+            .assert_term(&parsed_term(
+                "(and (or (not p13) (not p23)) (or (not p13) (not p33)) (or (not p13) (not p43)) (or (not p23) (not p33)) (or (not p23) (not p43)) (or (not p33) (not p43)))",
+            ))
+            .unwrap();
+
+        assert_eq!(
+            solver.check_and_record_statistics(),
+            SolverCheckResult::Unsat
+        );
+        let stats = solver.get_solver_statistics();
+        assert!(stats.get_f64("sat::conflicts").unwrap_or_default() > 0.0);
+        assert!(stats.get_f64("conflicts").unwrap_or_default() > 0.0);
+        assert!(stats.get_f64("decisions").unwrap_or_default() > 0.0);
+        assert!(stats.get_f64("propagations").unwrap_or_default() > 0.0);
+        assert!(stats.get_f64("solver_time").unwrap_or_default() > 0.0);
+    }
+
+    #[test]
     fn cvc5_solves_native_array_select_store() {
         let mut solver = Cvc5SolverBackend::new("ALL");
         for (name, sort) in [
@@ -928,6 +1128,45 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(solver.check(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
+    fn cvc5_records_array_axiom_statistics() {
+        let mut solver = Cvc5SolverBackend::new("QF_AUFLIA");
+        for (name, sort) in [
+            ("arr", array_sort(int_sort(), int_sort())),
+            ("i", int_sort()),
+            ("j", int_sort()),
+            ("val", int_sort()),
+        ] {
+            solver
+                .accept_command(&Command::DeclareConst {
+                    symbol: Symbol(name.to_string()),
+                    sort,
+                })
+                .unwrap();
+        }
+
+        solver.assert_term(&parsed_term("(not (= i j))")).unwrap();
+        solver
+            .assert_term(&parsed_term(
+                "(not (= (select (store arr i val) j) (select arr j)))",
+            ))
+            .unwrap();
+
+        assert_eq!(
+            solver.check_and_record_statistics(),
+            SolverCheckResult::Unsat
+        );
+        let stats = solver.get_solver_statistics();
+        assert!(stats.get_f64("array ax1").unwrap_or_default() > 0.0);
+        assert!(stats.get_f64("array ax2").unwrap_or_default() > 0.0);
+        assert!(
+            stats
+                .get_f64("theory::arrays::inferencesLemma::ARRAYS_READ_OVER_WRITE")
+                .unwrap_or_default()
+                > 0.0
+        );
     }
 
     #[test]

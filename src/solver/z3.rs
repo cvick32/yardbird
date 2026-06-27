@@ -54,7 +54,7 @@ fn configure_z3_solver(solver: &z3::Solver) {
 fn join_from_z3_statistics(stats: &mut SolverStatistics, z3_stats: z3::Statistics) {
     for entry in z3_stats.entries() {
         let value = match entry.value {
-            z3::StatisticsValue::UInt(int_num) => StatisticsValue::UInt(int_num),
+            z3::StatisticsValue::UInt(int_num) => StatisticsValue::UInt(int_num.into()),
             z3::StatisticsValue::Double(float_num) => StatisticsValue::Double(float_num),
         };
         stats.insert(entry.key, value);
