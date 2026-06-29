@@ -7,9 +7,12 @@ use crate::{
     utils::SolverStatistics,
 };
 
-/// Common interface for solvers that strategies can work with
-/// Implemented by both SMTProblem and SMTLIBSMTProblem
-pub trait SolverInterface {
+/// Common refinement context that proof strategies can work with.
+///
+/// This sits above the solver backend and exposes problem-specific data such as
+/// subterms, VMT variables, instantiation bookkeeping, and discovered array types.
+/// Implemented by both SMTProblem and SMTLIBSMTProblem.
+pub trait ProblemContext {
     /// Enable downcasting to concrete types
     fn as_any(&self) -> &dyn Any;
     fn has_model(&self) -> bool;

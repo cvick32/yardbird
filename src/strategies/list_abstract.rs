@@ -11,7 +11,7 @@ use crate::{
     driver::{self},
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    solver_interface::SolverInterface,
+    problem_context::ProblemContext,
     theories::list::list_axioms::{expr_to_term, translate_term, ListExpr, ListLanguage},
     theory_support::{ListTheorySupport, TheorySupport},
     ProofLoopResult,
@@ -27,7 +27,7 @@ where
     const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
-    cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
+    cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
 }
 
 impl<F> ListAbstract<F>
@@ -37,7 +37,7 @@ where
     pub fn new(
         _bmc_depth: u16,
         run_ic3ia: bool,
-        cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
+        cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
     ) -> Self {
         Self {
             _bmc_depth,
@@ -58,7 +58,7 @@ pub struct ListRefinementState {
 impl ListRefinementState {
     pub fn update_with_subterms(
         &mut self,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
             let model_interp = smt.eval_to_string(term)?;
@@ -86,7 +86,7 @@ where
 
     fn setup(
         &mut self,
-        _smt: &dyn crate::solver_interface::SolverInterface,
+        _smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
     ) -> driver::Result<ListRefinementState> {
         let egraph = egg::EGraph::new(());
@@ -101,7 +101,7 @@ where
     fn unsat(
         &mut self,
         state: &mut ListRefinementState,
-        _solver: &dyn crate::solver_interface::SolverInterface,
+        _solver: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -110,7 +110,7 @@ where
     fn sat(
         &mut self,
         state: &mut ListRefinementState,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         if !smt.has_model() {
@@ -129,7 +129,7 @@ where
     fn finish(
         &mut self,
         state: ListRefinementState,
-        smt: &mut dyn crate::solver_interface::SolverInterface,
+        smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         self.const_instantiations
             .extend(state.const_instantiations.into_iter().map(expr_to_term));
@@ -154,7 +154,7 @@ where
     fn result(
         &mut self,
         vmt_model: &mut VMTModel,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> ProofLoopResult {
         for instantiation_term in &smt.get_instantiations() {
             vmt_model.add_instantiation(instantiation_term);

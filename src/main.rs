@@ -3,7 +3,6 @@ use log::info;
 use std::{fs::File, io::Write, path::Path};
 use yardbird::{
     logger, model_from_options,
-    problem::Problem,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
     training::{reset_training_database, TrainingSession},

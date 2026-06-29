@@ -12,9 +12,8 @@ use smt2parser::{
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
     instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
-    problem::Problem,
+    problem_context::ProblemContext,
     solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
-    solver_interface::SolverInterface,
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -61,8 +60,7 @@ impl std::fmt::Debug for SMTProblem {
 
 impl Clone for SMTProblem {
     fn clone(&self) -> Self {
-        // SMTProblem contains non-cloneable solver objects and models. Clone is
-        // required by the Problem trait but should not be used in practice.
+        // SMTProblem contains non-cloneable solver objects and models.
         unimplemented!("SMTProblem::clone() is not implemented")
     }
 }
@@ -502,34 +500,14 @@ impl SMTProblem {
     }
 }
 
-impl Problem for SMTProblem {
-    fn get_sorts(&self) -> Vec<smt2parser::concrete::Command> {
-        todo!()
-    }
-
-    fn get_function_definitions(&self) -> Vec<smt2parser::concrete::Command> {
-        todo!()
-    }
-
-    fn get_logic(&self) -> Option<String> {
-        todo!()
-    }
-
-    fn requires_unrolling(&self) -> bool {
-        todo!()
-    }
-
-    fn as_commands(&self) -> Vec<smt2parser::concrete::Command> {
-        todo!()
-    }
-
+impl SMTProblem {
     /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
     /// off of the solver. Keeping the invariant of the property never being on the solver until check
     /// time allows us to not worry about when to add instances and other facts to the solver.
     ///
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
-    fn check(&mut self) -> SolverCheckResult {
+    pub(crate) fn check(&mut self) -> SolverCheckResult {
         let start_time = std::time::Instant::now();
 
         // Push property back on top of the solver.
@@ -554,7 +532,7 @@ impl Problem for SMTProblem {
         sat_result
     }
 
-    fn unroll(&mut self, depth: u16) {
+    pub(crate) fn unroll(&mut self, depth: u16) {
         if depth > self.depth {
             // These things should only happen the first time a new depth is seen.
             // Set new depth.
@@ -584,13 +562,9 @@ impl Problem for SMTProblem {
             }
         }
     }
-
-    fn add_instantiation(&self, _term: &Term) {
-        todo!()
-    }
 }
 
-impl SolverInterface for SMTProblem {
+impl ProblemContext for SMTProblem {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -686,7 +660,6 @@ mod tests {
         },
         cost_functions::array::array_bmc_cost_factory,
         instantiation_strategy::full_unroll::FullUnrollStrategy,
-        problem::Problem,
         strategies::{Abstract, ArrayRefinementState, ProofStrategy},
     };
 

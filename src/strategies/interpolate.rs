@@ -10,7 +10,7 @@ impl ProofStrategyExt<ArrayRefinementState> for Interpolating {
     fn unsat(
         &mut self,
         _state: &mut ArrayRefinementState,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         // Downcast to SMTProblem for VMT-specific interpolation
         let smt_problem = smt
@@ -42,7 +42,7 @@ impl ProofStrategyExt<ListRefinementState> for Interpolating {
     fn unsat(
         &mut self,
         _state: &mut ListRefinementState,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         // Downcast to SMTProblem for VMT-specific interpolation
         let smt_problem = smt

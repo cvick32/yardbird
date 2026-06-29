@@ -40,7 +40,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
 
     fn setup(
         &mut self,
-        _smt: &dyn crate::solver_interface::SolverInterface,
+        _smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
     ) -> driver::Result<ArrayRefinementState> {
         Ok(ArrayRefinementState {
@@ -56,7 +56,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn unsat(
         &mut self,
         state: &mut ArrayRefinementState,
-        _solver: &dyn crate::solver_interface::SolverInterface,
+        _solver: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -65,7 +65,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn sat(
         &mut self,
         state: &mut ArrayRefinementState,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
         _: u32,
     ) -> driver::Result<ProofAction> {
         info!("Concrete Counterexample Found at depth: {}!", state.depth);
@@ -77,7 +77,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn finish(
         &mut self,
         _: ArrayRefinementState,
-        _: &mut dyn crate::solver_interface::SolverInterface,
+        _: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         Ok(())
     }
@@ -85,7 +85,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     fn result(
         &mut self,
         vmt_model: &mut VMTModel,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> ProofLoopResult {
         let found_proof = if self.run_ic3ia {
             match ic3ia::call_ic3ia(vmt_model.clone()) {

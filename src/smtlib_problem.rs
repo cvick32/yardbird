@@ -4,7 +4,6 @@ use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
-use crate::problem::Problem;
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
 use crate::solver::{new_solver_backend, SolverCheckResult, YardbirdSolver};
 use crate::strategies::{ProofAction, ProofStrategy};
@@ -164,6 +163,22 @@ impl SMTLIBProblem {
         &self.assertions
     }
 
+    pub fn get_sorts(&self) -> Vec<Command> {
+        self.sorts.clone()
+    }
+
+    pub fn get_function_definitions(&self) -> Vec<Command> {
+        self.function_definitions.clone()
+    }
+
+    pub fn get_logic(&self) -> Option<String> {
+        self.logic.clone()
+    }
+
+    pub fn as_commands(&self) -> Vec<Command> {
+        self.commands.clone()
+    }
+
     /// Abstract array theory (select/store operations) into uninterpreted functions (Read/Write).
     /// Returns (abstracted_problem, discovered_array_types) where discovered_array_types is a vector
     /// of (index_sort, value_sort) pairs for all array types found in the problem.
@@ -197,40 +212,6 @@ impl SMTLIBProblem {
                 _ => None,
             })
             .collect()
-    }
-}
-
-impl Problem for SMTLIBProblem {
-    fn get_sorts(&self) -> Vec<Command> {
-        self.sorts.clone()
-    }
-
-    fn get_function_definitions(&self) -> Vec<Command> {
-        self.function_definitions.clone()
-    }
-
-    fn get_logic(&self) -> Option<String> {
-        self.logic.clone()
-    }
-
-    fn requires_unrolling(&self) -> bool {
-        false
-    }
-
-    fn as_commands(&self) -> Vec<Command> {
-        self.commands.clone()
-    }
-
-    fn check(&mut self) -> SolverCheckResult {
-        todo!()
-    }
-
-    fn unroll(&mut self, _depth: u16) {
-        // SMTLIB problems don't require unrolling
-    }
-
-    fn add_instantiation(&self, _term: &Term) {
-        todo!()
     }
 }
 

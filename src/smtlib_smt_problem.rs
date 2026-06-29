@@ -6,10 +6,9 @@ use smt2parser::{
 
 use crate::{
     instantiation_strategy::StoredInstantiation,
-    problem::Problem,
+    problem_context::ProblemContext,
     smtlib_problem::SMTLIBProblem,
     solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
-    solver_interface::SolverInterface,
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -389,7 +388,7 @@ impl SMTLIBSMTProblem {
     }
 }
 
-impl SolverInterface for SMTLIBSMTProblem {
+impl ProblemContext for SMTLIBSMTProblem {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

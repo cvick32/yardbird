@@ -15,7 +15,7 @@ use crate::{
     cost_functions::YardbirdCostFunction,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    solver_interface::SolverInterface,
+    problem_context::ProblemContext,
     theories::array::{
         array_axioms::{
             expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
@@ -45,7 +45,7 @@ where
     const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
-    cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
+    cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
     discovered_array_types: Vec<(String, String)>,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
@@ -65,7 +65,7 @@ where
     pub fn new(
         bmc_depth: u16,
         run_ic3ia: bool,
-        cost_fn_factory: fn(&dyn SolverInterface, u32) -> F,
+        cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
         aux_config: AuxSynthesisConfig,
     ) -> Self {
         Self {
@@ -100,7 +100,7 @@ pub struct ArrayRefinementState {
 impl ArrayRefinementState {
     pub fn update_with_subterms(
         &mut self,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         for term in smt.get_all_subterms() {
             let interp_str = smt.eval_to_string(term)?;
@@ -131,12 +131,12 @@ where
 
     fn setup(
         &mut self,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
     ) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(());
         // Use discovered_array_types if available (VMT mode via configure_model),
-        // otherwise get from SolverInterface (SMTLIB mode)
+        // otherwise get from ProblemContext (SMTLIB mode)
         let array_types = if self.discovered_array_types.is_empty() {
             smt.get_array_types()
         } else {
@@ -155,7 +155,7 @@ where
     fn unsat(
         &mut self,
         state: &mut ArrayRefinementState,
-        _solver: &dyn crate::solver_interface::SolverInterface,
+        _solver: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
         Ok(ProofAction::NextDepth)
@@ -164,7 +164,7 @@ where
     fn sat(
         &mut self,
         state: &mut ArrayRefinementState,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
         if trace_conflicts_enabled() {
@@ -214,7 +214,7 @@ where
     fn finish(
         &mut self,
         state: ArrayRefinementState,
-        smt: &mut dyn crate::solver_interface::SolverInterface,
+        smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         let trace_instantiations = trace_instantiations_enabled();
         if !self.pending_aux_specs.is_empty() {
@@ -394,7 +394,7 @@ where
     fn result(
         &mut self,
         vmt_model: &mut VMTModel,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> ProofLoopResult {
         for instantiation_term in &smt.get_instantiations() {
             vmt_model.add_instantiation(instantiation_term);
@@ -469,7 +469,7 @@ where
     fn handle_aux_synthesis_detection(
         &mut self,
         state: &ArrayRefinementState,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
         conflicts: &[ArrayConflictRecord],
         refinement_step: u32,
     ) {

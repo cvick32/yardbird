@@ -2,7 +2,7 @@ use smt2parser::vmt::VMTModel;
 
 use crate::{
     driver::{self, Error},
-    solver_interface::SolverInterface,
+    problem_context::ProblemContext,
     theory_support::TheorySupport,
     training::{AbstractInstantiationRecord, DecisionRecord},
     ProofLoopResult,
@@ -32,24 +32,24 @@ pub trait ProofStrategy<'ctx, S> {
         250
     }
 
-    fn setup(&mut self, smt: &dyn SolverInterface, depth: u16) -> driver::Result<S>;
+    fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> driver::Result<S>;
 
-    fn unsat(&mut self, state: &mut S, smt: &dyn SolverInterface) -> driver::Result<ProofAction>;
+    fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> driver::Result<ProofAction>;
 
     fn sat(
         &mut self,
         state: &mut S,
-        smt: &dyn SolverInterface,
+        smt: &dyn ProblemContext,
         refinement_step: u32,
     ) -> driver::Result<ProofAction>;
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, smt: &dyn SolverInterface) -> driver::Result<ProofAction> {
+    fn unknown(&mut self, state: &mut S, smt: &dyn ProblemContext) -> driver::Result<ProofAction> {
         Err(Error::SolverUnknown(smt.get_reason_unknown()))
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, state: S, smt: &mut dyn SolverInterface) -> driver::Result<()> {
+    fn finish(&mut self, state: S, smt: &mut dyn ProblemContext) -> driver::Result<()> {
         Ok(())
     }
 
@@ -59,7 +59,7 @@ pub trait ProofStrategy<'ctx, S> {
         (vec![], vec![])
     }
 
-    fn result(&mut self, model: &mut VMTModel, smt: &dyn SolverInterface) -> ProofLoopResult;
+    fn result(&mut self, model: &mut VMTModel, smt: &dyn ProblemContext) -> ProofLoopResult;
 }
 
 /// Allows easy modification of some other proof strategy. These methods corrrespond
@@ -68,7 +68,7 @@ pub trait ProofStrategy<'ctx, S> {
 /// to a proof strategy.
 pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
-    fn unsat(&mut self, state: &mut S, smt: &dyn SolverInterface) -> anyhow::Result<()> {
+    fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> anyhow::Result<()> {
         Ok(())
     }
 
@@ -76,14 +76,14 @@ pub trait ProofStrategyExt<S> {
     fn sat(
         &mut self,
         state: &mut S,
-        smt: &dyn SolverInterface,
+        smt: &dyn ProblemContext,
         refinement_step: u32,
     ) -> anyhow::Result<()> {
         Ok(())
     }
 
     #[allow(unused_variables)]
-    fn unknown(&mut self, state: &mut S, smt: &dyn SolverInterface) -> anyhow::Result<()> {
+    fn unknown(&mut self, state: &mut S, smt: &dyn ProblemContext) -> anyhow::Result<()> {
         Ok(())
     }
 

@@ -12,7 +12,6 @@ use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::array_bmc_cost_factory,
     model_from_options,
-    problem::Problem,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
     Driver, SolverBackend, YardbirdOptions,

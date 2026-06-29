@@ -6,9 +6,8 @@ use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 use crate::{
     auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
-    problem::Problem,
+    problem_context::ProblemContext,
     solver::SolverCheckResult,
-    solver_interface::SolverInterface,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
     utils::SolverStatistics,
@@ -591,7 +590,7 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
     fn unsat(
         &mut self,
         state: &mut S,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
             ext.unsat(state, smt)?;
@@ -603,7 +602,7 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
     fn sat(
         &mut self,
         state: &mut S,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
         refinement_step: u32,
     ) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
@@ -616,7 +615,7 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
     fn unknown(
         &mut self,
         state: &mut S,
-        smt: &dyn crate::solver_interface::SolverInterface,
+        smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         for ext in &mut self.extensions {
             ext.unknown(state, smt)?;
