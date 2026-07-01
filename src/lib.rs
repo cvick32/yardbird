@@ -358,55 +358,39 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
+    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
         let aux_config = self.build_aux_synthesis_config();
         // For now, use the same strategy structure as arrays
         // TODO: Create proper bit-vector list strategy
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::BmcCost => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_bmc_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::AstSize => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_ast_size_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::AdaptiveCost => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    adaptive_array_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::SplitCost => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    split_array_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::PreferRead => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_prefer_read_factory,
-                    aux_config,
-                )),
-                CostFunction::PreferWrite => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_prefer_write_factory,
-                    aux_config,
-                )),
+                CostFunction::LogisticRegression => {
+                    todo!("logistic-regression is not implemented for bv-list theory")
+                }
+                CostFunction::BmcCost => Box::new(
+                    self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth, aux_config),
+                ),
+                CostFunction::AstSize => Box::new(
+                    self.build_abstract_array_strategy::<ArrayAstSize>(self.depth, aux_config),
+                ),
+                CostFunction::AdaptiveCost => Box::new(
+                    self.build_abstract_array_strategy::<AdaptiveArrayCost>(self.depth, aux_config),
+                ),
+                CostFunction::SplitCost => Box::new(
+                    self.build_abstract_array_strategy::<SplitArrayCost>(self.depth, aux_config),
+                ),
+                CostFunction::PreferRead => Box::new(
+                    self.build_abstract_array_strategy::<ArrayPreferRead>(self.depth, aux_config),
+                ),
+                CostFunction::PreferWrite => Box::new(
+                    self.build_abstract_array_strategy::<ArrayPreferWrite>(self.depth, aux_config),
+                ),
                 CostFunction::PreferConstants => todo!(),
-                CostFunction::IndexAware => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    index_aware_array_cost_factory,
-                    aux_config,
-                )),
+                CostFunction::IndexAware => {
+                    Box::new(self.build_abstract_array_strategy::<IndexAwareArrayCost>(
+                        self.depth, aux_config,
+                    ))
+                }
                 CostFunction::Generated => todo!(),
             },
             Strategy::AbstractWithQuantifiers => {
@@ -419,6 +403,9 @@ impl YardbirdOptions {
     pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, ListRefinementState>> {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
+                CostFunction::LogisticRegression => {
+                    todo!("logistic-regression is not implemented for list theory")
+                }
                 CostFunction::BmcCost => todo!(),
                 CostFunction::AstSize => Box::new(ListAbstract::new(
                     self.depth,
