@@ -12,10 +12,9 @@ use crate::{
         term_contains_auxiliary_symbol, ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState,
         AuxiliarySpec, SynthesisTrigger,
     },
-    cost_functions::YardbirdCostFunction,
+    cost_functions::array::ArrayCostFactory,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    problem_context::ProblemContext,
     theories::array::{
         array_axioms::{
             expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
@@ -40,12 +39,12 @@ fn trace_instantiations_enabled() -> bool {
 /// Global state carried across different BMC depths
 pub struct Abstract<F>
 where
-    F: YardbirdCostFunction<ArrayLanguage>,
+    F: ArrayCostFactory,
 {
     const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
-    cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
+    cost_config: F::Config,
     discovered_array_types: Vec<(String, String)>,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
@@ -60,12 +59,12 @@ where
 
 impl<F> Abstract<F>
 where
-    F: YardbirdCostFunction<ArrayLanguage>,
+    F: ArrayCostFactory,
 {
     pub fn new(
         bmc_depth: u16,
         run_ic3ia: bool,
-        cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
+        cost_config: F::Config,
         aux_config: AuxSynthesisConfig,
     ) -> Self {
         Self {
@@ -73,7 +72,7 @@ where
             run_ic3ia,
             aux_config,
             const_instantiations: vec![],
-            cost_fn_factory,
+            cost_config,
             discovered_array_types: vec![],
             decision_data: vec![],
             abstract_instantiations: vec![],
@@ -116,7 +115,7 @@ impl ArrayRefinementState {
 
 impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
 where
-    F: YardbirdCostFunction<ArrayLanguage> + 'static,
+    F: ArrayCostFactory + 'static,
 {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ArrayTheorySupport::new(self.discovered_array_types.clone()))
@@ -179,7 +178,7 @@ where
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
         }
         state.update_with_subterms(smt)?;
-        let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
+        let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
         let (insts, const_insts, conflicts, decisions, abstract_instantiations) =
             saturate_with_array_types(
                 &mut state.egraph,
@@ -431,7 +430,7 @@ where
 
 impl<F> Abstract<F>
 where
-    F: YardbirdCostFunction<ArrayLanguage> + 'static,
+    F: ArrayCostFactory + 'static,
 {
     fn record_term_selection_history(&mut self) {
         let new_instantiations =
