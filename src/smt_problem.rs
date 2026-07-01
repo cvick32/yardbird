@@ -658,7 +658,7 @@ mod tests {
             AuxiliarySpec, FrameSpan, GuardPolicy, HistorySpec, NonMonotonicityCheckRecord,
             NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
         },
-        cost_functions::array::array_bmc_cost_factory,
+        cost_functions::array::ArrayBMCCost,
         instantiation_strategy::full_unroll::FullUnrollStrategy,
         strategies::{Abstract, ArrayRefinementState, ProofStrategy},
     };
@@ -668,10 +668,10 @@ mod tests {
     #[test]
     fn installs_auxiliary_specs_for_existing_and_future_frames() {
         let model = VMTModel::from_path("./examples/array/array_copy.vmt").unwrap();
-        let mut concrete_strategy = Abstract::new(
+        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(
             4,
             false,
-            array_bmc_cost_factory,
+            (),
             crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
         );
         let model = concrete_strategy.configure_model(model);
