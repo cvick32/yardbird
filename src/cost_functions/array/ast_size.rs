@@ -1,7 +1,11 @@
 use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::{cost_functions::YardbirdCostFunction, theories::array::array_axioms::ArrayLanguage};
+use crate::{
+    cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
+    problem_context::ProblemContext,
+    theories::array::array_axioms::ArrayLanguage,
+};
 
 #[derive(Clone, Debug)]
 pub struct ArrayAstSize {
@@ -9,6 +13,19 @@ pub struct ArrayAstSize {
     pub init_and_transition_system_terms: Vec<String>,
     pub property_terms: Vec<String>,
     pub reads_writes: ReadsAndWrites,
+}
+
+impl ArrayCostFactory for ArrayAstSize {
+    type Config = ();
+
+    fn from_context(smt: &dyn ProblemContext, depth: u32, _config: &Self::Config) -> Self {
+        Self {
+            current_bmc_depth: depth,
+            init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
+            property_terms: smt.get_property_subterms(),
+            reads_writes: smt.get_reads_and_writes(),
+        }
+    }
 }
 
 impl egg::CostFunction<ArrayLanguage> for ArrayAstSize {
