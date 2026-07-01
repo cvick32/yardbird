@@ -1,0 +1,418 @@
+schema_version: 1
+name: array-family-v1
+description: Initial family-level split manifest for array benchmark ML evaluations.
+benchmark_root: examples/array
+
+policy:
+  split_unit: family
+  allowed_splits:
+    - train
+    - dev
+    - eval
+  no_cross_family_leakage: true
+  split_before_training_row_extraction: true
+  notes:
+    - Keep every benchmark in a family on the same split.
+    - Use parent_family for coarse reporting; use id as the split unit.
+    - Update each family split manually to train, dev, or eval.
+    - Eval families should remain untouched until final reporting.
+
+families:
+  - id: array_append
+    split: eval
+    parent_family: array_append
+    benchmark_paths:
+      - examples/array/array_append2_array_horn.vmt
+
+  - id: array_bubble_sort
+    split: train
+    parent_family: array_bubble_sort
+    benchmark_paths:
+      - examples/array/array_bubble_sort.vmt
+      - examples/array/array_bubble_sort_rev.vmt
+
+  - id: array_copy
+    split: train
+    parent_family: array_copy
+    benchmark_paths:
+      - examples/array/array_copy.vmt
+      - examples/array/array_copy_increment.vmt
+      - examples/array/array_copy_increment_ind.vmt
+      - examples/array/array_copy_ind.vmt
+      - examples/array/array_copy_inverse.vmt
+      - examples/array/array_copy_nondet_add.vmt
+      - examples/array/array_copy_sum.vmt
+      - examples/array/array_copy_sum_ind.vmt
+
+  - id: array_double_inverse
+    split: train
+    parent_family: array_double_inverse
+    benchmark_paths:
+      - examples/array/array_double_inverse.vmt
+
+  - id: array_equiv
+    split: train
+    parent_family: array_equiv
+    benchmark_paths:
+      - examples/array/array_equiv_1.vmt
+      - examples/array/array_equiv_2.vmt
+      - examples/array/array_equiv_3.vmt
+
+  - id: array_even_odd
+    split: train
+    parent_family: array_even_odd
+    benchmark_paths:
+      - examples/array/array_even_odd_1.vmt
+      - examples/array/array_even_odd_2.vmt
+
+  - id: array_horn
+    split: eval
+    parent_family: array_horn
+    benchmark_paths:
+      - examples/array/array_horn_copy2.vmt
+
+  - id: array_hybr
+    split: train
+    parent_family: array_hybr
+    benchmark_paths:
+      - examples/array/array_hybr_add.vmt
+      - examples/array/array_hybr_nest_1.vmt
+      - examples/array/array_hybr_nest_2.vmt
+      - examples/array/array_hybr_nest_3.vmt
+      - examples/array/array_hybr_nest_4.vmt
+      - examples/array/array_hybr_nest_5.vmt
+      - examples/array/array_hybr_sum.vmt
+
+  - id: array_index_compl
+    split: train
+    parent_family: array_index_compl
+    benchmark_paths:
+      - examples/array/array_index_compl.vmt
+
+  - id: array_init_simple_fill
+    split: train
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_const.vmt
+      - examples/array/array_init_const_const.vmt
+      - examples/array/array_init_const_ind.vmt
+      - examples/array/array_init_reverse.vmt
+      - examples/array/array_init_reverse_const.vmt
+      - examples/array/array_init_upto_nondet.vmt
+      - examples/array/array_init_var.vmt
+      - examples/array/array_init_var_ind.vmt
+
+  - id: array_init_batched_store
+    split: train
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_doub_access_init.vmt
+      - examples/array/array_doub_access_init_const.vmt
+      - examples/array/array_init_batches.vmt
+      - examples/array/array_init_batches_const.vmt
+      - examples/array/array_init_batches_ind.vmt
+      - examples/array/array_init_tuples.vmt
+      - examples/array/array_init_tuples_relative.vmt
+      - examples/array/array_tripl_access_init.vmt
+      - examples/array/array_tripl_access_init_const.vmt
+
+  - id: array_init_mirror_both_ends
+    split: train
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_both_ends.vmt
+      - examples/array/array_init_both_ends2.vmt
+      - examples/array/array_init_both_ends_multiple.vmt
+      - examples/array/array_init_both_ends_multiple_sum.vmt
+      - examples/array/array_init_both_ends_simpl.vmt
+      - examples/array/array_init_both_ends_simpl_const.vmt
+      - examples/array/array_init_double.vmt
+      - examples/array/array_init_double_const.vmt
+
+  - id: array_init_two_phase_update
+    split: eval
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_addvar.vmt
+      - examples/array/array_init_addvar2.vmt
+      - examples/array/array_init_addvar3.vmt
+      - examples/array/array_init_addvar4.vmt
+      - examples/array/array_init_addvar5.vmt
+      - examples/array/array_init_addvar6.vmt
+      - examples/array/array_init_addvar7.vmt
+      - examples/array/array_init_doubl.vmt
+      - examples/array/array_init_doubl2.vmt
+      - examples/array/array_init_doubl3.vmt
+      - examples/array/array_init_increm.vmt
+      - examples/array/array_init_increm_const.vmt
+      - examples/array/array_init_increm_twice.vmt
+      - examples/array/array_init_increm_twice_const.vmt
+      - examples/array/array_init_reverse_mult.vmt
+
+  - id: array_init_recurrence
+    split: train
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_depend.vmt
+      - examples/array/array_init_depend_incr.vmt
+      - examples/array/array_init_drop.vmt
+      - examples/array/array_init_monot_ind.vmt
+
+  - id: array_init_branching
+    split: train
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_disj.vmt
+      - examples/array/array_init_disj_const.vmt
+      - examples/array/array_init_ite.vmt
+      - examples/array/array_init_ite_dupl.vmt
+      - examples/array/array_init_ite_jump.vmt
+      - examples/array/array_init_ite_jump_const.vmt
+      - examples/array/array_init_ite_jump_two.vmt
+      - examples/array/array_init_ite_jump_two_const.vmt
+      - examples/array/array_init_select.vmt
+      - examples/array/array_init_select_copy.vmt
+
+  - id: array_init_multi_array_relation
+    split: dev
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_and_copy.vmt
+      - examples/array/array_init_and_copy_const.vmt
+      - examples/array/array_init_and_copy_inverse.vmt
+      - examples/array/array_init_increm_two_arrs.vmt
+      - examples/array/array_init_increm_two_arrs_antisym.vmt
+      - examples/array/array_init_increm_two_arrs_antisym_const.vmt
+      - examples/array/array_init_increm_two_arrs_const.vmt
+      - examples/array/array_init_nondet_vars_plus_ind.vmt
+      - examples/array/array_init_pair_sum.vmt
+      - examples/array/array_init_pair_sum_const.vmt
+      - examples/array/array_init_pair_symmetr.vmt
+      - examples/array/array_init_pair_symmetr2.vmt
+      - examples/array/array_init_pair_symmetr3.vmt
+      - examples/array/array_init_pair_symmetr4.vmt
+      - examples/array/array_init_symmetr_swap.vmt
+      - examples/array/array_init_symmetr_swap_const.vmt
+
+  - id: array_init_nondet_arithmetic
+    split: dev
+    parent_family: array_init
+    benchmark_paths:
+      - examples/array/array_init_nondet_var_mult.vmt
+      - examples/array/array_init_nondet_vars.vmt
+      - examples/array/array_init_nondet_vars2.vmt
+      - examples/array/array_init_var_plus_ind.vmt
+      - examples/array/array_init_var_plus_ind2.vmt
+      - examples/array/array_init_var_plus_ind3.vmt
+
+  - id: array_max_min_scan
+    split: train
+    parent_family: array_max_min
+    benchmark_paths:
+      - examples/array/array_max_min.vmt
+      - examples/array/array_min_max.vmt
+      - examples/array/array_min_max_const.vmt
+
+  - id: array_max_min_transform
+    split: train
+    parent_family: array_max_min
+    benchmark_paths:
+      - examples/array/array_max_min_approx.vmt
+      - examples/array/array_max_min_shift.vmt
+      - examples/array/array_max_reverse_min.vmt
+
+  - id: array_min_scan
+    split: dev
+    parent_family: array_min
+    benchmark_paths:
+      - examples/array/array_min.vmt
+      - examples/array/array_min_const.vmt
+      - examples/array/array_min_ind.vmt
+
+  - id: array_min_copy
+    split: train
+    parent_family: array_min
+    benchmark_paths:
+      - examples/array/array_min_and_copy.vmt
+      - examples/array/array_min_and_copy_inverse.vmt
+      - examples/array/array_min_and_copy_shift.vmt
+      - examples/array/array_min_and_copy_shift_sum.vmt
+      - examples/array/array_min_and_copy_shift_sum_add.vmt
+
+  - id: array_min_swap
+    split: dev
+    parent_family: array_min
+    benchmark_paths:
+      - examples/array/array_min_swap.vmt
+      - examples/array/array_min_swap_and_shift.vmt
+      - examples/array/array_min_swap_const.vmt
+
+  - id: array_nest_split
+    split: train
+    parent_family: array_nest_split
+    benchmark_paths:
+      - examples/array/array_nest_split_01.vmt
+      - examples/array/array_nest_split_02.vmt
+      - examples/array/array_nest_split_03.vmt
+      - examples/array/array_nest_split_04.vmt
+      - examples/array/array_nest_split_05.vmt
+
+  - id: array_nonlin
+    split: train
+    parent_family: array_nonlin
+    benchmark_paths:
+      - examples/array/array_nonlin_init_depend.vmt
+      - examples/array/array_nonlin_init_mult.vmt
+      - examples/array/array_nonlin_square.vmt
+
+  - id: array_partial_init
+    split: train
+    parent_family: array_partial_init
+    benchmark_paths:
+      - examples/array/array_partial_init.vmt
+
+  - id: array_scatter
+    split: train
+    parent_family: array_scatter
+    benchmark_paths:
+      - examples/array/array_scatter.vmt
+      - examples/array/array_scatter_instrumented.vmt
+
+  - id: array_single_elem
+    split: train
+    parent_family: array_single_elem
+    benchmark_paths:
+      - examples/array/array_single_elem.vmt
+      - examples/array/array_single_elem_const.vmt
+      - examples/array/array_single_elem_increm.vmt
+
+  - id: array_split_threshold
+    split: train
+    parent_family: array_split
+    benchmark_paths:
+      - examples/array/array_split_01.vmt
+      - examples/array/array_split_02.vmt
+      - examples/array/array_split_07.vmt
+      - examples/array/array_split_10.vmt
+      - examples/array/array_split_12.vmt
+      - examples/array/array_split_13.vmt
+      - examples/array/array_split_18.vmt
+      - examples/array/array_split_19.vmt
+
+  - id: array_split_recurrence
+    split: eval
+    parent_family: array_split
+    benchmark_paths:
+      - examples/array/array_split_04.vmt
+      - examples/array/array_split_06.vmt
+      - examples/array/array_split_08.vmt
+      - examples/array/array_split_09.vmt
+      - examples/array/array_split_14.vmt
+      - examples/array/array_split_15.vmt
+      - examples/array/array_split_16.vmt
+
+  - id: array_split_halves
+    split: train
+    parent_family: array_split
+    benchmark_paths:
+      - examples/array/array_split_03.vmt
+      - examples/array/array_split_05.vmt
+      - examples/array/array_split_17.vmt
+      - examples/array/array_split_20.vmt
+      - examples/array/array_split_21.vmt
+
+  - id: array_split_summary
+    split: eval
+    parent_family: array_split
+    benchmark_paths:
+      - examples/array/array_split_11.vmt
+
+  - id: array_standard_copy_chain
+    split: eval
+    parent_family: array_standard
+    benchmark_paths:
+      - examples/array/array_standard_copy4.vmt
+
+  - id: array_standard_partition
+    split: eval
+    parent_family: array_standard
+    benchmark_paths:
+      - examples/array/array_standard_partition.vmt
+
+  - id: array_standard_password
+    split: eval
+    parent_family: array_standard
+    benchmark_paths:
+      - examples/array/array_standard_password.vmt
+
+  - id: array_tiling_pnr
+    split: train
+    parent_family: array_tiling
+    benchmark_paths:
+      - examples/array/array_tiling_pnr2.vmt
+      - examples/array/array_tiling_pnr3.vmt
+      - examples/array/array_tiling_pnr4.vmt
+      - examples/array/array_tiling_pnr5.vmt
+
+  - id: array_tiling_poly
+    split: dev
+    parent_family: array_tiling
+    benchmark_paths:
+      - examples/array/array_tiling_poly1.vmt
+      - examples/array/array_tiling_poly2.vmt
+      - examples/array/array_tiling_poly3.vmt
+      - examples/array/array_tiling_poly4.vmt
+      - examples/array/array_tiling_poly5.vmt
+      - examples/array/array_tiling_poly6.vmt
+
+  - id: array_tiling_pr
+    split: eval
+    parent_family: array_tiling
+    benchmark_paths:
+      - examples/array/array_tiling_pr2.vmt
+      - examples/array/array_tiling_pr3.vmt
+      - examples/array/array_tiling_pr4.vmt
+      - examples/array/array_tiling_pr5.vmt
+
+  - id: array_tiling_rewrite
+    split: eval
+    parent_family: array_tiling
+    benchmark_paths:
+      - examples/array/array_tiling_rew.vmt
+      - examples/array/array_tiling_rewnif.vmt
+      - examples/array/array_tiling_rewnifrev.vmt
+      - examples/array/array_tiling_rewnifrev2.vmt
+      - examples/array/array_tiling_rewrev.vmt
+
+  - id: array_tiling_skipped
+    split: train
+    parent_family: array_tiling
+    benchmark_paths:
+      - examples/array/array_tiling_skipped.vmt
+
+  - id: array_tiling_tcpy
+    split: train
+    parent_family: array_tiling
+    benchmark_paths:
+      - examples/array/array_tiling_tcpy.vmt
+      - examples/array/array_tiling_tcpy2.vmt
+      - examples/array/array_tiling_tcpy3.vmt
+
+  - id: array_two_counters
+    split: eval
+    parent_family: array_two_counters
+    benchmark_paths:
+      - examples/array/array_two_counters_add.vmt
+      - examples/array/array_two_counters_init_const.vmt
+      - examples/array/array_two_counters_init_var.vmt
+      - examples/array/array_two_counters_max_subtr.vmt
+      - examples/array/array_two_counters_min_max.vmt
+      - examples/array/array_two_counters_min_max_prog.vmt
+      - examples/array/array_two_counters_replace.vmt
+      - examples/array/array_two_counters_sum.vmt
+
+  - id: array_zero_sum
+    split: train
+    parent_family: array_zero_sum
+    benchmark_paths:
+      - examples/array/array_zero_sum_m2.vmt
