@@ -1,127 +1,32 @@
-use egg::Symbol;
-use rustc_hash::FxHashSet;
-
 use crate::{
-    cost_functions::array::{
-        adaptive_cost::AdaptiveArrayCost, ast_size::ArrayAstSize, generated::ArrayGenerated,
-        index_aware_cost::IndexAwareArrayCost, prefer_constants::ArrayPreferConstants,
-        prefer_read::ArrayPreferRead, prefer_write::ArrayPreferWrite, split_cost::SplitArrayCost,
-        symbol_cost::ArrayBMCCost,
-    },
-    problem_context::ProblemContext,
+    cost_functions::YardbirdCostFunction, problem_context::ProblemContext,
+    theories::array::array_axioms::ArrayLanguage,
 };
 
 pub mod adaptive_cost;
 pub mod ast_size;
 pub mod generated;
 pub mod index_aware_cost;
+pub mod logistic_regression_cost;
 pub mod prefer_constants;
 pub mod prefer_read;
 pub mod prefer_write;
 pub mod split_cost;
 pub mod symbol_cost;
 
-pub fn array_bmc_cost_factory(smt: &dyn ProblemContext, depth: u32) -> ArrayBMCCost {
-    let init_and_transition_system_terms: FxHashSet<Symbol> = smt
-        .get_init_and_transition_subterms()
-        .into_iter()
-        .map(|s| s.into())
-        .collect();
+pub use adaptive_cost::AdaptiveArrayCost;
+pub use ast_size::ArrayAstSize;
+pub use generated::ArrayGenerated;
+pub use index_aware_cost::IndexAwareArrayCost;
+pub use logistic_regression_cost::LogisticRegression;
+pub use prefer_constants::ArrayPreferConstants;
+pub use prefer_read::ArrayPreferRead;
+pub use prefer_write::ArrayPreferWrite;
+pub use split_cost::SplitArrayCost;
+pub use symbol_cost::ArrayBMCCost;
 
-    let property_terms: FxHashSet<Symbol> = smt
-        .get_property_subterms()
-        .into_iter()
-        .map(|s| s.into())
-        .collect();
+pub trait ArrayCostFactory: YardbirdCostFunction<ArrayLanguage> + Sized {
+    type Config: Clone + Send + Sync + 'static;
 
-    ArrayBMCCost::new(
-        depth,
-        init_and_transition_system_terms,
-        property_terms,
-        smt.get_reads_and_writes(),
-    )
-}
-
-pub fn array_ast_size_cost_factory(smt: &dyn ProblemContext, depth: u32) -> ArrayAstSize {
-    ArrayAstSize {
-        current_bmc_depth: depth,
-        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-        property_terms: smt.get_property_subterms(),
-        reads_writes: smt.get_reads_and_writes(),
-    }
-}
-
-pub fn adaptive_array_cost_factory(smt: &dyn ProblemContext, depth: u32) -> AdaptiveArrayCost {
-    AdaptiveArrayCost::new(
-        depth,
-        smt.get_init_and_transition_subterms(),
-        smt.get_property_subterms(),
-        smt.get_reads_and_writes(),
-    )
-}
-
-pub fn split_array_cost_factory(smt: &dyn ProblemContext, depth: u32) -> SplitArrayCost {
-    SplitArrayCost::new(
-        depth,
-        smt.get_init_and_transition_subterms(),
-        smt.get_property_subterms(),
-        smt.get_reads_and_writes(),
-    )
-}
-
-pub fn index_aware_array_cost_factory(smt: &dyn ProblemContext, depth: u32) -> IndexAwareArrayCost {
-    let init_and_transition_system_terms: FxHashSet<Symbol> = smt
-        .get_init_and_transition_subterms()
-        .into_iter()
-        .map(|s| s.into())
-        .collect();
-
-    let property_terms: FxHashSet<Symbol> = smt
-        .get_property_subterms()
-        .into_iter()
-        .map(|s| s.into())
-        .collect();
-
-    IndexAwareArrayCost::new(
-        depth,
-        init_and_transition_system_terms,
-        property_terms,
-        smt.get_reads_and_writes(),
-    )
-}
-
-pub fn array_prefer_read_factory(smt: &dyn ProblemContext, depth: u32) -> ArrayPreferRead {
-    ArrayPreferRead {
-        current_bmc_depth: depth,
-        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-        property_terms: smt.get_property_subterms(),
-        reads_writes: smt.get_reads_and_writes(),
-    }
-}
-
-pub fn array_prefer_write_factory(smt: &dyn ProblemContext, depth: u32) -> ArrayPreferWrite {
-    ArrayPreferWrite {
-        current_bmc_depth: depth,
-        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-        property_terms: smt.get_property_subterms(),
-        reads_writes: smt.get_reads_and_writes(),
-    }
-}
-
-pub fn array_prefer_constants(smt: &dyn ProblemContext, depth: u32) -> ArrayPreferConstants {
-    ArrayPreferConstants {
-        current_bmc_depth: depth,
-        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-        property_terms: smt.get_property_subterms(),
-        reads_writes: smt.get_reads_and_writes(),
-    }
-}
-
-pub fn generated_array_cost_factory(smt: &dyn ProblemContext, depth: u32) -> ArrayGenerated {
-    ArrayGenerated {
-        current_bmc_depth: depth,
-        init_and_transition_system_terms: smt.get_init_and_transition_subterms(),
-        property_terms: smt.get_property_subterms(),
-        reads_writes: smt.get_reads_and_writes(),
-    }
+    fn from_context(smt: &dyn ProblemContext, depth: u32, config: &Self::Config) -> Self;
 }
