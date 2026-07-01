@@ -2,10 +2,7 @@
 
 use std::{fmt::Display, fs::File, io::Write};
 
-use crate::{
-    auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger},
-    cost_functions::array::generated_array_cost_factory,
-};
+use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 use clap::{Parser, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
@@ -18,13 +15,14 @@ use strategies::{
 use crate::{
     cost_functions::{
         array::{
-            adaptive_array_cost_factory, array_ast_size_cost_factory, array_bmc_cost_factory,
-            array_prefer_constants, array_prefer_read_factory, array_prefer_write_factory,
-            index_aware_array_cost_factory, split_array_cost_factory,
+            AdaptiveArrayCost, ArrayAstSize, ArrayBMCCost, ArrayCostFactory, ArrayGenerated,
+            ArrayPreferConstants, ArrayPreferRead, ArrayPreferWrite, IndexAwareArrayCost,
+            LogisticRegression, SplitArrayCost,
         },
         list::list_ast_size_cost_factory,
     },
     strategies::ListRefinementState,
+    training::LogisticRegressionModel,
 };
 
 pub mod auxiliary_synthesis;
@@ -81,6 +79,10 @@ pub struct YardbirdOptions {
     // Choose Cost Function
     #[arg(short, long, value_enum, default_value_t = CostFunction::BmcCost)]
     pub cost_function: CostFunction,
+
+    /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
+    #[arg(long)]
+    pub ranker_model: Option<String>,
 
     // Choose Theory
     #[arg(short, long, value_enum, default_value_t = Theory::Array)]
@@ -162,6 +164,7 @@ impl Default for YardbirdOptions {
             repl: false,
             run_ic3ia: false,
             cost_function: CostFunction::BmcCost,
+            ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
             solver: SolverBackend::Z3,
@@ -254,64 +257,99 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'_, ArrayRefinementState>> {
+    pub fn validate_ranker_options(&self) -> anyhow::Result<()> {
+        match (self.cost_function, self.ranker_model.as_ref()) {
+            (CostFunction::LogisticRegression, None) => {
+                anyhow::bail!(
+                    "--cost-function logistic-regression requires --ranker-model <MODEL_JSON>"
+                )
+            }
+            (CostFunction::LogisticRegression, Some(model_path)) => {
+                if !matches!(self.strategy, Strategy::Abstract) {
+                    anyhow::bail!(
+                        "--cost-function logistic-regression currently requires --strategy abstract"
+                    );
+                }
+                if !matches!(self.theory, Theory::Array) {
+                    anyhow::bail!(
+                        "--cost-function logistic-regression currently supports --theory array only"
+                    );
+                }
+                LogisticRegressionModel::from_path(model_path).map_err(|err| {
+                    anyhow::anyhow!("failed to load --ranker-model from {model_path}: {err}")
+                })?;
+                Ok(())
+            }
+            (_, Some(_)) => anyhow::bail!(
+                "--ranker-model is only valid with --cost-function logistic-regression; run baseline cost functions without --ranker-model"
+            ),
+            (_, None) => Ok(()),
+        }
+    }
+
+    pub fn build_abstract_array_strategy<F>(
+        &self,
+        bmc_depth: u16,
+        aux_config: AuxSynthesisConfig,
+    ) -> Abstract<F>
+    where
+        F: ArrayCostFactory<Config = ()> + 'static,
+    {
+        Abstract::new(bmc_depth, self.run_ic3ia, (), aux_config)
+    }
+
+    pub fn build_logistic_regression_array_strategy(
+        &self,
+        bmc_depth: u16,
+        aux_config: AuxSynthesisConfig,
+    ) -> Abstract<LogisticRegression> {
+        let model_path = self
+            .ranker_model
+            .as_deref()
+            .expect("--cost-function logistic-regression requires --ranker-model");
+        let model = LogisticRegressionModel::from_path(model_path)
+            .unwrap_or_else(|err| panic!("failed to configure logistic-regression model: {err}"));
+        Abstract::new(bmc_depth, self.run_ic3ia, model, aux_config)
+    }
+
+    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
         let aux_config = self.build_aux_synthesis_config();
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::BmcCost => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_bmc_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::AstSize => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_ast_size_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::AdaptiveCost => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    adaptive_array_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::SplitCost => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    split_array_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::PreferRead => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_prefer_read_factory,
-                    aux_config,
-                )),
-                CostFunction::PreferWrite => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_prefer_write_factory,
-                    aux_config,
-                )),
-                CostFunction::PreferConstants => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    array_prefer_constants,
-                    aux_config,
-                )),
-                CostFunction::IndexAware => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    index_aware_array_cost_factory,
-                    aux_config,
-                )),
-                CostFunction::Generated => Box::new(Abstract::new(
-                    self.depth,
-                    self.run_ic3ia,
-                    generated_array_cost_factory,
-                    aux_config,
-                )),
+                CostFunction::LogisticRegression => {
+                    Box::new(self.build_logistic_regression_array_strategy(self.depth, aux_config))
+                }
+                CostFunction::BmcCost => Box::new(
+                    self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth, aux_config),
+                ),
+                CostFunction::AstSize => Box::new(
+                    self.build_abstract_array_strategy::<ArrayAstSize>(self.depth, aux_config),
+                ),
+                CostFunction::AdaptiveCost => Box::new(
+                    self.build_abstract_array_strategy::<AdaptiveArrayCost>(self.depth, aux_config),
+                ),
+                CostFunction::SplitCost => Box::new(
+                    self.build_abstract_array_strategy::<SplitArrayCost>(self.depth, aux_config),
+                ),
+                CostFunction::PreferRead => Box::new(
+                    self.build_abstract_array_strategy::<ArrayPreferRead>(self.depth, aux_config),
+                ),
+                CostFunction::PreferWrite => Box::new(
+                    self.build_abstract_array_strategy::<ArrayPreferWrite>(self.depth, aux_config),
+                ),
+                CostFunction::PreferConstants => {
+                    Box::new(self.build_abstract_array_strategy::<ArrayPreferConstants>(
+                        self.depth, aux_config,
+                    ))
+                }
+                CostFunction::IndexAware => {
+                    Box::new(self.build_abstract_array_strategy::<IndexAwareArrayCost>(
+                        self.depth, aux_config,
+                    ))
+                }
+                CostFunction::Generated => Box::new(
+                    self.build_abstract_array_strategy::<ArrayGenerated>(self.depth, aux_config),
+                ),
             },
             Strategy::AbstractWithQuantifiers => {
                 Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
@@ -437,7 +475,7 @@ impl Display for Strategy {
 }
 
 /// Describes the cost functions available.
-#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum CostFunction {
@@ -450,6 +488,7 @@ pub enum CostFunction {
     PreferConstants,
     IndexAware,
     Generated,
+    LogisticRegression,
 }
 
 impl Display for CostFunction {
@@ -464,6 +503,7 @@ impl Display for CostFunction {
             CostFunction::PreferConstants => write!(f, "prefer-constants"),
             CostFunction::IndexAware => write!(f, "index-aware"),
             CostFunction::Generated => write!(f, "generated"),
+            CostFunction::LogisticRegression => write!(f, "logistic-regression"),
         }
     }
 }

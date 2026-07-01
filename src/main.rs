@@ -17,6 +17,7 @@ fn main() -> anyhow::Result<()> {
     } else {
         log::Level::Info
     });
+    options.validate_ranker_options()?;
 
     if options.train_reset {
         reset_training_database(options.database_url.as_deref())?;
@@ -177,65 +178,44 @@ fn build_smtlib_strategy(
     options: &YardbirdOptions,
 ) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
     use yardbird::cost_functions::array::*;
-    use yardbird::strategies::{Abstract, AbstractArrayWithQuantifiers, ConcreteArrayZ3};
+    use yardbird::strategies::{AbstractArrayWithQuantifiers, ConcreteArrayZ3};
 
     let aux_config = options.build_aux_synthesis_config();
     match options.strategy {
         Strategy::Abstract => match options.cost_function {
-            CostFunction::BmcCost => Box::new(Abstract::new(
-                0, // depth=0 for SMTLIB (no temporal unrolling)
-                options.run_ic3ia,
-                array_bmc_cost_factory,
-                aux_config,
-            )),
-            CostFunction::AstSize => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                array_ast_size_cost_factory,
-                aux_config,
-            )),
-            CostFunction::AdaptiveCost => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                adaptive_array_cost_factory,
-                aux_config,
-            )),
-            CostFunction::SplitCost => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                split_array_cost_factory,
-                aux_config,
-            )),
-            CostFunction::PreferRead => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                array_prefer_read_factory,
-                aux_config,
-            )),
-            CostFunction::PreferWrite => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                array_prefer_write_factory,
-                aux_config,
-            )),
-            CostFunction::PreferConstants => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                array_prefer_constants,
-                aux_config,
-            )),
-            CostFunction::IndexAware => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                index_aware_array_cost_factory,
-                aux_config,
-            )),
-            CostFunction::Generated => Box::new(Abstract::new(
-                0,
-                options.run_ic3ia,
-                generated_array_cost_factory,
-                aux_config,
-            )),
+            CostFunction::LogisticRegression => {
+                Box::new(options.build_logistic_regression_array_strategy(0, aux_config))
+            }
+            CostFunction::BmcCost => {
+                Box::new(options.build_abstract_array_strategy::<ArrayBMCCost>(
+                    0, // depth=0 for SMTLIB (no temporal unrolling)
+                    aux_config,
+                ))
+            }
+            CostFunction::AstSize => {
+                Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0, aux_config))
+            }
+            CostFunction::AdaptiveCost => {
+                Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0, aux_config))
+            }
+            CostFunction::SplitCost => {
+                Box::new(options.build_abstract_array_strategy::<SplitArrayCost>(0, aux_config))
+            }
+            CostFunction::PreferRead => {
+                Box::new(options.build_abstract_array_strategy::<ArrayPreferRead>(0, aux_config))
+            }
+            CostFunction::PreferWrite => {
+                Box::new(options.build_abstract_array_strategy::<ArrayPreferWrite>(0, aux_config))
+            }
+            CostFunction::PreferConstants => Box::new(
+                options.build_abstract_array_strategy::<ArrayPreferConstants>(0, aux_config),
+            ),
+            CostFunction::IndexAware => Box::new(
+                options.build_abstract_array_strategy::<IndexAwareArrayCost>(0, aux_config),
+            ),
+            CostFunction::Generated => {
+                Box::new(options.build_abstract_array_strategy::<ArrayGenerated>(0, aux_config))
+            }
         },
         Strategy::AbstractWithQuantifiers => {
             Box::new(AbstractArrayWithQuantifiers::new(options.run_ic3ia))
