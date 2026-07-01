@@ -973,7 +973,7 @@ where
     N: egg::Analysis<ArrayLanguage>,
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    let expr = extractor.extract(egraph, eclass.id);
+    let expr = extractor.extract_for_decision(egraph, eclass.id, ctx.axiom_name, *ctx.slot_index);
     if trace_conflicts_enabled() {
         trace_conflicts(format!(
             "      choice slot={} axiom={} eclass={} expr={}",

@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
-    cost_functions::YardbirdCostFunction,
+    cost_functions::{CandidateChoice, CandidateChoiceContext, YardbirdCostFunction},
     theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
     training::{
         canonical_term_hash, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
@@ -264,10 +264,127 @@ where
         }
     }
 
+    fn candidate_ranks(
+        &self,
+        valid_terms: &[&(ArrayExpr, u32)],
+    ) -> FxHashMap<String, (usize, f64)> {
+        let candidate_count = valid_terms.len();
+        let mut ranked_terms = valid_terms
+            .iter()
+            .map(|entry| {
+                let (term, cost) = *entry;
+                (term, *cost)
+            })
+            .collect::<Vec<_>>();
+
+        ranked_terms.sort_by(|(left_term, left_cost), (right_term, right_cost)| {
+            left_cost
+                .cmp(right_cost)
+                .then_with(|| left_term.as_ref().len().cmp(&right_term.as_ref().len()))
+                .then_with(|| canonical_term_hash(left_term).cmp(&canonical_term_hash(right_term)))
+                .then_with(|| left_term.to_string().cmp(&right_term.to_string()))
+        });
+
+        let mut ranks = FxHashMap::default();
+        for (index, (term, _)) in ranked_terms.into_iter().enumerate() {
+            let cost_rank = index + 1;
+            let cost_rank_frac = if candidate_count <= 1 {
+                0.0
+            } else {
+                index as f64 / (candidate_count - 1) as f64
+            };
+            ranks
+                .entry(canonical_term_hash(term))
+                .or_insert((cost_rank, cost_rank_frac));
+        }
+        ranks
+    }
+
+    fn choose_candidate_with_ml<'a>(
+        &self,
+        valid_terms: &[&'a (ArrayExpr, u32)],
+        axiom_name: &str,
+        slot_index: u32,
+    ) -> Option<(&'a ArrayExpr, u32)> {
+        let candidate_count = valid_terms.len();
+        if candidate_count == 0 {
+            return None;
+        }
+
+        let ranks = self.candidate_ranks(valid_terms);
+        let choices = valid_terms
+            .iter()
+            .map(|entry| {
+                let (term, cost) = *entry;
+                let (cost_rank, cost_rank_frac) = ranks
+                    .get(&canonical_term_hash(term))
+                    .copied()
+                    .unwrap_or((candidate_count, 1.0));
+                CandidateChoice {
+                    term,
+                    current_cost: *cost,
+                    cost_rank,
+                    cost_rank_frac,
+                    candidate_count,
+                    prior_use_count: prior_use_count(&self.selection_counts, term),
+                }
+            })
+            .collect::<Vec<_>>();
+        let context = CandidateChoiceContext {
+            axiom_name,
+            slot_index,
+            bmc_depth: self.depth,
+        };
+        let chosen_index = self
+            .cost_function
+            .choose_candidate_with_ml(&context, &choices)?;
+        if chosen_index >= choices.len() {
+            log::warn!(
+                "ML candidate chooser returned out-of-range index {} for {} candidates",
+                chosen_index,
+                choices.len()
+            );
+            return None;
+        }
+        let chosen = choices[chosen_index];
+        Some((chosen.term, chosen.current_cost))
+    }
+
+    fn choose_with_history<'a>(
+        &self,
+        valid_terms: Vec<&'a (ArrayExpr, u32)>,
+        baseline_use_count: u32,
+    ) -> Option<(&'a ArrayExpr, u32)> {
+        valid_terms
+            .into_iter()
+            .min_by(|(left_term, left_cost), (right_term, right_cost)| {
+                compare_terms_with_history(
+                    (left_term, *left_cost),
+                    (right_term, *right_cost),
+                    &self.selection_counts,
+                    baseline_use_count,
+                )
+            })
+            .map(|(term, cost)| (term, *cost))
+    }
+
     pub fn extract<N>(
         &self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
         eclass: egg::Id,
+    ) -> egg::RecExpr<ArrayLanguage>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        self.extract_for_decision(egraph, eclass, "unknown", 0)
+    }
+
+    pub fn extract_for_decision<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+        axiom_name: &str,
+        slot_index: u32,
     ) -> egg::RecExpr<ArrayLanguage>
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -283,16 +400,22 @@ where
                 .map(|(term, _)| prior_use_count(&self.selection_counts, term))
                 .min()
                 .unwrap_or(0);
-            if let Some((term, cost)) = valid_terms.into_iter().min_by(
-                |(left_term, left_cost), (right_term, right_cost)| {
-                    compare_terms_with_history(
-                        (left_term, *left_cost),
-                        (right_term, *right_cost),
-                        &self.selection_counts,
-                        baseline_use_count,
-                    )
-                },
-            ) {
+
+            if let Some((term, cost)) =
+                self.choose_candidate_with_ml(&valid_terms, axiom_name, slot_index)
+            {
+                let prior_uses = prior_use_count(&self.selection_counts, term);
+                log::debug!(
+                    "ml-chosen term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
+                    term,
+                    cost,
+                    prior_uses,
+                    prior_uses.saturating_sub(baseline_use_count)
+                );
+                return term.clone();
+            }
+
+            if let Some((term, cost)) = self.choose_with_history(valid_terms, baseline_use_count) {
                 let prior_uses = prior_use_count(&self.selection_counts, term);
                 log::debug!(
                     "history-aware term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
