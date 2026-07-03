@@ -413,12 +413,12 @@ impl<'ctx, S> Driver<'ctx, S> {
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
             for refinement_step in 0..n_refines {
-                info!("  refining loop: {}/{n_refines}", refinement_step + 1);
                 total_refinement_steps += 1;
                 smt_problem.unroll(depth);
                 let mut state = strat.setup(&smt_problem, depth)?;
                 let action = match smt_problem.check() {
                     SolverCheckResult::Unsat => {
+                        info!("  check completed");
                         unsat_event_tracker.record_vmt_event(
                             &smt_problem,
                             depth,
@@ -449,6 +449,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                         strat.unknown(&mut state, &smt_problem)?
                     }
                     SolverCheckResult::Sat => {
+                        info!("  refinement: {}/{n_refines}", refinement_step);
                         self.extensions
                             .sat(&mut state, &smt_problem, refinement_step)?;
                         strat.sat(&mut state, &smt_problem, refinement_step)?
