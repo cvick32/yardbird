@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 use egg::Language;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -6,6 +6,7 @@ use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
     cost_functions::{CandidateChoice, CandidateChoiceContext, YardbirdCostFunction},
+    profiling::ArrayProfilingCollector,
     theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
     training::{
         canonical_term_hash, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
@@ -65,6 +66,7 @@ where
     transition_terms: FxHashSet<String>,
     selection_counts: FxHashMap<String, u32>,
     depth: u16,
+    profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
 fn deindex_abstract_term(instantiation: &ArrayExpr) -> ArrayExpr {
@@ -96,6 +98,7 @@ where
         refinement_step: u32,
         selection_counts: FxHashMap<String, u32>,
         depth: u16,
+        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> Self
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -107,7 +110,15 @@ where
             if contains_z3_model_value(&term) {
                 continue;
             }
-            let cost = cost_function.cost_rec(&term);
+            let cost = if let Some(profiling) = &profiling {
+                profiling.borrow_mut().record_cost(
+                    "precompute_term_map",
+                    term.as_ref().len(),
+                    || cost_function.cost_rec(&term),
+                )
+            } else {
+                cost_function.cost_rec(&term)
+            };
             match egraph.lookup_expr(&term) {
                 // TODO: might want to keep track of all terms that match this node
                 Some(expr) => term_map
@@ -138,6 +149,7 @@ where
             transition_terms,
             selection_counts,
             depth,
+            profiling,
         }
     }
 
@@ -162,15 +174,25 @@ where
 
         self.extract_from_egraph(egraph, eclass)
             .map(|expr| {
-                let cost = self.cost_of(&expr) as i32;
+                let cost = self.cost_of_at("ranked_candidates_fallback", &expr) as i32;
                 vec![(expr, cost)]
             })
             .unwrap_or_default()
     }
 
     pub fn cost_of(&self, expr: &ArrayExpr) -> u32 {
+        self.cost_of_at("extractor_cost_of", expr)
+    }
+
+    pub fn cost_of_at(&self, site: &'static str, expr: &ArrayExpr) -> u32 {
         let mut cost_fn = self.cost_function.clone();
-        cost_fn.cost_rec(expr)
+        if let Some(profiling) = &self.profiling {
+            profiling
+                .borrow_mut()
+                .record_cost(site, expr.as_ref().len(), || cost_fn.cost_rec(expr))
+        } else {
+            cost_fn.cost_rec(expr)
+        }
     }
 
     pub fn decision_record<N>(
@@ -221,10 +243,7 @@ where
                 in_transition_vocab: features.in_transition_vocab,
                 frame_index: features.frame_index,
                 ast_size: features.ast_size,
-                current_cost: {
-                    let mut cost_fn = self.cost_function.clone();
-                    cost_fn.cost_rec(chosen_term) as i32
-                },
+                current_cost: self.cost_of_at("decision_record_append_chosen", chosen_term) as i32,
                 was_chosen: true,
             });
         }
@@ -335,9 +354,15 @@ where
             slot_index,
             bmc_depth: self.depth,
         };
+        let ml_start = Instant::now();
         let chosen_index = self
             .cost_function
             .choose_candidate_with_ml(&context, &choices)?;
+        if let Some(profiling) = &self.profiling {
+            profiling
+                .borrow_mut()
+                .record_timing("ml_choice_total", ml_start.elapsed());
+        }
         if chosen_index >= choices.len() {
             log::warn!(
                 "ML candidate chooser returned out-of-range index {} for {} candidates",
@@ -489,7 +514,7 @@ where
                 continue;
             }
 
-            let cost = self.cost_of(&expr);
+            let cost = self.cost_of_at("fallback_extract_best", &expr);
             let rendered = expr.to_string();
             let should_replace = best.as_ref().is_none_or(|(best_cost, best_rendered, _)| {
                 (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
@@ -593,6 +618,7 @@ mod tests {
             0,
             FxHashMap::default(),
             0,
+            None,
         );
 
         assert_eq!(extractor.extract(&egraph, b_id).to_string(), "a");
@@ -632,6 +658,7 @@ mod tests {
             0,
             selection_counts,
             0,
+            None,
         );
 
         assert_eq!(extractor.extract(&egraph, a_id).to_string(), "b");
@@ -653,6 +680,7 @@ mod tests {
             0,
             FxHashMap::default(),
             0,
+            None,
         );
 
         assert_eq!(extractor.extract(&egraph, model_id).to_string(), "a");
@@ -674,6 +702,7 @@ mod tests {
             0,
             FxHashMap::default(),
             0,
+            None,
         );
 
         let candidates = extractor.ranked_candidates(&egraph, model_id);

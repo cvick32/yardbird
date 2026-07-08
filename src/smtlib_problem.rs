@@ -576,6 +576,7 @@ impl SMTLIBSolver {
             })
             .collect();
         let (decision_data, abstract_instantiations) = strategy.take_logging_artifacts();
+        let profiling_records = strategy.take_profiling_records();
 
         info!("Building final SMTLIB result");
         let mut result = ProofLoopResult {
@@ -593,6 +594,11 @@ impl SMTLIBSolver {
             indexed_instantiations,
             unsat_events,
             auxiliary_records: vec![],
+            profiling: if profiling_records.is_empty() {
+                crate::profiling::ProfilingRunRecord::disabled()
+            } else {
+                crate::profiling::ProfilingRunRecord::enabled(profiling_records)
+            },
         };
         Self::annotate_abstract_instantiation_core_membership(&mut result);
         info!("Final SMTLIB result is ready");

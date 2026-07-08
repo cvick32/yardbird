@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 use egg::{Analysis, Language};
 use log::{debug, trace};
@@ -7,6 +7,7 @@ use crate::{
     auxiliary_synthesis::{ArrayConflictRecord, ConflictClassification},
     cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
+    profiling::ArrayProfilingCollector,
     theories::array::{
         array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::ArrayTermExtractor,
@@ -107,6 +108,7 @@ where
     extractor: ArrayTermExtractor<CF>,
     refinement_step: u32,
     depth: u16,
+    profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
 impl<S, CF> ArrayConflictScheduler<S, CF>
@@ -119,6 +121,7 @@ where
         extractor: ArrayTermExtractor<CF>,
         refinement_step: u32,
         depth: u16,
+        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> Self {
         Self {
             inner: scheduler,
@@ -131,6 +134,7 @@ where
             extractor,
             refinement_step,
             depth,
+            profiling,
         }
     }
 
@@ -171,7 +175,20 @@ where
         egraph: &egg::EGraph<ArrayLanguage, N>,
         rewrite: &'a egg::Rewrite<ArrayLanguage, N>,
     ) -> Vec<egg::SearchMatches<'a, ArrayLanguage>> {
+        let search_start = Instant::now();
         let matches = self.inner.search_rewrite(iteration, egraph, rewrite);
+        if let Some(profiling) = &self.profiling {
+            let substitutions = matches
+                .iter()
+                .map(|search_match| search_match.substs.len())
+                .sum();
+            profiling.borrow_mut().record_search_rewrite(
+                rewrite.name.as_str(),
+                matches.len(),
+                substitutions,
+                search_start.elapsed(),
+            );
+        }
         if trace_conflicts_enabled() {
             trace_conflicts(format!(
                 "search iteration={iteration} rewrite={} eclasses={} matches={} existing_insts={}",
@@ -199,6 +216,8 @@ where
         rewrite: &egg::Rewrite<ArrayLanguage, N>,
         matches: Vec<egg::SearchMatches<ArrayLanguage>>,
     ) -> usize {
+        let apply_start = Instant::now();
+        let mut substitutions_explored = 0usize;
         let tracing = trace_conflicts_enabled();
         debug!("======>");
         debug!(
@@ -220,6 +239,14 @@ where
             if tracing {
                 trace_conflicts("  skipping because a regular instantiation already exists");
             }
+            if let Some(profiling) = &self.profiling {
+                profiling.borrow_mut().record_apply_rewrite(
+                    rewrite.name.as_str(),
+                    substitutions_explored,
+                    true,
+                    apply_start.elapsed(),
+                );
+            }
             return 0;
         }
         for (match_ix, m) in matches.iter().enumerate() {
@@ -233,6 +260,7 @@ where
                     ));
                 }
                 for (subst_ix, subst) in m.substs.iter().enumerate() {
+                    substitutions_explored += 1;
                     debug!("Current Sub: {:?}", subst);
                     if tracing {
                         trace_conflicts(format!("    subst[{subst_ix}] raw={subst:?}"));
@@ -312,12 +340,26 @@ where
                                     &instantiation,
                                     decision_keys,
                                 );
-                            let cost = self.cost_fn.cost_rec(&new_rhs);
+                            let cost = if let Some(profiling) = &self.profiling {
+                                let mut cost_fn = self.cost_fn.clone();
+                                profiling.borrow_mut().record_cost(
+                                    "conflict_classification",
+                                    new_rhs.as_ref().len(),
+                                    || cost_fn.cost_rec(&new_rhs),
+                                )
+                            } else {
+                                self.cost_fn.cost_rec(&new_rhs)
+                            };
                             let classification = if cost >= 100 {
                                 ConflictClassification::ConstOrHighCost
                             } else {
                                 ConflictClassification::Regular
                             };
+                            if let Some(profiling) = &self.profiling {
+                                profiling
+                                    .borrow_mut()
+                                    .record_conflict(rewrite.name.as_str(), cost >= 100);
+                            }
                             let conflict_record = ArrayConflictRecord::new(
                                 ordinal,
                                 rewrite.name.as_str(),
@@ -372,6 +414,14 @@ where
             }
         }
         debug!("<======");
+        if let Some(profiling) = &self.profiling {
+            profiling.borrow_mut().record_apply_rewrite(
+                rewrite.name.as_str(),
+                substitutions_explored,
+                false,
+                apply_start.elapsed(),
+            );
+        }
         // we don't actually want to apply the rewrite, because it would be a violation
         0
     }
@@ -734,7 +784,7 @@ where
             },
         );
 
-        let cost = extractor.cost_of(&expr);
+        let cost = extractor.cost_of_at("expected_read_write_candidate", &expr);
         let rendered = expr.to_string();
         let should_replace = best
             .as_ref()
@@ -830,7 +880,7 @@ where
                 index_expr.clone(),
                 value_expr.clone(),
             );
-            let cost = extractor.cost_of(&write_expr);
+            let cost = extractor.cost_of_at("best_matching_write_child", &write_expr);
             let rendered = write_expr.to_string();
             let should_replace = best
                 .as_ref()

@@ -235,6 +235,10 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         command.arg("--track-instantiations");
     }
 
+    if options.profile_costs {
+        command.arg("--profile-costs");
+    }
+
     if let Some(database_url) = &options.database_url {
         command.arg("--database-url").arg(database_url);
     }
@@ -466,6 +470,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 database_url: options.database_url.clone(),
                                 training_run_version: training_run_version.clone(),
                                 verbose: false,
+                                profile_costs: false,
                                 synthesis_trigger: options.synthesis_trigger,
                                 synthesis_guard_policy: options.synthesis_guard_policy,
                                 synthesis_after: options.synthesis_after,
@@ -473,6 +478,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                     .synthesis_refinement_limit_window,
                                 synthesis_repeated_pattern_threshold: options
                                     .synthesis_repeated_pattern_threshold,
+                                ranker_model: None,
                             },
                             retry,
                             timeout,
@@ -596,6 +602,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         database_url: options.database_url.clone(),
                         training_run_version: training_run_version.clone(),
                         verbose: false,
+                        profile_costs: false,
                         synthesis_trigger: options.synthesis_trigger,
                         synthesis_guard_policy: options.synthesis_guard_policy,
                         synthesis_after: options.synthesis_after,
@@ -603,6 +610,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                             .synthesis_refinement_limit_window,
                         synthesis_repeated_pattern_threshold: options
                             .synthesis_repeated_pattern_threshold,
+                        ranker_model: None,
                     },
                     config.global.retry_count,
                     run.timeout_seconds,

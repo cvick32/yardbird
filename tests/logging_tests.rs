@@ -45,6 +45,7 @@ fn run_array_copy_logging_result() -> yardbird::ProofLoopResult {
                 false,
                 (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             driver
                 .check_strategy(options.depth, strat)
@@ -376,6 +377,7 @@ fn smtlib_strategy_populates_logging_artifacts() {
                 false,
                 (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             SMTLIBSolver::execute_with_strategy(&problem, strategy, SolverBackend::Z3, 50, true)
                 .expect("SMT-LIB strategy run should complete")
@@ -456,6 +458,7 @@ fn single_example_persists_provenance_to_db() {
                 false,
                 (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             let result = driver
                 .check_strategy(options.depth, strat)

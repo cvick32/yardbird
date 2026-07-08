@@ -127,6 +127,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
                     false,
                     (),
                     AuxSynthesisConfig::default(),
+                    false,
                 ));
                 let res = driver.check_strategy(options.depth, strat).unwrap();
                 res.used_instances
@@ -162,6 +163,7 @@ fn run_benchmark_with_solver(
                 false,
                 (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             let res = driver.check_strategy(options.depth, strat).unwrap();
             res.used_instances
@@ -196,6 +198,7 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
                     false,
                     (),
                     AuxSynthesisConfig::default(),
+                    false,
                 ));
                 let (result, _abstracted_problem) = SMTLIBSolver::execute_with_strategy(
                     &problem,

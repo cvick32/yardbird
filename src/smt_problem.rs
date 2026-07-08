@@ -1,4 +1,8 @@
-use std::{collections::HashSet, vec};
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Instant,
+    vec,
+};
 
 use log::debug;
 use smt2parser::{
@@ -42,6 +46,8 @@ pub struct SMTProblem {
     track_instantiations: bool,
     tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    last_check_profile: BTreeMap<String, f64>,
+    last_unroll_profile: BTreeMap<String, f64>,
 }
 
 impl std::fmt::Debug for SMTProblem {
@@ -109,6 +115,8 @@ impl SMTProblem {
             track_instantiations,
             tracked_labels: vec![],
             instantiation_strategy,
+            last_check_profile: BTreeMap::new(),
+            last_unroll_profile: BTreeMap::new(),
         };
         // Handle theory-specific function declarations
         let theory = strategy.get_theory_support();
@@ -278,6 +286,14 @@ impl SMTProblem {
 
     pub(crate) fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
+    }
+
+    pub(crate) fn take_last_check_profile(&mut self) -> BTreeMap<String, f64> {
+        std::mem::take(&mut self.last_check_profile)
+    }
+
+    pub(crate) fn take_last_unroll_profile(&mut self) -> BTreeMap<String, f64> {
+        std::mem::take(&mut self.last_unroll_profile)
     }
 
     pub(crate) fn install_auxiliary_specs(
@@ -508,46 +524,107 @@ impl SMTProblem {
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
     pub(crate) fn check(&mut self) -> SolverCheckResult {
-        let start_time = std::time::Instant::now();
+        self.last_check_profile.clear();
+        let start_time = Instant::now();
 
         // Push property back on top of the solver.
+        let push_start = Instant::now();
         self.push_property();
+        self.last_check_profile.insert(
+            "check_push_property".to_string(),
+            push_start.elapsed().as_secs_f64(),
+        );
+
+        let solver_start = Instant::now();
         let sat_result = self.solver.check();
+        self.last_check_profile.insert(
+            "check_solver".to_string(),
+            solver_start.elapsed().as_secs_f64(),
+        );
+
+        let proof_start = Instant::now();
         let _ = self.solver.inspect_last_proof();
+        self.last_check_profile.insert(
+            "check_inspect_last_proof".to_string(),
+            proof_start.elapsed().as_secs_f64(),
+        );
+
         if sat_result == SolverCheckResult::Sat {
+            let collect_model_terms_start = Instant::now();
             let model_terms = self
                 .subterm_handler
                 .get_all_subterms()
                 .into_iter()
                 .cloned()
                 .collect::<Vec<_>>();
+            self.last_check_profile.insert(
+                "check_collect_model_terms".to_string(),
+                collect_model_terms_start.elapsed().as_secs_f64(),
+            );
+
+            let preserve_model_start = Instant::now();
             self.solver
                 .preserve_model_values(&model_terms)
                 .expect("solver should preserve SAT model values before property pop");
+            self.last_check_profile.insert(
+                "check_preserve_model_values".to_string(),
+                preserve_model_start.elapsed().as_secs_f64(),
+            );
         }
         // Popping property off.
+        let pop_start = Instant::now();
         self.solver.pop(1);
+        self.last_check_profile
+            .insert("check_pop".to_string(), pop_start.elapsed().as_secs_f64());
+
+        let statistics_start = Instant::now();
         self.solver.record_statistics_since(start_time);
+        self.last_check_profile.insert(
+            "check_record_statistics".to_string(),
+            statistics_start.elapsed().as_secs_f64(),
+        );
+        self.last_check_profile.insert(
+            "check_total".to_string(),
+            start_time.elapsed().as_secs_f64(),
+        );
 
         sat_result
     }
 
     pub(crate) fn unroll(&mut self, depth: u16) {
+        self.last_unroll_profile.clear();
+        let unroll_start = Instant::now();
         if depth > self.depth {
             // These things should only happen the first time a new depth is seen.
             // Set new depth.
             self.depth = depth;
             self.bmc_builder.set_depth(self.depth);
             // Generate subterms.
+            let generate_subterms_start = Instant::now();
             self.subterm_handler
                 .generate_subterms(&mut self.bmc_builder);
+            self.last_unroll_profile.insert(
+                "unroll_generate_subterms".to_string(),
+                generate_subterms_start.elapsed().as_secs_f64(),
+            );
             // Add new variables for this depth to the solver backend.
+            let add_variables_start = Instant::now();
             self.add_solver_variables();
+            self.last_unroll_profile.insert(
+                "unroll_add_solver_variables".to_string(),
+                add_variables_start.elapsed().as_secs_f64(),
+            );
             // Add assertion for current depth.
+            let add_assertion_start = Instant::now();
             self.add_assertion();
+            self.last_unroll_profile.insert(
+                "unroll_add_assertion".to_string(),
+                add_assertion_start.elapsed().as_secs_f64(),
+            );
 
             // Call instantiation strategy's on_loop hook to handle instantiations at this depth
             if !self.instantiations.is_empty() {
+                let on_loop_start = Instant::now();
                 let instantiations_snapshot: Vec<StoredInstantiation> = self.instantiations.clone();
                 self.instantiation_strategy.on_loop(
                     self.depth,
@@ -559,8 +636,21 @@ impl SMTProblem {
                     &mut self.asserted_instantiation_terms,
                     &mut self.num_quantifiers_instantiated,
                 );
+                self.last_unroll_profile.insert(
+                    "unroll_instantiation_on_loop".to_string(),
+                    on_loop_start.elapsed().as_secs_f64(),
+                );
             }
+        } else {
+            self.last_unroll_profile.insert(
+                "unroll_noop".to_string(),
+                unroll_start.elapsed().as_secs_f64(),
+            );
         }
+        self.last_unroll_profile.insert(
+            "unroll_total".to_string(),
+            unroll_start.elapsed().as_secs_f64(),
+        );
     }
 }
 
@@ -673,6 +763,7 @@ mod tests {
             false,
             (),
             crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
+            false,
         );
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =

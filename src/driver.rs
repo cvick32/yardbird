@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use itertools::Itertools;
 use log::info;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
@@ -7,6 +9,7 @@ use crate::{
     auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
     problem_context::ProblemContext,
+    profiling::{DriverProfilingRecord, ProfilingRunRecord},
     solver::SolverCheckResult,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
@@ -44,6 +47,7 @@ pub struct ProofLoopResult {
     pub indexed_instantiations: Vec<crate::training::IndexedInstantiationRecord>,
     pub unsat_events: Vec<UnsatEventRecord>,
     pub auxiliary_records: Vec<AuxiliaryRecord>,
+    pub profiling: ProfilingRunRecord,
 }
 
 impl ProofLoopResult {
@@ -60,7 +64,7 @@ impl Serialize for ProofLoopResult {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("ProofLoopResult", 13)?;
+        let mut state = serializer.serialize_struct("ProofLoopResult", 14)?;
         state.serialize_field(
             "used_instances",
             &self
@@ -91,6 +95,7 @@ impl Serialize for ProofLoopResult {
         state.serialize_field("indexed_instantiations", &self.indexed_instantiations)?;
         state.serialize_field("unsat_events", &self.unsat_events)?;
         state.serialize_field("auxiliary_records", &self.auxiliary_records)?;
+        state.serialize_field("profiling", &self.profiling)?;
         state.end()
     }
 }
@@ -118,6 +123,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             IndexedInstantiations,
             UnsatEvents,
             AuxiliaryRecords,
+            Profiling,
         }
 
         struct ProofLoopResultVisitor;
@@ -146,6 +152,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                 let mut indexed_instantiations = None;
                 let mut unsat_events = None;
                 let mut auxiliary_records = None;
+                let mut profiling = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -188,6 +195,9 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                         Field::AuxiliaryRecords => {
                             auxiliary_records = Some(map.next_value()?);
                         }
+                        Field::Profiling => {
+                            profiling = Some(map.next_value()?);
+                        }
                     }
                 }
 
@@ -225,6 +235,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     indexed_instantiations: indexed_instantiations.unwrap_or_default(),
                     unsat_events: unsat_events.unwrap_or_default(),
                     auxiliary_records: auxiliary_records.unwrap_or_default(),
+                    profiling: profiling.unwrap_or_default(),
                 })
             }
         }
@@ -243,6 +254,7 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
             "indexed_instantiations",
             "unsat_events",
             "auxiliary_records",
+            "profiling",
         ];
         deserializer.deserialize_struct("ProofLoopResult", FIELDS, ProofLoopResultVisitor)
     }
@@ -401,6 +413,9 @@ impl<'ctx, S> Driver<'ctx, S> {
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;
         let mut unsat_event_tracker = UnsatEventTracker::default();
+        let profile_costs = strat.profiling_enabled();
+        let driver_start = Instant::now();
+        let mut driver_records = Vec::new();
 
         let mut smt_problem = crate::smt_problem::SMTProblem::new(
             &self.vmt_model,
@@ -413,12 +428,41 @@ impl<'ctx, S> Driver<'ctx, S> {
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
             for refinement_step in 0..n_refines {
+                let step_start = Instant::now();
+                let mut driver_record = profile_costs.then(|| {
+                    DriverProfilingRecord::new(
+                        depth,
+                        refinement_step,
+                        smt_problem.get_instantiations().len(),
+                        smt_problem.get_number_instantiations_added(),
+                    )
+                });
                 total_refinement_steps += 1;
+                let unroll_start = Instant::now();
                 smt_problem.unroll(depth);
+                if let Some(record) = &mut driver_record {
+                    record.record_timing("unroll", unroll_start.elapsed());
+                    for (stage, secs) in smt_problem.take_last_unroll_profile() {
+                        record.record_timing_secs(stage, secs);
+                    }
+                }
+                let setup_start = Instant::now();
                 let mut state = strat.setup(&smt_problem, depth)?;
-                let action = match smt_problem.check() {
+                if let Some(record) = &mut driver_record {
+                    record.record_timing("strategy_setup", setup_start.elapsed());
+                }
+                let check_start = Instant::now();
+                let check_result = smt_problem.check();
+                if let Some(record) = &mut driver_record {
+                    record.record_timing("check", check_start.elapsed());
+                    for (stage, secs) in smt_problem.take_last_check_profile() {
+                        record.record_timing_secs(stage, secs);
+                    }
+                }
+                let action = match check_result {
                     SolverCheckResult::Unsat => {
                         info!("  check completed");
+                        let unsat_start = Instant::now();
                         unsat_event_tracker.record_vmt_event(
                             &smt_problem,
                             depth,
@@ -442,32 +486,91 @@ impl<'ctx, S> Driver<'ctx, S> {
                         }
 
                         self.extensions.unsat(&mut state, &smt_problem)?;
-                        strat.unsat(&mut state, &smt_problem)?
+                        let action = strat.unsat(&mut state, &smt_problem)?;
+                        if let Some(record) = &mut driver_record {
+                            record.record_timing("strategy_unsat", unsat_start.elapsed());
+                        }
+                        action
                     }
                     SolverCheckResult::Unknown => {
+                        let unknown_start = Instant::now();
                         self.extensions.unknown(&mut state, &smt_problem)?;
-                        strat.unknown(&mut state, &smt_problem)?
+                        let action = strat.unknown(&mut state, &smt_problem)?;
+                        if let Some(record) = &mut driver_record {
+                            record.record_timing("strategy_unknown", unknown_start.elapsed());
+                        }
+                        action
                     }
                     SolverCheckResult::Sat => {
                         info!("  refinement: {}/{n_refines}", refinement_step);
+                        let sat_start = Instant::now();
                         self.extensions
                             .sat(&mut state, &smt_problem, refinement_step)?;
-                        strat.sat(&mut state, &smt_problem, refinement_step)?
+                        let action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                        if let Some(record) = &mut driver_record {
+                            record.record_timing("strategy_sat", sat_start.elapsed());
+                        }
+                        action
                     }
                 };
 
                 match action {
                     ProofAction::Continue => {
+                        let finish_start = Instant::now();
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
                         strat.finish(state, &mut smt_problem)?;
+                        if let Some(mut record) = driver_record {
+                            record.record_timing("finish", finish_start.elapsed());
+                            record.record_timing("driver_step_total", step_start.elapsed());
+                            driver_records.push(record.finish(
+                                "continue",
+                                smt_problem.get_instantiations().len(),
+                                smt_problem.get_number_instantiations_added(),
+                            ));
+                        }
                     }
-                    ProofAction::NextDepth => continue 'bmc,
-                    ProofAction::FoundCounterexample => return Err(Error::Counterexample),
+                    ProofAction::NextDepth => {
+                        if let Some(mut record) = driver_record {
+                            record.record_timing("driver_step_total", step_start.elapsed());
+                            driver_records.push(record.finish(
+                                "next_depth",
+                                smt_problem.get_instantiations().len(),
+                                smt_problem.get_number_instantiations_added(),
+                            ));
+                        }
+                        continue 'bmc;
+                    }
+                    ProofAction::FoundCounterexample => {
+                        if let Some(mut record) = driver_record {
+                            record.record_timing("driver_step_total", step_start.elapsed());
+                            driver_records.push(record.finish(
+                                "found_counterexample",
+                                smt_problem.get_instantiations().len(),
+                                smt_problem.get_number_instantiations_added(),
+                            ));
+                        }
+                        return Err(Error::Counterexample);
+                    }
                     ProofAction::FoundProof => {
+                        if let Some(mut record) = driver_record {
+                            record.record_timing("driver_step_total", step_start.elapsed());
+                            driver_records.push(record.finish(
+                                "found_proof",
+                                smt_problem.get_instantiations().len(),
+                                smt_problem.get_number_instantiations_added(),
+                            ));
+                        }
                         info!("Building final proof result");
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
                         result.total_refinement_steps = total_refinement_steps;
                         result.unsat_events = unsat_event_tracker.events.clone();
+                        if profile_costs {
+                            result.profiling.record_timing(
+                                "driver_check_strategy_total",
+                                driver_start.elapsed(),
+                            );
+                            result.profiling.extend_driver_records(driver_records);
+                        }
                         info!("Collecting unsat core metadata");
                         result.unsat_core = self.build_unsat_core_info(&smt_problem);
                         info!("Collecting indexed instantiation records");
@@ -486,6 +589,12 @@ impl<'ctx, S> Driver<'ctx, S> {
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
         result.total_refinement_steps = total_refinement_steps;
         result.unsat_events = unsat_event_tracker.events;
+        if profile_costs {
+            result
+                .profiling
+                .record_timing("driver_check_strategy_total", driver_start.elapsed());
+            result.profiling.extend_driver_records(driver_records);
+        }
         info!("Collecting unsat core metadata");
         result.unsat_core = self.build_unsat_core_info(&smt_problem);
         info!("Collecting indexed instantiation records");

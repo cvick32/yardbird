@@ -34,6 +34,7 @@ pub mod instantiation_strategy;
 mod interpolant;
 pub mod logger;
 pub mod problem_context;
+pub mod profiling;
 mod proof_tree;
 pub mod smt_problem;
 pub mod smtlib_problem;
@@ -116,6 +117,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
 
+    /// Capture Yardbird-side profiling data, especially e-graph cost computation timings.
+    #[arg(long, default_value_t = false)]
+    pub profile_costs: bool,
+
     /// Enable training data logging to database
     #[arg(long, default_value_t = false)]
     pub train: bool,
@@ -173,6 +178,7 @@ impl Default for YardbirdOptions {
             track_instantiations: false,
             dump_unsat_core: None,
             verbose: false,
+            profile_costs: false,
             train: false,
             train_reset: false,
             database_url: None,
@@ -295,7 +301,13 @@ impl YardbirdOptions {
     where
         F: ArrayCostFactory<Config = ()> + 'static,
     {
-        Abstract::new(bmc_depth, self.run_ic3ia, (), aux_config)
+        Abstract::new(
+            bmc_depth,
+            self.run_ic3ia,
+            (),
+            aux_config,
+            self.profile_costs,
+        )
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -309,7 +321,13 @@ impl YardbirdOptions {
             .expect("--cost-function logistic-regression requires --ranker-model");
         let model = LogisticRegressionModel::from_path(model_path)
             .unwrap_or_else(|err| panic!("failed to configure logistic-regression model: {err}"));
-        Abstract::new(bmc_depth, self.run_ic3ia, model, aux_config)
+        Abstract::new(
+            bmc_depth,
+            self.run_ic3ia,
+            model,
+            aux_config,
+            self.profile_costs,
+        )
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {

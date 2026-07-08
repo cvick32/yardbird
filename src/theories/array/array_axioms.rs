@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use egg::*;
 use rustc_hash::FxHashMap;
@@ -7,6 +7,7 @@ use smt2parser::concrete::{Constant, QualIdentifier, Term};
 use crate::{
     auxiliary_synthesis::ArrayConflictRecord,
     cost_functions::YardbirdCostFunction,
+    profiling::ArrayProfilingCollector,
     theories::array::{
         array_conflict_scheduler::ArrayConflictScheduler, array_term_extractor::ArrayTermExtractor,
     },
@@ -44,13 +45,20 @@ define_language! {
 pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
 
-pub type ArraySaturationResult = (
-    Vec<ArrayExpr>,
-    Vec<ArrayExpr>,
-    Vec<ArrayConflictRecord>,
-    Vec<crate::training::DecisionRecord>,
-    Vec<crate::training::AbstractInstantiationRecord>,
-);
+pub struct ArraySaturationResult {
+    pub instantiations: Vec<ArrayExpr>,
+    pub const_instantiations: Vec<ArrayExpr>,
+    pub conflicts: Vec<ArrayConflictRecord>,
+    pub decisions: Vec<crate::training::DecisionRecord>,
+    pub abstract_instantiations: Vec<crate::training::AbstractInstantiationRecord>,
+}
+
+fn egraph_node_count<N>(egraph: &EGraph<ArrayLanguage, N>) -> usize
+where
+    N: Analysis<ArrayLanguage>,
+{
+    egraph.classes().map(|class| class.nodes.len()).sum()
+}
 
 impl ArrayLanguage {
     pub fn equals(lhs: &ArrayExpr, rhs: &ArrayExpr) -> ArrayExpr {
@@ -239,24 +247,41 @@ pub fn saturate_with_array_types<CF, N>(
     selection_counts: FxHashMap<String, u32>,
     depth: u16,
     array_types: &[(String, String)],
+    profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 ) -> ArraySaturationResult
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
     let taken_egraph = std::mem::take(egraph);
+    if let Some(profiling) = &profiling {
+        profiling.borrow_mut().set_egraph_before_saturation(
+            taken_egraph.number_of_classes(),
+            egraph_node_count(&taken_egraph),
+        );
+    }
+    let scheduler_cost_fn = cost_fn.clone();
+    let extractor_start = Instant::now();
+    let extractor = ArrayTermExtractor::new(
+        &taken_egraph,
+        cost_fn,
+        refinement_step,
+        selection_counts,
+        depth,
+        profiling.clone(),
+    );
+    if let Some(profiling) = &profiling {
+        profiling
+            .borrow_mut()
+            .record_timing("extractor_init", extractor_start.elapsed());
+    }
     let scheduler = ArrayConflictScheduler::new(
         BackoffScheduler::default(),
-        cost_fn.clone(),
-        ArrayTermExtractor::new(
-            &taken_egraph,
-            cost_fn,
-            refinement_step,
-            selection_counts,
-            depth,
-        ),
+        scheduler_cost_fn,
+        extractor,
         refinement_step,
         depth,
+        profiling.clone(),
     );
     let instantiations = scheduler.instantiations();
     let const_instantiations = scheduler.instantiations_w_constants();
@@ -280,10 +305,21 @@ where
         }
     }
 
+    let runner_start = Instant::now();
     let runner = Runner::default()
         .with_egraph(taken_egraph)
         .with_scheduler(scheduler)
         .run(&axioms);
+    if let Some(profiling) = &profiling {
+        profiling
+            .borrow_mut()
+            .record_timing("runner_total", runner_start.elapsed());
+        profiling.borrow_mut().set_egraph_after_saturation(
+            runner.egraph.number_of_classes(),
+            egraph_node_count(&runner.egraph),
+            runner.iterations.len(),
+        );
+    }
 
     drop(runner);
 
@@ -309,13 +345,13 @@ where
         log::debug!("============================\n");
     }
 
-    (
-        final_insts,
-        final_const_insts,
-        final_conflicts,
-        final_decisions,
-        final_abstract_instantiations,
-    )
+    ArraySaturationResult {
+        instantiations: final_insts,
+        const_instantiations: final_const_insts,
+        conflicts: final_conflicts,
+        decisions: final_decisions,
+        abstract_instantiations: final_abstract_instantiations,
+    }
 }
 
 /// Generate array axioms for a specific type pair (index_sort, value_sort).

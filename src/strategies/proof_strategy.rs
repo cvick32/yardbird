@@ -3,6 +3,7 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     driver::{self, Error},
     problem_context::ProblemContext,
+    profiling::ProfilingRecord,
     theory_support::TheorySupport,
     training::{AbstractInstantiationRecord, DecisionRecord},
     ProofLoopResult,
@@ -57,6 +58,14 @@ pub trait ProofStrategy<'ctx, S> {
         &mut self,
     ) -> (Vec<DecisionRecord>, Vec<AbstractInstantiationRecord>) {
         (vec![], vec![])
+    }
+
+    fn take_profiling_records(&mut self) -> Vec<ProfilingRecord> {
+        vec![]
+    }
+
+    fn profiling_enabled(&self) -> bool {
+        false
     }
 
     fn result(&mut self, model: &mut VMTModel, smt: &dyn ProblemContext) -> ProofLoopResult;

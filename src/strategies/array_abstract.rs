@@ -1,4 +1,4 @@
-use std::{collections::HashSet, mem};
+use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
@@ -15,6 +15,7 @@ use crate::{
     cost_functions::array::ArrayCostFactory,
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
+    profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     theories::array::{
         array_axioms::{
             expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
@@ -55,6 +56,8 @@ where
     pending_aux_specs: Vec<AuxiliarySpec>,
     installed_aux_conflicts: HashSet<String>,
     aux_covered_term_hashes: HashSet<String>,
+    profile_costs: bool,
+    profiling_records: Vec<ProfilingRecord>,
 }
 
 impl<F> Abstract<F>
@@ -66,6 +69,7 @@ where
         run_ic3ia: bool,
         cost_config: F::Config,
         aux_config: AuxSynthesisConfig,
+        profile_costs: bool,
     ) -> Self {
         Self {
             _bmc_depth: bmc_depth,
@@ -82,8 +86,17 @@ where
             pending_aux_specs: vec![],
             installed_aux_conflicts: HashSet::new(),
             aux_covered_term_hashes: HashSet::new(),
+            profile_costs,
+            profiling_records: vec![],
         }
     }
+}
+
+fn egraph_node_count<N>(egraph: &egg::EGraph<ArrayLanguage, N>) -> usize
+where
+    N: egg::Analysis<ArrayLanguage>,
+{
+    egraph.classes().map(|class| class.nodes.len()).sum()
 }
 
 /// State for the inner refinement looop
@@ -100,15 +113,60 @@ impl ArrayRefinementState {
     pub fn update_with_subterms(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
+        profiling: Option<&Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> anyhow::Result<()> {
-        for term in smt.get_all_subterms() {
-            let interp_str = smt.eval_to_string(term)?;
-            let term_id = self.egraph.add_expr(&translate_term(term.clone()).unwrap());
-            let preprocessed = preprocess_array_expr(&interp_str);
-            let interp_id = self.egraph.add_expr(&preprocessed.parse()?);
-            self.egraph.union(term_id, interp_id);
+        let all_subterms_start = Instant::now();
+        let subterms = smt.get_all_subterms();
+        if let Some(profiling) = profiling {
+            let mut profiling = profiling.borrow_mut();
+            profiling.record_timing("update_get_all_subterms", all_subterms_start.elapsed());
+            profiling.add_counter("update_subterms", subterms.len() as u64);
         }
+
+        for term in subterms {
+            let eval_start = Instant::now();
+            let interp_str = smt.eval_to_string(term)?;
+            if let Some(profiling) = profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("update_eval_to_string", eval_start.elapsed());
+            }
+
+            let translate_start = Instant::now();
+            let translated = translate_term(term.clone()).unwrap();
+            if let Some(profiling) = profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("update_translate_term", translate_start.elapsed());
+            }
+
+            let parse_start = Instant::now();
+            let preprocessed = preprocess_array_expr(&interp_str);
+            let parsed_interp = preprocessed.parse()?;
+            if let Some(profiling) = profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("update_preprocess_parse_interp", parse_start.elapsed());
+            }
+
+            let egraph_start = Instant::now();
+            let term_id = self.egraph.add_expr(&translated);
+            let interp_id = self.egraph.add_expr(&parsed_interp);
+            self.egraph.union(term_id, interp_id);
+            if let Some(profiling) = profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("update_egraph_add_union", egraph_start.elapsed());
+            }
+        }
+
+        let rebuild_start = Instant::now();
         self.egraph.rebuild();
+        if let Some(profiling) = profiling {
+            profiling
+                .borrow_mut()
+                .record_timing("update_egraph_rebuild", rebuild_start.elapsed());
+        }
         Ok(())
     }
 }
@@ -177,31 +235,80 @@ where
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
         }
-        state.update_with_subterms(smt)?;
-        let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
-        let (insts, const_insts, conflicts, decisions, abstract_instantiations) =
-            saturate_with_array_types(
-                &mut state.egraph,
-                cost_fn,
-                refinement_step,
-                self.term_selection_counts.clone(),
-                state.depth,
-                &state.array_types,
+        let profiling = self.profile_costs.then(|| {
+            Rc::new(RefCell::new(ArrayProfilingCollector::new(
+                "array_refinement",
+                Some(state.depth),
+                Some(refinement_step),
+                state.array_types.clone(),
+            )))
+        });
+        if let Some(profiling) = &profiling {
+            profiling.borrow_mut().set_egraph_before_update(
+                state.egraph.number_of_classes(),
+                egraph_node_count(&state.egraph),
             );
-        state.instantiations.extend_from_slice(&insts);
-        state.const_instantiations.extend_from_slice(&const_insts);
-        state.conflict_records.extend(conflicts.clone());
-        self.decision_data.extend(decisions);
-        self.abstract_instantiations.extend(abstract_instantiations);
-        self.handle_aux_synthesis_detection(state, smt, &conflicts, refinement_step);
+        }
+        let update_start = Instant::now();
+        state.update_with_subterms(smt, profiling.as_ref())?;
+        if let Some(profiling) = &profiling {
+            let mut profiling = profiling.borrow_mut();
+            profiling.record_timing("update_with_subterms", update_start.elapsed());
+            profiling.set_egraph_after_update(
+                state.egraph.number_of_classes(),
+                egraph_node_count(&state.egraph),
+            );
+        }
+
+        let cost_factory_start = Instant::now();
+        let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
+        if let Some(profiling) = &profiling {
+            profiling
+                .borrow_mut()
+                .record_timing("cost_factory", cost_factory_start.elapsed());
+        }
+
+        let saturation_start = Instant::now();
+        let saturation = saturate_with_array_types(
+            &mut state.egraph,
+            cost_fn,
+            refinement_step,
+            self.term_selection_counts.clone(),
+            state.depth,
+            &state.array_types,
+            profiling.clone(),
+        );
+        if let Some(profiling) = &profiling {
+            profiling
+                .borrow_mut()
+                .record_timing("saturation_total", saturation_start.elapsed());
+        }
+        state
+            .instantiations
+            .extend_from_slice(&saturation.instantiations);
+        state
+            .const_instantiations
+            .extend_from_slice(&saturation.const_instantiations);
+        state.conflict_records.extend(saturation.conflicts.clone());
+        self.decision_data.extend(saturation.decisions);
+        self.abstract_instantiations
+            .extend(saturation.abstract_instantiations);
+        self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
+        if let Some(profiling) = profiling {
+            if let Ok(profiling) = Rc::try_unwrap(profiling) {
+                self.profiling_records.push(profiling.into_inner().finish());
+            } else {
+                warn!("Unable to unwrap array profiling collector; profiling record dropped");
+            }
+        }
         if trace_conflicts_enabled() {
             trace!(
                 "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
                 state.depth,
                 refinement_step,
-                insts.len(),
-                const_insts.len(),
-                conflicts.len(),
+                saturation.instantiations.len(),
+                saturation.const_instantiations.len(),
+                saturation.conflicts.len(),
                 state.instantiations.len(),
                 state.const_instantiations.len()
             );
@@ -390,6 +497,14 @@ where
         )
     }
 
+    fn take_profiling_records(&mut self) -> Vec<ProfilingRecord> {
+        mem::take(&mut self.profiling_records)
+    }
+
+    fn profiling_enabled(&self) -> bool {
+        self.profile_costs
+    }
+
     fn result(
         &mut self,
         vmt_model: &mut VMTModel,
@@ -424,6 +539,11 @@ where
             indexed_instantiations: vec![],
             unsat_events: vec![],
             auxiliary_records: smt.get_auxiliary_records(),
+            profiling: if self.profile_costs {
+                ProfilingRunRecord::enabled(mem::take(&mut self.profiling_records))
+            } else {
+                ProfilingRunRecord::disabled()
+            },
         }
     }
 }
