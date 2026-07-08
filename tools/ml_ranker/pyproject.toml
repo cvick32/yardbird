@@ -1,0 +1,9 @@
+[project]
+name = "ml-ranker"
+version = "0.1.0"
+description = "Training utilities for Yardbird's logistic-regression term ranker"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.4.6",
+]

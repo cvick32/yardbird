@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Train and evaluate a small per-slot Yardbird term ranker.
 
-This is a dependency-light prototype. It reads a family split manifest, exports
-candidate rows from the Yardbird training database with psql, trains a weighted
-logistic model using numpy, and reports ranking metrics by split.
+The ranker trains a dependency-light weighted logistic regression model from
+candidate rows exported out of the Yardbird benchmark database. It is intended
+as a reproducible baseline for the Rust `logistic-regression` cost function.
 """
 
 from __future__ import annotations
@@ -26,6 +26,24 @@ import numpy as np
 
 SPLITS = ("train", "dev", "eval", "unassigned")
 FRAME_SENTINEL = -999
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_MANIFEST = SCRIPT_DIR / "array-family-v1.yaml"
+LABEL_NAME = "direct_core_chosen_candidate"
+MODEL_TYPE = "weighted_logistic_regression"
+TRUE_VALUES = {"t", "true", "1", "yes"}
+FALSE_VALUES = {"f", "false", "0", "no"}
+
+
+def log(message: str) -> None:
+    print(f"[train-ranker] {message}", file=sys.stderr, flush=True)
+
+
+def fmt_metric(value: object) -> str:
+    if value is None:
+        return "n/a"
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
 
 
 @dataclass(frozen=True)
@@ -37,7 +55,7 @@ class Family:
 
 
 def parse_manifest(path: Path) -> list[Family]:
-    """Parse the small YAML subset used by eval/splits/array-family-v1.yaml."""
+    """Parse the small YAML subset used by the family split manifest."""
     families: list[Family] = []
     current: dict[str, object] | None = None
     in_paths = False
@@ -86,7 +104,9 @@ def parse_manifest(path: Path) -> list[Family]:
         raise ValueError(f"no families found in manifest {path}")
     for family in families:
         if family.split not in SPLITS:
-            raise ValueError(f"unknown split {family.split!r} for family {family.family_id}")
+            raise ValueError(
+                f"unknown split {family.split!r} for family {family.family_id}"
+            )
         if not family.benchmark_paths:
             raise ValueError(f"family {family.family_id} has no benchmark_paths")
     return families
@@ -102,6 +122,15 @@ def load_dotenv(repo_root: Path) -> None:
             continue
         key, value = line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+def find_repo_root(start: Path) -> Path:
+    """Return the Yardbird repo root when the script is run from a subdir."""
+    resolved = start.resolve()
+    for candidate in (resolved, *resolved.parents):
+        if (candidate / "Cargo.toml").exists() and (candidate / "src").is_dir():
+            return candidate
+    return resolved
 
 
 def sql_literal(value: str) -> str:
@@ -129,13 +158,10 @@ def manifest_values_sql(families: Iterable[Family]) -> str:
 
 def build_export_query(
     families: list[Family],
-    cost_function: str | None,
     include_unsuccessful: bool,
 ) -> str:
     values = manifest_values_sql(families)
     filters = []
-    if cost_function:
-        filters.append(f"b.cost_function = {sql_literal(cost_function)}")
     if not include_unsuccessful:
         filters.append("b.success IS TRUE")
     where_clause = ""
@@ -160,7 +186,6 @@ matched_benchmarks AS (
     SELECT
         b.id AS benchmark_id,
         b.name AS benchmark_name,
-        b.cost_function,
         b.success,
         m.split,
         m.family_id,
@@ -174,7 +199,6 @@ matched_benchmarks AS (
 SELECT
     mb.benchmark_id,
     mb.benchmark_name,
-    mb.cost_function,
     mb.success,
     mb.split,
     mb.family_id,
@@ -206,13 +230,18 @@ ORDER BY mb.split, mb.benchmark_id, d.id, c.id
 
 
 def export_rows(database_url: str, query: str) -> list[dict[str, str]]:
-    proc = subprocess.run(
-        ["psql", database_url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", query],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["psql", database_url, "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", query],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as err:
+        raise SystemExit(
+            "psql was not found on PATH; install PostgreSQL client tools"
+        ) from err
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr)
         raise SystemExit(proc.returncode)
@@ -220,7 +249,12 @@ def export_rows(database_url: str, query: str) -> list[dict[str, str]]:
 
 
 def parse_bool(value: str) -> bool:
-    return value.lower() in {"t", "true", "1", "yes"}
+    normalized = value.strip().lower()
+    if normalized in TRUE_VALUES:
+        return True
+    if normalized in FALSE_VALUES:
+        return False
+    raise ValueError(f"expected boolean-ish value, got {value!r}")
 
 
 def add_decision_rank_features(rows: list[dict[str, object]]) -> None:
@@ -254,7 +288,6 @@ def normalize_rows(raw_rows: list[dict[str, str]]) -> list[dict[str, object]]:
         row: dict[str, object] = {
             "benchmark_id": int(raw["benchmark_id"]),
             "benchmark_name": raw["benchmark_name"],
-            "cost_function": raw["cost_function"],
             "success": parse_bool(raw["success"]),
             "split": raw["split"],
             "family_id": raw["family_id"],
@@ -306,7 +339,9 @@ NUMERIC_FEATURES = [
 
 def numeric_values(row: dict[str, object]) -> list[float]:
     frame_index = int(row["frame_index"])
-    frame_clipped = 0 if frame_index == FRAME_SENTINEL else max(-20, min(20, frame_index))
+    frame_clipped = (
+        0 if frame_index == FRAME_SENTINEL else max(-20, min(20, frame_index))
+    )
     ast_size = int(row["ast_size"])
     current_cost = int(row["current_cost"])
     candidate_count = int(row["candidate_count"])
@@ -337,7 +372,6 @@ def categorical_features(row: dict[str, object]) -> list[str]:
         f"axiom={row['axiom_name']}",
         f"slot={row['slot_index']}",
         f"axiom_slot={row['axiom_name']}:{row['slot_index']}",
-        f"cost_fn={row['cost_function']}",
     ]
 
 
@@ -415,10 +449,16 @@ def train_logistic(
 
     pred = sigmoid(x_train @ weights)
     eps = 1e-12
-    loss = -np.sum(
-        sample_weight
-        * (y_train * np.log(pred + eps) + (1.0 - y_train) * np.log(1.0 - pred + eps))
-    ) / weight_sum
+    loss = (
+        -np.sum(
+            sample_weight
+            * (
+                y_train * np.log(pred + eps)
+                + (1.0 - y_train) * np.log(1.0 - pred + eps)
+            )
+        )
+        / weight_sum
+    )
     return weights, {
         "positive_weight": float(positive_weight),
         "weighted_log_loss": float(loss),
@@ -511,14 +551,18 @@ def rank_metrics(
     }
 
 
-def make_score_map(rows: list[dict[str, object]], scores: np.ndarray) -> dict[int, float]:
+def make_score_map(
+    rows: list[dict[str, object]], scores: np.ndarray
+) -> dict[int, float]:
     return {
         int(row["candidate_id"]): float(score)
         for row, score in zip(rows, scores, strict=True)
     }
 
 
-def summarize_dataset(families: list[Family], rows: list[dict[str, object]]) -> dict[str, object]:
+def summarize_dataset(
+    families: list[Family], rows: list[dict[str, object]]
+) -> dict[str, object]:
     manifest_benchmarks_by_split = Counter()
     manifest_families_by_split = Counter()
     for family in families:
@@ -565,20 +609,56 @@ def write_json(path: Path, data: object) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--database-url")
-    parser.add_argument("--cost-function", default="bmc-cost")
-    parser.add_argument("--all-cost-functions", action="store_true")
-    parser.add_argument("--include-unsuccessful", action="store_true")
-    parser.add_argument("--out-dir", type=Path, required=True)
-    parser.add_argument("--epochs", type=int, default=600)
-    parser.add_argument("--learning-rate", type=float, default=0.25)
-    parser.add_argument("--l2", type=float, default=1e-4)
-    parser.add_argument("--positive-weight", type=float)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_MANIFEST,
+        metavar="PATH",
+        help=(
+            "Family split manifest to use for train/dev/eval assignment "
+            "(default: tools/ml_ranker/array-family-v1.yaml)."
+        ),
+    )
+    parser.add_argument(
+        "--database-url",
+        help="PostgreSQL URL. Falls back to YARDBIRD_DATABASE_URL or DATABASE_URL.",
+    )
+    parser.add_argument(
+        "--include-unsuccessful",
+        action="store_true",
+        help="Include benchmark runs that did not finish successfully.",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        metavar="PATH",
+        help="Directory for dataset-summary.json, metrics.json, and model.json.",
+    )
+    parser.add_argument("--epochs", type=int, default=600, help="Default: 600.")
+    parser.add_argument(
+        "--learning-rate", type=float, default=0.25, help="Default: 0.25."
+    )
+    parser.add_argument("--l2", type=float, default=1e-4, help="Default: 1e-4.")
+    parser.add_argument(
+        "--positive-weight",
+        type=float,
+        help="Override the automatically balanced positive class weight.",
+    )
     args = parser.parse_args()
 
-    repo_root = Path.cwd()
+    if args.epochs <= 0:
+        parser.error("--epochs must be greater than zero")
+    if args.learning_rate <= 0:
+        parser.error("--learning-rate must be greater than zero")
+    if args.l2 < 0:
+        parser.error("--l2 must be non-negative")
+    if args.positive_weight is not None and args.positive_weight <= 0:
+        parser.error("--positive-weight must be greater than zero")
+
+    repo_root = find_repo_root(SCRIPT_DIR)
     load_dotenv(repo_root)
+    log(f"repo_root={repo_root}")
 
     database_url = (
         args.database_url
@@ -590,28 +670,60 @@ def main() -> int:
     if database_url.startswith("postgresql+"):
         database_url = "postgresql://" + database_url.split("://", 1)[1]
 
+    log(f"loading manifest {args.manifest}")
     families = parse_manifest(args.manifest)
+    manifest_benchmark_count = sum(len(family.benchmark_paths) for family in families)
+    log(
+        "manifest loaded: "
+        f"families={len(families)} benchmarks={manifest_benchmark_count}"
+    )
     query = build_export_query(
         families,
-        None if args.all_cost_functions else args.cost_function,
         args.include_unsuccessful,
     )
+    log("exporting candidate rows from database")
     raw_rows = export_rows(database_url, query)
+    log(f"export complete: raw_candidate_rows={len(raw_rows)}")
+    log("normalizing rows and adding per-decision rank features")
     rows = normalize_rows(raw_rows)
     if not rows:
-        raise SystemExit("no candidate rows extracted; check DB URL, manifest, and cost filter")
+        raise SystemExit(
+            "no candidate rows extracted; check DB URL and manifest coverage"
+        )
+    log(f"normalized rows: candidate_rows={len(rows)}")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     summary = summarize_dataset(families, rows)
     write_json(args.out_dir / "dataset-summary.json", summary)
+    log(f"wrote {args.out_dir / 'dataset-summary.json'}")
 
     train_rows = split_rows(rows, "train")
     if not train_rows:
         raise SystemExit("no train rows extracted")
+    log(
+        "training split: "
+        f"rows={len(train_rows)} "
+        f"positive_rows={sum(bool(row['label']) for row in train_rows)} "
+        f"decisions={len({int(row['decision_id']) for row in train_rows})}"
+    )
 
+    log("fitting feature spec from train split")
     spec = fit_feature_spec(train_rows)
+    log(
+        "feature spec: "
+        f"numeric_features={len(NUMERIC_FEATURES)} "
+        f"categorical_vocab={len(spec.categorical_vocab)}"
+    )
+    log("building train matrix")
     x_train = build_matrix(train_rows, spec)
-    y_train = np.asarray([float(bool(row["label"])) for row in train_rows], dtype=np.float64)
+    log(f"train matrix shape: rows={x_train.shape[0]} columns={x_train.shape[1]}")
+    y_train = np.asarray(
+        [float(bool(row["label"])) for row in train_rows], dtype=np.float64
+    )
+    log(
+        "training logistic regression: "
+        f"epochs={args.epochs} learning_rate={args.learning_rate} l2={args.l2}"
+    )
     weights, train_info = train_logistic(
         x_train,
         y_train,
@@ -620,33 +732,48 @@ def main() -> int:
         args.l2,
         args.positive_weight,
     )
+    log(
+        "training complete: "
+        f"positive_weight={fmt_metric(train_info['positive_weight'])} "
+        f"weighted_log_loss={fmt_metric(train_info['weighted_log_loss'])}"
+    )
 
     metrics: dict[str, object] = {
-        "label": "direct_core_chosen_candidate",
-        "cost_function_filter": None if args.all_cost_functions else args.cost_function,
+        "label": LABEL_NAME,
         "training": train_info,
         "splits": {},
     }
-    all_scores_by_candidate: dict[int, float] = {}
+    log("ranking splits with model and current-cost baseline")
     for split in SPLITS:
         split_data = split_rows(rows, split)
         if not split_data:
+            log(f"split={split}: no rows, skipping")
             continue
+        log(f"split={split}: building matrix rows={len(split_data)}")
         x_split = build_matrix(split_data, spec)
         scores = sigmoid(x_split @ weights)
         score_map = make_score_map(split_data, scores)
-        all_scores_by_candidate.update(score_map)
+        model_metrics = rank_metrics(split_data, score_map, use_model=True)
+        baseline_metrics = rank_metrics(split_data, score_map, use_model=False)
         metrics["splits"][split] = {
             "rows": len(split_data),
             "positive_rows": int(sum(bool(row["label"]) for row in split_data)),
             "decisions": len({int(row["decision_id"]) for row in split_data}),
-            "model": rank_metrics(split_data, score_map, use_model=True),
-            "current_cost_baseline": rank_metrics(split_data, score_map, use_model=False),
+            "model": model_metrics,
+            "current_cost_baseline": baseline_metrics,
         }
+        log(
+            f"split={split}: ranked "
+            f"positive_decisions={model_metrics['positive_decisions']} "
+            f"model_mrr={fmt_metric(model_metrics['mrr'])} "
+            f"baseline_mrr={fmt_metric(baseline_metrics['mrr'])} "
+            f"model_top1={fmt_metric(model_metrics['top1'])} "
+            f"baseline_top1={fmt_metric(baseline_metrics['top1'])}"
+        )
 
     model = {
-        "model_type": "weighted_logistic_regression",
-        "label": "direct_core_chosen_candidate",
+        "model_type": MODEL_TYPE,
+        "label": LABEL_NAME,
         "feature_spec": {
             "numeric_features": NUMERIC_FEATURES,
             "numeric_mean": spec.numeric_mean,
@@ -655,7 +782,6 @@ def main() -> int:
                 "axiom",
                 "slot",
                 "axiom_slot",
-                "cost_fn",
             ],
             "categorical_vocab": spec.categorical_vocab,
             "unknown_categorical_policy": "zero",
@@ -665,6 +791,8 @@ def main() -> int:
     }
     write_json(args.out_dir / "metrics.json", metrics)
     write_json(args.out_dir / "model.json", model)
+    log(f"wrote {args.out_dir / 'metrics.json'}")
+    log(f"wrote {args.out_dir / 'model.json'}")
 
     print(json.dumps(metrics, indent=2, sort_keys=True))
     return 0
