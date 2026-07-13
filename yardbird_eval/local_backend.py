@@ -48,16 +48,22 @@ def launch_local_run(args: Any) -> dict[str, Any]:
 
         started = now_local()
         try:
+            command = [
+                str(GARDEN_BIN),
+                "--config",
+                args.config,
+                "--matrix",
+                matrix,
+                "--output",
+                str(raw_path),
+            ]
+            if args.ranker_model:
+                command.extend(["--ranker-model", args.ranker_model])
+            if args.profile_costs:
+                command.append("--profile-costs")
+
             run_command(
-                [
-                    str(GARDEN_BIN),
-                    "--config",
-                    args.config,
-                    "--matrix",
-                    matrix,
-                    "--output",
-                    str(raw_path),
-                ],
+                command,
                 cwd=ROOT,
                 check=True,
                 capture_output=False,

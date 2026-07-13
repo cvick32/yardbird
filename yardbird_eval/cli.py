@@ -79,6 +79,15 @@ def parse_args() -> argparse.Namespace:
         help="Path to the garden benchmark config YAML",
     )
     parser.add_argument("--name", help="Optional friendly name for the evaluation run")
+    parser.add_argument(
+        "--ranker-model",
+        help="Path to a logistic-regression model JSON to pass through to garden/Yardbird",
+    )
+    parser.add_argument(
+        "--profile-costs",
+        action="store_true",
+        help="Include Yardbird cost/refinement profiling records in benchmark JSON",
+    )
     parser.add_argument("--run-id", help="Existing run id to refresh or report on")
     parser.add_argument("--aws-run-id", help=argparse.SUPPRESS)
     parser.add_argument(
@@ -191,6 +200,10 @@ def main() -> int:
         raise RuntimeError("Provide either --env with benchmark types or --run-id")
     if not args.benchmark_type:
         raise RuntimeError("Provide at least one --benchmark-type")
+    if args.env != "local" and (args.ranker_model or args.profile_costs):
+        raise RuntimeError(
+            "--ranker-model and --profile-costs are currently supported for --env local only"
+        )
 
     if args.env == "local":
         manifest = launch_local_run(args)
