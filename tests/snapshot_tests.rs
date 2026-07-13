@@ -10,7 +10,7 @@ use std::{
 use yardbird::{
     self,
     auxiliary_synthesis::AuxSynthesisConfig,
-    cost_functions::array::array_bmc_cost_factory,
+    cost_functions::array::ArrayBMCCost,
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
@@ -122,11 +122,12 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
                 let vmt_model = model_from_options(&options);
                 let instantiation_strategy = options.build_instantiation_strategy();
                 let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3);
-                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
                     10,
                     false,
-                    array_bmc_cost_factory,
+                    (),
                     AuxSynthesisConfig::default(),
+                    false,
                 ));
                 let res = driver.check_strategy(options.depth, strat).unwrap();
                 res.used_instances
@@ -157,11 +158,12 @@ fn run_benchmark_with_solver(
             let vmt_model = model_from_options(&options);
             let instantiation_strategy = options.build_instantiation_strategy();
             let mut driver = Driver::new(vmt_model, instantiation_strategy, solver_backend);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
                 10,
                 false,
-                array_bmc_cost_factory,
+                (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             let res = driver.check_strategy(options.depth, strat).unwrap();
             res.used_instances
@@ -191,11 +193,12 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
 
             z3::with_z3_config(&cfg, move || {
                 let problem = SMTLIBProblem::from_path(&path).unwrap();
-                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
                     0,
                     false,
-                    array_bmc_cost_factory,
+                    (),
                     AuxSynthesisConfig::default(),
+                    false,
                 ));
                 let (result, _abstracted_problem) = SMTLIBSolver::execute_with_strategy(
                     &problem,

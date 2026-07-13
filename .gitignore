@@ -18,6 +18,7 @@ ec2
 *.tikz
 *.tex
 benchmark_results
+tmp/
 *.pyc
 run_all_benchmarks.sh
 ubuntu*

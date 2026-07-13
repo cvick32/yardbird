@@ -2,7 +2,8 @@ use egg::Language;
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
-    cost_functions::YardbirdCostFunction,
+    cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
+    problem_context::ProblemContext,
     theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
 };
 
@@ -48,6 +49,19 @@ impl AdaptiveArrayCost {
             "Mod" | "Div" => 15,    // Even more complex
             _ => 0,
         }
+    }
+}
+
+impl ArrayCostFactory for AdaptiveArrayCost {
+    type Config = ();
+
+    fn from_context(smt: &dyn ProblemContext, depth: u32, _config: &Self::Config) -> Self {
+        Self::new(
+            depth,
+            smt.get_init_and_transition_subterms(),
+            smt.get_property_subterms(),
+            smt.get_reads_and_writes(),
+        )
     }
 }
 

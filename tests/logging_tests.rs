@@ -9,7 +9,7 @@ use std::env;
 
 use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
-    cost_functions::array::array_bmc_cost_factory,
+    cost_functions::array::ArrayBMCCost,
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
@@ -17,7 +17,7 @@ use yardbird::{
         reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
         IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,
     },
-    Driver, SolverBackend, YardbirdOptions,
+    CostFunction, Driver, SolverBackend, YardbirdOptions,
 };
 
 #[cfg(feature = "training")]
@@ -40,11 +40,12 @@ fn run_array_copy_logging_result() -> yardbird::ProofLoopResult {
         move || {
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
                 10,
                 false,
-                array_bmc_cost_factory,
+                (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             driver
                 .check_strategy(options.depth, strat)
@@ -350,16 +351,33 @@ fn filename_is_only_optional_for_reset_mode() {
 }
 
 #[test]
+fn logistic_regression_missing_model_path_is_validation_error() {
+    let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
+    options.cost_function = CostFunction::LogisticRegression;
+    options.ranker_model = Some("tmp/ml-ranker/does-not-exist/model.json".to_string());
+
+    let err = options
+        .validate_ranker_options()
+        .expect_err("missing ranker model should fail validation");
+
+    assert!(
+        err.to_string().contains("failed to load --ranker-model"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn smtlib_strategy_populates_logging_artifacts() {
     let result = run_with_timeout(
         move || {
             let problem = SMTLIBProblem::from_path("examples/smt2/array_bitvec_simple.smt2")
                 .expect("should parse SMT-LIB example");
-            let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::new(
+            let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
                 0,
                 false,
-                array_bmc_cost_factory,
+                (),
                 AuxSynthesisConfig::default(),
+                false,
             ));
             SMTLIBSolver::execute_with_strategy(&problem, strategy, SolverBackend::Z3, 50, true)
                 .expect("SMT-LIB strategy run should complete")
@@ -435,8 +453,13 @@ fn single_example_persists_provenance_to_db() {
                 .expect("training session should be enabled");
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
-            let strat: Box<dyn ProofStrategy<_>> =
-                Box::new(Abstract::new(10, false, array_bmc_cost_factory));
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+                10,
+                false,
+                (),
+                AuxSynthesisConfig::default(),
+                false,
+            ));
             let result = driver
                 .check_strategy(options.depth, strat)
                 .expect("benchmark should complete");

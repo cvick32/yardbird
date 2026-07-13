@@ -1,4 +1,8 @@
-use std::{collections::HashSet, vec};
+use std::{
+    collections::{BTreeMap, HashSet},
+    time::Instant,
+    vec,
+};
 
 use log::debug;
 use smt2parser::{
@@ -21,6 +25,23 @@ use crate::{
     SolverBackend,
 };
 
+const DUMP_PROPERTY_LABEL: &str = "yardbird_negated_property";
+
+#[derive(Clone, Debug)]
+struct NamedAssertion {
+    label: String,
+    term: Term,
+}
+
+impl NamedAssertion {
+    fn new(label: impl Into<String>, term: Term) -> Self {
+        Self {
+            label: label.into(),
+            term,
+        }
+    }
+}
+
 pub struct SMTProblem {
     bmc_builder: BMCBuilder,
     sorts: Vec<Command>,
@@ -28,7 +49,8 @@ pub struct SMTProblem {
     variable_definitions: Vec<Command>,
     init_assertion: Term,
     trans_assertion: Term,
-    init_and_transition_assertions: Vec<Term>,
+    init_and_transition_assertions: Vec<NamedAssertion>,
+    theory_axiom_assertions: Vec<Term>,
     asserted_instantiation_terms: Vec<Term>,
     auxiliary_specs: Vec<AuxiliarySpec>,
     auxiliary_records: Vec<AuxiliaryRecord>,
@@ -42,6 +64,8 @@ pub struct SMTProblem {
     track_instantiations: bool,
     tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    last_check_profile: BTreeMap<String, f64>,
+    last_unroll_profile: BTreeMap<String, f64>,
 }
 
 impl std::fmt::Debug for SMTProblem {
@@ -63,6 +87,36 @@ impl Clone for SMTProblem {
         // SMTProblem contains non-cloneable solver objects and models.
         unimplemented!("SMTProblem::clone() is not implemented")
     }
+}
+
+fn format_smt2_with_property_check(base_smt2: &str, property_assert: &Term) -> String {
+    let mut output = String::from("(set-option :produce-unsat-cores true)\n");
+    output.push_str(base_smt2);
+    if !base_smt2.ends_with('\n') {
+        output.push('\n');
+    }
+    output.push_str(&format!(
+        "(assert (! (not {property_assert}) :named {DUMP_PROPERTY_LABEL}))\n\
+         (check-sat)\n\
+         (get-unsat-core)\n"
+    ));
+    output
+}
+
+fn format_assertions(terms: &[Term]) -> String {
+    terms
+        .iter()
+        .map(|term| format!("(assert {term})"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn format_named_assertions(assertions: &[NamedAssertion]) -> String {
+    assertions
+        .iter()
+        .map(|assertion| format!("(assert (! {} :named {}))", assertion.term, assertion.label))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[allow(clippy::borrowed_box)]
@@ -96,6 +150,7 @@ impl SMTProblem {
             init_assertion,
             trans_assertion,
             init_and_transition_assertions: vec![],
+            theory_axiom_assertions: vec![],
             asserted_instantiation_terms: vec![],
             auxiliary_specs: vec![],
             auxiliary_records: vec![],
@@ -109,6 +164,8 @@ impl SMTProblem {
             track_instantiations,
             tracked_labels: vec![],
             instantiation_strategy,
+            last_check_profile: BTreeMap::new(),
+            last_unroll_profile: BTreeMap::new(),
         };
         // Handle theory-specific function declarations
         let theory = strategy.get_theory_support();
@@ -144,6 +201,7 @@ impl SMTProblem {
                 smt.solver
                     .assert_term(&term)
                     .expect("solver should assert theory axioms");
+                smt.theory_axiom_assertions.push(term);
             }
         }
 
@@ -173,7 +231,8 @@ impl SMTProblem {
             self.solver
                 .assert_term(&init)
                 .expect("solver should assert the initial condition");
-            self.init_and_transition_assertions.push(init);
+            self.init_and_transition_assertions
+                .push(NamedAssertion::new("yardbird_init_0", init));
         }
         if self.depth != 0 {
             let trans = self
@@ -182,11 +241,23 @@ impl SMTProblem {
             self.solver
                 .assert_term(&trans)
                 .expect("solver should assert the transition condition");
-            self.init_and_transition_assertions.push(trans);
+            self.init_and_transition_assertions
+                .push(NamedAssertion::new(
+                    format!("yardbird_trans_{}_to_{}", self.depth - 1, self.depth),
+                    trans,
+                ));
             let auxiliary_transitions = self.auxiliary_transition_assertions.clone();
-            for transition in auxiliary_transitions {
+            for (index, transition) in auxiliary_transitions.into_iter().enumerate() {
                 let indexed_transition = self.bmc_builder.index_transition_term(transition);
-                self.assert_auxiliary_term(indexed_transition);
+                self.assert_auxiliary_term(
+                    indexed_transition,
+                    format!(
+                        "yardbird_aux_trans_{}_to_{}_{}",
+                        self.depth - 1,
+                        self.depth,
+                        index
+                    ),
+                );
             }
         }
         // Note: Instantiation handling at each depth is now delegated to
@@ -248,7 +319,8 @@ impl SMTProblem {
             .init_and_transition_assertions
             .iter()
             .map(|assertion| {
-                let named = smtinterpol_utils::assert_term_interpolant(assertion_index, assertion);
+                let named =
+                    smtinterpol_utils::assert_term_interpolant(assertion_index, &assertion.term);
                 assertion_index += 1;
                 named
             })
@@ -278,6 +350,14 @@ impl SMTProblem {
 
     pub(crate) fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
+    }
+
+    pub(crate) fn take_last_check_profile(&mut self) -> BTreeMap<String, f64> {
+        std::mem::take(&mut self.last_check_profile)
+    }
+
+    pub(crate) fn take_last_unroll_profile(&mut self) -> BTreeMap<String, f64> {
+        std::mem::take(&mut self.last_unroll_profile)
     }
 
     pub(crate) fn install_auxiliary_specs(
@@ -323,15 +403,42 @@ impl SMTProblem {
         &self.auxiliary_records
     }
 
-    /// Dump the solver state to an SMT2 file
+    /// Dump the solver state to an SMT2 file that can be replayed from the
+    /// command line to reproduce the last property check and print its core.
     pub(crate) fn dump_solver_to_file(&self, path: &str) -> anyhow::Result<()> {
         use std::fs::File;
         use std::io::Write;
 
-        let smt2_string = self.solver.to_smt2_string()?;
+        let smt2_string = self.smt2_string_with_property_check();
         let mut file = File::create(path)?;
         file.write_all(smt2_string.as_bytes())?;
         Ok(())
+    }
+
+    fn smt2_string_with_property_check(&self) -> String {
+        let mut sections = vec![
+            unique_command_lines(&self.sorts),
+            unique_command_lines(&self.function_definitions),
+            unique_command_lines(&self.variable_definitions),
+            format_assertions(&self.theory_axiom_assertions),
+            format_named_assertions(&self.init_and_transition_assertions),
+            self.format_instantiation_assertions(),
+        ];
+        sections.retain(|section| !section.is_empty());
+        let base_smt2 = sections.join("\n");
+        format_smt2_with_property_check(&base_smt2, &self.subterm_handler.get_property_assert())
+    }
+
+    fn format_instantiation_assertions(&self) -> String {
+        if self.track_instantiations {
+            self.tracked_labels
+                .iter()
+                .map(|record| format!("(assert (! {} :named {}))", record.term, record.label))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            format_assertions(&self.asserted_instantiation_terms)
+        }
     }
 
     /// Get the unsat core when tracking is enabled
@@ -459,7 +566,13 @@ impl SMTProblem {
         let current_depth = self.bmc_builder.depth;
         self.bmc_builder.set_depth(depth);
         let indexed_transition = self.bmc_builder.index_transition_term(transition);
-        self.assert_auxiliary_term(indexed_transition);
+        let label = format!(
+            "yardbird_aux_trans_{}_to_{}_{}",
+            depth - 1,
+            depth,
+            self.init_and_transition_assertions.len()
+        );
+        self.assert_auxiliary_term(indexed_transition, label);
         self.bmc_builder.set_depth(current_depth);
     }
 
@@ -467,17 +580,22 @@ impl SMTProblem {
         let current_depth = self.bmc_builder.depth;
         self.bmc_builder.set_depth(0);
         let indexed_init = self.bmc_builder.index_single_step_term(init_term);
-        self.assert_auxiliary_term(indexed_init);
+        let label = format!(
+            "yardbird_aux_init_0_{}",
+            self.init_and_transition_assertions.len()
+        );
+        self.assert_auxiliary_term(indexed_init, label);
         self.bmc_builder.set_depth(current_depth);
     }
 
-    fn assert_auxiliary_term(&mut self, term: Term) {
+    fn assert_auxiliary_term(&mut self, term: Term, label: impl Into<String>) {
         self.solver
             .assert_term(&term)
             .expect("solver should assert auxiliary terms");
         self.subterm_handler
             .register_instantiation_term(term.clone());
-        self.init_and_transition_assertions.push(term);
+        self.init_and_transition_assertions
+            .push(NamedAssertion::new(label, term));
     }
 
     fn assert_auxiliary_localized_axiom(&mut self, spec: &AuxiliarySpec, localized_axiom: Term) {
@@ -491,7 +609,12 @@ impl SMTProblem {
             .unwrap_or(self.depth);
         self.bmc_builder.set_depth(target_depth);
         let indexed_axiom = self.bmc_builder.index_single_step_term(localized_axiom);
-        self.assert_auxiliary_term(indexed_axiom);
+        let label = format!(
+            "yardbird_aux_localized_{}_{}",
+            self.auxiliary_records.len(),
+            target_depth
+        );
+        self.assert_auxiliary_term(indexed_axiom, label);
         self.bmc_builder.set_depth(current_depth);
         log::info!(
             "AUX-SYNTH localized axiom aux_id={} asserted_at_depth={target_depth}",
@@ -508,46 +631,107 @@ impl SMTProblem {
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
     pub(crate) fn check(&mut self) -> SolverCheckResult {
-        let start_time = std::time::Instant::now();
+        self.last_check_profile.clear();
+        let start_time = Instant::now();
 
         // Push property back on top of the solver.
+        let push_start = Instant::now();
         self.push_property();
+        self.last_check_profile.insert(
+            "check_push_property".to_string(),
+            push_start.elapsed().as_secs_f64(),
+        );
+
+        let solver_start = Instant::now();
         let sat_result = self.solver.check();
+        self.last_check_profile.insert(
+            "check_solver".to_string(),
+            solver_start.elapsed().as_secs_f64(),
+        );
+
+        let proof_start = Instant::now();
         let _ = self.solver.inspect_last_proof();
+        self.last_check_profile.insert(
+            "check_inspect_last_proof".to_string(),
+            proof_start.elapsed().as_secs_f64(),
+        );
+
         if sat_result == SolverCheckResult::Sat {
+            let collect_model_terms_start = Instant::now();
             let model_terms = self
                 .subterm_handler
                 .get_all_subterms()
                 .into_iter()
                 .cloned()
                 .collect::<Vec<_>>();
+            self.last_check_profile.insert(
+                "check_collect_model_terms".to_string(),
+                collect_model_terms_start.elapsed().as_secs_f64(),
+            );
+
+            let preserve_model_start = Instant::now();
             self.solver
                 .preserve_model_values(&model_terms)
                 .expect("solver should preserve SAT model values before property pop");
+            self.last_check_profile.insert(
+                "check_preserve_model_values".to_string(),
+                preserve_model_start.elapsed().as_secs_f64(),
+            );
         }
         // Popping property off.
+        let pop_start = Instant::now();
         self.solver.pop(1);
+        self.last_check_profile
+            .insert("check_pop".to_string(), pop_start.elapsed().as_secs_f64());
+
+        let statistics_start = Instant::now();
         self.solver.record_statistics_since(start_time);
+        self.last_check_profile.insert(
+            "check_record_statistics".to_string(),
+            statistics_start.elapsed().as_secs_f64(),
+        );
+        self.last_check_profile.insert(
+            "check_total".to_string(),
+            start_time.elapsed().as_secs_f64(),
+        );
 
         sat_result
     }
 
     pub(crate) fn unroll(&mut self, depth: u16) {
+        self.last_unroll_profile.clear();
+        let unroll_start = Instant::now();
         if depth > self.depth {
             // These things should only happen the first time a new depth is seen.
             // Set new depth.
             self.depth = depth;
             self.bmc_builder.set_depth(self.depth);
             // Generate subterms.
+            let generate_subterms_start = Instant::now();
             self.subterm_handler
                 .generate_subterms(&mut self.bmc_builder);
+            self.last_unroll_profile.insert(
+                "unroll_generate_subterms".to_string(),
+                generate_subterms_start.elapsed().as_secs_f64(),
+            );
             // Add new variables for this depth to the solver backend.
+            let add_variables_start = Instant::now();
             self.add_solver_variables();
+            self.last_unroll_profile.insert(
+                "unroll_add_solver_variables".to_string(),
+                add_variables_start.elapsed().as_secs_f64(),
+            );
             // Add assertion for current depth.
+            let add_assertion_start = Instant::now();
             self.add_assertion();
+            self.last_unroll_profile.insert(
+                "unroll_add_assertion".to_string(),
+                add_assertion_start.elapsed().as_secs_f64(),
+            );
 
             // Call instantiation strategy's on_loop hook to handle instantiations at this depth
             if !self.instantiations.is_empty() {
+                let on_loop_start = Instant::now();
                 let instantiations_snapshot: Vec<StoredInstantiation> = self.instantiations.clone();
                 self.instantiation_strategy.on_loop(
                     self.depth,
@@ -559,8 +743,21 @@ impl SMTProblem {
                     &mut self.asserted_instantiation_terms,
                     &mut self.num_quantifiers_instantiated,
                 );
+                self.last_unroll_profile.insert(
+                    "unroll_instantiation_on_loop".to_string(),
+                    on_loop_start.elapsed().as_secs_f64(),
+                );
             }
+        } else {
+            self.last_unroll_profile.insert(
+                "unroll_noop".to_string(),
+                unroll_start.elapsed().as_secs_f64(),
+            );
         }
+        self.last_unroll_profile.insert(
+            "unroll_total".to_string(),
+            unroll_start.elapsed().as_secs_f64(),
+        );
     }
 }
 
@@ -658,7 +855,7 @@ mod tests {
             AuxiliarySpec, FrameSpan, GuardPolicy, HistorySpec, NonMonotonicityCheckRecord,
             NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
         },
-        cost_functions::array::array_bmc_cost_factory,
+        cost_functions::array::ArrayBMCCost,
         instantiation_strategy::full_unroll::FullUnrollStrategy,
         strategies::{Abstract, ArrayRefinementState, ProofStrategy},
     };
@@ -666,13 +863,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn dump_formatter_appends_property_check_and_unsat_core_commands() {
+        let property: Term = "(> x@0 0)".parse().unwrap();
+        let output = format_smt2_with_property_check(
+            "(declare-fun x@0 () Int)\n(assert (> x@0 -1))",
+            &property,
+        );
+
+        assert!(output.starts_with("(set-option :produce-unsat-cores true)\n"));
+        assert!(output.contains("(assert (! (not (> x@0 0)) :named yardbird_negated_property))\n"));
+        assert!(output.ends_with("(check-sat)\n(get-unsat-core)\n"));
+    }
+
+    #[test]
+    fn named_assertion_formatter_names_transition_system_formulas() {
+        let assertions = vec![
+            NamedAssertion::new("yardbird_init_0", "(= i@0 0)".parse::<Term>().unwrap()),
+            NamedAssertion::new(
+                "yardbird_trans_0_to_1",
+                "(= i@1 (+ i@0 1))".parse::<Term>().unwrap(),
+            ),
+        ];
+        let output = format_named_assertions(&assertions);
+
+        assert!(output.contains("(assert (! (= i@0 0) :named yardbird_init_0))"));
+        assert!(output.contains("(assert (! (= i@1 (+ i@0 1)) :named yardbird_trans_0_to_1))"));
+    }
+
+    #[test]
     fn installs_auxiliary_specs_for_existing_and_future_frames() {
         let model = VMTModel::from_path("./examples/array/array_copy.vmt").unwrap();
-        let mut concrete_strategy = Abstract::new(
+        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(
             4,
             false,
-            array_bmc_cost_factory,
+            (),
             crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
+            false,
         );
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =

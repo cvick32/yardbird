@@ -35,6 +35,14 @@ parameter_matrices:
     cost_functions: ["bmc-cost"]
     timeout_seconds: 20
 
+  # Learned ranker comparison matrix
+  logistic-regression-depth20:
+    depths: [20]
+    solvers: ["z3"]
+    strategies: ["abstract"]
+    cost_functions: ["bmc-cost", "logistic-regression"]
+    timeout_seconds: 120
+
   timeout:
     depths: [50]
     strategies: ["abstract"]

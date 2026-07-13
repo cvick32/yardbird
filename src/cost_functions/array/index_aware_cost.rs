@@ -3,7 +3,8 @@ use rustc_hash::FxHashSet;
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
-    cost_functions::YardbirdCostFunction,
+    cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
+    problem_context::ProblemContext,
     theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
 };
 
@@ -114,6 +115,30 @@ impl IndexAwareArrayCost {
             return self.index_symbols.contains(&name_sym);
         }
         false
+    }
+}
+
+impl ArrayCostFactory for IndexAwareArrayCost {
+    type Config = ();
+
+    fn from_context(smt: &dyn ProblemContext, depth: u32, _config: &Self::Config) -> Self {
+        let init_and_transition_system_terms: FxHashSet<Symbol> = smt
+            .get_init_and_transition_subterms()
+            .into_iter()
+            .map(|term| term.into())
+            .collect();
+        let property_terms: FxHashSet<Symbol> = smt
+            .get_property_subterms()
+            .into_iter()
+            .map(|term| term.into())
+            .collect();
+
+        Self::new(
+            depth,
+            init_and_transition_system_terms,
+            property_terms,
+            smt.get_reads_and_writes(),
+        )
     }
 }
 

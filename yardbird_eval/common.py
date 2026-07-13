@@ -233,9 +233,11 @@ def refresh_progress(manifest: dict[str, Any]) -> None:
 
 
 def ensure_garden_binary() -> None:
-    if GARDEN_BIN.exists():
-        return
-    run_command(["cargo", "build", "--release", "-p", "garden"], cwd=ROOT, check=True)
+    run_command(
+        ["cargo", "build", "--release", "-p", "yardbird", "-p", "garden"],
+        cwd=ROOT,
+        check=True,
+    )
 
 
 def relative_to_root(path: Path) -> str:

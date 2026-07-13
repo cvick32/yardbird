@@ -9,6 +9,7 @@ mod config;
 #[cfg(feature = "training")]
 mod db;
 mod logger;
+mod logistic_regression;
 mod schema;
 mod session;
 mod term_features;
@@ -16,6 +17,7 @@ pub mod term_hash;
 
 pub use config::TrainingConfig;
 pub use logger::{NoOpLogger, TrainingLogger};
+pub use logistic_regression::{LogisticRegressionCandidateFeatures, LogisticRegressionModel};
 pub use schema::{
     AbstractInstantiationRecord, CandidateRecord, DecisionRecord, IndexedInstantiationRecord,
     TrainingRunRecord, UnsatEventRecord,

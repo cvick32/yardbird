@@ -67,6 +67,12 @@ struct GardenOptions {
     pub train: bool,
 
     #[arg(long)]
+    pub ranker_model: Option<String>,
+
+    #[arg(long, default_value_t = false)]
+    pub profile_costs: bool,
+
+    #[arg(long)]
     pub database_url: Option<String>,
 
     #[arg(long, default_value_t = false)]
@@ -233,6 +239,19 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
 
     if options.track_instantiations {
         command.arg("--track-instantiations");
+    }
+
+    if options.profile_costs {
+        command.arg("--profile-costs");
+    }
+
+    if matches!(
+        options.cost_function,
+        yardbird::CostFunction::LogisticRegression
+    ) {
+        if let Some(ranker_model) = &options.ranker_model {
+            command.arg("--ranker-model").arg(ranker_model);
+        }
     }
 
     if let Some(database_url) = &options.database_url {
@@ -466,6 +485,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 database_url: options.database_url.clone(),
                                 training_run_version: training_run_version.clone(),
                                 verbose: false,
+                                profile_costs: options.profile_costs,
                                 synthesis_trigger: options.synthesis_trigger,
                                 synthesis_guard_policy: options.synthesis_guard_policy,
                                 synthesis_after: options.synthesis_after,
@@ -473,6 +493,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                     .synthesis_refinement_limit_window,
                                 synthesis_repeated_pattern_threshold: options
                                     .synthesis_repeated_pattern_threshold,
+                                ranker_model: options.ranker_model.clone(),
                             },
                             retry,
                             timeout,
@@ -596,6 +617,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         database_url: options.database_url.clone(),
                         training_run_version: training_run_version.clone(),
                         verbose: false,
+                        profile_costs: options.profile_costs,
                         synthesis_trigger: options.synthesis_trigger,
                         synthesis_guard_policy: options.synthesis_guard_policy,
                         synthesis_after: options.synthesis_after,
@@ -603,6 +625,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                             .synthesis_refinement_limit_window,
                         synthesis_repeated_pattern_threshold: options
                             .synthesis_repeated_pattern_threshold,
+                        ranker_model: options.ranker_model.clone(),
                     },
                     config.global.retry_count,
                     run.timeout_seconds,

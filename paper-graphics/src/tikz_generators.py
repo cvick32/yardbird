@@ -166,6 +166,7 @@ class CactusPlotTikzGenerator:
             "Prefer Read": "softPurple",
             "Prefer Write": "softOrange",
             "Prefer Constants": "softYellow",
+            "Logistic Regression": "softTeal",
             "Z3 MBQI": "softBrown",
         }
 
@@ -265,6 +266,7 @@ class InstCactusPlotTikzGenerator:
             "Prefer Read": "softPurple",
             "Prefer Write": "softOrange",
             "Prefer Constants": "softYellow",
+            "Logistic Regression": "softTeal",
             "Z3 MBQI": "softBrown",
         }
 
@@ -585,6 +587,10 @@ Example & Strategy A Runtime (s) & Strategy B Runtime (s) & Speedup \\\\
                         avg_reduction_when_reduced
                     )
 
+        baseline_display_name = stats.get(baseline_strategy, {}).get(
+            "display_name", baseline_strategy
+        )
+
         # Generate table (table* spans both columns)
         table_code = """
 \\begin{table*}[htbp]
@@ -683,13 +689,13 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & I
 
             table_code += f"{display_name} & {solved} & {failed} & {avg_inst_str} & {unique_solves_str} & {pct_with_reduction_str} & {avg_reduction_all_str} & {shared_count_str} & {inst_reduction_str} & {runtime_speedup_str} \\\\\n"
 
-        table_code += """\\bottomrule
-\\end{tabular}%
-}
-\\vspace{1em}
-\\caption{Strategy performance comparison with the Z3 Array Theory as the baseline. \\% w/ Reduction shows the percentage of all shared solved benchmarks where instantiations were reduced compared to baseline. Inst. Reduction shows the average instantiation reduction percentage across benchmarks where reduction occurred. Shared Difficult shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Bold metrics (\\textbf{Inst. Reduction} and \\textbf{Runtime Speedup}) are computed only over the shared difficult benchmarks, using geometric mean for speedup.}
-\\label{tab:summary_statistics}
-\\end{table*}
+        table_code += f"""\\bottomrule
+\\end{{tabular}}%
+}}
+\\vspace{{1em}}
+\\caption{{Strategy performance comparison with {baseline_display_name} as the baseline. \\% w/ Reduction shows the percentage of all shared solved benchmarks where instantiations were reduced compared to baseline. Inst. Reduction shows the average instantiation reduction percentage across benchmarks where reduction occurred. Shared Difficult shows the number of benchmarks solved by both the strategy and baseline where baseline took $\\geq$1s. Bold metrics (\\textbf{{Inst. Reduction}} and \\textbf{{Runtime Speedup}}) are computed only over the shared difficult benchmarks, using geometric mean for speedup.}}
+\\label{{tab:summary_statistics}}
+\\end{{table*}}
 """
 
         return table_code
@@ -738,12 +744,20 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & I
         # Sort by example name
         unique_solves.sort(key=lambda x: x["example"])
 
-        # Create display name
+        # Create display names
         display_name = strategy_key.replace("_", " ").replace("-", " ").title()
+        baseline_display_name = baseline_strategy.replace("_", " ").replace("-", " ").title()
+        for strategies in grouped_results.values():
+            if strategy_key in strategies:
+                display_name = strategies[strategy_key].get_display_name()
+            if baseline_strategy in strategies:
+                baseline_display_name = strategies[baseline_strategy].get_display_name()
+            if strategy_key in strategies and baseline_strategy in strategies:
+                break
 
         table_code = f"""
 \\begin{{longtable}}{{lrrr}}
-\\caption{{Benchmarks Uniquely Solved by {display_name} (Not Solved by Z3)}} \\\\
+\\caption{{Benchmarks Uniquely Solved by {display_name} (Not Solved by {baseline_display_name})}} \\\\
 \\toprule
 Example & Runtime (s) & Instantiations & Depth \\\\
 \\midrule

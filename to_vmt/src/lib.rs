@@ -2,7 +2,7 @@ pub use smt2parser::vmt::VMTModel;
 pub use vmt_macros::{ensures, generate_test};
 pub use vmtil;
 use yardbird::{
-    auxiliary_synthesis::AuxSynthesisConfig, cost_functions::array::array_bmc_cost_factory,
+    auxiliary_synthesis::AuxSynthesisConfig, cost_functions::array::ArrayBMCCost,
     strategies::Abstract, Driver,
 };
 
@@ -45,11 +45,12 @@ pub fn run_model(
         Box::new(yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy::new());
     let mut driver = Driver::new(model, instantiation_strategy, yardbird::SolverBackend::Z3);
 
-    let strat = Box::new(Abstract::new(
+    let strat = Box::new(Abstract::<ArrayBMCCost>::new(
         depth,
         false,
-        array_bmc_cost_factory,
+        (),
         AuxSynthesisConfig::default(),
+        false,
     ));
 
     match driver.check_strategy(depth, strat) {

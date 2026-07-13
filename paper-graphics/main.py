@@ -18,6 +18,26 @@ from src.tikz_generators import (
 )
 
 
+def choose_baseline_strategy(strategy_keys):
+    """Pick the most useful available baseline for generated comparisons."""
+    preferred_baselines = [
+        "concrete",
+        "abstract_bmc-cost",
+        "abstract_symbol-cost",
+    ]
+    for strategy_key in preferred_baselines:
+        if strategy_key in strategy_keys:
+            return strategy_key
+    return sorted(strategy_keys)[0] if strategy_keys else None
+
+
+def display_name_for_strategy(grouped, strategy_key):
+    for strategies in grouped.values():
+        if strategy_key in strategies:
+            return strategies[strategy_key].get_display_name()
+    return strategy_key
+
+
 def generate_figures(grouped, strategy_keys, all_results, output_dir):
     """Generate all figures and save to output directory
 
@@ -30,6 +50,12 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Available strategies: {sorted(strategy_keys)}")
+    baseline_strategy = choose_baseline_strategy(strategy_keys)
+    if baseline_strategy is None:
+        print("No strategies available; skipping figure generation")
+        return
+    baseline_display_name = display_name_for_strategy(grouped, baseline_strategy)
+    print(f"Using baseline strategy: {baseline_strategy} ({baseline_display_name})")
 
     # Generate all-benchmarks table (every benchmark × every strategy with solve times)
     print(f"\n{'=' * 60}")
@@ -39,7 +65,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     all_benchmarks_table = TableTikzGenerator.generate_all_benchmarks_table(
         grouped,
         strategy_keys,
-        baseline_strategy="concrete",
+        baseline_strategy=baseline_strategy,
     )
     all_benchmarks_file = output_dir / "all_benchmarks_table.tex"
     all_benchmarks_file.write_text(all_benchmarks_table)
@@ -53,7 +79,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     summary_table = TableTikzGenerator.generate_summary_statistics_table(
         grouped,
         strategy_keys,
-        baseline_strategy="concrete",
+        baseline_strategy=baseline_strategy,
         min_baseline_runtime_ms=1000.0,
     )
     summary_file = output_dir / "summary_statistics.tex"
@@ -68,51 +94,47 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     shared_analysis_table = TableTikzGenerator.generate_shared_benchmark_analysis_table(
         grouped,
         strategy_keys,
-        baseline_strategy="concrete",
+        baseline_strategy=baseline_strategy,
         min_baseline_runtime_ms=1000.0,
     )
     shared_analysis_file = output_dir / "shared_benchmark_analysis.tex"
     shared_analysis_file.write_text(shared_analysis_table)
     print(f"  Saved: {shared_analysis_file}")
 
-    # Separate concrete from other strategies
-    non_concrete_strategies = sorted([s for s in strategy_keys if s != "concrete"])
+    # Compare every non-baseline strategy against the selected baseline.
+    non_baseline_strategies = sorted(
+        [s for s in strategy_keys if s != baseline_strategy]
+    )
 
     # Initialize generators
     runtime_gen = RuntimeScatterPlotGenerator(grouped)
     inst_gen = InstantiationScatterPlotGenerator(grouped)
 
     # Generate runtime and instantiation plots for each non-concrete strategy
-    for strategy_key in non_concrete_strategies:
+    for strategy_key in non_baseline_strategies:
         print(f"\n{'=' * 60}")
-        print(f"Generating figures for {strategy_key} vs concrete")
+        print(f"Generating figures for {strategy_key} vs {baseline_strategy}")
         print(f"{'=' * 60}")
 
         # Generate runtime scatter plot
         print("\n  Generating runtime scatter plot...")
         all_points = runtime_gen.generate_points(
-            "concrete", strategy_key, successful_only=False
+            baseline_strategy, strategy_key, successful_only=False
         )
         success_points = runtime_gen.generate_points(
-            "concrete", strategy_key, successful_only=True
+            baseline_strategy, strategy_key, successful_only=True
         )
 
         if all_points:
-            # Get display name from BenchmarkResult
-            display_name = None
-            for example_name, strategies in grouped.items():
-                if strategy_key in strategies:
-                    display_name = strategies[strategy_key].get_display_name()
-                    break
-            display_name = display_name or strategy_key  # Fallback
+            display_name = display_name_for_strategy(grouped, strategy_key)
 
             tikz_code = ScatterPlotTikzGenerator.generate(
                 all_points,
                 label=f"fig:{strategy_key}_runtime_scatter",
-                title=f"Runtime Comparison ({display_name} vs Z3)",
-                xlabel="Z3 Runtime (s)",
+                title=f"Runtime Comparison ({display_name} vs {baseline_display_name})",
+                xlabel=f"{baseline_display_name} Runtime (s)",
                 ylabel=f"{display_name} Runtime (s)",
-                caption=f"Runtime comparison between {display_name} and Z3.",
+                caption=f"Runtime comparison between {display_name} and {baseline_display_name}.",
                 use_log_scale=True,
             )
 
@@ -124,7 +146,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             if success_points:
                 table_code = TableTikzGenerator.generate_simple_table(
                     success_points,
-                    title=f"Runtime Results: {display_name} vs Z3",
+                    title=f"Runtime Results: {display_name} vs {baseline_display_name}",
                 )
                 table_file = output_dir / f"runtime_table_{strategy_key}.tex"
                 table_file.write_text(table_code)
@@ -132,24 +154,20 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
 
         # Generate instantiation scatter plot
         print("\n  Generating instantiation scatter plot...")
-        inst_points = inst_gen.generate_points("concrete", strategy_key, bmc_depth=50)
+        inst_points = inst_gen.generate_points(
+            baseline_strategy, strategy_key, bmc_depth=50
+        )
 
         if inst_points:
-            # Get display name from BenchmarkResult
-            display_name = None
-            for example_name, strategies in grouped.items():
-                if strategy_key in strategies:
-                    display_name = strategies[strategy_key].get_display_name()
-                    break
-            display_name = display_name or strategy_key  # Fallback
+            display_name = display_name_for_strategy(grouped, strategy_key)
 
             tikz_code = ScatterPlotTikzGenerator.generate(
                 inst_points,
                 label=f"fig:{strategy_key}_inst_scatter",
-                title=f"Instantiation Comparison ({display_name} vs Z3)",
-                xlabel="Z3 Instantiations",
+                title=f"Instantiation Comparison ({display_name} vs {baseline_display_name})",
+                xlabel=f"{baseline_display_name} Instantiations",
                 ylabel=f"{display_name} Instantiations",
-                caption=f"Array axiom instantiation comparison between {display_name} and Z3 (only successful, difficult benchmarks shown).",
+                caption=f"Array axiom instantiation comparison between {display_name} and {baseline_display_name} (only successful benchmarks shown).",
                 use_log_scale=True,
             )
 
@@ -160,7 +178,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
         # Generate unique solves detail table
         print("\n  Generating unique solves detail table...")
         unique_solves_table = TableTikzGenerator.generate_unique_solves_detail_table(
-            grouped, strategy_key, baseline_strategy="concrete"
+            grouped, strategy_key, baseline_strategy=baseline_strategy
         )
         if "No unique solves" not in unique_solves_table:
             unique_file = output_dir / f"unique_solves_{strategy_key}.tex"

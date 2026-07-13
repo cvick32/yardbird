@@ -90,6 +90,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
             indexed_instantiations: vec![],
             unsat_events: vec![],
             auxiliary_records: smt.get_auxiliary_records(),
+            profiling: crate::profiling::ProfilingRunRecord::disabled(),
         }
     }
 

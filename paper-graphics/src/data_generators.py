@@ -49,9 +49,7 @@ class RuntimeScatterPlotGenerator:
         points = []
         for example_name, strategies in self.grouped_results.items():
             if strategy_a_key not in strategies or strategy_b_key not in strategies:
-                raise ValueError(
-                    f"Unknown strategies: {strategy_a_key} or {strategy_b_key} not in {strategies}"
-                )
+                continue
 
             result1 = strategies[strategy_a_key]
             result2 = strategies[strategy_b_key]

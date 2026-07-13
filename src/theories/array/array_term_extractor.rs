@@ -1,11 +1,12 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 use egg::Language;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
-    cost_functions::YardbirdCostFunction,
+    cost_functions::{CandidateChoice, CandidateChoiceContext, YardbirdCostFunction},
+    profiling::ArrayProfilingCollector,
     theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
     training::{
         canonical_term_hash, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
@@ -65,6 +66,7 @@ where
     transition_terms: FxHashSet<String>,
     selection_counts: FxHashMap<String, u32>,
     depth: u16,
+    profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
 fn deindex_abstract_term(instantiation: &ArrayExpr) -> ArrayExpr {
@@ -96,6 +98,7 @@ where
         refinement_step: u32,
         selection_counts: FxHashMap<String, u32>,
         depth: u16,
+        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> Self
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -107,7 +110,15 @@ where
             if contains_z3_model_value(&term) {
                 continue;
             }
-            let cost = cost_function.cost_rec(&term);
+            let cost = if let Some(profiling) = &profiling {
+                profiling.borrow_mut().record_cost(
+                    "precompute_term_map",
+                    term.as_ref().len(),
+                    || cost_function.cost_rec(&term),
+                )
+            } else {
+                cost_function.cost_rec(&term)
+            };
             match egraph.lookup_expr(&term) {
                 // TODO: might want to keep track of all terms that match this node
                 Some(expr) => term_map
@@ -138,6 +149,7 @@ where
             transition_terms,
             selection_counts,
             depth,
+            profiling,
         }
     }
 
@@ -162,15 +174,25 @@ where
 
         self.extract_from_egraph(egraph, eclass)
             .map(|expr| {
-                let cost = self.cost_of(&expr) as i32;
+                let cost = self.cost_of_at("ranked_candidates_fallback", &expr) as i32;
                 vec![(expr, cost)]
             })
             .unwrap_or_default()
     }
 
     pub fn cost_of(&self, expr: &ArrayExpr) -> u32 {
+        self.cost_of_at("extractor_cost_of", expr)
+    }
+
+    pub fn cost_of_at(&self, site: &'static str, expr: &ArrayExpr) -> u32 {
         let mut cost_fn = self.cost_function.clone();
-        cost_fn.cost_rec(expr)
+        if let Some(profiling) = &self.profiling {
+            profiling
+                .borrow_mut()
+                .record_cost(site, expr.as_ref().len(), || cost_fn.cost_rec(expr))
+        } else {
+            cost_fn.cost_rec(expr)
+        }
     }
 
     pub fn decision_record<N>(
@@ -221,10 +243,7 @@ where
                 in_transition_vocab: features.in_transition_vocab,
                 frame_index: features.frame_index,
                 ast_size: features.ast_size,
-                current_cost: {
-                    let mut cost_fn = self.cost_function.clone();
-                    cost_fn.cost_rec(chosen_term) as i32
-                },
+                current_cost: self.cost_of_at("decision_record_append_chosen", chosen_term) as i32,
                 was_chosen: true,
             });
         }
@@ -264,10 +283,133 @@ where
         }
     }
 
+    fn candidate_ranks(
+        &self,
+        valid_terms: &[&(ArrayExpr, u32)],
+    ) -> FxHashMap<String, (usize, f64)> {
+        let candidate_count = valid_terms.len();
+        let mut ranked_terms = valid_terms
+            .iter()
+            .map(|entry| {
+                let (term, cost) = *entry;
+                (term, *cost)
+            })
+            .collect::<Vec<_>>();
+
+        ranked_terms.sort_by(|(left_term, left_cost), (right_term, right_cost)| {
+            left_cost
+                .cmp(right_cost)
+                .then_with(|| left_term.as_ref().len().cmp(&right_term.as_ref().len()))
+                .then_with(|| canonical_term_hash(left_term).cmp(&canonical_term_hash(right_term)))
+                .then_with(|| left_term.to_string().cmp(&right_term.to_string()))
+        });
+
+        let mut ranks = FxHashMap::default();
+        for (index, (term, _)) in ranked_terms.into_iter().enumerate() {
+            let cost_rank = index + 1;
+            let cost_rank_frac = if candidate_count <= 1 {
+                0.0
+            } else {
+                index as f64 / (candidate_count - 1) as f64
+            };
+            ranks
+                .entry(canonical_term_hash(term))
+                .or_insert((cost_rank, cost_rank_frac));
+        }
+        ranks
+    }
+
+    fn choose_candidate_with_ml<'a>(
+        &self,
+        valid_terms: &[&'a (ArrayExpr, u32)],
+        axiom_name: &str,
+        slot_index: u32,
+    ) -> Option<(&'a ArrayExpr, u32)> {
+        let candidate_count = valid_terms.len();
+        if candidate_count == 0 {
+            return None;
+        }
+
+        let ranks = self.candidate_ranks(valid_terms);
+        let choices = valid_terms
+            .iter()
+            .map(|entry| {
+                let (term, cost) = *entry;
+                let (cost_rank, cost_rank_frac) = ranks
+                    .get(&canonical_term_hash(term))
+                    .copied()
+                    .unwrap_or((candidate_count, 1.0));
+                CandidateChoice {
+                    term,
+                    current_cost: *cost,
+                    cost_rank,
+                    cost_rank_frac,
+                    candidate_count,
+                    prior_use_count: prior_use_count(&self.selection_counts, term),
+                }
+            })
+            .collect::<Vec<_>>();
+        let context = CandidateChoiceContext {
+            axiom_name,
+            slot_index,
+            bmc_depth: self.depth,
+        };
+        let ml_start = Instant::now();
+        let chosen_index = self
+            .cost_function
+            .choose_candidate_with_ml(&context, &choices)?;
+        if let Some(profiling) = &self.profiling {
+            profiling
+                .borrow_mut()
+                .record_timing("ml_choice_total", ml_start.elapsed());
+        }
+        if chosen_index >= choices.len() {
+            log::warn!(
+                "ML candidate chooser returned out-of-range index {} for {} candidates",
+                chosen_index,
+                choices.len()
+            );
+            return None;
+        }
+        let chosen = choices[chosen_index];
+        Some((chosen.term, chosen.current_cost))
+    }
+
+    fn choose_with_history<'a>(
+        &self,
+        valid_terms: Vec<&'a (ArrayExpr, u32)>,
+        baseline_use_count: u32,
+    ) -> Option<(&'a ArrayExpr, u32)> {
+        valid_terms
+            .into_iter()
+            .min_by(|(left_term, left_cost), (right_term, right_cost)| {
+                compare_terms_with_history(
+                    (left_term, *left_cost),
+                    (right_term, *right_cost),
+                    &self.selection_counts,
+                    baseline_use_count,
+                )
+            })
+            .map(|(term, cost)| (term, *cost))
+    }
+
     pub fn extract<N>(
         &self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
         eclass: egg::Id,
+    ) -> egg::RecExpr<ArrayLanguage>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        self.extract_for_decision(egraph, eclass, "unknown", 0)
+    }
+
+    pub fn extract_for_decision<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+        axiom_name: &str,
+        slot_index: u32,
     ) -> egg::RecExpr<ArrayLanguage>
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -283,16 +425,22 @@ where
                 .map(|(term, _)| prior_use_count(&self.selection_counts, term))
                 .min()
                 .unwrap_or(0);
-            if let Some((term, cost)) = valid_terms.into_iter().min_by(
-                |(left_term, left_cost), (right_term, right_cost)| {
-                    compare_terms_with_history(
-                        (left_term, *left_cost),
-                        (right_term, *right_cost),
-                        &self.selection_counts,
-                        baseline_use_count,
-                    )
-                },
-            ) {
+
+            if let Some((term, cost)) =
+                self.choose_candidate_with_ml(&valid_terms, axiom_name, slot_index)
+            {
+                let prior_uses = prior_use_count(&self.selection_counts, term);
+                log::debug!(
+                    "ml-chosen term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
+                    term,
+                    cost,
+                    prior_uses,
+                    prior_uses.saturating_sub(baseline_use_count)
+                );
+                return term.clone();
+            }
+
+            if let Some((term, cost)) = self.choose_with_history(valid_terms, baseline_use_count) {
                 let prior_uses = prior_use_count(&self.selection_counts, term);
                 log::debug!(
                     "history-aware term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
@@ -366,7 +514,7 @@ where
                 continue;
             }
 
-            let cost = self.cost_of(&expr);
+            let cost = self.cost_of_at("fallback_extract_best", &expr);
             let rendered = expr.to_string();
             let should_replace = best.as_ref().is_none_or(|(best_cost, best_rendered, _)| {
                 (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
@@ -470,6 +618,7 @@ mod tests {
             0,
             FxHashMap::default(),
             0,
+            None,
         );
 
         assert_eq!(extractor.extract(&egraph, b_id).to_string(), "a");
@@ -509,6 +658,7 @@ mod tests {
             0,
             selection_counts,
             0,
+            None,
         );
 
         assert_eq!(extractor.extract(&egraph, a_id).to_string(), "b");
@@ -530,6 +680,7 @@ mod tests {
             0,
             FxHashMap::default(),
             0,
+            None,
         );
 
         assert_eq!(extractor.extract(&egraph, model_id).to_string(), "a");
@@ -551,6 +702,7 @@ mod tests {
             0,
             FxHashMap::default(),
             0,
+            None,
         );
 
         let candidates = extractor.ranked_candidates(&egraph, model_id);
