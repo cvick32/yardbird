@@ -44,6 +44,8 @@ class BenchmarkResult:
                 return "Prefer Write"
             elif self.cost_function == "prefer-constants":
                 return "Prefer Constants"
+            elif self.cost_function == "logistic-regression":
+                return "Logistic Regression"
             else:
                 raise ValueError(f"Unknown Cost function: {self.cost_function}")
         else:

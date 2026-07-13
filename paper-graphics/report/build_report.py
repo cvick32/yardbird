@@ -93,6 +93,7 @@ def latex_wrapper_for(fragment_path: Path) -> str:
 \definecolor{{softPurple}}{{RGB}}{{129, 114, 179}}
 \definecolor{{softOrange}}{{RGB}}{{221, 132, 82}}
 \definecolor{{softYellow}}{{RGB}}{{204, 185, 116}}
+\definecolor{{softTeal}}{{RGB}}{{78, 163, 151}}
 \begin{{document}}
 \input{{{fragment}}}
 \end{{document}}
@@ -101,6 +102,7 @@ def latex_wrapper_for(fragment_path: Path) -> str:
 
 def compile_figure_fragment(fragment_path: Path, assets_dir: Path) -> Path:
     assets_dir.mkdir(parents=True, exist_ok=True)
+    assets_dir = assets_dir.resolve()
     output_pdf = assets_dir / f"{fragment_path.stem}.pdf"
     with tempfile.TemporaryDirectory(prefix=f"{fragment_path.stem}_") as temp_dir:
         temp_root = Path(temp_dir)
@@ -223,7 +225,8 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
     workbook_pdf = report_dir / "workbook.pdf"
     workbook_typ.write_text(workbook_body(manifest, compiled_assets, table_sources))
     run_command(
-        ["typst", "compile", str(workbook_typ), str(workbook_pdf)], cwd=report_dir
+        ["typst", "compile", str(workbook_typ.resolve()), str(workbook_pdf.resolve())],
+        cwd=report_dir,
     )
 
     report_metadata = {
