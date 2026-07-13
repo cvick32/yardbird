@@ -101,7 +101,7 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub json_output: bool,
 
-    /// Dump solver state to SMT2 file when unsat is reached
+    /// Dump a replayable SMT2 file with check-sat and unsat-core commands when unsat is reached
     #[arg(long)]
     pub dump_solver: Option<String>,
 

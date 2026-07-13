@@ -385,8 +385,9 @@ impl<'ctx, S> Driver<'ctx, S> {
         track_instantiations: bool,
         dump_unsat_core: Option<String>,
     ) -> Self {
+        let dump_solver_requested = dump_solver.is_some();
         self.dump_solver_path = dump_solver;
-        self.track_instantiations = track_instantiations;
+        self.track_instantiations = track_instantiations || dump_solver_requested;
         self.dump_unsat_core_path = dump_unsat_core;
         self
     }
