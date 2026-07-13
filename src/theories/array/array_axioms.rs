@@ -842,6 +842,33 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::cost_functions::YardbirdCostFunction;
+    use rustc_hash::FxHashMap;
+    use smt2parser::vmt::ReadsAndWrites;
+
+    #[derive(Clone)]
+    struct ZeroCost;
+
+    impl egg::CostFunction<ArrayLanguage> for ZeroCost {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            0
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for ZeroCost {
+        fn get_string_terms(&self) -> Vec<String> {
+            vec![]
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+    }
 
     fn init() {
         let _ = env_logger::builder()
@@ -909,6 +936,36 @@ mod test {
 
         assert_eq!(egraph.find(translated_id), egraph.find(parsed_id));
         assert_eq!(expr_to_term(translated).to_string(), "(ite true x y)");
+    }
+
+    #[test]
+    fn typed_write_does_not_overwrite_instantiation_keeps_disequality_guard() {
+        init();
+        let expr: RecExpr<ArrayLanguage> =
+            "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&expr);
+        egraph.rebuild();
+
+        let result = saturate_with_array_types(
+            &mut egraph,
+            ZeroCost,
+            0,
+            FxHashMap::default(),
+            0,
+            &[("Int".into(), "Int".into())],
+            None,
+        );
+
+        assert_eq!(result.instantiations.len(), 1);
+        let instantiation = &result.instantiations[0];
+        assert!(instantiation.to_string().starts_with("(=> "));
+
+        let term = expr_to_term(instantiation.clone()).to_string();
+        assert_eq!(
+            term,
+            "(=> (not (= 1 0)) (= (Read_Int_Int (Write_Int_Int A 0 0) 1) (Read_Int_Int A 1)))"
+        );
     }
 
     // #[test]

@@ -23,6 +23,10 @@ fn trace_conflicts(message: impl AsRef<str>) {
     trace!("[yardbird::conflict-trace] {}", message.as_ref());
 }
 
+fn is_write_does_not_overwrite_axiom(name: &str) -> bool {
+    name == "write-does-not-overwrite" || name.starts_with("write-does-not-overwrite-")
+}
+
 /// Preprocess array operation strings for egg parsing.
 /// Converts: "(Read_Int_Int a b)" -> "(Read Int Int a b)"
 /// Handles nested arrays: "(Read_Int_Array_Int_Int a b)" -> "(Read Int Array_Int_Int a b)"
@@ -314,7 +318,7 @@ where
                         // here.
                         if Some(m.eclass) != rhs_eclass {
                             let instantiation: ArrayExpr =
-                                if rewrite.name.as_str() == "write-does-not-overwrite" {
+                                if is_write_does_not_overwrite_axiom(rewrite.name.as_str()) {
                                     let expr1 = &memo[&"?c".parse::<egg::Var>().unwrap()];
                                     let expr2 = &memo[&"?idx".parse::<egg::Var>().unwrap()];
                                     // construct: (=> (not (= {} {})) (= {} {}))
