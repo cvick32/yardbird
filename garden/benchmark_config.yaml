@@ -50,6 +50,12 @@ parameter_matrices:
     timeout_seconds: 1
 
   # Deep analysis matrix
+  deep:
+    depths: [50]
+    strategies: ["concrete", "abstract", "abstract-with-quantifiers"]
+    cost_functions: ["bmc-cost"]
+    timeout_seconds: 120
+
   deep-abstract:
     depths: [50]
     strategies: ["abstract"]
