@@ -20,6 +20,8 @@ fn main() -> anyhow::Result<()> {
     options.validate_ranker_options()?;
     options.validate_solver_backend_available()?;
 
+    println!("Z3 version: {}", z3::full_version());
+
     if options.train_reset {
         reset_training_database(options.database_url.as_deref())?;
         info!("Training database reset complete");
@@ -329,11 +331,13 @@ fn print_file_results(
     } else {
         // Normal human-readable output
         info!("SUCCESSFUL BMC!");
-        info!(
-            "NEEDED INSTANTIATIONS:\n{}",
-            res.get_instantiations_string()
-        );
-        info!("TOTAL NUMBER: {}", res.total_instantiations_added);
+        if let Strategy::Abstract = options.strategy {
+            info!(
+                "NEEDED INSTANTIATIONS:\n{}",
+                res.get_instantiations_string()
+            );
+            info!("TOTAL NUMBER: {}", res.total_instantiations_added);
+        }
         log::debug!("Solver stats: {:#?}", res.solver_statistics);
     }
 

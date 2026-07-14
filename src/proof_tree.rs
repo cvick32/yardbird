@@ -13,7 +13,7 @@ impl ProofTree {
         let mut to_process = ast.children();
 
         while let Some(rule) = to_process.pop() {
-            if rule.decl().kind() == z3::DeclKind::PR_TH_LEMMA {
+            if rule.decl().kind() == z3::DeclKind::PrThLemma {
                 info!("{:?}: {}", rule.decl().kind(), rule);
             }
             if !rule.children().is_empty() {

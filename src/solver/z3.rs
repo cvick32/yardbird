@@ -127,9 +127,13 @@ impl YardbirdSolver for Z3SolverBackend {
     }
 
     fn check(&mut self) -> SolverCheckResult {
-        let result = self.solver.check();
-        self.newest_model = self.solver.get_model();
-        result.into()
+        let result = SolverCheckResult::from(self.solver.check());
+        self.newest_model = if result == SolverCheckResult::Sat {
+            self.solver.get_model()
+        } else {
+            None
+        };
+        result
     }
 
     fn check_and_record_statistics(&mut self) -> SolverCheckResult {
