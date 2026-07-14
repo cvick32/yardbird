@@ -165,10 +165,11 @@ resource "aws_security_group" "benchmark_sg" {
 
 # Launch template for benchmark instances
 resource "aws_launch_template" "benchmark_template" {
-  name_prefix   = "yardbird-benchmark-"
-  image_id      = "ami-0e83be366243f524a"  # Ubuntu 22.04 LTS us-east-2
-  instance_type = var.instance_type
-  key_name      = var.key_pair_name
+  name_prefix            = "yardbird-benchmark-"
+  image_id               = "ami-0e83be366243f524a" # Ubuntu 22.04 LTS us-east-2
+  instance_type          = var.instance_type
+  key_name               = var.key_pair_name
+  update_default_version = true
 
   vpc_security_group_ids = [aws_security_group.benchmark_sg.id]
 
@@ -179,8 +180,8 @@ resource "aws_launch_template" "benchmark_template" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name    = "yardbird-benchmark"
-      Purpose = "yardbird-benchmarking"
+      Name          = "yardbird-benchmark"
+      Purpose       = "yardbird-benchmarking"
       AutoTerminate = "true"
     }
   }
