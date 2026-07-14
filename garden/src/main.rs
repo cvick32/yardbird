@@ -338,6 +338,8 @@ fn run_single(
     retry: usize,
     timeout: u64,
 ) -> anyhow::Result<StrategyResult> {
+    options.validate_ranker_options()?;
+
     let mut status_code = None;
     let mut run_time = Duration::default();
     // don't retry for the concrete strategy
