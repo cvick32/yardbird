@@ -40,8 +40,13 @@ set -e
 
 # install Z3
 pip install z3-solver==4.15.3
-sudo cp /home/ubuntu/.local/lib/python3.10/site-packages/z3/lib/* /usr/local/lib/
-export LD_LIBRARY_PATH="/home/ubuntu/.local/lib/python3.10/site-packages/z3/lib/"
+Z3_PYTHON_PACKAGE="$(python3 -c 'import pathlib, z3; print(pathlib.Path(z3.__file__).resolve().parent)')"
+export Z3_SYS_Z3_HEADER="${Z3_PYTHON_PACKAGE}/include/z3.h"
+export Z3_LIBRARY_PATH_OVERRIDE="${Z3_PYTHON_PACKAGE}/lib"
+export LIBRARY_PATH="${Z3_LIBRARY_PATH_OVERRIDE}:${LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${Z3_LIBRARY_PATH_OVERRIDE}:${LD_LIBRARY_PATH:-}"
+sudo cp "${Z3_LIBRARY_PATH_OVERRIDE}"/* /usr/local/lib/
+sudo ldconfig
 
 # Function to log inside ubuntu user context
 log_status() {
@@ -73,13 +78,13 @@ cd yardbird
 echo git log -1 --format="%H"
 
 log_status "INFO" "Building yardbird"
-if ! Z3_SYS_Z3_HEADER="/home/ubuntu/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p yardbird --no-default-features; then
+if ! cargo build --release -p yardbird --no-default-features; then
     log_status "ERROR" "Failed to build yardbird binary"
     exit 1
 fi
 
 log_status "INFO" "Building garden"
-if ! Z3_SYS_Z3_HEADER="/home/ubuntu/.local/lib/python3.10/site-packages/z3/include/z3.h" cargo build --release -p garden --no-default-features; then
+if ! cargo build --release -p garden --no-default-features; then
     log_status "ERROR" "Failed to build garden binary"
     exit 1
 fi
