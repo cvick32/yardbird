@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 default = []
+cvc5-backend = ["yardbird/cvc5-backend"]
 training = ["yardbird/training"]
 
 [dependencies]

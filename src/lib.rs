@@ -239,7 +239,26 @@ impl YardbirdOptions {
         Ok(())
     }
 
+    pub fn validate_solver_backend_available(&self) -> anyhow::Result<()> {
+        match self.solver {
+            SolverBackend::Z3 => Ok(()),
+            SolverBackend::Cvc5 => {
+                #[cfg(not(feature = "cvc5-backend"))]
+                {
+                    anyhow::bail!(
+                        "--solver cvc5 requires building yardbird with `--features cvc5-backend`"
+                    );
+                }
+                #[cfg(feature = "cvc5-backend")]
+                {
+                    Ok(())
+                }
+            }
+        }
+    }
+
     pub fn validate_solver_backend_for_vmt_mode(&self) -> anyhow::Result<()> {
+        self.validate_solver_backend_available()?;
         match self.solver {
             SolverBackend::Z3 => Ok(()),
             SolverBackend::Cvc5 => {
@@ -255,6 +274,7 @@ impl YardbirdOptions {
     }
 
     pub fn validate_solver_backend_for_strategy_mode(&self) -> anyhow::Result<()> {
+        self.validate_solver_backend_available()?;
         match self.solver {
             SolverBackend::Z3 => Ok(()),
             SolverBackend::Cvc5 => anyhow::bail!(

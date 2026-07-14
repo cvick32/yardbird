@@ -18,6 +18,7 @@ fn main() -> anyhow::Result<()> {
         log::Level::Info
     });
     options.validate_ranker_options()?;
+    options.validate_solver_backend_available()?;
 
     if options.train_reset {
         reset_training_database(options.database_url.as_deref())?;
