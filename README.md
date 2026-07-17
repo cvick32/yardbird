@@ -81,6 +81,16 @@ python3 main_eval.py --aws-run-id <run-id> --generate-report
 
 Artifacts are stored under `benchmark_results/main_eval/<run-id>/`. Raw benchmark JSON files land in per-matrix `raw/` directories using `MM_DD_YYYY_HH_MM.json` names, while generated figures and the Typst workbook live under `report/`.
 
+`--generate-report` also produces a self-contained analysis bundle:
+
+- `report/workbook.pdf` includes solved counts, baseline coverage comparisons, runtime wins/losses, exclusive solves, and the largest improvements and regressions
+- `report/analysis.json` contains the complete structured analysis
+- `report/analysis.md` is a text-friendly summary
+- `report/data/strategy_summary.csv` and `baseline_comparisons.csv` contain aggregate metrics
+- `report/data/benchmark_results.csv` and `benchmark_comparisons.csv` contain normalized benchmark-level data for further exploration
+
+The concrete strategy is selected as the comparison baseline when present. Shared runtimes within 5% are classified as ties, and missing strategy results are kept separate from unsuccessful results.
+
 ## Reproducing Paper Results
 
 To fully reproduce the paper's evaluation:
