@@ -338,11 +338,7 @@ def main():
         if result.example_name not in grouped:
             grouped[result.example_name] = {}
 
-        # Create strategy key
-        if result.strategy == "abstract" and result.cost_function:
-            strategy_key = f"{result.strategy}_{result.cost_function}"
-        else:
-            strategy_key = result.strategy
+        strategy_key = result.get_strategy_id()
         strategy_keys.add(strategy_key)
         grouped[result.example_name][strategy_key] = result
 
