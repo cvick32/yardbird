@@ -466,68 +466,73 @@ where
     where
         N: egg::Analysis<ArrayLanguage>,
     {
-        let mut memo = FxHashMap::default();
-        let mut visiting = FxHashSet::default();
-        self.extract_from_eclass(egraph, eclass, &mut memo, &mut visiting)
-    }
+        let mut best_by_eclass: FxHashMap<egg::Id, (u32, String, ArrayExpr)> = FxHashMap::default();
 
-    fn extract_from_eclass<N>(
-        &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        eclass: egg::Id,
-        memo: &mut FxHashMap<egg::Id, Option<ArrayExpr>>,
-        visiting: &mut FxHashSet<egg::Id>,
-    ) -> Option<ArrayExpr>
-    where
-        N: egg::Analysis<ArrayLanguage>,
-    {
-        let eclass = egraph.find(eclass);
-        if let Some(cached) = memo.get(&eclass) {
-            return cached.clone();
-        }
-        if !visiting.insert(eclass) {
-            return None;
-        }
+        loop {
+            let mut changed = false;
 
-        let mut best: Option<(u32, String, ArrayExpr)> = None;
-        for node in &egraph[eclass].nodes {
-            if is_z3_model_value_node(node) {
-                continue;
-            }
+            for class in egraph.classes() {
+                let class_id = egraph.find(class.id);
+                let existing = best_by_eclass.get(&class_id).cloned();
+                let mut best = existing.clone();
 
-            let mut child_exprs = FxHashMap::default();
-            let mut all_children_available = true;
-            for child in node.children() {
-                if let Some(child_expr) = self.extract_from_eclass(egraph, *child, memo, visiting) {
-                    child_exprs.insert(*child, child_expr);
-                } else {
-                    all_children_available = false;
-                    break;
+                for node in &class.nodes {
+                    if is_z3_model_value_node(node) {
+                        continue;
+                    }
+
+                    let mut child_exprs = FxHashMap::default();
+                    let mut all_children_available = true;
+                    for child in node.children() {
+                        let child_class = egraph.find(*child);
+                        if let Some((_, _, child_expr)) = best_by_eclass.get(&child_class) {
+                            child_exprs.insert(*child, child_expr.clone());
+                        } else {
+                            all_children_available = false;
+                            break;
+                        }
+                    }
+                    if !all_children_available {
+                        continue;
+                    }
+
+                    let expr = node.clone().join_recexprs(|id| child_exprs[&id].clone());
+                    if contains_z3_model_value(&expr) {
+                        continue;
+                    }
+
+                    let cost = self.cost_of_at("fallback_extract_best", &expr);
+                    let rendered = expr.to_string();
+                    let should_replace =
+                        best.as_ref().is_none_or(|(best_cost, best_rendered, _)| {
+                            (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
+                        });
+                    if should_replace {
+                        best = Some((cost, rendered, expr));
+                    }
+                }
+
+                let improved = match (&existing, &best) {
+                    (None, Some(_)) => true,
+                    (Some((old_cost, old_rendered, _)), Some((cost, rendered, _))) => {
+                        (cost, rendered) < (old_cost, old_rendered)
+                    }
+                    _ => false,
+                };
+                if improved {
+                    best_by_eclass.insert(class_id, best.unwrap());
+                    changed = true;
                 }
             }
-            if !all_children_available {
-                continue;
-            }
 
-            let expr = node.clone().join_recexprs(|id| child_exprs[&id].clone());
-            if contains_z3_model_value(&expr) {
-                continue;
-            }
-
-            let cost = self.cost_of_at("fallback_extract_best", &expr);
-            let rendered = expr.to_string();
-            let should_replace = best.as_ref().is_none_or(|(best_cost, best_rendered, _)| {
-                (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
-            });
-            if should_replace {
-                best = Some((cost, rendered, expr));
+            if !changed {
+                break;
             }
         }
 
-        visiting.remove(&eclass);
-        let result = best.map(|(_, _, expr)| expr);
-        memo.insert(eclass, result.clone());
-        result
+        best_by_eclass
+            .remove(&egraph.find(eclass))
+            .map(|(_, _, expr)| expr)
     }
 }
 
