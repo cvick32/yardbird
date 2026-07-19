@@ -165,7 +165,7 @@ impl VMTModel {
         array_definitions.extend(abstracted_commands);
 
         // Extract discovered types from the abstractor
-        let discovered_types: Vec<(String, String)> = abstractor.array_types.into_iter().collect();
+        let discovered_types = abstractor.sorted_array_types();
 
         (
             VMTModel::checked_from(array_definitions).unwrap(),

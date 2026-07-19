@@ -12,7 +12,7 @@ use crate::{
         array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::ArrayTermExtractor,
     },
-    training::{AbstractInstantiationRecord, DecisionRecord},
+    training::{canonical_term_hash, AbstractInstantiationRecord, DecisionRecord},
 };
 
 fn trace_conflicts_enabled() -> bool {
@@ -25,6 +25,19 @@ fn trace_conflicts(message: impl AsRef<str>) {
 
 fn is_write_does_not_overwrite_axiom(name: &str) -> bool {
     name == "write-does-not-overwrite" || name.starts_with("write-does-not-overwrite-")
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ArrayArtifactCapture {
+    pub decisions: bool,
+    pub instantiation_provenance: bool,
+    pub conflicts: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SelectionHistoryDecision {
+    pub decision_key: String,
+    pub chosen_term_hash: String,
 }
 
 /// Preprocess array operation strings for egg parsing.
@@ -108,6 +121,10 @@ where
     conflicts: Rc<RefCell<Vec<ArrayConflictRecord>>>,
     decisions: Rc<RefCell<Vec<DecisionRecord>>>,
     abstract_instantiations: Rc<RefCell<Vec<AbstractInstantiationRecord>>>,
+    selection_history_decisions: Rc<RefCell<Vec<SelectionHistoryDecision>>>,
+    instantiation_decision_keys: Rc<RefCell<Vec<Vec<String>>>>,
+    artifact_capture: ArrayArtifactCapture,
+    next_instantiation_ordinal: usize,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
     refinement_step: u32,
@@ -125,6 +142,7 @@ where
         extractor: ArrayTermExtractor<CF>,
         refinement_step: u32,
         depth: u16,
+        artifact_capture: ArrayArtifactCapture,
         profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> Self {
         Self {
@@ -134,6 +152,10 @@ where
             conflicts: Rc::new(RefCell::new(vec![])),
             decisions: Rc::new(RefCell::new(vec![])),
             abstract_instantiations: Rc::new(RefCell::new(vec![])),
+            selection_history_decisions: Rc::new(RefCell::new(vec![])),
+            instantiation_decision_keys: Rc::new(RefCell::new(vec![])),
+            artifact_capture,
+            next_instantiation_ordinal: 0,
             cost_fn,
             extractor,
             refinement_step,
@@ -160,6 +182,14 @@ where
 
     pub fn abstract_instantiations(&self) -> Rc<RefCell<Vec<AbstractInstantiationRecord>>> {
         Rc::clone(&self.abstract_instantiations)
+    }
+
+    pub(crate) fn selection_history_decisions(&self) -> Rc<RefCell<Vec<SelectionHistoryDecision>>> {
+        Rc::clone(&self.selection_history_decisions)
+    }
+
+    pub(crate) fn instantiation_decision_keys(&self) -> Rc<RefCell<Vec<Vec<String>>>> {
+        Rc::clone(&self.instantiation_decision_keys)
     }
 }
 
@@ -276,9 +306,13 @@ where
                         let mut memo = HashMap::default();
                         let mut slot_index = 0;
                         let mut decisions = self.decisions.borrow_mut();
-                        let decision_start = decisions.len();
+                        let mut selection_history_decisions =
+                            self.selection_history_decisions.borrow_mut();
+                        let selection_start = selection_history_decisions.len();
                         let mut ctx = DecisionLogContext {
                             decisions: &mut decisions,
+                            selection_history_decisions: &mut selection_history_decisions,
+                            record_decisions: self.artifact_capture.decisions,
                             axiom_name: rewrite.name.as_str(),
                             slot_index: &mut slot_index,
                         };
@@ -332,18 +366,33 @@ where
                                 } else {
                                     ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
-                            let decision_keys = decisions[decision_start..]
+                            let selection_decision_keys = selection_history_decisions
+                                [selection_start..]
                                 .iter()
                                 .map(|decision| decision.decision_key.clone())
                                 .collect::<Vec<_>>();
-                            let ordinal = self.abstract_instantiations.borrow().len();
-                            let abstract_instantiation =
-                                self.extractor.abstract_instantiation_record(
-                                    rewrite.name.as_str(),
-                                    ordinal,
-                                    &instantiation,
-                                    decision_keys,
-                                );
+                            self.instantiation_decision_keys
+                                .borrow_mut()
+                                .push(selection_decision_keys.clone());
+                            let decision_keys = if self.artifact_capture.decisions {
+                                selection_decision_keys
+                            } else {
+                                vec![]
+                            };
+                            let ordinal = self.next_instantiation_ordinal;
+                            self.next_instantiation_ordinal += 1;
+                            if self.artifact_capture.instantiation_provenance {
+                                let abstract_instantiation =
+                                    self.extractor.abstract_instantiation_record(
+                                        rewrite.name.as_str(),
+                                        ordinal,
+                                        &instantiation,
+                                        decision_keys.clone(),
+                                    );
+                                self.abstract_instantiations
+                                    .borrow_mut()
+                                    .push(abstract_instantiation);
+                            }
                             let cost = if let Some(profiling) = &self.profiling {
                                 let mut cost_fn = self.cost_fn.clone();
                                 profiling.borrow_mut().record_cost(
@@ -364,17 +413,20 @@ where
                                     .borrow_mut()
                                     .record_conflict(rewrite.name.as_str(), cost >= 100);
                             }
-                            let conflict_record = ArrayConflictRecord::new(
-                                ordinal,
-                                rewrite.name.as_str(),
-                                instantiation.clone(),
-                                expr_to_term(instantiation.clone()),
-                                self.depth,
-                                self.refinement_step,
-                                cost,
-                                classification,
-                                abstract_instantiation.decision_keys.clone(),
-                            );
+                            if self.artifact_capture.conflicts {
+                                let conflict_record = ArrayConflictRecord::new(
+                                    ordinal,
+                                    rewrite.name.as_str(),
+                                    instantiation.clone(),
+                                    expr_to_term(instantiation.clone()),
+                                    self.depth,
+                                    self.refinement_step,
+                                    cost,
+                                    classification,
+                                    decision_keys,
+                                );
+                                self.conflicts.borrow_mut().push(conflict_record);
+                            }
                             if tracing {
                                 trace_conflicts(format!(
                                     "    subst[{subst_ix}] conflict cost={} instantiation={}",
@@ -386,11 +438,6 @@ where
                                 cost,
                                 instantiation.pretty(80)
                             );
-                            self.abstract_instantiations
-                                .borrow_mut()
-                                .push(abstract_instantiation);
-                            self.conflicts.borrow_mut().push(conflict_record);
-
                             if cost >= 100 {
                                 debug!("rejecting because of cost");
                                 if tracing {
@@ -433,8 +480,42 @@ where
 
 struct DecisionLogContext<'a> {
     decisions: &'a mut Vec<DecisionRecord>,
+    selection_history_decisions: &'a mut Vec<SelectionHistoryDecision>,
+    record_decisions: bool,
     axiom_name: &'a str,
     slot_index: &'a mut u32,
+}
+
+impl DecisionLogContext<'_> {
+    fn record_choice<N, CF>(
+        &mut self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+        extractor: &ArrayTermExtractor<CF>,
+        chosen_term: &ArrayExpr,
+    ) where
+        N: egg::Analysis<ArrayLanguage>,
+        CF: YardbirdCostFunction<ArrayLanguage>,
+    {
+        let chosen_hash = canonical_term_hash(chosen_term);
+        let decision_key = extractor.decision_key(self.axiom_name, *self.slot_index, eclass);
+        self.selection_history_decisions
+            .push(SelectionHistoryDecision {
+                decision_key: decision_key.clone(),
+                chosen_term_hash: chosen_hash.clone(),
+            });
+        if self.record_decisions {
+            self.decisions.push(extractor.decision_record(
+                egraph,
+                eclass,
+                self.axiom_name,
+                *self.slot_index,
+                chosen_term,
+                decision_key,
+            ));
+        }
+        *self.slot_index += 1;
+    }
 }
 
 /// We want to replace all the variables in the pattern with terms extracted from
@@ -769,6 +850,7 @@ where
         egg::PatternAst<ArrayLanguage>,
         HashMap<egg::Var, egg::PatternAst<ArrayLanguage>>,
         Vec<DecisionRecord>,
+        Vec<SelectionHistoryDecision>,
         u32,
     );
 
@@ -777,12 +859,15 @@ where
     for candidate in candidates {
         let mut candidate_memo = memo.clone();
         let mut candidate_decisions = Vec::new();
+        let mut candidate_selection_history_decisions = Vec::new();
         let mut candidate_slot_index = *ctx.slot_index;
         let expr = build_expr(
             candidate,
             &mut candidate_memo,
             &mut DecisionLogContext {
                 decisions: &mut candidate_decisions,
+                selection_history_decisions: &mut candidate_selection_history_decisions,
+                record_decisions: ctx.record_decisions,
                 axiom_name: ctx.axiom_name,
                 slot_index: &mut candidate_slot_index,
             },
@@ -790,11 +875,11 @@ where
 
         let cost = extractor.cost_of_at("expected_read_write_candidate", &expr);
         let rendered = expr.to_string();
-        let should_replace = best
-            .as_ref()
-            .is_none_or(|(best_cost, best_rendered, _, _, _, _)| {
-                (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
-            });
+        let should_replace =
+            best.as_ref()
+                .is_none_or(|(best_cost, best_rendered, _, _, _, _, _)| {
+                    (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
+                });
 
         if should_replace {
             best = Some((
@@ -803,14 +888,25 @@ where
                 patternify(&expr),
                 candidate_memo,
                 candidate_decisions,
+                candidate_selection_history_decisions,
                 candidate_slot_index,
             ));
         }
     }
 
-    let (_, _, chosen_pattern, chosen_memo, chosen_decisions, chosen_slot_index) = best?;
+    let (
+        _,
+        _,
+        chosen_pattern,
+        chosen_memo,
+        chosen_decisions,
+        chosen_selection_history_decisions,
+        chosen_slot_index,
+    ) = best?;
     *memo = chosen_memo;
     ctx.decisions.extend(chosen_decisions);
+    ctx.selection_history_decisions
+        .extend(chosen_selection_history_decisions);
     *ctx.slot_index = chosen_slot_index;
     Some(chosen_pattern)
 }
@@ -925,14 +1021,7 @@ where
                     *ctx.slot_index, ctx.axiom_name, eclass, expr
                 ));
             }
-            ctx.decisions.push(extractor.decision_record(
-                egraph,
-                eclass,
-                ctx.axiom_name,
-                *ctx.slot_index,
-                expr,
-            ));
-            *ctx.slot_index += 1;
+            ctx.record_choice(egraph, eclass, extractor, expr);
 
             let pattern_expr = patternify(expr);
             memo.insert(*var, pattern_expr.clone());
@@ -1035,14 +1124,7 @@ where
         ));
     }
     debug!("    extraction: {} -> {}", eclass.id, expr.pretty(80));
-    ctx.decisions.push(extractor.decision_record(
-        egraph,
-        eclass.id,
-        ctx.axiom_name,
-        *ctx.slot_index,
-        &expr,
-    ));
-    *ctx.slot_index += 1;
+    ctx.record_choice(egraph, eclass.id, extractor, &expr);
 
     // wrap everything in an ENodeOrVar so that it still counts as an egg::PatternAst
     expr.as_ref()

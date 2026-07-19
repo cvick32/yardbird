@@ -33,10 +33,14 @@ impl ReadsAndWrites {
         A: ToString,
     {
         let needle = array.to_string();
-        self.reads_from
+        let mut indices = self
+            .reads_from
             .iter()
             .filter(move |(a, _i)| &needle == a)
             .map(|(_a, i)| i.to_string())
+            .collect::<Vec<_>>();
+        indices.sort();
+        indices.into_iter()
     }
 
     /// Given an array, return all indicies written to
@@ -45,10 +49,14 @@ impl ReadsAndWrites {
         A: ToString,
     {
         let needle = array.to_string();
-        self.writes_to
+        let mut indices = self
+            .writes_to
             .iter()
             .filter(move |(a, _i, _v)| &needle == a)
             .map(|(_a, i, _v)| i.to_string())
+            .collect::<Vec<_>>();
+        indices.sort();
+        indices.into_iter()
     }
 
     /// Given an array and index, return all values written to
@@ -63,10 +71,14 @@ impl ReadsAndWrites {
     {
         let array_needle = array.to_string();
         let index_needle = index.to_string();
-        self.writes_to
+        let mut values = self
+            .writes_to
             .iter()
             .filter(move |(a, i, _v)| &array_needle == a && &index_needle == i)
             .map(|(_, _, v)| v.to_string())
+            .collect::<Vec<_>>();
+        values.sort();
+        values.into_iter()
     }
 }
 

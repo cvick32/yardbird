@@ -18,6 +18,15 @@ use super::utils::is_boolean_connective;
 #[derive(Clone, Debug, Default)]
 pub struct NonBooleanSubterms {
     pub subterms: HashSet<Term>,
+    pub ordered_subterms: Vec<Term>,
+}
+
+impl NonBooleanSubterms {
+    fn insert(&mut self, term: Term) {
+        if self.subterms.insert(term.clone()) {
+            self.ordered_subterms.push(term);
+        }
+    }
 }
 
 impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for NonBooleanSubterms {
@@ -26,8 +35,9 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
 
     /// Add constant term to subterms.
     fn visit_constant(&mut self, constant: Constant) -> Result<Self::T, Self::E> {
-        self.subterms.insert(Term::Constant(constant.clone()));
-        Ok(Term::Constant(constant))
+        let term = Term::Constant(constant);
+        self.insert(term.clone());
+        Ok(term)
     }
 
     /// Add variable names.
@@ -36,7 +46,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
         qual_identifier: QualIdentifier,
     ) -> Result<Self::T, Self::E> {
         let qi = Term::QualIdentifier(qual_identifier);
-        self.subterms.insert(qi.clone());
+        self.insert(qi.clone());
         Ok(qi)
     }
 
@@ -51,7 +61,7 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Non
             arguments,
         };
         if !is_boolean_connective(&qual_identifier) {
-            self.subterms.insert(app.clone());
+            self.insert(app.clone());
         }
         Ok(app)
     }
@@ -153,4 +163,19 @@ mod test {
         "(and (= (store b i (select a i)) b_next) (< i n) (= (+ i 1) i_next) (= a a_next) (= n n_next) (= Z Z_next))",
         "b,i,a,n,Z,i_next,a_next,b_next,n_next,Z_next,(store b i (select a i)),(< i n),(select a i),(+ i 1),1"
     );
+
+    #[test]
+    fn preserves_first_syntax_traversal_order() {
+        let term = get_term_from_term_string("(= (+ b a) (+ a b))");
+        let mut subterms = NonBooleanSubterms::default();
+        term.accept_term_visitor(&mut subterms).unwrap();
+
+        let ordered = subterms
+            .ordered_subterms
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        assert_eq!(ordered, ["b", "a", "(+ b a)", "(+ a b)"]);
+    }
 }

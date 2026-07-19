@@ -49,17 +49,23 @@ pub fn string_to_sort(name: &str) -> Sort {
 }
 
 impl ArrayAbstractor {
+    pub fn sorted_array_types(&self) -> Vec<(String, String)> {
+        let mut array_types = self.array_types.iter().cloned().collect::<Vec<_>>();
+        array_types.sort();
+        array_types
+    }
+
     pub fn get_array_type_definitions(&self) -> Vec<Command> {
         let mut commands = vec![];
-        for (index, value) in &self.array_types {
+        for (index, value) in self.sorted_array_types() {
             let arr_sort = Sort::Simple {
                 identifier: Identifier::Simple {
                     symbol: Symbol(format!("Array_{index}_{value}")),
                 },
             };
             // Convert stringified sort names back to proper Sort objects
-            let index_sort = string_to_sort(index);
-            let value_sort = string_to_sort(value);
+            let index_sort = string_to_sort(&index);
+            let value_sort = string_to_sort(&value);
 
             let sort_definition = Command::DeclareSort {
                 symbol: Symbol(format!("Array_{index}_{value}")),
