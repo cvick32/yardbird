@@ -23,12 +23,26 @@ log_status "INFO" "Starting Yardbird benchmark setup"
 # Install dependencies
 log_status "INFO" "Installing system dependencies"
 apt-get update
-if ! apt-get install -y git curl cmake build-essential python3 python3-pip awscli pkg-config libssl-dev libclang-dev; then
+if ! apt-get install -y git curl cmake build-essential python3 awscli pkg-config libssl-dev libclang-dev software-properties-common; then
     log_status "ERROR" "Failed to install system dependencies"
     exit 1
 fi
 
+# Z3 4.16 uses the C++20 <format> header, which is unavailable in the GCC 11
+# toolchain shipped by Ubuntu 22.04. Install GCC 13 before compiling the
+# vendored Z3 source selected in Cargo.toml.
+log_status "INFO" "Installing GCC 13 for Z3 4.16"
+if ! add-apt-repository -y ppa:ubuntu-toolchain-r/test || \
+   ! apt-get update || \
+   ! apt-get install -y gcc-13 g++-13; then
+    log_status "ERROR" "Failed to install GCC 13"
+    exit 1
+fi
 
+if ! printf '#include <format>\n' | g++-13 -std=c++20 -x c++ -fsyntax-only -; then
+    log_status "ERROR" "GCC 13 does not provide the C++20 <format> header"
+    exit 1
+fi
 
 # Setup ubuntu user environment first
 log_status "INFO" "Setting up ubuntu user environment"
@@ -38,15 +52,9 @@ chown -R ubuntu:ubuntu /home/ubuntu
 sudo -u ubuntu bash << 'EOF'
 set -e
 
-# install Z3
-pip install z3-solver==4.15.3
-Z3_PYTHON_PACKAGE="$(python3 -c 'import pathlib, z3; print(pathlib.Path(z3.__file__).resolve().parent)')"
-export Z3_SYS_Z3_HEADER="${Z3_PYTHON_PACKAGE}/include/z3.h"
-export Z3_LIBRARY_PATH_OVERRIDE="${Z3_PYTHON_PACKAGE}/lib"
-export LIBRARY_PATH="${Z3_LIBRARY_PATH_OVERRIDE}:${LIBRARY_PATH:-}"
-export LD_LIBRARY_PATH="${Z3_LIBRARY_PATH_OVERRIDE}:${LD_LIBRARY_PATH:-}"
-sudo cp "${Z3_LIBRARY_PATH_OVERRIDE}"/* /usr/local/lib/
-sudo ldconfig
+# Force z3-sys/CMake to use a compiler with C++20 <format> support.
+export CC=gcc-13
+export CXX=g++-13
 
 # Function to log inside ubuntu user context
 log_status() {
@@ -66,6 +74,8 @@ fi
 
 # Source cargo environment
 source ~/.cargo/env
+
+log_status "INFO" "Using $(${CXX} --version | head -n 1) to build vendored Z3"
 
 # Clone repository
 log_status "INFO" "Cloning yardbird repository"
