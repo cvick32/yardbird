@@ -14,6 +14,10 @@ pub struct SubtermHandler {
     trans_subterms: HashSet<Term>,
     prop_subterms: HashSet<Term>,
     instantiation_subterms: HashSet<Term>,
+    initial_subterm_order: Vec<Term>,
+    trans_subterm_order: Vec<Term>,
+    prop_subterm_order: Vec<Term>,
+    instantiation_subterm_order: Vec<Term>,
     initial_reads_and_writes: ReadsAndWrites,
     trans_reads_and_writes: ReadsAndWrites,
     prop_reads_and_writes: ReadsAndWrites,
@@ -32,6 +36,10 @@ impl SubtermHandler {
             trans_subterms: HashSet::new(),
             prop_subterms: HashSet::new(),
             instantiation_subterms: HashSet::new(),
+            initial_subterm_order: vec![],
+            trans_subterm_order: vec![],
+            prop_subterm_order: vec![],
+            instantiation_subterm_order: vec![],
             initial_reads_and_writes: ReadsAndWrites::default(),
             trans_reads_and_writes: ReadsAndWrites::default(),
             prop_reads_and_writes: ReadsAndWrites::default(),
@@ -42,13 +50,13 @@ impl SubtermHandler {
     }
 
     pub(crate) fn get_all_subterms(&self) -> Vec<&Term> {
-        self.initial_subterms
+        self.initial_subterm_order
             .iter()
             .chain(
-                self.trans_subterms.iter().chain(
-                    self.prop_subterms
+                self.trans_subterm_order.iter().chain(
+                    self.prop_subterm_order
                         .iter()
-                        .chain(self.instantiation_subterms.iter()),
+                        .chain(self.instantiation_subterm_order.iter()),
                 ),
             )
             .collect()
@@ -60,7 +68,11 @@ impl SubtermHandler {
         let _ = inst
             .clone()
             .accept_term_visitor(&mut self.instantiation_reads_and_writes);
-        self.instantiation_subterms.extend(inst_subterms.subterms);
+        extend_unique(
+            &mut self.instantiation_subterms,
+            &mut self.instantiation_subterm_order,
+            inst_subterms.ordered_subterms,
+        );
     }
 
     pub(crate) fn generate_subterms(&mut self, bmc_builder: &mut BMCBuilder) {
@@ -77,6 +89,7 @@ impl SubtermHandler {
                 .clone()
                 .accept_term_visitor(&mut self.initial_reads_and_writes);
             self.initial_subterms = initial_subterms.subterms;
+            self.initial_subterm_order = initial_subterms.ordered_subterms;
         } else {
             // Have to set backwards so we get 0->1 for depth 1.
             let cur_depth = bmc_builder.depth;
@@ -90,7 +103,11 @@ impl SubtermHandler {
             let _ = indexed_trans_term
                 .clone()
                 .accept_term_visitor(&mut trans_subterms);
-            self.trans_subterms.extend(trans_subterms.subterms);
+            extend_unique(
+                &mut self.trans_subterms,
+                &mut self.trans_subterm_order,
+                trans_subterms.ordered_subterms,
+            );
             // Union up all of the trans subterms.
             let _ = indexed_trans_term
                 .clone()
@@ -108,6 +125,7 @@ impl SubtermHandler {
             .clone()
             .accept_term_visitor(&mut self.prop_reads_and_writes);
         self.prop_subterms = prop_subterms.subterms;
+        self.prop_subterm_order = prop_subterms.ordered_subterms;
     }
 
     pub fn get_reads_and_writes(&self) -> ReadsAndWrites {
@@ -127,31 +145,46 @@ impl SubtermHandler {
     }
 
     pub(crate) fn get_initial_subterms(&self) -> Vec<String> {
-        self.initial_subterms
+        self.initial_subterm_order
             .iter()
             .map(|ts| ts.to_string())
             .collect()
     }
 
     pub(crate) fn get_transition_system_subterms(&self) -> Vec<String> {
-        self.trans_subterms
+        self.trans_subterm_order
             .iter()
             .map(|ts| ts.to_string())
             .collect()
     }
 
     pub(crate) fn get_instantiation_subterms(&self) -> Vec<String> {
-        self.instantiation_subterms
+        self.instantiation_subterm_order
             .iter()
             .map(|ts| ts.to_string())
             .collect()
     }
 
     pub(crate) fn get_property_subterms(&self) -> Vec<String> {
-        self.prop_subterms.iter().map(|ts| ts.to_string()).collect()
+        self.prop_subterm_order
+            .iter()
+            .map(|ts| ts.to_string())
+            .collect()
     }
 
     pub(crate) fn get_property_assert(&self) -> Term {
         self.prop_assert.parse().unwrap()
+    }
+}
+
+fn extend_unique(
+    seen: &mut HashSet<Term>,
+    ordered: &mut Vec<Term>,
+    new_terms: impl IntoIterator<Item = Term>,
+) {
+    for term in new_terms {
+        if seen.insert(term.clone()) {
+            ordered.push(term);
+        }
     }
 }
