@@ -13,6 +13,7 @@ use yardbird::{
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{Abstract, ProofStrategy},
+    theories::array::array_conflict_scheduler::ArrayArtifactCapture,
     training::{
         reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
         IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,
@@ -30,7 +31,15 @@ fn json_number(value: &serde_json::Value, key: &str) -> f64 {
         .unwrap_or_else(|| panic!("expected numeric JSON value for key `{key}`"))
 }
 
-fn run_array_copy_logging_result() -> yardbird::ProofLoopResult {
+fn full_decision_capture() -> ArrayArtifactCapture {
+    ArrayArtifactCapture {
+        decisions: true,
+        instantiation_provenance: true,
+        conflicts: false,
+    }
+}
+
+fn run_array_copy_result(artifact_capture: ArrayArtifactCapture) -> yardbird::ProofLoopResult {
     let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
     options.track_instantiations = true;
     let vmt_model = model_from_options(&options);
@@ -40,13 +49,10 @@ fn run_array_copy_logging_result() -> yardbird::ProofLoopResult {
         move || {
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-                10,
-                false,
-                (),
-                AuxSynthesisConfig::default(),
-                false,
-            ));
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(
+                Abstract::<ArrayBMCCost>::new(10, false, (), AuxSynthesisConfig::default(), false)
+                    .with_artifact_capture(artifact_capture),
+            );
             driver
                 .check_strategy(options.depth, strat)
                 .unwrap_or_default()
@@ -77,7 +83,7 @@ where
 
 #[test]
 fn array_strategy_populates_decision_data() {
-    let result = run_array_copy_logging_result();
+    let result = run_array_copy_result(full_decision_capture());
 
     assert!(
         !result.decision_data.is_empty(),
@@ -127,6 +133,68 @@ fn array_strategy_populates_decision_data() {
         "indexed instantiation terms should preserve frame indices"
     );
     assert!(result.total_refinement_steps > 0);
+}
+
+#[test]
+fn compact_provenance_omits_candidate_decisions_without_changing_refinement() {
+    let rich = run_array_copy_result(full_decision_capture());
+    let compact = run_array_copy_result(ArrayArtifactCapture {
+        decisions: false,
+        instantiation_provenance: true,
+        conflicts: false,
+    });
+
+    assert!(compact.decision_data.is_empty());
+    assert!(!compact.abstract_instantiations.is_empty());
+    assert!(compact
+        .abstract_instantiations
+        .iter()
+        .all(|instantiation| instantiation.decision_keys.is_empty()));
+    assert_eq!(
+        compact.total_instantiations_added,
+        rich.total_instantiations_added
+    );
+
+    let mut rich_instances = rich
+        .used_instances
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let mut compact_instances = compact
+        .used_instances
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    rich_instances.sort();
+    compact_instances.sort();
+    assert_eq!(compact_instances, rich_instances);
+}
+
+#[test]
+fn artifact_capture_options_are_opt_in_and_training_implies_decisions() {
+    let mut options = YardbirdOptions::default();
+    assert!(!options.build_array_artifact_capture().decisions);
+    assert!(
+        !options
+            .build_array_artifact_capture()
+            .instantiation_provenance
+    );
+
+    options.track_instantiations = true;
+    assert!(!options.build_array_artifact_capture().decisions);
+    assert!(
+        options
+            .build_array_artifact_capture()
+            .instantiation_provenance
+    );
+
+    options.train = true;
+    assert!(options.build_array_artifact_capture().decisions);
+    assert!(
+        options
+            .build_array_artifact_capture()
+            .instantiation_provenance
+    );
 }
 
 #[test]
@@ -199,7 +267,7 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
 
 #[test]
 fn array_copy_logs_expected_unsat_event_shape() {
-    let result = run_array_copy_logging_result();
+    let result = run_array_copy_result(full_decision_capture());
 
     assert_eq!(
         result.unsat_events.len(),
@@ -249,7 +317,7 @@ fn array_copy_logs_expected_unsat_event_shape() {
 
 #[test]
 fn unsat_event_stats_snapshots_and_deltas_are_consistent() {
-    let result = run_array_copy_logging_result();
+    let result = run_array_copy_result(full_decision_capture());
     let first_event = &result.unsat_events[0];
     let previous_event = &result.unsat_events[2];
     let later_event = &result.unsat_events[3];
@@ -372,13 +440,10 @@ fn smtlib_strategy_populates_logging_artifacts() {
         move || {
             let problem = SMTLIBProblem::from_path("examples/smt2/array_bitvec_simple.smt2")
                 .expect("should parse SMT-LIB example");
-            let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-                0,
-                false,
-                (),
-                AuxSynthesisConfig::default(),
-                false,
-            ));
+            let strategy: Box<dyn ProofStrategy<_>> = Box::new(
+                Abstract::<ArrayBMCCost>::new(0, false, (), AuxSynthesisConfig::default(), false)
+                    .with_artifact_capture(full_decision_capture()),
+            );
             SMTLIBSolver::execute_with_strategy(&problem, strategy, SolverBackend::Z3, 50, true)
                 .expect("SMT-LIB strategy run should complete")
                 .0
@@ -453,13 +518,10 @@ fn single_example_persists_provenance_to_db() {
                 .expect("training session should be enabled");
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-                10,
-                false,
-                (),
-                AuxSynthesisConfig::default(),
-                false,
-            ));
+            let strat: Box<dyn ProofStrategy<_>> = Box::new(
+                Abstract::<ArrayBMCCost>::new(10, false, (), AuxSynthesisConfig::default(), false)
+                    .with_artifact_capture(full_decision_capture()),
+            );
             let result = driver
                 .check_strategy(options.depth, strat)
                 .expect("benchmark should complete");

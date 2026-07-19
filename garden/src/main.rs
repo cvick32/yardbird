@@ -72,6 +72,9 @@ struct GardenOptions {
     #[arg(long, default_value_t = false)]
     pub profile_costs: bool,
 
+    #[arg(long, default_value_t = false)]
+    pub record_decisions: bool,
+
     #[arg(long)]
     pub database_url: Option<String>,
 
@@ -135,6 +138,7 @@ struct StrategyResult {
     result: BenchmarkResult,
     run_time: u128,
     depth: u16,
+    record_decisions: bool,
 }
 
 fn default_training_run_version() -> String {
@@ -243,6 +247,10 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
 
     if options.profile_costs {
         command.arg("--profile-costs");
+    }
+
+    if options.record_decisions {
+        command.arg("--record-decisions");
     }
 
     if matches!(
@@ -387,6 +395,7 @@ fn run_single(
             cost_function: options.cost_function,
             run_time: run_time.as_millis(),
             depth: options.depth,
+            record_decisions: options.record_decisions || options.train,
         }),
         None => Err(anyhow!("Failed to run")),
     }
@@ -488,6 +497,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 training_run_version: training_run_version.clone(),
                                 verbose: false,
                                 profile_costs: options.profile_costs,
+                                record_decisions: options.record_decisions,
                                 synthesis_trigger: options.synthesis_trigger,
                                 synthesis_guard_policy: options.synthesis_guard_policy,
                                 synthesis_after: options.synthesis_after,
@@ -620,6 +630,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         training_run_version: training_run_version.clone(),
                         verbose: false,
                         profile_costs: options.profile_costs,
+                        record_decisions: options.record_decisions,
                         synthesis_trigger: options.synthesis_trigger,
                         synthesis_guard_policy: options.synthesis_guard_policy,
                         synthesis_after: options.synthesis_after,

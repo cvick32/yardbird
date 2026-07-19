@@ -20,7 +20,7 @@ fn main() -> anyhow::Result<()> {
     options.validate_ranker_options()?;
     options.validate_solver_backend_available()?;
 
-    println!("Z3 version: {}", z3::full_version());
+    info!("Z3 version: {}", z3::full_version());
 
     if options.train_reset {
         reset_training_database(options.database_url.as_deref())?;

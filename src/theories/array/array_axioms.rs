@@ -9,7 +9,8 @@ use crate::{
     cost_functions::YardbirdCostFunction,
     profiling::ArrayProfilingCollector,
     theories::array::{
-        array_conflict_scheduler::ArrayConflictScheduler, array_term_extractor::ArrayTermExtractor,
+        array_conflict_scheduler::{ArrayArtifactCapture, ArrayConflictScheduler},
+        array_term_extractor::ArrayTermExtractor,
     },
 };
 
@@ -51,6 +52,13 @@ pub struct ArraySaturationResult {
     pub conflicts: Vec<ArrayConflictRecord>,
     pub decisions: Vec<crate::training::DecisionRecord>,
     pub abstract_instantiations: Vec<crate::training::AbstractInstantiationRecord>,
+    pub selection_history_decisions: Vec<(String, String)>,
+    pub instantiation_decision_keys: Vec<Vec<String>>,
+}
+
+pub struct ArraySaturationInstrumentation {
+    pub artifact_capture: ArrayArtifactCapture,
+    pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
 fn egraph_node_count<N>(egraph: &EGraph<ArrayLanguage, N>) -> usize
@@ -247,12 +255,16 @@ pub fn saturate_with_array_types<CF, N>(
     selection_counts: FxHashMap<String, u32>,
     depth: u16,
     array_types: &[(String, String)],
-    profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
+    instrumentation: ArraySaturationInstrumentation,
 ) -> ArraySaturationResult
 where
     N: Analysis<ArrayLanguage> + Default + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
+    let ArraySaturationInstrumentation {
+        artifact_capture,
+        profiling,
+    } = instrumentation;
     let taken_egraph = std::mem::take(egraph);
     if let Some(profiling) = &profiling {
         profiling.borrow_mut().set_egraph_before_saturation(
@@ -281,6 +293,7 @@ where
         extractor,
         refinement_step,
         depth,
+        artifact_capture,
         profiling.clone(),
     );
     let instantiations = scheduler.instantiations();
@@ -288,6 +301,8 @@ where
     let conflicts = scheduler.conflicts();
     let decisions = scheduler.decisions();
     let abstract_instantiations = scheduler.abstract_instantiations();
+    let selection_history_decisions = scheduler.selection_history_decisions();
+    let instantiation_decision_keys = scheduler.instantiation_decision_keys();
     let axioms = array_axioms_with_types(array_types);
 
     #[cfg(debug_assertions)]
@@ -330,6 +345,15 @@ where
     let final_abstract_instantiations = Rc::into_inner(abstract_instantiations)
         .unwrap()
         .into_inner();
+    let final_selection_history_decisions = Rc::into_inner(selection_history_decisions)
+        .unwrap()
+        .into_inner()
+        .into_iter()
+        .map(|decision| (decision.decision_key, decision.chosen_term_hash))
+        .collect();
+    let final_instantiation_decision_keys = Rc::into_inner(instantiation_decision_keys)
+        .unwrap()
+        .into_inner();
 
     #[cfg(debug_assertions)]
     {
@@ -351,6 +375,8 @@ where
         conflicts: final_conflicts,
         decisions: final_decisions,
         abstract_instantiations: final_abstract_instantiations,
+        selection_history_decisions: final_selection_history_decisions,
+        instantiation_decision_keys: final_instantiation_decision_keys,
     }
 }
 
@@ -954,7 +980,10 @@ mod test {
             FxHashMap::default(),
             0,
             &[("Int".into(), "Int".into())],
-            None,
+            ArraySaturationInstrumentation {
+                artifact_capture: ArrayArtifactCapture::default(),
+                profiling: None,
+            },
         );
 
         assert_eq!(result.instantiations.len(), 1);
@@ -966,6 +995,62 @@ mod test {
             term,
             "(=> (not (= 1 0)) (= (Read_Int_Int (Write_Int_Int A 0 0) 1) (Read_Int_Int A 1)))"
         );
+    }
+
+    #[test]
+    fn decision_capture_does_not_change_saturation_choices() {
+        fn run(artifact_capture: ArrayArtifactCapture) -> ArraySaturationResult {
+            let expr: RecExpr<ArrayLanguage> =
+                "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+            let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+            egraph.add_expr(&expr);
+            egraph.rebuild();
+
+            saturate_with_array_types(
+                &mut egraph,
+                ZeroCost,
+                0,
+                FxHashMap::default(),
+                0,
+                &[("Int".into(), "Int".into())],
+                ArraySaturationInstrumentation {
+                    artifact_capture,
+                    profiling: None,
+                },
+            )
+        }
+
+        let compact = run(ArrayArtifactCapture::default());
+        let recorded = run(ArrayArtifactCapture {
+            decisions: true,
+            instantiation_provenance: true,
+            conflicts: false,
+        });
+
+        let compact_instantiations = compact
+            .instantiations
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let recorded_instantiations = recorded
+            .instantiations
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        assert_eq!(compact_instantiations, recorded_instantiations);
+        assert_eq!(
+            compact.selection_history_decisions,
+            recorded.selection_history_decisions
+        );
+        assert_eq!(
+            compact.instantiation_decision_keys,
+            recorded.instantiation_decision_keys
+        );
+        assert!(compact.decisions.is_empty());
+        assert!(!recorded.decisions.is_empty());
+        assert!(compact.abstract_instantiations.is_empty());
+        assert!(!recorded.abstract_instantiations.is_empty());
     }
 
     // #[test]

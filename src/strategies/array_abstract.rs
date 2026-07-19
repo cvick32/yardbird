@@ -19,8 +19,9 @@ use crate::{
     theories::array::{
         array_axioms::{
             expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
+            ArraySaturationInstrumentation,
         },
-        array_conflict_scheduler::preprocess_array_expr,
+        array_conflict_scheduler::{preprocess_array_expr, ArrayArtifactCapture},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -50,7 +51,8 @@ where
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     term_selection_counts: FxHashMap<String, u32>,
-    counted_abstract_instantiations: usize,
+    term_selection_decisions: FxHashMap<String, String>,
+    artifact_capture: ArrayArtifactCapture,
     aux_config: AuxSynthesisConfig,
     aux_trigger_state: AuxTriggerState,
     pending_aux_specs: Vec<AuxiliarySpec>,
@@ -71,6 +73,7 @@ where
         aux_config: AuxSynthesisConfig,
         profile_costs: bool,
     ) -> Self {
+        let capture_conflicts = !aux_config.is_off();
         Self {
             _bmc_depth: bmc_depth,
             run_ic3ia,
@@ -81,7 +84,11 @@ where
             decision_data: vec![],
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
-            counted_abstract_instantiations: 0,
+            term_selection_decisions: FxHashMap::default(),
+            artifact_capture: ArrayArtifactCapture {
+                conflicts: capture_conflicts,
+                ..ArrayArtifactCapture::default()
+            },
             aux_trigger_state: AuxTriggerState::default(),
             pending_aux_specs: vec![],
             installed_aux_conflicts: HashSet::new(),
@@ -89,6 +96,12 @@ where
             profile_costs,
             profiling_records: vec![],
         }
+    }
+
+    pub fn with_artifact_capture(mut self, mut artifact_capture: ArrayArtifactCapture) -> Self {
+        artifact_capture.conflicts |= !self.aux_config.is_off();
+        self.artifact_capture = artifact_capture;
+        self
     }
 }
 
@@ -105,7 +118,6 @@ pub struct ArrayRefinementState {
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
     pub instantiations: Vec<ArrayExpr>,
     pub const_instantiations: Vec<ArrayExpr>,
-    pub conflict_records: Vec<ArrayConflictRecord>,
     pub array_types: Vec<(String, String)>,
 }
 
@@ -204,7 +216,6 @@ where
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
-            conflict_records: vec![],
             array_types,
         })
     }
@@ -276,7 +287,10 @@ where
             self.term_selection_counts.clone(),
             state.depth,
             &state.array_types,
-            profiling.clone(),
+            ArraySaturationInstrumentation {
+                artifact_capture: self.artifact_capture,
+                profiling: profiling.clone(),
+            },
         );
         if let Some(profiling) = &profiling {
             profiling
@@ -289,10 +303,23 @@ where
         state
             .const_instantiations
             .extend_from_slice(&saturation.const_instantiations);
-        state.conflict_records.extend(saturation.conflicts.clone());
         self.decision_data.extend(saturation.decisions);
         self.abstract_instantiations
             .extend(saturation.abstract_instantiations);
+        for (decision_key, term_hash) in saturation.selection_history_decisions {
+            self.term_selection_decisions
+                .insert(decision_key, term_hash);
+        }
+        for decision_keys in saturation.instantiation_decision_keys {
+            for decision_key in decision_keys {
+                if let Some(term_hash) = self.term_selection_decisions.get(&decision_key) {
+                    *self
+                        .term_selection_counts
+                        .entry(term_hash.clone())
+                        .or_default() += 1;
+                }
+            }
+        }
         self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
         if let Some(profiling) = profiling {
             if let Ok(profiling) = Rc::try_unwrap(profiling) {
@@ -477,8 +504,6 @@ where
             })
             .fold(true, |a, b| a && b);
 
-        self.record_term_selection_history();
-
         if !self.pending_aux_specs.is_empty() {
             let specs = mem::take(&mut self.pending_aux_specs);
             info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
@@ -552,39 +577,6 @@ impl<F> Abstract<F>
 where
     F: ArrayCostFactory + 'static,
 {
-    fn record_term_selection_history(&mut self) {
-        let new_instantiations =
-            &self.abstract_instantiations[self.counted_abstract_instantiations..];
-        if new_instantiations.is_empty() {
-            return;
-        }
-
-        let decisions_by_key: FxHashMap<&str, &DecisionRecord> = self
-            .decision_data
-            .iter()
-            .map(|decision| (decision.decision_key.as_str(), decision))
-            .collect();
-
-        for instantiation in new_instantiations {
-            for decision_key in &instantiation.decision_keys {
-                if let Some(decision) = decisions_by_key.get(decision_key.as_str()) {
-                    if let Some(chosen) = decision
-                        .candidates
-                        .iter()
-                        .find(|candidate| candidate.was_chosen)
-                    {
-                        *self
-                            .term_selection_counts
-                            .entry(chosen.term_hash.clone())
-                            .or_default() += 1;
-                    }
-                }
-            }
-        }
-
-        self.counted_abstract_instantiations = self.abstract_instantiations.len();
-    }
-
     fn handle_aux_synthesis_detection(
         &mut self,
         state: &ArrayRefinementState,

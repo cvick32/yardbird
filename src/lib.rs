@@ -22,6 +22,7 @@ use crate::{
         list::list_ast_size_cost_factory,
     },
     strategies::ListRefinementState,
+    theories::array::array_conflict_scheduler::ArrayArtifactCapture,
     training::LogisticRegressionModel,
 };
 
@@ -121,6 +122,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub profile_costs: bool,
 
+    /// Record full cost-function candidate decisions in the result.
+    #[arg(long, default_value_t = false)]
+    pub record_decisions: bool,
+
     /// Enable training data logging to database
     #[arg(long, default_value_t = false)]
     pub train: bool,
@@ -179,6 +184,7 @@ impl Default for YardbirdOptions {
             dump_unsat_core: None,
             verbose: false,
             profile_costs: false,
+            record_decisions: false,
             train: false,
             train_reset: false,
             database_url: None,
@@ -226,6 +232,15 @@ impl YardbirdOptions {
             manual_after: self.synthesis_after,
             refinement_limit_window: self.synthesis_refinement_limit_window,
             repeated_pattern_threshold: self.synthesis_repeated_pattern_threshold,
+        }
+    }
+
+    pub fn build_array_artifact_capture(&self) -> ArrayArtifactCapture {
+        let decisions = self.record_decisions || self.train;
+        ArrayArtifactCapture {
+            decisions,
+            instantiation_provenance: decisions || self.track_instantiations,
+            conflicts: false,
         }
     }
 
@@ -328,6 +343,7 @@ impl YardbirdOptions {
             aux_config,
             self.profile_costs,
         )
+        .with_artifact_capture(self.build_array_artifact_capture())
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -348,6 +364,7 @@ impl YardbirdOptions {
             aux_config,
             self.profile_costs,
         )
+        .with_artifact_capture(self.build_array_artifact_capture())
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {

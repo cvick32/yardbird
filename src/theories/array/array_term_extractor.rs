@@ -202,6 +202,7 @@ where
         axiom_name: &str,
         slot_index: u32,
         chosen_term: &ArrayExpr,
+        decision_key: String,
     ) -> DecisionRecord
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -236,7 +237,7 @@ where
                 TermFeatures::extract(chosen_term, &self.property_terms, &self.transition_terms);
             candidates.push(CandidateRecord {
                 term: chosen_term.to_string(),
-                term_hash: chosen_hash.clone(),
+                term_hash: chosen_hash,
                 is_constant: features.is_constant,
                 is_variable: features.is_variable,
                 in_property_vocab: features.in_property_vocab,
@@ -249,15 +250,19 @@ where
         }
 
         DecisionRecord {
-            decision_key: format!(
-                "{}:{}:{}:{}:{}",
-                axiom_name, self.depth, self.refinement_step, slot_index, eclass
-            ),
+            decision_key,
             bmc_depth: self.depth,
             axiom_name: axiom_name.to_string(),
             slot_index,
             candidates,
         }
+    }
+
+    pub fn decision_key(&self, axiom_name: &str, slot_index: u32, eclass: egg::Id) -> String {
+        format!(
+            "{}:{}:{}:{}:{}",
+            axiom_name, self.depth, self.refinement_step, slot_index, eclass
+        )
     }
 
     pub fn abstract_instantiation_record(
