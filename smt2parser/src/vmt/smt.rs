@@ -138,7 +138,7 @@ impl SMTProblem {
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
         subterms
-            .subterms
+            .ordered_subterms
             .iter()
             .map(|term| term.to_string())
             .collect::<Vec<_>>()
@@ -150,7 +150,7 @@ impl SMTProblem {
             let _ = trans_assert.clone().accept_term_visitor(&mut subterms);
         }
         subterms
-            .subterms
+            .ordered_subterms
             .iter()
             .map(|term| term.to_string())
             .collect::<Vec<_>>()
@@ -167,7 +167,7 @@ impl SMTProblem {
         }
         let prop = self.property_assertion.clone().unwrap();
         let _ = prop.accept_term_visitor(&mut subterms);
-        subterms.subterms.into_iter().collect::<Vec<_>>()
+        subterms.ordered_subterms
     }
 
     pub fn get_reads_and_writes(&self) -> ReadsAndWrites {
