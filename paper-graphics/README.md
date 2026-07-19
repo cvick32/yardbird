@@ -2,6 +2,22 @@
 
 Generate TikZ plots and statistics from Yardbird benchmark results.
 
+## Exploratory Analysis
+
+Generate the same reusable analysis exports used by `main_eval.py --generate-report`
+without compiling the PDF workbook:
+
+```bash
+paper-graphics/.venv/bin/python paper-graphics/analyze.py \
+  benchmark_results/main_eval/<run-id>/raw/**/*.json \
+  --output-dir /tmp/yardbird-analysis
+```
+
+The output includes structured JSON, a Markdown summary, strategy and baseline
+summary CSVs, normalized benchmark results, and per-benchmark comparison
+classifications. Use `--baseline <strategy-id>` to override the default concrete
+baseline and `--runtime-tie-pct <percent>` to change the default 5% tie band.
+
 ## TikZ Generator
 
 ```bash
