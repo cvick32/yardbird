@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use smt2parser::concrete::{Command, Sort, Symbol, Term};
 
@@ -42,9 +42,22 @@ pub trait YardbirdSolver {
     fn push(&mut self);
     fn pop(&mut self, levels: u32);
 
-    fn check(&mut self) -> SolverCheckResult;
-    fn check_and_record_statistics(&mut self) -> SolverCheckResult;
-    fn record_statistics_since(&mut self, start_time: Instant);
+    /// Run the solver without acquiring a model.
+    fn check_sat(&mut self) -> SolverCheckResult;
+
+    /// Capture the model produced by the most recent SAT check.
+    ///
+    /// Callers must invoke this before popping the scope used for the check.
+    fn capture_model(&mut self) -> anyhow::Result<()>;
+
+    fn check_sat_and_record_statistics(&mut self) -> SolverCheckResult {
+        let start_time = Instant::now();
+        let result = self.check_sat();
+        self.record_statistics(start_time.elapsed());
+        result
+    }
+
+    fn record_statistics(&mut self, solver_elapsed: Duration);
     fn inspect_last_proof(&self) -> anyhow::Result<()> {
         Ok(())
     }
