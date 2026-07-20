@@ -304,7 +304,7 @@ impl SMTLIBSolver {
 
     /// Handle a check-sat command
     fn handle_check_sat(&mut self, command_index: usize) -> CheckSatResult {
-        let result = self.solver.check_and_record_statistics();
+        let result = self.solver.check_sat_and_record_statistics();
 
         CheckSatResult {
             result,

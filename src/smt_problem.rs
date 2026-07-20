@@ -643,11 +643,21 @@ impl SMTProblem {
         );
 
         let solver_start = Instant::now();
-        let sat_result = self.solver.check();
-        self.last_check_profile.insert(
-            "check_solver".to_string(),
-            solver_start.elapsed().as_secs_f64(),
-        );
+        let sat_result = self.solver.check_sat();
+        let solver_elapsed = solver_start.elapsed();
+
+        if sat_result == SolverCheckResult::Sat {
+            let capture_model_start = Instant::now();
+            self.solver
+                .capture_model()
+                .expect("solver should capture a model after SAT before property pop");
+            self.last_check_profile.insert(
+                "check_capture_model".to_string(),
+                capture_model_start.elapsed().as_secs_f64(),
+            );
+        }
+        self.last_check_profile
+            .insert("check_solver".to_string(), solver_elapsed.as_secs_f64());
 
         let proof_start = Instant::now();
         let _ = self.solver.inspect_last_proof();
@@ -685,7 +695,7 @@ impl SMTProblem {
             .insert("check_pop".to_string(), pop_start.elapsed().as_secs_f64());
 
         let statistics_start = Instant::now();
-        self.solver.record_statistics_since(start_time);
+        self.solver.record_statistics(solver_elapsed);
         self.last_check_profile.insert(
             "check_record_statistics".to_string(),
             statistics_start.elapsed().as_secs_f64(),

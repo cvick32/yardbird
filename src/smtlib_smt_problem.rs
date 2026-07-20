@@ -319,7 +319,13 @@ impl SMTLIBSMTProblem {
     /// Check satisfiability of the current problem
     /// Unlike SMTProblem, we don't push/pop property since all assertions are already in the solver
     pub fn check(&mut self) -> SolverCheckResult {
-        self.solver.check_and_record_statistics()
+        let result = self.solver.check_sat_and_record_statistics();
+        if result == SolverCheckResult::Sat {
+            self.solver
+                .capture_model()
+                .expect("solver should capture a model after SAT");
+        }
+        result
     }
 
     /// Dump the solver state to an SMT2 file
