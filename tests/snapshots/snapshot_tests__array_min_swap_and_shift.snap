@@ -4,6 +4,6 @@ expression: run_benchmark(& path)
 ---
 BenchmarkResult {
     example_name: "examples/array/array_min_swap_and_shift.vmt",
-    status: Panic,
+    status: Timeout,
     used_instantiations: [],
 }

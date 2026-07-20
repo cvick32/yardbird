@@ -6,8 +6,8 @@ BenchmarkResult {
     example_name: "examples/array/array_init_ite.vmt",
     status: Good,
     used_instantiations: [
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 (Read_Int_Int a+0 i+0))) Z) (Read_Int_Int a+0 Z))",
-        "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
+        "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 (Read_Int_Int a+0 i+0))) Z) (Read_Int_Int a+0 Z)))",
+        "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z)))",
     ],
 }
