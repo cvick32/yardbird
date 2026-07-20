@@ -1,5 +1,5 @@
 use smt2parser::concrete::{Command, Sort, Symbol, Term};
-use std::time::Instant;
+use std::time::Duration;
 use z3::ast::Bool;
 
 use super::{z3_ext::ModelExt, z3_var_context::Z3VarContext};
@@ -24,6 +24,8 @@ pub struct Z3SolverBackend {
     z3_var_context: Z3VarContext,
     solver: z3::Solver,
     solver_statistics: SolverStatistics,
+    last_result: Option<SolverCheckResult>,
+    model_captured: bool,
     newest_model: Option<z3::Model>,
 }
 
@@ -35,6 +37,8 @@ impl Z3SolverBackend {
             z3_var_context: Z3VarContext::new(),
             solver,
             solver_statistics: SolverStatistics::new(),
+            last_result: None,
+            model_captured: false,
             newest_model: None,
         }
     }
@@ -126,27 +130,33 @@ impl YardbirdSolver for Z3SolverBackend {
         self.solver.pop(levels);
     }
 
-    fn check(&mut self) -> SolverCheckResult {
+    fn check_sat(&mut self) -> SolverCheckResult {
         let result = SolverCheckResult::from(self.solver.check());
-        self.newest_model = if result == SolverCheckResult::Sat {
-            self.solver.get_model()
-        } else {
-            None
-        };
+        self.last_result = Some(result);
+        self.model_captured = false;
+        if result != SolverCheckResult::Sat {
+            self.newest_model = None;
+        }
         result
     }
 
-    fn check_and_record_statistics(&mut self) -> SolverCheckResult {
-        let start_time = Instant::now();
-        let result = self.check();
-        self.record_statistics_since(start_time);
-        result
+    fn capture_model(&mut self) -> anyhow::Result<()> {
+        if self.last_result != Some(SolverCheckResult::Sat) {
+            anyhow::bail!("a Z3 model can only be captured after SAT");
+        }
+        let model = self
+            .solver
+            .get_model()
+            .ok_or_else(|| anyhow::anyhow!("Z3 returned SAT without an available model"))?;
+        self.newest_model = Some(model);
+        self.model_captured = true;
+        Ok(())
     }
 
-    fn record_statistics_since(&mut self, start_time: Instant) {
+    fn record_statistics(&mut self, solver_elapsed: Duration) {
         join_from_z3_statistics(&mut self.solver_statistics, self.solver.get_statistics());
         self.solver_statistics
-            .add_time("solver_time", start_time.elapsed().as_secs_f64());
+            .add_time("solver_time", solver_elapsed.as_secs_f64());
     }
 
     fn inspect_last_proof(&self) -> anyhow::Result<()> {
@@ -160,10 +170,13 @@ impl YardbirdSolver for Z3SolverBackend {
     }
 
     fn has_model(&self) -> bool {
-        self.newest_model.is_some()
+        self.model_captured && self.newest_model.is_some()
     }
 
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
+        if !self.model_captured {
+            anyhow::bail!("no solver model has been captured for the latest check");
+        }
         let model = self
             .newest_model
             .as_ref()
@@ -174,6 +187,9 @@ impl YardbirdSolver for Z3SolverBackend {
     }
 
     fn model_to_string(&self) -> anyhow::Result<String> {
+        if !self.model_captured {
+            return Ok("<no model>".to_string());
+        }
         match &self.newest_model {
             Some(model) => model.dump_sorted(),
             None => Ok("<no model>".to_string()),
@@ -203,5 +219,38 @@ impl YardbirdSolver for Z3SolverBackend {
 
     fn to_smt2_string(&self) -> anyhow::Result<String> {
         Ok(self.solver.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_check_does_not_capture_a_z3_model() {
+        let mut solver = Z3SolverBackend::new("QF_UF");
+        solver
+            .assert_term(&"true".parse::<Term>().unwrap())
+            .unwrap();
+
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        assert!(!solver.has_model());
+        assert!(solver.model_to_string().unwrap().contains("no model"));
+
+        solver.capture_model().unwrap();
+        assert!(solver.has_model());
+    }
+
+    #[test]
+    fn z3_model_capture_requires_a_sat_result() {
+        let mut solver = Z3SolverBackend::new("QF_UF");
+        assert!(solver.capture_model().is_err());
+
+        solver
+            .assert_term(&"false".parse::<Term>().unwrap())
+            .unwrap();
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
+        assert!(solver.capture_model().is_err());
+        assert!(!solver.has_model());
     }
 }
