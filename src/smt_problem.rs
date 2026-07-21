@@ -647,9 +647,21 @@ impl SMTProblem {
         let solver_elapsed = solver_start.elapsed();
 
         if sat_result == SolverCheckResult::Sat {
+            let collect_model_terms_start = Instant::now();
+            let model_terms = self
+                .subterm_handler
+                .get_all_subterms()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            self.last_check_profile.insert(
+                "check_collect_model_terms".to_string(),
+                collect_model_terms_start.elapsed().as_secs_f64(),
+            );
+
             let capture_model_start = Instant::now();
             self.solver
-                .capture_model()
+                .capture_model(&model_terms)
                 .expect("solver should capture a model after SAT before property pop");
             self.last_check_profile.insert(
                 "check_capture_model".to_string(),
@@ -666,28 +678,6 @@ impl SMTProblem {
             proof_start.elapsed().as_secs_f64(),
         );
 
-        if sat_result == SolverCheckResult::Sat {
-            let collect_model_terms_start = Instant::now();
-            let model_terms = self
-                .subterm_handler
-                .get_all_subterms()
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>();
-            self.last_check_profile.insert(
-                "check_collect_model_terms".to_string(),
-                collect_model_terms_start.elapsed().as_secs_f64(),
-            );
-
-            let preserve_model_start = Instant::now();
-            self.solver
-                .preserve_model_values(&model_terms)
-                .expect("solver should preserve SAT model values before property pop");
-            self.last_check_profile.insert(
-                "check_preserve_model_values".to_string(),
-                preserve_model_start.elapsed().as_secs_f64(),
-            );
-        }
         // Popping property off.
         let pop_start = Instant::now();
         self.solver.pop(1);

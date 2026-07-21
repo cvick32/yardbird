@@ -45,10 +45,11 @@ pub trait YardbirdSolver {
     /// Run the solver without acquiring a model.
     fn check_sat(&mut self) -> SolverCheckResult;
 
-    /// Capture the model produced by the most recent SAT check.
+    /// Capture the model produced by the most recent SAT check, including the
+    /// values of any terms that the backend must preserve before a scope pop.
     ///
     /// Callers must invoke this before popping the scope used for the check.
-    fn capture_model(&mut self) -> anyhow::Result<()>;
+    fn capture_model(&mut self, terms: &[Term]) -> anyhow::Result<()>;
 
     fn check_sat_and_record_statistics(&mut self) -> SolverCheckResult {
         let start_time = Instant::now();
@@ -63,9 +64,6 @@ pub trait YardbirdSolver {
     }
 
     fn has_model(&self) -> bool;
-    fn preserve_model_values(&mut self, _terms: &[Term]) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn model_to_string(&self) -> anyhow::Result<String>;
 

@@ -140,7 +140,7 @@ impl YardbirdSolver for Z3SolverBackend {
         result
     }
 
-    fn capture_model(&mut self) -> anyhow::Result<()> {
+    fn capture_model(&mut self, _terms: &[Term]) -> anyhow::Result<()> {
         if self.last_result != Some(SolverCheckResult::Sat) {
             anyhow::bail!("a Z3 model can only be captured after SAT");
         }
@@ -237,20 +237,50 @@ mod tests {
         assert!(!solver.has_model());
         assert!(solver.model_to_string().unwrap().contains("no model"));
 
-        solver.capture_model().unwrap();
+        solver.capture_model(&[]).unwrap();
         assert!(solver.has_model());
+    }
+
+    #[test]
+    fn solver_time_is_finalized_before_model_capture() {
+        let mut solver = Z3SolverBackend::new("QF_UF");
+        solver
+            .assert_term(&"true".parse::<Term>().unwrap())
+            .unwrap();
+
+        assert_eq!(
+            solver.check_sat_and_record_statistics(),
+            SolverCheckResult::Sat
+        );
+        assert!(!solver.has_model());
+        let raw_solver_time = solver
+            .get_solver_statistics()
+            .get_f64("solver_time")
+            .expect("raw check should record solver_time");
+
+        solver.capture_model(&[]).unwrap();
+
+        assert!(solver.has_model());
+        assert_eq!(
+            solver
+                .get_solver_statistics()
+                .get_f64("solver_time")
+                .expect("model capture must not remove solver_time"),
+            raw_solver_time,
+            "model acquisition must not be included in solver_time"
+        );
     }
 
     #[test]
     fn z3_model_capture_requires_a_sat_result() {
         let mut solver = Z3SolverBackend::new("QF_UF");
-        assert!(solver.capture_model().is_err());
+        assert!(solver.capture_model(&[]).is_err());
 
         solver
             .assert_term(&"false".parse::<Term>().unwrap())
             .unwrap();
         assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
-        assert!(solver.capture_model().is_err());
+        assert!(solver.capture_model(&[]).is_err());
         assert!(!solver.has_model());
     }
 }

@@ -710,10 +710,24 @@ impl YardbirdSolver for Cvc5SolverBackend {
         check_result
     }
 
-    fn capture_model(&mut self) -> anyhow::Result<()> {
+    fn capture_model(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
         if self.last_result != Some(SolverCheckResult::Sat) {
             anyhow::bail!("a CVC5 model can only be captured after SAT");
         }
+
+        self.model_captured = false;
+        self.model_value_cache.clear();
+        let values = terms
+            .iter()
+            .map(|term| {
+                let cvc5_term = self.convert_term(term)?;
+                Ok((
+                    term.clone(),
+                    normalize_model_value(self.solver.get_value(cvc5_term).to_string()),
+                ))
+            })
+            .collect::<anyhow::Result<HashMap<_, _>>>()?;
+        self.model_value_cache = values;
         self.model_captured = true;
         Ok(())
     }
@@ -726,26 +740,6 @@ impl YardbirdSolver for Cvc5SolverBackend {
 
     fn has_model(&self) -> bool {
         self.model_captured
-    }
-
-    fn preserve_model_values(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
-        if !self.model_captured {
-            self.model_value_cache.clear();
-            anyhow::bail!("CVC5 model values can only be preserved after model capture");
-        }
-
-        let values = terms
-            .iter()
-            .map(|term| {
-                let cvc5_term = self.convert_term(term)?;
-                Ok((
-                    term.clone(),
-                    normalize_model_value(self.solver.get_value(cvc5_term).to_string()),
-                ))
-            })
-            .collect::<anyhow::Result<HashMap<_, _>>>()?;
-        self.model_value_cache = values;
-        Ok(())
     }
 
     fn eval_to_string(&self, term: &SmtTerm) -> anyhow::Result<String> {
@@ -1040,8 +1034,9 @@ mod tests {
             .unwrap();
         assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
         assert!(!solver.has_model());
-        solver.capture_model().unwrap();
-        assert!(!solver.eval_to_string(&symbol_term("x")).unwrap().is_empty());
+        let x = symbol_term("x");
+        solver.capture_model(std::slice::from_ref(&x)).unwrap();
+        assert!(!solver.eval_to_string(&x).unwrap().is_empty());
     }
 
     #[test]
@@ -1312,10 +1307,7 @@ mod tests {
             .unwrap();
         assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
         assert!(!solver.has_model());
-        solver.capture_model().unwrap();
-        solver
-            .preserve_model_values(std::slice::from_ref(&x))
-            .unwrap();
+        solver.capture_model(std::slice::from_ref(&x)).unwrap();
         solver.pop(1);
 
         assert_eq!(solver.eval_to_string(&x).unwrap(), "7");

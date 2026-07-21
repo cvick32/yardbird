@@ -322,7 +322,7 @@ impl SMTLIBSMTProblem {
         let result = self.solver.check_sat_and_record_statistics();
         if result == SolverCheckResult::Sat {
             self.solver
-                .capture_model()
+                .capture_model(&self.assertions)
                 .expect("solver should capture a model after SAT");
         }
         result
