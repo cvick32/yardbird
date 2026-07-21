@@ -23,8 +23,11 @@ put the correct headers in the path.
 ```bash
 cd yardbird
 
-# Build yardbird
+# Build yardbird, with Z3
 cargo build -p yardbird --release
+
+# Build yardbird, with Z3 and cvc5
+cargo build --release --features cvc5-backend
 
 # Verify build
 ./target/release/yardbird --help
