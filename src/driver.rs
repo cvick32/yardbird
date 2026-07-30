@@ -10,7 +10,7 @@ use crate::{
     instantiation_strategy::InstantiationStrategy,
     problem_context::ProblemContext,
     profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext},
-    solver::SolverCheckResult,
+    solver::{SolverCapture, SolverCheckResult},
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
     utils::SolverStatistics,
@@ -272,6 +272,7 @@ pub struct Driver<'ctx, S> {
     instantiation_strategy: Box<dyn InstantiationStrategy>,
     solver_backend: SolverBackend,
     profiler: Option<Profiler>,
+    solver_capture: Option<SolverCapture>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -378,6 +379,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             instantiation_strategy,
             solver_backend,
             profiler: None,
+            solver_capture: None,
         }
     }
 
@@ -396,6 +398,11 @@ impl<'ctx, S> Driver<'ctx, S> {
 
     pub fn with_profiler(mut self, profiler: Option<Profiler>) -> Self {
         self.profiler = profiler;
+        self
+    }
+
+    pub fn with_solver_capture(mut self, capture: Option<SolverCapture>) -> Self {
+        self.solver_capture = capture;
         self
     }
 
@@ -432,6 +439,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             self.track_instantiations,
             self.instantiation_strategy.clone_box(),
             profiling,
+            self.solver_capture.clone(),
         );
 
         'bmc: for depth in 0..target_depth {

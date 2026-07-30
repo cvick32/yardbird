@@ -3,7 +3,9 @@ use log::info;
 use std::{fs::File, io::Write, path::Path};
 use yardbird::{
     logger, model_from_options,
+    profiling::ProfilingRunRecord,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
+    solver::SolverCapture,
     strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
     training::{reset_training_database, TrainingSession},
     CostFunction, Driver, Strategy, Theory, YardbirdOptions,
@@ -103,6 +105,7 @@ fn run_smtlib_with_strategy(
 ) -> anyhow::Result<()> {
     let mut training_session = TrainingSession::from_options(options)?;
     let strategy = build_smtlib_strategy(options);
+    let solver_capture = options.build_solver_capture();
     //let instantiation_strategy = options.build_instantiation_strategy();
 
     let (result, abstracted_problem) = match SMTLIBSolver::execute_with_strategy(
@@ -112,6 +115,7 @@ fn run_smtlib_with_strategy(
         250, // max refinements (like VMT mode)
         options.track_instantiations,
         options.build_profiler(),
+        solver_capture.clone(),
         //instantiation_strategy,
     ) {
         Ok(res) => res,
@@ -126,6 +130,7 @@ fn run_smtlib_with_strategy(
     if let Some(session) = training_session.as_mut() {
         session.complete_result(&result)?;
     }
+    finish_solver_capture(solver_capture.as_ref(), &result.profiling)?;
 
     // Print abstracted output if requested
     if options.print_file {
@@ -142,9 +147,13 @@ fn run_smtlib_with_strategy(
 
 /// Run SMTLIB in simple mode (no refinement)
 fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyhow::Result<()> {
-    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver)
-        .with_profiler(options.build_profiler());
+    let solver_capture = options.build_solver_capture();
+    let mut solver =
+        SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver, solver_capture.clone())
+            .with_profiler(options.build_profiler());
     solver.execute(problem)?;
+    let profiling = solver.profiling();
+    finish_solver_capture(solver_capture.as_ref(), &profiling)?;
 
     let results = solver.get_results();
     if options.json_output {
@@ -159,7 +168,7 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
                 })
             }).collect::<Vec<_>>(),
             "statistics": solver.get_statistics(),
-            "profiling": solver.profiling(),
+            "profiling": profiling,
         });
         println!("{}", serde_json::to_string(&json_output)?);
     } else {
@@ -258,6 +267,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     let vmt_model = model_from_options(options);
     let instantiation_strategy = options.build_instantiation_strategy();
     let mut training_session = TrainingSession::from_options(options)?;
+    let solver_capture = options.build_solver_capture();
 
     match options.theory {
         Theory::Array => {
@@ -267,7 +277,8 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                     options.track_instantiations,
                     options.dump_unsat_core.clone(),
                 )
-                .with_profiler(options.build_profiler());
+                .with_profiler(options.build_profiler())
+                .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
             }
@@ -286,6 +297,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             if let Some(session) = training_session.as_mut() {
                 session.complete_result(&res)?;
             }
+            finish_solver_capture(solver_capture.as_ref(), &res.profiling)?;
             print_file_results(res, options)?;
         }
         Theory::BvList => {
@@ -298,7 +310,8 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                     options.track_instantiations,
                     options.dump_unsat_core.clone(),
                 )
-                .with_profiler(options.build_profiler());
+                .with_profiler(options.build_profiler())
+                .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
             }
@@ -317,10 +330,29 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             if let Some(session) = training_session.as_mut() {
                 session.complete_result(&res)?;
             }
+            finish_solver_capture(solver_capture.as_ref(), &res.profiling)?;
             print_file_results(res, options)?;
         }
     };
 
+    Ok(())
+}
+
+fn finish_solver_capture(
+    capture: Option<&SolverCapture>,
+    profile: &ProfilingRunRecord,
+) -> anyhow::Result<()> {
+    if let Some(capture) = capture {
+        let artifacts = capture.finish(profile)?;
+        info!(
+            "Wrote solver capture to {}",
+            artifacts
+                .manifest
+                .parent()
+                .expect("capture manifest has an output directory")
+                .display()
+        );
+    }
     Ok(())
 }
 

@@ -1,6 +1,6 @@
 #![warn(clippy::print_stdout)]
 
-use std::{fmt::Display, fs::File, io::Write};
+use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
 
 use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 use clap::{Parser, ValueEnum};
@@ -122,6 +122,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub profile: bool,
 
+    /// Write a replayable solver session and its metadata to this directory.
+    #[arg(long)]
+    pub solver_capture_dir: Option<PathBuf>,
+
     /// Record full cost-function candidate decisions in the result.
     #[arg(long, default_value_t = false)]
     pub record_decisions: bool,
@@ -184,6 +188,7 @@ impl Default for YardbirdOptions {
             dump_unsat_core: None,
             verbose: false,
             profile: false,
+            solver_capture_dir: None,
             record_decisions: false,
             train: false,
             train_reset: false,
@@ -236,8 +241,18 @@ impl YardbirdOptions {
     }
 
     pub fn build_profiler(&self) -> Option<crate::profiling::Profiler> {
-        self.profile
+        self.profiling_enabled()
             .then(|| crate::profiling::Profiler::from_options(self))
+    }
+
+    pub fn build_solver_capture(&self) -> Option<crate::solver::SolverCapture> {
+        self.solver_capture_dir
+            .clone()
+            .map(crate::solver::SolverCapture::new)
+    }
+
+    fn profiling_enabled(&self) -> bool {
+        self.profile || self.solver_capture_dir.is_some()
     }
 
     pub fn build_array_artifact_capture(&self) -> ArrayArtifactCapture {
@@ -341,8 +356,14 @@ impl YardbirdOptions {
     where
         F: ArrayCostFactory<Config = ()> + 'static,
     {
-        Abstract::new(bmc_depth, self.run_ic3ia, (), aux_config, self.profile)
-            .with_artifact_capture(self.build_array_artifact_capture())
+        Abstract::new(
+            bmc_depth,
+            self.run_ic3ia,
+            (),
+            aux_config,
+            self.profiling_enabled(),
+        )
+        .with_artifact_capture(self.build_array_artifact_capture())
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -356,8 +377,14 @@ impl YardbirdOptions {
             .expect("--cost-function logistic-regression requires --ranker-model");
         let model = LogisticRegressionModel::from_path(model_path)
             .unwrap_or_else(|err| panic!("failed to configure logistic-regression model: {err}"));
-        Abstract::new(bmc_depth, self.run_ic3ia, model, aux_config, self.profile)
-            .with_artifact_capture(self.build_array_artifact_capture())
+        Abstract::new(
+            bmc_depth,
+            self.run_ic3ia,
+            model,
+            aux_config,
+            self.profiling_enabled(),
+        )
+        .with_artifact_capture(self.build_array_artifact_capture())
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
