@@ -193,8 +193,7 @@ run and is associated with:
 - existing Yardbird refinement ID or refinement step;
 - total instances present;
 - instances added since the preceding check;
-- expected result;
-- transcript prefix hash through the corresponding ~check-sat~ command.
+- expected result.
 
 ** Resolved depth
 
@@ -223,7 +222,6 @@ T_yardbird_check_handling =
   + T_proof_or_core_access
   + T_property_pop
   + T_statistics_collection
-  + T_journal_bookkeeping
 #+end_example
 
 The first Z3 fork records, only while an instrumented ~check-sat~ is active:
@@ -307,7 +305,6 @@ check_byte_start
 check_byte_end
 post_check_byte_end
 command_ordinal
-transcript_prefix_sha256
 expected_result
 #+end_example
 
@@ -325,7 +322,6 @@ therefore satisfy these checks:
 
 - every check result matches the originating Yardbird result;
 - all checks occur in the expected order;
-- the transcript prefix hash matches the index;
 - Z3 revision, build mode, parameters, and seeds are recorded;
 - performance conclusions use repeated executions rather than assuming exact
   deterministic timing.
@@ -334,25 +330,24 @@ therefore satisfy these checks:
 
 ** CLI
 
-Add solver measurement independently of the existing e-graph cost profiler:
+Use one option for all Yardbird profiling:
 
 #+begin_example
---profile-solver
+--profile
 --solver-capture-dir <DIR>
 #+end_example
 
 Recommended behavior:
 
-- ~--profile-solver~ records check-level Yardbird timing and statistics for all
-  strategies, including ~concrete~.
+- ~--profile~ records check-level Yardbird timing and statistics for all
+  strategies, including ~concrete~, plus driver and e-graph measurements where
+  those paths produce them.
 - ~--solver-capture-dir~ enables the command journal, journal index, manifest,
-  and the metadata needed to correlate checks. It implies ~--profile-solver~.
+  and the metadata needed to correlate checks. It implies ~--profile~.
 - A transcript always contains every check. Result-based filtering is not
   supported because removing an earlier check changes the incremental session.
 - Existing ~--dump-solver~ remains available for its current single-UNSAT/core
   use case and is not overloaded with transcript semantics.
-- Existing ~--profile-costs~ remains independent and continues to control
-  detailed Yardbird/e-graph profiling.
 
 ** Split raw check from model acquisition
 
@@ -376,23 +371,17 @@ captured model is stored.
 
 ** Profiling schema
 
-Extend ~src/profiling.rs~ instead of creating an unrelated Yardbird telemetry
-format. Increment the schema to ~yardbird-profile-v2~ while preserving the
-existing cost and driver records.
-
-Replace the ambiguous single top-level ~enabled~ meaning with independent
-~cost_profiling_enabled~ and ~solver_profiling_enabled~ fields, retaining a
-documented compatibility path for existing JSON consumers.
+Keep one profiler in ~src/profiling.rs~. It owns run metadata, check identity,
+instance deltas, solver-check records, driver timings, and e-graph cost
+records. The payload is intentionally unversioned and has no compatibility
+flags.
 
 Add a solver-check collection. A check record should contain at least:
 
 #+begin_example
-schema_version
 run_id
 check_id
 benchmark_id
-transcript_path
-transcript_prefix_sha256
 depth
 refinement_id
 refinement_step
@@ -415,8 +404,8 @@ statistics_delta
 #+end_example
 
 ~timing_ns~ should include property push, raw check, model acquisition,
-proof/core access, property pop, statistics collection, journal bookkeeping,
-and total Yardbird check handling.
+proof/core access, property pop, statistics collection, and total Yardbird
+check handling.
 
 Reuse the existing ~SolverStatistics~ representation and add shared snapshot and
 delta helpers. Do not maintain a second hand-selected statistics map. Record
@@ -428,14 +417,12 @@ statistics for SAT, UNSAT, and UNKNOWN results.
 - ~check_id~ is monotonic and contiguous within a run.
 - Use the repository's existing refinement identity rather than inventing a
   competing ID.
-- The transcript prefix hash identifies the exact command history through a
-  check.
 - The final transcript hash identifies the completed incremental session.
 
 ** Likely files
 
 - ~src/lib.rs~: CLI options and validation.
-- ~src/profiling.rs~: schema v2 and solver-check records.
+- ~src/profiling.rs~: unified profiling state and solver-check records.
 - ~src/driver.rs~: run/check/depth/refinement metadata.
 - ~src/smt_problem.rs~: check phases and journal annotations.
 - ~src/solver/api.rs~: raw-check/model split and journal integration seam.
@@ -603,11 +590,9 @@ Document overlap. Avoid clock reads for each candidate or each index dimension.
 
 ** Per-check output
 
-Use schema ~z3-array-profile-v1~ and emit one JSONL record after every
-~check-sat~:
+Emit one JSONL record after every ~check-sat~:
 
 #+begin_example
-schema_version
 z3_revision
 build_configuration
 profile_mode
@@ -621,8 +606,7 @@ solver_statistics
 #+end_example
 
 The Z3 process knows only its check ordinal. The replay harness maps that
-ordinal to the Yardbird check ID and transcript prefix hash from the journal
-index.
+ordinal to the Yardbird check ID from the journal index.
 
 * Deferred Event Provenance
 
@@ -719,7 +703,7 @@ python scripts/z3_array_probe.py summarize \
 ** Runner responsibilities
 
 - Validate executable version and build metadata.
-- Verify the complete transcript and prefix hashes.
+- Verify the complete transcript against its final hash.
 - Launch a fresh persistent solver process for each full-transcript repetition.
 - Preserve check ordering within every repetition.
 - Set and record explicit random seeds and nondefault parameters.
@@ -815,7 +799,7 @@ durations in correctness tests.
 
 * Implementation Milestones
 
-** Milestone 0: Freeze Z3 4.16 and the schemas
+** Milestone 0: Freeze Z3 4.16 and the record shapes
 
 Tasks:
 
@@ -823,34 +807,34 @@ Tasks:
 - Build stock and unmodified-development executables with identical flags.
 - Verify version, status equivalence, and statistically similar timing on a
   small query set.
-- Finalize examples of ~yardbird-profile-v2~,
-  ~solver-session.index.json~, and ~z3-array-profile-v1~.
-- Write the timing boundary and ax2 definitions into the schemas.
+- Finalize examples of the Yardbird profile, solver-session index, and Z3 array
+  profile.
+- Write the timing boundary and ax2 definitions into their documentation.
 
 Exit criteria:
 
 - The exact source and build configurations are reproducible.
 - An unmodified development build has no unexplained systematic timing
   difference from stock.
-- Schema fixtures parse successfully.
+- Record fixtures parse successfully.
 
 ** Milestone 1: Yardbird check profiling and canonical journal
 
 Tasks:
 
-- Add ~--profile-solver~ and ~--solver-capture-dir~.
+- Add ~--profile~ and ~--solver-capture-dir~.
 - Split raw check from model acquisition.
 - Add stable run/check metadata using the existing refinement identity.
 - Implement the solver-boundary command journal and sidecar index.
-- Record transcript prefix hashes and the final transcript hash.
+- Record the final transcript hash.
 - Record timing phases and complete statistic snapshots/deltas for every result.
-- Keep concrete profiling independent of ~--profile-costs~.
+- Profile concrete and abstract strategies through the same interface.
 - Add SAT, UNSAT, multi-refinement, and multi-depth capture tests.
 
 Exit criteria:
 
 - One Yardbird invocation produces one valid incremental SMT-LIB transcript.
-- Every indexed check has contiguous identity and a verified prefix hash.
+- Every indexed check has contiguous identity and valid command boundaries.
 - Raw check time excludes model acquisition.
 - Concrete and abstract runs both emit solver-check records.
 - Existing ~--dump-solver~ behavior remains compatible.
@@ -954,11 +938,11 @@ Add focused tests that:
 - capture multiple refinements at one depth;
 - capture multiple depths in one journal;
 - verify push/pop and assertion ordering;
-- verify contiguous check IDs and prefix hashes;
+- verify contiguous check IDs and command boundaries;
 - replay the transcript to the originating statuses;
-- verify profile schema round trips and statistics deltas;
+- verify profile serialization round trips and statistics deltas;
 - confirm model acquisition is outside raw check timing;
-- confirm concrete solver profiling does not require ~--profile-costs~;
+- confirm concrete and abstract strategies use the same profiler;
 - preserve the existing dump/core behavior.
 
 ** Z3 fork
@@ -1080,7 +1064,7 @@ Implement the smallest end-to-end path before adding detailed Z3 counters:
 
 1. Pin and record the existing Z3 4.16 checkout and build configuration.
 2. Split Yardbird raw check from model acquisition.
-3. Add ~yardbird-profile-v2~ solver-check records.
+3. Add solver-check records to the unified Yardbird profiler.
 4. Add the solver-boundary incremental command journal and index.
 5. Build persistent stock replay with check-level and cumulative-depth timing.
 6. Add the Z3 array envelope and the minimal ax2 funnel.
@@ -1093,12 +1077,12 @@ This slice can already falsify the simplest explanation: that the raw native
 
 - [ ] Record the exact existing Z3 4.16 commit and build flags.
 - [ ] Validate identical stock and unmodified-development builds.
-- [ ] Finalize the three schema examples.
-- [ ] Add Yardbird solver-profile CLI options.
+- [ ] Finalize the three record examples.
+- [ ] Add the unified Yardbird profiling option.
 - [ ] Split raw check and model acquisition.
 - [ ] Add stable run/check metadata using existing refinement identity.
 - [ ] Implement the solver-boundary command journal.
-- [ ] Emit the journal index, prefix hashes, and final transcript hash.
+- [ ] Emit the journal index and final transcript hash.
 - [ ] Record per-check timing phases and statistic deltas.
 - [ ] Make solver profiling work for concrete and abstract strategies.
 - [ ] Add incremental capture tests.
