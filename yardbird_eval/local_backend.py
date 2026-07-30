@@ -59,8 +59,8 @@ def launch_local_run(args: Any) -> dict[str, Any]:
             ]
             if args.ranker_model:
                 command.extend(["--ranker-model", args.ranker_model])
-            if args.profile_costs:
-                command.append("--profile-costs")
+            if args.profile:
+                command.append("--profile")
 
             run_command(
                 command,

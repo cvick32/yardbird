@@ -84,9 +84,9 @@ def parse_args() -> argparse.Namespace:
         help="Path to a logistic-regression model JSON to pass through to garden/Yardbird",
     )
     parser.add_argument(
-        "--profile-costs",
+        "--profile",
         action="store_true",
-        help="Include Yardbird cost/refinement profiling records in benchmark JSON",
+        help="Include Yardbird profiling data in benchmark JSON",
     )
     parser.add_argument("--run-id", help="Existing run id to refresh or report on")
     parser.add_argument("--aws-run-id", help=argparse.SUPPRESS)
@@ -200,9 +200,9 @@ def main() -> int:
         raise RuntimeError("Provide either --env with benchmark types or --run-id")
     if not args.benchmark_type:
         raise RuntimeError("Provide at least one --benchmark-type")
-    if args.env != "local" and (args.ranker_model or args.profile_costs):
+    if args.env != "local" and (args.ranker_model or args.profile):
         raise RuntimeError(
-            "--ranker-model and --profile-costs are currently supported for --env local only"
+            "--ranker-model and --profile are currently supported for --env local only"
         )
 
     if args.env == "local":
