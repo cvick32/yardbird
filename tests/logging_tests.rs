@@ -451,6 +451,7 @@ fn smtlib_strategy_populates_logging_artifacts() {
                 50,
                 true,
                 None,
+                None,
             )
             .expect("SMT-LIB strategy run should complete")
             .0

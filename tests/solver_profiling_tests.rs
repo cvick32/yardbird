@@ -65,7 +65,7 @@ fn simple_incremental_smtlib_profiles_every_check() {
     options.profile = true;
     options.strategy = Strategy::Concrete;
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), SolverBackend::Z3)
+    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), SolverBackend::Z3, None)
         .with_profiler(options.build_profiler());
 
     solver.execute(&problem).unwrap();
@@ -103,6 +103,7 @@ fn strategy_smtlib_profiles_checks() {
         5,
         false,
         options.build_profiler(),
+        None,
     )
     .unwrap()
     .0;

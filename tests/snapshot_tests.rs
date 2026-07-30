@@ -207,6 +207,7 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
                     250,
                     false,
                     None,
+                    None,
                 )
                 .unwrap();
                 Smt2StrategyOutcome::from(result)
