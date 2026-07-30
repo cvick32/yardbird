@@ -1,55 +1,281 @@
 use std::{
     collections::BTreeMap,
-    time::{Duration, Instant},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
 
-pub const PROFILING_SCHEMA_VERSION: &str = "yardbird-profile-v1";
+use crate::{solver::SolverCheckResult, utils::SolverStatistics, SolverBackend};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+static RUN_ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProfilingRunRecord {
-    pub schema_version: String,
-    pub enabled: bool,
     pub timing_secs: BTreeMap<String, f64>,
     pub driver_records: Vec<DriverProfilingRecord>,
-    pub records: Vec<ProfilingRecord>,
+    pub cost_records: Vec<ProfilingRecord>,
+    pub solver_checks: Vec<SolverCheckProfilingRecord>,
 }
 
-impl ProfilingRunRecord {
-    pub fn disabled() -> Self {
+#[derive(Debug, Clone)]
+struct ProfilingMetadata {
+    run_id: String,
+    benchmark_id: String,
+    strategy: String,
+    cost_function: String,
+    theory: String,
+}
+
+impl ProfilingMetadata {
+    fn from_options(options: &crate::YardbirdOptions) -> Self {
         Self {
-            schema_version: PROFILING_SCHEMA_VERSION.to_string(),
-            enabled: false,
-            timing_secs: BTreeMap::new(),
-            driver_records: vec![],
-            records: vec![],
+            run_id: next_run_id(),
+            benchmark_id: options
+                .filename
+                .clone()
+                .unwrap_or_else(|| "<unknown>".to_string()),
+            strategy: options.strategy.to_string(),
+            cost_function: options.cost_function.to_string(),
+            theory: options.theory.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Profiler {
+    metadata: ProfilingMetadata,
+    profile: ProfilingRunRecord,
+    previous_instance_count: u64,
+}
+
+impl Profiler {
+    pub fn from_options(options: &crate::YardbirdOptions) -> Self {
+        Self {
+            metadata: ProfilingMetadata::from_options(options),
+            profile: ProfilingRunRecord::default(),
+            previous_instance_count: 0,
         }
     }
 
-    pub fn enabled(records: Vec<ProfilingRecord>) -> Self {
-        Self {
-            schema_version: PROFILING_SCHEMA_VERSION.to_string(),
-            enabled: true,
-            timing_secs: BTreeMap::new(),
-            driver_records: vec![],
-            records,
-        }
+    pub(crate) fn record_solver_check(
+        &mut self,
+        context: SolverCheckContext,
+        measurement: SolverCheckMeasurement,
+    ) {
+        let check_id = self.profile.solver_checks.len() as u64;
+        let instances_added_since_previous_check = context
+            .instances_total
+            .saturating_sub(self.previous_instance_count);
+        self.previous_instance_count = context.instances_total;
+
+        self.profile.solver_checks.push(SolverCheckProfilingRecord {
+            run_id: self.metadata.run_id.clone(),
+            check_id,
+            benchmark_id: self.metadata.benchmark_id.clone(),
+            depth: context.depth,
+            refinement_id: context.refinement_id,
+            refinement_step: context.refinement_step,
+            strategy: self.metadata.strategy.clone(),
+            cost_function: self.metadata.cost_function.clone(),
+            theory: self.metadata.theory.clone(),
+            backend: context.solver.backend,
+            result: measurement.result,
+            reason_unknown: measurement.reason_unknown,
+            logic: context.solver.logic,
+            solver_parameters: context.solver.parameters,
+            random_seeds: context.solver.random_seeds,
+            assertion_count: measurement.assertion_count,
+            instances_total: context.instances_total,
+            instances_added_since_previous_check,
+            timing_ns: measurement.timing_ns,
+            statistics_before: measurement.statistics_before,
+            statistics_after: measurement.statistics_after,
+            statistics_delta: measurement.statistics_delta,
+        });
+    }
+
+    pub fn add_driver_record(&mut self, record: DriverProfilingRecord) {
+        self.profile.driver_records.push(record);
+    }
+
+    pub fn extend_cost_records(&mut self, records: Vec<ProfilingRecord>) {
+        self.profile.cost_records.extend(records);
     }
 
     pub fn record_timing(&mut self, stage: &'static str, duration: Duration) {
-        *self.timing_secs.entry(stage.to_string()).or_insert(0.0) += duration.as_secs_f64();
+        *self
+            .profile
+            .timing_secs
+            .entry(stage.to_string())
+            .or_insert(0.0) += duration.as_secs_f64();
     }
 
-    pub fn extend_driver_records(&mut self, records: Vec<DriverProfilingRecord>) {
-        self.driver_records.extend(records);
+    pub fn finish(self) -> ProfilingRunRecord {
+        self.profile
+    }
+
+    pub fn snapshot(&self) -> ProfilingRunRecord {
+        self.profile.clone()
     }
 }
 
-impl Default for ProfilingRunRecord {
-    fn default() -> Self {
-        Self::disabled()
+fn next_run_id() -> String {
+    let timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let sequence = RUN_ID_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "yardbird-{timestamp_nanos}-pid{}-{sequence}",
+        std::process::id()
+    )
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SolverCheckContext {
+    pub depth: u16,
+    pub refinement_id: u32,
+    pub refinement_step: u32,
+    pub instances_total: u64,
+    pub solver: SolverProfileMetadata,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SolverProfileMetadata {
+    pub backend: SolverBackend,
+    pub logic: String,
+    pub parameters: BTreeMap<String, String>,
+    pub random_seeds: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SolverCheckProfilingRecord {
+    pub run_id: String,
+    pub check_id: u64,
+    pub benchmark_id: String,
+    pub depth: u16,
+    pub refinement_id: u32,
+    pub refinement_step: u32,
+    pub strategy: String,
+    pub cost_function: String,
+    pub theory: String,
+    pub backend: SolverBackend,
+    pub result: SolverCheckResult,
+    pub reason_unknown: Option<String>,
+    pub logic: String,
+    pub solver_parameters: BTreeMap<String, String>,
+    pub random_seeds: BTreeMap<String, u64>,
+    pub assertion_count: u64,
+    pub instances_total: u64,
+    pub instances_added_since_previous_check: u64,
+    pub timing_ns: SolverCheckTiming,
+    pub statistics_before: SolverStatistics,
+    pub statistics_after: SolverStatistics,
+    pub statistics_delta: SolverStatistics,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SolverCheckTiming {
+    pub property_push: u64,
+    pub raw_check: u64,
+    pub model_acquisition: u64,
+    pub proof_core_access: u64,
+    pub property_pop: u64,
+    pub statistics_collection: u64,
+    pub total_check_handling: u64,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub(crate) enum SolverCheckPhase {
+    PropertyPush,
+    ModelAcquisition,
+    ProofCoreAccess,
+    PropertyPop,
+    StatisticsCollection,
+}
+
+pub(crate) struct SolverCheckTimer {
+    total_start: Option<Instant>,
+    statistics_before: Option<SolverStatistics>,
+    timing: SolverCheckTiming,
+}
+
+impl SolverCheckTimer {
+    pub fn new(enabled: bool, statistics: impl FnOnce() -> SolverStatistics) -> Self {
+        Self {
+            total_start: enabled.then(Instant::now),
+            statistics_before: enabled.then(statistics),
+            timing: SolverCheckTiming::default(),
+        }
     }
+
+    pub fn measure<T>(&mut self, phase: SolverCheckPhase, operation: impl FnOnce() -> T) -> T {
+        let Some(start) = self.total_start.as_ref().map(|_| Instant::now()) else {
+            return operation();
+        };
+        let result = operation();
+        let elapsed = duration_nanos(start.elapsed());
+        match phase {
+            SolverCheckPhase::PropertyPush => self.timing.property_push = elapsed,
+            SolverCheckPhase::ModelAcquisition => self.timing.model_acquisition = elapsed,
+            SolverCheckPhase::ProofCoreAccess => self.timing.proof_core_access = elapsed,
+            SolverCheckPhase::PropertyPop => self.timing.property_pop = elapsed,
+            SolverCheckPhase::StatisticsCollection => {
+                self.timing.statistics_collection = elapsed;
+            }
+        }
+        result
+    }
+
+    pub fn measure_raw<T>(&mut self, operation: impl FnOnce() -> T) -> (T, Duration) {
+        let start = Instant::now();
+        let result = operation();
+        let elapsed = start.elapsed();
+        if self.total_start.is_some() {
+            self.timing.raw_check = duration_nanos(elapsed);
+        }
+        (result, elapsed)
+    }
+
+    pub fn finish(
+        mut self,
+        result: SolverCheckResult,
+        reason_unknown: Option<String>,
+        assertion_count: u64,
+        statistics: impl FnOnce() -> SolverStatistics,
+    ) -> Option<SolverCheckMeasurement> {
+        let total_start = self.total_start?;
+        let statistics_before = self.statistics_before?;
+        let statistics_after = statistics();
+        self.timing.total_check_handling = duration_nanos(total_start.elapsed());
+
+        Some(SolverCheckMeasurement {
+            result,
+            reason_unknown,
+            assertion_count,
+            timing_ns: self.timing,
+            statistics_delta: statistics_after.delta_snapshot_since(&statistics_before),
+            statistics_before,
+            statistics_after,
+        })
+    }
+}
+
+fn duration_nanos(duration: Duration) -> u64 {
+    duration.as_nanos().try_into().unwrap_or(u64::MAX)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SolverCheckMeasurement {
+    pub result: SolverCheckResult,
+    pub reason_unknown: Option<String>,
+    pub assertion_count: u64,
+    pub timing_ns: SolverCheckTiming,
+    pub statistics_before: SolverStatistics,
+    pub statistics_after: SolverStatistics,
+    pub statistics_delta: SolverStatistics,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -343,5 +569,93 @@ impl ArrayProfilingCollector {
         site_record.secs += secs;
         site_record.expr_nodes += expr_nodes as u64;
         site_record.max_expr_nodes = site_record.max_expr_nodes.max(expr_nodes);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::StatisticsValue;
+
+    fn measurement(result: SolverCheckResult) -> SolverCheckMeasurement {
+        let mut statistics_after = SolverStatistics::new();
+        statistics_after.insert("conflicts".to_string(), StatisticsValue::UInt(3));
+        let statistics_before = SolverStatistics::new();
+        let statistics_delta = statistics_after.delta_snapshot_since(&statistics_before);
+
+        SolverCheckMeasurement {
+            result,
+            reason_unknown: None,
+            assertion_count: 2,
+            timing_ns: SolverCheckTiming {
+                raw_check: 25,
+                total_check_handling: 40,
+                ..SolverCheckTiming::default()
+            },
+            statistics_before,
+            statistics_after,
+            statistics_delta,
+        }
+    }
+
+    fn context(refinement_step: u32, instances_total: u64) -> SolverCheckContext {
+        SolverCheckContext {
+            depth: 0,
+            refinement_id: refinement_step + 1,
+            refinement_step,
+            instances_total,
+            solver: SolverProfileMetadata {
+                backend: SolverBackend::Z3,
+                logic: "QF_AUFLIA".to_string(),
+                parameters: BTreeMap::from([("random_seed".to_string(), "0".to_string())]),
+                random_seeds: BTreeMap::from([("random_seed".to_string(), 0)]),
+            },
+        }
+    }
+
+    #[test]
+    fn profiler_owns_check_identity_instance_deltas_and_serialization() {
+        let mut options =
+            crate::YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
+        options.strategy = crate::Strategy::Concrete;
+        options.profile = true;
+        let mut profiler = Profiler::from_options(&options);
+
+        profiler.record_solver_check(context(0, 2), measurement(SolverCheckResult::Sat));
+        profiler.record_solver_check(context(1, 5), measurement(SolverCheckResult::Unsat));
+
+        let serialized = serde_json::to_string(&profiler.finish()).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        let profile: ProfilingRunRecord = serde_json::from_str(&serialized).unwrap();
+
+        assert!(json.get("schema_version").is_none());
+        assert!(json.get("enabled").is_none());
+        assert!(json.get("solver_profiling_enabled").is_none());
+        assert!(json.get("cost_profiling_enabled").is_none());
+        assert!(json["solver_checks"][0]
+            .get("transcript_prefix_sha256")
+            .is_none());
+        assert!(json["solver_checks"][0].get("transcript_path").is_none());
+        assert_eq!(profile.solver_checks.len(), 2);
+        assert_eq!(profile.solver_checks[0].check_id, 0);
+        assert_eq!(profile.solver_checks[1].check_id, 1);
+        assert_eq!(
+            profile.solver_checks[0].run_id,
+            profile.solver_checks[1].run_id
+        );
+        assert_eq!(
+            profile.solver_checks[0].instances_added_since_previous_check,
+            2
+        );
+        assert_eq!(
+            profile.solver_checks[1].instances_added_since_previous_check,
+            3
+        );
+        assert_eq!(
+            profile.solver_checks[1]
+                .statistics_delta
+                .get_f64("conflicts"),
+            Some(3.0)
+        );
     }
 }
