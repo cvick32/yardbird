@@ -118,9 +118,9 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
 
-    /// Capture Yardbird-side profiling data, especially e-graph cost computation timings.
+    /// Capture Yardbird solver, driver, and e-graph profiling data.
     #[arg(long, default_value_t = false)]
-    pub profile_costs: bool,
+    pub profile: bool,
 
     /// Record full cost-function candidate decisions in the result.
     #[arg(long, default_value_t = false)]
@@ -183,7 +183,7 @@ impl Default for YardbirdOptions {
             track_instantiations: false,
             dump_unsat_core: None,
             verbose: false,
-            profile_costs: false,
+            profile: false,
             record_decisions: false,
             train: false,
             train_reset: false,
@@ -233,6 +233,11 @@ impl YardbirdOptions {
             refinement_limit_window: self.synthesis_refinement_limit_window,
             repeated_pattern_threshold: self.synthesis_repeated_pattern_threshold,
         }
+    }
+
+    pub fn build_profiler(&self) -> Option<crate::profiling::Profiler> {
+        self.profile
+            .then(|| crate::profiling::Profiler::from_options(self))
     }
 
     pub fn build_array_artifact_capture(&self) -> ArrayArtifactCapture {
@@ -336,14 +341,8 @@ impl YardbirdOptions {
     where
         F: ArrayCostFactory<Config = ()> + 'static,
     {
-        Abstract::new(
-            bmc_depth,
-            self.run_ic3ia,
-            (),
-            aux_config,
-            self.profile_costs,
-        )
-        .with_artifact_capture(self.build_array_artifact_capture())
+        Abstract::new(bmc_depth, self.run_ic3ia, (), aux_config, self.profile)
+            .with_artifact_capture(self.build_array_artifact_capture())
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -357,14 +356,8 @@ impl YardbirdOptions {
             .expect("--cost-function logistic-regression requires --ranker-model");
         let model = LogisticRegressionModel::from_path(model_path)
             .unwrap_or_else(|err| panic!("failed to configure logistic-regression model: {err}"));
-        Abstract::new(
-            bmc_depth,
-            self.run_ic3ia,
-            model,
-            aux_config,
-            self.profile_costs,
-        )
-        .with_artifact_capture(self.build_array_artifact_capture())
+        Abstract::new(bmc_depth, self.run_ic3ia, model, aux_config, self.profile)
+            .with_artifact_capture(self.build_array_artifact_capture())
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {

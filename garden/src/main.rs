@@ -70,7 +70,7 @@ struct GardenOptions {
     pub ranker_model: Option<String>,
 
     #[arg(long, default_value_t = false)]
-    pub profile_costs: bool,
+    pub profile: bool,
 
     #[arg(long, default_value_t = false)]
     pub record_decisions: bool,
@@ -245,8 +245,8 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         command.arg("--track-instantiations");
     }
 
-    if options.profile_costs {
-        command.arg("--profile-costs");
+    if options.profile {
+        command.arg("--profile");
     }
 
     if options.record_decisions {
@@ -496,7 +496,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 database_url: options.database_url.clone(),
                                 training_run_version: training_run_version.clone(),
                                 verbose: false,
-                                profile_costs: options.profile_costs,
+                                profile: options.profile,
                                 record_decisions: options.record_decisions,
                                 synthesis_trigger: options.synthesis_trigger,
                                 synthesis_guard_policy: options.synthesis_guard_policy,
@@ -629,7 +629,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         database_url: options.database_url.clone(),
                         training_run_version: training_run_version.clone(),
                         verbose: false,
-                        profile_costs: options.profile_costs,
+                        profile: options.profile,
                         record_decisions: options.record_decisions,
                         synthesis_trigger: options.synthesis_trigger,
                         synthesis_guard_policy: options.synthesis_guard_policy,

@@ -58,7 +58,7 @@ where
     pending_aux_specs: Vec<AuxiliarySpec>,
     installed_aux_conflicts: HashSet<String>,
     aux_covered_term_hashes: HashSet<String>,
-    profile_costs: bool,
+    profile: bool,
     profiling_records: Vec<ProfilingRecord>,
 }
 
@@ -71,7 +71,7 @@ where
         run_ic3ia: bool,
         cost_config: F::Config,
         aux_config: AuxSynthesisConfig,
-        profile_costs: bool,
+        profile: bool,
     ) -> Self {
         let capture_conflicts = !aux_config.is_off();
         Self {
@@ -93,7 +93,7 @@ where
             pending_aux_specs: vec![],
             installed_aux_conflicts: HashSet::new(),
             aux_covered_term_hashes: HashSet::new(),
-            profile_costs,
+            profile,
             profiling_records: vec![],
         }
     }
@@ -246,7 +246,7 @@ where
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
         }
-        let profiling = self.profile_costs.then(|| {
+        let profiling = self.profile.then(|| {
             Rc::new(RefCell::new(ArrayProfilingCollector::new(
                 "array_refinement",
                 Some(state.depth),
@@ -526,10 +526,6 @@ where
         mem::take(&mut self.profiling_records)
     }
 
-    fn profiling_enabled(&self) -> bool {
-        self.profile_costs
-    }
-
     fn result(
         &mut self,
         vmt_model: &mut VMTModel,
@@ -564,11 +560,7 @@ where
             indexed_instantiations: vec![],
             unsat_events: vec![],
             auxiliary_records: smt.get_auxiliary_records(),
-            profiling: if self.profile_costs {
-                ProfilingRunRecord::enabled(mem::take(&mut self.profiling_records))
-            } else {
-                ProfilingRunRecord::disabled()
-            },
+            profiling: ProfilingRunRecord::default(),
         }
     }
 }

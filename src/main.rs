@@ -111,6 +111,7 @@ fn run_smtlib_with_strategy(
         options.solver,
         250, // max refinements (like VMT mode)
         options.track_instantiations,
+        options.build_profiler(),
         //instantiation_strategy,
     ) {
         Ok(res) => res,
@@ -141,7 +142,8 @@ fn run_smtlib_with_strategy(
 
 /// Run SMTLIB in simple mode (no refinement)
 fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyhow::Result<()> {
-    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver);
+    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver)
+        .with_profiler(options.build_profiler());
     solver.execute(problem)?;
 
     let results = solver.get_results();
@@ -157,6 +159,7 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
                 })
             }).collect::<Vec<_>>(),
             "statistics": solver.get_statistics(),
+            "profiling": solver.profiling(),
         });
         println!("{}", serde_json::to_string(&json_output)?);
     } else {
@@ -263,7 +266,8 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                     options.dump_solver.clone(),
                     options.track_instantiations,
                     options.dump_unsat_core.clone(),
-                );
+                )
+                .with_profiler(options.build_profiler());
             if options.repl {
                 driver.add_extension(Repl);
             }
@@ -293,7 +297,8 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                     options.dump_solver.clone(),
                     options.track_instantiations,
                     options.dump_unsat_core.clone(),
-                );
+                )
+                .with_profiler(options.build_profiler());
             if options.repl {
                 driver.add_extension(Repl);
             }
