@@ -206,6 +206,7 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
                     SolverBackend::Z3,
                     250,
                     false,
+                    None,
                 )
                 .unwrap();
                 Smt2StrategyOutcome::from(result)
