@@ -55,6 +55,11 @@ pub trait YardbirdSolver {
     /// Run the solver without acquiring a model.
     fn check_sat(&mut self) -> SolverCheckResult;
 
+    /// Mark the end of all solver-side work associated with the most recent
+    /// check. Capture decorators use this to separate post-check operations
+    /// from setup for the next incremental check.
+    fn complete_check(&mut self) {}
+
     /// Capture the model produced by the most recent SAT check, including the
     /// values of any terms that the backend must preserve before a scope pop.
     ///
@@ -65,6 +70,7 @@ pub trait YardbirdSolver {
         let start_time = Instant::now();
         let result = self.check_sat();
         self.record_statistics(start_time.elapsed());
+        self.complete_check();
         result
     }
 

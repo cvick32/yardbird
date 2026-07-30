@@ -285,10 +285,12 @@ impl SMTLIBSolver {
             }
             Command::CheckSat => {
                 let result = self.handle_check_sat(command_index);
+                self.solver.complete_check();
                 self.check_sat_results.push(result);
             }
             Command::CheckSatAssuming { literals } => {
                 let result = self.handle_check_sat_assuming(command_index, literals)?;
+                self.solver.complete_check();
                 self.check_sat_results.push(result);
             }
             Command::Push { level } => {

@@ -398,6 +398,7 @@ impl SMTLIBSMTProblem {
             timer.finish(result, reason_unknown, assertion_count, || {
                 self.solver.get_solver_statistics()
             });
+        self.solver.complete_check();
         result
     }
 

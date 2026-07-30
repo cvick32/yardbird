@@ -2,10 +2,13 @@ use std::{fs, process::Command};
 
 use tempfile::TempDir;
 use yardbird::{
+    auxiliary_synthesis::AuxSynthesisConfig,
+    cost_functions::array::ArrayBMCCost,
     model_from_options,
     profiling::ProfilingRunRecord,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     solver::{SolverCheckResult, SolverSessionIndex, SolverSessionManifest},
+    strategies::{Abstract, ProofStrategy},
     Driver, SolverBackend, Strategy, YardbirdOptions,
 };
 
@@ -66,7 +69,6 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
     assert_eq!(manifest.logic, "QF_AUFLIA");
     assert_eq!(manifest.random_seeds["smt.random_seed"], 0);
     assert!(manifest_json.get("schema_version").is_none());
-    assert!(manifest_json.get("transcript_prefix_sha256").is_none());
 
     assert!(transcript.starts_with("(set-option :print-success false)\n"));
     assert!(transcript.contains("(set-option :random-seed 0)\n"));
@@ -98,6 +100,7 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
         "(check-sat)\n"
     );
     assert_eq!(check.post_check_byte_end, transcript.len() as u64);
+    assert_valid_check_boundaries(&transcript, &index);
 
     let replay_problem = SMTLIBProblem::from_path(&artifacts.transcript).unwrap();
     let mut replay =
@@ -109,6 +112,7 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
     if let Ok(output) = Command::new("z3")
         .arg("-smt2")
         .arg(&artifacts.transcript)
+        .current_dir(temp.path())
         .output()
     {
         assert!(
@@ -157,7 +161,7 @@ fn abstract_capture_declares_each_uninterpreted_function_once() {
 }
 
 #[test]
-fn single_check_capture_rejects_an_incremental_session_without_writing_artifacts() {
+fn incremental_capture_preserves_every_check_and_ordered_result() {
     let temp = TempDir::new().unwrap();
     let capture_dir = temp.path().join("capture");
     let mut options =
@@ -174,12 +178,164 @@ fn single_check_capture_rejects_an_incremental_session_without_writing_artifacts
     .with_profiler(options.build_profiler());
 
     solver.execute(&problem).unwrap();
-    let error = capture.finish(&solver.profiling()).unwrap_err();
+    let expected_results = solver
+        .get_results()
+        .iter()
+        .map(|check| check.result)
+        .collect::<Vec<_>>();
+    let artifacts = capture.finish(&solver.profiling()).unwrap();
+    let transcript = fs::read_to_string(&artifacts.transcript).unwrap();
+    let index: SolverSessionIndex =
+        serde_json::from_slice(&fs::read(&artifacts.index).unwrap()).unwrap();
+    let manifest: SolverSessionManifest =
+        serde_json::from_slice(&fs::read(&artifacts.manifest).unwrap()).unwrap();
 
-    assert!(error
-        .to_string()
-        .contains("single-check capture requires exactly one solver check"));
-    assert!(!capture_dir.exists());
+    assert_eq!(
+        expected_results,
+        vec![
+            SolverCheckResult::Sat,
+            SolverCheckResult::Sat,
+            SolverCheckResult::Unsat,
+            SolverCheckResult::Sat,
+            SolverCheckResult::Sat,
+        ]
+    );
+    assert_eq!(manifest.check_count, 5);
+    assert_eq!(index.checks.len(), expected_results.len());
+    assert_valid_check_boundaries(&transcript, &index);
+    assert_eq!(
+        index
+            .checks
+            .iter()
+            .map(|check| check.expected_result)
+            .collect::<Vec<_>>(),
+        expected_results
+    );
+
+    let second_setup = setup_slice(&transcript, &index, 1);
+    assert!(second_setup.contains("(push 1)\n"));
+    assert!(second_setup.contains("(assert (> x 5))\n"));
+    let fourth_setup = setup_slice(&transcript, &index, 3);
+    assert!(fourth_setup.contains("(pop 1)\n"));
+
+    assert_eq!(
+        replay_with_yardbird(&artifacts.transcript),
+        expected_results
+    );
+    if let Some(results) = replay_with_external_z3(&artifacts.transcript) {
+        assert_eq!(results, expected_results);
+    }
+}
+
+#[test]
+fn multi_depth_capture_correlates_each_bmc_check() {
+    let temp = TempDir::new().unwrap();
+    let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
+    options.depth = 2;
+    options.strategy = Strategy::Concrete;
+    options.solver_capture_dir = Some(temp.path().join("capture"));
+
+    let capture = options.build_solver_capture().unwrap();
+    let mut driver = Driver::new(
+        model_from_options(&options),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_solver_capture(Some(capture.clone()));
+    let result = driver
+        .check_strategy(options.depth, options.build_array_strategy())
+        .unwrap();
+    let artifacts = capture.finish(&result.profiling).unwrap();
+    let transcript = fs::read_to_string(&artifacts.transcript).unwrap();
+    let index: SolverSessionIndex =
+        serde_json::from_slice(&fs::read(&artifacts.index).unwrap()).unwrap();
+
+    assert_eq!(index.checks.len(), 2);
+    assert_eq!(
+        index
+            .checks
+            .iter()
+            .map(|check| (check.depth, check.refinement_step, check.expected_result))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, 0, SolverCheckResult::Unsat),
+            (1, 0, SolverCheckResult::Unsat),
+        ]
+    );
+    assert_valid_check_boundaries(&transcript, &index);
+    for check in &index.checks {
+        let post_check =
+            &transcript[check.check_byte_end as usize..check.post_check_byte_end as usize];
+        assert!(post_check.contains("(pop 1)\n"));
+    }
+    assert!(setup_slice(&transcript, &index, 1).contains("(assert"));
+    assert_eq!(
+        replay_with_yardbird(&artifacts.transcript),
+        vec![SolverCheckResult::Unsat, SolverCheckResult::Unsat]
+    );
+}
+
+#[test]
+fn multi_refinement_capture_preserves_added_instances_between_checks() {
+    let temp = TempDir::new().unwrap();
+    let mut options =
+        YardbirdOptions::from_filename("examples/smt2/array_bitvec_simple.smt2".to_string());
+    options.strategy = Strategy::Abstract;
+    options.solver_capture_dir = Some(temp.path().join("capture"));
+    let capture = options.build_solver_capture().unwrap();
+    let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+        0,
+        false,
+        (),
+        AuxSynthesisConfig::default(),
+        false,
+    ));
+
+    let result = SMTLIBSolver::execute_with_strategy(
+        &problem,
+        strategy,
+        SolverBackend::Z3,
+        5,
+        false,
+        options.build_profiler(),
+        Some(capture.clone()),
+    )
+    .unwrap()
+    .0;
+    let artifacts = capture.finish(&result.profiling).unwrap();
+    let transcript = fs::read_to_string(&artifacts.transcript).unwrap();
+    let index: SolverSessionIndex =
+        serde_json::from_slice(&fs::read(&artifacts.index).unwrap()).unwrap();
+
+    assert_eq!(
+        index
+            .checks
+            .iter()
+            .map(|check| {
+                (
+                    check.check_id,
+                    check.depth,
+                    check.refinement_step,
+                    check.expected_result,
+                )
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (0, 0, 0, SolverCheckResult::Sat),
+            (1, 0, 1, SolverCheckResult::Unsat),
+        ]
+    );
+    assert_valid_check_boundaries(&transcript, &index);
+    let refinement_setup = setup_slice(&transcript, &index, 1);
+    assert!(refinement_setup.contains("(assert"));
+    assert!(refinement_setup.contains("Read_BitVec5_BitVec32"));
+    assert!(refinement_setup.contains("Write_BitVec5_BitVec32"));
+    assert_eq!(
+        replay_with_yardbird(&artifacts.transcript),
+        vec![SolverCheckResult::Sat, SolverCheckResult::Unsat]
+    );
 }
 
 fn assert_in_order(haystack: &str, needles: &[&str]) {
@@ -189,5 +345,86 @@ fn assert_in_order(haystack: &str, needles: &[&str]) {
             .find(needle)
             .unwrap_or_else(|| panic!("missing {needle:?} after byte {cursor}"));
         cursor += offset + needle.len();
+    }
+}
+
+fn assert_valid_check_boundaries(transcript: &str, index: &SolverSessionIndex) {
+    let mut prior_post_check_end = 0;
+    let mut prior_command_ordinal = None;
+    for (expected_id, check) in index.checks.iter().enumerate() {
+        assert_eq!(check.check_id, expected_id as u64);
+        assert_eq!(check.setup_byte_start, prior_post_check_end);
+        assert!(check.setup_byte_start <= check.check_byte_start);
+        assert!(check.check_byte_start < check.check_byte_end);
+        assert!(check.check_byte_end <= check.post_check_byte_end);
+        assert!(check.post_check_byte_end <= transcript.len() as u64);
+        assert_eq!(
+            &transcript[check.check_byte_start as usize..check.check_byte_end as usize],
+            "(check-sat)\n"
+        );
+        assert!(
+            transcript[check.check_byte_end as usize..check.post_check_byte_end as usize].contains(
+                &format!(
+                    "; yardbird check {} result {}",
+                    check.check_id,
+                    result_name(check.expected_result)
+                )
+            )
+        );
+        if let Some(prior) = prior_command_ordinal {
+            assert!(check.command_ordinal > prior);
+        }
+        prior_command_ordinal = Some(check.command_ordinal);
+        prior_post_check_end = check.post_check_byte_end;
+    }
+    assert_eq!(prior_post_check_end, transcript.len() as u64);
+}
+
+fn setup_slice<'a>(transcript: &'a str, index: &SolverSessionIndex, check_id: usize) -> &'a str {
+    let check = &index.checks[check_id];
+    &transcript[check.setup_byte_start as usize..check.check_byte_start as usize]
+}
+
+fn replay_with_yardbird(path: &std::path::Path) -> Vec<SolverCheckResult> {
+    let problem = SMTLIBProblem::from_path(path).unwrap();
+    let mut replay = SMTLIBSolver::new_with_backend(problem.get_logic(), SolverBackend::Z3, None);
+    replay.execute(&problem).unwrap();
+    replay
+        .get_results()
+        .iter()
+        .map(|check| check.result)
+        .collect()
+}
+
+fn replay_with_external_z3(path: &std::path::Path) -> Option<Vec<SolverCheckResult>> {
+    let output = Command::new("z3")
+        .arg("-smt2")
+        .arg(path)
+        .current_dir(path.parent().unwrap())
+        .output()
+        .ok()?;
+    assert!(
+        output.status.success(),
+        "external Z3 replay failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(|result| match result.trim() {
+                "sat" => SolverCheckResult::Sat,
+                "unsat" => SolverCheckResult::Unsat,
+                "unknown" => SolverCheckResult::Unknown,
+                unexpected => panic!("unexpected external Z3 result {unexpected:?}"),
+            })
+            .collect(),
+    )
+}
+
+fn result_name(result: SolverCheckResult) -> &'static str {
+    match result {
+        SolverCheckResult::Sat => "sat",
+        SolverCheckResult::Unsat => "unsat",
+        SolverCheckResult::Unknown => "unknown",
     }
 }

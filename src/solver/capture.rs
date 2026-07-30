@@ -44,11 +44,8 @@ impl SolverCapture {
                 .configuration
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("solver capture was never attached to a solver"))?;
-            if state.checks.len() != 1 {
-                anyhow::bail!(
-                    "single-check capture requires exactly one solver check, observed {}",
-                    state.checks.len()
-                );
+            if state.checks.is_empty() {
+                anyhow::bail!("solver capture contains no solver checks");
             }
             if profile.solver_checks.len() != state.checks.len() {
                 anyhow::bail!(
@@ -58,11 +55,20 @@ impl SolverCapture {
                 );
             }
 
+            let final_transcript_end = state.transcript.len() as u64;
             let checks = state
                 .checks
                 .iter()
+                .enumerate()
                 .zip(&profile.solver_checks)
-                .map(|(captured, profiled)| {
+                .map(|((expected_check_id, captured), profiled)| {
+                    let expected_check_id = expected_check_id as u64;
+                    if captured.check_id != expected_check_id {
+                        anyhow::bail!(
+                            "capture check IDs are not contiguous: expected {expected_check_id}, observed {}",
+                            captured.check_id
+                        );
+                    }
                     if captured.check_id != profiled.check_id {
                         anyhow::bail!(
                             "capture check {} does not match profile check {}",
@@ -77,6 +83,30 @@ impl SolverCapture {
                             profiled.result
                         );
                     }
+                    let completed_post_check_byte_end =
+                        captured.post_check_byte_end.ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "capture check {} was not marked complete",
+                                captured.check_id
+                            )
+                        })?;
+                    let post_check_byte_end = if expected_check_id + 1
+                        == state.checks.len() as u64
+                    {
+                        final_transcript_end
+                    } else {
+                        completed_post_check_byte_end
+                    };
+                    if !(captured.setup_byte_start <= captured.check_byte_start
+                        && captured.check_byte_start < captured.check_byte_end
+                        && captured.check_byte_end <= post_check_byte_end
+                        && post_check_byte_end <= final_transcript_end)
+                    {
+                        anyhow::bail!(
+                            "capture check {} has invalid transcript boundaries",
+                            captured.check_id
+                        );
+                    }
                     Ok(SolverSessionCheckIndex {
                         check_id: profiled.check_id,
                         depth: profiled.depth,
@@ -85,7 +115,7 @@ impl SolverCapture {
                         setup_byte_start: captured.setup_byte_start,
                         check_byte_start: captured.check_byte_start,
                         check_byte_end: captured.check_byte_end,
-                        post_check_byte_end: state.transcript.len() as u64,
+                        post_check_byte_end,
                         command_ordinal: captured.command_ordinal,
                         expected_result: captured.expected_result,
                     })
@@ -93,10 +123,25 @@ impl SolverCapture {
                 .collect::<anyhow::Result<Vec<_>>>()?;
 
             let profiled = &profile.solver_checks[0];
-            if configuration.backend != profiled.backend || configuration.logic != profiled.logic {
-                anyhow::bail!("captured solver configuration does not match the Yardbird profile");
+            for check in &profile.solver_checks {
+                if configuration.backend != check.backend || configuration.logic != check.logic {
+                    anyhow::bail!(
+                        "captured solver configuration does not match Yardbird profile check {}",
+                        check.check_id
+                    );
+                }
+                if check.run_id != profiled.run_id
+                    || check.benchmark_id != profiled.benchmark_id
+                    || check.strategy != profiled.strategy
+                    || check.cost_function != profiled.cost_function
+                    || check.theory != profiled.theory
+                {
+                    anyhow::bail!(
+                        "Yardbird profile check {} does not belong to the captured run",
+                        check.check_id
+                    );
+                }
             }
-
             (
                 state.transcript.clone(),
                 SolverSessionIndex { checks },
@@ -176,7 +221,14 @@ impl SolverCapture {
         let setup_byte_start = state
             .checks
             .last()
-            .map(|check| check.post_check_byte_end)
+            .map(|check| {
+                check.post_check_byte_end.unwrap_or_else(|| {
+                    panic!(
+                        "solver check {} was not completed before starting check {check_id}",
+                        check.check_id
+                    )
+                })
+            })
             .unwrap_or(0);
         state.append_comment(&format!("yardbird check {check_id} begin"));
         let check_byte_start = state.transcript.len() as u64;
@@ -206,16 +258,30 @@ impl SolverCapture {
             "yardbird check {check_id} result {}",
             result_name(result)
         ));
-        let post_check_byte_end = state.transcript.len() as u64;
         state.checks.push(CapturedCheck {
             check_id,
             setup_byte_start,
             check_byte_start,
             check_byte_end,
-            post_check_byte_end,
+            post_check_byte_end: None,
             command_ordinal,
             expected_result: result,
         });
+    }
+
+    fn complete_check(&self) {
+        let mut state = self.state.borrow_mut();
+        let post_check_byte_end = state.transcript.len() as u64;
+        let check = state
+            .checks
+            .last_mut()
+            .expect("cannot complete a solver check before check-sat");
+        assert!(
+            check.post_check_byte_end.is_none(),
+            "solver check {} was completed more than once",
+            check.check_id
+        );
+        check.post_check_byte_end = Some(post_check_byte_end);
     }
 }
 
@@ -316,7 +382,7 @@ struct CapturedCheck {
     setup_byte_start: u64,
     check_byte_start: u64,
     check_byte_end: u64,
-    post_check_byte_end: u64,
+    post_check_byte_end: Option<u64>,
     command_ordinal: u64,
     expected_result: SolverCheckResult,
 }
@@ -425,6 +491,11 @@ impl YardbirdSolver for CapturingSolver {
 
     fn capture_model(&mut self, terms: &[Term]) -> anyhow::Result<()> {
         self.inner.capture_model(terms)
+    }
+
+    fn complete_check(&mut self) {
+        self.inner.complete_check();
+        self.capture.complete_check();
     }
 
     fn record_statistics(&mut self, solver_elapsed: Duration) {

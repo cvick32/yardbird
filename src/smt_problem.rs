@@ -745,6 +745,7 @@ impl SMTProblem {
             self.last_solver_check_profile = Some(measurement);
         }
 
+        self.solver.complete_check();
         sat_result
     }
 
