@@ -1,10 +1,14 @@
-use std::time::{Duration, Instant};
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use smt2parser::concrete::{Command, Sort, Symbol, Term};
 
 use crate::{utils::SolverStatistics, SolverBackend};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SolverCheckResult {
     Sat,
     Unsat,
@@ -13,6 +17,12 @@ pub enum SolverCheckResult {
 
 pub trait YardbirdSolver {
     fn backend(&self) -> SolverBackend;
+    fn solver_parameters(&self) -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+    fn random_seeds(&self) -> BTreeMap<String, u64> {
+        BTreeMap::new()
+    }
 
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()>;
     fn create_variable(&mut self, symbol: &Symbol, sort: &Sort) -> anyhow::Result<()>;

@@ -93,7 +93,7 @@ fn parse_smtinterpol_output(interp_out: &str) -> Result<Vec<Interpolant>, Error>
     Ok(interpolants)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum StatisticsValue {
     UInt(u64),
@@ -118,7 +118,7 @@ impl StatisticsValue {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
 pub struct SolverStatistics {
     stats: BTreeMap<String, StatisticsValue>,
 }
@@ -164,14 +164,49 @@ impl SolverStatistics {
     }
 
     pub fn delta_since(&self, previous: &SolverStatistics) -> JsonValue {
-        let object = self
+        self.delta_snapshot_since(previous).to_json_value()
+    }
+
+    pub fn delta_snapshot_since(&self, previous: &SolverStatistics) -> SolverStatistics {
+        let mut keys = self
             .stats
+            .keys()
+            .chain(previous.stats.keys())
+            .cloned()
+            .collect::<Vec<_>>();
+        keys.sort();
+        keys.dedup();
+
+        let stats = keys
             .iter()
-            .filter_map(|(key, value)| {
-                let delta = value.as_f64() - previous.get_f64(key).unwrap_or(0.0);
-                JsonNumber::from_f64(delta).map(|number| (key.clone(), JsonValue::Number(number)))
+            .map(|key| {
+                let current = self.get_f64(key).unwrap_or(0.0);
+                let previous = previous.get_f64(key).unwrap_or(0.0);
+                (key.clone(), StatisticsValue::Double(current - previous))
             })
-            .collect::<JsonMap<String, JsonValue>>();
-        JsonValue::Object(object)
+            .collect();
+
+        SolverStatistics { stats }
+    }
+}
+
+#[cfg(test)]
+mod solver_statistics_tests {
+    use super::*;
+
+    #[test]
+    fn statistics_delta_snapshot_covers_added_changed_and_removed_keys() {
+        let mut before = SolverStatistics::new();
+        before.insert("changed".to_string(), StatisticsValue::UInt(3));
+        before.insert("removed".to_string(), StatisticsValue::UInt(7));
+        let mut after = SolverStatistics::new();
+        after.insert("added".to_string(), StatisticsValue::UInt(11));
+        after.insert("changed".to_string(), StatisticsValue::UInt(8));
+
+        let delta = after.delta_snapshot_since(&before);
+
+        assert_eq!(delta.get_f64("added"), Some(11.0));
+        assert_eq!(delta.get_f64("changed"), Some(5.0));
+        assert_eq!(delta.get_f64("removed"), Some(-7.0));
     }
 }

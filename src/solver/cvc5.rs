@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Duration,
+};
 
 use cvc5::{Kind, Solver, Sort, Term, TermManager};
 use smt2parser::concrete::{
@@ -572,6 +575,16 @@ fn copy_sum_cvc5_stats(stats: &mut SolverStatistics, alias: &str, source_keys: &
 impl YardbirdSolver for Cvc5SolverBackend {
     fn backend(&self) -> SolverBackend {
         SolverBackend::Cvc5
+    }
+
+    fn solver_parameters(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            ("arrays-exp".to_string(), "true".to_string()),
+            ("incremental".to_string(), "true".to_string()),
+            ("produce-models".to_string(), "true".to_string()),
+            ("produce-unsat-assumptions".to_string(), "true".to_string()),
+            ("produce-unsat-cores".to_string(), "true".to_string()),
+        ])
     }
 
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {

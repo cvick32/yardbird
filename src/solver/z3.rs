@@ -1,5 +1,5 @@
 use smt2parser::concrete::{Command, Sort, Symbol, Term};
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 use z3::ast::Bool;
 
 use super::{z3_ext::ModelExt, z3_var_context::Z3VarContext};
@@ -68,6 +68,18 @@ fn join_from_z3_statistics(stats: &mut SolverStatistics, z3_stats: z3::Statistic
 impl YardbirdSolver for Z3SolverBackend {
     fn backend(&self) -> SolverBackend {
         SolverBackend::Z3
+    }
+
+    fn solver_parameters(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([("random_seed".to_string(), "0".to_string())])
+    }
+
+    fn random_seeds(&self) -> BTreeMap<String, u64> {
+        BTreeMap::from([
+            ("random_seed".to_string(), 0),
+            ("sat.random_seed".to_string(), 0),
+            ("smt.random_seed".to_string(), 0),
+        ])
     }
 
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {

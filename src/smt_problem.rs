@@ -17,6 +17,9 @@ use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
     instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
     problem_context::ProblemContext,
+    profiling::{
+        SolverCheckMeasurement, SolverCheckPhase, SolverCheckTimer, SolverProfileMetadata,
+    },
     solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
@@ -64,6 +67,9 @@ pub struct SMTProblem {
     track_instantiations: bool,
     tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    logic: String,
+    collect_check_profiles: bool,
+    last_solver_check_profile: Option<SolverCheckMeasurement>,
     last_check_profile: BTreeMap<String, f64>,
     last_unroll_profile: BTreeMap<String, f64>,
 }
@@ -103,6 +109,10 @@ fn format_smt2_with_property_check(base_smt2: &str, property_assert: &Term) -> S
     output
 }
 
+fn nanos_to_secs(nanos: u64) -> f64 {
+    nanos as f64 / 1_000_000_000.0
+}
+
 fn format_assertions(terms: &[Term]) -> String {
     terms
         .iter()
@@ -127,15 +137,15 @@ impl SMTProblem {
         solver_backend: SolverBackend,
         track_instantiations: bool,
         instantiation_strategy: Box<dyn InstantiationStrategy>,
+        collect_check_profiles: bool,
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
-        let solver = new_solver_backend(
-            solver_backend,
-            &strategy.get_theory_support().get_logic_string(),
-        );
+        let theory = strategy.get_theory_support();
+        let logic = theory.get_logic_string();
+        let solver = new_solver_backend(solver_backend, &logic);
 
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
@@ -164,11 +174,13 @@ impl SMTProblem {
             track_instantiations,
             tracked_labels: vec![],
             instantiation_strategy,
+            logic,
+            collect_check_profiles,
+            last_solver_check_profile: None,
             last_check_profile: BTreeMap::new(),
             last_unroll_profile: BTreeMap::new(),
         };
         // Handle theory-specific function declarations
-        let theory = strategy.get_theory_support();
         if theory.requires_abstraction() {
             // Add in abstracted function definitions from VMT model
             for function_def in vmt_model.get_function_definitions() {
@@ -354,6 +366,19 @@ impl SMTProblem {
 
     pub(crate) fn take_last_check_profile(&mut self) -> BTreeMap<String, f64> {
         std::mem::take(&mut self.last_check_profile)
+    }
+
+    pub(crate) fn take_last_solver_check_profile(&mut self) -> Option<SolverCheckMeasurement> {
+        self.last_solver_check_profile.take()
+    }
+
+    pub(crate) fn solver_profile_metadata(&self) -> SolverProfileMetadata {
+        SolverProfileMetadata {
+            backend: self.solver.backend(),
+            logic: self.logic.clone(),
+            parameters: self.solver.solver_parameters(),
+            random_seeds: self.solver.random_seeds(),
+        }
     }
 
     pub(crate) fn take_last_unroll_profile(&mut self) -> BTreeMap<String, f64> {
@@ -632,68 +657,79 @@ impl SMTProblem {
     /// be lost.
     pub(crate) fn check(&mut self) -> SolverCheckResult {
         self.last_check_profile.clear();
-        let start_time = Instant::now();
+        self.last_solver_check_profile = None;
+        let assertion_count = (self.theory_axiom_assertions.len()
+            + self.init_and_transition_assertions.len()
+            + self.asserted_instantiation_terms.len()
+            + 1) as u64;
+        let mut timer = SolverCheckTimer::new(self.collect_check_profiles, || {
+            self.solver.get_solver_statistics()
+        });
 
         // Push property back on top of the solver.
-        let push_start = Instant::now();
-        self.push_property();
-        self.last_check_profile.insert(
-            "check_push_property".to_string(),
-            push_start.elapsed().as_secs_f64(),
-        );
-
-        let solver_start = Instant::now();
-        let sat_result = self.solver.check_sat();
-        let solver_elapsed = solver_start.elapsed();
+        timer.measure(SolverCheckPhase::PropertyPush, || self.push_property());
+        let (sat_result, solver_elapsed) = timer.measure_raw(|| self.solver.check_sat());
 
         if sat_result == SolverCheckResult::Sat {
-            let collect_model_terms_start = Instant::now();
-            let model_terms = self
-                .subterm_handler
-                .get_all_subterms()
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>();
-            self.last_check_profile.insert(
-                "check_collect_model_terms".to_string(),
-                collect_model_terms_start.elapsed().as_secs_f64(),
-            );
-
-            let capture_model_start = Instant::now();
-            self.solver
-                .capture_model(&model_terms)
-                .expect("solver should capture a model after SAT before property pop");
-            self.last_check_profile.insert(
-                "check_capture_model".to_string(),
-                capture_model_start.elapsed().as_secs_f64(),
-            );
+            timer.measure(SolverCheckPhase::ModelAcquisition, || {
+                let model_terms = self
+                    .subterm_handler
+                    .get_all_subterms()
+                    .into_iter()
+                    .cloned()
+                    .collect::<Vec<_>>();
+                self.solver
+                    .capture_model(&model_terms)
+                    .expect("solver should capture a model after SAT before property pop");
+            });
         }
-        self.last_check_profile
-            .insert("check_solver".to_string(), solver_elapsed.as_secs_f64());
 
-        let proof_start = Instant::now();
-        let _ = self.solver.inspect_last_proof();
-        self.last_check_profile.insert(
-            "check_inspect_last_proof".to_string(),
-            proof_start.elapsed().as_secs_f64(),
-        );
+        timer.measure(SolverCheckPhase::ProofCoreAccess, || {
+            let _ = self.solver.inspect_last_proof();
+            if self.track_instantiations && sat_result == SolverCheckResult::Unsat {
+                let _ = self.solver.get_unsat_core();
+            }
+        });
+        let reason_unknown = (sat_result == SolverCheckResult::Unknown)
+            .then(|| self.solver.get_reason_unknown())
+            .flatten();
 
         // Popping property off.
-        let pop_start = Instant::now();
-        self.solver.pop(1);
-        self.last_check_profile
-            .insert("check_pop".to_string(), pop_start.elapsed().as_secs_f64());
+        timer.measure(SolverCheckPhase::PropertyPop, || self.solver.pop(1));
+        timer.measure(SolverCheckPhase::StatisticsCollection, || {
+            self.solver.record_statistics(solver_elapsed);
+        });
 
-        let statistics_start = Instant::now();
-        self.solver.record_statistics(solver_elapsed);
-        self.last_check_profile.insert(
-            "check_record_statistics".to_string(),
-            statistics_start.elapsed().as_secs_f64(),
-        );
-        self.last_check_profile.insert(
-            "check_total".to_string(),
-            start_time.elapsed().as_secs_f64(),
-        );
+        if let Some(measurement) = timer.finish(sat_result, reason_unknown, assertion_count, || {
+            self.solver.get_solver_statistics()
+        }) {
+            let timing = &measurement.timing_ns;
+            self.last_check_profile.insert(
+                "check_push_property".to_string(),
+                nanos_to_secs(timing.property_push),
+            );
+            self.last_check_profile
+                .insert("check_solver".to_string(), nanos_to_secs(timing.raw_check));
+            self.last_check_profile.insert(
+                "check_capture_model".to_string(),
+                nanos_to_secs(timing.model_acquisition),
+            );
+            self.last_check_profile.insert(
+                "check_inspect_last_proof".to_string(),
+                nanos_to_secs(timing.proof_core_access),
+            );
+            self.last_check_profile
+                .insert("check_pop".to_string(), nanos_to_secs(timing.property_pop));
+            self.last_check_profile.insert(
+                "check_record_statistics".to_string(),
+                nanos_to_secs(timing.statistics_collection),
+            );
+            self.last_check_profile.insert(
+                "check_total".to_string(),
+                nanos_to_secs(timing.total_check_handling),
+            );
+            self.last_solver_check_profile = Some(measurement);
+        }
 
         sat_result
     }
@@ -909,6 +945,7 @@ mod tests {
             SolverBackend::Z3,
             false,
             Box::new(FullUnrollStrategy::new()),
+            false,
         );
 
         smt.unroll(1);

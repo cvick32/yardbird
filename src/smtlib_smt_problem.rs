@@ -7,6 +7,9 @@ use smt2parser::{
 use crate::{
     instantiation_strategy::StoredInstantiation,
     problem_context::ProblemContext,
+    profiling::{
+        SolverCheckMeasurement, SolverCheckPhase, SolverCheckTimer, SolverProfileMetadata,
+    },
     smtlib_problem::SMTLIBProblem,
     solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
     strategies::ProofStrategy,
@@ -40,6 +43,10 @@ pub struct SMTLIBSMTProblem {
     //instantiation_strategy: Box<dyn InstantiationStrategy>,
     /// Discovered array types (index_sort, value_sort) pairs
     array_types: Vec<(String, String)>,
+    logic: String,
+    theory_axiom_count: u64,
+    collect_check_profiles: bool,
+    last_solver_check_profile: Option<SolverCheckMeasurement>,
 }
 
 impl std::fmt::Debug for SMTLIBSMTProblem {
@@ -104,9 +111,12 @@ impl SMTLIBSMTProblem {
         solver: Box<dyn YardbirdSolver>,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
+        logic: String,
     ) -> Self {
         let assertions = extract_assertions(problem);
         let combined_assertion = combine_assertions(&assertions);
+        let axiom_formulas = theory.get_axiom_formulas();
+        let theory_axiom_count = axiom_formulas.len() as u64;
 
         let mut smt = SMTLIBSMTProblem {
             subterm_handler: SubtermHandler::new(
@@ -123,6 +133,10 @@ impl SMTLIBSMTProblem {
             tracked_labels: vec![],
             original_problem: problem.clone(),
             array_types,
+            logic,
+            theory_axiom_count,
+            collect_check_profiles: false,
+            last_solver_check_profile: None,
         };
 
         // Handle theory-specific function declarations
@@ -150,7 +164,6 @@ impl SMTLIBSMTProblem {
         }
 
         // Add axioms declared by the theory
-        let axiom_formulas = theory.get_axiom_formulas();
         if !axiom_formulas.is_empty() {
             debug!("Adding {} axioms to solver", axiom_formulas.len());
         }
@@ -185,13 +198,15 @@ impl SMTLIBSMTProblem {
         track_instantiations: bool,
     ) -> Self {
         let theory = strategy.get_theory_support();
-        let solver = new_solver_backend(solver_backend, &theory.get_logic_string());
+        let logic = theory.get_logic_string();
+        let solver = new_solver_backend(solver_backend, &logic);
         Self::init_common(
             problem,
             theory.as_ref(),
             solver,
             track_instantiations,
             vec![],
+            logic,
         )
     }
 
@@ -230,6 +245,7 @@ impl SMTLIBSMTProblem {
             solver,
             track_instantiations,
             stored_array_types,
+            logic_string,
         )
     }
 
@@ -316,15 +332,61 @@ impl SMTLIBSMTProblem {
         self.num_quantifiers_instantiated
     }
 
+    pub(crate) fn enable_check_profiling(&mut self) {
+        self.collect_check_profiles = true;
+    }
+
+    pub(crate) fn take_last_solver_check_profile(&mut self) -> Option<SolverCheckMeasurement> {
+        self.last_solver_check_profile.take()
+    }
+
+    pub(crate) fn solver_profile_metadata(&self) -> SolverProfileMetadata {
+        SolverProfileMetadata {
+            backend: self.solver.backend(),
+            logic: self.logic.clone(),
+            parameters: self.solver.solver_parameters(),
+            random_seeds: self.solver.random_seeds(),
+        }
+    }
+
     /// Check satisfiability of the current problem
     /// Unlike SMTProblem, we don't push/pop property since all assertions are already in the solver
     pub fn check(&mut self) -> SolverCheckResult {
-        let result = self.solver.check_sat_and_record_statistics();
+        self.last_solver_check_profile = None;
+        let assertion_count = self.assertions.len() as u64
+            + self.theory_axiom_count
+            + self.num_quantifiers_instantiated;
+        let mut timer = SolverCheckTimer::new(self.collect_check_profiles, || {
+            self.solver.get_solver_statistics()
+        });
+
+        let (result, raw_check_elapsed) = timer.measure_raw(|| self.solver.check_sat());
+
         if result == SolverCheckResult::Sat {
-            self.solver
-                .capture_model(&self.assertions)
-                .expect("solver should capture a model after SAT");
+            timer.measure(SolverCheckPhase::ModelAcquisition, || {
+                self.solver
+                    .capture_model(&self.assertions)
+                    .expect("solver should capture a model after SAT");
+            });
         }
+
+        timer.measure(SolverCheckPhase::ProofCoreAccess, || {
+            let _ = self.solver.inspect_last_proof();
+            if self.track_instantiations && result == SolverCheckResult::Unsat {
+                let _ = self.solver.get_unsat_core();
+            }
+        });
+        let reason_unknown = (result == SolverCheckResult::Unknown)
+            .then(|| self.solver.get_reason_unknown())
+            .flatten();
+
+        timer.measure(SolverCheckPhase::StatisticsCollection, || {
+            self.solver.record_statistics(raw_check_elapsed);
+        });
+        self.last_solver_check_profile =
+            timer.finish(result, reason_unknown, assertion_count, || {
+                self.solver.get_solver_statistics()
+            });
         result
     }
 

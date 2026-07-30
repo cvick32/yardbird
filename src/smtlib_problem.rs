@@ -4,6 +4,10 @@ use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
+use crate::profiling::{
+    Profiler, ProfilingRunRecord, SolverCheckContext, SolverCheckPhase, SolverCheckTimer,
+    SolverProfileMetadata,
+};
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
 use crate::solver::{new_solver_backend, SolverCheckResult, YardbirdSolver};
 use crate::strategies::{ProofAction, ProofStrategy};
@@ -230,7 +234,11 @@ pub struct CheckSatResult {
 /// Handles incremental solving with push/pop and multiple check-sat commands
 pub struct SMTLIBSolver {
     solver: Box<dyn YardbirdSolver>,
+    logic: String,
     check_sat_results: Vec<CheckSatResult>,
+    profiler: Option<Profiler>,
+    active_assertion_count: u64,
+    assertion_scope_stack: Vec<u64>,
 }
 
 impl SMTLIBSolver {
@@ -244,8 +252,17 @@ impl SMTLIBSolver {
         let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
         SMTLIBSolver {
             solver: new_solver_backend(backend, logic.as_str()),
+            logic,
             check_sat_results: Vec::new(),
+            profiler: None,
+            active_assertion_count: 0,
+            assertion_scope_stack: vec![],
         }
+    }
+
+    pub fn with_profiler(mut self, profiler: Option<Profiler>) -> Self {
+        self.profiler = profiler;
+        self
     }
 
     /// Execute all commands from an SMTLIB problem
@@ -274,11 +291,16 @@ impl SMTLIBSolver {
                 let num_levels: u32 = level.try_into().unwrap_or(1);
                 for _ in 0..num_levels {
                     self.solver.push();
+                    self.assertion_scope_stack.push(self.active_assertion_count);
                 }
             }
             Command::Pop { level } => {
                 let num_levels: u32 = level.try_into().unwrap_or(1);
-                self.solver.pop(num_levels);
+                for _ in 0..num_levels {
+                    self.solver.pop(1);
+                    self.active_assertion_count =
+                        self.assertion_scope_stack.pop().unwrap_or_default();
+                }
             }
             Command::DeclareFun { .. }
             | Command::DeclareConst { .. }
@@ -299,12 +321,51 @@ impl SMTLIBSolver {
 
     /// Handle an assert command
     fn handle_assert(&mut self, term: &Term) -> anyhow::Result<()> {
-        self.solver.assert_term(term)
+        self.solver.assert_term(term)?;
+        self.active_assertion_count += 1;
+        Ok(())
     }
 
     /// Handle a check-sat command
     fn handle_check_sat(&mut self, command_index: usize) -> CheckSatResult {
-        let result = self.solver.check_sat_and_record_statistics();
+        let mut timer = SolverCheckTimer::new(self.profiler.is_some(), || {
+            self.solver.get_solver_statistics()
+        });
+        let (result, raw_check_elapsed) = timer.measure_raw(|| self.solver.check_sat());
+
+        timer.measure(SolverCheckPhase::ProofCoreAccess, || {
+            let _ = self.solver.inspect_last_proof();
+        });
+        let reason_unknown = (result == SolverCheckResult::Unknown)
+            .then(|| self.solver.get_reason_unknown())
+            .flatten();
+
+        timer.measure(SolverCheckPhase::StatisticsCollection, || {
+            self.solver.record_statistics(raw_check_elapsed);
+        });
+        let measurement = timer.finish(result, reason_unknown, self.active_assertion_count, || {
+            self.solver.get_solver_statistics()
+        });
+
+        if let Some(measurement) = measurement {
+            let refinement_step = self.check_sat_results.len().try_into().unwrap_or(u32::MAX);
+            let context = SolverCheckContext {
+                depth: 0,
+                refinement_id: refinement_step.saturating_add(1),
+                refinement_step,
+                instances_total: 0,
+                solver: SolverProfileMetadata {
+                    backend: self.solver.backend(),
+                    logic: self.logic.clone(),
+                    parameters: self.solver.solver_parameters(),
+                    random_seeds: self.solver.random_seeds(),
+                },
+            };
+            self.profiler
+                .as_mut()
+                .expect("check measurement requires an enabled profiler")
+                .record_solver_check(context, measurement);
+        }
 
         CheckSatResult {
             result,
@@ -323,6 +384,7 @@ impl SMTLIBSolver {
 
         // Convert assumptions to terms and assert them temporarily
         self.solver.push();
+        self.assertion_scope_stack.push(self.active_assertion_count);
 
         for (symbol, polarity) in literals {
             let qual_id = QualIdentifier::Simple {
@@ -337,10 +399,12 @@ impl SMTLIBSolver {
             } else {
                 self.solver.assert_not_term(&term)?;
             }
+            self.active_assertion_count += 1;
         }
 
         let result = self.handle_check_sat(command_index);
         self.solver.pop(1);
+        self.active_assertion_count = self.assertion_scope_stack.pop().unwrap_or_default();
         Ok(result)
     }
 
@@ -352,6 +416,13 @@ impl SMTLIBSolver {
     /// Get solver statistics
     pub fn get_statistics(&self) -> &SolverStatistics {
         self.solver_statistics()
+    }
+
+    pub fn profiling(&self) -> ProfilingRunRecord {
+        self.profiler
+            .as_ref()
+            .map(Profiler::snapshot)
+            .unwrap_or_default()
     }
 
     fn solver_statistics(&self) -> &SolverStatistics {
@@ -422,7 +493,7 @@ impl SMTLIBSolver {
         solver_backend: SolverBackend,
         max_refinements: u32,
         track_instantiations: bool,
-        //  instantiation_strategy: Box<dyn InstantiationStrategy>,
+        mut profiler: Option<Profiler>,
     ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
         use log::info;
 
@@ -458,6 +529,9 @@ impl SMTLIBSolver {
             //instantiation_strategy,
             array_types,
         );
+        if profiler.is_some() {
+            smt_problem.enable_check_profiling();
+        }
 
         // 3. Refinement loop (similar to Driver::check_strategy but no depths)
         let mut found_proof = false;
@@ -473,7 +547,26 @@ impl SMTLIBSolver {
 
             let mut state = strategy.setup(&smt_problem, 0)?;
 
-            let action = match smt_problem.check() {
+            let check_result = smt_problem.check();
+            if let Some(profiler) = &mut profiler {
+                let measurement = smt_problem
+                    .take_last_solver_check_profile()
+                    .expect("solver profiling should produce one measurement per check");
+                debug_assert_eq!(measurement.result, check_result);
+                let instances_total = smt_problem.get_number_instantiations_added();
+                profiler.record_solver_check(
+                    SolverCheckContext {
+                        depth: 0,
+                        refinement_id: total_refinement_steps,
+                        refinement_step,
+                        instances_total,
+                        solver: smt_problem.solver_profile_metadata(),
+                    },
+                    measurement,
+                );
+            }
+
+            let action = match check_result {
                 SolverCheckResult::Unsat => {
                     info!("  Result: UNSAT");
                     unsat_events.push(Self::build_unsat_event(
@@ -594,12 +687,12 @@ impl SMTLIBSolver {
             indexed_instantiations,
             unsat_events,
             auxiliary_records: vec![],
-            profiling: if profiling_records.is_empty() {
-                crate::profiling::ProfilingRunRecord::disabled()
-            } else {
-                crate::profiling::ProfilingRunRecord::enabled(profiling_records)
-            },
+            profiling: ProfilingRunRecord::default(),
         };
+        if let Some(mut profiler) = profiler {
+            profiler.extend_cost_records(profiling_records);
+            result.profiling = profiler.finish();
+        }
         Self::annotate_abstract_instantiation_core_membership(&mut result);
         info!("Final SMTLIB result is ready");
 

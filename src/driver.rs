@@ -9,7 +9,7 @@ use crate::{
     auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
     problem_context::ProblemContext,
-    profiling::{DriverProfilingRecord, ProfilingRunRecord},
+    profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext},
     solver::SolverCheckResult,
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
@@ -271,6 +271,7 @@ pub struct Driver<'ctx, S> {
     dump_unsat_core_path: Option<String>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
     solver_backend: SolverBackend,
+    profiler: Option<Profiler>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -376,6 +377,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             dump_unsat_core_path: None,
             instantiation_strategy,
             solver_backend,
+            profiler: None,
         }
     }
 
@@ -389,6 +391,11 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.dump_solver_path = dump_solver;
         self.track_instantiations = track_instantiations || dump_solver_requested;
         self.dump_unsat_core_path = dump_unsat_core;
+        self
+    }
+
+    pub fn with_profiler(mut self, profiler: Option<Profiler>) -> Self {
+        self.profiler = profiler;
         self
     }
 
@@ -414,9 +421,9 @@ impl<'ctx, S> Driver<'ctx, S> {
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;
         let mut unsat_event_tracker = UnsatEventTracker::default();
-        let profile_costs = strat.profiling_enabled();
+        let mut profiler = self.profiler.take();
+        let profiling = profiler.is_some();
         let driver_start = Instant::now();
-        let mut driver_records = Vec::new();
 
         let mut smt_problem = crate::smt_problem::SMTProblem::new(
             &self.vmt_model,
@@ -424,13 +431,14 @@ impl<'ctx, S> Driver<'ctx, S> {
             self.solver_backend,
             self.track_instantiations,
             self.instantiation_strategy.clone_box(),
+            profiling,
         );
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
             for refinement_step in 0..n_refines {
                 let step_start = Instant::now();
-                let mut driver_record = profile_costs.then(|| {
+                let mut driver_record = profiling.then(|| {
                     DriverProfilingRecord::new(
                         depth,
                         refinement_step,
@@ -459,6 +467,23 @@ impl<'ctx, S> Driver<'ctx, S> {
                     for (stage, secs) in smt_problem.take_last_check_profile() {
                         record.record_timing_secs(stage, secs);
                     }
+                }
+                if let Some(profiler) = &mut profiler {
+                    let measurement = smt_problem
+                        .take_last_solver_check_profile()
+                        .expect("solver profiling should produce one measurement per check");
+                    debug_assert_eq!(measurement.result, check_result);
+                    let instances_total = smt_problem.get_number_instantiations_added();
+                    profiler.record_solver_check(
+                        SolverCheckContext {
+                            depth,
+                            refinement_id: total_refinement_steps,
+                            refinement_step,
+                            instances_total,
+                            solver: smt_problem.solver_profile_metadata(),
+                        },
+                        measurement,
+                    );
                 }
                 let action = match check_result {
                     SolverCheckResult::Unsat => {
@@ -523,54 +548,63 @@ impl<'ctx, S> Driver<'ctx, S> {
                         if let Some(mut record) = driver_record {
                             record.record_timing("finish", finish_start.elapsed());
                             record.record_timing("driver_step_total", step_start.elapsed());
-                            driver_records.push(record.finish(
-                                "continue",
-                                smt_problem.get_instantiations().len(),
-                                smt_problem.get_number_instantiations_added(),
-                            ));
+                            if let Some(profiler) = &mut profiler {
+                                profiler.add_driver_record(record.finish(
+                                    "continue",
+                                    smt_problem.get_instantiations().len(),
+                                    smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
                         }
                     }
                     ProofAction::NextDepth => {
                         if let Some(mut record) = driver_record {
                             record.record_timing("driver_step_total", step_start.elapsed());
-                            driver_records.push(record.finish(
-                                "next_depth",
-                                smt_problem.get_instantiations().len(),
-                                smt_problem.get_number_instantiations_added(),
-                            ));
+                            if let Some(profiler) = &mut profiler {
+                                profiler.add_driver_record(record.finish(
+                                    "next_depth",
+                                    smt_problem.get_instantiations().len(),
+                                    smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
                         }
                         continue 'bmc;
                     }
                     ProofAction::FoundCounterexample => {
                         if let Some(mut record) = driver_record {
                             record.record_timing("driver_step_total", step_start.elapsed());
-                            driver_records.push(record.finish(
-                                "found_counterexample",
-                                smt_problem.get_instantiations().len(),
-                                smt_problem.get_number_instantiations_added(),
-                            ));
+                            if let Some(profiler) = &mut profiler {
+                                profiler.add_driver_record(record.finish(
+                                    "found_counterexample",
+                                    smt_problem.get_instantiations().len(),
+                                    smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
                         }
                         return Err(Error::Counterexample);
                     }
                     ProofAction::FoundProof => {
                         if let Some(mut record) = driver_record {
                             record.record_timing("driver_step_total", step_start.elapsed());
-                            driver_records.push(record.finish(
-                                "found_proof",
-                                smt_problem.get_instantiations().len(),
-                                smt_problem.get_number_instantiations_added(),
-                            ));
+                            if let Some(profiler) = &mut profiler {
+                                profiler.add_driver_record(record.finish(
+                                    "found_proof",
+                                    smt_problem.get_instantiations().len(),
+                                    smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
                         }
                         info!("Building final proof result");
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
                         result.total_refinement_steps = total_refinement_steps;
                         result.unsat_events = unsat_event_tracker.events.clone();
-                        if profile_costs {
-                            result.profiling.record_timing(
+                        if let Some(mut profiler) = profiler {
+                            profiler.record_timing(
                                 "driver_check_strategy_total",
                                 driver_start.elapsed(),
                             );
-                            result.profiling.extend_driver_records(driver_records);
+                            profiler.extend_cost_records(strat.take_profiling_records());
+                            result.profiling = profiler.finish();
                         }
                         info!("Collecting unsat core metadata");
                         result.unsat_core = self.build_unsat_core_info(&smt_problem);
@@ -590,11 +624,10 @@ impl<'ctx, S> Driver<'ctx, S> {
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
         result.total_refinement_steps = total_refinement_steps;
         result.unsat_events = unsat_event_tracker.events;
-        if profile_costs {
-            result
-                .profiling
-                .record_timing("driver_check_strategy_total", driver_start.elapsed());
-            result.profiling.extend_driver_records(driver_records);
+        if let Some(mut profiler) = profiler {
+            profiler.record_timing("driver_check_strategy_total", driver_start.elapsed());
+            profiler.extend_cost_records(strat.take_profiling_records());
+            result.profiling = profiler.finish();
         }
         info!("Collecting unsat core metadata");
         result.unsat_core = self.build_unsat_core_info(&smt_problem);
