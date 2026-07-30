@@ -2,8 +2,6 @@
 
 A CEGAR (Counter-Example Guided Abstraction Refinement) tool for automated verification of array-manipulating programs. Yardbird performs bounded model checking on VMT (Verification Modulo Theories) and SMT-LIB format problems, using e-graph-based abstraction refinement with pluggable cost functions.
 
-**Rust edition:** 2021 | **Toolchain:** 1.89.0 | **Key deps:** z3 0.19.3, egg 0.10.0, clap 4.5, serde, tokio
-
 ---
 
 ## Repository Layout
@@ -702,3 +700,19 @@ Screenshot responses include a `"path"` field with an absolute path to the saved
 ```bash
 curl -s -X DELETE http://localhost:3000/sessions/local-app
 ```
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as local Markdown under `.scratch/<feature-slug>/issues/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, and `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use the single-context layout: `CONTEXT.md` and `docs/adr/` at the repository root. See `docs/agents/domain.md`.

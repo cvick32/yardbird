@@ -42,6 +42,22 @@ This will automatically use the BMC Cost strategy.
 ./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
 ```
 
+To collect profiling data for every solver check, add `--profile --json-output`:
+
+```bash
+./target/release/yardbird \
+  --filename examples/array/array_copy.vmt \
+  --strategy concrete \
+  --profile \
+  --json-output
+```
+
+The profile contains solver checks and driver timings for every strategy. For
+abstract strategies it also contains detailed e-graph and cost-function records.
+Each solver record includes run/check/refinement identity, benchmark and
+strategy metadata, nanosecond phase timings, instance counts, and complete
+solver-statistics before, after, and delta snapshots.
+
 ### 3. Run Light Review Benchmark Suite
 
 For a more comprehensive evaluation with depth 10 (completes in less than 5 minutes):
