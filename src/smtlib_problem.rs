@@ -9,7 +9,7 @@ use crate::profiling::{
     SolverProfileMetadata,
 };
 use crate::smtlib_smt_problem::SMTLIBSMTProblem;
-use crate::solver::{new_solver_backend, SolverCheckResult, YardbirdSolver};
+use crate::solver::{new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver};
 use crate::strategies::{ProofAction, ProofStrategy};
 use crate::training::UnsatEventRecord;
 use crate::utils::SolverStatistics;
@@ -244,14 +244,18 @@ pub struct SMTLIBSolver {
 impl SMTLIBSolver {
     /// Create a new SMTLIB solver with the given logic, defaulting to Z3.
     pub fn new(logic: Option<String>) -> Self {
-        Self::new_with_backend(logic, SolverBackend::Z3)
+        Self::new_with_backend(logic, SolverBackend::Z3, None)
     }
 
     /// Create a new SMTLIB solver with the given logic and backend.
-    pub fn new_with_backend(logic: Option<String>, backend: SolverBackend) -> Self {
+    pub fn new_with_backend(
+        logic: Option<String>,
+        backend: SolverBackend,
+        capture: Option<SolverCapture>,
+    ) -> Self {
         let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
         SMTLIBSolver {
-            solver: new_solver_backend(backend, logic.as_str()),
+            solver: new_solver_backend(backend, logic.as_str(), capture),
             logic,
             check_sat_results: Vec::new(),
             profiler: None,
@@ -494,6 +498,7 @@ impl SMTLIBSolver {
         max_refinements: u32,
         track_instantiations: bool,
         mut profiler: Option<Profiler>,
+        solver_capture: Option<SolverCapture>,
     ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
         use log::info;
 
@@ -528,6 +533,7 @@ impl SMTLIBSolver {
             track_instantiations,
             //instantiation_strategy,
             array_types,
+            solver_capture,
         );
         if profiler.is_some() {
             smt_problem.enable_check_profiling();

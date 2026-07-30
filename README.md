@@ -58,6 +58,29 @@ Each solver record includes run/check/refinement identity, benchmark and
 strategy metadata, nanosecond phase timings, instance counts, and complete
 solver-statistics before, after, and delta snapshots.
 
+To preserve a run containing one solver check as a directly replayable SMT-LIB
+session, use `--solver-capture-dir`. Capture implies profiling:
+
+```bash
+./target/release/yardbird \
+  --filename examples/array/array_copy.vmt \
+  --depth 1 \
+  --strategy concrete \
+  --solver-capture-dir capture/array-copy
+```
+
+The directory contains `solver-session.smt2`, `solver-session.index.json`,
+`yardbird-profile.json`, and `manifest.json`. The transcript records the
+effective logic, options, seeds, declarations, assertions, property scope, and
+check command in solver-call order. It can be replayed directly:
+
+```bash
+z3 -smt2 capture/array-copy/solver-session.smt2
+```
+
+This capture slice intentionally accepts exactly one solver check. Incremental
+multi-check sessions are added by the next instrumentation ticket.
+
 ### 3. Run Light Review Benchmark Suite
 
 For a more comprehensive evaluation with depth 10 (completes in less than 5 minutes):

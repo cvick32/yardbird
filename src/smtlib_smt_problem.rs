@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use log::debug;
 use smt2parser::{
     concrete::{Command, Identifier, QualIdentifier, Symbol, Term},
@@ -11,7 +13,7 @@ use crate::{
         SolverCheckMeasurement, SolverCheckPhase, SolverCheckTimer, SolverProfileMetadata,
     },
     smtlib_problem::SMTLIBProblem,
-    solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
+    solver::{new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver},
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -138,29 +140,36 @@ impl SMTLIBSMTProblem {
             collect_check_profiles: false,
             last_solver_check_profile: None,
         };
+        let mut accepted_declarations = HashSet::new();
+
+        // Add sort declarations
+        for sort_decl in problem.get_sorts() {
+            if accepted_declarations.insert(sort_decl.clone()) {
+                smt.solver
+                    .accept_command(&sort_decl)
+                    .expect("solver should accept SMT-LIB sort declarations");
+            }
+        }
 
         // Handle theory-specific function declarations
         if theory.requires_abstraction() {
             for function_def in problem.get_function_definitions() {
-                smt.solver
-                    .accept_command(&function_def)
-                    .expect("solver should accept SMT-LIB function declarations");
+                if accepted_declarations.insert(function_def.clone()) {
+                    smt.solver
+                        .accept_command(&function_def)
+                        .expect("solver should accept SMT-LIB function declarations");
+                }
             }
-        }
-
-        // Add sort declarations
-        for sort_decl in problem.get_sorts() {
-            smt.solver
-                .accept_command(&sort_decl)
-                .expect("solver should accept SMT-LIB sort declarations");
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            smt.solver
-                .accept_command(&command)
-                .expect("solver should accept theory function declarations");
+            if accepted_declarations.insert(command.clone()) {
+                smt.solver
+                    .accept_command(&command)
+                    .expect("solver should accept theory function declarations");
+            }
         }
 
         // Add axioms declared by the theory
@@ -196,10 +205,11 @@ impl SMTLIBSMTProblem {
         strategy: &Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
         track_instantiations: bool,
+        solver_capture: Option<SolverCapture>,
     ) -> Self {
         let theory = strategy.get_theory_support();
         let logic = theory.get_logic_string();
-        let solver = new_solver_backend(solver_backend, &logic);
+        let solver = new_solver_backend(solver_backend, &logic, solver_capture);
         Self::init_common(
             problem,
             theory.as_ref(),
@@ -218,6 +228,7 @@ impl SMTLIBSMTProblem {
         solver_backend: SolverBackend,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
+        solver_capture: Option<SolverCapture>,
     ) -> Self {
         use crate::theory_support::{ArrayTheorySupport, ArrayWithQuantifiersTheorySupport};
 
@@ -237,7 +248,7 @@ impl SMTLIBSMTProblem {
 
         let logic_string = theory.get_logic_string();
         debug!("Using logic: {}", logic_string);
-        let solver = new_solver_backend(solver_backend, logic_string.as_str());
+        let solver = new_solver_backend(solver_backend, logic_string.as_str(), solver_capture);
 
         Self::init_common(
             problem,

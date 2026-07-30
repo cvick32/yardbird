@@ -20,7 +20,7 @@ use crate::{
     profiling::{
         SolverCheckMeasurement, SolverCheckPhase, SolverCheckTimer, SolverProfileMetadata,
     },
-    solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
+    solver::{new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver},
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -138,6 +138,7 @@ impl SMTProblem {
         track_instantiations: bool,
         instantiation_strategy: Box<dyn InstantiationStrategy>,
         collect_check_profiles: bool,
+        solver_capture: Option<SolverCapture>,
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
@@ -145,7 +146,7 @@ impl SMTProblem {
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
         let theory = strategy.get_theory_support();
         let logic = theory.get_logic_string();
-        let solver = new_solver_backend(solver_backend, &logic);
+        let solver = new_solver_backend(solver_backend, &logic, solver_capture);
 
         let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
@@ -180,22 +181,35 @@ impl SMTProblem {
             last_check_profile: BTreeMap::new(),
             last_unroll_profile: BTreeMap::new(),
         };
+        let mut accepted_declarations = HashSet::new();
+        for sort in vmt_model.get_sorts() {
+            if accepted_declarations.insert(sort.clone()) {
+                smt.solver
+                    .accept_command(&sort)
+                    .expect("solver should accept VMT sort declarations");
+            }
+        }
+
         // Handle theory-specific function declarations
         if theory.requires_abstraction() {
             // Add in abstracted function definitions from VMT model
             for function_def in vmt_model.get_function_definitions() {
-                smt.solver
-                    .accept_command(&function_def)
-                    .expect("solver should accept VMT function declarations");
+                if accepted_declarations.insert(function_def.clone()) {
+                    smt.solver
+                        .accept_command(&function_def)
+                        .expect("solver should accept VMT function declarations");
+                }
             }
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            smt.solver
-                .accept_command(&command)
-                .expect("solver should accept theory function declarations");
+            if accepted_declarations.insert(command.clone()) {
+                smt.solver
+                    .accept_command(&command)
+                    .expect("solver should accept theory function declarations");
+            }
             smt.function_definitions.push(command);
         }
 
@@ -946,6 +960,7 @@ mod tests {
             false,
             Box::new(FullUnrollStrategy::new()),
             false,
+            None,
         );
 
         smt.unroll(1);
