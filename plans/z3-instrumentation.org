@@ -38,6 +38,9 @@ The following decisions define the implementation contract.
   to produce a native-Z3 optimization.
 - The canonical capture is one append-only, incremental SMT-LIB command journal
   per Yardbird run.
+- Keep Yardbird capture and profiling artifacts unversioned and unhashed. This
+  research workflow does not need schema labels, compatibility layers, or
+  content fingerprints.
 - Capture the journal at the ~YardbirdSolver~ abstraction boundary so the design
   is not tied to Z3 and can be replayed by SMT-LIB-compatible solvers.
 - Replay a journal through one persistent solver subprocess. Time every
@@ -136,7 +139,7 @@ residual and does not infer causation from correlations.
 - Concrete native arrays and Yardbird's unquantified abstract array strategy.
 - Z3 4.16 from the existing development checkout.
 - One incremental SMT-LIB transcript per Yardbird run.
-- Stable check-level metadata and hashes.
+- Stable check-level metadata.
 - Persistent-process replay against stock and summary-instrumented Z3 builds.
 - Per-check and per-depth timing reports.
 - A low-overhead native-array envelope timer.
@@ -311,8 +314,10 @@ expected_result
 Byte ranges or precomputed command chunks allow the Python runner to feed the
 transcript incrementally without implementing a second SMT-LIB parser.
 
-The completed manifest records the SHA-256 hash of the entire transcript. Files
-are immutable after successful capture completion.
+Capture and profiling artifacts intentionally have no schema/version labels or
+content hashes. This is research tooling: each capture directory is treated as
+one disposable unit, and replay validates its check count, order, and results
+directly. Files are immutable after successful capture completion.
 
 ** Replay fidelity
 
@@ -417,7 +422,6 @@ statistics for SAT, UNSAT, and UNKNOWN results.
 - ~check_id~ is monotonic and contiguous within a run.
 - Use the repository's existing refinement identity rather than inventing a
   competing ID.
-- The final transcript hash identifies the completed incremental session.
 
 ** Likely files
 
@@ -633,7 +637,7 @@ It remains diagnostic and is never used for authoritative timing.
 ** Technology
 
 Use Python's standard library initially: ~argparse~, ~subprocess~, ~json~,
-~hashlib~, ~statistics~, ~pathlib~, and ~time~. Authoritative replay uses solver
+~statistics~, ~pathlib~, and ~time~. Authoritative replay uses solver
 executables, not Z3Py, so stock and instrumented builds never share one process.
 
 ** Proposed layout
@@ -703,7 +707,6 @@ python scripts/z3_array_probe.py summarize \
 ** Runner responsibilities
 
 - Validate executable version and build metadata.
-- Verify the complete transcript against its final hash.
 - Launch a fresh persistent solver process for each full-transcript repetition.
 - Preserve check ordering within every repetition.
 - Set and record explicit random seeds and nondefault parameters.
@@ -826,7 +829,6 @@ Tasks:
 - Split raw check from model acquisition.
 - Add stable run/check metadata using the existing refinement identity.
 - Implement the solver-boundary command journal and sidecar index.
-- Record the final transcript hash.
 - Record timing phases and complete statistic snapshots/deltas for every result.
 - Profile concrete and abstract strategies through the same interface.
 - Add SAT, UNSAT, multi-refinement, and multi-depth capture tests.
@@ -956,7 +958,7 @@ Add focused tests that:
 
 ** Python
 
-- Test index/hash validation.
+- Test journal-index validation.
 - Test streaming of multiple checks through one process.
 - Test SAT, UNSAT, UNKNOWN, timeout, crash, malformed output, and mismatch paths.
 - Test summary ordinal/result disagreement.
@@ -1034,7 +1036,8 @@ The first-pass project succeeds when it provides all of the following.
 - Every Yardbird solver check maps to one transcript position, one replay
   result, and one set of timing/profile records.
 - A persistent replay returns the same ordered results as the capture.
-- Version, build, parameters, seeds, and hashes are recorded.
+- Solver/build metadata, parameters, and seeds are recorded without adding
+  artifact version labels or content hashes.
 
 ** Array accounting
 
@@ -1082,7 +1085,7 @@ This slice can already falsify the simplest explanation: that the raw native
 - [ ] Split raw check and model acquisition.
 - [ ] Add stable run/check metadata using existing refinement identity.
 - [ ] Implement the solver-boundary command journal.
-- [ ] Emit the journal index and final transcript hash.
+- [ ] Emit the journal index.
 - [ ] Record per-check timing phases and statistic deltas.
 - [ ] Make solver profiling work for concrete and abstract strategies.
 - [ ] Add incremental capture tests.

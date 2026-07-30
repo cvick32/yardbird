@@ -632,9 +632,6 @@ mod tests {
         assert!(json.get("enabled").is_none());
         assert!(json.get("solver_profiling_enabled").is_none());
         assert!(json.get("cost_profiling_enabled").is_none());
-        assert!(json["solver_checks"][0]
-            .get("transcript_prefix_sha256")
-            .is_none());
         assert!(json["solver_checks"][0].get("transcript_path").is_none());
         assert_eq!(profile.solver_checks.len(), 2);
         assert_eq!(profile.solver_checks[0].check_id, 0);
