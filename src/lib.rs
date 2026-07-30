@@ -560,6 +560,16 @@ pub enum Theory {
     List,
 }
 
+impl Display for Theory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Theory::Array => write!(f, "array"),
+            Theory::BvList => write!(f, "bv-list"),
+            Theory::List => write!(f, "list"),
+        }
+    }
+}
+
 /// Describes the solver backends available.
 #[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
 #[clap(rename_all = "kebab_case")]
