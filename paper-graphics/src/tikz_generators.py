@@ -218,6 +218,7 @@ class InstCactusPlotTikzGenerator:
         ylabel: str = "Instantiations",
         caption: str = None,
         use_log_scale: bool = True,
+        label: str = "fig:cactus_inst",
     ) -> str:
         """Generate an instantiation cactus plot comparing strategies
 
@@ -229,6 +230,7 @@ class InstCactusPlotTikzGenerator:
             ylabel: Y-axis label (instantiations)
             caption: Optional figure caption
             use_log_scale: If True, use log scale for y-axis
+            label: LaTeX figure label
 
         Returns:
             TikZ/LaTeX code string
@@ -250,12 +252,12 @@ class InstCactusPlotTikzGenerator:
         # Determine axis type and bounds
         if use_log_scale:
             y_axis = "semilogyaxis"
-            # Pin failed runs to 2x the max successful instantiation count
-            y_max = max_inst * 2
+            y_max = max(max_inst * 2, 2)
+            y_min = 0.5
         else:
             y_axis = "axis"
-            y_max = max_inst * 1.2
-        y_min = 0.01
+            y_max = max(max_inst * 1.2, 1)
+            y_min = 0
         x_max = max_instances * 1.05
 
         # Color mapping for strategies
@@ -278,7 +280,7 @@ class InstCactusPlotTikzGenerator:
     xlabel={{{xlabel}}},
     ylabel={{{ylabel}}},
     xmin=0, xmax={x_max:.0f},
-    ymin={y_min:.0f}, ymax={y_max:.0f},
+    ymin={y_min:.3f}, ymax={y_max:.3f},
     grid=major,
     width=\\columnwidth,
     height=8cm,
@@ -308,9 +310,32 @@ class InstCactusPlotTikzGenerator:
         if caption:
             tikz_code += f"\n\\caption{{{caption}}}"
 
-        tikz_code += "\n\\label{fig:cactus_inst}\n\\end{figure}"
+        tikz_code += f"\n\\label{{{label}}}\n\\end{{figure}}"
 
         return tikz_code
+
+
+class ConflictCactusPlotTikzGenerator:
+    """Generates TikZ cactus plots for cumulative solver conflict counts."""
+
+    @staticmethod
+    def generate(
+        strategy_data: Dict[str, List[Optional[float]]],
+        title: str = "Solver Conflict Cactus Plot",
+        xlabel: str = "Number of Solved Instances",
+        ylabel: str = "Total Solver Conflicts",
+        caption: str = None,
+        use_log_scale: bool = True,
+    ) -> str:
+        return InstCactusPlotTikzGenerator.generate(
+            strategy_data,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            caption=caption,
+            use_log_scale=use_log_scale,
+            label="fig:cactus_conflicts",
+        )
 
 
 class TableTikzGenerator:
@@ -746,7 +771,9 @@ Strategy & Solved & Timeouts & Avg. Inst. & Unique Solves & \\% w/ Reduction & I
 
         # Create display names
         display_name = strategy_key.replace("_", " ").replace("-", " ").title()
-        baseline_display_name = baseline_strategy.replace("_", " ").replace("-", " ").title()
+        baseline_display_name = (
+            baseline_strategy.replace("_", " ").replace("-", " ").title()
+        )
         for strategies in grouped_results.values():
             if strategy_key in strategies:
                 display_name = strategies[strategy_key].get_display_name()

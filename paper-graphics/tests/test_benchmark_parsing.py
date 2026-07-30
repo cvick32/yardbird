@@ -27,6 +27,7 @@ class BenchmarkParserTests(unittest.TestCase):
                                         "stats": {
                                             "num checks": 3,
                                             "solver_time": 0.1,
+                                            "conflicts": 11,
                                         }
                                     },
                                 }
@@ -45,6 +46,7 @@ class BenchmarkParserTests(unittest.TestCase):
         self.assertEqual(parsed.result_type, "_FoundProof")
         self.assertEqual(parsed.used_instantiations, 7)
         self.assertEqual(parsed.num_checks, 3)
+        self.assertEqual(parsed.total_conflicts, 11)
 
 
 if __name__ == "__main__":

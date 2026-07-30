@@ -69,6 +69,7 @@ def _benchmark_row(result: BenchmarkResult, strategy_id: str) -> dict[str, Any]:
         "solver_time_s": _round(result.solver_time_s),
         "used_instantiations": (result.used_instantiations if result.success else None),
         "num_checks": result.num_checks if result.success else None,
+        "total_conflicts": result.total_conflicts if result.success else None,
     }
 
 
@@ -538,6 +539,7 @@ def write_analysis_exports(
             "solver_time_s",
             "used_instantiations",
             "num_checks",
+            "total_conflicts",
         ],
     )
     _write_csv(
