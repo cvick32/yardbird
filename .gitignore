@@ -24,3 +24,5 @@ run_all_benchmarks.sh
 ubuntu*
 examples/bitwuzla/
 tools/training-viewer/backend/dist
+docs/
+.scratch/
