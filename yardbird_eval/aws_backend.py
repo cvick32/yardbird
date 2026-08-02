@@ -142,6 +142,13 @@ def launch_aws_run(args) -> dict[str, Any]:
 
 def refresh_aws_run(manifest: dict[str, Any]) -> dict[str, Any]:
     for subrun in manifest["subruns"]:
+        # Remote artifacts and instances may expire after a successful download.
+        if subrun["status"] == STATUS_COMPLETED or subrun.get("downloaded_at"):
+            subrun["status"] = STATUS_COMPLETED
+            if subrun.get("completed_at") is None:
+                subrun["completed_at"] = subrun.get("downloaded_at") or iso_now()
+            continue
+
         bucket = subrun["bucket"]
         region = subrun["region"]
         prefix = subrun["s3_prefix"]
