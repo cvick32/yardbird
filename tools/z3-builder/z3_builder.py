@@ -25,13 +25,13 @@ RESULTS = {"sat", "unsat", "unknown"}
 
 def run(command: list[str], *, env=None, show=False) -> str:
     if show:
-        print(shlex.join(command), flush=True)
+        print(shlex.join(command), file=sys.stderr, flush=True)
     completed = subprocess.run(
         command,
         env=env,
         text=True,
-        stdout=None if show else subprocess.PIPE,
-        stderr=None if show else subprocess.PIPE,
+        stdout=sys.stderr if show else subprocess.PIPE,
+        stderr=sys.stderr if show else subprocess.PIPE,
         check=False,
     )
     if completed.returncode:
@@ -136,7 +136,7 @@ def build_z3(
     if args.cxx:
         env["CXX"] = args.cxx
 
-    print(f"[{label}] configure", flush=True)
+    print(f"[{label}] configure", file=sys.stderr, flush=True)
     run(configure, env=env, show=True)
     build = [
         "cmake",
@@ -149,7 +149,7 @@ def build_z3(
         "--target",
         "shell",
     ]
-    print(f"[{label}] build", flush=True)
+    print(f"[{label}] build", file=sys.stderr, flush=True)
     run(build, env=env, show=True)
 
     binary = find_z3(build_dir).resolve()
@@ -284,9 +284,8 @@ def main() -> int:
         }
         manifest_path = output / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-        print(f"Wrote {manifest_path}")
-        print(f"Z3_STOCK_BIN={builds['stock']['binary']}")
-        print(f"Z3_INSTRUMENTED_BIN={builds['instrumented']['binary']}")
+        print(f"Wrote {manifest_path}", file=sys.stderr)
+        print(json.dumps(manifest, separators=(",", ":")))
         return 0
     except (
         FileExistsError,

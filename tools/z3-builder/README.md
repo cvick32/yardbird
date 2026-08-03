@@ -34,7 +34,19 @@ python3 tools/z3-builder/z3_builder.py \
   --output /tmp/yardbird-z3-build
 ```
 
-The output directory must not already exist. The command prints
-`Z3_STOCK_BIN` and `Z3_INSTRUMENTED_BIN`; those paths can later be passed to the
-Yardbird replay/comparison tool. Timings from the bundled smoke tests are
-diagnostic only, not benchmark results.
+The output directory must not already exist. Build progress goes to stderr and
+the completed `manifest.json` is also emitted as one JSON object on stdout, so a
+capture can be replayed immediately through both binaries:
+
+```bash
+python3 tools/z3-builder/z3_builder.py \
+  --z3-checkout /path/to/z3 \
+  --instrumented-checkout /path/to/instrumented-z3 \
+  --output /tmp/yardbird-z3-build |
+  python3 tools/z3_array_probe.py replay \
+    --capture-dir capture/array-copy
+```
+
+Timings from the bundled smoke tests are diagnostic only, not benchmark
+results. An existing build can be replayed again with
+`--z3-build-dir /tmp/yardbird-z3-build`.

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +56,28 @@ class Z3BuilderTests(unittest.TestCase):
             )
         self.assertTrue(result["results_equal"])
         self.assertEqual(result["results"], {"queries/sat.smt2": ["sat"]})
+
+    def test_verbose_build_output_does_not_pollute_stdout_pipeline(self) -> None:
+        with tempfile.TemporaryFile(mode="w+") as stdout:
+            with tempfile.TemporaryFile(mode="w+") as stderr:
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(
+                    stderr
+                ):
+                    z3_builder.run(
+                        [
+                            sys.executable,
+                            "-c",
+                            "import sys; print('build stdout'); "
+                            "print('build stderr', file=sys.stderr)",
+                        ],
+                        show=True,
+                    )
+                stdout.seek(0)
+                stderr.seek(0)
+                self.assertEqual(stdout.read(), "")
+                progress = stderr.read()
+                self.assertIn("build stdout", progress)
+                self.assertIn("build stderr", progress)
 
 
 if __name__ == "__main__":
