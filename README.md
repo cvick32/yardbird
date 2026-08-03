@@ -80,6 +80,32 @@ and post-check byte boundaries. It can be replayed directly:
 z3 -smt2 capture/array-copy/solver-session.smt2
 ```
 
+To build the matched Z3 pair and immediately replay the capture through both
+executables, pipe the builder result into the replay command:
+
+```bash
+python3 tools/z3-builder/z3_builder.py \
+  --z3-checkout /path/to/z3 \
+  --instrumented-checkout /path/to/instrumented-z3 \
+  --output /tmp/yardbird-z3-build |
+  python3 tools/z3_array_probe.py replay \
+    --capture-dir capture/array-copy
+```
+
+The builder writes progress to stderr and its machine-readable manifest to
+stdout. Replay reads the stock and instrumented binary paths from that manifest,
+uses one persistent process per binary, and requires both ordered result
+sequences to match the capture. To rerun without rebuilding, pass the existing
+builder output directory instead:
+
+```bash
+python3 tools/z3_array_probe.py replay \
+  --capture-dir capture/array-copy \
+  --z3-build-dir /tmp/yardbird-z3-build
+```
+
+Use `--timeout` to change the default 60-second limit for each full replay.
+
 ### 3. Run Light Review Benchmark Suite
 
 For a more comprehensive evaluation with depth 10 (completes in less than 5 minutes):

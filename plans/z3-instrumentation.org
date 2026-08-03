@@ -636,87 +636,68 @@ It remains diagnostic and is never used for authoritative timing.
 
 ** Technology
 
-Use Python's standard library initially: ~argparse~, ~subprocess~, ~json~,
-~statistics~, ~pathlib~, and ~time~. Authoritative replay uses solver
-executables, not Z3Py, so stock and instrumented builds never share one process.
+Use Python's standard library initially: ~argparse~, ~subprocess~, ~json~, and
+~pathlib~. Replay uses solver executables, not Z3Py, so stock and instrumented
+builds never share one process.
 
 ** Proposed layout
 
 #+begin_example
-scripts/
+tools/
   z3_array_probe.py
   z3_profile/
     __init__.py
-    schema.py
-    journal.py
-    runner.py
-    parse.py
-    report.py
+    replay.py
 tests/
   z3_profile/
-    test_schema.py
-    test_journal.py
-    test_runner.py
-    test_report.py
+    test_replay.py
 #+end_example
 
-** Persistent interactive replay
+** Persistent matched-pair result replay
 
-For each repetition:
+The base replay has one narrow correctness job:
 
-1. Start one solver subprocess.
-2. Feed transcript chunks in journal order.
-3. Immediately before a ~check-sat~, start the external timer.
-4. Send the command and read exactly one solver result.
-5. Stop the timer and associate the result with the indexed check ID.
-6. Continue in the same process so incremental state and learned information are
-   preserved.
-7. Abort the repetition on mismatch, timeout, malformed output, or process
-   failure.
+1. Consume the ~z3-builder~ manifest from stdin, or load an existing builder
+   output directory.
+2. Resolve the stock and instrumented executable paths from that manifest.
+3. Feed the complete captured transcript to one subprocess for each executable
+   in turn; each subprocess therefore preserves all incremental state.
+4. Read the returned ordered result lines and correlate them with the journal
+   index.
+5. Require both ordered result sequences to match the captured sequence.
+6. Abort on mismatch, timeout, malformed output, or process failure.
 
 The journal index supplies chunks and boundaries; the runner must not parse
 arbitrary SMT-LIB merely to locate checks.
 
-For the summary build, also consume the corresponding JSONL record and require
-its check ordinal and result to agree with the replay record.
-
-The stock measurement is an interactive round trip and therefore contains a
-small pipe/write/read cost that Yardbird's in-process API does not. Calibrate
-that floor with a trivial multi-check transcript, retain it in the run metadata,
-and flag checks whose duration is too close to the floor for reliable
-interpretation. Do not silently subtract a noisy point estimate from samples.
+This base command does not calibrate, time, or write replay reports. Repeated
+timing and aggregation belong to the following reporting ticket, built on top
+of a result-correct replay rather than mixed into its interface.
 
 ** Commands
 
 #+begin_example
-python scripts/z3_array_probe.py replay \
-  --capture-dir path/to/capture \
-  --z3-bin "$Z3_STOCK_BIN"
+python tools/z3-builder/z3_builder.py \
+  --z3-checkout path/to/z3 \
+  --instrumented-checkout path/to/instrumented-z3 \
+  --output path/to/z3-build |
+  python tools/z3_array_probe.py replay \
+    --capture-dir path/to/capture
 
-python scripts/z3_array_probe.py compare \
+python tools/z3_array_probe.py replay \
   --capture-dir path/to/capture \
-  --stock-z3 "$Z3_STOCK_BIN" \
-  --summary-z3 "$Z3_SUMMARY_BIN" \
-  --repetitions 15 \
-  --warmups 3
-
-python scripts/z3_array_probe.py summarize \
-  --run-dir path/to/replay-run
+  --z3-build-dir path/to/z3-build
 #+end_example
 
 ** Runner responsibilities
 
-- Validate executable version and build metadata.
-- Launch a fresh persistent solver process for each full-transcript repetition.
-- Preserve check ordering within every repetition.
-- Set and record explicit random seeds and nondefault parameters.
-- Apply per-check and whole-process timeouts.
-- Capture result, external elapsed time, stderr, exit status, and summary JSON.
-- Distinguish SAT, UNSAT, UNKNOWN, timeout, and process failure.
-- Reject any result mismatch.
-- Separate warmups from measured repetitions.
-- Keep individual samples and report median and median absolute deviation.
-- Exclude event-mode, proof-mode, and verbose-trace runs from timing reports.
+- Validate the capture journal and the two executable paths supplied by
+  ~z3-builder~.
+- Launch one persistent solver process per executable.
+- Preserve check ordering and incremental state by replaying the complete
+  transcript in one process.
+- Apply a bounded whole-replay timeout and surface process errors.
+- Reject any ordered result mismatch.
 
 ** Reports
 
@@ -841,23 +822,28 @@ Exit criteria:
 - Concrete and abstract runs both emit solver-check records.
 - Existing ~--dump-solver~ behavior remains compatible.
 
-** Milestone 2: Persistent stock replay
+** Milestone 2a: Persistent matched-pair result replay
 
 Tasks:
 
 - Implement journal/index validation.
-- Implement persistent interactive solver replay.
-- Time and validate each check independently.
-- Add whole-transcript repetitions, warmups, timeouts, and error handling.
-- Produce check-level and cumulative-depth stock reports.
+- Make ~z3-builder~ emit its manifest cleanly on stdout for direct piping.
+- Replay once through both builder-produced executables with one persistent
+  process each.
+- Validate every ordered result and bound each full replay with a timeout.
 - Test with fake solver executables or checked-in deterministic fixtures.
 
 Exit criteria:
 
-- Every check in a capture can be replayed in one persistent stock process.
-- Results and ordering match the Yardbird capture.
-- One command produces per-check timing distributions and cumulative depth
-  totals.
+- One pipeline builds both executables and replays the capture through them.
+- Every check is replayed in persistent stock and instrumented processes.
+- Both result sequences and their ordering match the Yardbird capture.
+
+** Milestone 2b: Repeated stock timing reports
+
+Tasks and exit criteria live in ticket 07. This layer adds warmups, repeated
+samples, timing-floor warnings, and per-depth aggregation without expanding the
+base replay command's correctness interface.
 
 ** Milestone 3: Z3 summary array profiler
 
@@ -1069,7 +1055,7 @@ Implement the smallest end-to-end path before adding detailed Z3 counters:
 2. Split Yardbird raw check from model acquisition.
 3. Add solver-check records to the unified Yardbird profiler.
 4. Add the solver-boundary incremental command journal and index.
-5. Build persistent stock replay with check-level and cumulative-depth timing.
+5. Build persistent matched-pair replay and require ordered result equality.
 6. Add the Z3 array envelope and the minimal ax2 funnel.
 7. Run the calibration corpus and a small concrete-versus-abstract pilot.
 
@@ -1089,7 +1075,7 @@ This slice can already falsify the simplest explanation: that the raw native
 - [ ] Record per-check timing phases and statistic deltas.
 - [ ] Make solver profiling work for concrete and abstract strategies.
 - [ ] Add incremental capture tests.
-- [ ] Implement persistent interactive stock replay.
+- [ ] Implement persistent matched-pair result replay.
 - [ ] Produce check-level timing distributions.
 - [ ] Produce cumulative per-depth timing reports.
 - [ ] Add Z3 summary profile controls and JSONL output.
