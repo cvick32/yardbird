@@ -4,10 +4,14 @@ use action::Action;
 use array_abstractor::ArrayAbstractor;
 use axiom::Axiom;
 use bmc::BMCBuilder;
+use define_fun_expander::DefineFunExpander;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
-use utils::{get_and_terms, get_transition_system_component, get_variables_actions_and_axioms};
+use utils::{
+    command_has_attribute_string, get_and_terms, get_transition_system_component,
+    get_variables_actions_and_axioms,
+};
 use variable::Variable;
 
 use crate::{
@@ -30,6 +34,7 @@ mod array_axiom_frame_num_getter;
 mod axiom;
 pub mod bmc;
 pub mod canonicalize_boolean;
+mod define_fun_expander;
 pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 pub mod quantified_instantiator;
@@ -42,11 +47,23 @@ pub mod variable;
 pub static VARIABLE_FRAME_DELIMITER: &str = "@";
 pub static NEXT_VARIABLE_NAME: &str = "next";
 
+fn is_assert_true(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Assert {
+            term: Term::QualIdentifier(concrete::QualIdentifier::Simple {
+                identifier: Identifier::Simple { symbol },
+            }),
+        } if symbol.0 == "true"
+    )
+}
+
 /// VMTModel represents a transition system given in VMT format.
 /// The VMT specification is no longer available but there is an example here:
 /// https://es-static.fbk.eu/people/griggio/ic3ia/
 #[derive(Clone, Debug)]
 pub struct VMTModel {
+    info: Vec<Command>,
     sorts: Vec<Command>,
     state_variables: Vec<Variable>,
     function_definitions: Vec<Command>,
@@ -57,23 +74,20 @@ pub struct VMTModel {
     property_condition: Term,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum VMTError {
+    #[error("unsupported command in VMT input: {0}")]
     UnknownCommand(String),
-    FileError,
-    VisitorError,
-}
-
-impl From<std::io::Error> for VMTError {
-    fn from(_value: std::io::Error) -> Self {
-        VMTError::FileError
-    }
-}
-
-impl From<concrete::Error> for VMTError {
-    fn from(_value: concrete::Error) -> Self {
-        VMTError::VisitorError
-    }
+    #[error("failed to read VMT input: {0}")]
+    FileError(#[from] std::io::Error),
+    #[error("failed to parse SMT-LIB input: {0}")]
+    VisitorError(#[from] concrete::Error),
+    #[error("missing required VMT attribute :{0}")]
+    MissingSystemComponent(&'static str),
+    #[error("VMT attribute :{0} is defined more than once")]
+    DuplicateSystemComponent(&'static str),
+    #[error("cyclic zero-argument define-fun involving {0}")]
+    CyclicDefinition(String),
 }
 
 impl VMTModel {
@@ -93,52 +107,100 @@ impl VMTModel {
     }
 
     pub fn checked_from(commands: Vec<Command>) -> Result<Self, VMTError> {
-        let number_of_commands = commands.len();
-        assert!(number_of_commands > 3, "Not enough commands for VMT model!");
-        let property_condition: Term =
-            get_transition_system_component(&commands[number_of_commands - 1], PROPERTY_ATTRIBUTE);
-        let transition_condition: Term = get_transition_system_component(
-            &commands[number_of_commands - 2],
-            TRANSITION_ATTRIBUTE,
-        );
-        let initial_condition: Term =
-            get_transition_system_component(&commands[number_of_commands - 3], INITIAL_ATTRIBUTE);
+        let mut define_fun_expander = DefineFunExpander::from_commands(&commands);
+        let trailing_assert_true_start = commands
+            .iter()
+            .rposition(|command| !is_assert_true(command))
+            .map_or(0, |index| index + 1);
+        let mut info = vec![];
         let mut variable_commands: HashMap<String, Command> = HashMap::new();
         let mut sorts: Vec<Command> = vec![];
         let mut variable_relationships = vec![];
         let mut function_definitions = vec![];
-        for (i, command) in commands.iter().enumerate() {
-            if i < number_of_commands - 3 {
-                // Check whether a variable should be action, state, or local
-                match command {
-                    Command::DeclareFun {
-                        symbol,
-                        parameters,
-                        sort: _,
-                    } => {
-                        if parameters.is_empty() {
-                            variable_commands.insert(symbol.0.clone(), command.clone());
-                        } else {
-                            function_definitions.push(command.clone());
-                        }
+        let mut initial_condition = None;
+        let mut transition_condition = None;
+        let mut property_condition = None;
+
+        for (index, command) in commands.iter().enumerate() {
+            if index >= trailing_assert_true_start {
+                continue;
+            }
+
+            let mut is_system_component = false;
+            for (attribute, component) in [
+                (INITIAL_ATTRIBUTE, &mut initial_condition),
+                (TRANSITION_ATTRIBUTE, &mut transition_condition),
+                (PROPERTY_ATTRIBUTE, &mut property_condition),
+            ] {
+                if let Some(term) = get_transition_system_component(command, attribute) {
+                    let term = define_fun_expander.expand(term)?;
+                    if component.replace(term).is_some() {
+                        return Err(VMTError::DuplicateSystemComponent(attribute));
                     }
-                    Command::DefineFun { sig: _, term: _ } => {
-                        variable_relationships.push(command);
-                    }
-                    Command::DeclareSort {
-                        symbol: _,
-                        arity: _,
-                    } => {
-                        sorts.push(command.clone());
-                    }
-                    _ => return Err(VMTError::UnknownCommand(command.to_string())),
+                    is_system_component = true;
                 }
             }
+
+            if is_system_component {
+                continue;
+            }
+
+            // Check whether a variable should be action, state, or local.
+            match command {
+                Command::SetInfo { .. } => {
+                    info.push(command.clone());
+                }
+                Command::DeclareFun {
+                    symbol,
+                    parameters,
+                    sort: _,
+                } => {
+                    if parameters.is_empty() {
+                        variable_commands.insert(symbol.0.clone(), command.clone());
+                    } else {
+                        function_definitions.push(command.clone());
+                    }
+                }
+                Command::DefineFun { sig, term }
+                    if ["next", "action", "axiom"]
+                        .iter()
+                        .any(|attribute| command_has_attribute_string(command, attribute)) =>
+                {
+                    variable_relationships.push(Command::DefineFun {
+                        sig: sig.clone(),
+                        term: define_fun_expander.expand(term.clone())?,
+                    });
+                }
+                Command::DefineFun { sig, term } => {
+                    if !sig.parameters.is_empty() {
+                        function_definitions.push(Command::DefineFun {
+                            sig: sig.clone(),
+                            term: term.clone(),
+                        });
+                    }
+                }
+                Command::DeclareSort {
+                    symbol: _,
+                    arity: _,
+                } => {
+                    sorts.push(command.clone());
+                }
+                _ => return Err(VMTError::UnknownCommand(command.to_string())),
+            }
         }
+
+        let initial_condition =
+            initial_condition.ok_or(VMTError::MissingSystemComponent(INITIAL_ATTRIBUTE))?;
+        let transition_condition =
+            transition_condition.ok_or(VMTError::MissingSystemComponent(TRANSITION_ATTRIBUTE))?;
+        let property_condition =
+            property_condition.ok_or(VMTError::MissingSystemComponent(PROPERTY_ATTRIBUTE))?;
+
         let (state_variables, actions, axioms) =
             get_variables_actions_and_axioms(variable_relationships, variable_commands);
 
         Ok(VMTModel {
+            info,
             sorts,
             function_definitions,
             state_variables,
@@ -317,7 +379,8 @@ impl VMTModel {
     }
 
     pub fn as_commands(&self) -> Vec<Command> {
-        let mut commands = self.sorts.clone();
+        let mut commands = self.info.clone();
+        commands.extend(self.sorts.clone());
         commands.extend(self.function_definitions.clone());
         for variable in self.state_variables.clone() {
             commands.extend(variable.as_commands());
@@ -489,14 +552,171 @@ impl VMTModel {
         self.function_definitions.clone()
     }
 
+    pub fn get_info(&self) -> Vec<Command> {
+        self.info.clone()
+    }
+
     pub fn get_sorts(&self) -> Vec<Command> {
         self.sorts.clone()
     }
 }
 
+#[cfg(test)]
 mod test {
     #[allow(unused_imports)]
     use super::*;
+
+    fn parse_vmt(input: &[u8]) -> Result<VMTModel, VMTError> {
+        let commands = CommandStream::new(input, SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, concrete::Error>>()?;
+        VMTModel::checked_from(commands)
+    }
+
+    #[test]
+    fn finds_system_components_among_additional_definitions() {
+        let input = br#"
+            (set-info :source |parser regression test|)
+            (set-info :category "crafted")
+            (declare-fun x () Int)
+            (define-fun x.next.relationship () Int (! x :next x.next))
+            (declare-fun x.next () Int)
+            (define-fun helper.before () Int (+ x 1))
+            (define-fun init () Bool (! (= x.next.relationship 0) :init true))
+            (define-fun helper.middle () Bool (= x.next x.next.relationship))
+            (define-fun helper.after () Bool (>= x.next.relationship 0))
+            (define-fun property () Bool (! helper.after :invar-property 0))
+            (define-fun transition () Bool (! helper.middle :trans true))
+            (assert true)
+            (assert true)
+        "#;
+
+        let model = parse_vmt(input).expect("VMT components should be found by attribute");
+
+        assert_eq!(model.get_info().len(), 2);
+        assert_eq!(
+            model
+                .as_commands()
+                .iter()
+                .take(2)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            vec![
+                "(set-info :source |parser regression test|)",
+                "(set-info :category \"crafted\")",
+            ]
+        );
+        assert!(model.get_function_definitions().is_empty());
+        assert_eq!(model.get_all_current_variable_names(), vec!["x"]);
+        assert_eq!(
+            model.get_initial_condition_for_yardbird().to_string(),
+            "(= x 0)"
+        );
+        assert_eq!(model.get_property_for_yardbird().to_string(), "(>= x 0)");
+        assert_eq!(
+            model.get_trans_condition_for_yardbird().to_string(),
+            "(= x.next x)"
+        );
+        assert_eq!(
+            model
+                .as_commands()
+                .iter()
+                .filter(|command| command.to_string() == "(declare-fun x.next () Int)")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn implicitly_declares_an_undeclared_next_state_variable() {
+        let input = br#"
+            (declare-fun x () Int)
+            (define-fun x.next.relationship () Int (! x :next x.next))
+            (define-fun init () Bool (! (= x 0) :init true))
+            (define-fun transition () Bool (! (= x.next x) :trans true))
+            (define-fun property () Bool (! (>= x 0) :invar-property 0))
+        "#;
+
+        let model = parse_vmt(input).expect("the next-state declaration should be inferred");
+
+        assert_eq!(
+            model.get_next_to_current_varible_names(),
+            HashMap::from([("x.next".to_string(), "x".to_string())])
+        );
+        assert!(model
+            .as_commands()
+            .iter()
+            .any(|command| command.to_string() == "(declare-fun x.next () Int)"));
+    }
+
+    #[test]
+    fn reports_a_missing_system_component() {
+        let input = br#"
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun helper () Bool true)
+        "#;
+
+        assert!(matches!(
+            parse_vmt(input),
+            Err(VMTError::MissingSystemComponent("invar-property"))
+        ));
+    }
+
+    #[test]
+    fn reports_a_duplicate_system_component() {
+        let input = br#"
+            (define-fun init.one () Bool (! true :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+            (define-fun init.two () Bool (! false :init true))
+        "#;
+
+        assert!(matches!(
+            parse_vmt(input),
+            Err(VMTError::DuplicateSystemComponent("init"))
+        ));
+    }
+
+    #[test]
+    fn reports_cyclic_zero_argument_definitions() {
+        let input = br#"
+            (define-fun left () Int right)
+            (define-fun right () Int left)
+            (define-fun init () Bool (! (= left 0) :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+        "#;
+
+        assert!(matches!(
+            parse_vmt(input),
+            Err(VMTError::CyclicDefinition(name)) if name == "left"
+        ));
+    }
+
+    #[test]
+    fn rejects_nontrailing_or_meaningful_assertions() {
+        let nontrailing = br#"
+            (assert true)
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+        "#;
+        let meaningful = br#"
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+            (assert false)
+        "#;
+
+        assert!(matches!(
+            parse_vmt(nontrailing),
+            Err(VMTError::UnknownCommand(_))
+        ));
+        assert!(matches!(
+            parse_vmt(meaningful),
+            Err(VMTError::UnknownCommand(_))
+        ));
+    }
 
     #[test]
     fn test_double_abstract() {

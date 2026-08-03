@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 use crate::concrete::{Command, Identifier, QualIdentifier, Symbol, Term};
 
@@ -49,13 +49,13 @@ pub fn get_and_terms(term: Box<Term>) -> Vec<Term> {
 }
 
 pub fn get_variables_actions_and_axioms(
-    variable_relationships: Vec<&Command>,
-    variable_commands: HashMap<String, Command>,
+    variable_relationships: Vec<Command>,
+    mut variable_commands: HashMap<String, Command>,
 ) -> (Vec<Variable>, Vec<Action>, Vec<Axiom>) {
     let mut state_variables: Vec<Variable> = vec![];
     let mut actions: Vec<Action> = vec![];
     let mut axioms: Vec<Axiom> = vec![];
-    for variable_relationship in variable_relationships {
+    for variable_relationship in &variable_relationships {
         match variable_relationship {
             Command::DefineFun { sig: _, term } => match term {
                 Term::Attributes { term, attributes } => {
@@ -67,9 +67,10 @@ pub fn get_variables_actions_and_axioms(
                             scrub_variable_name(term.to_string()),
                             &variable_commands,
                         );
-                        let new_variable_command = get_variable_command(
+                        let new_variable_command = get_or_create_next_variable_command(
                             scrub_variable_name(value.to_string()),
-                            &variable_commands,
+                            &variable_command,
+                            &mut variable_commands,
                         );
                         state_variables.push(Variable {
                             current: variable_command,
@@ -107,6 +108,33 @@ pub fn get_variables_actions_and_axioms(
     (state_variables, actions, axioms)
 }
 
+fn get_or_create_next_variable_command(
+    variable_name: String,
+    current_variable_command: &Command,
+    variable_commands: &mut HashMap<String, Command>,
+) -> Command {
+    match variable_commands.entry(variable_name.clone()) {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => {
+            let Command::DeclareFun {
+                symbol: _,
+                parameters,
+                sort,
+            } = current_variable_command
+            else {
+                panic!("Current state variable must be declared with declare-fun")
+            };
+            let command = Command::DeclareFun {
+                symbol: Symbol(variable_name),
+                parameters: parameters.clone(),
+                sort: sort.clone(),
+            };
+            entry.insert(command.clone());
+            command
+        }
+    }
+}
+
 pub fn scrub_variable_name(variable_name: String) -> String {
     if variable_name.starts_with("|") && variable_name.ends_with("|") {
         let mut chars = variable_name.chars();
@@ -131,31 +159,18 @@ pub fn get_variable_command(
     }
 }
 
-pub fn get_transition_system_component(command: &Command, attribute: &str) -> Term {
-    if command_has_attribute_string(command, attribute) {
-        match command {
-            Command::DefineFun { sig: _, term } => match term {
-                Term::Attributes { term, attributes } => {
-                    if attributes[0].0 .0 != attribute {
-                        panic!(
-                            "Ill-formed system component: {}.\nShould have {} as attribute.",
-                            command, attribute
-                        );
-                    }
-                    Term::Attributes {
-                        term: term.clone(),
-                        attributes: attributes.clone(),
-                    }
-                }
-                _ => panic!("{}: Must have attribute.", attribute),
-            },
-            _ => panic!("{}: Command must be define-fun", attribute),
+pub fn get_transition_system_component(command: &Command, attribute: &str) -> Option<Term> {
+    match command {
+        Command::DefineFun {
+            sig: _,
+            term: Term::Attributes { term, attributes },
+        } if attributes.iter().any(|(keyword, _)| keyword.0 == attribute) => {
+            Some(Term::Attributes {
+                term: term.clone(),
+                attributes: attributes.clone(),
+            })
         }
-    } else {
-        panic!(
-            "Initial, transition, and property commands must be the final three commands in the file.\nIll-formed system component: {}.\nShould have {} as attribute.",
-            command, attribute
-        );
+        _ => None,
     }
 }
 
@@ -168,11 +183,7 @@ pub fn command_has_attribute_string(command: &Command, attribute: &str) -> bool 
                     term: _,
                     attributes,
                 },
-        } => {
-            assert!(attributes.len() == 1);
-            let keyword = &attributes[0].0 .0;
-            keyword == attribute
-        }
+        } => attributes.iter().any(|(keyword, _)| keyword.0 == attribute),
         _ => false,
     }
 }
