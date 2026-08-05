@@ -317,7 +317,7 @@ struct UnsatEventTracker {
 impl UnsatEventTracker {
     fn record_vmt_event(
         &mut self,
-        smt_problem: &crate::smt_problem::SMTProblem,
+        smt_problem: &crate::vmt_bmc_session::VmtBmcSession,
         bmc_depth: u16,
         global_refinement_step: u32,
         track_instantiations: bool,
@@ -432,7 +432,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         let profiling = profiler.is_some();
         let driver_start = Instant::now();
 
-        let mut smt_problem = crate::smt_problem::SMTProblem::new(
+        let mut smt_problem = crate::vmt_bmc_session::VmtBmcSession::new(
             &self.vmt_model,
             &strat,
             self.solver_backend,
@@ -469,7 +469,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                     record.record_timing("strategy_setup", setup_start.elapsed());
                 }
                 let check_start = Instant::now();
-                let check_result = smt_problem.check();
+                let check_result = smt_problem.check_property();
                 if let Some(record) = &mut driver_record {
                     record.record_timing("check", check_start.elapsed());
                     for (stage, secs) in smt_problem.take_last_check_profile() {
@@ -649,7 +649,7 @@ impl<'ctx, S> Driver<'ctx, S> {
     /// Build UnsatCoreInfo from the SMT problem if tracking is enabled
     fn build_unsat_core_info(
         &self,
-        smt_problem: &crate::smt_problem::SMTProblem,
+        smt_problem: &crate::vmt_bmc_session::VmtBmcSession,
     ) -> Option<UnsatCoreInfo> {
         if !self.track_instantiations {
             return None;
@@ -678,7 +678,7 @@ impl<'ctx, S> Driver<'ctx, S> {
     /// Each record represents a single indexed instantiation added to the solver.
     fn build_indexed_instantiation_records(
         &self,
-        smt_problem: &crate::smt_problem::SMTProblem,
+        smt_problem: &crate::vmt_bmc_session::VmtBmcSession,
     ) -> Vec<crate::training::IndexedInstantiationRecord> {
         if !self.track_instantiations {
             return vec![];

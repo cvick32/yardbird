@@ -12,9 +12,9 @@ yardbird/                       # Root workspace
     main.rs                     # Entry point: mode dispatch (VMT vs SMTLIB)
     lib.rs                      # Library root, CLI options, strategy builders
     driver.rs                   # CEGAR loop orchestrator (check_strategy)
-    smt_problem.rs              # VMT temporal system solver (BMC unrolling)
+    vmt_bmc_session.rs          # VMT temporal system solver (BMC unrolling)
     smtlib_problem.rs           # SMTLIB problem parser + simple solver
-    smtlib_smt_problem.rs       # Adapter: SMTLIB -> SolverInterface
+    smtlib_refinement_session.rs # Adapter: SMTLIB -> SolverInterface
     solver_interface.rs         # Trait unifying SMT/SMTLIB problem access
     theory_support.rs           # TheorySupport trait + Array/List impls
     z3_var_context.rs           # SMT term -> Z3 AST conversion
@@ -147,8 +147,8 @@ Key options:
 ```
 main()
   ├─ .smt2 extension -> run_smtlib_mode()
-  │   ├─ Simple mode (Concrete + BmcCost) -> SMTLIBSolver::execute()
-  │   └─ Strategy mode -> SMTLIBSolver::execute_with_strategy()
+  │   ├─ Simple mode (Concrete + BmcCost) -> SmtlibCommandExecutor::execute()
+  │   └─ Strategy mode -> SmtlibRefinementRunner::execute()
   └─ .vmt extension -> run_vmt_mode()
       ├─ Theory::Array  -> Driver::check_strategy(build_array_strategy())
       ├─ Theory::List   -> Driver::check_strategy(build_list_strategy())
@@ -160,7 +160,7 @@ main()
 ```
 check_strategy(target_depth, strategy):
   model = strategy.configure_model(model)    // abstract array ops
-  smt_problem = SMTProblem::new(model, strategy)
+  smt_problem = VmtBmcSession::new(model, strategy)
   for depth in 0..target_depth:              // outer BMC loop
     for refinement_step in 0..250:           // inner refinement loop
       smt_problem.unroll(depth)
@@ -216,7 +216,7 @@ pub trait SolverInterface {
 }
 ```
 
-Implementations: **SMTProblem** (VMT temporal), **SMTLIBSMTProblem** (stateless SMTLIB)
+Implementations: **VmtBmcSession** (VMT temporal), **SmtlibRefinementSession** (stateless SMTLIB)
 
 ### TheorySupport (`src/theory_support.rs`)
 
@@ -407,12 +407,12 @@ All in `src/cost_functions/array/`:
 
 ## SMT Problem Handling
 
-### SMTProblem (VMT Mode) (`src/smt_problem.rs`)
+### VmtBmcSession (VMT Mode) (`src/vmt_bmc_session.rs`)
 
 Represents a temporal transition system for BMC:
 
 ```rust
-pub struct SMTProblem {
+pub struct VmtBmcSession {
     z3_var_context: Z3VarContext,          // term <-> Z3 mapping
     bmc_builder: BMCBuilder,              // time-step indexing
     init_assertion: Term,                  // initial state formula
@@ -438,7 +438,8 @@ Key operations:
 Parsed SMTLIB file:
 - `from_path()` - stream-parses with `CommandStream`, applies let-extraction
 - `abstract_array_theory()` - converts to uninterpreted functions
-- `SMTLIBSolver` - executes commands sequentially (assert, check-sat, push/pop)
+- `SmtlibCommandExecutor` - executes commands sequentially (assert, check-sat, push/pop)
+- `SmtlibRefinementRunner` - drives strategy setup and refinement around a stateless SMT-LIB session
 
 ### Z3VarContext (`src/z3_var_context.rs`)
 
@@ -618,9 +619,9 @@ cargo test -p smt2parser
 | Array axioms + saturation | `src/theories/array/array_axioms.rs` |
 | Conflict detection | `src/theories/array/array_conflict_scheduler.rs` |
 | Term extraction | `src/theories/array/array_term_extractor.rs` |
-| VMT solver (BMC) | `src/smt_problem.rs` |
+| VMT solver (BMC) | `src/vmt_bmc_session.rs` |
 | SMTLIB solver | `src/smtlib_problem.rs` |
-| SMTLIB adapter | `src/smtlib_smt_problem.rs` |
+| SMTLIB adapter | `src/smtlib_refinement_session.rs` |
 | Solver interface trait | `src/solver_interface.rs` |
 | Theory support trait | `src/theory_support.rs` |
 | Z3 term conversion | `src/z3_var_context.rs` |

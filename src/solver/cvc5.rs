@@ -709,12 +709,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
             self.solver.check_sat_assuming(&assumptions)
         };
         let check_result = SolverCheckResult::from_cvc5(&result);
-        self.unsat_core_cache =
-            if check_result == SolverCheckResult::Unsat && !self.tracked_labels.is_empty() {
-                self.current_unsat_core_labels()
-            } else {
-                vec![]
-            };
+        self.unsat_core_cache.clear();
         self.last_result = Some(check_result);
         self.model_captured = false;
         if check_result != SolverCheckResult::Sat {
@@ -742,6 +737,17 @@ impl YardbirdSolver for Cvc5SolverBackend {
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
         self.model_value_cache = values;
         self.model_captured = true;
+        Ok(())
+    }
+
+    fn capture_unsat_core(&mut self) -> anyhow::Result<()> {
+        self.unsat_core_cache = if self.last_result == Some(SolverCheckResult::Unsat)
+            && !self.tracked_labels.is_empty()
+        {
+            self.current_unsat_core_labels()
+        } else {
+            vec![]
+        };
         Ok(())
     }
 
@@ -1273,6 +1279,8 @@ mod tests {
 
         solver.push();
         assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
+        assert!(solver.get_unsat_core().unwrap().is_empty());
+        solver.capture_unsat_core().unwrap();
         solver.pop(1);
         let core = solver.get_unsat_core().unwrap();
         assert!(core.contains(&"positive_inst".to_string()));

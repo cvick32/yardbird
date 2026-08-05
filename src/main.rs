@@ -4,7 +4,7 @@ use std::{fs::File, io::Write, path::Path};
 use yardbird::{
     logger, model_from_options,
     profiling::ProfilingRunRecord,
-    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
+    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
     solver::SolverCapture,
     strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
     training::{reset_training_database, TrainingSession},
@@ -108,7 +108,7 @@ fn run_smtlib_with_strategy(
     let solver_capture = options.build_solver_capture();
     //let instantiation_strategy = options.build_instantiation_strategy();
 
-    let (result, abstracted_problem) = match SMTLIBSolver::execute_with_strategy(
+    let (result, abstracted_problem) = match SmtlibRefinementRunner::execute(
         problem,
         strategy,
         options.solver,
@@ -148,9 +148,12 @@ fn run_smtlib_with_strategy(
 /// Run SMTLIB in simple mode (no refinement)
 fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyhow::Result<()> {
     let solver_capture = options.build_solver_capture();
-    let mut solver =
-        SMTLIBSolver::new_with_backend(problem.get_logic(), options.solver, solver_capture.clone())
-            .with_profiler(options.build_profiler());
+    let mut solver = SmtlibCommandExecutor::new_with_backend(
+        problem.get_logic(),
+        options.solver,
+        solver_capture.clone(),
+    )
+    .with_profiler(options.build_profiler());
     solver.execute(problem)?;
     let profiling = solver.profiling();
     finish_solver_capture(solver_capture.as_ref(), &profiling)?;

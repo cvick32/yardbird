@@ -2,7 +2,7 @@ use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     model_from_options,
-    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
+    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
     strategies::{Abstract, ProofStrategy},
     Driver, SolverBackend, Strategy, YardbirdOptions,
 };
@@ -65,8 +65,9 @@ fn simple_incremental_smtlib_profiles_every_check() {
     options.profile = true;
     options.strategy = Strategy::Concrete;
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let mut solver = SMTLIBSolver::new_with_backend(problem.get_logic(), SolverBackend::Z3, None)
-        .with_profiler(options.build_profiler());
+    let mut solver =
+        SmtlibCommandExecutor::new_with_backend(problem.get_logic(), SolverBackend::Z3, None)
+            .with_profiler(options.build_profiler());
 
     solver.execute(&problem).unwrap();
     let profiling = solver.profiling();
@@ -96,7 +97,7 @@ fn strategy_smtlib_profiles_checks() {
         false,
     ));
 
-    let result = SMTLIBSolver::execute_with_strategy(
+    let result = SmtlibRefinementRunner::execute(
         &problem,
         strategy,
         SolverBackend::Z3,

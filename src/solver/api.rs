@@ -79,6 +79,15 @@ pub trait YardbirdSolver {
         Ok(())
     }
 
+    /// Acquire and preserve the UNSAT core from the latest check.
+    ///
+    /// Backends that expose cores lazily can use the default implementation.
+    /// Backends whose core becomes unavailable after a scope pop should cache
+    /// it here for the later read-only `get_unsat_core` call.
+    fn capture_unsat_core(&mut self) -> anyhow::Result<()> {
+        self.get_unsat_core().map(|_| ())
+    }
+
     fn has_model(&self) -> bool;
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn model_to_string(&self) -> anyhow::Result<String>;
@@ -86,6 +95,7 @@ pub trait YardbirdSolver {
     fn get_solver_statistics(&self) -> SolverStatistics;
     fn statistics_ref(&self) -> &SolverStatistics;
     fn get_reason_unknown(&self) -> Option<String>;
+    /// Read the core acquired for the most recent UNSAT check.
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>>;
     fn to_smt2_string(&self) -> anyhow::Result<String>;
 }

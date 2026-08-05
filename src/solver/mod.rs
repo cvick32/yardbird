@@ -1,5 +1,6 @@
 pub mod api;
 mod capture;
+pub(crate) mod check;
 #[cfg(feature = "cvc5-backend")]
 mod cvc5;
 mod z3;

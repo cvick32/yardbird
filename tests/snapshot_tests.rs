@@ -1,18 +1,18 @@
 use insta::assert_debug_snapshot;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
+    fs::{self, File},
     path::Path,
-    process::Command,
-    sync::mpsc::{self, RecvTimeoutError},
-    sync::Mutex,
+    process::{Command, Stdio},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use yardbird::{
     self,
     auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     model_from_options,
-    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
+    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
     strategies::{Abstract, ProofStrategy},
     Driver, SolverBackend, YardbirdOptions,
 };
@@ -24,22 +24,91 @@ enum BenchStatus {
     Panic,
 }
 
-fn run_with_timeout<F, T>(f: F, timeout: Duration) -> (BenchStatus, T)
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + Default + 'static,
-{
-    let (tx, rx) = mpsc::channel();
-    let _ = thread::spawn(move || {
-        let result = f();
-        if let Ok(()) = tx.send(result) {}
-    });
+const CHILD_MODE_ENV: &str = "YARDBIRD_SNAPSHOT_CHILD_MODE";
+const CHILD_INPUT_ENV: &str = "YARDBIRD_SNAPSHOT_CHILD_INPUT";
+const CHILD_OUTPUT_ENV: &str = "YARDBIRD_SNAPSHOT_CHILD_OUTPUT";
 
-    match rx.recv_timeout(timeout) {
-        Ok(insts) => (BenchStatus::Good, insts),
-        Err(RecvTimeoutError::Timeout) => (BenchStatus::Timeout, T::default()),
-        Err(RecvTimeoutError::Disconnected) => (BenchStatus::Panic, T::default()),
+fn run_in_child_process<T>(
+    mode: &str,
+    input: impl AsRef<Path>,
+    timeout: Duration,
+) -> (BenchStatus, T)
+where
+    T: DeserializeOwned + Default,
+{
+    let directory = tempfile::tempdir().expect("should create child-process result directory");
+    let result_path = directory.path().join("result.json");
+    let stdout_path = directory.path().join("stdout.log");
+    let stderr_path = directory.path().join("stderr.log");
+    let executable = std::env::current_exe().expect("should locate snapshot test executable");
+    let mut child = Command::new(executable)
+        .arg("snapshot_benchmark_child")
+        .arg("--exact")
+        .env(CHILD_MODE_ENV, mode)
+        .env(CHILD_INPUT_ENV, input.as_ref())
+        .env(CHILD_OUTPUT_ENV, &result_path)
+        .env("RUST_LOG", "off")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .stdout(Stdio::from(
+            File::create(&stdout_path).expect("should create child stdout log"),
+        ))
+        .stderr(Stdio::from(
+            File::create(&stderr_path).expect("should create child stderr log"),
+        ))
+        .spawn()
+        .expect("should start snapshot benchmark child");
+    let deadline = Instant::now() + timeout;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => {
+                return match fs::read(&result_path)
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                {
+                    Some(result) => (BenchStatus::Good, result),
+                    None => {
+                        report_child_failure("wrote no valid result", &stdout_path, &stderr_path);
+                        (BenchStatus::Panic, T::default())
+                    }
+                };
+            }
+            Ok(Some(status)) => {
+                report_child_failure(&format!("exited with {status}"), &stdout_path, &stderr_path);
+                return (BenchStatus::Panic, T::default());
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                report_child_failure(
+                    &format!("could not be polled: {error}"),
+                    &stdout_path,
+                    &stderr_path,
+                );
+                return (BenchStatus::Panic, T::default());
+            }
+        }
+
+        if Instant::now() >= deadline {
+            child
+                .kill()
+                .expect("timed-out snapshot benchmark child should be killable");
+            child
+                .wait()
+                .expect("timed-out snapshot benchmark child should be reaped");
+            return (BenchStatus::Timeout, T::default());
+        }
+        thread::sleep(Duration::from_millis(5));
     }
+}
+
+fn report_child_failure(reason: &str, stdout_path: &Path, stderr_path: &Path) {
+    let stdout = fs::read_to_string(stdout_path).unwrap_or_default();
+    let stderr = fs::read_to_string(stderr_path).unwrap_or_default();
+    eprintln!(
+        "snapshot benchmark child {reason}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+    );
 }
 
 #[allow(unused)]
@@ -51,7 +120,7 @@ struct BenchmarkResult {
 }
 
 #[allow(unused)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct Smt2StrategyOutcome {
     total_refinement_steps: u32,
     total_instantiations_added: u64,
@@ -88,7 +157,7 @@ struct Smt2StrategyResult {
 }
 
 #[allow(unused)]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct Smt2SimpleOutcome {
     results: Vec<String>,
 }
@@ -109,40 +178,13 @@ struct CliResult {
     stderr: String,
 }
 
-static SNAPSHOT_TEST_LOCK: Mutex<()> = Mutex::new(());
-
 fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
-    let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
-    let (status, used_instantiations) = run_with_timeout(
-        move || {
-            let mut cfg = z3::Config::new();
-            cfg.set_model_generation(true);
-
-            z3::with_z3_config(&cfg, move || {
-                let vmt_model = model_from_options(&options);
-                let instantiation_strategy = options.build_instantiation_strategy();
-                let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3);
-                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-                    10,
-                    false,
-                    (),
-                    AuxSynthesisConfig::default(),
-                    false,
-                ));
-                let res = driver.check_strategy(options.depth, strat).unwrap();
-                res.used_instances
-            })
-        },
-        Duration::from_secs(20),
-    );
-    let mut used_instantiations = used_instantiations
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    used_instantiations.sort();
+    let example_name = filename.as_ref().to_string_lossy().to_string();
+    let (status, used_instantiations) =
+        run_in_child_process("vmt-z3", filename.as_ref(), Duration::from_secs(20));
 
     BenchmarkResult {
-        example_name: filename.as_ref().to_string_lossy().to_string(),
+        example_name,
         status,
         used_instantiations,
     }
@@ -152,32 +194,16 @@ fn run_benchmark_with_solver(
     filename: impl AsRef<Path>,
     solver_backend: SolverBackend,
 ) -> BenchmarkResult {
-    let options = YardbirdOptions::from_filename(filename.as_ref().to_string_lossy().to_string());
-    let (status, used_instantiations) = run_with_timeout(
-        move || {
-            let vmt_model = model_from_options(&options);
-            let instantiation_strategy = options.build_instantiation_strategy();
-            let mut driver = Driver::new(vmt_model, instantiation_strategy, solver_backend);
-            let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-                10,
-                false,
-                (),
-                AuxSynthesisConfig::default(),
-                false,
-            ));
-            let res = driver.check_strategy(options.depth, strat).unwrap();
-            res.used_instances
-        },
-        Duration::from_secs(20),
-    );
-    let mut used_instantiations = used_instantiations
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    used_instantiations.sort();
+    let example_name = filename.as_ref().to_string_lossy().to_string();
+    let mode = match solver_backend {
+        SolverBackend::Z3 => "vmt-z3",
+        SolverBackend::Cvc5 => "vmt-cvc5",
+    };
+    let (status, used_instantiations) =
+        run_in_child_process(mode, filename.as_ref(), Duration::from_secs(20));
 
     BenchmarkResult {
-        example_name: filename.as_ref().to_string_lossy().to_string(),
+        example_name,
         status,
         used_instantiations,
     }
@@ -185,36 +211,8 @@ fn run_benchmark_with_solver(
 
 fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult {
     let example_name = filename.as_ref().to_string_lossy().to_string();
-    let path = example_name.clone();
-    let (status, outcome) = run_with_timeout(
-        move || {
-            let mut cfg = z3::Config::new();
-            cfg.set_model_generation(true);
-
-            z3::with_z3_config(&cfg, move || {
-                let problem = SMTLIBProblem::from_path(&path).unwrap();
-                let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-                    0,
-                    false,
-                    (),
-                    AuxSynthesisConfig::default(),
-                    false,
-                ));
-                let (result, _abstracted_problem) = SMTLIBSolver::execute_with_strategy(
-                    &problem,
-                    strat,
-                    SolverBackend::Z3,
-                    250,
-                    false,
-                    None,
-                    None,
-                )
-                .unwrap();
-                Smt2StrategyOutcome::from(result)
-            })
-        },
-        Duration::from_secs(20),
-    );
+    let (status, outcome) =
+        run_in_child_process("smt2-strategy", filename.as_ref(), Duration::from_secs(20));
 
     Smt2StrategyResult {
         example_name,
@@ -225,33 +223,138 @@ fn run_smt2_strategy_benchmark(filename: impl AsRef<Path>) -> Smt2StrategyResult
 
 fn run_smt2_simple_benchmark(filename: impl AsRef<Path>) -> Smt2SimpleResult {
     let example_name = filename.as_ref().to_string_lossy().to_string();
-    let path = example_name.clone();
-    let (status, outcome) = run_with_timeout(
-        move || {
-            let mut cfg = z3::Config::new();
-            cfg.set_model_generation(true);
-
-            z3::with_z3_config(&cfg, move || {
-                let problem = SMTLIBProblem::from_path(&path).unwrap();
-                let mut solver = SMTLIBSolver::new(problem.get_logic());
-                solver.execute(&problem).unwrap();
-                let results = solver
-                    .get_results()
-                    .iter()
-                    .map(|result| format!("{:?}@{}", result.result, result.command_index))
-                    .collect();
-
-                Smt2SimpleOutcome { results }
-            })
-        },
-        Duration::from_secs(20),
-    );
+    let (status, outcome) =
+        run_in_child_process("smt2-simple", filename.as_ref(), Duration::from_secs(20));
 
     Smt2SimpleResult {
         example_name,
         status,
         outcome,
     }
+}
+
+fn solve_vmt(filename: &Path, solver_backend: SolverBackend) -> Vec<String> {
+    let options = YardbirdOptions::from_filename(filename.to_string_lossy().to_string());
+    let vmt_model = model_from_options(&options);
+    let instantiation_strategy = options.build_instantiation_strategy();
+    let mut driver = Driver::new(vmt_model, instantiation_strategy, solver_backend);
+    let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+        10,
+        false,
+        (),
+        AuxSynthesisConfig::default(),
+        false,
+    ));
+    let result = driver.check_strategy(options.depth, strat).unwrap();
+    let mut used_instantiations = result
+        .used_instances
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    used_instantiations.sort();
+    used_instantiations
+}
+
+fn solve_vmt_with_z3(filename: &Path) -> Vec<String> {
+    let path = filename.to_path_buf();
+    let mut config = z3::Config::new();
+    config.set_model_generation(true);
+    z3::with_z3_config(&config, move || solve_vmt(&path, SolverBackend::Z3))
+}
+
+fn solve_smt2_strategy(filename: &Path) -> Smt2StrategyOutcome {
+    let path = filename.to_path_buf();
+    let mut config = z3::Config::new();
+    config.set_model_generation(true);
+
+    z3::with_z3_config(&config, move || {
+        let problem = SMTLIBProblem::from_path(&path).unwrap();
+        let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+            0,
+            false,
+            (),
+            AuxSynthesisConfig::default(),
+            false,
+        ));
+        let (result, _abstracted_problem) = SmtlibRefinementRunner::execute(
+            &problem,
+            strat,
+            SolverBackend::Z3,
+            250,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+        Smt2StrategyOutcome::from(result)
+    })
+}
+
+fn solve_smt2_simple(filename: &Path) -> Smt2SimpleOutcome {
+    let path = filename.to_path_buf();
+    let mut config = z3::Config::new();
+    config.set_model_generation(true);
+
+    z3::with_z3_config(&config, move || {
+        let problem = SMTLIBProblem::from_path(&path).unwrap();
+        let mut solver = SmtlibCommandExecutor::new(problem.get_logic());
+        solver.execute(&problem).unwrap();
+        let results = solver
+            .get_results()
+            .iter()
+            .map(|result| format!("{:?}@{}", result.result, result.command_index))
+            .collect();
+        Smt2SimpleOutcome { results }
+    })
+}
+
+fn write_child_result(path: &Path, result: &impl Serialize) {
+    let bytes = serde_json::to_vec(result).expect("child result should serialize");
+    fs::write(path, bytes).expect("child result should be written");
+}
+
+#[test]
+fn snapshot_benchmark_child() {
+    let Some(mode) = std::env::var_os(CHILD_MODE_ENV) else {
+        return;
+    };
+    let input = std::env::var_os(CHILD_INPUT_ENV)
+        .map(std::path::PathBuf::from)
+        .expect("snapshot child should have an input path");
+    let output = std::env::var_os(CHILD_OUTPUT_ENV)
+        .map(std::path::PathBuf::from)
+        .expect("snapshot child should have an output path");
+
+    match mode.to_string_lossy().as_ref() {
+        "vmt-z3" => write_child_result(&output, &solve_vmt_with_z3(&input)),
+        "vmt-cvc5" => write_child_result(&output, &solve_vmt(&input, SolverBackend::Cvc5)),
+        "smt2-strategy" => write_child_result(&output, &solve_smt2_strategy(&input)),
+        "smt2-simple" => write_child_result(&output, &solve_smt2_simple(&input)),
+        "timeout-sentinel" => {
+            fs::write(input.join("started"), b"").expect("sentinel should report startup");
+            thread::sleep(Duration::from_secs(5));
+            fs::write(input.join("survived"), b"").expect("sentinel should finish");
+            write_child_result(&output, &());
+        }
+        mode => panic!("unknown snapshot child mode {mode}"),
+    }
+}
+
+#[test]
+fn timed_out_benchmark_work_is_stopped() {
+    let directory = tempfile::tempdir().expect("should create sentinel directory");
+    let (status, ()): (BenchStatus, ()) =
+        run_in_child_process("timeout-sentinel", directory.path(), Duration::from_secs(1));
+
+    assert!(matches!(status, BenchStatus::Timeout));
+    assert!(
+        directory.path().join("started").exists(),
+        "sentinel child should start before the timeout"
+    );
+    assert!(
+        !directory.path().join("survived").exists(),
+        "timed-out benchmark process should not continue running"
+    );
 }
 
 fn run_yardbird_cli(args: &[&str]) -> CliResult {
@@ -281,9 +384,6 @@ macro_rules! create_array_snapshot_test {
     ($test:ident) => {
         #[test]
         fn $test() {
-            let _guard = SNAPSHOT_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let path = benchmark_path(stringify!($test));
             assert_debug_snapshot!(stringify!($test), run_benchmark(&path));
         }
@@ -292,9 +392,6 @@ macro_rules! create_array_snapshot_test {
 
 #[test]
 fn smt2_array_bitvec_simple_strategy() {
-    let _guard = SNAPSHOT_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     assert_debug_snapshot!(
         "smt2_array_bitvec_simple_strategy",
         run_smt2_strategy_benchmark("examples/smt2/array_bitvec_simple.smt2")
@@ -303,9 +400,6 @@ fn smt2_array_bitvec_simple_strategy() {
 
 #[test]
 fn cvc5_vmt_array_copy() {
-    let _guard = SNAPSHOT_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     assert_debug_snapshot!(
         "cvc5_vmt_array_copy",
         run_benchmark_with_solver("examples/array/array_copy.vmt", SolverBackend::Cvc5)
@@ -314,9 +408,6 @@ fn cvc5_vmt_array_copy() {
 
 #[test]
 fn smt2_array_bitvec_minimal_simple() {
-    let _guard = SNAPSHOT_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     assert_debug_snapshot!(
         "smt2_array_bitvec_minimal_simple",
         run_smt2_simple_benchmark("examples/smt2/array_bitvec_minimal.smt2")
@@ -325,9 +416,6 @@ fn smt2_array_bitvec_minimal_simple() {
 
 #[test]
 fn smt2_auxiliary_synthesis_trigger_rejected() {
-    let _guard = SNAPSHOT_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     assert_debug_snapshot!(
         "smt2_auxiliary_synthesis_trigger_rejected",
         run_yardbird_cli(&[

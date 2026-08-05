@@ -1,4 +1,4 @@
-use crate::{interpolant::Interpolant, smt_problem::SMTProblem};
+use crate::{interpolant::Interpolant, vmt_bmc_session::VmtBmcSession};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use smt2parser::{get_term_from_term_string, let_extract::LetExtract};
@@ -21,7 +21,7 @@ pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
     }
 }
 
-pub fn run_smtinterpol(smt_problem: &SMTProblem) -> Result<Vec<Interpolant>, Error> {
+pub fn run_smtinterpol(smt_problem: &VmtBmcSession) -> Result<Vec<Interpolant>, Error> {
     let interpolant_problem = smt_problem.to_smtinterpol();
     let mut temp_file = tempfile::NamedTempFile::new()?;
     writeln!(temp_file, "{interpolant_problem}")?;

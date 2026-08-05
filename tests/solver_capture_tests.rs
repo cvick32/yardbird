@@ -6,7 +6,7 @@ use yardbird::{
     cost_functions::array::ArrayBMCCost,
     model_from_options,
     profiling::ProfilingRunRecord,
-    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
+    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
     solver::{SolverCheckResult, SolverSessionIndex, SolverSessionManifest},
     strategies::{Abstract, ProofStrategy},
     Driver, SolverBackend, Strategy, YardbirdOptions,
@@ -103,8 +103,11 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
     assert_valid_check_boundaries(&transcript, &index);
 
     let replay_problem = SMTLIBProblem::from_path(&artifacts.transcript).unwrap();
-    let mut replay =
-        SMTLIBSolver::new_with_backend(replay_problem.get_logic(), SolverBackend::Z3, None);
+    let mut replay = SmtlibCommandExecutor::new_with_backend(
+        replay_problem.get_logic(),
+        SolverBackend::Z3,
+        None,
+    );
     replay.execute(&replay_problem).unwrap();
     assert_eq!(replay.get_results().len(), 1);
     assert_eq!(replay.get_results()[0].result, SolverCheckResult::Unsat);
@@ -185,8 +188,11 @@ fn abstract_capture_declares_each_uninterpreted_function_once() {
     );
 
     let replay_problem = SMTLIBProblem::from_path(&artifacts.transcript).unwrap();
-    let mut replay =
-        SMTLIBSolver::new_with_backend(replay_problem.get_logic(), SolverBackend::Z3, None);
+    let mut replay = SmtlibCommandExecutor::new_with_backend(
+        replay_problem.get_logic(),
+        SolverBackend::Z3,
+        None,
+    );
     replay.execute(&replay_problem).unwrap();
     assert_eq!(replay.get_results()[0].result, SolverCheckResult::Unsat);
 }
@@ -201,7 +207,7 @@ fn incremental_capture_preserves_every_check_and_ordered_result() {
     options.strategy = Strategy::Concrete;
     let capture = options.build_solver_capture().unwrap();
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let mut solver = SMTLIBSolver::new_with_backend(
+    let mut solver = SmtlibCommandExecutor::new_with_backend(
         problem.get_logic(),
         SolverBackend::Z3,
         Some(capture.clone()),
@@ -324,7 +330,7 @@ fn multi_refinement_capture_preserves_added_instances_between_checks() {
         false,
     ));
 
-    let result = SMTLIBSolver::execute_with_strategy(
+    let result = SmtlibRefinementRunner::execute(
         &problem,
         strategy,
         SolverBackend::Z3,
@@ -418,7 +424,8 @@ fn setup_slice<'a>(transcript: &'a str, index: &SolverSessionIndex, check_id: us
 
 fn replay_with_yardbird(path: &std::path::Path) -> Vec<SolverCheckResult> {
     let problem = SMTLIBProblem::from_path(path).unwrap();
-    let mut replay = SMTLIBSolver::new_with_backend(problem.get_logic(), SolverBackend::Z3, None);
+    let mut replay =
+        SmtlibCommandExecutor::new_with_backend(problem.get_logic(), SolverBackend::Z3, None);
     replay.execute(&problem).unwrap();
     replay
         .get_results()

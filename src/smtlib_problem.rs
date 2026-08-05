@@ -4,12 +4,12 @@ use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
-use crate::profiling::{
-    Profiler, ProfilingRunRecord, SolverCheckContext, SolverCheckPhase, SolverCheckTimer,
-    SolverProfileMetadata,
+use crate::profiling::{Profiler, ProfilingRunRecord, SolverCheckContext, SolverProfileMetadata};
+use crate::smtlib_refinement_session::SmtlibRefinementSession;
+use crate::solver::{
+    check::{run_solver_check, SolverCheckRequest},
+    new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
 };
-use crate::smtlib_smt_problem::SMTLIBSMTProblem;
-use crate::solver::{new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver};
 use crate::strategies::{ProofAction, ProofStrategy};
 use crate::training::UnsatEventRecord;
 use crate::utils::SolverStatistics;
@@ -232,7 +232,7 @@ pub struct CheckSatResult {
 
 /// Solver for executing SMTLIB problems
 /// Handles incremental solving with push/pop and multiple check-sat commands
-pub struct SMTLIBSolver {
+pub struct SmtlibCommandExecutor {
     solver: Box<dyn YardbirdSolver>,
     logic: String,
     check_sat_results: Vec<CheckSatResult>,
@@ -241,7 +241,7 @@ pub struct SMTLIBSolver {
     assertion_scope_stack: Vec<u64>,
 }
 
-impl SMTLIBSolver {
+impl SmtlibCommandExecutor {
     /// Create a new SMTLIB solver with the given logic, defaulting to Z3.
     pub fn new(logic: Option<String>) -> Self {
         Self::new_with_backend(logic, SolverBackend::Z3, None)
@@ -254,7 +254,7 @@ impl SMTLIBSolver {
         capture: Option<SolverCapture>,
     ) -> Self {
         let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
-        SMTLIBSolver {
+        SmtlibCommandExecutor {
             solver: new_solver_backend(backend, logic.as_str(), capture),
             logic,
             check_sat_results: Vec::new(),
@@ -284,7 +284,7 @@ impl SMTLIBSolver {
                 self.handle_assert(term)?;
             }
             Command::CheckSat => {
-                let result = self.handle_check_sat(command_index);
+                let result = self.run_check_sat_command(command_index);
                 self.solver.complete_check();
                 self.check_sat_results.push(result);
             }
@@ -332,28 +332,23 @@ impl SMTLIBSolver {
         Ok(())
     }
 
-    /// Handle a check-sat command
-    fn handle_check_sat(&mut self, command_index: usize) -> CheckSatResult {
-        let mut timer = SolverCheckTimer::new(self.profiler.is_some(), || {
-            self.solver.get_solver_statistics()
-        });
-        let (result, raw_check_elapsed) = timer.measure_raw(|| self.solver.check_sat());
+    /// Execute a direct SMT-LIB `check-sat` command.
+    ///
+    /// This command-stream path reports the result without acquiring a model
+    /// or an UNSAT core. Later SMT-LIB commands may request those separately.
+    fn run_check_sat_command(&mut self, command_index: usize) -> CheckSatResult {
+        let outcome = run_solver_check(
+            self.solver.as_mut(),
+            SolverCheckRequest {
+                profiling_enabled: self.profiler.is_some(),
+                assertion_count: self.active_assertion_count,
+                temporary_negated_property: None,
+                model_terms: None,
+                capture_unsat_core: false,
+            },
+        );
 
-        timer.measure(SolverCheckPhase::ProofCoreAccess, || {
-            let _ = self.solver.inspect_last_proof();
-        });
-        let reason_unknown = (result == SolverCheckResult::Unknown)
-            .then(|| self.solver.get_reason_unknown())
-            .flatten();
-
-        timer.measure(SolverCheckPhase::StatisticsCollection, || {
-            self.solver.record_statistics(raw_check_elapsed);
-        });
-        let measurement = timer.finish(result, reason_unknown, self.active_assertion_count, || {
-            self.solver.get_solver_statistics()
-        });
-
-        if let Some(measurement) = measurement {
+        if let Some(measurement) = outcome.measurement {
             let refinement_step = self.check_sat_results.len().try_into().unwrap_or(u32::MAX);
             let context = SolverCheckContext {
                 depth: 0,
@@ -374,7 +369,7 @@ impl SMTLIBSolver {
         }
 
         CheckSatResult {
-            result,
+            result: outcome.result,
             command_index,
             model: None, // Can extend later to capture models
         }
@@ -408,7 +403,7 @@ impl SMTLIBSolver {
             self.active_assertion_count += 1;
         }
 
-        let result = self.handle_check_sat(command_index);
+        let result = self.run_check_sat_command(command_index);
         self.solver.pop(1);
         self.active_assertion_count = self.assertion_scope_stack.pop().unwrap_or_default();
         Ok(result)
@@ -434,7 +429,14 @@ impl SMTLIBSolver {
     fn solver_statistics(&self) -> &SolverStatistics {
         self.solver.statistics_ref()
     }
+}
 
+/// Orchestrates strategy setup and refinement around a
+/// [`SmtlibRefinementSession`]. This is separate from direct command-stream
+/// execution because its SAT results feed Yardbird's refinement loop.
+pub struct SmtlibRefinementRunner;
+
+impl SmtlibRefinementRunner {
     fn annotate_abstract_instantiation_core_membership(result: &mut ProofLoopResult) {
         let core_ids: std::collections::HashSet<String> = result
             .indexed_instantiations
@@ -451,7 +453,7 @@ impl SMTLIBSolver {
     fn build_unsat_event(
         event_index: u32,
         command_index: u32,
-        smt_problem: &SMTLIBSMTProblem,
+        smt_problem: &SmtlibRefinementSession,
         previous_instantiation_count: u64,
         previous_stats: Option<&SolverStatistics>,
         track_instantiations: bool,
@@ -493,7 +495,7 @@ impl SMTLIBSolver {
     /// Execute with abstract/concrete strategy (refinement loop)
     /// This is the strategy-based solving mode with refinement
     #[allow(clippy::borrowed_box)]
-    pub fn execute_with_strategy<S>(
+    pub fn execute<S>(
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
@@ -528,7 +530,7 @@ impl SMTLIBSolver {
         );
 
         // 2. Create wrapper with array types for correct logic string
-        let mut smt_problem = SMTLIBSMTProblem::new_with_array_types(
+        let mut smt_problem = SmtlibRefinementSession::new_with_array_types(
             &working_problem,
             &strategy,
             solver_backend,
@@ -555,7 +557,7 @@ impl SMTLIBSolver {
 
             let mut state = strategy.setup(&smt_problem, 0)?;
 
-            let check_result = smt_problem.check();
+            let check_result = smt_problem.check_current_query();
             if let Some(profiler) = &mut profiler {
                 let measurement = smt_problem
                     .take_last_solver_check_profile()

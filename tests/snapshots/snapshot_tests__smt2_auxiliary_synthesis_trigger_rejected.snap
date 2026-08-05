@@ -7,5 +7,5 @@ CliResult {
         1,
     ),
     stdout: "",
-    stderr: "Error: SMT-LIB mode does not support --synthesis-trigger non-local yet; use --synthesis-trigger off until SMTLIBSMTProblem can install auxiliary specs",
+    stderr: "Error: SMT-LIB mode does not support --synthesis-trigger non-local yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
 }

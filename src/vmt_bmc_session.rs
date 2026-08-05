@@ -17,10 +17,11 @@ use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
     instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
     problem_context::ProblemContext,
-    profiling::{
-        SolverCheckMeasurement, SolverCheckPhase, SolverCheckTimer, SolverProfileMetadata,
+    profiling::{SolverCheckMeasurement, SolverProfileMetadata},
+    solver::{
+        check::{run_solver_check, SolverCheckRequest},
+        new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
     },
-    solver::{new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver},
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -45,7 +46,7 @@ impl NamedAssertion {
     }
 }
 
-pub struct SMTProblem {
+pub struct VmtBmcSession {
     bmc_builder: BMCBuilder,
     sorts: Vec<Command>,
     function_definitions: Vec<Command>,
@@ -74,9 +75,9 @@ pub struct SMTProblem {
     last_unroll_profile: BTreeMap<String, f64>,
 }
 
-impl std::fmt::Debug for SMTProblem {
+impl std::fmt::Debug for VmtBmcSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SMTProblem")
+        f.debug_struct("VmtBmcSession")
             .field("depth", &self.depth)
             .field(
                 "num_quantifiers_instantiated",
@@ -88,10 +89,10 @@ impl std::fmt::Debug for SMTProblem {
     }
 }
 
-impl Clone for SMTProblem {
+impl Clone for VmtBmcSession {
     fn clone(&self) -> Self {
-        // SMTProblem contains non-cloneable solver objects and models.
-        unimplemented!("SMTProblem::clone() is not implemented")
+        // VmtBmcSession contains non-cloneable solver objects and models.
+        unimplemented!("VmtBmcSession::clone() is not implemented")
     }
 }
 
@@ -130,7 +131,7 @@ fn format_named_assertions(assertions: &[NamedAssertion]) -> String {
 }
 
 #[allow(clippy::borrowed_box)]
-impl SMTProblem {
+impl VmtBmcSession {
     pub(crate) fn new<S>(
         vmt_model: &VMTModel,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
@@ -153,7 +154,7 @@ impl SMTProblem {
         ]);
         let solver = new_solver_backend(solver_backend, &logic, solver_capture);
 
-        let mut smt = SMTProblem {
+        let mut smt = VmtBmcSession {
             sorts: vmt_model.get_sorts(),
             function_definitions: vmt_model.get_function_definitions(),
             variable_definitions: vec![],
@@ -292,14 +293,6 @@ impl SMTProblem {
         }
         // Note: Instantiation handling at each depth is now delegated to
         // the instantiation strategy's on_loop hook, called from unroll()
-    }
-
-    fn push_property(&mut self) {
-        self.solver.push();
-        let prop = self.subterm_handler.get_property_assert();
-        self.solver
-            .assert_not_term(&prop)
-            .expect("solver should assert the negated property");
     }
 
     pub(crate) fn add_instantiation(
@@ -571,7 +564,7 @@ fn unique_command_lines(commands: &[Command]) -> String {
         .join("\n")
 }
 
-impl SMTProblem {
+impl VmtBmcSession {
     fn add_variable_declaration_at_current_depth(&mut self, variable: &Variable) {
         let bmc_variable = variable
             .current
@@ -666,61 +659,39 @@ impl SMTProblem {
     }
 }
 
-impl SMTProblem {
+impl VmtBmcSession {
     /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
     /// off of the solver. Keeping the invariant of the property never being on the solver until check
     /// time allows us to not worry about when to add instances and other facts to the solver.
     ///
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
-    pub(crate) fn check(&mut self) -> SolverCheckResult {
+    pub(crate) fn check_property(&mut self) -> SolverCheckResult {
         self.last_check_profile.clear();
         self.last_solver_check_profile = None;
         let assertion_count = (self.theory_axiom_assertions.len()
             + self.init_and_transition_assertions.len()
             + self.asserted_instantiation_terms.len()
             + 1) as u64;
-        let mut timer = SolverCheckTimer::new(self.collect_check_profiles, || {
-            self.solver.get_solver_statistics()
-        });
+        let property = self.subterm_handler.get_property_assert();
+        let model_terms = self
+            .subterm_handler
+            .get_all_subterms()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let outcome = run_solver_check(
+            self.solver.as_mut(),
+            SolverCheckRequest {
+                profiling_enabled: self.collect_check_profiles,
+                assertion_count,
+                temporary_negated_property: Some(&property),
+                model_terms: Some(&model_terms),
+                capture_unsat_core: self.track_instantiations,
+            },
+        );
 
-        // Push property back on top of the solver.
-        timer.measure(SolverCheckPhase::PropertyPush, || self.push_property());
-        let (sat_result, solver_elapsed) = timer.measure_raw(|| self.solver.check_sat());
-
-        if sat_result == SolverCheckResult::Sat {
-            timer.measure(SolverCheckPhase::ModelAcquisition, || {
-                let model_terms = self
-                    .subterm_handler
-                    .get_all_subterms()
-                    .into_iter()
-                    .cloned()
-                    .collect::<Vec<_>>();
-                self.solver
-                    .capture_model(&model_terms)
-                    .expect("solver should capture a model after SAT before property pop");
-            });
-        }
-
-        timer.measure(SolverCheckPhase::ProofCoreAccess, || {
-            let _ = self.solver.inspect_last_proof();
-            if self.track_instantiations && sat_result == SolverCheckResult::Unsat {
-                let _ = self.solver.get_unsat_core();
-            }
-        });
-        let reason_unknown = (sat_result == SolverCheckResult::Unknown)
-            .then(|| self.solver.get_reason_unknown())
-            .flatten();
-
-        // Popping property off.
-        timer.measure(SolverCheckPhase::PropertyPop, || self.solver.pop(1));
-        timer.measure(SolverCheckPhase::StatisticsCollection, || {
-            self.solver.record_statistics(solver_elapsed);
-        });
-
-        if let Some(measurement) = timer.finish(sat_result, reason_unknown, assertion_count, || {
-            self.solver.get_solver_statistics()
-        }) {
+        if let Some(measurement) = outcome.measurement {
             let timing = &measurement.timing_ns;
             self.last_check_profile.insert(
                 "check_push_property".to_string(),
@@ -733,7 +704,7 @@ impl SMTProblem {
                 nanos_to_secs(timing.model_acquisition),
             );
             self.last_check_profile.insert(
-                "check_inspect_last_proof".to_string(),
+                "check_proof_core_access".to_string(),
                 nanos_to_secs(timing.proof_core_access),
             );
             self.last_check_profile
@@ -750,7 +721,7 @@ impl SMTProblem {
         }
 
         self.solver.complete_check();
-        sat_result
+        outcome.result
     }
 
     pub(crate) fn unroll(&mut self, depth: u16) {
@@ -816,7 +787,7 @@ impl SMTProblem {
     }
 }
 
-impl ProblemContext for SMTProblem {
+impl ProblemContext for VmtBmcSession {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -958,7 +929,7 @@ mod tests {
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
-        let mut smt = SMTProblem::new(
+        let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
             SolverBackend::Z3,

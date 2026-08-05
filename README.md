@@ -275,7 +275,7 @@ in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`
   - `src/driver.rs` - Verification orchestration
   - `src/strategies/` - Proof strategies (abstract, concrete)
   - `src/cost_functions/` - Heuristics for term selection
-  - `src/z3_ext.rs`, `src/smt_problem.rs` - Z3 integration
+  - `src/z3_ext.rs`, `src/vmt_bmc_session.rs` - Z3 integration and VMT BMC session state
 
 - **Parsing Library**: `smt2parser/` - VMT and SMT2 parsing with array abstraction
 

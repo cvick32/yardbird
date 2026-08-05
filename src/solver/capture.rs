@@ -506,6 +506,10 @@ impl YardbirdSolver for CapturingSolver {
         self.inner.inspect_last_proof()
     }
 
+    fn capture_unsat_core(&mut self) -> anyhow::Result<()> {
+        self.inner.capture_unsat_core()
+    }
+
     fn has_model(&self) -> bool {
         self.inner.has_model()
     }

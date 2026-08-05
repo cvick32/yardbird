@@ -37,9 +37,8 @@ pub mod logger;
 pub mod problem_context;
 pub mod profiling;
 mod proof_tree;
-pub mod smt_problem;
 pub mod smtlib_problem;
-pub mod smtlib_smt_problem;
+pub mod smtlib_refinement_session;
 pub mod solver;
 pub mod strategies;
 mod subterm_handler;
@@ -47,6 +46,7 @@ pub mod theories;
 pub mod theory_support;
 pub mod training;
 mod utils;
+pub mod vmt_bmc_session;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -267,7 +267,7 @@ impl YardbirdOptions {
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
         if self.synthesis_trigger != SynthesisTrigger::Off {
             anyhow::bail!(
-                "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until SMTLIBSMTProblem can install auxiliary specs",
+                "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
                 self.synthesis_trigger
             );
         }
