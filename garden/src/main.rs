@@ -475,6 +475,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                         println!("  using strat: {strat:?}");
                         run_single(
                             YardbirdOptions {
+                                command: None,
                                 filename: Some(filename.clone()),
                                 depth,
                                 print_file: false,
@@ -609,6 +610,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                 println!("  [{}/{}] {filename}", idx + 1, benchmarks.len());
                 let result = run_single(
                     YardbirdOptions {
+                        command: None,
                         filename: Some(filename.clone()),
                         depth: run.depth,
                         print_file: false,
