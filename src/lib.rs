@@ -1,9 +1,9 @@
 #![warn(clippy::print_stdout)]
 
-use std::{fmt::Display, fs::File, io::Write};
+use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
 
 use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
@@ -26,6 +26,7 @@ use crate::{
     training::LogisticRegressionModel,
 };
 
+pub mod audit;
 pub mod auxiliary_synthesis;
 pub mod cost_functions;
 mod driver;
@@ -51,6 +52,10 @@ mod utils;
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
 pub struct YardbirdOptions {
+    /// Run a repository-level operation instead of solving one input file.
+    #[command(subcommand)]
+    pub command: Option<YardbirdCommand>,
+
     /// Name of the VMT file.
     #[arg(short, long)]
     pub filename: Option<String>,
@@ -166,6 +171,7 @@ pub struct YardbirdOptions {
 impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
+            command: None,
             filename: None,
             depth: 10,
             print_file: false,
@@ -196,6 +202,34 @@ impl Default for YardbirdOptions {
             synthesis_repeated_pattern_threshold: None,
         }
     }
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum YardbirdCommand {
+    /// Run every VMT benchmark with concrete and abstract strategies in isolated subprocesses.
+    Audit {
+        /// File or directory containing VMT benchmarks.
+        input: PathBuf,
+
+        /// BMC depth used for every Yardbird run.
+        #[arg(long, default_value_t = 1)]
+        depth: u16,
+
+        /// Hard timeout for each strategy/benchmark pair.
+        #[arg(long, default_value_t = 1)]
+        timeout_seconds: u64,
+
+        /// Number of Yardbird subprocesses to run concurrently.
+        #[arg(long, default_value_t = 4)]
+        jobs: usize,
+    },
+
+    /// Internal parser probe used by the audit subprocess runner.
+    #[command(name = "__audit-parse", hide = true)]
+    InternalAuditParse {
+        /// Single VMT file to parse.
+        input: PathBuf,
+    },
 }
 
 impl YardbirdOptions {

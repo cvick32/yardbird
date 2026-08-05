@@ -1,12 +1,13 @@
 use clap::Parser;
 use log::info;
-use std::{fs::File, io::Write, path::Path};
+use std::{fs::File, io::Write, path::Path, time::Duration};
 use yardbird::{
+    audit::{self, AuditConfig},
     logger, model_from_options,
     smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
     strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
     training::{reset_training_database, TrainingSession},
-    CostFunction, Driver, Strategy, Theory, YardbirdOptions,
+    CostFunction, Driver, Strategy, Theory, YardbirdCommand, YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -17,6 +18,30 @@ fn main() -> anyhow::Result<()> {
     } else {
         log::Level::Info
     });
+
+    match &options.command {
+        Some(YardbirdCommand::Audit {
+            input,
+            depth,
+            timeout_seconds,
+            jobs,
+        }) => {
+            let report = audit::run(AuditConfig {
+                input: input.clone(),
+                depth: *depth,
+                timeout: Duration::from_secs(*timeout_seconds),
+                jobs: *jobs,
+            })?;
+            report.write_tsv(std::io::stdout().lock())?;
+            return Ok(());
+        }
+        Some(YardbirdCommand::InternalAuditParse { input }) => {
+            audit::parse_only(input)?;
+            return Ok(());
+        }
+        None => {}
+    }
+
     options.validate_ranker_options()?;
     options.validate_solver_backend_available()?;
 
