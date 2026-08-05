@@ -86,6 +86,21 @@ fn extract_assertions(problem: &SMTLIBProblem) -> Vec<Term> {
         .collect()
 }
 
+fn logic_for_problem(
+    theory: &dyn crate::theory_support::TheorySupport,
+    problem: &SMTLIBProblem,
+) -> String {
+    let terms = problem
+        .get_assertions()
+        .iter()
+        .filter_map(|command| match command {
+            Command::Assert { term } => Some(term),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    theory.get_logic_string_for_terms(&terms)
+}
+
 /// Helper to combine assertions into a single term
 fn combine_assertions(assertions: &[Term]) -> Term {
     if assertions.is_empty() {
@@ -208,7 +223,7 @@ impl SMTLIBSMTProblem {
         solver_capture: Option<SolverCapture>,
     ) -> Self {
         let theory = strategy.get_theory_support();
-        let logic = theory.get_logic_string();
+        let logic = logic_for_problem(theory.as_ref(), problem);
         let solver = new_solver_backend(solver_backend, &logic, solver_capture);
         Self::init_common(
             problem,
@@ -246,7 +261,7 @@ impl SMTLIBSMTProblem {
             Box::new(ArrayTheorySupport::new(array_types))
         };
 
-        let logic_string = theory.get_logic_string();
+        let logic_string = logic_for_problem(theory.as_ref(), problem);
         debug!("Using logic: {}", logic_string);
         let solver = new_solver_backend(solver_backend, logic_string.as_str(), solver_capture);
 

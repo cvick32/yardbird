@@ -144,11 +144,15 @@ impl SMTProblem {
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
+        let property_assertion = vmt_model.get_property_for_yardbird();
         let theory = strategy.get_theory_support();
-        let logic = theory.get_logic_string();
+        let logic = theory.get_logic_string_for_terms(&[
+            &init_assertion,
+            &trans_assertion,
+            &property_assertion,
+        ]);
         let solver = new_solver_backend(solver_backend, &logic, solver_capture);
 
-        let property_assertion = vmt_model.get_property_for_yardbird();
         let mut smt = SMTProblem {
             sorts: vmt_model.get_sorts(),
             function_definitions: vmt_model.get_function_definitions(),

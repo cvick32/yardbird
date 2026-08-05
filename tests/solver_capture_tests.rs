@@ -125,6 +125,37 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
 }
 
 #[test]
+fn nonlinear_concrete_capture_uses_a_replayable_array_logic() {
+    let temp = TempDir::new().unwrap();
+    let capture_dir = temp.path().join("capture");
+    let mut options =
+        YardbirdOptions::from_filename("examples/array/array_tiling_poly1.vmt".to_string());
+    options.depth = 1;
+    options.strategy = Strategy::Concrete;
+    options.solver_capture_dir = Some(capture_dir);
+
+    let capture = options.build_solver_capture().unwrap();
+    let mut driver = Driver::new(
+        model_from_options(&options),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_solver_capture(Some(capture.clone()));
+
+    let result = driver
+        .check_strategy(options.depth, options.build_array_strategy())
+        .unwrap();
+    let artifacts = capture.finish(&result.profiling).unwrap();
+    let manifest: SolverSessionManifest =
+        serde_json::from_slice(&fs::read(&artifacts.manifest).unwrap()).unwrap();
+    let transcript = fs::read_to_string(&artifacts.transcript).unwrap();
+
+    assert_eq!(manifest.logic, "QF_AUFNIA");
+    assert!(transcript.contains("(set-logic QF_AUFNIA)\n"));
+}
+
+#[test]
 fn abstract_capture_declares_each_uninterpreted_function_once() {
     let temp = TempDir::new().unwrap();
     let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
