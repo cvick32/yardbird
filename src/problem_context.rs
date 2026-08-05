@@ -32,6 +32,10 @@ pub trait ProblemContext {
     fn get_variables(&self) -> &[Variable];
     fn get_number_instantiations_added(&self) -> u64;
 
+    fn make_unquantified_instance(&self, term: Term) -> Option<Instance> {
+        UnquantifiedInstantiator::rewrite_unquantified(term, self.get_variables().to_vec())
+    }
+
     // Methods for cost functions
     /// Get subterms from initial state and transition relation (VMT-specific, empty for SMTLIB)
     fn get_init_and_transition_subterms(&self) -> Vec<String>;
