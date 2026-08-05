@@ -32,6 +32,26 @@ class Z3BuilderTests(unittest.TestCase):
             ["sat", "unsat"],
         )
 
+    def test_source_state_is_descriptive_without_content_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            checkout = Path(temporary)
+            z3_builder.run(["git", "init", str(checkout)])
+            z3_builder.run(["git", "-C", str(checkout), "config", "user.name", "Test"])
+            z3_builder.run(
+                ["git", "-C", str(checkout), "config", "user.email", "test@example.com"]
+            )
+            tracked = checkout / "tracked.txt"
+            tracked.write_text("base\n")
+            z3_builder.run(["git", "-C", str(checkout), "add", "tracked.txt"])
+            z3_builder.run(["git", "-C", str(checkout), "commit", "-m", "base"])
+            pinned = z3_builder.git(checkout, "rev-parse", "HEAD")
+            (checkout / "untracked.txt").write_text("local\n")
+
+            state = z3_builder.source_state(checkout, pinned)
+
+        self.assertTrue(state["dirty"])
+        self.assertFalse(any("sha" in field or "schema" in field for field in state))
+
     def test_compare_runs_both_binaries_on_the_same_query(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

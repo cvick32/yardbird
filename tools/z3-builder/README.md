@@ -7,8 +7,8 @@ This tool builds two Z3 executables for offline comparison:
 
 Both builds receive the same compiler and CMake flags. After building, the tool
 runs both executables over the same small SMT-LIB suite and requires identical
-ordered results. It records the commands, source revisions, patch hash, binary
-hashes, results, and diagnostic timings in `manifest.json`.
+ordered results. It records the commands, source revisions, whether the local
+checkout was dirty, results, and diagnostic timings in `manifest.json`.
 
 Yardbird does not link against the instrumented build. These executables are
 intended to replay SMT-LIB sessions captured from Yardbird.
