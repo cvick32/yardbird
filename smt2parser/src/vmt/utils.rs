@@ -159,31 +159,18 @@ pub fn get_variable_command(
     }
 }
 
-pub fn get_transition_system_component(command: &Command, attribute: &str) -> Option<Term> {
+pub fn get_annotated_term(command: &Command, attribute: &str) -> Option<Term> {
     match command {
         Command::DefineFun {
             sig: _,
             term: Term::Attributes { term, attributes },
-        } if attributes.iter().any(|(keyword, _)| keyword.0 == attribute) => {
-            Some(Term::Attributes {
+        } => attributes
+            .iter()
+            .find(|(keyword, _)| keyword.0 == attribute)
+            .map(|attribute| Term::Attributes {
                 term: term.clone(),
-                attributes: attributes.clone(),
-            })
-        }
+                attributes: vec![attribute.clone()],
+            }),
         _ => None,
-    }
-}
-
-pub fn command_has_attribute_string(command: &Command, attribute: &str) -> bool {
-    match command {
-        Command::DefineFun {
-            sig: _,
-            term:
-                Term::Attributes {
-                    term: _,
-                    attributes,
-                },
-        } => attributes.iter().any(|(keyword, _)| keyword.0 == attribute),
-        _ => false,
     }
 }

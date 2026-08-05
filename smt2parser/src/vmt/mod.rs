@@ -9,10 +9,7 @@ use definition_materializer::DefinitionMaterializer;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
-use utils::{
-    command_has_attribute_string, get_and_terms, get_transition_system_component,
-    get_variables_actions_and_axioms,
-};
+use utils::{classify_variables, get_and_terms, get_annotated_term};
 use variable::Variable;
 
 use crate::{
@@ -68,6 +65,7 @@ pub struct VMTModel {
     info: Vec<Command>,
     sorts: Vec<Command>,
     state_variables: Vec<Variable>,
+    input_variables: Vec<Command>,
     function_definitions: Vec<Command>,
     helper_definitions: DefinitionGraph,
     actions: Vec<Action>,
@@ -119,6 +117,7 @@ impl VMTModel {
             .map_or(0, |index| index + 1);
         let mut info = vec![];
         let mut variable_commands: HashMap<String, Command> = HashMap::new();
+        let mut variable_declaration_order = vec![];
         let mut sorts: Vec<Command> = vec![];
         let mut variable_relationships = vec![];
         let mut function_definitions = vec![];
@@ -132,22 +131,34 @@ impl VMTModel {
                 continue;
             }
 
-            let mut is_system_component = false;
+            let mut has_vmt_metadata = false;
             for (attribute, component) in [
                 (INITIAL_ATTRIBUTE, &mut initial_condition),
                 (TRANSITION_ATTRIBUTE, &mut transition_condition),
                 (PROPERTY_ATTRIBUTE, &mut property_condition),
             ] {
-                if let Some(term) = get_transition_system_component(command, attribute) {
+                if let Some(term) = get_annotated_term(command, attribute) {
                     let term = metadata_alias_expander.expand(term)?;
                     if component.replace(term).is_some() {
                         return Err(VMTError::DuplicateSystemComponent(attribute));
                     }
-                    is_system_component = true;
+                    has_vmt_metadata = true;
                 }
             }
 
-            if is_system_component {
+            if let Command::DefineFun { sig, .. } = command {
+                for attribute in ["next", "action", "axiom"] {
+                    if let Some(term) = get_annotated_term(command, attribute) {
+                        variable_relationships.push(Command::DefineFun {
+                            sig: sig.clone(),
+                            term: metadata_alias_expander.expand(term)?,
+                        });
+                        has_vmt_metadata = true;
+                    }
+                }
+            }
+
+            if has_vmt_metadata {
                 continue;
             }
 
@@ -162,20 +173,13 @@ impl VMTModel {
                     sort: _,
                 } => {
                     if parameters.is_empty() {
+                        if !variable_commands.contains_key(&symbol.0) {
+                            variable_declaration_order.push(symbol.0.clone());
+                        }
                         variable_commands.insert(symbol.0.clone(), command.clone());
                     } else {
                         function_definitions.push(command.clone());
                     }
-                }
-                Command::DefineFun { sig, term }
-                    if ["next", "action", "axiom"]
-                        .iter()
-                        .any(|attribute| command_has_attribute_string(command, attribute)) =>
-                {
-                    variable_relationships.push(Command::DefineFun {
-                        sig: sig.clone(),
-                        term: metadata_alias_expander.expand(term.clone())?,
-                    });
                 }
                 Command::DefineFun { sig, term } => {
                     if sig.parameters.is_empty() {
@@ -207,8 +211,11 @@ impl VMTModel {
         let property_condition =
             property_condition.ok_or(VMTError::MissingSystemComponent(PROPERTY_ATTRIBUTE))?;
 
-        let (state_variables, actions, axioms) =
-            get_variables_actions_and_axioms(variable_relationships, variable_commands);
+        let classified_variables = classify_variables(
+            variable_relationships,
+            variable_commands,
+            variable_declaration_order,
+        );
         let helper_definitions = DefinitionGraph::from_commands(helper_definition_commands)?;
 
         Ok(VMTModel {
@@ -216,9 +223,10 @@ impl VMTModel {
             sorts,
             function_definitions,
             helper_definitions,
-            state_variables,
-            actions,
-            _axioms: axioms,
+            state_variables: classified_variables.state_variables,
+            input_variables: classified_variables.input_variables,
+            actions: classified_variables.actions,
+            _axioms: classified_variables.axioms,
             initial_condition,
             transition_condition,
             property_condition,
@@ -297,6 +305,7 @@ impl VMTModel {
             // Must add variable definitions for each variable at each time step.
             smt_problem.add_variable_definitions(
                 &self.state_variables,
+                &self.input_variables,
                 &self.actions,
                 &mut builder,
             );
@@ -304,7 +313,12 @@ impl VMTModel {
             builder.add_step();
         }
         // Don't forget the variable definitions at time `length`.
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_variable_definitions(
+            &self.state_variables,
+            &self.input_variables,
+            &self.actions,
+            &mut builder,
+        );
         smt_problem.add_property_assertion(
             &self.property_condition,
             &mut builder,
@@ -348,7 +362,12 @@ impl VMTModel {
             builder.definition_frames().clone(),
         );
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_variable_definitions(
+            &self.state_variables,
+            &self.input_variables,
+            &self.actions,
+            &mut builder,
+        );
         smt_problem.add_assertion(&self.initial_condition, &mut builder, &mut definitions);
         smt_problem
     }
@@ -365,6 +384,7 @@ impl VMTModel {
             // Must add variable definitions for each variable at each time step.
             smt_problem.add_variable_definitions(
                 &self.state_variables,
+                &self.input_variables,
                 &self.actions,
                 &mut builder,
             );
@@ -372,7 +392,12 @@ impl VMTModel {
             builder.add_step();
         }
         // Don't forget the variable definitions at time `length`.
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_variable_definitions(
+            &self.state_variables,
+            &self.input_variables,
+            &self.actions,
+            &mut builder,
+        );
         smt_problem
     }
 
@@ -383,7 +408,12 @@ impl VMTModel {
             builder.definition_frames().clone(),
         );
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
-        smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
+        smt_problem.add_variable_definitions(
+            &self.state_variables,
+            &self.input_variables,
+            &self.actions,
+            &mut builder,
+        );
         smt_problem.add_property_assertion(
             &self.property_condition,
             &mut builder,
@@ -396,6 +426,7 @@ impl VMTModel {
         let mut commands = self.info.clone();
         commands.extend(self.sorts.clone());
         commands.extend(self.function_definitions.clone());
+        commands.extend(self.input_variables.clone());
         for variable in self.state_variables.clone() {
             commands.extend(variable.as_commands());
         }
@@ -448,6 +479,7 @@ impl VMTModel {
 
     pub fn print_stats(&self) {
         info!("Number of Variables: {}", self.state_variables.len());
+        info!("Number of Inputs: {}", self.input_variables.len());
         info!("Number of Actions: {}", self.actions.len());
         info!("Number of Sorts: {}", self.sorts.len());
     }
@@ -465,6 +497,10 @@ impl VMTModel {
             .iter()
             .map(|var| var.get_current_variable_name().clone())
             .collect();
+        state_variable_names.extend(self.input_variables.iter().map(|input| match input {
+            Command::DeclareFun { symbol, .. } => symbol.0.clone(),
+            _ => panic!("VMT input variable must be declared with declare-fun"),
+        }));
         let mut action_names: Vec<String> = self
             .actions
             .iter()
@@ -529,18 +565,12 @@ impl VMTModel {
             .collect::<Vec<_>>()
     }
 
-    pub fn get_state_holding_variables(&self) -> Vec<Variable> {
-        let mut state_holding_variables = vec![];
-        for state_variable in self.state_variables.clone() {
-            // TODO: make this more principled by checking which variables occur as "next"
-            let var_name = state_variable.get_current_variable_name();
-            if var_name.contains("fml") || var_name.starts_with("__") {
-                // Do not include formal arguments in state holding variables.
-                continue;
-            }
-            state_holding_variables.push(state_variable);
-        }
-        state_holding_variables
+    pub fn get_state_variables(&self) -> Vec<Variable> {
+        self.state_variables.clone()
+    }
+
+    pub fn get_input_variables(&self) -> Vec<Command> {
+        self.input_variables.clone()
     }
 
     fn add_instantiation_to_condition(&self, instantiation: Term, condition: Term) -> Term {
@@ -697,6 +727,55 @@ mod test {
             .as_commands()
             .iter()
             .any(|command| command.to_string() == "(declare-fun x.next () Int)"));
+    }
+
+    #[test]
+    fn one_definition_can_describe_both_a_state_pair_and_the_property() {
+        let input = br#"
+            (declare-fun ok () Bool)
+            (declare-fun ok.next () Bool)
+            (define-fun init () Bool (! (not ok) :init true))
+            (define-fun transition () Bool (! (= ok.next ok) :trans true))
+            (define-fun property-and-next () Bool
+                (! ok :next ok.next :invar-property 0))
+        "#;
+
+        let model = parse_vmt(input).expect("all metadata roles should be processed");
+
+        assert_eq!(
+            model.get_next_to_current_varible_names(),
+            HashMap::from([("ok.next".to_string(), "ok".to_string())])
+        );
+        assert_eq!(model.get_property_for_yardbird().to_string(), "ok");
+
+        let reparsed = VMTModel::checked_from(model.as_commands())
+            .expect("serialized metadata roles should remain independently parseable");
+        assert_eq!(
+            reparsed.get_next_to_current_varible_names(),
+            HashMap::from([("ok.next".to_string(), "ok".to_string())])
+        );
+        assert_eq!(reparsed.get_property_for_yardbird().to_string(), "ok");
+    }
+
+    #[test]
+    fn unpaired_declarations_are_fresh_inputs_at_each_frame() {
+        let input = br#"
+            (declare-fun x () Int)
+            (declare-fun x.next () Int)
+            (declare-fun input () Int)
+            (define-fun x.relationship () Int (! x :next x.next))
+            (define-fun init () Bool (! (= x 0) :init true))
+            (define-fun transition () Bool (! (= x.next input) :trans true))
+            (define-fun property () Bool (! (>= x 0) :invar-property 0))
+        "#;
+
+        let model = parse_vmt(input).unwrap();
+        let bmc = model.unroll(1).to_bmc();
+
+        assert_eq!(model.get_all_current_variable_names(), vec!["x", "input"]);
+        assert!(bmc.contains("(declare-fun input@0 () Int)"));
+        assert!(bmc.contains("(declare-fun input@1 () Int)"));
+        assert!(bmc.contains("(= x@1 input@0)"));
     }
 
     #[test]
