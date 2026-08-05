@@ -269,10 +269,10 @@ impl Z3VarContext {
             } => todo!(),
             Term::Exists { vars: _, term: _ } => todo!(),
             Term::Match { term: _, cases: _ } => todo!(),
-            Term::Attributes {
-                term: _,
-                attributes: _,
-            } => todo!(),
+            // SMT-LIB attributes annotate a term without changing its value.
+            // Yardbird handles the VMT-defining attributes while parsing the
+            // model; solver hints such as `:predicate` are transparent here.
+            Term::Attributes { term, .. } => self.rewrite_term(term),
         }
     }
 
@@ -515,6 +515,21 @@ impl Z3VarContext {
                 .as_bv()
                 .expect("concat arg 2 must be bitvector");
             z3::ast::BV::concat(&bv1, &bv2).into()
+        } else if function_name == "bvcomp" {
+            assert_eq!(
+                argument_values.len(),
+                2,
+                "bvcomp requires exactly 2 arguments"
+            );
+            let bv1 = argument_values[0]
+                .as_bv()
+                .expect("bvcomp arg 1 must be bitvector");
+            let bv2 = argument_values[1]
+                .as_bv()
+                .expect("bvcomp arg 2 must be bitvector");
+            let one = z3::ast::BV::from_u64(1, 1);
+            let zero = z3::ast::BV::from_u64(0, 1);
+            bv1.eq(&bv2).ite(&one, &zero).into()
         } else if function_name == "bvule" {
             let bv1 = argument_values[0]
                 .as_bv()
@@ -850,8 +865,9 @@ impl smt2parser::rewriter::Rewriter for Z3VarContext {
 #[cfg(test)]
 mod tests {
     use super::Z3VarContext;
-    use smt2parser::concrete::Term;
+    use smt2parser::concrete::{Identifier, Sort, Symbol, Term};
     use z3::ast::{Ast, BV};
+    use z3::SortKind;
 
     fn rewrite_binary_literal(literal: &str) -> BV {
         let term = literal.parse::<Term>().unwrap();
@@ -876,5 +892,92 @@ mod tests {
         let expected = BV::from_str(65, "18446744073709551617").unwrap();
         assert_eq!(wide.get_size(), 65);
         assert_eq!(wide.eq(&expected).simplify().as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_bvcomp_as_a_native_one_bit_bitvector() {
+        let equal = "(bvcomp #b0011 #b0011)".parse::<Term>().unwrap();
+        let unequal = "(bvcomp #b0011 #b0101)".parse::<Term>().unwrap();
+        let context = Z3VarContext::new();
+
+        let equal = context
+            .rewrite_term(&equal)
+            .as_bv()
+            .expect("bvcomp should return a bitvector")
+            .simplify();
+        let unequal = context
+            .rewrite_term(&unequal)
+            .as_bv()
+            .expect("bvcomp should return a bitvector")
+            .simplify();
+
+        assert_eq!(equal.get_size(), 1);
+        assert_eq!(equal.as_u64(), Some(1));
+        assert_eq!(unequal.get_size(), 1);
+        assert_eq!(unequal.as_u64(), Some(0));
+    }
+
+    #[test]
+    fn rewrites_attributed_terms_as_their_underlying_term() {
+        let term = "(! (= 1 1) :predicate true)".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("the attributed equality should remain Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_to_real_and_real_arithmetic_natively() {
+        let term = "(= (* (to_real (- 1)) (to_real 3)) (to_real (- 3)))"
+            .parse::<Term>()
+            .unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("the real-valued equality should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn coerces_integer_numerals_in_real_equalities() {
+        let term = "(= (to_real 0) 0)".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("mixed Int/Real equality should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn coerces_integer_arguments_in_real_arithmetic() {
+        let term = "(= (+ (to_real 1) 2) (to_real 3))".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("mixed Int/Real arithmetic should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn maps_real_to_z3s_native_real_sort() {
+        let real_sort = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Real".to_string()),
+            },
+        };
+
+        assert_eq!(
+            Z3VarContext::new().get_z3_sort(&real_sort).kind(),
+            SortKind::Real
+        );
     }
 }
