@@ -34,6 +34,9 @@ class PairReplay:
 @dataclass(frozen=True)
 class _IndexedCheck:
     check_id: int
+    depth: int
+    refinement_id: int
+    refinement_step: int
     setup_byte_start: int
     check_byte_start: int
     check_byte_end: int
@@ -205,6 +208,9 @@ def _parse_check(raw: Any, expected_id: int) -> _IndexedCheck:
         raise ReplayError(f"journal check {expected_id} is not an object")
     check = _IndexedCheck(
         check_id=_integer(raw, "check_id"),
+        depth=_integer(raw, "depth"),
+        refinement_id=_integer(raw, "refinement_id"),
+        refinement_step=_integer(raw, "refinement_step"),
         setup_byte_start=_integer(raw, "setup_byte_start"),
         check_byte_start=_integer(raw, "check_byte_start"),
         check_byte_end=_integer(raw, "check_byte_end"),
