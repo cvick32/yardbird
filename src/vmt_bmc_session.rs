@@ -1032,12 +1032,14 @@ mod tests {
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
-        let mut smt = SMTProblem::new(
+        let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
             SolverBackend::Z3,
             false,
             Box::new(FullUnrollStrategy::new()),
+            false,
+            None,
         );
         smt.unroll(1);
 
@@ -1078,12 +1080,14 @@ mod tests {
         let model = VMTModel::checked_from(commands).unwrap();
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(ConcreteArrayZ3::new(false));
-        let mut smt = SMTProblem::new(
+        let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
             SolverBackend::Z3,
             false,
             Box::new(FullUnrollStrategy::new()),
+            false,
+            None,
         );
 
         smt.unroll(1);
