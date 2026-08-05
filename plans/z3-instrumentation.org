@@ -54,9 +54,9 @@ The following decisions define the implementation contract.
   non-array residual.
 - Do not attempt to partition the residual into SAT, EUF, arithmetic, or other
   subsystems in the first pass.
-- Record a detailed ax2 candidate-to-consequence funnel in summary mode.
-- Defer exact relation-watch activation and conflict provenance until summary
-  measurements demonstrate that the additional invasiveness is justified.
+- Start with only the subtractable native-array timing envelope. Defer the ax2
+  funnel, remaining lifecycle counters, and exact provenance until the envelope
+  pilot demonstrates that the additional attribution is decision-useful.
 - Do not attempt one-to-one matching between a Yardbird refinement instance and
   a native Z3 array event. Correlation stops at run, benchmark, strategy, depth,
   refinement, and check identifiers.
@@ -99,9 +99,11 @@ spurious model
   -> another check at the same depth or depth closure
 #+end_example
 
-There is no native array-plugin time in this abstract encoding. Its raw Z3
-check time is therefore part of the non-array residual by construction. The
-comparison is between aggregate workloads and refinement trajectories, not
+The abstract encoding contains no native array terms. The classic engine may
+still enter array-theory callback paths with no native array work, so the
+abstract capture is also the baseline for interpreting a small nonzero array
+envelope. Its raw Z3 check time otherwise belongs to the non-array residual.
+The comparison is between aggregate workloads and refinement trajectories, not
 between matched individual lemmas.
 
 * Research Questions
@@ -115,18 +117,13 @@ recorded data.
 3. What fraction of an instrumented concrete check is spent inside the direct
    native-array envelope?
 4. How large is the non-array residual after removing that direct envelope?
-5. How many native ax2 candidates are rejected as root-equal, rejected as
-   duplicates, queued, processed, and materialized into consequences?
-6. How often do ax2 consequences become units, guarded binary clauses, or
-   relation watches?
-7. How many final-check and propagation callbacks does the array plugin receive
-   during one external ~check-sat~?
-8. Do high native ~array ax2~ counts correspond to high direct array time, or
-   are many unique queued events cheap?
-9. How do Yardbird's instance count, newly added instances, number of refinement
+5. How do Yardbird's instance count, newly added instances, number of refinement
    checks, and cumulative check time vary together?
-10. Which aggregate measurements suggest better Yardbird refinement choices or
+6. Which aggregate measurements suggest better Yardbird refinement choices or
     a useful follow-up counterfactual experiment?
+
+The ax2 candidate funnel, consequence shape, and propagation/final-check counts
+are follow-up questions, not requirements for the envelope pilot.
 
 The first pass does not claim to identify which non-array subsystem owns the
 residual and does not infer causation from correlations.
@@ -143,14 +140,13 @@ residual and does not infer causation from correlations.
 - Persistent-process replay against stock and summary-instrumented Z3 builds.
 - Per-check and per-depth timing reports.
 - A low-overhead native-array envelope timer.
-- Summary counters for ax1, ax2a, ax2b, extensionality, equality splitting,
-  propagation callbacks, and final checks.
-- The ax2 candidate-to-consequence funnel.
-- A small calibration corpus with stable qualitative and exact-counter
-  expectations.
+- A minimal per-check array envelope with an outermost-entry count.
+- A small calibration corpus with stable result and envelope invariants.
 
 ** Later scope, only when evidence warrants it
 
+- Summary counters for the ax2 candidate-to-consequence funnel and remaining
+  native-array lifecycle.
 - Exact relation-watch wakeup, propagation, and conflict provenance.
 - Bounded per-event tracing and term dictionaries.
 - Standalone cold-query snapshots and refinement counterfactuals.
@@ -240,9 +236,8 @@ array routine calls another. Synchronous calls from the array plugin into the
 generic SMT context are included in the envelope. Work performed later by SAT
 or EUF after the array callback returns is not included.
 
-Fine-grained ax1, ax2, propagation, and final-check timers are nested diagnostic
-timers. They must be labeled inclusive or exclusive and must never be summed
-with the envelope as independent costs.
+Any later fine-grained timers must be labeled inclusive or exclusive and must
+never be summed with the envelope as independent costs.
 
 Array activity that occurs while declarations or assertions are installed
 between checks is outside the first-pass array envelope. Yardbird's existing
@@ -474,7 +469,6 @@ Conceptual controls:
 
 #+begin_example
 array.profile=false
-array.profile_mode=summary
 array.profile_output=<path>
 #+end_example
 
@@ -597,16 +591,11 @@ Document overlap. Avoid clock reads for each candidate or each index dimension.
 Emit one JSONL record after every ~check-sat~:
 
 #+begin_example
-z3_revision
-build_configuration
-profile_mode
 check_ordinal
 result
 check_elapsed_ns
 array_envelope_ns
-array_nested_timing_ns
-array_counters
-solver_statistics
+array_outermost_timed_entries
 #+end_example
 
 The Z3 process knows only its check ordinal. The replay harness maps that
@@ -687,6 +676,12 @@ python tools/z3-builder/z3_builder.py \
 python tools/z3_array_probe.py replay \
   --capture-dir path/to/capture \
   --z3-build-dir path/to/z3-build
+
+python tools/z3_array_probe.py time \
+  --capture-dir path/to/capture \
+  --z3-build-dir path/to/z3-build \
+  --warmups 3 \
+  --repetitions 15
 #+end_example
 
 ** Runner responsibilities
@@ -842,8 +837,9 @@ Exit criteria:
 ** Milestone 2b: Repeated stock timing reports
 
 Tasks and exit criteria live in ticket 07. This layer adds warmups, repeated
-samples, timing-floor warnings, and per-depth aggregation without expanding the
-base replay command's correctness interface.
+samples, and per-depth aggregation without expanding the base replay command's
+correctness interface. It does not calibrate or classify short checks in the
+first research pass.
 
 ** Milestone 3: Z3 summary array profiler
 
@@ -851,21 +847,17 @@ Tasks:
 
 - Add disabled-by-default profile controls and per-check JSONL output.
 - Add the non-overlapping array envelope.
-- Implement the ax2 funnel with separate pair and dimension counts.
-- Add ax1, extensionality, split, propagation, and final-check counters.
-- Add a small set of coarse nested timers.
-- Preserve existing counter names and meanings.
-- Build and validate the calibration corpus.
+- Emit only the ordinal, result, containing-check time, envelope time, and
+  outermost-entry count needed by the first pilot.
+- Validate a persistent multi-check capture with profiling enabled and disabled.
 
 Exit criteria:
 
 - All calibration fixtures return the same results as stock.
-- Funnel counts reconcile from candidates through consequences.
 - ~array_envelope_ns~ never exceeds its containing check time.
 - Profiling disabled has no meaningful regression.
-- Median summary-mode overhead is at most three percent on a representative
-  aggregate sample, or excess overhead is understood and reduced before broad
-  data collection.
+- Summary-mode overhead is measured on representative aggregate samples, and
+  any excess is understood and reduced before broad data collection.
 
 ** Milestone 4: Paired Yardbird pilot study
 
@@ -877,14 +869,14 @@ Tasks:
   depths.
 - Replay every transcript against stock and summary builds.
 - Report check sequences and cumulative depth costs.
-- Compare native array envelope, residual time, ax2 funnel, Yardbird instance
-  counts, and refinement counts.
+- Compare native array envelope, residual time, Yardbird instance counts, and
+  refinement counts.
 - Record supported, rejected, and unresolved explanations.
 
 Exit criteria:
 
-- The data shows whether large native ax2 counts correspond to large direct
-  native-array time.
+- The data shows whether direct native-array callback time explains a material
+  part of the concrete-versus-abstract solver-time difference.
 - The data shows how much solver time remains in abstract runs after Yardbird
   supplies explicit instances.
 - At least one concrete follow-up hypothesis about Yardbird refinement quality
@@ -1029,9 +1021,8 @@ The first-pass project succeeds when it provides all of the following.
 
 - Raw check time is separated from Yardbird work and model acquisition.
 - One subtractable native-array envelope is measured per concrete check.
-- Existing array counters are refined into the ax2
-  candidate-to-consequence funnel.
-- Pair counts and multidimensional consequence counts are distinct.
+- Detailed native-array counters are deferred until envelope measurements show
+  that they would change the next research decision.
 
 ** Useful comparison
 
@@ -1056,11 +1047,11 @@ Implement the smallest end-to-end path before adding detailed Z3 counters:
 3. Add solver-check records to the unified Yardbird profiler.
 4. Add the solver-boundary incremental command journal and index.
 5. Build persistent matched-pair replay and require ordered result equality.
-6. Add the Z3 array envelope and the minimal ax2 funnel.
+6. Add the minimal Z3 array envelope.
 7. Run the calibration corpus and a small concrete-versus-abstract pilot.
 
-This slice can already falsify the simplest explanation: that the raw native
-~array ax2~ count directly represents most of native solve time.
+This slice can already test whether direct native-array callback time accounts
+for most of the concrete solver workload.
 
 * Ordered Checklist
 
@@ -1080,8 +1071,8 @@ This slice can already falsify the simplest explanation: that the raw native
 - [ ] Produce cumulative per-depth timing reports.
 - [ ] Add Z3 summary profile controls and JSONL output.
 - [ ] Add the non-overlapping array envelope.
-- [ ] Add the ax2 candidate-to-consequence funnel.
-- [ ] Add ax1, extensionality, split, propagation, and final-check counters.
+- [ ] Decide from the envelope pilot whether native-array lifecycle counters
+  are worth adding.
 - [ ] Build and validate the calibration corpus.
 - [ ] Measure summary instrumentation overhead.
 - [ ] Run the first paired concrete-versus-abstract pilot.
