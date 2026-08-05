@@ -62,16 +62,39 @@ impl SubtermHandler {
             .collect()
     }
 
+    pub(crate) fn register_initial_support(&mut self, support: &[Term]) {
+        collect_terms(
+            support.iter(),
+            &mut self.initial_subterms,
+            &mut self.initial_subterm_order,
+            &mut self.initial_reads_and_writes,
+        );
+    }
+
+    pub(crate) fn register_transition_support(&mut self, support: &[Term]) {
+        collect_terms(
+            support.iter(),
+            &mut self.trans_subterms,
+            &mut self.trans_subterm_order,
+            &mut self.trans_reads_and_writes,
+        );
+    }
+
+    pub(crate) fn register_property_support(&mut self, support: &[Term]) {
+        collect_terms(
+            support.iter(),
+            &mut self.prop_subterms,
+            &mut self.prop_subterm_order,
+            &mut self.prop_reads_and_writes,
+        );
+    }
+
     pub(crate) fn register_instantiation_term(&mut self, inst: Term) {
-        let mut inst_subterms = NonBooleanSubterms::default();
-        let _ = inst.clone().accept_term_visitor(&mut inst_subterms);
-        let _ = inst
-            .clone()
-            .accept_term_visitor(&mut self.instantiation_reads_and_writes);
-        extend_unique(
+        collect_terms(
+            std::iter::once(&inst),
             &mut self.instantiation_subterms,
             &mut self.instantiation_subterm_order,
-            inst_subterms.ordered_subterms,
+            &mut self.instantiation_reads_and_writes,
         );
     }
 
@@ -113,6 +136,7 @@ impl SubtermHandler {
                 .clone()
                 .accept_term_visitor(&mut self.trans_reads_and_writes);
         }
+
         // Fully replace prop subterms every iteration.
         let mut prop_subterms = NonBooleanSubterms::default();
         self.prop_reads_and_writes = ReadsAndWrites::default();
@@ -174,6 +198,20 @@ impl SubtermHandler {
 
     pub(crate) fn get_property_assert(&self) -> Term {
         self.prop_assert.parse().unwrap()
+    }
+}
+
+fn collect_terms<'a>(
+    terms: impl Iterator<Item = &'a Term>,
+    seen: &mut HashSet<Term>,
+    ordered: &mut Vec<Term>,
+    reads_and_writes: &mut ReadsAndWrites,
+) {
+    for term in terms {
+        let mut subterms = NonBooleanSubterms::default();
+        let _ = term.clone().accept_term_visitor(&mut subterms);
+        let _ = term.clone().accept_term_visitor(reads_and_writes);
+        extend_unique(seen, ordered, subterms.ordered_subterms);
     }
 }
 

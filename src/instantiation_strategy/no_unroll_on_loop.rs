@@ -6,7 +6,7 @@ use crate::{
     solver::YardbirdSolver, subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
 };
 
-use super::{InstantiationStrategy, StoredInstantiation};
+use super::{materialize_indexed_instance, InstantiationStrategy, StoredInstantiation};
 
 #[derive(Clone, Debug)]
 pub struct NoUnrollOnLoop;
@@ -35,6 +35,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         abstract_instantiation_id: Option<String>,
         _depth: u16,
         bmc_builder: &mut BMCBuilder,
+        definition_materializer: &mut smt2parser::vmt::definition_materializer::DefinitionMaterializer,
         solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
@@ -63,10 +64,14 @@ impl InstantiationStrategy for NoUnrollOnLoop {
             }
             bmc_builder.set_depth(i);
             bmc_builder.set_width(inst.width());
-            let indexed_inst = inst.rewrite(bmc_builder);
-
-            // Register subterms from this instantiation
-            subterm_handler.register_instantiation_term(indexed_inst.clone());
+            let indexed_inst = materialize_indexed_instance(
+                inst.rewrite(bmc_builder),
+                bmc_builder,
+                definition_materializer,
+                solver,
+                subterm_handler,
+                true,
+            );
             asserted_instantiations.push(indexed_inst.clone());
 
             all_indexed_insts.push(indexed_inst);
@@ -107,7 +112,9 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         _depth: u16,
         _instantiations: &[StoredInstantiation],
         _bmc_builder: &mut BMCBuilder,
+        _definition_materializer: &mut smt2parser::vmt::definition_materializer::DefinitionMaterializer,
         _solver: &mut dyn YardbirdSolver,
+        _subterm_handler: &mut SubtermHandler,
         _track_instantiations: bool,
         _tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         _asserted_instantiations: &mut Vec<Term>,

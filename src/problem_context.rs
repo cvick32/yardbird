@@ -1,5 +1,9 @@
 use smt2parser::concrete::Term;
-use smt2parser::vmt::{quantified_instantiator::Instance, variable::Variable, ReadsAndWrites};
+use smt2parser::vmt::{
+    quantified_instantiator::{Instance, UnquantifiedInstantiator},
+    variable::Variable,
+    ReadsAndWrites,
+};
 use std::any::Any;
 
 use crate::{
