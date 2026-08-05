@@ -12,6 +12,7 @@ from .common import (
     ensure_dir,
     load_manifest,
     load_dotenv,
+    prefer_aws_dotenv,
     print_run_summary,
     resolve_run_id,
 )
@@ -293,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "compare_downloaded_instrumentation":
         manifest = load_manifest(args.run_id)
+        if manifest.get("env") == "aws":
+            prefer_aws_dotenv()
         manifest = refresh_existing_run(manifest, args)
         if manifest["status"] != "COMPLETED":
             raise RuntimeError(
@@ -310,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
     existing_run_id = resolve_run_id(args)
     if existing_run_id:
         manifest = load_manifest(existing_run_id)
+        if manifest.get("env") == "aws":
+            prefer_aws_dotenv()
         if args.teardown_subrun_index is not None:
             manifest = maybe_teardown_subrun(manifest, args)
         else:
@@ -332,6 +337,8 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(
             "--capture-solver-journals is currently supported for --env aws only"
         )
+    if args.env == "aws":
+        prefer_aws_dotenv()
 
     if args.env == "local":
         manifest = launch_local_run(args)

@@ -23,6 +23,16 @@ STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
 STATUS_FAILED = "FAILED"
 
+AWS_ENVIRONMENT_KEYS = frozenset(
+    {
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+    }
+)
+AWS_CREDENTIAL_SOURCE_KEYS = frozenset(
+    {"AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_DEFAULT_PROFILE"}
+)
+
 
 class CommandError(RuntimeError):
     pass
@@ -99,11 +109,12 @@ def choose_report_python() -> str:
     return shutil.which("python3") or sys.executable
 
 
-def load_dotenv(path: Path | None = None) -> None:
+def dotenv_values(path: Path | None = None) -> dict[str, str]:
     dotenv_path = path or ROOT / ".env"
     if not dotenv_path.exists():
-        return
+        return {}
 
+    values: dict[str, str] = {}
     for raw_line in dotenv_path.read_text().splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -115,7 +126,7 @@ def load_dotenv(path: Path | None = None) -> None:
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip()
-        if not key or key in os.environ:
+        if not key:
             continue
         if value and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
@@ -123,7 +134,30 @@ def load_dotenv(path: Path | None = None) -> None:
             parts = shlex.split(value, comments=False, posix=True)
             if len(parts) == 1:
                 value = parts[0]
-        os.environ[key] = value
+        values[key] = value
+    return values
+
+
+def load_dotenv(path: Path | None = None) -> None:
+    for key, value in dotenv_values(path).items():
+        if key not in os.environ:
+            os.environ[key] = value
+
+
+def prefer_aws_dotenv(path: Path | None = None) -> bool:
+    """Prefer project-local AWS credentials without changing other env values."""
+    values = dotenv_values(path)
+    if not AWS_CREDENTIAL_SOURCE_KEYS.intersection(values):
+        return False
+
+    # AWS environment variables outrank profiles and cached login state. Remove
+    # every selector first so, for example, a stale session token cannot be
+    # combined with static credentials from the project .env.
+    for key in AWS_ENVIRONMENT_KEYS:
+        os.environ.pop(key, None)
+    for key in AWS_ENVIRONMENT_KEYS.intersection(values):
+        os.environ[key] = values[key]
+    return True
 
 
 def read_index() -> dict[str, Any]:
