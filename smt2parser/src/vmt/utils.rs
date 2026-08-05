@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::concrete::{Command, Identifier, QualIdentifier, Symbol, Term};
 
@@ -48,14 +48,23 @@ pub fn get_and_terms(term: Box<Term>) -> Vec<Term> {
     }
 }
 
-pub fn get_variables_actions_and_axioms(
-    variable_relationships: Vec<&Command>,
-    variable_commands: HashMap<String, Command>,
-) -> (Vec<Variable>, Vec<Action>, Vec<Axiom>) {
+pub struct ClassifiedVariables {
+    pub state_variables: Vec<Variable>,
+    pub input_variables: Vec<Command>,
+    pub actions: Vec<Action>,
+    pub axioms: Vec<Axiom>,
+}
+
+pub fn classify_variables(
+    variable_relationships: Vec<Command>,
+    mut variable_commands: HashMap<String, Command>,
+    declaration_order: Vec<String>,
+) -> ClassifiedVariables {
     let mut state_variables: Vec<Variable> = vec![];
     let mut actions: Vec<Action> = vec![];
     let mut axioms: Vec<Axiom> = vec![];
-    for variable_relationship in variable_relationships {
+    let mut classified_names = HashSet::new();
+    for variable_relationship in &variable_relationships {
         match variable_relationship {
             Command::DefineFun { sig: _, term } => match term {
                 Term::Attributes { term, attributes } => {
@@ -63,14 +72,17 @@ pub fn get_variables_actions_and_axioms(
                     let (keyword, value) = &attributes[0];
                     let keyword_string = keyword.to_string();
                     if keyword_string == ":next" {
-                        let variable_command = get_variable_command(
-                            scrub_variable_name(term.to_string()),
-                            &variable_commands,
+                        let current_name = scrub_variable_name(term.to_string());
+                        let next_name = scrub_variable_name(value.to_string());
+                        let variable_command =
+                            get_variable_command(current_name.clone(), &variable_commands);
+                        let new_variable_command = get_or_create_next_variable_command(
+                            next_name.clone(),
+                            &variable_command,
+                            &mut variable_commands,
                         );
-                        let new_variable_command = get_variable_command(
-                            scrub_variable_name(value.to_string()),
-                            &variable_commands,
-                        );
+                        classified_names.insert(current_name);
+                        classified_names.insert(next_name);
                         state_variables.push(Variable {
                             current: variable_command,
                             next: new_variable_command,
@@ -79,6 +91,7 @@ pub fn get_variables_actions_and_axioms(
                     } else if keyword_string == ":action" {
                         let action_variable_name = scrub_variable_name(term.to_string());
                         if variable_commands.contains_key(&action_variable_name) {
+                            classified_names.insert(action_variable_name.clone());
                             for (variable_name, action_command) in &variable_commands {
                                 if action_variable_name == *variable_name {
                                     actions.push(Action {
@@ -104,7 +117,46 @@ pub fn get_variables_actions_and_axioms(
             _ => panic!("Variable Relationship is not a (define-fun)."),
         }
     }
-    (state_variables, actions, axioms)
+
+    let input_variables = declaration_order
+        .into_iter()
+        .filter(|name| !classified_names.contains(name))
+        .filter_map(|name| variable_commands.get(&name).cloned())
+        .collect();
+
+    ClassifiedVariables {
+        state_variables,
+        input_variables,
+        actions,
+        axioms,
+    }
+}
+
+fn get_or_create_next_variable_command(
+    variable_name: String,
+    current_variable_command: &Command,
+    variable_commands: &mut HashMap<String, Command>,
+) -> Command {
+    match variable_commands.entry(variable_name.clone()) {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => {
+            let Command::DeclareFun {
+                symbol: _,
+                parameters,
+                sort,
+            } = current_variable_command
+            else {
+                panic!("Current state variable must be declared with declare-fun")
+            };
+            let command = Command::DeclareFun {
+                symbol: Symbol(variable_name),
+                parameters: parameters.clone(),
+                sort: sort.clone(),
+            };
+            entry.insert(command.clone());
+            command
+        }
+    }
 }
 
 pub fn scrub_variable_name(variable_name: String) -> String {
@@ -131,48 +183,18 @@ pub fn get_variable_command(
     }
 }
 
-pub fn get_transition_system_component(command: &Command, attribute: &str) -> Term {
-    if command_has_attribute_string(command, attribute) {
-        match command {
-            Command::DefineFun { sig: _, term } => match term {
-                Term::Attributes { term, attributes } => {
-                    if attributes[0].0 .0 != attribute {
-                        panic!(
-                            "Ill-formed system component: {}.\nShould have {} as attribute.",
-                            command, attribute
-                        );
-                    }
-                    Term::Attributes {
-                        term: term.clone(),
-                        attributes: attributes.clone(),
-                    }
-                }
-                _ => panic!("{}: Must have attribute.", attribute),
-            },
-            _ => panic!("{}: Command must be define-fun", attribute),
-        }
-    } else {
-        panic!(
-            "Initial, transition, and property commands must be the final three commands in the file.\nIll-formed system component: {}.\nShould have {} as attribute.",
-            command, attribute
-        );
-    }
-}
-
-pub fn command_has_attribute_string(command: &Command, attribute: &str) -> bool {
+pub fn get_annotated_term(command: &Command, attribute: &str) -> Option<Term> {
     match command {
         Command::DefineFun {
             sig: _,
-            term:
-                Term::Attributes {
-                    term: _,
-                    attributes,
-                },
-        } => {
-            assert!(attributes.len() == 1);
-            let keyword = &attributes[0].0 .0;
-            keyword == attribute
-        }
-        _ => false,
+            term: Term::Attributes { term, attributes },
+        } => attributes
+            .iter()
+            .find(|(keyword, _)| keyword.0 == attribute)
+            .map(|attribute| Term::Attributes {
+                term: term.clone(),
+                attributes: vec![attribute.clone()],
+            }),
+        _ => None,
     }
 }

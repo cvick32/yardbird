@@ -233,6 +233,7 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
             ArrayLanguage::Times(_) => 2, // Used for (* 2 N) in property
             ArrayLanguage::Mod(_) => 20,
             ArrayLanguage::Div(_) => 20,
+            ArrayLanguage::ToReal(_) => 1,
             ArrayLanguage::Ite(_) => 5,
 
             ArrayLanguage::Symbol(sym) => {

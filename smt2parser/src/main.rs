@@ -8,9 +8,14 @@ use smt2parser::{
     get_vmt_from_path,
     renaming::{SymbolNormalizer, SymbolNormalizerConfig, TesterModernizer},
     stats::Smt2Counters,
+    vmt::{VMTError, VMTModel},
     CommandStream,
 };
-use std::path::PathBuf;
+use std::{
+    any::Any,
+    panic::{self, AssertUnwindSafe},
+    path::{Path, PathBuf},
+};
 use structopt::StructOpt;
 use strum::IntoEnumIterator;
 
@@ -27,6 +32,11 @@ struct Options {
 
 #[derive(Debug, StructOpt)]
 enum Operation {
+    Audit {
+        /// File or directory containing VMT benchmarks.
+        #[structopt(parse(from_os_str))]
+        input: PathBuf,
+    },
     Print {
         /// Normalize bound symbols to x0, x1..
         #[structopt(long)]
@@ -64,6 +74,112 @@ enum Operation {
     },
 }
 
+#[derive(Default)]
+struct AuditSummary {
+    files: usize,
+    parsed: usize,
+    syntax_errors: usize,
+    vmt_errors: usize,
+    panics: usize,
+}
+
+enum AuditOutcome {
+    Parsed,
+    SyntaxError(String),
+    VmtError(String),
+    Panic(String),
+}
+
+fn collect_vmt_files(path: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    if path.is_file() {
+        if path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("vmt"))
+        {
+            files.push(path.to_path_buf());
+        }
+        return Ok(());
+    }
+
+    if !path.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("audit input does not exist: {}", path.display()),
+        ));
+    }
+
+    let mut entries = std::fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.path());
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() || file_type.is_file() {
+            collect_vmt_files(&path, files)?;
+        }
+    }
+    Ok(())
+}
+
+fn audit_vmt(path: &Path) -> AuditOutcome {
+    match panic::catch_unwind(AssertUnwindSafe(|| VMTModel::from_path(path))) {
+        Ok(Ok(_)) => AuditOutcome::Parsed,
+        Ok(Err(VMTError::VisitorError(error))) => AuditOutcome::SyntaxError(error.to_string()),
+        Ok(Err(error)) => AuditOutcome::VmtError(error.to_string()),
+        Err(payload) => AuditOutcome::Panic(panic_message(payload.as_ref())),
+    }
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
+fn single_line(message: &str) -> String {
+    message.replace('\n', "\\n")
+}
+
+fn audit(input: &Path) -> std::io::Result<()> {
+    let mut files = Vec::new();
+    collect_vmt_files(input, &mut files)?;
+    files.sort();
+
+    let original_panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
+
+    let mut summary = AuditSummary::default();
+    for path in files {
+        summary.files += 1;
+        match audit_vmt(&path) {
+            AuditOutcome::Parsed => summary.parsed += 1,
+            AuditOutcome::SyntaxError(error) => {
+                summary.syntax_errors += 1;
+                eprintln!("SYNTAX_ERROR\t{}\t{}", path.display(), single_line(&error));
+            }
+            AuditOutcome::VmtError(error) => {
+                summary.vmt_errors += 1;
+                eprintln!("VMT_ERROR\t{}\t{}", path.display(), single_line(&error));
+            }
+            AuditOutcome::Panic(error) => {
+                summary.panics += 1;
+                eprintln!("PANIC\t{}\t{}", path.display(), single_line(&error));
+            }
+        }
+    }
+
+    panic::set_hook(original_panic_hook);
+    println!(
+        "files={} parsed={} syntax_errors={} vmt_errors={} panics={}",
+        summary.files, summary.parsed, summary.syntax_errors, summary.vmt_errors, summary.panics
+    );
+    Ok(())
+}
+
 fn process_file<T, F>(state: T, file_path: PathBuf, mut f: F) -> std::io::Result<T>
 where
     T: smt2parser::visitors::Smt2Visitor,
@@ -98,6 +214,7 @@ fn read_words(path: Option<PathBuf>) -> std::io::Result<Vec<String>> {
 fn main() -> std::io::Result<()> {
     let options = Options::from_args();
     match options.operation {
+        Operation::Audit { input } => audit(&input)?,
         Operation::Vmt { input } => {
             let vmt_model = get_vmt_from_path(&input);
             match vmt_model {

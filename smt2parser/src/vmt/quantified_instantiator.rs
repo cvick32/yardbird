@@ -7,6 +7,7 @@ use crate::{
 
 use super::{
     array_axiom_frame_num_getter::{ArrayAxiomFrameNumGetter, VariableOffsetGetter},
+    definition_graph::DefinitionFrameInfo,
     variable::Variable,
 };
 
@@ -101,6 +102,19 @@ pub struct UnquantifiedInstantiator {
 impl UnquantifiedInstantiator {
     pub fn rewrite_unquantified(term: Term, _variables: Vec<Variable>) -> Option<Instance> {
         let offset_getter = VariableOffsetGetter::new(term.clone());
+        Self::rewrite_with_offsets(term, offset_getter)
+    }
+
+    pub fn rewrite_with_definitions(
+        term: Term,
+        definition_frames: DefinitionFrameInfo,
+    ) -> Option<Instance> {
+        let offset_getter =
+            VariableOffsetGetter::with_definition_frames(term.clone(), definition_frames);
+        Self::rewrite_with_offsets(term, offset_getter)
+    }
+
+    fn rewrite_with_offsets(term: Term, offset_getter: VariableOffsetGetter) -> Option<Instance> {
         let mut ui = Self {
             visitor: SyntaxBuilder,
             variable_offsets: offset_getter,

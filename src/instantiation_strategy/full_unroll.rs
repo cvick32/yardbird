@@ -6,7 +6,7 @@ use crate::{
     solver::YardbirdSolver, subterm_handler::SubtermHandler, training::IndexedInstantiationRecord,
 };
 
-use super::{InstantiationStrategy, StoredInstantiation};
+use super::{materialize_indexed_instance, InstantiationStrategy, StoredInstantiation};
 
 /// Default instantiation strategy that fully unrolls all instances from depth 0 to current depth
 /// when they are first added.
@@ -43,6 +43,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
         abstract_instantiation_id: Option<String>,
         _depth: u16,
         bmc_builder: &mut BMCBuilder,
+        definition_materializer: &mut smt2parser::vmt::definition_materializer::DefinitionMaterializer,
         solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
@@ -77,10 +78,14 @@ impl InstantiationStrategy for FullUnrollStrategy {
             }
             bmc_builder.set_depth(i);
             bmc_builder.set_width(inst.width());
-            let indexed_inst = inst.rewrite(bmc_builder);
-
-            // Register subterms from this instantiation
-            subterm_handler.register_instantiation_term(indexed_inst.clone());
+            let indexed_inst = materialize_indexed_instance(
+                inst.rewrite(bmc_builder),
+                bmc_builder,
+                definition_materializer,
+                solver,
+                subterm_handler,
+                true,
+            );
             asserted_instantiations.push(indexed_inst.clone());
 
             all_indexed_insts.push(indexed_inst);
@@ -122,7 +127,9 @@ impl InstantiationStrategy for FullUnrollStrategy {
         depth: u16,
         instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
+        definition_materializer: &mut smt2parser::vmt::definition_materializer::DefinitionMaterializer,
         solver: &mut dyn YardbirdSolver,
+        subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         asserted_instantiations: &mut Vec<Term>,
@@ -137,7 +144,14 @@ impl InstantiationStrategy for FullUnrollStrategy {
         let mut all_indexed_insts = vec![];
         for stored in instantiations {
             bmc_builder.set_width(stored.inst.width());
-            let indexed_inst = stored.inst.rewrite(bmc_builder);
+            let indexed_inst = materialize_indexed_instance(
+                stored.inst.rewrite(bmc_builder),
+                bmc_builder,
+                definition_materializer,
+                solver,
+                subterm_handler,
+                false,
+            );
             asserted_instantiations.push(indexed_inst.clone());
             all_indexed_insts.push((indexed_inst, stored.abstract_instantiation_id.clone()));
         }

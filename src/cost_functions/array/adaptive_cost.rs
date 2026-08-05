@@ -128,6 +128,7 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
             ArrayLanguage::Times(_) => self.arithmetic_complexity("Times"),
             ArrayLanguage::Mod(_) => self.arithmetic_complexity("Mod"),
             ArrayLanguage::Div(_) => self.arithmetic_complexity("Div"),
+            ArrayLanguage::ToReal(_) => self.arithmetic_complexity("ToReal"),
             ArrayLanguage::Ite(_) => 5,
 
             ArrayLanguage::Symbol(sym) => {

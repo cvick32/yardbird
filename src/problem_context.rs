@@ -1,5 +1,9 @@
 use smt2parser::concrete::Term;
-use smt2parser::vmt::{quantified_instantiator::Instance, variable::Variable, ReadsAndWrites};
+use smt2parser::vmt::{
+    quantified_instantiator::{Instance, UnquantifiedInstantiator},
+    variable::Variable,
+    ReadsAndWrites,
+};
 use std::any::Any;
 
 use crate::{
@@ -31,6 +35,10 @@ pub trait ProblemContext {
     fn get_instantiations(&self) -> Vec<Term>;
     fn get_variables(&self) -> &[Variable];
     fn get_number_instantiations_added(&self) -> u64;
+
+    fn make_unquantified_instance(&self, term: Term) -> Option<Instance> {
+        UnquantifiedInstantiator::rewrite_unquantified(term, self.get_variables().to_vec())
+    }
 
     // Methods for cost functions
     /// Get subterms from initial state and transition relation (VMT-specific, empty for SMTLIB)

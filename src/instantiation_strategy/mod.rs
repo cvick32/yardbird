@@ -2,7 +2,10 @@ pub mod full_unroll;
 pub mod no_unroll_on_loop;
 use smt2parser::{
     concrete::Term,
-    vmt::{bmc::BMCBuilder, quantified_instantiator::Instance},
+    vmt::{
+        bmc::BMCBuilder, definition_materializer::DefinitionMaterializer,
+        quantified_instantiator::Instance,
+    },
 };
 
 use crate::{
@@ -34,6 +37,7 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         abstract_instantiation_id: Option<String>,
         depth: u16,
         bmc_builder: &mut BMCBuilder,
+        definition_materializer: &mut DefinitionMaterializer,
         solver: &mut dyn YardbirdSolver,
         subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
@@ -52,10 +56,40 @@ pub trait InstantiationStrategy: std::fmt::Debug + Send {
         depth: u16,
         instantiations: &[StoredInstantiation],
         bmc_builder: &mut BMCBuilder,
+        definition_materializer: &mut DefinitionMaterializer,
         solver: &mut dyn YardbirdSolver,
+        subterm_handler: &mut SubtermHandler,
         track_instantiations: bool,
         tracked_labels: &mut Vec<IndexedInstantiationRecord>,
         asserted_instantiations: &mut Vec<Term>,
         num_quantifiers_instantiated: &mut u64,
     );
+}
+
+fn materialize_indexed_instance(
+    indexed_instance: Term,
+    bmc_builder: &mut BMCBuilder,
+    definition_materializer: &mut DefinitionMaterializer,
+    solver: &mut dyn YardbirdSolver,
+    subterm_handler: &mut SubtermHandler,
+    register_root_subterms: bool,
+) -> Term {
+    let materialized = definition_materializer.materialize(indexed_instance, bmc_builder);
+    for declaration in &materialized.new_declarations {
+        solver
+            .accept_command(declaration)
+            .expect("solver should accept an instantiation helper declaration");
+    }
+    for definition in &materialized.new_definitions {
+        solver
+            .assert_term(definition)
+            .expect("solver should assert an instantiation helper definition");
+    }
+    if register_root_subterms {
+        subterm_handler.register_instantiation_term(materialized.root.clone());
+    }
+    for support in materialized.support {
+        subterm_handler.register_instantiation_term(support);
+    }
+    materialized.root
 }

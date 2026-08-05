@@ -2,10 +2,7 @@ use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
-use smt2parser::{
-    concrete::Term,
-    vmt::{quantified_instantiator::UnquantifiedInstantiator, VMTModel},
-};
+use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
     auxiliary_synthesis::{
@@ -390,7 +387,6 @@ where
                 "AUX-SYNTH skipped {skipped_const_aux_symbol} const instantiations containing auxiliary symbols"
             );
         }
-        let variables = smt.get_variables().to_vec();
         for (term_hash, term) in &const_pairs {
             if trace_instantiations {
                 trace!(
@@ -399,9 +395,7 @@ where
                     term
                 );
             }
-            if let Some(inst) =
-                UnquantifiedInstantiator::rewrite_unquantified(term.clone(), variables.clone())
-            {
+            if let Some(inst) = smt.make_unquantified_instance(term.clone()) {
                 let abstract_id = self
                     .abstract_instantiations
                     .iter()
@@ -466,20 +460,22 @@ where
                 "AUX-SYNTH skipped {skipped_regular_aux_symbol} regular instantiations containing auxiliary symbols"
             );
         }
-        let variables = smt.get_variables().to_vec();
-        let _ = terms
+        let instances = terms
             .into_iter()
-            .flat_map(|(term_hash, term)| {
+            .filter_map(|(term_hash, term)| {
                 if trace_instantiations {
                     trace!(
                         "[yardbird::inst-trace] regular abstract-hash={} abstract-term={}",
-                        term_hash, term
+                        term_hash,
+                        term
                     );
                 }
-                UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone()).map(
-                    move |inst| (term_hash.clone(), inst),
-                )
+                smt.make_unquantified_instance(term)
+                    .map(move |inst| (term_hash.clone(), inst))
             })
+            .collect::<Vec<_>>();
+        let _ = instances
+            .into_iter()
             .map(|(term_hash, inst)| {
                 let abstract_id = self
                     .abstract_instantiations

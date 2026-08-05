@@ -38,6 +38,7 @@ define_language! {
         "-" = Negate(Box<[Id]>),
         "*" = Times(Box<[Id]>),
         "/" = Div([Id; 2]),
+        "to_real" = ToReal(Id),
         "ite" = Ite([Id; 3]),
         Symbol(Symbol),
     }
@@ -714,6 +715,11 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                         let lhs = inner(arguments.pop().unwrap(), expr)?;
                         Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
                     }
+                    "to_real" => {
+                        assert!(arguments.len() == 1);
+                        let argument = inner(arguments.pop().unwrap(), expr)?;
+                        Some(expr.add(ArrayLanguage::ToReal(argument)))
+                    }
                     "ite" => {
                         assert!(arguments.len() == 3);
                         // args popped in reverse order
@@ -722,14 +728,21 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                         let condition = inner(arguments.pop().unwrap(), expr)?;
                         Some(expr.add(ArrayLanguage::Ite([condition, then_term, else_term])))
                     }
+                    "bvcomp" => {
+                        assert!(arguments.len() == 2);
+                        let rhs = inner(arguments.pop().unwrap(), expr)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let condition = expr.add(ArrayLanguage::Eq([lhs, rhs]));
+                        let one = expr.add(ArrayLanguage::Symbol("#b1".into()));
+                        let zero = expr.add(ArrayLanguage::Symbol("#b0".into()));
+                        Some(expr.add(ArrayLanguage::Ite([condition, one, zero])))
+                    }
                     x => todo!("Unsupported operator: {x}"),
                 }
             }
             Term::Forall { .. } => None,
-            x @ (Term::Let { .. }
-            | Term::Exists { .. }
-            | Term::Match { .. }
-            | Term::Attributes { .. }) => todo!("{x}"),
+            Term::Attributes { term, .. } => inner(*term, expr),
+            x @ (Term::Let { .. } | Term::Exists { .. } | Term::Match { .. }) => todo!("{x}"),
         }
     }
 
@@ -850,6 +863,10 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
                 qual_identifier: QualIdentifier::simple("/"),
                 arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
             },
+            ArrayLanguage::ToReal(argument) => Term::Application {
+                qual_identifier: QualIdentifier::simple("to_real"),
+                arguments: vec![inner(expr, *argument)],
+            },
             ArrayLanguage::Ite([condition, then_term, else_term]) => Term::Application {
                 qual_identifier: QualIdentifier::simple("ite"),
                 arguments: vec![
@@ -858,6 +875,13 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
                     inner(expr, *else_term),
                 ],
             },
+            ArrayLanguage::Symbol(sym)
+                if sym.as_str().starts_with("#b") || sym.as_str().starts_with("#x") =>
+            {
+                sym.as_str()
+                    .parse()
+                    .expect("bitvector literal preserved by the array e-graph must remain valid")
+            }
             ArrayLanguage::Symbol(sym) => Term::QualIdentifier(QualIdentifier::simple(sym)),
         }
     }
@@ -962,6 +986,33 @@ mod test {
 
         assert_eq!(egraph.find(translated_id), egraph.find(parsed_id));
         assert_eq!(expr_to_term(translated).to_string(), "(ite true x y)");
+    }
+
+    #[test]
+    fn translate_term_lowers_bvcomp_without_adding_array_theory_semantics() {
+        let term = "(bvcomp #b0011 #b0101)".parse().unwrap();
+        let translated = translate_term(term).unwrap();
+
+        assert_eq!(
+            expr_to_term(translated).to_string(),
+            "(ite (= #b0011 #b0101) #b1 #b0)"
+        );
+    }
+
+    #[test]
+    fn translate_term_strips_solver_metadata_attributes() {
+        let term = "(! (<= x 1) :predicate true)".parse().unwrap();
+        let translated = translate_term(term).unwrap();
+
+        assert_eq!(expr_to_term(translated).to_string(), "(<= x 1)");
+    }
+
+    #[test]
+    fn translate_term_preserves_to_real_coercions() {
+        let term = "(to_real (- 1))".parse().unwrap();
+        let translated = translate_term(term).unwrap();
+
+        assert_eq!(expr_to_term(translated).to_string(), "(to_real (- 1))");
     }
 
     #[test]

@@ -7,6 +7,7 @@ use crate::{
     vmt::{variable::var_is_immutable, VARIABLE_FRAME_DELIMITER},
 };
 
+use super::definition_graph::DefinitionFrameInfo;
 use super::variable::Variable;
 
 #[derive(Clone, Debug)]
@@ -155,6 +156,7 @@ impl crate::rewriter::Rewriter for ArrayAxiomFrameNumGetter {
 pub struct VariableOffsetGetter {
     pub visitor: SyntaxBuilder,
     pub variable_offsets: std::collections::BTreeMap<String, Vec<i64>>,
+    definition_frames: DefinitionFrameInfo,
 }
 
 impl VariableOffsetGetter {
@@ -162,10 +164,25 @@ impl VariableOffsetGetter {
         let mut offset_getter = VariableOffsetGetter {
             visitor: SyntaxBuilder,
             variable_offsets: std::collections::BTreeMap::new(),
+            definition_frames: DefinitionFrameInfo::default(),
         };
 
         instance_term.accept(&mut offset_getter).unwrap();
 
+        offset_getter
+    }
+
+    pub fn with_definition_frames(
+        instance_term: Term,
+        definition_frames: DefinitionFrameInfo,
+    ) -> Self {
+        let mut offset_getter = VariableOffsetGetter {
+            visitor: SyntaxBuilder,
+            variable_offsets: std::collections::BTreeMap::new(),
+            definition_frames,
+        };
+
+        instance_term.accept(&mut offset_getter).unwrap();
         offset_getter
     }
 
@@ -205,14 +222,28 @@ impl crate::rewriter::Rewriter for VariableOffsetGetter {
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
         if let Some((var_name, time_str)) = s.0.split_once(VARIABLE_FRAME_DELIMITER) {
-            if !var_is_immutable(var_name) {
-                let time: u64 = time_str.parse().unwrap();
+            if let Some(relative_offsets) = self.definition_frames.offsets(var_name) {
+                let anchor: i64 = time_str.parse().unwrap();
+                let offsets = self
+                    .variable_offsets
+                    .entry(var_name.to_string())
+                    .or_default();
+                // The helper symbol exists at its anchor even when its body is
+                // next-state-only. Keeping the anchor in the span prevents a
+                // reusable instance from being shifted to a negative frame.
+                offsets.push(anchor);
+                offsets.extend(
+                    relative_offsets
+                        .iter()
+                        .map(|offset| anchor + i64::from(*offset)),
+                );
+            } else if !var_is_immutable(var_name) {
+                let time: i64 = time_str.parse().unwrap();
                 // Calculate offset relative to the current frame (0)
-                let offset = time as i64;
                 self.variable_offsets
                     .entry(var_name.to_string())
                     .or_default()
-                    .push(offset);
+                    .push(time);
             }
         }
         Ok(s)

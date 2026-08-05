@@ -31,6 +31,20 @@ impl FunctionDefinition {
     }
 }
 
+fn real_arguments(argument_values: &[Dynamic], operator: &str) -> Vec<z3::ast::Real> {
+    argument_values
+        .iter()
+        .map(|argument| {
+            argument.as_real().unwrap_or_else(|| {
+                argument
+                    .as_int()
+                    .unwrap_or_else(|| panic!("{operator} arguments must be arithmetic"))
+                    .to_real()
+            })
+        })
+        .collect()
+}
+
 pub struct Z3VarContext {
     pub builder: SyntaxBuilder,
     pub var_name_to_z3_term: RefCell<HashMap<String, Dynamic>>,
@@ -64,7 +78,14 @@ impl Z3VarContext {
                     }
                     z3::ast::BV::from_u64(value, bit_width).into()
                 }
-                Constant::Binary(_) => todo!(),
+                Constant::Binary(bin) => {
+                    // SMT-LIB prints bit-vector literals most-significant bit first,
+                    // while Z3_mk_bv_numeral expects the least-significant bit first.
+                    let least_significant_bit_first = bin.iter().rev().copied().collect::<Vec<_>>();
+                    z3::ast::BV::from_bits(&least_significant_bit_first)
+                        .expect("SMT-LIB binary literals must contain at least one bit")
+                        .into()
+                }
                 Constant::String(_) => todo!(),
             },
             Term::QualIdentifier(qual_id) => {
@@ -248,10 +269,10 @@ impl Z3VarContext {
             } => todo!(),
             Term::Exists { vars: _, term: _ } => todo!(),
             Term::Match { term: _, cases: _ } => todo!(),
-            Term::Attributes {
-                term: _,
-                attributes: _,
-            } => todo!(),
+            // SMT-LIB attributes annotate a term without changing its value.
+            // Yardbird handles the VMT-defining attributes while parsing the
+            // model; solver hints such as `:predicate` are transparent here.
+            Term::Attributes { term, .. } => self.rewrite_term(term),
         }
     }
 
@@ -262,6 +283,7 @@ impl Z3VarContext {
                 smt2parser::concrete::Identifier::Simple { symbol } => match symbol.0.as_str() {
                     "Bool" => z3::Sort::bool(),
                     "Int" => z3::Sort::int(),
+                    "Real" => z3::Sort::real(),
                     _ => z3::Sort::uninterpreted(z3::Symbol::String(symbol.0.clone())),
                 },
                 smt2parser::concrete::Identifier::Indexed { symbol, indices } => {
@@ -309,68 +331,134 @@ impl Z3VarContext {
     /// the application of the function with the given arguments.
     fn call_z3_function(&self, function_name: String, argument_values: Vec<Dynamic>) -> Dynamic {
         if function_name == "+" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::add(&int_ref_args).into()
-        } else if function_name == "-" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            if args.len() == 1 {
-                z3::ast::Int::unary_minus(int_ref_args[0]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::add(&refs).into()
             } else {
-                z3::ast::Int::sub(&int_ref_args).into()
+                let args = real_arguments(&argument_values, "+");
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Real::add(&refs).into()
+            }
+        } else if function_name == "-" {
+            if let Some(args) = argument_values
+                .iter()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs = args.iter().collect::<Vec<_>>();
+                if args.len() == 1 {
+                    z3::ast::Int::unary_minus(refs[0]).into()
+                } else {
+                    z3::ast::Int::sub(&refs).into()
+                }
+            } else {
+                let args = real_arguments(&argument_values, "-");
+                let refs = args.iter().collect::<Vec<_>>();
+                if args.len() == 1 {
+                    z3::ast::Real::unary_minus(refs[0]).into()
+                } else {
+                    z3::ast::Real::sub(&refs).into()
+                }
             }
         } else if function_name == "*" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::mul(&int_ref_args).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::mul(&refs).into()
+            } else {
+                let args = real_arguments(&argument_values, "*");
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Real::mul(&refs).into()
+            }
         } else if function_name == "/" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::div(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::div(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, "/");
+                z3::ast::Real::div(&args[0], &args[1]).into()
+            }
         } else if function_name == "mod" {
             let args = argument_values
                 .iter()
                 .map(|x| x.as_int().expect("Not an int"))
                 .collect::<Vec<_>>();
             z3::ast::Int::modulo(&args[0], &args[1]).into()
+        } else if function_name == "to_real" {
+            assert_eq!(
+                argument_values.len(),
+                1,
+                "to_real requires exactly 1 argument"
+            );
+            argument_values[0]
+                .as_int()
+                .expect("to_real argument must be an integer")
+                .to_real()
+                .into()
         } else if function_name == "<=" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::le(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::le(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, "<=");
+                z3::ast::Real::le(&args[0], &args[1]).into()
+            }
         } else if function_name == "<" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::lt(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::lt(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, "<");
+                z3::ast::Real::lt(&args[0], &args[1]).into()
+            }
         } else if function_name == ">=" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::ge(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::ge(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, ">=");
+                z3::ast::Real::ge(&args[0], &args[1]).into()
+            }
         } else if function_name == ">" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::gt(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::gt(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, ">");
+                z3::ast::Real::gt(&args[0], &args[1]).into()
+            }
         } else if function_name == "=" {
-            argument_values[0].eq(&argument_values[1]).into()
+            let lhs = &argument_values[0];
+            let rhs = &argument_values[1];
+            if let (Some(lhs), Some(rhs)) = (lhs.as_real(), rhs.as_int()) {
+                lhs.eq(rhs.to_real()).into()
+            } else if let (Some(lhs), Some(rhs)) = (lhs.as_int(), rhs.as_real()) {
+                lhs.to_real().eq(rhs).into()
+            } else {
+                lhs.eq(rhs).into()
+            }
         } else if function_name == "=>" {
             let args = argument_values
                 .iter()
@@ -427,6 +515,21 @@ impl Z3VarContext {
                 .as_bv()
                 .expect("concat arg 2 must be bitvector");
             z3::ast::BV::concat(&bv1, &bv2).into()
+        } else if function_name == "bvcomp" {
+            assert_eq!(
+                argument_values.len(),
+                2,
+                "bvcomp requires exactly 2 arguments"
+            );
+            let bv1 = argument_values[0]
+                .as_bv()
+                .expect("bvcomp arg 1 must be bitvector");
+            let bv2 = argument_values[1]
+                .as_bv()
+                .expect("bvcomp arg 2 must be bitvector");
+            let one = z3::ast::BV::from_u64(1, 1);
+            let zero = z3::ast::BV::from_u64(0, 1);
+            bv1.eq(&bv2).ite(&one, &zero).into()
         } else if function_name == "bvule" {
             let bv1 = argument_values[0]
                 .as_bv()
@@ -756,5 +859,125 @@ impl smt2parser::rewriter::Rewriter for Z3VarContext {
             parameters,
             sort,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Z3VarContext;
+    use smt2parser::concrete::{Identifier, Sort, Symbol, Term};
+    use z3::ast::{Ast, BV};
+    use z3::SortKind;
+
+    fn rewrite_binary_literal(literal: &str) -> BV {
+        let term = literal.parse::<Term>().unwrap();
+        Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bv()
+            .expect("a binary literal should become a Z3 bit-vector")
+    }
+
+    #[test]
+    fn rewrites_binary_literals_with_their_original_width_and_bit_order() {
+        let zero = rewrite_binary_literal("#b0");
+        assert_eq!(zero.get_size(), 1);
+        assert_eq!(zero.as_u64(), Some(0));
+
+        let one_with_leading_zeroes = rewrite_binary_literal("#b0001");
+        assert_eq!(one_with_leading_zeroes.get_size(), 4);
+        assert_eq!(one_with_leading_zeroes.as_u64(), Some(1));
+
+        let wide_literal = format!("#b1{}1", "0".repeat(63));
+        let wide = rewrite_binary_literal(&wide_literal);
+        let expected = BV::from_str(65, "18446744073709551617").unwrap();
+        assert_eq!(wide.get_size(), 65);
+        assert_eq!(wide.eq(&expected).simplify().as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_bvcomp_as_a_native_one_bit_bitvector() {
+        let equal = "(bvcomp #b0011 #b0011)".parse::<Term>().unwrap();
+        let unequal = "(bvcomp #b0011 #b0101)".parse::<Term>().unwrap();
+        let context = Z3VarContext::new();
+
+        let equal = context
+            .rewrite_term(&equal)
+            .as_bv()
+            .expect("bvcomp should return a bitvector")
+            .simplify();
+        let unequal = context
+            .rewrite_term(&unequal)
+            .as_bv()
+            .expect("bvcomp should return a bitvector")
+            .simplify();
+
+        assert_eq!(equal.get_size(), 1);
+        assert_eq!(equal.as_u64(), Some(1));
+        assert_eq!(unequal.get_size(), 1);
+        assert_eq!(unequal.as_u64(), Some(0));
+    }
+
+    #[test]
+    fn rewrites_attributed_terms_as_their_underlying_term() {
+        let term = "(! (= 1 1) :predicate true)".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("the attributed equality should remain Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_to_real_and_real_arithmetic_natively() {
+        let term = "(= (* (to_real (- 1)) (to_real 3)) (to_real (- 3)))"
+            .parse::<Term>()
+            .unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("the real-valued equality should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn coerces_integer_numerals_in_real_equalities() {
+        let term = "(= (to_real 0) 0)".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("mixed Int/Real equality should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn coerces_integer_arguments_in_real_arithmetic() {
+        let term = "(= (+ (to_real 1) 2) (to_real 3))".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("mixed Int/Real arithmetic should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn maps_real_to_z3s_native_real_sort() {
+        let real_sort = Sort::Simple {
+            identifier: Identifier::Simple {
+                symbol: Symbol("Real".to_string()),
+            },
+        };
+
+        assert_eq!(
+            Z3VarContext::new().get_z3_sort(&real_sort).kind(),
+            SortKind::Real
+        );
     }
 }
