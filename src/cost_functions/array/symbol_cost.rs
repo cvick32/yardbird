@@ -111,6 +111,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBMCCost {
             ArrayLanguage::Times(_) => 1,
             ArrayLanguage::Mod(_) => 1,
             ArrayLanguage::Div(_) => 1,
+            ArrayLanguage::ToReal(_) => 1,
             ArrayLanguage::Ite(_) => 1,
             ArrayLanguage::Symbol(sym) => {
                 let in_trans = self.init_and_transition_system_terms.contains(sym);
