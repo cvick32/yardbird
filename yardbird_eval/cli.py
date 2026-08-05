@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 
 from .aws_backend import download_aws_artifacts, launch_aws_run, refresh_aws_run
 from .common import (
@@ -23,6 +25,7 @@ from .lab_backend import (
     refresh_lab_run,
     teardown_lab_subrun,
 )
+from .instrumentation_backend import launch_instrumentation_run
 from .local_backend import launch_local_run
 
 
@@ -60,7 +63,7 @@ def maybe_teardown_subrun(manifest: dict, args: argparse.Namespace) -> dict:
     return teardown_lab_subrun(manifest, args, args.teardown_subrun_index)
 
 
-def parse_args() -> argparse.Namespace:
+def legacy_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Unified Yardbird benchmark launcher, tracker, and report generator"
     )
@@ -175,13 +178,88 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Preserve worker VMs after they finish instead of auto-destroying them",
     )
-    return parser.parse_args()
+    return parser
 
 
-def main() -> int:
+def instrumentation_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run Garden benchmarks and compare captured solver sessions with instrumented Z3"
+    )
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG),
+        help="Path to the Garden benchmark config YAML",
+    )
+    parser.add_argument(
+        "--run-type",
+        action="append",
+        required=True,
+        help="Garden matrix name to run. Can be repeated.",
+    )
+    parser.add_argument("--run-id", required=True, help="New evaluation run id")
+    parser.add_argument("--name", help="Optional friendly name for the run")
+    parser.add_argument(
+        "--ranker-model",
+        help="Logistic-regression model JSON to pass through to Garden/Yardbird",
+    )
+    parser.add_argument(
+        "--z3-build-dir",
+        help="Reuse an existing z3-builder output instead of building inside the run",
+    )
+    parser.add_argument(
+        "--z3-checkout",
+        help="Z3 checkout used to build the pinned stock and instrumented pair",
+    )
+    parser.add_argument(
+        "--instrumented-z3-checkout",
+        help="Optional separate instrumented Z3 checkout",
+    )
+    parser.add_argument(
+        "--z3-build-jobs",
+        type=int,
+        default=os.cpu_count() or 1,
+        help="Parallel jobs for z3-builder",
+    )
+    parser.add_argument("--warmups", type=int, default=3)
+    parser.add_argument("--repetitions", type=int, default=15)
+    parser.add_argument("--replay-timeout", type=float, default=60.0)
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    values = list(sys.argv[1:] if argv is None else argv)
+    if values and values[0] in {
+        "compare_with_instrumentation",
+        "compare-with-instrumentation",
+    }:
+        args = instrumentation_parser().parse_args(values[1:])
+        args.command = "compare_with_instrumentation"
+        return args
+    if values and values[0] in {"generate-report", "generate_report"}:
+        report_parser = argparse.ArgumentParser(
+            description="Generate the workbook and PDF for a completed evaluation run"
+        )
+        report_parser.add_argument("--run-id", required=True)
+        report_args = report_parser.parse_args(values[1:])
+        args = legacy_parser().parse_args(
+            ["--run-id", report_args.run_id, "--generate-report"]
+        )
+        args.command = "generate-report"
+        return args
+    args = legacy_parser().parse_args(values)
+    args.command = "legacy"
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
     load_dotenv()
-    args = parse_args()
+    args = parse_args(argv)
     ensure_dir(BENCHMARK_ROOT)
+
+    if args.command == "compare_with_instrumentation":
+        manifest = launch_instrumentation_run(args)
+        print_run_summary(manifest)
+        return 0
 
     existing_run_id = resolve_run_id(args)
     if existing_run_id:

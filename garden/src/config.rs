@@ -131,25 +131,27 @@ impl BenchmarkConfig {
 
         if let Some(matrix_name) = matrix_name {
             // If a specific matrix is requested, only run that matrix
-            if let Some(matrix) = self.parameter_matrices.get(matrix_name) {
-                for &depth in &matrix.depths {
-                    for &solver in &matrix.solvers {
-                        for &strategy in &matrix.strategies {
-                            for &cost_function in &matrix.cost_functions {
-                                runs.push(BenchmarkRun {
-                                    name: format!(
-                                        "{}_d{}_solver{:?}_s{:?}_c{:?}",
-                                        matrix_name, depth, solver, strategy, cost_function
-                                    ),
-                                    depth,
-                                    solver,
-                                    strategy,
-                                    cost_function,
-                                    timeout_seconds: matrix
-                                        .timeout_seconds
-                                        .unwrap_or(self.global.timeout_seconds),
-                                });
-                            }
+            let matrix = self
+                .parameter_matrices
+                .get(matrix_name)
+                .with_context(|| format!("Unknown parameter matrix: {matrix_name}"))?;
+            for &depth in &matrix.depths {
+                for &solver in &matrix.solvers {
+                    for &strategy in &matrix.strategies {
+                        for &cost_function in &matrix.cost_functions {
+                            runs.push(BenchmarkRun {
+                                name: format!(
+                                    "{}_d{}_solver{:?}_s{:?}_c{:?}",
+                                    matrix_name, depth, solver, strategy, cost_function
+                                ),
+                                depth,
+                                solver,
+                                strategy,
+                                cost_function,
+                                timeout_seconds: matrix
+                                    .timeout_seconds
+                                    .unwrap_or(self.global.timeout_seconds),
+                            });
                         }
                     }
                 }
