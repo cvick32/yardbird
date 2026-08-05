@@ -31,6 +31,20 @@ impl FunctionDefinition {
     }
 }
 
+fn real_arguments(argument_values: &[Dynamic], operator: &str) -> Vec<z3::ast::Real> {
+    argument_values
+        .iter()
+        .map(|argument| {
+            argument.as_real().unwrap_or_else(|| {
+                argument
+                    .as_int()
+                    .unwrap_or_else(|| panic!("{operator} arguments must be arithmetic"))
+                    .to_real()
+            })
+        })
+        .collect()
+}
+
 pub struct Z3VarContext {
     pub builder: SyntaxBuilder,
     pub var_name_to_z3_term: RefCell<HashMap<String, Dynamic>>,
@@ -269,6 +283,7 @@ impl Z3VarContext {
                 smt2parser::concrete::Identifier::Simple { symbol } => match symbol.0.as_str() {
                     "Bool" => z3::Sort::bool(),
                     "Int" => z3::Sort::int(),
+                    "Real" => z3::Sort::real(),
                     _ => z3::Sort::uninterpreted(z3::Symbol::String(symbol.0.clone())),
                 },
                 smt2parser::concrete::Identifier::Indexed { symbol, indices } => {
@@ -316,68 +331,134 @@ impl Z3VarContext {
     /// the application of the function with the given arguments.
     fn call_z3_function(&self, function_name: String, argument_values: Vec<Dynamic>) -> Dynamic {
         if function_name == "+" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::add(&int_ref_args).into()
-        } else if function_name == "-" {
-            let args = argument_values
-                .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            if args.len() == 1 {
-                z3::ast::Int::unary_minus(int_ref_args[0]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::add(&refs).into()
             } else {
-                z3::ast::Int::sub(&int_ref_args).into()
+                let args = real_arguments(&argument_values, "+");
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Real::add(&refs).into()
+            }
+        } else if function_name == "-" {
+            if let Some(args) = argument_values
+                .iter()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs = args.iter().collect::<Vec<_>>();
+                if args.len() == 1 {
+                    z3::ast::Int::unary_minus(refs[0]).into()
+                } else {
+                    z3::ast::Int::sub(&refs).into()
+                }
+            } else {
+                let args = real_arguments(&argument_values, "-");
+                let refs = args.iter().collect::<Vec<_>>();
+                if args.len() == 1 {
+                    z3::ast::Real::unary_minus(refs[0]).into()
+                } else {
+                    z3::ast::Real::sub(&refs).into()
+                }
             }
         } else if function_name == "*" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            let int_ref_args = args.iter().collect::<Vec<_>>();
-            z3::ast::Int::mul(&int_ref_args).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Int::mul(&refs).into()
+            } else {
+                let args = real_arguments(&argument_values, "*");
+                let refs = args.iter().collect::<Vec<_>>();
+                z3::ast::Real::mul(&refs).into()
+            }
         } else if function_name == "/" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::div(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::div(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, "/");
+                z3::ast::Real::div(&args[0], &args[1]).into()
+            }
         } else if function_name == "mod" {
             let args = argument_values
                 .iter()
                 .map(|x| x.as_int().expect("Not an int"))
                 .collect::<Vec<_>>();
             z3::ast::Int::modulo(&args[0], &args[1]).into()
+        } else if function_name == "to_real" {
+            assert_eq!(
+                argument_values.len(),
+                1,
+                "to_real requires exactly 1 argument"
+            );
+            argument_values[0]
+                .as_int()
+                .expect("to_real argument must be an integer")
+                .to_real()
+                .into()
         } else if function_name == "<=" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::le(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::le(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, "<=");
+                z3::ast::Real::le(&args[0], &args[1]).into()
+            }
         } else if function_name == "<" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::lt(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::lt(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, "<");
+                z3::ast::Real::lt(&args[0], &args[1]).into()
+            }
         } else if function_name == ">=" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::ge(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::ge(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, ">=");
+                z3::ast::Real::ge(&args[0], &args[1]).into()
+            }
         } else if function_name == ">" {
-            let args = argument_values
+            if let Some(args) = argument_values
                 .iter()
-                .map(|x| x.as_int().expect("Not an int"))
-                .collect::<Vec<_>>();
-            z3::ast::Int::gt(&args[0], &args[1]).into()
+                .map(Dynamic::as_int)
+                .collect::<Option<Vec<_>>>()
+            {
+                z3::ast::Int::gt(&args[0], &args[1]).into()
+            } else {
+                let args = real_arguments(&argument_values, ">");
+                z3::ast::Real::gt(&args[0], &args[1]).into()
+            }
         } else if function_name == "=" {
-            argument_values[0].eq(&argument_values[1]).into()
+            let lhs = &argument_values[0];
+            let rhs = &argument_values[1];
+            if let (Some(lhs), Some(rhs)) = (lhs.as_real(), rhs.as_int()) {
+                lhs.eq(rhs.to_real()).into()
+            } else if let (Some(lhs), Some(rhs)) = (lhs.as_int(), rhs.as_real()) {
+                lhs.to_real().eq(rhs).into()
+            } else {
+                lhs.eq(rhs).into()
+            }
         } else if function_name == "=>" {
             let args = argument_values
                 .iter()
