@@ -109,7 +109,19 @@ log_status "INFO" "Garden binary built successfully"
 echo "$(cat garden/benchmark_config.yaml)"
 
 log_status "INFO" "Running benchmarks with garden"
-if ! ./target/release/garden --config garden/benchmark_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
+capture_root="benchmark_captures_${unique_benchmark_name}"
+capture_args=()
+if [ "${capture_solver_journals}" = "true" ]; then
+    capture_args=(--profile --solver-capture-root "$capture_root")
+    log_status "INFO" "Solver journal capture is enabled"
+else
+    log_status "INFO" "Solver journal capture is disabled"
+fi
+if ! ./target/release/garden \
+    --config garden/benchmark_config.yaml \
+    --matrix ${matrix_name} \
+    --output benchmark_results_${unique_benchmark_name}.json \
+    "${capture_args[@]}"; then
     log_status "ERROR" "Benchmark execution failed"
     exit 1
 fi
@@ -126,6 +138,21 @@ log_status "INFO" "Uploading results to S3"
 if ! aws s3 cp benchmark_results_${unique_benchmark_name}.json s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/results.json --region us-east-2; then
     log_status "ERROR" "Failed to upload benchmark results"
     exit 1
+fi
+if [ "${capture_solver_journals}" = "true" ]; then
+    # Preserve every solver journal, including incomplete captures from timed-out
+    # benchmark processes. Archive the contents rather than the dynamic root name
+    # so the controller can extract into its per-matrix capture directory.
+    log_status "INFO" "Archiving solver captures"
+    capture_archive="benchmark_captures_${unique_benchmark_name}.tar.gz"
+    if ! tar -C "$capture_root" -czf "$capture_archive" .; then
+        log_status "ERROR" "Failed to archive solver captures"
+        exit 1
+    fi
+    if ! aws s3 cp "$capture_archive" s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/captures.tar.gz --region us-east-2; then
+        log_status "ERROR" "Failed to upload solver captures"
+        exit 1
+    fi
 fi
 
 # Mark completion

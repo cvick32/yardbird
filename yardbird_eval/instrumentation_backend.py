@@ -143,6 +143,27 @@ def _clean_example_name(value: str) -> str:
     return value
 
 
+def _resolve_capture_dir(
+    capture_value: Any, downloaded_capture_root: Path | None
+) -> Path | None:
+    if not capture_value:
+        return None
+    capture_path = Path(str(capture_value))
+    if downloaded_capture_root is None:
+        return capture_path.expanduser().resolve()
+
+    # Garden assigns captures as <root>/<matrix-index>/<benchmark-index>. The
+    # worker root may be relative or absolute, so only those stable final path
+    # components are portable across machines.
+    if len(capture_path.parts) < 2:
+        raise RuntimeError(f"Invalid Garden capture path: {capture_path}")
+    resolved_root = downloaded_capture_root.expanduser().resolve()
+    rebased = (resolved_root / capture_path.parts[-2] / capture_path.parts[-1]).resolve()
+    if resolved_root not in rebased.parents:
+        raise RuntimeError(f"Rebased capture path escapes capture root: {capture_path}")
+    return rebased
+
+
 def _comparison_metrics(report: ComparisonReport) -> dict[str, int | float]:
     aggregate = report.aggregate
     stock = aggregate.stock_external.median_ns
@@ -179,6 +200,7 @@ def compare_garden_suite(
     warmups: int,
     repetitions: int,
     timeout_seconds: float,
+    downloaded_capture_root: Path | None = None,
     compare: Callable[..., ComparisonReport] = compare_capture,
 ) -> list[dict[str, Any]]:
     suite = load_json(raw_path)
@@ -200,7 +222,7 @@ def compare_garden_suite(
     for index, (example, result) in enumerate(raw_entries):
         result_type = _result_type(result.get("result"))
         capture_value = result.get("solver_capture_dir")
-        capture_dir = Path(capture_value).resolve() if capture_value else None
+        capture_dir = _resolve_capture_dir(capture_value, downloaded_capture_root)
         entry: dict[str, Any] = {
             "example": _clean_example_name(example),
             "solver": result.get("solver"),
@@ -264,6 +286,104 @@ def compare_garden_suite(
             entry.update(comparison_status="failed", comparison_error=message)
         entries.append(entry)
     return entries
+
+
+def compare_downloaded_aws_run(args: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    """Replay captures downloaded from a completed AWS run on the local host."""
+    if manifest.get("env") != "aws":
+        raise RuntimeError(
+            f"Run {manifest['run_id']} is not an AWS run: {manifest.get('env')}"
+        )
+    if manifest.get("status") != STATUS_COMPLETED:
+        raise RuntimeError(
+            f"Run {manifest['run_id']} is not complete: {manifest.get('status')}"
+        )
+    if args.warmups < 0:
+        raise RuntimeError("--warmups must be nonnegative")
+    if args.repetitions <= 0:
+        raise RuntimeError("--repetitions must be positive")
+    if args.replay_timeout <= 0:
+        raise RuntimeError("--replay-timeout must be positive")
+    if args.z3_build_jobs <= 0:
+        raise RuntimeError("--z3-build-jobs must be positive")
+
+    run_dir = Path(manifest["run_dir"])
+    summary_path = run_dir / "instrumentation" / "comparisons.json"
+    manifest["kind"] = "aws-instrumentation-comparison"
+    manifest["instrumentation"] = {
+        "warmups": args.warmups,
+        "repetitions": args.repetitions,
+        "replay_timeout_seconds": args.replay_timeout,
+        "comparison_summary_path": str(summary_path),
+    }
+    save_manifest(manifest)
+
+    z3_build_dir, builder_manifest = prepare_z3_build(args, run_dir)
+    manifest["instrumentation"].update(
+        {
+            "z3_build_dir": str(z3_build_dir),
+            "z3_builder_manifest": str(
+                run_dir / "instrumentation" / "z3-builder-manifest.json"
+            ),
+        }
+    )
+    save_manifest(manifest)
+
+    all_entries: list[dict[str, Any]] = []
+    for subrun in manifest["subruns"]:
+        run_type = str(subrun["benchmark_type"])
+        raw_path = Path(subrun["result_path"])
+        capture_root_value = subrun.get("capture_root")
+        if not capture_root_value:
+            raise RuntimeError(f"AWS subrun {run_type} has no downloaded capture root")
+        capture_root = Path(capture_root_value)
+        if not capture_root.is_dir():
+            raise RuntimeError(
+                f"AWS subrun {run_type} capture root does not exist: {capture_root}"
+            )
+
+        comparison_dir = ensure_dir(run_dir / "comparisons" / run_type)
+        matrix_summary_path = comparison_dir / "summary.json"
+        matrix_entries = compare_garden_suite(
+            raw_path,
+            comparison_dir,
+            builder_manifest,
+            warmups=args.warmups,
+            repetitions=args.repetitions,
+            timeout_seconds=args.replay_timeout,
+            downloaded_capture_root=capture_root,
+        )
+        for entry in matrix_entries:
+            entry["run_type"] = run_type
+        all_entries.extend(matrix_entries)
+        counts = _comparison_counts(matrix_entries)
+        write_json(
+            matrix_summary_path,
+            {
+                "run_id": manifest["run_id"],
+                "run_type": run_type,
+                "counts": counts,
+                "entries": matrix_entries,
+            },
+        )
+        subrun["comparison_summary_path"] = str(matrix_summary_path)
+        subrun["comparison_counts"] = counts
+        save_manifest(manifest)
+
+    write_json(
+        summary_path,
+        {
+            "run_id": manifest["run_id"],
+            "run_types": manifest["benchmark_types"],
+            "warmups": args.warmups,
+            "repetitions": args.repetitions,
+            "replay_timeout_seconds": args.replay_timeout,
+            "counts": _comparison_counts(all_entries),
+            "entries": all_entries,
+        },
+    )
+    save_manifest(manifest)
+    return manifest
 
 
 def _comparison_counts(entries: list[dict[str, Any]]) -> dict[str, int]:

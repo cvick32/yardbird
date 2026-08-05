@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import io
+import tarfile
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from yardbird_eval.aws_backend import refresh_aws_run
+from yardbird_eval.aws_backend import (
+    extract_capture_archive,
+    read_user_data,
+    refresh_aws_run,
+)
 from yardbird_eval.common import STATUS_COMPLETED, STATUS_RUNNING
 
 
@@ -56,6 +64,50 @@ class RefreshAwsRunTests(unittest.TestCase):
         object_exists.assert_not_called()
         describe_instance_state.assert_not_called()
         save_manifest.assert_called_once_with(manifest)
+
+
+class CaptureArchiveTests(unittest.TestCase):
+    def test_worker_capture_switch_is_rendered_explicitly(self) -> None:
+        ordinary = read_user_data("deep-concrete", "ordinary", "bucket")
+        captured = read_user_data(
+            "deep-concrete",
+            "captured",
+            "bucket",
+            capture_solver_journals=True,
+        )
+
+        self.assertIn('if [ "false" = "true" ]; then', ordinary)
+        self.assertIn('if [ "true" = "true" ]; then', captured)
+
+    def test_capture_archive_is_extracted_under_matrix_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive_path = root / "captures.tar.gz"
+            payload = b"(check-sat)\n"
+            with tarfile.open(archive_path, "w:gz") as archive:
+                member = tarfile.TarInfo("0000/0007/solver-session.smt2")
+                member.size = len(payload)
+                archive.addfile(member, io.BytesIO(payload))
+
+            capture_root = root / "captures" / "deep-abstract"
+            extract_capture_archive(archive_path, capture_root)
+
+            self.assertEqual(
+                (capture_root / "0000" / "0007" / "solver-session.smt2").read_bytes(),
+                payload,
+            )
+
+    def test_capture_archive_rejects_path_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive_path = root / "captures.tar.gz"
+            with tarfile.open(archive_path, "w:gz") as archive:
+                member = tarfile.TarInfo("../escaped.smt2")
+                member.size = 0
+                archive.addfile(member, io.BytesIO())
+
+            with self.assertRaisesRegex(RuntimeError, "escapes destination"):
+                extract_capture_archive(archive_path, root / "captures")
 
     @patch("yardbird_eval.aws_backend.save_manifest")
     @patch("yardbird_eval.aws_backend.describe_instance_state", return_value=None)

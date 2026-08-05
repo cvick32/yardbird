@@ -38,6 +38,41 @@ class InstrumentationEvalTests(unittest.TestCase):
         self.assertEqual(args.run_id, "test-compare")
         self.assertTrue(args.generate_report)
 
+    def test_downloaded_instrumentation_command_reuses_z3_replay_options(self) -> None:
+        args = parse_args(
+            [
+                "compare-downloaded-instrumentation",
+                "--run-id",
+                "deep-aws-run",
+                "--warmups",
+                "1",
+                "--repetitions",
+                "5",
+            ]
+        )
+
+        self.assertEqual(args.command, "compare_downloaded_instrumentation")
+        self.assertEqual(args.run_id, "deep-aws-run")
+        self.assertEqual(args.warmups, 1)
+        self.assertEqual(args.repetitions, 5)
+
+    def test_aws_solver_journaling_is_explicitly_opt_in(self) -> None:
+        ordinary = parse_args(
+            ["--env", "aws", "--benchmark-type", "deep-abstract"]
+        )
+        captured = parse_args(
+            [
+                "--env",
+                "aws",
+                "--benchmark-type",
+                "deep-abstract",
+                "--capture-solver-journals",
+            ]
+        )
+
+        self.assertFalse(ordinary.capture_solver_journals)
+        self.assertTrue(captured.capture_solver_journals)
+
     def test_garden_result_becomes_a_flattened_comparison_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -149,6 +184,83 @@ class InstrumentationEvalTests(unittest.TestCase):
 
             self.assertEqual(entries[0]["comparison_status"], "unavailable")
             self.assertIn("Timeout", entries[0]["comparison_error"])
+
+    def test_downloaded_worker_capture_path_is_rebased_to_local_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            capture_root = root / "captures"
+            capture = capture_root / "0000" / "0007"
+            capture.mkdir(parents=True)
+            (capture / "manifest.json").write_text(
+                json.dumps(
+                    {"complete": True, "benchmark_id": "examples/array/array_copy.vmt"}
+                )
+            )
+            raw_path = root / "garden.json"
+            raw_path.write_text(
+                json.dumps(
+                    {
+                        "benchmarks": [
+                            {
+                                "example": "deep_examples/array/array_copy.vmt",
+                                "result": [
+                                    {
+                                        "solver": "z3",
+                                        "strategy": "abstract",
+                                        "cost_function": "bmc-cost",
+                                        "depth": 50,
+                                        "run_time": 25,
+                                        "solver_capture_dir": (
+                                            "/home/ubuntu/yardbird/worker-captures/0000/0007"
+                                        ),
+                                        "result": {"Success": {}},
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                )
+            )
+
+            aggregate = AggregateComparison(
+                check_count=1,
+                depth_count=1,
+                stock_external=TimingDistribution((1,), 1, 0),
+                instrumented_external=TimingDistribution((1,), 1, 0),
+                external_overhead=TimingDistribution((0,), 0, 0),
+                instrumented_internal=TimingDistribution((1,), 1, 0),
+                array_envelope=TimingDistribution((0,), 0, 0),
+                non_array_residual=TimingDistribution((1,), 1, 0),
+            )
+            report = ComparisonReport(
+                capture_dir=str(capture),
+                stock_binary="stock-z3",
+                instrumented_binary="instrumented-z3",
+                warmups=0,
+                repetitions=1,
+                aggregate=aggregate,
+                checks=(),
+                depths=(),
+            )
+            observed: list[Path] = []
+
+            def compare(capture_dir, *args, **kwargs):
+                observed.append(capture_dir)
+                return report
+
+            entries = compare_garden_suite(
+                raw_path,
+                root / "comparisons",
+                {},
+                warmups=0,
+                repetitions=1,
+                timeout_seconds=5,
+                downloaded_capture_root=capture_root,
+                compare=compare,
+            )
+
+            self.assertEqual(observed, [capture.resolve()])
+            self.assertEqual(entries[0]["comparison_status"], "completed")
 
     def test_empty_garden_matrix_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

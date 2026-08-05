@@ -187,11 +187,30 @@ python3 main_eval.py \
   --benchmark-type deep-concrete \
   --name paper-aws
 
+# A separate capture run for local solver replay. Capture is deliberately
+# opt-in because journal serialization and file I/O affect worker runtimes.
+python3 main_eval.py \
+  --env aws \
+  --benchmark-type deep-abstract \
+  --benchmark-type deep-concrete \
+  --capture-solver-journals \
+  --name paper-aws-captures
+
 # Later, refresh status for an AWS-backed run
 python3 main_eval.py --aws-run-id <run-id> --status
 
 # When the AWS run is complete, download artifacts and build the report
 python3 main_eval.py --aws-run-id <run-id> --generate-report
+
+# Deep AWS runs also upload every incremental solver capture. Download those
+# captures and replay completed sessions locally through the matched stock and
+# instrumented Z3 builds.
+python3 main_eval.py compare-downloaded-instrumentation \
+  --run-id <run-id> \
+  --z3-build-dir /path/to/z3-builder-output
+
+# Regenerate the combined workbook with the local replay measurements.
+python3 main_eval.py generate-report --run-id <run-id>
 ```
 
 `compare_with_instrumentation` uses the benchmark selection and parameter matrix
@@ -212,6 +231,15 @@ complete flattened data is exported as
 `report/data/instrumentation_comparisons.csv`.
 
 Artifacts are stored under `benchmark_results/main_eval/<run-id>/`. Raw benchmark JSON files land in per-matrix `raw/` directories using `MM_DD_YYYY_HH_MM.json` names, while generated figures and the Typst workbook live under `report/`.
+
+AWS solver capture is disabled by default. With `--capture-solver-journals`,
+workers run Garden with `--profile --solver-capture-root`, archive all capture
+directories to S3, and preserve partial transcripts from timed-out benchmarks.
+After download, captures are extracted beneath the run's `captures/<matrix>/`
+directory. Only captures whose manifest is complete are replayed; unsuccessful
+or interrupted results remain in the comparison summary as unavailable. Treat
+the capture run's Yardbird runtimes as diagnostic rather than canonical; use a
+separate capture-free run for end-to-end benchmark timing.
 
 `--generate-report` also produces a self-contained analysis bundle:
 

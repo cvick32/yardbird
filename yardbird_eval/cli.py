@@ -25,7 +25,10 @@ from .lab_backend import (
     refresh_lab_run,
     teardown_lab_subrun,
 )
-from .instrumentation_backend import launch_instrumentation_run
+from .instrumentation_backend import (
+    compare_downloaded_aws_run,
+    launch_instrumentation_run,
+)
 from .local_backend import launch_local_run
 
 
@@ -90,6 +93,14 @@ def legacy_parser() -> argparse.ArgumentParser:
         "--profile",
         action="store_true",
         help="Include Yardbird profiling data in benchmark JSON",
+    )
+    parser.add_argument(
+        "--capture-solver-journals",
+        action="store_true",
+        help=(
+            "AWS only: preserve incremental SMT2 solver journals for later local replay. "
+            "Disabled by default because capture I/O changes benchmark runtime."
+        ),
     )
     parser.add_argument("--run-id", help="Existing run id to refresh or report on")
     parser.add_argument("--aws-run-id", help=argparse.SUPPRESS)
@@ -181,27 +192,7 @@ def legacy_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def instrumentation_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Run Garden benchmarks and compare captured solver sessions with instrumented Z3"
-    )
-    parser.add_argument(
-        "--config",
-        default=str(DEFAULT_CONFIG),
-        help="Path to the Garden benchmark config YAML",
-    )
-    parser.add_argument(
-        "--run-type",
-        action="append",
-        required=True,
-        help="Garden matrix name to run. Can be repeated.",
-    )
-    parser.add_argument("--run-id", required=True, help="New evaluation run id")
-    parser.add_argument("--name", help="Optional friendly name for the run")
-    parser.add_argument(
-        "--ranker-model",
-        help="Logistic-regression model JSON to pass through to Garden/Yardbird",
-    )
+def add_z3_replay_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--z3-build-dir",
         help="Reuse an existing z3-builder output instead of building inside the run",
@@ -223,6 +214,39 @@ def instrumentation_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--repetitions", type=int, default=15)
     parser.add_argument("--replay-timeout", type=float, default=60.0)
+
+
+def instrumentation_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run Garden benchmarks and compare captured solver sessions with instrumented Z3"
+    )
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG),
+        help="Path to the Garden benchmark config YAML",
+    )
+    parser.add_argument(
+        "--run-type",
+        action="append",
+        required=True,
+        help="Garden matrix name to run. Can be repeated.",
+    )
+    parser.add_argument("--run-id", required=True, help="New evaluation run id")
+    parser.add_argument("--name", help="Optional friendly name for the run")
+    parser.add_argument(
+        "--ranker-model",
+        help="Logistic-regression model JSON to pass through to Garden/Yardbird",
+    )
+    add_z3_replay_arguments(parser)
+    return parser
+
+
+def downloaded_instrumentation_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Compare solver captures downloaded from a completed AWS run"
+    )
+    parser.add_argument("--run-id", required=True, help="Completed AWS evaluation run id")
+    add_z3_replay_arguments(parser)
     return parser
 
 
@@ -234,6 +258,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     }:
         args = instrumentation_parser().parse_args(values[1:])
         args.command = "compare_with_instrumentation"
+        return args
+    if values and values[0] in {
+        "compare_downloaded_instrumentation",
+        "compare-downloaded-instrumentation",
+    }:
+        args = downloaded_instrumentation_parser().parse_args(values[1:])
+        args.command = "compare_downloaded_instrumentation"
         return args
     if values and values[0] in {"generate-report", "generate_report"}:
         report_parser = argparse.ArgumentParser(
@@ -260,6 +291,21 @@ def main(argv: list[str] | None = None) -> int:
         manifest = launch_instrumentation_run(args)
         print_run_summary(manifest)
         return 0
+    if args.command == "compare_downloaded_instrumentation":
+        manifest = load_manifest(args.run_id)
+        manifest = refresh_existing_run(manifest, args)
+        if manifest["status"] != "COMPLETED":
+            raise RuntimeError(
+                f"Run {args.run_id} is not complete yet; current status is {manifest['status']}"
+            )
+        if manifest["env"] != "aws":
+            raise RuntimeError(
+                f"Run {args.run_id} is not an AWS run: {manifest['env']}"
+            )
+        download_aws_artifacts(manifest)
+        manifest = compare_downloaded_aws_run(args, manifest)
+        print_run_summary(manifest)
+        return 0
 
     existing_run_id = resolve_run_id(args)
     if existing_run_id:
@@ -281,6 +327,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.env != "local" and (args.ranker_model or args.profile):
         raise RuntimeError(
             "--ranker-model and --profile are currently supported for --env local only"
+        )
+    if args.capture_solver_journals and args.env != "aws":
+        raise RuntimeError(
+            "--capture-solver-journals is currently supported for --env aws only"
         )
 
     if args.env == "local":

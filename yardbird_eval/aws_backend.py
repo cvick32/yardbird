@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import tarfile
 from pathlib import Path
 from typing import Any
 
@@ -28,17 +29,46 @@ USER_DATA_TEMPLATE = TERRAFORM_DIR / "user_data.sh"
 DEFAULT_AWS_REGION = "us-east-2"
 
 
+def extract_capture_archive(archive_path: Path, capture_root: Path) -> None:
+    """Extract a worker capture archive without allowing links or path escapes."""
+    capture_root.mkdir(parents=True, exist_ok=True)
+    resolved_root = capture_root.resolve()
+    with tarfile.open(archive_path, "r:gz") as archive:
+        members = archive.getmembers()
+        for member in members:
+            if member.issym() or member.islnk():
+                raise RuntimeError(
+                    f"Capture archive contains unsupported link: {member.name}"
+                )
+            destination = (resolved_root / member.name).resolve()
+            if destination != resolved_root and resolved_root not in destination.parents:
+                raise RuntimeError(
+                    f"Capture archive path escapes destination: {member.name}"
+                )
+        archive.extractall(resolved_root, members=members)
+
+
 def terraform_outputs() -> dict[str, str]:
     result = run_command(["terraform", "output", "-json"], cwd=TERRAFORM_DIR)
     parsed = json.loads(result.stdout)
     return {key: value["value"] for key, value in parsed.items()}
 
 
-def read_user_data(matrix: str, unique_name: str, s3_bucket: str) -> str:
+def read_user_data(
+    matrix: str,
+    unique_name: str,
+    s3_bucket: str,
+    *,
+    capture_solver_journals: bool = False,
+) -> str:
     template = USER_DATA_TEMPLATE.read_text()
     template = template.replace("${matrix_name}", matrix)
     template = template.replace("${unique_benchmark_name}", unique_name)
     template = template.replace("${s3_bucket_name}", s3_bucket)
+    template = template.replace(
+        "${capture_solver_journals}",
+        "true" if capture_solver_journals else "false",
+    )
     return template
 
 
@@ -86,10 +116,17 @@ def launch_aws_run(args) -> dict[str, Any]:
     region = outputs.get("aws_region", DEFAULT_AWS_REGION)
     launch_template_id = outputs["launch_template_id"]
     bucket = outputs["s3_bucket_name"]
+    capture_solver_journals = bool(args.capture_solver_journals)
+    manifest["capture_solver_journals"] = capture_solver_journals
 
     for idx, matrix in enumerate(args.benchmark_type, start=1):
         remote_run_name = f"{matrix}-{now_local().strftime('%Y%m%d_%H%M%S')}-{idx:02d}"
-        user_data = read_user_data(matrix, remote_run_name, bucket)
+        user_data = read_user_data(
+            matrix,
+            remote_run_name,
+            bucket,
+            capture_solver_journals=capture_solver_journals,
+        )
         user_data_path = aws_dir / f"{slugify(matrix)}_user_data.sh"
         user_data_path.write_text(user_data)
 
@@ -118,22 +155,29 @@ def launch_aws_run(args) -> dict[str, Any]:
             ]
         )
         instance_id = response["Instances"][0]["InstanceId"]
-        manifest["subruns"].append(
-            {
-                "benchmark_type": matrix,
-                "status": STATUS_RUNNING,
-                "started_at": iso_now(),
-                "completed_at": None,
-                "mode": "aws",
-                "region": region,
-                "instance_id": instance_id,
-                "bucket": bucket,
-                "remote_run_name": remote_run_name,
-                "s3_prefix": f"benchmarks/{remote_run_name}",
-                "result_path": str(run_dir / "raw" / matrix / timestamp_filename()),
-                "download_dir": str(run_dir / "downloads" / matrix),
-            }
-        )
+        subrun = {
+            "benchmark_type": matrix,
+            "status": STATUS_RUNNING,
+            "started_at": iso_now(),
+            "completed_at": None,
+            "mode": "aws",
+            "region": region,
+            "instance_id": instance_id,
+            "bucket": bucket,
+            "remote_run_name": remote_run_name,
+            "s3_prefix": f"benchmarks/{remote_run_name}",
+            "result_path": str(run_dir / "raw" / matrix / timestamp_filename()),
+            "download_dir": str(run_dir / "downloads" / matrix),
+            "capture_solver_journals": capture_solver_journals,
+        }
+        if capture_solver_journals:
+            subrun.update(
+                {
+                    "capture_archive_key": f"benchmarks/{remote_run_name}/captures.tar.gz",
+                    "capture_root": str(run_dir / "captures" / matrix),
+                }
+            )
+        manifest["subruns"].append(subrun)
         refresh_progress(manifest)
         save_manifest(manifest)
 
@@ -200,10 +244,34 @@ def download_aws_artifacts(manifest: dict[str, Any]) -> None:
             "completion.txt": download_dir / "completion.txt",
         }
 
+        capture_archive_key = subrun.get("capture_archive_key")
+        capture_archive_path = download_dir / "captures.tar.gz"
+        if capture_archive_key:
+            downloads["captures.tar.gz"] = capture_archive_path
+
         for remote_name, local_path in downloads.items():
             if local_path.exists():
                 continue
-            object_store_download(bucket, f"{prefix}/{remote_name}", local_path, region)
+            remote_key = (
+                str(capture_archive_key)
+                if remote_name == "captures.tar.gz"
+                else f"{prefix}/{remote_name}"
+            )
+            object_store_download(bucket, remote_key, local_path, region)
+
+        if capture_archive_key:
+            capture_root = Path(
+                subrun.get("capture_root")
+                or Path(manifest["run_dir"])
+                / "captures"
+                / subrun["benchmark_type"]
+            )
+            extraction_marker = capture_root / ".extracted"
+            if not extraction_marker.exists():
+                extract_capture_archive(capture_archive_path, capture_root)
+                extraction_marker.write_text("complete\n")
+            subrun["capture_root"] = str(capture_root)
+            subrun["capture_archive_path"] = str(capture_archive_path)
 
         subrun["downloaded_at"] = iso_now()
         subrun["download_dir"] = str(download_dir)
