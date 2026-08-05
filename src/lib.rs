@@ -1,6 +1,6 @@
 #![warn(clippy::print_stdout)]
 
-use std::{fmt::Display, fs::File, io::Write};
+use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
 
 use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 use clap::{Parser, ValueEnum};
@@ -37,9 +37,8 @@ pub mod logger;
 pub mod problem_context;
 pub mod profiling;
 mod proof_tree;
-pub mod smt_problem;
 pub mod smtlib_problem;
-pub mod smtlib_smt_problem;
+pub mod smtlib_refinement_session;
 pub mod solver;
 pub mod strategies;
 mod subterm_handler;
@@ -47,6 +46,7 @@ pub mod theories;
 pub mod theory_support;
 pub mod training;
 mod utils;
+pub mod vmt_bmc_session;
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -118,9 +118,13 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
 
-    /// Capture Yardbird-side profiling data, especially e-graph cost computation timings.
+    /// Capture Yardbird solver, driver, and e-graph profiling data.
     #[arg(long, default_value_t = false)]
-    pub profile_costs: bool,
+    pub profile: bool,
+
+    /// Write a replayable solver session and its metadata to this directory.
+    #[arg(long)]
+    pub solver_capture_dir: Option<PathBuf>,
 
     /// Record full cost-function candidate decisions in the result.
     #[arg(long, default_value_t = false)]
@@ -183,7 +187,8 @@ impl Default for YardbirdOptions {
             track_instantiations: false,
             dump_unsat_core: None,
             verbose: false,
-            profile_costs: false,
+            profile: false,
+            solver_capture_dir: None,
             record_decisions: false,
             train: false,
             train_reset: false,
@@ -235,6 +240,21 @@ impl YardbirdOptions {
         }
     }
 
+    pub fn build_profiler(&self) -> Option<crate::profiling::Profiler> {
+        self.profiling_enabled()
+            .then(|| crate::profiling::Profiler::from_options(self))
+    }
+
+    pub fn build_solver_capture(&self) -> Option<crate::solver::SolverCapture> {
+        self.solver_capture_dir
+            .clone()
+            .map(crate::solver::SolverCapture::new)
+    }
+
+    fn profiling_enabled(&self) -> bool {
+        self.profile || self.solver_capture_dir.is_some()
+    }
+
     pub fn build_array_artifact_capture(&self) -> ArrayArtifactCapture {
         let decisions = self.record_decisions || self.train;
         ArrayArtifactCapture {
@@ -247,7 +267,7 @@ impl YardbirdOptions {
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
         if self.synthesis_trigger != SynthesisTrigger::Off {
             anyhow::bail!(
-                "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until SMTLIBSMTProblem can install auxiliary specs",
+                "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
                 self.synthesis_trigger
             );
         }
@@ -341,7 +361,7 @@ impl YardbirdOptions {
             self.run_ic3ia,
             (),
             aux_config,
-            self.profile_costs,
+            self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
     }
@@ -362,7 +382,7 @@ impl YardbirdOptions {
             self.run_ic3ia,
             model,
             aux_config,
-            self.profile_costs,
+            self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
     }
@@ -558,6 +578,16 @@ pub enum Theory {
     Array,
     BvList,
     List,
+}
+
+impl Display for Theory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Theory::Array => write!(f, "array"),
+            Theory::BvList => write!(f, "bv-list"),
+            Theory::List => write!(f, "list"),
+        }
+    }
 }
 
 /// Describes the solver backends available.

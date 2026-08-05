@@ -17,7 +17,11 @@ use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
     instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
     problem_context::ProblemContext,
-    solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
+    profiling::{SolverCheckMeasurement, SolverProfileMetadata},
+    solver::{
+        check::{run_solver_check, SolverCheckRequest},
+        new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
+    },
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -42,7 +46,7 @@ impl NamedAssertion {
     }
 }
 
-pub struct SMTProblem {
+pub struct VmtBmcSession {
     bmc_builder: BMCBuilder,
     sorts: Vec<Command>,
     function_definitions: Vec<Command>,
@@ -64,13 +68,16 @@ pub struct SMTProblem {
     track_instantiations: bool,
     tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    logic: String,
+    collect_check_profiles: bool,
+    last_solver_check_profile: Option<SolverCheckMeasurement>,
     last_check_profile: BTreeMap<String, f64>,
     last_unroll_profile: BTreeMap<String, f64>,
 }
 
-impl std::fmt::Debug for SMTProblem {
+impl std::fmt::Debug for VmtBmcSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SMTProblem")
+        f.debug_struct("VmtBmcSession")
             .field("depth", &self.depth)
             .field(
                 "num_quantifiers_instantiated",
@@ -82,10 +89,10 @@ impl std::fmt::Debug for SMTProblem {
     }
 }
 
-impl Clone for SMTProblem {
+impl Clone for VmtBmcSession {
     fn clone(&self) -> Self {
-        // SMTProblem contains non-cloneable solver objects and models.
-        unimplemented!("SMTProblem::clone() is not implemented")
+        // VmtBmcSession contains non-cloneable solver objects and models.
+        unimplemented!("VmtBmcSession::clone() is not implemented")
     }
 }
 
@@ -101,6 +108,10 @@ fn format_smt2_with_property_check(base_smt2: &str, property_assert: &Term) -> S
          (get-unsat-core)\n"
     ));
     output
+}
+
+fn nanos_to_secs(nanos: u64) -> f64 {
+    nanos as f64 / 1_000_000_000.0
 }
 
 fn format_assertions(terms: &[Term]) -> String {
@@ -120,25 +131,30 @@ fn format_named_assertions(assertions: &[NamedAssertion]) -> String {
 }
 
 #[allow(clippy::borrowed_box)]
-impl SMTProblem {
+impl VmtBmcSession {
     pub(crate) fn new<S>(
         vmt_model: &VMTModel,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
         track_instantiations: bool,
         instantiation_strategy: Box<dyn InstantiationStrategy>,
+        collect_check_profiles: bool,
+        solver_capture: Option<SolverCapture>,
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
-        let solver = new_solver_backend(
-            solver_backend,
-            &strategy.get_theory_support().get_logic_string(),
-        );
-
         let property_assertion = vmt_model.get_property_for_yardbird();
-        let mut smt = SMTProblem {
+        let theory = strategy.get_theory_support();
+        let logic = theory.get_logic_string_for_terms(&[
+            &init_assertion,
+            &trans_assertion,
+            &property_assertion,
+        ]);
+        let solver = new_solver_backend(solver_backend, &logic, solver_capture);
+
+        let mut smt = VmtBmcSession {
             sorts: vmt_model.get_sorts(),
             function_definitions: vmt_model.get_function_definitions(),
             variable_definitions: vec![],
@@ -164,26 +180,41 @@ impl SMTProblem {
             track_instantiations,
             tracked_labels: vec![],
             instantiation_strategy,
+            logic,
+            collect_check_profiles,
+            last_solver_check_profile: None,
             last_check_profile: BTreeMap::new(),
             last_unroll_profile: BTreeMap::new(),
         };
+        let mut accepted_declarations = HashSet::new();
+        for sort in vmt_model.get_sorts() {
+            if accepted_declarations.insert(sort.clone()) {
+                smt.solver
+                    .accept_command(&sort)
+                    .expect("solver should accept VMT sort declarations");
+            }
+        }
+
         // Handle theory-specific function declarations
-        let theory = strategy.get_theory_support();
         if theory.requires_abstraction() {
             // Add in abstracted function definitions from VMT model
             for function_def in vmt_model.get_function_definitions() {
-                smt.solver
-                    .accept_command(&function_def)
-                    .expect("solver should accept VMT function declarations");
+                if accepted_declarations.insert(function_def.clone()) {
+                    smt.solver
+                        .accept_command(&function_def)
+                        .expect("solver should accept VMT function declarations");
+                }
             }
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            smt.solver
-                .accept_command(&command)
-                .expect("solver should accept theory function declarations");
+            if accepted_declarations.insert(command.clone()) {
+                smt.solver
+                    .accept_command(&command)
+                    .expect("solver should accept theory function declarations");
+            }
             smt.function_definitions.push(command);
         }
 
@@ -262,14 +293,6 @@ impl SMTProblem {
         }
         // Note: Instantiation handling at each depth is now delegated to
         // the instantiation strategy's on_loop hook, called from unroll()
-    }
-
-    fn push_property(&mut self) {
-        self.solver.push();
-        let prop = self.subterm_handler.get_property_assert();
-        self.solver
-            .assert_not_term(&prop)
-            .expect("solver should assert the negated property");
     }
 
     pub(crate) fn add_instantiation(
@@ -354,6 +377,19 @@ impl SMTProblem {
 
     pub(crate) fn take_last_check_profile(&mut self) -> BTreeMap<String, f64> {
         std::mem::take(&mut self.last_check_profile)
+    }
+
+    pub(crate) fn take_last_solver_check_profile(&mut self) -> Option<SolverCheckMeasurement> {
+        self.last_solver_check_profile.take()
+    }
+
+    pub(crate) fn solver_profile_metadata(&self) -> SolverProfileMetadata {
+        SolverProfileMetadata {
+            backend: self.solver.backend(),
+            logic: self.logic.clone(),
+            parameters: self.solver.solver_parameters(),
+            random_seeds: self.solver.random_seeds(),
+        }
     }
 
     pub(crate) fn take_last_unroll_profile(&mut self) -> BTreeMap<String, f64> {
@@ -528,7 +564,7 @@ fn unique_command_lines(commands: &[Command]) -> String {
         .join("\n")
 }
 
-impl SMTProblem {
+impl VmtBmcSession {
     fn add_variable_declaration_at_current_depth(&mut self, variable: &Variable) {
         let bmc_variable = variable
             .current
@@ -623,79 +659,69 @@ impl SMTProblem {
     }
 }
 
-impl SMTProblem {
+impl VmtBmcSession {
     /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
     /// off of the solver. Keeping the invariant of the property never being on the solver until check
     /// time allows us to not worry about when to add instances and other facts to the solver.
     ///
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
-    pub(crate) fn check(&mut self) -> SolverCheckResult {
+    pub(crate) fn check_property(&mut self) -> SolverCheckResult {
         self.last_check_profile.clear();
-        let start_time = Instant::now();
-
-        // Push property back on top of the solver.
-        let push_start = Instant::now();
-        self.push_property();
-        self.last_check_profile.insert(
-            "check_push_property".to_string(),
-            push_start.elapsed().as_secs_f64(),
+        self.last_solver_check_profile = None;
+        let assertion_count = (self.theory_axiom_assertions.len()
+            + self.init_and_transition_assertions.len()
+            + self.asserted_instantiation_terms.len()
+            + 1) as u64;
+        let property = self.subterm_handler.get_property_assert();
+        let model_terms = self
+            .subterm_handler
+            .get_all_subterms()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let outcome = run_solver_check(
+            self.solver.as_mut(),
+            SolverCheckRequest {
+                profiling_enabled: self.collect_check_profiles,
+                assertion_count,
+                temporary_negated_property: Some(&property),
+                model_terms: Some(&model_terms),
+                capture_unsat_core: self.track_instantiations,
+            },
         );
 
-        let solver_start = Instant::now();
-        let sat_result = self.solver.check();
-        self.last_check_profile.insert(
-            "check_solver".to_string(),
-            solver_start.elapsed().as_secs_f64(),
-        );
-
-        let proof_start = Instant::now();
-        let _ = self.solver.inspect_last_proof();
-        self.last_check_profile.insert(
-            "check_inspect_last_proof".to_string(),
-            proof_start.elapsed().as_secs_f64(),
-        );
-
-        if sat_result == SolverCheckResult::Sat {
-            let collect_model_terms_start = Instant::now();
-            let model_terms = self
-                .subterm_handler
-                .get_all_subterms()
-                .into_iter()
-                .cloned()
-                .collect::<Vec<_>>();
+        if let Some(measurement) = outcome.measurement {
+            let timing = &measurement.timing_ns;
             self.last_check_profile.insert(
-                "check_collect_model_terms".to_string(),
-                collect_model_terms_start.elapsed().as_secs_f64(),
+                "check_push_property".to_string(),
+                nanos_to_secs(timing.property_push),
             );
-
-            let preserve_model_start = Instant::now();
-            self.solver
-                .preserve_model_values(&model_terms)
-                .expect("solver should preserve SAT model values before property pop");
+            self.last_check_profile
+                .insert("check_solver".to_string(), nanos_to_secs(timing.raw_check));
             self.last_check_profile.insert(
-                "check_preserve_model_values".to_string(),
-                preserve_model_start.elapsed().as_secs_f64(),
+                "check_capture_model".to_string(),
+                nanos_to_secs(timing.model_acquisition),
             );
+            self.last_check_profile.insert(
+                "check_proof_core_access".to_string(),
+                nanos_to_secs(timing.proof_core_access),
+            );
+            self.last_check_profile
+                .insert("check_pop".to_string(), nanos_to_secs(timing.property_pop));
+            self.last_check_profile.insert(
+                "check_record_statistics".to_string(),
+                nanos_to_secs(timing.statistics_collection),
+            );
+            self.last_check_profile.insert(
+                "check_total".to_string(),
+                nanos_to_secs(timing.total_check_handling),
+            );
+            self.last_solver_check_profile = Some(measurement);
         }
-        // Popping property off.
-        let pop_start = Instant::now();
-        self.solver.pop(1);
-        self.last_check_profile
-            .insert("check_pop".to_string(), pop_start.elapsed().as_secs_f64());
 
-        let statistics_start = Instant::now();
-        self.solver.record_statistics_since(start_time);
-        self.last_check_profile.insert(
-            "check_record_statistics".to_string(),
-            statistics_start.elapsed().as_secs_f64(),
-        );
-        self.last_check_profile.insert(
-            "check_total".to_string(),
-            start_time.elapsed().as_secs_f64(),
-        );
-
-        sat_result
+        self.solver.complete_check();
+        outcome.result
     }
 
     pub(crate) fn unroll(&mut self, depth: u16) {
@@ -761,7 +787,7 @@ impl SMTProblem {
     }
 }
 
-impl ProblemContext for SMTProblem {
+impl ProblemContext for VmtBmcSession {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -903,12 +929,14 @@ mod tests {
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
-        let mut smt = SMTProblem::new(
+        let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
             SolverBackend::Z3,
             false,
             Box::new(FullUnrollStrategy::new()),
+            false,
+            None,
         );
 
         smt.unroll(1);

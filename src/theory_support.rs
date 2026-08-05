@@ -15,6 +15,19 @@ pub trait TheorySupport {
     /// Returns the SMT logic string for this theory (e.g., "QF_LIA", "UFLIA")
     fn get_logic_string(&self) -> String;
 
+    /// Returns a logic strong enough for the arithmetic used by these terms.
+    fn get_logic_string_for_terms(&self, terms: &[&Term]) -> String {
+        let logic = self.get_logic_string();
+        if terms
+            .iter()
+            .any(|term| requires_nonlinear_integer_logic(term))
+        {
+            nonlinear_integer_logic(&logic).to_string()
+        } else {
+            logic
+        }
+    }
+
     /// Abstracts the VMT model for this theory (replaces theory-specific operations with uninterpreted functions)
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>);
 
@@ -25,6 +38,48 @@ pub trait TheorySupport {
     /// (e.g., read-after-write axiom for arrays)
     fn uses_quantified_axioms(&self) -> bool {
         false // Default: no axioms
+    }
+}
+
+fn nonlinear_integer_logic(logic: &str) -> &str {
+    match logic {
+        "LIA" => "NIA",
+        "QF_LIA" => "QF_NIA",
+        "UFLIA" => "UFNIA",
+        "QF_UFLIA" => "QF_UFNIA",
+        "AUFLIA" => "AUFNIA",
+        "QF_AUFLIA" => "QF_AUFNIA",
+        other => other,
+    }
+}
+
+// Be conservative for replay: widening on these general operators preserves
+// semantics without duplicating a full arithmetic-linearity analysis here.
+fn requires_nonlinear_integer_logic(term: &Term) -> bool {
+    match term {
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            matches!(qual_identifier.get_name().as_str(), "*" | "/" | "mod")
+                || arguments.iter().any(requires_nonlinear_integer_logic)
+        }
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| requires_nonlinear_integer_logic(binding))
+                || requires_nonlinear_integer_logic(term)
+        }
+        Term::Forall { term, .. } | Term::Exists { term, .. } | Term::Attributes { term, .. } => {
+            requires_nonlinear_integer_logic(term)
+        }
+        Term::Match { term, cases } => {
+            requires_nonlinear_integer_logic(term)
+                || cases
+                    .iter()
+                    .any(|(_, case)| requires_nonlinear_integer_logic(case))
+        }
+        Term::Constant(_) | Term::QualIdentifier(_) => false,
     }
 }
 

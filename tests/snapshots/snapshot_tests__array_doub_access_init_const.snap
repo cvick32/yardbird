@@ -4,6 +4,6 @@ expression: run_benchmark(& path)
 ---
 BenchmarkResult {
     example_name: "examples/array/array_doub_access_init_const.vmt",
-    status: Panic,
+    status: Timeout,
     used_instantiations: [],
 }

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use log::debug;
 use smt2parser::{
     concrete::{Command, Identifier, QualIdentifier, Symbol, Term},
@@ -7,8 +9,12 @@ use smt2parser::{
 use crate::{
     instantiation_strategy::StoredInstantiation,
     problem_context::ProblemContext,
+    profiling::{SolverCheckMeasurement, SolverProfileMetadata},
     smtlib_problem::SMTLIBProblem,
-    solver::{new_solver_backend, SolverCheckResult, YardbirdSolver},
+    solver::{
+        check::{run_solver_check, SolverCheckRequest},
+        new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
+    },
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
     training::IndexedInstantiationRecord,
@@ -26,8 +32,8 @@ fn make_true_term() -> Term {
 }
 
 /// Wrapper around SMTLIBProblem that provides the interface strategies expect
-/// Similar to SMTProblem but for stateless SMTLIB problems (no temporal reasoning)
-pub struct SMTLIBSMTProblem {
+/// Similar to VmtBmcSession but for stateless SMTLIB problems (no temporal reasoning)
+pub struct SmtlibRefinementSession {
     solver: Box<dyn YardbirdSolver>,
     original_problem: SMTLIBProblem,
     assertions: Vec<Term>,
@@ -40,11 +46,15 @@ pub struct SMTLIBSMTProblem {
     //instantiation_strategy: Box<dyn InstantiationStrategy>,
     /// Discovered array types (index_sort, value_sort) pairs
     array_types: Vec<(String, String)>,
+    logic: String,
+    theory_axiom_count: u64,
+    collect_check_profiles: bool,
+    last_solver_check_profile: Option<SolverCheckMeasurement>,
 }
 
-impl std::fmt::Debug for SMTLIBSMTProblem {
+impl std::fmt::Debug for SmtlibRefinementSession {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SMTLIBSMTProblem")
+        f.debug_struct("SmtlibRefinementSession")
             .field("depth", &self.depth)
             .field(
                 "num_quantifiers_instantiated",
@@ -56,11 +66,11 @@ impl std::fmt::Debug for SMTLIBSMTProblem {
     }
 }
 
-impl Clone for SMTLIBSMTProblem {
+impl Clone for SmtlibRefinementSession {
     fn clone(&self) -> Self {
-        // SMTLIBSMTProblem contains non-cloneable solver objects and models.
+        // SmtlibRefinementSession contains non-cloneable solver objects and models.
         unimplemented!(
-            "SMTLIBSMTProblem::clone() is not implemented due to non-cloneable solver objects"
+            "SmtlibRefinementSession::clone() is not implemented due to non-cloneable solver objects"
         )
     }
 }
@@ -75,6 +85,21 @@ fn extract_assertions(problem: &SMTLIBProblem) -> Vec<Term> {
             _ => None,
         })
         .collect()
+}
+
+fn logic_for_problem(
+    theory: &dyn crate::theory_support::TheorySupport,
+    problem: &SMTLIBProblem,
+) -> String {
+    let terms = problem
+        .get_assertions()
+        .iter()
+        .filter_map(|command| match command {
+            Command::Assert { term } => Some(term),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    theory.get_logic_string_for_terms(&terms)
 }
 
 /// Helper to combine assertions into a single term
@@ -96,7 +121,7 @@ fn combine_assertions(assertions: &[Term]) -> Term {
 }
 
 #[allow(clippy::borrowed_box)]
-impl SMTLIBSMTProblem {
+impl SmtlibRefinementSession {
     /// Common initialization logic for constructors
     fn init_common(
         problem: &SMTLIBProblem,
@@ -104,11 +129,14 @@ impl SMTLIBSMTProblem {
         solver: Box<dyn YardbirdSolver>,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
+        logic: String,
     ) -> Self {
         let assertions = extract_assertions(problem);
         let combined_assertion = combine_assertions(&assertions);
+        let axiom_formulas = theory.get_axiom_formulas();
+        let theory_axiom_count = axiom_formulas.len() as u64;
 
-        let mut smt = SMTLIBSMTProblem {
+        let mut smt = SmtlibRefinementSession {
             subterm_handler: SubtermHandler::new(
                 make_true_term(),
                 make_true_term(),
@@ -123,34 +151,44 @@ impl SMTLIBSMTProblem {
             tracked_labels: vec![],
             original_problem: problem.clone(),
             array_types,
+            logic,
+            theory_axiom_count,
+            collect_check_profiles: false,
+            last_solver_check_profile: None,
         };
+        let mut accepted_declarations = HashSet::new();
+
+        // Add sort declarations
+        for sort_decl in problem.get_sorts() {
+            if accepted_declarations.insert(sort_decl.clone()) {
+                smt.solver
+                    .accept_command(&sort_decl)
+                    .expect("solver should accept SMT-LIB sort declarations");
+            }
+        }
 
         // Handle theory-specific function declarations
         if theory.requires_abstraction() {
             for function_def in problem.get_function_definitions() {
-                smt.solver
-                    .accept_command(&function_def)
-                    .expect("solver should accept SMT-LIB function declarations");
+                if accepted_declarations.insert(function_def.clone()) {
+                    smt.solver
+                        .accept_command(&function_def)
+                        .expect("solver should accept SMT-LIB function declarations");
+                }
             }
-        }
-
-        // Add sort declarations
-        for sort_decl in problem.get_sorts() {
-            smt.solver
-                .accept_command(&sort_decl)
-                .expect("solver should accept SMT-LIB sort declarations");
         }
 
         // Add uninterpreted functions declared by the theory
         for func_decl in theory.get_uninterpreted_functions() {
             let command = func_decl.to_command();
-            smt.solver
-                .accept_command(&command)
-                .expect("solver should accept theory function declarations");
+            if accepted_declarations.insert(command.clone()) {
+                smt.solver
+                    .accept_command(&command)
+                    .expect("solver should accept theory function declarations");
+            }
         }
 
         // Add axioms declared by the theory
-        let axiom_formulas = theory.get_axiom_formulas();
         if !axiom_formulas.is_empty() {
             debug!("Adding {} axioms to solver", axiom_formulas.len());
         }
@@ -177,25 +215,28 @@ impl SMTLIBSMTProblem {
         smt
     }
 
-    /// Create a new SMTLIBSMTProblem from an SMTLIB problem and strategy
+    /// Create a new SmtlibRefinementSession from an SMTLIB problem and strategy
     pub fn new<S>(
         problem: &SMTLIBProblem,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
         track_instantiations: bool,
+        solver_capture: Option<SolverCapture>,
     ) -> Self {
         let theory = strategy.get_theory_support();
-        let solver = new_solver_backend(solver_backend, &theory.get_logic_string());
+        let logic = logic_for_problem(theory.as_ref(), problem);
+        let solver = new_solver_backend(solver_backend, &logic, solver_capture);
         Self::init_common(
             problem,
             theory.as_ref(),
             solver,
             track_instantiations,
             vec![],
+            logic,
         )
     }
 
-    /// Create a new SMTLIBSMTProblem with explicit array types for correct logic detection.
+    /// Create a new SmtlibRefinementSession with explicit array types for correct logic detection.
     /// This is used when the array types are discovered during abstraction.
     pub fn new_with_array_types<S>(
         problem: &SMTLIBProblem,
@@ -203,6 +244,7 @@ impl SMTLIBSMTProblem {
         solver_backend: SolverBackend,
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
+        solver_capture: Option<SolverCapture>,
     ) -> Self {
         use crate::theory_support::{ArrayTheorySupport, ArrayWithQuantifiersTheorySupport};
 
@@ -220,9 +262,9 @@ impl SMTLIBSMTProblem {
             Box::new(ArrayTheorySupport::new(array_types))
         };
 
-        let logic_string = theory.get_logic_string();
+        let logic_string = logic_for_problem(theory.as_ref(), problem);
         debug!("Using logic: {}", logic_string);
-        let solver = new_solver_backend(solver_backend, logic_string.as_str());
+        let solver = new_solver_backend(solver_backend, logic_string.as_str(), solver_capture);
 
         Self::init_common(
             problem,
@@ -230,6 +272,7 @@ impl SMTLIBSMTProblem {
             solver,
             track_instantiations,
             stored_array_types,
+            logic_string,
         )
     }
 
@@ -316,10 +359,45 @@ impl SMTLIBSMTProblem {
         self.num_quantifiers_instantiated
     }
 
-    /// Check satisfiability of the current problem
-    /// Unlike SMTProblem, we don't push/pop property since all assertions are already in the solver
-    pub fn check(&mut self) -> SolverCheckResult {
-        self.solver.check_and_record_statistics()
+    pub(crate) fn enable_check_profiling(&mut self) {
+        self.collect_check_profiles = true;
+    }
+
+    pub(crate) fn take_last_solver_check_profile(&mut self) -> Option<SolverCheckMeasurement> {
+        self.last_solver_check_profile.take()
+    }
+
+    pub(crate) fn solver_profile_metadata(&self) -> SolverProfileMetadata {
+        SolverProfileMetadata {
+            backend: self.solver.backend(),
+            logic: self.logic.clone(),
+            parameters: self.solver.solver_parameters(),
+            random_seeds: self.solver.random_seeds(),
+        }
+    }
+
+    /// Check the current refinement query.
+    ///
+    /// Unlike a VMT property check, every assertion is permanent solver state;
+    /// there is no temporary property scope to push and pop.
+    pub fn check_current_query(&mut self) -> SolverCheckResult {
+        self.last_solver_check_profile = None;
+        let assertion_count = self.assertions.len() as u64
+            + self.theory_axiom_count
+            + self.num_quantifiers_instantiated;
+        let outcome = run_solver_check(
+            self.solver.as_mut(),
+            SolverCheckRequest {
+                profiling_enabled: self.collect_check_profiles,
+                assertion_count,
+                temporary_negated_property: None,
+                model_terms: Some(&self.assertions),
+                capture_unsat_core: self.track_instantiations,
+            },
+        );
+        self.last_solver_check_profile = outcome.measurement;
+        self.solver.complete_check();
+        outcome.result
     }
 
     /// Dump the solver state to an SMT2 file
@@ -388,7 +466,7 @@ impl SMTLIBSMTProblem {
     }
 }
 
-impl ProblemContext for SMTLIBSMTProblem {
+impl ProblemContext for SmtlibRefinementSession {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

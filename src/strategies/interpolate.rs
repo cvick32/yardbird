@@ -1,6 +1,8 @@
 use log::{debug, info, warn};
 
-use crate::{smt_problem::SMTProblem, strategies::ListRefinementState, utils::run_smtinterpol};
+use crate::{
+    strategies::ListRefinementState, utils::run_smtinterpol, vmt_bmc_session::VmtBmcSession,
+};
 
 use super::{ArrayRefinementState, ProofStrategyExt};
 
@@ -12,11 +14,11 @@ impl ProofStrategyExt<ArrayRefinementState> for Interpolating {
         _state: &mut ArrayRefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
-        // Downcast to SMTProblem for VMT-specific interpolation
+        // Downcast to VmtBmcSession for VMT-specific interpolation
         let smt_problem = smt
             .as_any()
-            .downcast_ref::<SMTProblem>()
-            .expect("Interpolation requires SMTProblem");
+            .downcast_ref::<VmtBmcSession>()
+            .expect("Interpolation requires VmtBmcSession");
         let interpolants = run_smtinterpol(smt_problem);
         match interpolants {
             Ok(interps) => {
@@ -44,11 +46,11 @@ impl ProofStrategyExt<ListRefinementState> for Interpolating {
         _state: &mut ListRefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
-        // Downcast to SMTProblem for VMT-specific interpolation
+        // Downcast to VmtBmcSession for VMT-specific interpolation
         let smt_problem = smt
             .as_any()
-            .downcast_ref::<SMTProblem>()
-            .expect("Interpolation requires SMTProblem");
+            .downcast_ref::<VmtBmcSession>()
+            .expect("Interpolation requires VmtBmcSession");
         let interpolants = run_smtinterpol(smt_problem);
         match interpolants {
             Ok(interps) => {
