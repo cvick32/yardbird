@@ -54,7 +54,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
             .expect("solver should register quantified variables");
 
         // Unroll the instantiation from 0 to current depth
-        // (This is the logic from SMTProblem::unroll_instantiation)
+        // (This is the logic from VmtBmcSession::unroll_instantiation)
         let mut all_indexed_insts = vec![];
         let cur_depth = bmc_builder.depth;
 

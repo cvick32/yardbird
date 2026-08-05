@@ -11,7 +11,7 @@ use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     model_from_options,
-    smtlib_problem::{SMTLIBProblem, SMTLIBSolver},
+    smtlib_problem::{SMTLIBProblem, SmtlibRefinementRunner},
     strategies::{Abstract, ProofStrategy},
     theories::array::array_conflict_scheduler::ArrayArtifactCapture,
     training::{
@@ -444,9 +444,17 @@ fn smtlib_strategy_populates_logging_artifacts() {
                 Abstract::<ArrayBMCCost>::new(0, false, (), AuxSynthesisConfig::default(), false)
                     .with_artifact_capture(full_decision_capture()),
             );
-            SMTLIBSolver::execute_with_strategy(&problem, strategy, SolverBackend::Z3, 50, true)
-                .expect("SMT-LIB strategy run should complete")
-                .0
+            SmtlibRefinementRunner::execute(
+                &problem,
+                strategy,
+                SolverBackend::Z3,
+                50,
+                true,
+                None,
+                None,
+            )
+            .expect("SMT-LIB strategy run should complete")
+            .0
         },
         Duration::from_secs(20),
     );

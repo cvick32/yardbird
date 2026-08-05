@@ -11,7 +11,7 @@ use super::{materialize_indexed_instance, InstantiationStrategy, StoredInstantia
 /// Default instantiation strategy that fully unrolls all instances from depth 0 to current depth
 /// when they are first added.
 ///
-/// This replicates the original behavior from SMTProblem:
+/// This replicates the original behavior from VmtBmcSession:
 /// - Checks for duplicate instances
 /// - Registers quantified variables with the solver backend
 /// - Unrolls the instance from 0 to current depth when added
@@ -68,7 +68,7 @@ impl InstantiationStrategy for FullUnrollStrategy {
             .expect("solver should register quantified variables");
 
         // Unroll the instantiation from 0 to current depth
-        // (This is the logic from SMTProblem::unroll_instantiation)
+        // (This is the logic from VmtBmcSession::unroll_instantiation)
         let mut all_indexed_insts = vec![];
         let cur_depth = bmc_builder.depth;
 

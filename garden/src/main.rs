@@ -70,7 +70,11 @@ struct GardenOptions {
     pub ranker_model: Option<String>,
 
     #[arg(long, default_value_t = false)]
-    pub profile_costs: bool,
+    pub profile: bool,
+
+    /// Capture each Yardbird solver session beneath this directory.
+    #[arg(long)]
+    pub solver_capture_root: Option<PathBuf>,
 
     #[arg(long, default_value_t = false)]
     pub record_decisions: bool,
@@ -139,6 +143,8 @@ struct StrategyResult {
     run_time: u128,
     depth: u16,
     record_decisions: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    solver_capture_dir: Option<PathBuf>,
 }
 
 fn default_training_run_version() -> String {
@@ -245,8 +251,12 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         command.arg("--track-instantiations");
     }
 
-    if options.profile_costs {
-        command.arg("--profile-costs");
+    if options.profile {
+        command.arg("--profile");
+    }
+
+    if let Some(capture_dir) = &options.solver_capture_dir {
+        command.arg("--solver-capture-dir").arg(capture_dir);
     }
 
     if options.record_decisions {
@@ -350,8 +360,10 @@ fn run_single(
 
     let mut status_code = None;
     let mut run_time = Duration::default();
-    // don't retry for the concrete strategy
-    let retry = if matches!(options.strategy, yardbird::Strategy::Concrete) {
+    // Captures are immutable, so a captured run cannot reuse its output on retry.
+    let retry = if matches!(options.strategy, yardbird::Strategy::Concrete)
+        || options.solver_capture_dir.is_some()
+    {
         1
     } else {
         retry
@@ -396,6 +408,7 @@ fn run_single(
             run_time: run_time.as_millis(),
             depth: options.depth,
             record_decisions: options.record_decisions || options.train,
+            solver_capture_dir: options.solver_capture_dir,
         }),
         None => Err(anyhow!("Failed to run")),
     }
@@ -418,6 +431,11 @@ fn get_git_commit() -> Option<String> {
 }
 
 fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
+    if options.solver_capture_root.is_some() {
+        return Err(anyhow!(
+            "--solver-capture-root requires --config so capture paths can be assigned to matrix results"
+        ));
+    }
     let examples = options
         .clone()
         .examples
@@ -497,7 +515,8 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 database_url: options.database_url.clone(),
                                 training_run_version: training_run_version.clone(),
                                 verbose: false,
-                                profile_costs: options.profile_costs,
+                                profile: options.profile,
+                                solver_capture_dir: None,
                                 record_decisions: options.record_decisions,
                                 synthesis_trigger: options.synthesis_trigger,
                                 synthesis_guard_policy: options.synthesis_guard_policy,
@@ -608,6 +627,10 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
             .enumerate()
             .map(|(idx, filename)| {
                 println!("  [{}/{}] {filename}", idx + 1, benchmarks.len());
+                let solver_capture_dir = options
+                    .solver_capture_root
+                    .as_ref()
+                    .map(|root| root.join(format!("{run_idx:04}")).join(format!("{idx:04}")));
                 let result = run_single(
                     YardbirdOptions {
                         command: None,
@@ -631,7 +654,8 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
                         database_url: options.database_url.clone(),
                         training_run_version: training_run_version.clone(),
                         verbose: false,
-                        profile_costs: options.profile_costs,
+                        profile: options.profile,
+                        solver_capture_dir,
                         record_decisions: options.record_decisions,
                         synthesis_trigger: options.synthesis_trigger,
                         synthesis_guard_policy: options.synthesis_guard_policy,

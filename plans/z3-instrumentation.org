@@ -1,0 +1,1081 @@
+#+title: Z3 Array-Theory Measurement and Yardbird Replay Plan
+
+* Purpose
+
+This project will build a reproducible measurement pipeline for comparing two
+ways of solving Yardbird's array verification conditions:
+
+1. Z3's native array theory, used by Yardbird's ~concrete~ strategy.
+2. Yardbird's abstract encoding, where Yardbird supplies explicit array-axiom
+   instances over uninterpreted ~Read~ and ~Write~ functions.
+
+The motivating observation is that Yardbird can generate orders of magnitude
+fewer array-theory lemmas than native Z3 without obtaining a comparable solver
+speedup. The primary goal is to understand that result well enough to improve
+Yardbird's refinement decisions. Native Z3 is a comparative control and a
+source of insight into how its specialized array implementation treats axiom
+instances; optimizing native Z3 is not a success criterion.
+
+The first pass deliberately answers a narrower question than a whole-solver
+profiler:
+
+#+begin_quote
+During each ~check-sat~, how much time does native Z3 spend directly inside its
+array-theory callbacks, what happens to candidate array axioms before they
+become solver consequences, and how does that compare with the total solver
+time of Yardbird's explicit-refinement runs?
+#+end_quote
+
+* Frozen Decisions
+
+The following decisions define the implementation contract.
+
+- Use the existing Z3 4.16 checkout. Record its exact commit and build
+  configuration in every capture and replay manifest. This project targets
+  that pinned 4.16 source only.
+- Yardbird refinement quality is the primary optimization target.
+- Native Z3 array behavior is a comparative control. The project does not need
+  to produce a native-Z3 optimization.
+- The canonical capture is one append-only, incremental SMT-LIB command journal
+  per Yardbird run.
+- Keep Yardbird capture and profiling artifacts unversioned and unhashed. This
+  research workflow does not need schema labels, compatibility layers, or
+  content fingerprints.
+- Capture the journal at the ~YardbirdSolver~ abstraction boundary so the design
+  is not tied to Z3 and can be replayed by SMT-LIB-compatible solvers.
+- Replay a journal through one persistent solver subprocess. Time every
+  ~check-sat~ separately while preserving the preceding incremental session.
+- Treat replay as operation-equivalent, not as a byte-for-byte recreation of
+  Z3's C API execution. Validate every result and use timing distributions.
+- Compare strategies primarily by cumulative raw solver time required to
+  resolve each BMC depth. Retain check-level data as the drill-down.
+- Measure one non-overlapping native-array time envelope during ~check-sat~.
+  Subtract it from the same instrumented check's total time to obtain a
+  non-array residual.
+- Do not attempt to partition the residual into SAT, EUF, arithmetic, or other
+  subsystems in the first pass.
+- Start with only the subtractable native-array timing envelope. Defer the ax2
+  funnel, remaining lifecycle counters, and exact provenance until the envelope
+  pilot demonstrates that the additional attribution is decision-useful.
+- Do not attempt one-to-one matching between a Yardbird refinement instance and
+  a native Z3 array event. Correlation stops at run, benchmark, strategy, depth,
+  refinement, and check identifiers.
+- Continue using Yardbird's existing profiling for e-graph work, refinement
+  generation, and other Yardbird-side costs.
+- Select the initial abstract cost-function set after the capture and replay
+  machinery is calibrated.
+
+* Working Model
+
+The reported number of native array lemmas is not a stable unit of cost. In Z3
+4.16, the existing ~array ax2~ and ~array exp ax2~ counters are incremented when
+a store/select pair survives root-equality and fingerprint checks and is queued.
+They do not count emitted clauses, later propagation, or conflict participation.
+
+The relevant lifecycle is:
+
+#+begin_example
+store/select candidate
+  -> root-equal rejection or fingerprint duplicate rejection
+  -> unique ax2 queue insertion
+  -> ax2 core processing
+  -> per-index equal / known-distinct / unresolved classification
+  -> unit consequence or guarded binary consequence
+  -> optional relation watch
+  -> later generic solver activity
+#+end_example
+
+For multidimensional arrays, one queued store/select pair can produce more than
+one consequence. Event count and consequence count must therefore be reported
+separately.
+
+Yardbird's abstract strategy follows a different path:
+
+#+begin_example
+spurious model
+  -> Yardbird e-graph refinement
+  -> explicit UF array-axiom instances
+  -> generic Z3 SAT/EUF/arithmetic work
+  -> another check at the same depth or depth closure
+#+end_example
+
+The abstract encoding contains no native array terms. The classic engine may
+still enter array-theory callback paths with no native array work, so the
+abstract capture is also the baseline for interpreting a small nonzero array
+envelope. Its raw Z3 check time otherwise belongs to the non-array residual.
+The comparison is between aggregate workloads and refinement trajectories, not
+between matched individual lemmas.
+
+* Research Questions
+
+The first implementation should make the following questions answerable from
+recorded data.
+
+1. How much raw solver time does each concrete or abstract check consume?
+2. How much cumulative raw solver time does each strategy require to resolve a
+   given BMC depth?
+3. What fraction of an instrumented concrete check is spent inside the direct
+   native-array envelope?
+4. How large is the non-array residual after removing that direct envelope?
+5. How do Yardbird's instance count, newly added instances, number of refinement
+   checks, and cumulative check time vary together?
+6. Which aggregate measurements suggest better Yardbird refinement choices or
+    a useful follow-up counterfactual experiment?
+
+The ax2 candidate funnel, consequence shape, and propagation/final-check counts
+are follow-up questions, not requirements for the envelope pilot.
+
+The first pass does not claim to identify which non-array subsystem owns the
+residual and does not infer causation from correlations.
+
+* Scope
+
+** Initial scope
+
+- Yardbird VMT mode with the Z3 backend.
+- Concrete native arrays and Yardbird's unquantified abstract array strategy.
+- Z3 4.16 from the existing development checkout.
+- One incremental SMT-LIB transcript per Yardbird run.
+- Stable check-level metadata.
+- Persistent-process replay against stock and summary-instrumented Z3 builds.
+- Per-check and per-depth timing reports.
+- A low-overhead native-array envelope timer.
+- A minimal per-check array envelope with an outermost-entry count.
+- A small calibration corpus with stable result and envelope invariants.
+
+** Later scope, only when evidence warrants it
+
+- Summary counters for the ax2 candidate-to-consequence funnel and remaining
+  native-array lifecycle.
+- Exact relation-watch wakeup, propagation, and conflict provenance.
+- Bounded per-event tracing and term dictionaries.
+- Standalone cold-query snapshots and refinement counterfactuals.
+- Additional abstract cost functions and learned rankers.
+- Yardbird's quantified array strategy and separation of E-matching from MBQI.
+- Whole-solver subsystem timing or statistical sampling.
+- SMT-LIB input mode after the VMT journal is stable.
+
+** Non-goals
+
+- Reconstructing the original paper's result JSON.
+- Treating a standalone snapshot as an exact reproduction of incremental Z3
+  state.
+- Matching Yardbird instances one-to-one with native Z3 events.
+- Partitioning all solver time among SAT, EUF, arithmetic, and quantifiers in
+  the first pass.
+- Enabling proofs in timing runs.
+- Replacing native array instrumentation with a user propagator.
+- Changing Yardbird's refinement algorithm during the measurement milestones.
+- Optimizing Z3's native array implementation as a required outcome.
+- Building a database or dashboard before the JSON artifacts are useful.
+
+* Experimental Units and Comparison Rules
+
+** Capture run
+
+A capture run is one Yardbird invocation with one strategy and one input VMT
+file. It produces one immutable incremental transcript and its metadata.
+
+Concrete and abstract strategies must be captured as separate runs. Their
+transcripts are not expected to contain the same number or shape of checks.
+
+** Check
+
+A check is one call from Yardbird to the solver's raw satisfiability operation.
+It is identified by a monotonically increasing ~check_id~ within the capture
+run and is associated with:
+
+- run ID;
+- benchmark/input identity;
+- strategy and cost function;
+- BMC depth;
+- existing Yardbird refinement ID or refinement step;
+- total instances present;
+- instances added since the preceding check;
+- expected result.
+
+** Resolved depth
+
+The primary comparison unit is a resolved BMC depth. Its raw solver cost is the
+sum of every check made at that depth, including intermediate SAT refinement
+checks and the check that closes the depth or establishes a real
+counterexample.
+
+Reports must show both:
+
+- the cumulative depth total; and
+- the ordered check sequence that produced it.
+
+Do not compare an isolated concrete check with an isolated abstract check as if
+they were equivalent work units.
+
+** Timing contract
+
+Yardbird records:
+
+#+begin_example
+T_yardbird_check_handling =
+    T_property_push
+  + T_raw_check
+  + T_model_acquisition
+  + T_proof_or_core_access
+  + T_property_pop
+  + T_statistics_collection
+#+end_example
+
+The first Z3 fork records, only while an instrumented ~check-sat~ is active:
+
+#+begin_example
+T_instrumented_check = T_array_envelope + T_non_array_residual
+T_non_array_residual = T_instrumented_check - T_array_envelope
+#+end_example
+
+~T_array_envelope~ is an inclusive, outermost-entry timer for array-theory
+callbacks. A nesting-depth guard prevents double counting when one instrumented
+array routine calls another. Synchronous calls from the array plugin into the
+generic SMT context are included in the envelope. Work performed later by SAT
+or EUF after the array callback returns is not included.
+
+Any later fine-grained timers must be labeled inclusive or exclusive and must
+never be summed with the envelope as independent costs.
+
+Array activity that occurs while declarations or assertions are installed
+between checks is outside the first-pass array envelope. Yardbird's existing
+profiling continues to account for its refinement-generation and driver work.
+This limitation must appear in reports involving the concrete strategy.
+
+Stock replay wall time is authoritative for performance. The summary build is
+used to explain behavior. Compute the array residual only from timing fields in
+the same summary-build execution; never subtract summary-build array time from
+a stock-build wall-time sample.
+
+* Canonical Solver Journal
+
+** Capture location
+
+Implement journaling as a decorator or observer at the ~YardbirdSolver~ trait
+boundary. It records the original ~Command~ and ~Term~ values passed to the
+backend before forwarding the operation.
+
+Do not build the canonical journal from ~z3::Solver::to_string()~. That method
+serializes current state but loses the history and ordering required for an
+incremental replay.
+
+** Commands to journal
+
+The journal must preserve the order of all solver-state operations needed for
+replay:
+
+- logic and solver options;
+- sort, function, and variable declarations;
+- assertions, including tracked assertions where enabled;
+- pushes and pops;
+- each property assertion;
+- each ~check-sat~;
+- any portable post-check observation command deliberately included in replay.
+
+Each check should be surrounded by comments containing the stable check ID for
+human inspection. Machine correlation comes from the sidecar index, not from
+parsing comments.
+
+The journal must remain a valid SMT-LIB file that can be passed directly to a
+compatible solver. Backend-specific options must be declared in the manifest
+and isolated so the harness can reject an incompatible replay.
+
+Emit ~(set-option :print-success false)~ for interactive replay, and include the
+effective logic, seeds, and solver options even when the backend previously set
+them through an API rather than through ~YardbirdSolver~ calls. The journal
+wrapper therefore receives the effective solver configuration when it is
+constructed.
+
+** Journal index
+
+Write a structured sidecar index while the journal is produced. For every
+check, record:
+
+#+begin_example
+check_id
+depth
+refinement_id
+refinement_step
+setup_byte_start
+check_byte_start
+check_byte_end
+post_check_byte_end
+command_ordinal
+expected_result
+#+end_example
+
+Byte ranges or precomputed command chunks allow the Python runner to feed the
+transcript incrementally without implementing a second SMT-LIB parser.
+
+Capture and profiling artifacts intentionally have no schema/version labels or
+content hashes. This is research tooling: each capture directory is treated as
+one disposable unit, and replay validates its check count, order, and results
+directly. Files are immutable after successful capture completion.
+
+** Replay fidelity
+
+The transcript recreates the logical command sequence, but SMT-LIB parsing may
+construct internal objects differently from Yardbird's API calls. Replay must
+therefore satisfy these checks:
+
+- every check result matches the originating Yardbird result;
+- all checks occur in the expected order;
+- Z3 revision, build mode, parameters, and seeds are recorded;
+- performance conclusions use repeated executions rather than assuming exact
+  deterministic timing.
+
+* Yardbird Changes
+
+** CLI
+
+Use one option for all Yardbird profiling:
+
+#+begin_example
+--profile
+--solver-capture-dir <DIR>
+#+end_example
+
+Recommended behavior:
+
+- ~--profile~ records check-level Yardbird timing and statistics for all
+  strategies, including ~concrete~, plus driver and e-graph measurements where
+  those paths produce them.
+- ~--solver-capture-dir~ enables the command journal, journal index, manifest,
+  and the metadata needed to correlate checks. It implies ~--profile~.
+- A transcript always contains every check. Result-based filtering is not
+  supported because removing an earlier check changes the incremental session.
+- Existing ~--dump-solver~ remains available for its current single-UNSAT/core
+  use case and is not overloaded with transcript semantics.
+
+** Split raw check from model acquisition
+
+The current Z3 backend obtains a model inside ~check()~, so its reported solver
+time includes model acquisition. Refactor ~src/solver/api.rs~ and
+~src/solver/z3.rs~ so these operations are explicit and separately timed.
+
+The preferred shape is:
+
+#+begin_src rust
+fn check_sat(&mut self) -> SolverCheckResult;
+fn capture_model(&mut self) -> anyhow::Result<()>;
+#+end_src
+
+The caller must invoke ~capture_model()~ after SAT and before popping the
+property scope. The interface and tests should make that ordering clear. Apply
+the smallest compatible change to other solver backends.
+
+Model evaluation used by the refinement algorithm remains unchanged after the
+captured model is stored.
+
+** Profiling schema
+
+Keep one profiler in ~src/profiling.rs~. It owns run metadata, check identity,
+instance deltas, solver-check records, driver timings, and e-graph cost
+records. The payload is intentionally unversioned and has no compatibility
+flags.
+
+Add a solver-check collection. A check record should contain at least:
+
+#+begin_example
+run_id
+check_id
+benchmark_id
+depth
+refinement_id
+refinement_step
+strategy
+cost_function
+theory
+backend
+result
+reason_unknown
+logic
+solver_parameters
+random_seeds
+assertion_count
+instances_total
+instances_added_since_previous_check
+timing_ns
+statistics_before
+statistics_after
+statistics_delta
+#+end_example
+
+~timing_ns~ should include property push, raw check, model acquisition,
+proof/core access, property pop, statistics collection, and total Yardbird
+check handling.
+
+Reuse the existing ~SolverStatistics~ representation and add shared snapshot and
+delta helpers. Do not maintain a second hand-selected statistics map. Record
+statistics for SAT, UNSAT, and UNKNOWN results.
+
+** Stable identifiers
+
+- ~run_id~ identifies one Yardbird capture invocation.
+- ~check_id~ is monotonic and contiguous within a run.
+- Use the repository's existing refinement identity rather than inventing a
+  competing ID.
+
+** Likely files
+
+- ~src/lib.rs~: CLI options and validation.
+- ~src/profiling.rs~: unified profiling state and solver-check records.
+- ~src/driver.rs~: run/check/depth/refinement metadata.
+- ~src/smt_problem.rs~: check phases and journal annotations.
+- ~src/solver/api.rs~: raw-check/model split and journal integration seam.
+- ~src/solver/z3.rs~: Z3 implementation of the split API.
+- ~src/solver/cvc5.rs~: compatibility updates.
+- ~src/solver/~: a focused journal wrapper/module.
+- ~src/utils.rs~: statistics snapshot/delta helpers.
+- focused integration tests for journal replay and profile serialization.
+
+* Z3 4.16 Fork
+
+** Baseline
+
+Use the existing Z3 4.16 checkout and record:
+
+- exact Git commit;
+- reported version;
+- compiler and compiler version;
+- CMake configuration;
+- optimization and assertions settings;
+- architecture flags;
+- source-tree cleanliness or patch hash.
+
+Build side-by-side executables:
+
+#+begin_example
+Z3_STOCK_BIN=/path/to/z3-stock
+Z3_SUMMARY_BIN=/path/to/z3-summary
+#+end_example
+
+The stock and summary builds must use the same source baseline and build flags.
+Before adding instrumentation, compare an unmodified development build with the
+stock build and investigate systematic differences.
+
+Where practical, build the calibrated Yardbird binary against the same pinned
+Z3 source so the capture and replay environments cannot silently drift.
+
+** Runtime controls
+
+Profiling is disabled by default. Add narrowly scoped array-profile controls,
+confirming their generated-parameter location in the 4.16 source tree before
+editing.
+
+Conceptual controls:
+
+#+begin_example
+array.profile=false
+array.profile_output=<path>
+#+end_example
+
+If a string path parameter is awkward, a narrowly named environment variable
+is acceptable for the first prototype. The final mechanism must support one
+buffered JSONL record per ~check-sat~ in a persistent process.
+
+Do not enable proofs in timing or primary diagnostic runs. Proof-enabled array
+paths differ; for example, ax1 can be a direct equality assignment without
+proofs but a materialized axiom with proofs.
+
+** Profile structure
+
+Keep profiling state localized, preferably in a small dedicated structure.
+Likely source boundaries are:
+
+- ~src/smt/theory_array.cpp~ and ~theory_array.h~;
+- ~src/smt/theory_array_base.cpp~ and ~theory_array_base.h~;
+- a narrow ~smt_context~ hook to mark check entry/exit and flush a per-check
+  record;
+- the generated array-theory parameter definitions.
+
+Avoid spreading JSON formatting and file output through axiom-generation code.
+Never perform synchronous output in a hot array path.
+
+* Z3 Summary Instrumentation
+
+** Existing counters
+
+Preserve the existing 4.16 names and semantics:
+
+- ~array ax1~: ax1 instantiation attempts counted by ~theory_array~.
+- ~array ax2~: unique ax2a store/select pairs queued after preliminary checks.
+- ~array exp ax2~: unique ax2b pairs queued by upward/delayed propagation.
+- ~array ext ax~: accepted extensionality events.
+- ~array splits~: emitted equality splits.
+
+New counters refine this lifecycle; they must not silently redefine the old
+statistics.
+
+** Subtractable array envelope
+
+Add one per-check ~array_envelope_ns~ accumulator with these rules:
+
+- active only between instrumented check entry and exit;
+- starts on entry to an array-theory callback when the profiling nesting depth
+  is zero;
+- stops when that outermost callback returns;
+- nested array scopes do not add time to the envelope;
+- exceptions or early returns cannot leave the depth guard unbalanced;
+- no clock reads occur when profiling is disabled.
+
+The envelope covers the outermost array-theory entry points invoked by the SMT
+context during the active check, including internalization/relevancy callbacks,
+equality and disequality callbacks, ~can_propagate~, ~propagate~,
+~final_check_eh~, and model callbacks that execute before ~check-sat~ returns.
+Instrument the boundary entry points, not every helper.
+
+Also record the number of outermost timed entries. Validate that
+~array_envelope_ns <= check_elapsed_ns~ for every completed record.
+
+** Ax2 funnel
+
+Record separate ax2a, ax2b, and combined totals for:
+
+#+begin_example
+candidates_seen
+root_equal_skips
+fingerprint_duplicate_skips
+unique_queue_insertions
+core_pairs_processed
+index_dimensions_seen
+index_root_equal_skips
+consequent_select_equal_short_circuits
+index_known_distinct
+index_unresolved
+unit_consequences
+binary_consequences
+relation_watches_installed
+#+end_example
+
+In Z3 4.16, a known-distinct index produces a unit consequence; an unresolved
+index produces a guarded binary consequence and installs a relation watch.
+Count consequences per index dimension, not merely per queued pair.
+
+Add queue-drain call counts, total pairs drained, and peak queue length.
+
+** Other summary counters
+
+Add low-overhead counters for:
+
+- array propagation callback calls and loop iterations;
+- array final-check calls and outcomes (~done~, ~continue~, ~giveup~ where
+  applicable);
+- ax1 candidates, queued/core-processed events, direct assignments, and
+  materialized proof-mode clauses;
+- extensionality candidates, duplicate skips, queue insertions, and emitted
+  consequences;
+- equality-split candidates and emitted splits;
+- array model-construction callbacks, if they occur inside the measured check
+  boundary.
+
+Do not claim exact watch activation, downstream propagation, or conflict
+participation from these summary counters.
+
+** Nested diagnostic timers
+
+Use coarse, batched timers for selected stages:
+
+- ax1 queue drain/core processing;
+- ax2 queue drain/core processing;
+- extensionality queue drain;
+- array ~propagate~ callback;
+- array ~final_check~ callback.
+
+Document overlap. Avoid clock reads for each candidate or each index dimension.
+
+** Per-check output
+
+Emit one JSONL record after every ~check-sat~:
+
+#+begin_example
+check_ordinal
+result
+check_elapsed_ns
+array_envelope_ns
+array_outermost_timed_entries
+#+end_example
+
+The Z3 process knows only its check ordinal. The replay harness maps that
+ordinal to the Yardbird check ID from the journal index.
+
+* Deferred Event Provenance
+
+Exact relation-watch activity crosses from ~theory_array~ into the generic SMT
+context. Do not implement it in the first pass.
+
+Proceed only if summary data shows a large population of installed relation
+watches and the direct array envelope or unexplained residual makes their
+activity a plausible refinement signal.
+
+If approved later, use two stages:
+
+1. Array-local event IDs and bounded records for queueing, core processing,
+   consequence creation, and watch installation.
+2. Optional generic-context tags for watch wakeup, propagation, and conflict
+   justification.
+
+Event mode must use a bounded in-memory buffer, integer AST/enode IDs in hot
+paths, a deferred term dictionary, explicit truncation, and no synchronous I/O.
+It remains diagnostic and is never used for authoritative timing.
+
+* Python Replay and Reporting Harness
+
+** Technology
+
+Use Python's standard library initially: ~argparse~, ~subprocess~, ~json~, and
+~pathlib~. Replay uses solver executables, not Z3Py, so stock and instrumented
+builds never share one process.
+
+** Proposed layout
+
+#+begin_example
+tools/
+  z3_array_probe.py
+  z3_profile/
+    __init__.py
+    replay.py
+tests/
+  z3_profile/
+    test_replay.py
+#+end_example
+
+** Persistent matched-pair result replay
+
+The base replay has one narrow correctness job:
+
+1. Consume the ~z3-builder~ manifest from stdin, or load an existing builder
+   output directory.
+2. Resolve the stock and instrumented executable paths from that manifest.
+3. Feed the complete captured transcript to one subprocess for each executable
+   in turn; each subprocess therefore preserves all incremental state.
+4. Read the returned ordered result lines and correlate them with the journal
+   index.
+5. Require both ordered result sequences to match the captured sequence.
+6. Abort on mismatch, timeout, malformed output, or process failure.
+
+The journal index supplies chunks and boundaries; the runner must not parse
+arbitrary SMT-LIB merely to locate checks.
+
+This base command does not calibrate, time, or write replay reports. Repeated
+timing and aggregation belong to the following reporting ticket, built on top
+of a result-correct replay rather than mixed into its interface.
+
+** Commands
+
+#+begin_example
+python tools/z3-builder/z3_builder.py \
+  --z3-checkout path/to/z3 \
+  --instrumented-checkout path/to/instrumented-z3 \
+  --output path/to/z3-build |
+  python tools/z3_array_probe.py replay \
+    --capture-dir path/to/capture
+
+python tools/z3_array_probe.py replay \
+  --capture-dir path/to/capture \
+  --z3-build-dir path/to/z3-build
+
+python tools/z3_array_probe.py time \
+  --capture-dir path/to/capture \
+  --z3-build-dir path/to/z3-build \
+  --warmups 3 \
+  --repetitions 15
+#+end_example
+
+** Runner responsibilities
+
+- Validate the capture journal and the two executable paths supplied by
+  ~z3-builder~.
+- Launch one persistent solver process per executable.
+- Preserve check ordering and incremental state by replaying the complete
+  transcript in one process.
+- Apply a bounded whole-replay timeout and surface process errors.
+- Reject any ordered result mismatch.
+
+** Reports
+
+For each check, report:
+
+- Yardbird run/check/depth/refinement identity;
+- strategy and cost function;
+- expected and replayed result;
+- instances total and added since the preceding check;
+- stock timing distribution;
+- summary-build timing distribution and overhead;
+- native array envelope and fraction, when nonzero;
+- non-array residual from the same summary run;
+- existing array statistics and the new ax2 funnel.
+
+For each resolved depth, report:
+
+- ordered checks and results;
+- number of refinement checks;
+- cumulative stock raw-check time;
+- cumulative summary raw-check time;
+- cumulative native array envelope;
+- cumulative non-array residual;
+- total and newly added Yardbird instances;
+- adjacent Yardbird refinement-generation timing from the existing profiler.
+
+Aggregate concrete and abstract results by benchmark and depth. Do not present
+them as matched individual events. Do not infer per-lemma cost by dividing total
+wall time by a raw lemma count.
+
+* Artifact Layout
+
+Each capture and replay is self-contained under a caller-selected directory.
+
+#+begin_example
+capture-dir/
+  manifest.json
+  yardbird-profile.json
+  solver-session.smt2
+  solver-session.index.json
+  replay/
+    stock/
+      repetition-000.jsonl
+    summary/
+      repetition-000.jsonl
+  profiles/
+    repetition-000.z3-array.jsonl
+  reports/
+    checks.json
+    depths.json
+    comparison.txt
+#+end_example
+
+Captured journal, index, and Yardbird profile files become immutable when the
+capture completes. Replays write only beneath ~replay/~, ~profiles/~, and
+~reports/~.
+
+The manifest records capture completeness so an interrupted capture cannot be
+mistaken for a valid transcript.
+
+* Calibration Corpus
+
+Add small SMT-LIB fixtures under ~tests/data/z3-profile/~ or
+~examples/smt2/z3-profile/~. Each fixture isolates one stable Z3 4.16 behavior.
+
+1. Ax1 with proofs disabled, validating direct equality assignment accounting.
+2. Ax2 with a known-distinct index, validating a unit consequence.
+3. Ax2 with an unresolved symbolic index, validating a binary consequence and
+   relation-watch installation.
+4. Ax2 root-equal rejection.
+5. Duplicate ax2 candidates, validating fingerprint rejection.
+6. A multidimensional array, validating pair-versus-dimension consequence
+   counts.
+7. Extensionality.
+8. Array equality splitting.
+9. A multi-check incremental transcript that adds assertions between checks.
+10. A small Yardbird capture containing multiple refinement checks at one
+    depth.
+
+For every fixture, document expected qualitative behavior and assert exact
+counters only where they are stable on the pinned revision. Never assert timing
+durations in correctness tests.
+
+* Implementation Milestones
+
+** Milestone 0: Freeze Z3 4.16 and the record shapes
+
+Tasks:
+
+- Record the existing Z3 checkout's exact commit.
+- Build stock and unmodified-development executables with identical flags.
+- Verify version, status equivalence, and statistically similar timing on a
+  small query set.
+- Finalize examples of the Yardbird profile, solver-session index, and Z3 array
+  profile.
+- Write the timing boundary and ax2 definitions into their documentation.
+
+Exit criteria:
+
+- The exact source and build configurations are reproducible.
+- An unmodified development build has no unexplained systematic timing
+  difference from stock.
+- Record fixtures parse successfully.
+
+** Milestone 1: Yardbird check profiling and canonical journal
+
+Tasks:
+
+- Add ~--profile~ and ~--solver-capture-dir~.
+- Split raw check from model acquisition.
+- Add stable run/check metadata using the existing refinement identity.
+- Implement the solver-boundary command journal and sidecar index.
+- Record timing phases and complete statistic snapshots/deltas for every result.
+- Profile concrete and abstract strategies through the same interface.
+- Add SAT, UNSAT, multi-refinement, and multi-depth capture tests.
+
+Exit criteria:
+
+- One Yardbird invocation produces one valid incremental SMT-LIB transcript.
+- Every indexed check has contiguous identity and valid command boundaries.
+- Raw check time excludes model acquisition.
+- Concrete and abstract runs both emit solver-check records.
+- Existing ~--dump-solver~ behavior remains compatible.
+
+** Milestone 2a: Persistent matched-pair result replay
+
+Tasks:
+
+- Implement journal/index validation.
+- Make ~z3-builder~ emit its manifest cleanly on stdout for direct piping.
+- Replay once through both builder-produced executables with one persistent
+  process each.
+- Validate every ordered result and bound each full replay with a timeout.
+- Test with fake solver executables or checked-in deterministic fixtures.
+
+Exit criteria:
+
+- One pipeline builds both executables and replays the capture through them.
+- Every check is replayed in persistent stock and instrumented processes.
+- Both result sequences and their ordering match the Yardbird capture.
+
+** Milestone 2b: Repeated stock timing reports
+
+Tasks and exit criteria live in ticket 07. This layer adds warmups, repeated
+samples, and per-depth aggregation without expanding the base replay command's
+correctness interface. It does not calibrate or classify short checks in the
+first research pass.
+
+** Milestone 3: Z3 summary array profiler
+
+Tasks:
+
+- Add disabled-by-default profile controls and per-check JSONL output.
+- Add the non-overlapping array envelope.
+- Emit only the ordinal, result, containing-check time, envelope time, and
+  outermost-entry count needed by the first pilot.
+- Validate a persistent multi-check capture with profiling enabled and disabled.
+
+Exit criteria:
+
+- All calibration fixtures return the same results as stock.
+- ~array_envelope_ns~ never exceeds its containing check time.
+- Profiling disabled has no meaningful regression.
+- Summary-mode overhead is measured on representative aggregate samples, and
+  any excess is understood and reduced before broad data collection.
+
+** Milestone 4: Paired Yardbird pilot study
+
+Tasks:
+
+- Select a small stratified benchmark set with low, medium, and high native
+  ~array ax2~ counts.
+- Capture concrete and at least one abstract policy for the same benchmarks and
+  depths.
+- Replay every transcript against stock and summary builds.
+- Report check sequences and cumulative depth costs.
+- Compare native array envelope, residual time, Yardbird instance counts, and
+  refinement counts.
+- Record supported, rejected, and unresolved explanations.
+
+Exit criteria:
+
+- The data shows whether direct native-array callback time explains a material
+  part of the concrete-versus-abstract solver-time difference.
+- The data shows how much solver time remains in abstract runs after Yardbird
+  supplies explicit instances.
+- At least one concrete follow-up hypothesis about Yardbird refinement quality
+  is stated without claiming one-to-one event matching.
+
+** Milestone 5: Decide the next measurement
+
+Use the pilot evidence to choose exactly one next path:
+
+- add more abstract cost functions;
+- perform batch-level refinement counterfactuals;
+- add exact relation-watch activation/conflict provenance;
+- investigate a specific non-array residual hotspot;
+- extend to quantified arrays.
+
+Do not automatically implement all paths.
+
+Exit criteria:
+
+- The selected path is justified by pilot measurements.
+- Its expected decision value for Yardbird refinement is explicit.
+
+* Verification
+
+** Yardbird
+
+Run the repository's normal checks after each implementation slice:
+
+#+begin_src sh
+cargo fmt --check
+cargo test
+cargo test -p smt2parser
+cargo clippy --all-targets --all-features -- -D warnings
+#+end_src
+
+Add focused tests that:
+
+- capture SAT and UNSAT checks;
+- capture multiple refinements at one depth;
+- capture multiple depths in one journal;
+- verify push/pop and assertion ordering;
+- verify contiguous check IDs and command boundaries;
+- replay the transcript to the originating statuses;
+- verify profile serialization round trips and statistics deltas;
+- confirm model acquisition is outside raw check timing;
+- confirm concrete and abstract strategies use the same profiler;
+- preserve the existing dump/core behavior.
+
+** Z3 fork
+
+- Build with profiling disabled and summary mode available at runtime.
+- Run the relevant Z3 regression suite for modified SMT/array modules.
+- Run the calibration corpus and assert stable counters.
+- Replay Yardbird's existing array examples under stock and summary builds.
+- Compare all statuses and UNKNOWN reasons.
+- Verify no-profile behavior before measuring summary overhead.
+
+** Python
+
+- Test journal-index validation.
+- Test streaming of multiple checks through one process.
+- Test SAT, UNSAT, UNKNOWN, timeout, crash, malformed output, and mismatch paths.
+- Test summary ordinal/result disagreement.
+- Test paths containing spaces.
+- Require an explicit override for version/build mismatches.
+- Test cumulative depth aggregation from known check samples.
+
+* Risks and Mitigations
+
+** Replay is not identical to the C API execution
+
+SMT-LIB parsing may construct terms or internalize commands differently.
+
+Mitigation: call the replay operation-equivalent, preserve exact command order,
+pin builds and parameters, validate every result, and compare distributions.
+
+** Instrumentation perturbs timing
+
+Counters and clocks affect hot paths.
+
+Mitigation: keep profiling disabled by default, use one outer envelope timer,
+batch nested timers, avoid hot-path I/O, enforce an overhead budget, and retain
+stock timing as authoritative.
+
+** The array envelope is not total array-caused cost
+
+Generic SAT/EUF work caused by an array consequence may occur after the array
+callback returns.
+
+Mitigation: name the metric ~array_envelope~, document its boundary, retain the
+non-array residual, and use the ax2 consequence funnel as activity evidence.
+Add exact provenance only if summary results warrant it.
+
+** Incremental filtering corrupts replay
+
+Removing checks or commands changes learned state and the session history.
+
+Mitigation: always capture the complete session. Select checks only during
+reporting; rerun the full prefix for any selected incremental check.
+
+** Strategy comparisons are not event matched
+
+Concrete and abstract encodings differ structurally and issue different check
+sequences.
+
+Mitigation: compare cumulative depth and run aggregates, retain check-level
+drill-down, and avoid one-to-one or per-lemma cost claims.
+
+** Very short checks are noisy
+
+Process communication and clock resolution can dominate individual checks.
+
+Mitigation: replay full transcripts repeatedly, report individual samples plus
+median/MAD, emphasize cumulative depth totals, and flag checks below a minimum
+measurement threshold.
+
+** Summary statistics are cumulative
+
+Z3 statistics can accumulate across an incremental process.
+
+Mitigation: emit explicit per-check snapshots or deltas from the fork and
+validate their reconciliation across the transcript.
+
+** Proof mode changes array behavior
+
+Mitigation: keep proofs disabled in all primary runs and label any proof-only
+diagnostic as a different configuration.
+
+* Success Criteria
+
+The first-pass project succeeds when it provides all of the following.
+
+** Reproducible mapping
+
+- Every Yardbird solver check maps to one transcript position, one replay
+  result, and one set of timing/profile records.
+- A persistent replay returns the same ordered results as the capture.
+- Solver/build metadata, parameters, and seeds are recorded without adding
+  artifact version labels or content hashes.
+
+** Array accounting
+
+- Raw check time is separated from Yardbird work and model acquisition.
+- One subtractable native-array envelope is measured per concrete check.
+- Detailed native-array counters are deferred until envelope measurements show
+  that they would change the next research decision.
+
+** Useful comparison
+
+- Reports show individual checks and cumulative time to resolve each depth.
+- Concrete reports show native array time and the non-array residual.
+- Abstract reports show solver time alongside refinement and instance counts.
+- Results do not depend on one-to-one lemma matching.
+
+** Refinement guidance
+
+- The pilot produces at least one evidence-backed next experiment aimed at
+  Yardbird refinement quality.
+- Native Z3 optimization is not required.
+- Claims remain within the measured timing and provenance boundaries.
+
+* Recommended First Implementation Slice
+
+Implement the smallest end-to-end path before adding detailed Z3 counters:
+
+1. Pin and record the existing Z3 4.16 checkout and build configuration.
+2. Split Yardbird raw check from model acquisition.
+3. Add solver-check records to the unified Yardbird profiler.
+4. Add the solver-boundary incremental command journal and index.
+5. Build persistent matched-pair replay and require ordered result equality.
+6. Add the minimal Z3 array envelope.
+7. Run the calibration corpus and a small concrete-versus-abstract pilot.
+
+This slice can already test whether direct native-array callback time accounts
+for most of the concrete solver workload.
+
+* Ordered Checklist
+
+- [ ] Record the exact existing Z3 4.16 commit and build flags.
+- [ ] Validate identical stock and unmodified-development builds.
+- [ ] Finalize the three record examples.
+- [ ] Add the unified Yardbird profiling option.
+- [ ] Split raw check and model acquisition.
+- [ ] Add stable run/check metadata using existing refinement identity.
+- [ ] Implement the solver-boundary command journal.
+- [ ] Emit the journal index.
+- [ ] Record per-check timing phases and statistic deltas.
+- [ ] Make solver profiling work for concrete and abstract strategies.
+- [ ] Add incremental capture tests.
+- [ ] Implement persistent matched-pair result replay.
+- [ ] Produce check-level timing distributions.
+- [ ] Produce cumulative per-depth timing reports.
+- [ ] Add Z3 summary profile controls and JSONL output.
+- [ ] Add the non-overlapping array envelope.
+- [ ] Decide from the envelope pilot whether native-array lifecycle counters
+  are worth adding.
+- [ ] Build and validate the calibration corpus.
+- [ ] Measure summary instrumentation overhead.
+- [ ] Run the first paired concrete-versus-abstract pilot.
+- [ ] Choose the initial abstract cost-function set for broader study.
+- [ ] Decide from evidence whether exact watch provenance is warranted.
+- [ ] Select one refinement-focused follow-up experiment.

@@ -4,8 +4,12 @@ use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
-use crate::smtlib_smt_problem::SMTLIBSMTProblem;
-use crate::solver::{new_solver_backend, SolverCheckResult, YardbirdSolver};
+use crate::profiling::{Profiler, ProfilingRunRecord, SolverCheckContext, SolverProfileMetadata};
+use crate::smtlib_refinement_session::SmtlibRefinementSession;
+use crate::solver::{
+    check::{run_solver_check, SolverCheckRequest},
+    new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
+};
 use crate::strategies::{ProofAction, ProofStrategy};
 use crate::training::UnsatEventRecord;
 use crate::utils::SolverStatistics;
@@ -228,24 +232,41 @@ pub struct CheckSatResult {
 
 /// Solver for executing SMTLIB problems
 /// Handles incremental solving with push/pop and multiple check-sat commands
-pub struct SMTLIBSolver {
+pub struct SmtlibCommandExecutor {
     solver: Box<dyn YardbirdSolver>,
+    logic: String,
     check_sat_results: Vec<CheckSatResult>,
+    profiler: Option<Profiler>,
+    active_assertion_count: u64,
+    assertion_scope_stack: Vec<u64>,
 }
 
-impl SMTLIBSolver {
+impl SmtlibCommandExecutor {
     /// Create a new SMTLIB solver with the given logic, defaulting to Z3.
     pub fn new(logic: Option<String>) -> Self {
-        Self::new_with_backend(logic, SolverBackend::Z3)
+        Self::new_with_backend(logic, SolverBackend::Z3, None)
     }
 
     /// Create a new SMTLIB solver with the given logic and backend.
-    pub fn new_with_backend(logic: Option<String>, backend: SolverBackend) -> Self {
+    pub fn new_with_backend(
+        logic: Option<String>,
+        backend: SolverBackend,
+        capture: Option<SolverCapture>,
+    ) -> Self {
         let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
-        SMTLIBSolver {
-            solver: new_solver_backend(backend, logic.as_str()),
+        SmtlibCommandExecutor {
+            solver: new_solver_backend(backend, logic.as_str(), capture),
+            logic,
             check_sat_results: Vec::new(),
+            profiler: None,
+            active_assertion_count: 0,
+            assertion_scope_stack: vec![],
         }
+    }
+
+    pub fn with_profiler(mut self, profiler: Option<Profiler>) -> Self {
+        self.profiler = profiler;
+        self
     }
 
     /// Execute all commands from an SMTLIB problem
@@ -263,22 +284,29 @@ impl SMTLIBSolver {
                 self.handle_assert(term)?;
             }
             Command::CheckSat => {
-                let result = self.handle_check_sat(command_index);
+                let result = self.run_check_sat_command(command_index);
+                self.solver.complete_check();
                 self.check_sat_results.push(result);
             }
             Command::CheckSatAssuming { literals } => {
                 let result = self.handle_check_sat_assuming(command_index, literals)?;
+                self.solver.complete_check();
                 self.check_sat_results.push(result);
             }
             Command::Push { level } => {
                 let num_levels: u32 = level.try_into().unwrap_or(1);
                 for _ in 0..num_levels {
                     self.solver.push();
+                    self.assertion_scope_stack.push(self.active_assertion_count);
                 }
             }
             Command::Pop { level } => {
                 let num_levels: u32 = level.try_into().unwrap_or(1);
-                self.solver.pop(num_levels);
+                for _ in 0..num_levels {
+                    self.solver.pop(1);
+                    self.active_assertion_count =
+                        self.assertion_scope_stack.pop().unwrap_or_default();
+                }
             }
             Command::DeclareFun { .. }
             | Command::DeclareConst { .. }
@@ -299,15 +327,49 @@ impl SMTLIBSolver {
 
     /// Handle an assert command
     fn handle_assert(&mut self, term: &Term) -> anyhow::Result<()> {
-        self.solver.assert_term(term)
+        self.solver.assert_term(term)?;
+        self.active_assertion_count += 1;
+        Ok(())
     }
 
-    /// Handle a check-sat command
-    fn handle_check_sat(&mut self, command_index: usize) -> CheckSatResult {
-        let result = self.solver.check_and_record_statistics();
+    /// Execute a direct SMT-LIB `check-sat` command.
+    ///
+    /// This command-stream path reports the result without acquiring a model
+    /// or an UNSAT core. Later SMT-LIB commands may request those separately.
+    fn run_check_sat_command(&mut self, command_index: usize) -> CheckSatResult {
+        let outcome = run_solver_check(
+            self.solver.as_mut(),
+            SolverCheckRequest {
+                profiling_enabled: self.profiler.is_some(),
+                assertion_count: self.active_assertion_count,
+                temporary_negated_property: None,
+                model_terms: None,
+                capture_unsat_core: false,
+            },
+        );
+
+        if let Some(measurement) = outcome.measurement {
+            let refinement_step = self.check_sat_results.len().try_into().unwrap_or(u32::MAX);
+            let context = SolverCheckContext {
+                depth: 0,
+                refinement_id: refinement_step.saturating_add(1),
+                refinement_step,
+                instances_total: 0,
+                solver: SolverProfileMetadata {
+                    backend: self.solver.backend(),
+                    logic: self.logic.clone(),
+                    parameters: self.solver.solver_parameters(),
+                    random_seeds: self.solver.random_seeds(),
+                },
+            };
+            self.profiler
+                .as_mut()
+                .expect("check measurement requires an enabled profiler")
+                .record_solver_check(context, measurement);
+        }
 
         CheckSatResult {
-            result,
+            result: outcome.result,
             command_index,
             model: None, // Can extend later to capture models
         }
@@ -323,6 +385,7 @@ impl SMTLIBSolver {
 
         // Convert assumptions to terms and assert them temporarily
         self.solver.push();
+        self.assertion_scope_stack.push(self.active_assertion_count);
 
         for (symbol, polarity) in literals {
             let qual_id = QualIdentifier::Simple {
@@ -337,10 +400,12 @@ impl SMTLIBSolver {
             } else {
                 self.solver.assert_not_term(&term)?;
             }
+            self.active_assertion_count += 1;
         }
 
-        let result = self.handle_check_sat(command_index);
+        let result = self.run_check_sat_command(command_index);
         self.solver.pop(1);
+        self.active_assertion_count = self.assertion_scope_stack.pop().unwrap_or_default();
         Ok(result)
     }
 
@@ -354,10 +419,24 @@ impl SMTLIBSolver {
         self.solver_statistics()
     }
 
+    pub fn profiling(&self) -> ProfilingRunRecord {
+        self.profiler
+            .as_ref()
+            .map(Profiler::snapshot)
+            .unwrap_or_default()
+    }
+
     fn solver_statistics(&self) -> &SolverStatistics {
         self.solver.statistics_ref()
     }
+}
 
+/// Orchestrates strategy setup and refinement around a
+/// [`SmtlibRefinementSession`]. This is separate from direct command-stream
+/// execution because its SAT results feed Yardbird's refinement loop.
+pub struct SmtlibRefinementRunner;
+
+impl SmtlibRefinementRunner {
     fn annotate_abstract_instantiation_core_membership(result: &mut ProofLoopResult) {
         let core_ids: std::collections::HashSet<String> = result
             .indexed_instantiations
@@ -374,7 +453,7 @@ impl SMTLIBSolver {
     fn build_unsat_event(
         event_index: u32,
         command_index: u32,
-        smt_problem: &SMTLIBSMTProblem,
+        smt_problem: &SmtlibRefinementSession,
         previous_instantiation_count: u64,
         previous_stats: Option<&SolverStatistics>,
         track_instantiations: bool,
@@ -416,13 +495,14 @@ impl SMTLIBSolver {
     /// Execute with abstract/concrete strategy (refinement loop)
     /// This is the strategy-based solving mode with refinement
     #[allow(clippy::borrowed_box)]
-    pub fn execute_with_strategy<S>(
+    pub fn execute<S>(
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
         max_refinements: u32,
         track_instantiations: bool,
-        //  instantiation_strategy: Box<dyn InstantiationStrategy>,
+        mut profiler: Option<Profiler>,
+        solver_capture: Option<SolverCapture>,
     ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
         use log::info;
 
@@ -450,14 +530,18 @@ impl SMTLIBSolver {
         );
 
         // 2. Create wrapper with array types for correct logic string
-        let mut smt_problem = SMTLIBSMTProblem::new_with_array_types(
+        let mut smt_problem = SmtlibRefinementSession::new_with_array_types(
             &working_problem,
             &strategy,
             solver_backend,
             track_instantiations,
             //instantiation_strategy,
             array_types,
+            solver_capture,
         );
+        if profiler.is_some() {
+            smt_problem.enable_check_profiling();
+        }
 
         // 3. Refinement loop (similar to Driver::check_strategy but no depths)
         let mut found_proof = false;
@@ -473,7 +557,26 @@ impl SMTLIBSolver {
 
             let mut state = strategy.setup(&smt_problem, 0)?;
 
-            let action = match smt_problem.check() {
+            let check_result = smt_problem.check_current_query();
+            if let Some(profiler) = &mut profiler {
+                let measurement = smt_problem
+                    .take_last_solver_check_profile()
+                    .expect("solver profiling should produce one measurement per check");
+                debug_assert_eq!(measurement.result, check_result);
+                let instances_total = smt_problem.get_number_instantiations_added();
+                profiler.record_solver_check(
+                    SolverCheckContext {
+                        depth: 0,
+                        refinement_id: total_refinement_steps,
+                        refinement_step,
+                        instances_total,
+                        solver: smt_problem.solver_profile_metadata(),
+                    },
+                    measurement,
+                );
+            }
+
+            let action = match check_result {
                 SolverCheckResult::Unsat => {
                     info!("  Result: UNSAT");
                     unsat_events.push(Self::build_unsat_event(
@@ -594,12 +697,12 @@ impl SMTLIBSolver {
             indexed_instantiations,
             unsat_events,
             auxiliary_records: vec![],
-            profiling: if profiling_records.is_empty() {
-                crate::profiling::ProfilingRunRecord::disabled()
-            } else {
-                crate::profiling::ProfilingRunRecord::enabled(profiling_records)
-            },
+            profiling: ProfilingRunRecord::default(),
         };
+        if let Some(mut profiler) = profiler {
+            profiler.extend_cost_records(profiling_records);
+            result.profiling = profiler.finish();
+        }
         Self::annotate_abstract_instantiation_core_membership(&mut result);
         info!("Final SMTLIB result is ready");
 
