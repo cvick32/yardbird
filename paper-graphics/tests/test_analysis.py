@@ -28,6 +28,7 @@ def result(
         used_instantiations=10 if success else 10_000_000,
         num_checks=5 if success else 10_000_000,
         solver_time_s=runtime_ms / 2000.0 if success else 0.0,
+        total_conflicts=20 if success else None,
     )
 
 
@@ -113,6 +114,7 @@ class AnalysisTests(unittest.TestCase):
             with benchmark_csv.open(newline="") as input_file:
                 rows = list(csv.DictReader(input_file))
             self.assertEqual(len(rows), 10)
+            self.assertEqual(rows[0]["total_conflicts"], "20")
 
 
 if __name__ == "__main__":

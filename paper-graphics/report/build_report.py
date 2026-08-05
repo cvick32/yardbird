@@ -29,6 +29,7 @@ FIGURE_PREFIXES = (
     "instantiation_scatter_",
     "runtime_cactus_plot",
     "instantiation_cactus_plot",
+    "conflict_cactus_plot",
 )
 GENERATED_TEX_PATTERNS = (
     "all_benchmarks_table.tex",
@@ -36,10 +37,16 @@ GENERATED_TEX_PATTERNS = (
     "shared_benchmark_analysis.tex",
     "runtime_*.tex",
     "instantiation_*.tex",
+    "conflict_*.tex",
     "unique_solves_*.tex",
 )
-GENERATED_ASSET_PATTERNS = ("runtime_*.pdf", "instantiation_*.pdf")
+
 INSTRUMENTATION_ASSET_PATTERNS = ("instrumentation_*.svg",)
+GENERATED_ASSET_PATTERNS = (
+    "runtime_*.pdf",
+    "instantiation_*.pdf",
+    "conflict_*.pdf",
+)
 
 
 def load_json(path: Path) -> dict:

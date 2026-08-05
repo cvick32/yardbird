@@ -70,6 +70,9 @@ python3 comparison_figure_generator.py results.json --strategy1 concrete --strat
 ### Output Files
 
 - `runtime_scatter.tikz` - Runtime comparison scatter plot
+- `runtime_cactus_plot.tex` - Runtime cactus plot across all strategies
+- `instantiation_cactus_plot.tex` - Axiom instantiation cactus plot
+- `conflict_cactus_plot.tex` - Total solver conflicts cactus plot
 - `results_table.tikz` - LaTeX table of results
 
 **LaTeX Requirements:** `pgfplots`, `longtable`, `booktabs`

@@ -9,11 +9,13 @@ from src.data_generators import (
     CactusPlotGenerator,
     InstantiationScatterPlotGenerator,
     InstCactusPlotGenerator,
+    ConflictCactusPlotGenerator,
 )
 from src.tikz_generators import (
     ScatterPlotTikzGenerator,
     CactusPlotTikzGenerator,
     InstCactusPlotTikzGenerator,
+    ConflictCactusPlotTikzGenerator,
     TableTikzGenerator,
 )
 
@@ -228,6 +230,28 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
         )
 
         output_file = output_dir / "instantiation_cactus_plot.tex"
+        output_file.write_text(tikz_code)
+        print(f"  Saved: {output_file}")
+
+    # Generate solver conflict cactus plot
+    print(f"\n{'=' * 60}")
+    print("Generating solver conflict cactus plot")
+    print(f"{'=' * 60}")
+
+    conflict_cactus_gen = ConflictCactusPlotGenerator(all_results)
+    conflict_cactus_data = conflict_cactus_gen.generate_data()
+
+    if conflict_cactus_data:
+        tikz_code = ConflictCactusPlotTikzGenerator.generate(
+            conflict_cactus_data,
+            title="Solver Conflict Count Comparison",
+            xlabel="Number of Benchmarks",
+            ylabel="Total Solver Conflicts",
+            caption="Cactus plot comparing the total solver conflicts needed across all strategies (lower lines are better).",
+            use_log_scale=True,
+        )
+
+        output_file = output_dir / "conflict_cactus_plot.tex"
         output_file.write_text(tikz_code)
         print(f"  Saved: {output_file}")
 

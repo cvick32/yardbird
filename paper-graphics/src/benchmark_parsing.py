@@ -22,6 +22,7 @@ class BenchmarkResult:
     used_instantiations: int
     num_checks: int
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
+    total_conflicts: Optional[float] = None
 
     def get_strategy_id(self) -> str:
         if self.strategy == "abstract" and self.cost_function:
@@ -120,6 +121,18 @@ def extract_solver_time(full_entry: dict, success: bool) -> float:
         return 0.0
 
 
+def extract_total_conflicts(full_entry: dict, success: bool) -> Optional[float]:
+    """Extract the solver's cumulative conflict count for a solved benchmark."""
+    if not success:
+        return None
+    try:
+        entry = successful_payload(full_entry, success)
+        conflicts = entry["solver_statistics"]["stats"].get("conflicts")
+        return float(conflicts) if conflicts is not None else None
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 class BenchmarkParser:
     """Parser for benchmark JSON results"""
 
@@ -164,6 +177,7 @@ class BenchmarkParser:
             result_entry, strategy, success
         )
         solver_time = extract_solver_time(result_entry, success)
+        total_conflicts = extract_total_conflicts(result_entry, success)
 
         return BenchmarkResult(
             example_name=example_name,
@@ -176,4 +190,5 @@ class BenchmarkParser:
             used_instantiations=used_instantiations,
             num_checks=find_num_checks(result_entry, strategy, success),
             solver_time_s=solver_time,
+            total_conflicts=total_conflicts,
         )

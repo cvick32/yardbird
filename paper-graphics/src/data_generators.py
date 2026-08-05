@@ -252,3 +252,37 @@ class InstCactusPlotGenerator:
             )
 
         return strategy_instantiations
+
+
+class ConflictCactusPlotGenerator:
+    """Generates solver-conflict cactus plots for strategy comparison."""
+
+    def __init__(self, all_results: List[BenchmarkResult]):
+        self.all_results = all_results
+
+    def generate_data(self) -> Dict[str, List[Optional[float]]]:
+        """Return sorted cumulative solver conflict counts by strategy.
+
+        Failed benchmarks and successful results from older artifacts that do not
+        contain the ``conflicts`` solver statistic are represented as ``None``.
+        """
+        strategy_conflicts = {}
+
+        for result in self.all_results:
+            display_name = result.get_display_name()
+            conflict_count = result.total_conflicts if result.success else None
+            strategy_conflicts.setdefault(display_name, []).append(conflict_count)
+
+        for display_name in strategy_conflicts:
+            strategy_conflicts[display_name].sort(
+                key=lambda value: (
+                    value is None,
+                    value if value is not None else 0,
+                )
+            )
+
+        return {
+            display_name: conflicts
+            for display_name, conflicts in strategy_conflicts.items()
+            if any(conflict is not None for conflict in conflicts)
+        }
