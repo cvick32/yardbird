@@ -4,7 +4,8 @@ use action::Action;
 use array_abstractor::ArrayAbstractor;
 use axiom::Axiom;
 use bmc::BMCBuilder;
-use define_fun_expander::DefineFunExpander;
+use definition_graph::{DefinitionFrameInfo, DefinitionGraph, MetadataAliasExpander};
+use definition_materializer::DefinitionMaterializer;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
@@ -34,7 +35,8 @@ mod array_axiom_frame_num_getter;
 mod axiom;
 pub mod bmc;
 pub mod canonicalize_boolean;
-mod define_fun_expander;
+pub mod definition_graph;
+pub mod definition_materializer;
 pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 pub mod quantified_instantiator;
@@ -67,6 +69,7 @@ pub struct VMTModel {
     sorts: Vec<Command>,
     state_variables: Vec<Variable>,
     function_definitions: Vec<Command>,
+    helper_definitions: DefinitionGraph,
     actions: Vec<Action>,
     _axioms: Vec<Axiom>,
     initial_condition: Term,
@@ -88,6 +91,8 @@ pub enum VMTError {
     DuplicateSystemComponent(&'static str),
     #[error("cyclic zero-argument define-fun involving {0}")]
     CyclicDefinition(String),
+    #[error("zero-argument define-fun {0} is defined more than once")]
+    DuplicateDefinition(String),
 }
 
 impl VMTModel {
@@ -107,7 +112,7 @@ impl VMTModel {
     }
 
     pub fn checked_from(commands: Vec<Command>) -> Result<Self, VMTError> {
-        let mut define_fun_expander = DefineFunExpander::from_commands(&commands);
+        let mut metadata_alias_expander = MetadataAliasExpander::from_commands(&commands);
         let trailing_assert_true_start = commands
             .iter()
             .rposition(|command| !is_assert_true(command))
@@ -117,6 +122,7 @@ impl VMTModel {
         let mut sorts: Vec<Command> = vec![];
         let mut variable_relationships = vec![];
         let mut function_definitions = vec![];
+        let mut helper_definition_commands = vec![];
         let mut initial_condition = None;
         let mut transition_condition = None;
         let mut property_condition = None;
@@ -133,7 +139,7 @@ impl VMTModel {
                 (PROPERTY_ATTRIBUTE, &mut property_condition),
             ] {
                 if let Some(term) = get_transition_system_component(command, attribute) {
-                    let term = define_fun_expander.expand(term)?;
+                    let term = metadata_alias_expander.expand(term)?;
                     if component.replace(term).is_some() {
                         return Err(VMTError::DuplicateSystemComponent(attribute));
                     }
@@ -168,11 +174,16 @@ impl VMTModel {
                 {
                     variable_relationships.push(Command::DefineFun {
                         sig: sig.clone(),
-                        term: define_fun_expander.expand(term.clone())?,
+                        term: metadata_alias_expander.expand(term.clone())?,
                     });
                 }
                 Command::DefineFun { sig, term } => {
-                    if !sig.parameters.is_empty() {
+                    if sig.parameters.is_empty() {
+                        helper_definition_commands.push(Command::DefineFun {
+                            sig: sig.clone(),
+                            term: metadata_alias_expander.expand(term.clone())?,
+                        });
+                    } else {
                         function_definitions.push(Command::DefineFun {
                             sig: sig.clone(),
                             term: term.clone(),
@@ -198,11 +209,13 @@ impl VMTModel {
 
         let (state_variables, actions, axioms) =
             get_variables_actions_and_axioms(variable_relationships, variable_commands);
+        let helper_definitions = DefinitionGraph::from_commands(helper_definition_commands)?;
 
         Ok(VMTModel {
             info,
             sorts,
             function_definitions,
+            helper_definitions,
             state_variables,
             actions,
             _axioms: axioms,
@@ -218,7 +231,8 @@ impl VMTModel {
     /// Returns (abstracted_model, discovered_types) where discovered_types is a vector of
     /// (index_sort, value_sort) pairs for all array types found in the model.
     pub fn abstract_array_theory(&self) -> (VMTModel, Vec<(String, String)>) {
-        let mut abstractor = ArrayAbstractor::default();
+        let mut abstractor =
+            ArrayAbstractor::with_helper_definitions(self.helper_definitions.names());
         let mut abstracted_commands = vec![];
         for command in self.as_commands() {
             abstracted_commands.push(command.accept(&mut abstractor).unwrap());
@@ -271,16 +285,14 @@ impl VMTModel {
     }
 
     pub fn unroll(&self, length: u16) -> SMTProblem {
-        let mut builder = BMCBuilder {
-            visitor: SyntaxBuilder,
-            current_variables: self.get_all_current_variable_names(),
-            next_variables: self.get_next_to_current_varible_names(),
-            depth: 0,
-            width: None,
-        };
+        let mut builder = self.bmc_builder();
+        let mut definitions = DefinitionMaterializer::new(
+            self.helper_definitions.clone(),
+            builder.definition_frames().clone(),
+        );
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
-        smt_problem.add_assertion(&self.initial_condition, &mut builder);
+        smt_problem.add_assertion(&self.initial_condition, &mut builder, &mut definitions);
         for _ in 0..length {
             // Must add variable definitions for each variable at each time step.
             smt_problem.add_variable_definitions(
@@ -288,14 +300,18 @@ impl VMTModel {
                 &self.actions,
                 &mut builder,
             );
-            smt_problem.add_assertion(&self.transition_condition, &mut builder);
+            smt_problem.add_assertion(&self.transition_condition, &mut builder, &mut definitions);
             builder.add_step();
         }
         // Don't forget the variable definitions at time `length`.
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
-        smt_problem.add_property_assertion(&self.property_condition, &mut builder);
+        smt_problem.add_property_assertion(
+            &self.property_condition,
+            &mut builder,
+            &mut definitions,
+        );
         assert!(
-            smt_problem.init_and_trans_length() == (length + 1).into(),
+            smt_problem.root_assertion_count() == (length + 1).into(),
             "Unrolling gives incorrect number of steps {} for length {}.",
             smt_problem.init_and_trans_length(),
             length
@@ -326,27 +342,23 @@ impl VMTModel {
     }
 
     pub fn get_initial_term(&self) -> SMTProblem {
-        let mut builder = BMCBuilder {
-            visitor: SyntaxBuilder,
-            current_variables: self.get_all_current_variable_names(),
-            next_variables: self.get_next_to_current_varible_names(),
-            depth: 0,
-            width: None,
-        };
+        let mut builder = self.bmc_builder();
+        let mut definitions = DefinitionMaterializer::new(
+            self.helper_definitions.clone(),
+            builder.definition_frames().clone(),
+        );
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
-        smt_problem.add_assertion(&self.initial_condition, &mut builder);
+        smt_problem.add_assertion(&self.initial_condition, &mut builder, &mut definitions);
         smt_problem
     }
 
     pub fn get_trans_term(&self) -> SMTProblem {
-        let mut builder = BMCBuilder {
-            visitor: SyntaxBuilder,
-            current_variables: self.get_all_current_variable_names(),
-            next_variables: self.get_next_to_current_varible_names(),
-            depth: 0,
-            width: None,
-        };
+        let mut builder = self.bmc_builder();
+        let mut definitions = DefinitionMaterializer::new(
+            self.helper_definitions.clone(),
+            builder.definition_frames().clone(),
+        );
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
 
         for _ in 0..1 {
@@ -356,7 +368,7 @@ impl VMTModel {
                 &self.actions,
                 &mut builder,
             );
-            smt_problem.add_assertion(&self.transition_condition, &mut builder);
+            smt_problem.add_assertion(&self.transition_condition, &mut builder, &mut definitions);
             builder.add_step();
         }
         // Don't forget the variable definitions at time `length`.
@@ -365,16 +377,18 @@ impl VMTModel {
     }
 
     pub fn get_property_term(&self) -> SMTProblem {
-        let mut builder = BMCBuilder {
-            visitor: SyntaxBuilder,
-            current_variables: self.get_all_current_variable_names(),
-            next_variables: self.get_next_to_current_varible_names(),
-            depth: 0,
-            width: None,
-        };
+        let mut builder = self.bmc_builder();
+        let mut definitions = DefinitionMaterializer::new(
+            self.helper_definitions.clone(),
+            builder.definition_frames().clone(),
+        );
         let mut smt_problem = SMTProblem::new(&self.sorts, &self.function_definitions);
         smt_problem.add_variable_definitions(&self.state_variables, &self.actions, &mut builder);
-        smt_problem.add_property_assertion(&self.property_condition, &mut builder);
+        smt_problem.add_property_assertion(
+            &self.property_condition,
+            &mut builder,
+            &mut definitions,
+        );
         smt_problem
     }
 
@@ -388,6 +402,7 @@ impl VMTModel {
         for action in self.actions.clone() {
             commands.extend(action.as_commands());
         }
+        commands.extend(self.helper_definitions.as_commands());
         let init_command = Command::DefineFun {
             sig: FunctionDec {
                 name: Symbol("init".to_string()),
@@ -471,6 +486,17 @@ impl VMTModel {
             .collect()
     }
 
+    fn bmc_builder(&self) -> BMCBuilder {
+        let current_variables = self.get_all_current_variable_names();
+        let next_variables = self.get_next_to_current_varible_names();
+        let definition_frames = DefinitionFrameInfo::new(
+            &self.helper_definitions,
+            &current_variables,
+            &next_variables,
+        );
+        BMCBuilder::with_definition_frames(current_variables, next_variables, definition_frames)
+    }
+
     #[allow(unused)]
     fn get_current_to_next_varible_names(&self) -> HashMap<String, String> {
         self.state_variables
@@ -552,6 +578,10 @@ impl VMTModel {
         self.function_definitions.clone()
     }
 
+    pub fn get_helper_definitions(&self) -> &DefinitionGraph {
+        &self.helper_definitions
+    }
+
     pub fn get_info(&self) -> Vec<Command> {
         self.info.clone()
     }
@@ -607,14 +637,35 @@ mod test {
         );
         assert!(model.get_function_definitions().is_empty());
         assert_eq!(model.get_all_current_variable_names(), vec!["x"]);
+        assert_eq!(model.get_helper_definitions().len(), 3);
+        assert_eq!(
+            model
+                .get_helper_definitions()
+                .iter()
+                .map(|definition| definition.name())
+                .collect::<Vec<_>>(),
+            vec!["helper.before", "helper.middle", "helper.after"]
+        );
+        assert_eq!(
+            model
+                .get_helper_definitions()
+                .get("helper.middle")
+                .unwrap()
+                .body()
+                .to_string(),
+            "(= x.next x)"
+        );
         assert_eq!(
             model.get_initial_condition_for_yardbird().to_string(),
             "(= x 0)"
         );
-        assert_eq!(model.get_property_for_yardbird().to_string(), "(>= x 0)");
+        assert_eq!(
+            model.get_property_for_yardbird().to_string(),
+            "helper.after"
+        );
         assert_eq!(
             model.get_trans_condition_for_yardbird().to_string(),
-            "(= x.next x)"
+            "helper.middle"
         );
         assert_eq!(
             model
@@ -691,6 +742,105 @@ mod test {
             parse_vmt(input),
             Err(VMTError::CyclicDefinition(name)) if name == "left"
         ));
+    }
+
+    #[test]
+    fn unrolls_reachable_helpers_once_per_frame_without_tree_expansion() {
+        let input = br#"
+            (declare-fun x () Int)
+            (define-fun x.relationship () Int (! x :next x.next))
+            (define-fun one () Int 1)
+            (define-fun inc () Int (+ x one))
+            (define-fun twice-inc () Int (+ inc inc))
+            (define-fun init () Bool (! (= x 0) :init true))
+            (define-fun transition () Bool (! (= x.next inc) :trans true))
+            (define-fun property () Bool (! (<= twice-inc 20) :invar-property 0))
+        "#;
+
+        let model = parse_vmt(input).unwrap();
+        let bmc = model.unroll(2).to_bmc();
+
+        assert_eq!(bmc.matches("(declare-fun one () Int)").count(), 1);
+        for frame in 0..=2 {
+            assert_eq!(
+                bmc.matches(&format!("(declare-fun inc@{frame} () Int)"))
+                    .count(),
+                1
+            );
+        }
+        assert_eq!(bmc.matches("(declare-fun twice-inc@2 () Int)").count(), 1);
+        assert!(bmc.contains("(= inc@2 (+ x@2 one))"));
+        assert!(bmc.contains("(= twice-inc@2 (+ inc@2 inc@2))"));
+        assert!(!bmc.contains("(+ (+ x@2 one) (+ x@2 one))"));
+    }
+
+    #[test]
+    fn helper_temporal_footprints_include_transitive_next_state_dependencies() {
+        let input = br#"
+            (declare-fun x () Int)
+            (define-fun x.relationship () Int (! x :next x.next))
+            (define-fun next-value () Int (+ x.next 1))
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! (= x.next next-value) :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+        "#;
+
+        let model = parse_vmt(input).unwrap();
+        let current = model.get_all_current_variable_names();
+        let next = model.get_next_to_current_varible_names();
+        let frames = DefinitionFrameInfo::new(model.get_helper_definitions(), &current, &next);
+        assert_eq!(
+            frames
+                .offsets("next-value")
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![1]
+        );
+
+        let instance = UnquantifiedInstantiator::rewrite_with_definitions(
+            "next-value@4".parse().unwrap(),
+            frames,
+        )
+        .unwrap();
+        assert_eq!(instance.width(), 1);
+        assert_eq!(instance.get_term().to_string(), "next-value+0");
+
+        let mut builder = model.bmc_builder();
+        builder.set_depth(5);
+        builder.set_width(instance.width());
+        assert_eq!(instance.rewrite(&mut builder).to_string(), "next-value@4");
+    }
+
+    #[test]
+    fn array_abstraction_rewrites_helper_result_sorts_and_bodies() {
+        let input = br#"
+            (declare-fun a () (Array Int Int))
+            (define-fun a.relationship () (Array Int Int) (! a :next a.next))
+            (define-fun updated () (Array Int Int) (store a 0 1))
+            (define-fun read-updated () Int (select updated 0))
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! (= a.next updated) :trans true))
+            (define-fun property () Bool (! (= read-updated 1) :invar-property 0))
+        "#;
+
+        let model = parse_vmt(input).unwrap();
+        let (abstracted, types) = model.abstract_array_theory();
+        assert_eq!(types, vec![("Int".to_string(), "Int".to_string())]);
+
+        let updated = abstracted.get_helper_definitions().get("updated").unwrap();
+        assert_eq!(updated.sort().to_string(), "Array_Int_Int");
+        assert_eq!(updated.body().to_string(), "(Write_Int_Int a 0 1)");
+        assert_eq!(
+            abstracted
+                .get_helper_definitions()
+                .get("read-updated")
+                .unwrap()
+                .body()
+                .to_string(),
+            "(Read_Int_Int updated 0)"
+        );
     }
 
     #[test]

@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::concrete::{Symbol, SyntaxBuilder, Term};
 
+use super::definition_graph::DefinitionFrameInfo;
+
 #[derive(Clone)]
 pub struct BMCBuilder {
     pub visitor: SyntaxBuilder,
@@ -9,6 +11,7 @@ pub struct BMCBuilder {
     pub next_variables: HashMap<String, String>,
     pub depth: u16,
     pub width: Option<u16>, // Width of the current instantiation being processed
+    definition_frames: DefinitionFrameInfo,
 }
 
 impl BMCBuilder {
@@ -19,7 +22,27 @@ impl BMCBuilder {
             next_variables,
             depth: 0,
             width: None,
+            definition_frames: DefinitionFrameInfo::default(),
         }
+    }
+
+    pub fn with_definition_frames(
+        current_variables: Vec<String>,
+        next_variables: HashMap<String, String>,
+        definition_frames: DefinitionFrameInfo,
+    ) -> Self {
+        Self {
+            visitor: SyntaxBuilder,
+            current_variables,
+            next_variables,
+            depth: 0,
+            width: None,
+            definition_frames,
+        }
+    }
+
+    pub fn definition_frames(&self) -> &DefinitionFrameInfo {
+        &self.definition_frames
     }
 
     pub fn set_depth(&mut self, depth: u16) {
@@ -59,7 +82,7 @@ impl crate::rewriter::Rewriter for BMCBuilder {
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
         // Check if this is a normalized symbol with + offset (from UnquantifiedInstantiator)
         if let Some((var_name, offset_str)) = s.0.split_once('+') {
-            if let Ok(normalized_offset) = offset_str.parse::<u16>() {
+            if let Ok(normalized_offset) = offset_str.parse::<i64>() {
                 // // For reverse instantiation: concrete_offset = current_depth - (width - normalized_offset)
                 // // This ensures we work backwards from the current depth
                 // let concrete_offset = if self.width > 0 && normalized_offset < self.width {
@@ -77,8 +100,7 @@ impl crate::rewriter::Rewriter for BMCBuilder {
                 return Ok(Symbol(format!(
                     "{}@{}",
                     var_name,
-                    (self.depth as i64)
-                        + ((normalized_offset as i64) - (self.width.unwrap() as i64))
+                    (self.depth as i64) + (normalized_offset - i64::from(self.width.unwrap_or(0)))
                 )));
             }
         }
@@ -94,6 +116,8 @@ impl crate::rewriter::Rewriter for BMCBuilder {
                 current_variable_name,
                 &next.to_string()
             )))
+        } else if self.definition_frames.is_state_dependent(&s.0) {
+            Ok(Symbol(format!("{}@{}", s.0, self.depth)))
         } else {
             Ok(s)
         }

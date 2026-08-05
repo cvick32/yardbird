@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    action::Action, bmc::BMCBuilder, non_boolean_subterms::NonBooleanSubterms,
-    reads_and_write::ReadsAndWrites, variable::Variable,
+    action::Action, bmc::BMCBuilder, definition_materializer::DefinitionMaterializer,
+    non_boolean_subterms::NonBooleanSubterms, reads_and_write::ReadsAndWrites, variable::Variable,
 };
 
 #[derive(Default, Debug, Clone)]
@@ -18,6 +18,7 @@ pub struct SMTProblem {
     variable_definitions: Vec<Command>,
     function_definitions: Vec<Command>,
     init_and_trans_assertions: Vec<Term>,
+    root_assertion_count: usize,
     property_assertion: Option<Term>,
 }
 
@@ -28,12 +29,17 @@ impl SMTProblem {
             variable_definitions: vec![],
             function_definitions: function_definitions.to_vec(),
             init_and_trans_assertions: vec![],
+            root_assertion_count: 0,
             property_assertion: None,
         }
     }
 
     pub fn init_and_trans_length(&self) -> usize {
         self.init_and_trans_assertions.len()
+    }
+
+    pub fn root_assertion_count(&self) -> usize {
+        self.root_assertion_count
     }
 
     pub fn get_variable_definitions(&self) -> Vec<Command> {
@@ -44,7 +50,12 @@ impl SMTProblem {
         self.function_definitions.clone()
     }
 
-    pub fn add_assertion(&mut self, condition: &Term, builder: &mut BMCBuilder) {
+    pub fn add_assertion(
+        &mut self,
+        condition: &Term,
+        builder: &mut BMCBuilder,
+        definitions: &mut DefinitionMaterializer,
+    ) {
         let no_let_condition = LetExtract::substitute(condition.clone());
         let rewritten_condition = match no_let_condition {
             Term::Attributes {
@@ -56,11 +67,22 @@ impl SMTProblem {
                 "Assertion must be a Term::Atrributes! One of {{init, trans, invar-prop}}"
             ),
         };
-        self.init_and_trans_assertions.push(rewritten_condition);
+        let materialized = definitions.materialize(rewritten_condition, builder);
+        self.variable_definitions
+            .extend(materialized.new_declarations);
+        self.init_and_trans_assertions
+            .extend(materialized.new_definitions);
+        self.init_and_trans_assertions.push(materialized.root);
+        self.root_assertion_count += 1;
     }
 
     /// Need to assert the negation of the property given in the VMTModel for BMC.
-    pub fn add_property_assertion(&mut self, condition: &Term, builder: &mut BMCBuilder) {
+    pub fn add_property_assertion(
+        &mut self,
+        condition: &Term,
+        builder: &mut BMCBuilder,
+        definitions: &mut DefinitionMaterializer,
+    ) {
         let no_let_condition = LetExtract::substitute(condition.clone());
         let rewritten_property = match no_let_condition {
             Term::Attributes {
@@ -72,7 +94,12 @@ impl SMTProblem {
                 "Assertion must be a Term::Atrributes! One of {{init, trans, invar-prop}}"
             ),
         };
-        self.property_assertion = Some(rewritten_property);
+        let materialized = definitions.materialize(rewritten_property, builder);
+        self.variable_definitions
+            .extend(materialized.new_declarations);
+        self.init_and_trans_assertions
+            .extend(materialized.new_definitions);
+        self.property_assertion = Some(materialized.root);
     }
 
     pub fn add_variable_definitions(

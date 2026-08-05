@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use num::{BigUint, Zero};
 
-use crate::concrete::{Command, Identifier, Sort, Symbol, SyntaxBuilder, Term};
+use crate::concrete::{Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term};
 use crate::visitors::Index;
 
 use super::utils::simple_identifier_with_name;
@@ -13,6 +13,7 @@ pub struct ArrayAbstractor {
     pub visitor: SyntaxBuilder,
     pub array_types: HashSet<(String, String)>,
     pub variable_types: HashMap<String, (String, String)>,
+    helper_definitions: HashSet<String>,
 }
 
 impl Default for ArrayAbstractor {
@@ -21,6 +22,7 @@ impl Default for ArrayAbstractor {
             visitor: SyntaxBuilder,
             array_types: HashSet::new(),
             variable_types: HashMap::new(),
+            helper_definitions: HashSet::new(),
         }
     }
 }
@@ -49,6 +51,13 @@ pub fn string_to_sort(name: &str) -> Sort {
 }
 
 impl ArrayAbstractor {
+    pub fn with_helper_definitions<'a>(names: impl Iterator<Item = &'a str>) -> Self {
+        Self {
+            helper_definitions: names.map(ToString::to_string).collect(),
+            ..Self::default()
+        }
+    }
+
     pub fn sorted_array_types(&self) -> Vec<(String, String)> {
         let mut array_types = self.array_types.iter().cloned().collect::<Vec<_>>();
         array_types.sort();
@@ -284,6 +293,37 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
             symbol,
             parameters: new_parameters,
             sort: new_sort,
+        })
+    }
+
+    fn visit_define_fun(
+        &mut self,
+        sig: FunctionDec<Symbol, Sort>,
+        term: Term,
+    ) -> Result<Command, Self::Error> {
+        if !self.helper_definitions.contains(&sig.name.0) {
+            return Ok(Command::DefineFun { sig, term });
+        }
+
+        if sig.parameters.is_empty() {
+            if let Some((index_sort, value_sort)) = self.extract_array_sorts_from_sort(&sig.result)
+            {
+                self.variable_types
+                    .insert(sig.name.0.clone(), (index_sort, value_sort));
+            }
+        }
+
+        Ok(Command::DefineFun {
+            sig: FunctionDec {
+                name: sig.name,
+                parameters: sig
+                    .parameters
+                    .into_iter()
+                    .map(|(symbol, sort)| (symbol, self.convert_sort_to_abstracted(&sort)))
+                    .collect(),
+                result: self.convert_sort_to_abstracted(&sig.result),
+            },
+            term,
         })
     }
 
