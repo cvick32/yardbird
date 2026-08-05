@@ -104,12 +104,17 @@ impl SMTProblem {
 
     pub fn add_variable_definitions(
         &mut self,
-        state_variables: &Vec<Variable>,
-        actions: &Vec<Action>,
+        state_variables: &[Variable],
+        input_variables: &[Command],
+        actions: &[Action],
         builder: &mut BMCBuilder,
     ) {
         for state_variable in state_variables {
             let definition_at_time = state_variable.current.clone().accept(builder).unwrap();
+            self.variable_definitions.push(definition_at_time);
+        }
+        for input_variable in input_variables {
+            let definition_at_time = input_variable.clone().accept(builder).unwrap();
             self.variable_definitions.push(definition_at_time);
         }
         for action in actions {

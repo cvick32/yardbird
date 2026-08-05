@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::concrete::{Command, Identifier, QualIdentifier, Symbol, Term};
 
@@ -48,13 +48,22 @@ pub fn get_and_terms(term: Box<Term>) -> Vec<Term> {
     }
 }
 
-pub fn get_variables_actions_and_axioms(
+pub struct ClassifiedVariables {
+    pub state_variables: Vec<Variable>,
+    pub input_variables: Vec<Command>,
+    pub actions: Vec<Action>,
+    pub axioms: Vec<Axiom>,
+}
+
+pub fn classify_variables(
     variable_relationships: Vec<Command>,
     mut variable_commands: HashMap<String, Command>,
-) -> (Vec<Variable>, Vec<Action>, Vec<Axiom>) {
+    declaration_order: Vec<String>,
+) -> ClassifiedVariables {
     let mut state_variables: Vec<Variable> = vec![];
     let mut actions: Vec<Action> = vec![];
     let mut axioms: Vec<Axiom> = vec![];
+    let mut classified_names = HashSet::new();
     for variable_relationship in &variable_relationships {
         match variable_relationship {
             Command::DefineFun { sig: _, term } => match term {
@@ -63,15 +72,17 @@ pub fn get_variables_actions_and_axioms(
                     let (keyword, value) = &attributes[0];
                     let keyword_string = keyword.to_string();
                     if keyword_string == ":next" {
-                        let variable_command = get_variable_command(
-                            scrub_variable_name(term.to_string()),
-                            &variable_commands,
-                        );
+                        let current_name = scrub_variable_name(term.to_string());
+                        let next_name = scrub_variable_name(value.to_string());
+                        let variable_command =
+                            get_variable_command(current_name.clone(), &variable_commands);
                         let new_variable_command = get_or_create_next_variable_command(
-                            scrub_variable_name(value.to_string()),
+                            next_name.clone(),
                             &variable_command,
                             &mut variable_commands,
                         );
+                        classified_names.insert(current_name);
+                        classified_names.insert(next_name);
                         state_variables.push(Variable {
                             current: variable_command,
                             next: new_variable_command,
@@ -80,6 +91,7 @@ pub fn get_variables_actions_and_axioms(
                     } else if keyword_string == ":action" {
                         let action_variable_name = scrub_variable_name(term.to_string());
                         if variable_commands.contains_key(&action_variable_name) {
+                            classified_names.insert(action_variable_name.clone());
                             for (variable_name, action_command) in &variable_commands {
                                 if action_variable_name == *variable_name {
                                     actions.push(Action {
@@ -105,7 +117,19 @@ pub fn get_variables_actions_and_axioms(
             _ => panic!("Variable Relationship is not a (define-fun)."),
         }
     }
-    (state_variables, actions, axioms)
+
+    let input_variables = declaration_order
+        .into_iter()
+        .filter(|name| !classified_names.contains(name))
+        .filter_map(|name| variable_commands.get(&name).cloned())
+        .collect();
+
+    ClassifiedVariables {
+        state_variables,
+        input_variables,
+        actions,
+        axioms,
+    }
 }
 
 fn get_or_create_next_variable_command(

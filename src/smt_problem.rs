@@ -142,6 +142,7 @@ impl SMTProblem {
             sorts: vmt_model.get_sorts(),
             function_definitions: vmt_model.get_function_definitions(),
             variable_definitions: vec![],
+            input_variables: vmt_model.get_input_variables(),
             subterm_handler: SubtermHandler::new(
                 init_assertion.clone(),
                 trans_assertion.clone(),
@@ -207,11 +208,10 @@ impl SMTProblem {
 
         // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.
         smt.add_solver_variables();
-        // Generate initial subterms.
         smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
+        smt.add_initial_assertion();
+        smt.update_property();
         debug!("{:#?}", smt);
-        // Add initial assertion.
-        smt.add_assertion();
         smt
     }
 
@@ -221,47 +221,85 @@ impl SMTProblem {
         for variable in &variables {
             self.add_variable_declaration_at_current_depth(variable);
         }
+        let input_variables = self.input_variables.clone();
+        for input in &input_variables {
+            self.add_declaration_at_current_depth(input);
+        }
     }
 
-    fn add_assertion(&mut self) {
-        if self.depth == 0 {
-            let init = self
-                .bmc_builder
-                .index_single_step_term(self.init_assertion.clone());
-            self.solver
-                .assert_term(&init)
-                .expect("solver should assert the initial condition");
-            self.init_and_transition_assertions
-                .push(NamedAssertion::new("yardbird_init_0", init));
+    fn add_initial_assertion(&mut self) {
+        let init = self
+            .bmc_builder
+            .index_single_step_term(self.init_assertion.clone());
+        let materialized = self.materialize(init);
+        self.subterm_handler
+            .register_initial_support(&materialized.support);
+        self.install_materialized_support(&materialized);
+        self.solver
+            .assert_term(&materialized.root)
+            .expect("solver should assert the initial condition");
+        self.init_and_transition_assertions
+            .push(NamedAssertion::new("yardbird_init_0", materialized.root));
+    }
+
+    fn add_transition_assertion(&mut self) {
+        let trans = self
+            .bmc_builder
+            .index_transition_term(self.trans_assertion.clone());
+        let materialized = self.materialize(trans);
+        self.subterm_handler
+            .register_transition_support(&materialized.support);
+        self.install_materialized_support(&materialized);
+        self.solver
+            .assert_term(&materialized.root)
+            .expect("solver should assert the transition condition");
+        self.init_and_transition_assertions
+            .push(NamedAssertion::new(
+                format!("yardbird_trans_{}_to_{}", self.depth - 1, self.depth),
+                materialized.root,
+            ));
+
+        let auxiliary_transitions = self.auxiliary_transition_assertions.clone();
+        for (index, transition) in auxiliary_transitions.into_iter().enumerate() {
+            let indexed_transition = self.bmc_builder.index_transition_term(transition);
+            self.assert_auxiliary_term(
+                indexed_transition,
+                format!(
+                    "yardbird_aux_trans_{}_to_{}_{}",
+                    self.depth - 1,
+                    self.depth,
+                    index
+                ),
+            );
         }
-        if self.depth != 0 {
-            let trans = self
-                .bmc_builder
-                .index_transition_term(self.trans_assertion.clone());
+    }
+
+    fn update_property(&mut self) {
+        let property = self
+            .bmc_builder
+            .index_single_step_term(self.property_assertion.clone());
+        let materialized = self.materialize(property);
+        self.subterm_handler
+            .register_property_support(&materialized.support);
+        self.install_materialized_support(&materialized);
+    }
+
+    fn materialize(&mut self, term: Term) -> MaterializedTerm {
+        self.definition_materializer
+            .materialize(term, &mut self.bmc_builder)
+    }
+
+    fn install_materialized_support(&mut self, materialized: &MaterializedTerm) {
+        for declaration in &materialized.new_declarations {
             self.solver
-                .assert_term(&trans)
-                .expect("solver should assert the transition condition");
-            self.init_and_transition_assertions
-                .push(NamedAssertion::new(
-                    format!("yardbird_trans_{}_to_{}", self.depth - 1, self.depth),
-                    trans,
-                ));
-            let auxiliary_transitions = self.auxiliary_transition_assertions.clone();
-            for (index, transition) in auxiliary_transitions.into_iter().enumerate() {
-                let indexed_transition = self.bmc_builder.index_transition_term(transition);
-                self.assert_auxiliary_term(
-                    indexed_transition,
-                    format!(
-                        "yardbird_aux_trans_{}_to_{}_{}",
-                        self.depth - 1,
-                        self.depth,
-                        index
-                    ),
-                );
-            }
+                .accept_command(declaration)
+                .expect("solver should accept a materialized helper declaration");
         }
-        // Note: Instantiation handling at each depth is now delegated to
-        // the instantiation strategy's on_loop hook, called from unroll()
+        for definition in &materialized.new_definitions {
+            self.solver
+                .assert_term(definition)
+                .expect("solver should assert a materialized helper definition");
+        }
     }
 
     fn push_property(&mut self) {
