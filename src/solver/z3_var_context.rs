@@ -64,7 +64,14 @@ impl Z3VarContext {
                     }
                     z3::ast::BV::from_u64(value, bit_width).into()
                 }
-                Constant::Binary(_) => todo!(),
+                Constant::Binary(bin) => {
+                    // SMT-LIB prints bit-vector literals most-significant bit first,
+                    // while Z3_mk_bv_numeral expects the least-significant bit first.
+                    let least_significant_bit_first = bin.iter().rev().copied().collect::<Vec<_>>();
+                    z3::ast::BV::from_bits(&least_significant_bit_first)
+                        .expect("SMT-LIB binary literals must contain at least one bit")
+                        .into()
+                }
                 Constant::String(_) => todo!(),
             },
             Term::QualIdentifier(qual_id) => {
@@ -756,5 +763,37 @@ impl smt2parser::rewriter::Rewriter for Z3VarContext {
             parameters,
             sort,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Z3VarContext;
+    use smt2parser::concrete::Term;
+    use z3::ast::{Ast, BV};
+
+    fn rewrite_binary_literal(literal: &str) -> BV {
+        let term = literal.parse::<Term>().unwrap();
+        Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bv()
+            .expect("a binary literal should become a Z3 bit-vector")
+    }
+
+    #[test]
+    fn rewrites_binary_literals_with_their_original_width_and_bit_order() {
+        let zero = rewrite_binary_literal("#b0");
+        assert_eq!(zero.get_size(), 1);
+        assert_eq!(zero.as_u64(), Some(0));
+
+        let one_with_leading_zeroes = rewrite_binary_literal("#b0001");
+        assert_eq!(one_with_leading_zeroes.get_size(), 4);
+        assert_eq!(one_with_leading_zeroes.as_u64(), Some(1));
+
+        let wide_literal = format!("#b1{}1", "0".repeat(63));
+        let wide = rewrite_binary_literal(&wide_literal);
+        let expected = BV::from_str(65, "18446744073709551617").unwrap();
+        assert_eq!(wide.get_size(), 65);
+        assert_eq!(wide.eq(&expected).simplify().as_bool(), Some(true));
     }
 }
