@@ -1,0 +1,7 @@
+(set-logic QF_LIA)
+(set-option :random-seed 0)
+(declare-const x Int)
+(assert (> x 10))
+(assert (< x 20))
+(check-sat)
+(exit)

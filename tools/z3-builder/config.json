@@ -1,0 +1,32 @@
+{
+  "pinned": {
+    "revision": "ddb49568d3520e99799e364fb22f35fc67d887b1",
+    "tree": "ed22a241f9cf342f6f6023d8ddb01ad0933c98d9",
+    "version": "4.16.0.0"
+  },
+  "cmake": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+    "Z3_BUILD_EXECUTABLE": "ON",
+    "Z3_BUILD_LIBZ3_SHARED": "OFF",
+    "Z3_BUILD_TEST_EXECUTABLES": "OFF",
+    "Z3_ENABLE_EXAMPLE_TARGETS": "OFF",
+    "Z3_ENABLE_TRACING_FOR_NON_DEBUG": "OFF",
+    "Z3_INCLUDE_GIT_DESCRIBE": "OFF",
+    "Z3_INCLUDE_GIT_HASH": "OFF"
+  },
+  "queries": [
+    {
+      "file": "queries/sat.smt2",
+      "results": ["sat"]
+    },
+    {
+      "file": "queries/unsat-array.smt2",
+      "results": ["unsat"]
+    },
+    {
+      "file": "queries/incremental.smt2",
+      "results": ["sat", "unsat", "sat"]
+    }
+  ]
+}

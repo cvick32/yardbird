@@ -1,10 +1,14 @@
-use std::time::Instant;
+use std::{
+    collections::BTreeMap,
+    time::{Duration, Instant},
+};
 
 use smt2parser::concrete::{Command, Sort, Symbol, Term};
 
 use crate::{utils::SolverStatistics, SolverBackend};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SolverCheckResult {
     Sat,
     Unsat,
@@ -13,6 +17,12 @@ pub enum SolverCheckResult {
 
 pub trait YardbirdSolver {
     fn backend(&self) -> SolverBackend;
+    fn solver_parameters(&self) -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+    fn random_seeds(&self) -> BTreeMap<String, u64> {
+        BTreeMap::new()
+    }
 
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()>;
     fn create_variable(&mut self, symbol: &Symbol, sort: &Sort) -> anyhow::Result<()>;
@@ -42,23 +52,50 @@ pub trait YardbirdSolver {
     fn push(&mut self);
     fn pop(&mut self, levels: u32);
 
-    fn check(&mut self) -> SolverCheckResult;
-    fn check_and_record_statistics(&mut self) -> SolverCheckResult;
-    fn record_statistics_since(&mut self, start_time: Instant);
+    /// Run the solver without acquiring a model.
+    fn check_sat(&mut self) -> SolverCheckResult;
+
+    /// Mark the end of all solver-side work associated with the most recent
+    /// check. Capture decorators use this to separate post-check operations
+    /// from setup for the next incremental check.
+    fn complete_check(&mut self) {}
+
+    /// Capture the model produced by the most recent SAT check, including the
+    /// values of any terms that the backend must preserve before a scope pop.
+    ///
+    /// Callers must invoke this before popping the scope used for the check.
+    fn capture_model(&mut self, terms: &[Term]) -> anyhow::Result<()>;
+
+    fn check_sat_and_record_statistics(&mut self) -> SolverCheckResult {
+        let start_time = Instant::now();
+        let result = self.check_sat();
+        self.record_statistics(start_time.elapsed());
+        self.complete_check();
+        result
+    }
+
+    fn record_statistics(&mut self, solver_elapsed: Duration);
     fn inspect_last_proof(&self) -> anyhow::Result<()> {
         Ok(())
     }
 
-    fn has_model(&self) -> bool;
-    fn preserve_model_values(&mut self, _terms: &[Term]) -> anyhow::Result<()> {
-        Ok(())
+    /// Acquire and preserve the UNSAT core from the latest check.
+    ///
+    /// Backends that expose cores lazily can use the default implementation.
+    /// Backends whose core becomes unavailable after a scope pop should cache
+    /// it here for the later read-only `get_unsat_core` call.
+    fn capture_unsat_core(&mut self) -> anyhow::Result<()> {
+        self.get_unsat_core().map(|_| ())
     }
+
+    fn has_model(&self) -> bool;
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn model_to_string(&self) -> anyhow::Result<String>;
 
     fn get_solver_statistics(&self) -> SolverStatistics;
     fn statistics_ref(&self) -> &SolverStatistics;
     fn get_reason_unknown(&self) -> Option<String>;
+    /// Read the core acquired for the most recent UNSAT check.
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>>;
     fn to_smt2_string(&self) -> anyhow::Result<String>;
 }

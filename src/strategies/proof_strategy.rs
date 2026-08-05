@@ -64,10 +64,6 @@ pub trait ProofStrategy<'ctx, S> {
         vec![]
     }
 
-    fn profiling_enabled(&self) -> bool {
-        false
-    }
-
     fn result(&mut self, model: &mut VMTModel, smt: &dyn ProblemContext) -> ProofLoopResult;
 }
 

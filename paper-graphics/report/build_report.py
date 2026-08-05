@@ -19,6 +19,8 @@ sys.path.insert(0, str(PAPER_GRAPHICS_ROOT))
 from main import choose_baseline_strategy, generate_figures  # noqa: E402
 from src.analysis import build_analysis, write_analysis_exports  # noqa: E402
 from src.benchmark_parsing import BenchmarkParser  # noqa: E402
+from report.instrumentation import build_instrumentation_report  # noqa: E402
+from report.typst import typst_table  # noqa: E402
 
 
 FIGURE_PREFIXES = (
@@ -37,6 +39,7 @@ GENERATED_TEX_PATTERNS = (
     "conflict_*.tex",
     "unique_solves_*.tex",
 )
+
 GENERATED_ASSET_PATTERNS = (
     "runtime_*.pdf",
     "instantiation_*.pdf",
@@ -159,35 +162,6 @@ def compile_figure_fragment(fragment_path: Path, assets_dir: Path) -> Path:
 def figure_title(fragment: Path) -> str:
     title = fragment.stem.replace("_", " ").strip()
     return " ".join(word.capitalize() for word in title.split())
-
-
-def typst_cell(value: object, *, bold: bool = False) -> str:
-    weight = 'weight: "bold", ' if bold else ""
-    encoded = json.dumps(str(value), ensure_ascii=False)
-    return f"[#text({weight}{encoded})]"
-
-
-def typst_table(
-    headers: list[str],
-    rows: list[list[object]],
-    *,
-    columns: str,
-    size: str = "8pt",
-) -> str:
-    lines = [
-        f"#text(size: {size})[",
-        "  #table(",
-        f"    columns: {columns},",
-        "    inset: (x: 4pt, y: 3pt),",
-        "    stroke: 0.3pt + luma(205),",
-        "    table.header(",
-    ]
-    lines.extend(f"      {typst_cell(header, bold=True)}," for header in headers)
-    lines.extend(["    ),"])
-    for row in rows:
-        lines.extend(f"    {typst_cell(value)}," for value in row)
-    lines.extend(["  )", "]"])
-    return "\n".join(lines)
 
 
 def short_benchmark_name(name: str) -> str:
@@ -419,6 +393,7 @@ def workbook_body(
     analysis: dict,
     figure_assets: list[Path],
     table_sources: list[Path],
+    instrumentation_sections: list[str],
 ) -> str:
     benchmark_types = ", ".join(manifest.get("benchmark_types", []))
     lines = [
@@ -457,6 +432,7 @@ def workbook_body(
     lines.append("")
 
     lines.extend(analysis_workbook_sections(analysis))
+    lines.extend(instrumentation_sections)
 
     for asset in figure_assets:
         rel_asset = asset.relative_to(asset.parent.parent).as_posix()
@@ -521,6 +497,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
         raise RuntimeError("No benchmark strategies were found in the run artifacts")
     analysis = build_analysis(grouped, strategy_keys, baseline_strategy)
     data_exports = write_analysis_exports(report_dir, analysis)
+    instrumentation_report = build_instrumentation_report(manifest, report_dir)
     generate_figures(grouped, strategy_keys, all_results, tex_dir)
 
     figure_sources = figure_tex_paths(tex_dir)
@@ -537,6 +514,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
             analysis,
             compiled_assets,
             table_sources,
+            instrumentation_report.sections,
         )
     )
     run_command(
@@ -552,6 +530,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
         "figure_tex": [str(path) for path in figure_sources],
         "figure_assets": [str(path) for path in compiled_assets],
         "table_tex": [str(path) for path in table_sources],
+        **instrumentation_report.exports,
         **data_exports,
     }
     write_json(report_dir / "report_metadata.json", report_metadata)

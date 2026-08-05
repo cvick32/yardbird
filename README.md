@@ -23,8 +23,11 @@ put the correct headers in the path.
 ```bash
 cd yardbird
 
-# Build yardbird
+# Build yardbird, with Z3
 cargo build -p yardbird --release
+
+# Build yardbird, with Z3 and cvc5
+cargo build --release --features cvc5-backend
 
 # Verify build
 ./target/release/yardbird --help
@@ -38,6 +41,108 @@ This will automatically use the BMC Cost strategy.
 # Run on a simple array copy example (completes in ~1 second)
 ./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
 ```
+
+To collect profiling data for every solver check, add `--profile --json-output`:
+
+```bash
+./target/release/yardbird \
+  --filename examples/array/array_copy.vmt \
+  --strategy concrete \
+  --profile \
+  --json-output
+```
+
+The profile contains solver checks and driver timings for every strategy. For
+abstract strategies it also contains detailed e-graph and cost-function records.
+Each solver record includes run/check/refinement identity, benchmark and
+strategy metadata, nanosecond phase timings, instance counts, and complete
+solver-statistics before, after, and delta snapshots.
+
+To preserve a complete solver run as a directly replayable incremental SMT-LIB
+session, use `--solver-capture-dir`. Capture implies profiling:
+
+```bash
+./target/release/yardbird \
+  --filename examples/array/array_copy.vmt \
+  --depth 1 \
+  --strategy concrete \
+  --solver-capture-dir capture/array-copy
+```
+
+The directory contains `solver-session.smt2`, `solver-session.index.json`,
+`yardbird-profile.json`, and `manifest.json`. The transcript records the
+effective logic, options, seeds, declarations, assertions, property scope, and
+every check command in solver-call order. The index correlates each check with
+its BMC depth and refinement identity and records separate setup, check-command,
+and post-check byte boundaries. It can be replayed directly:
+
+```bash
+z3 -smt2 capture/array-copy/solver-session.smt2
+```
+
+To build the matched Z3 pair and immediately replay the capture through both
+executables, pipe the builder result into the replay command:
+
+```bash
+python3 tools/z3-builder/z3_builder.py \
+  --z3-checkout /path/to/z3 \
+  --instrumented-checkout /path/to/instrumented-z3 \
+  --output /tmp/yardbird-z3-build |
+  python3 tools/z3_array_probe.py replay \
+    --capture-dir capture/array-copy
+```
+
+The builder writes progress to stderr and its machine-readable manifest to
+stdout. Replay reads the stock and instrumented binary paths from that manifest,
+uses one persistent process per binary, and requires both ordered result
+sequences to match the capture. To rerun without rebuilding, pass the existing
+builder output directory instead:
+
+```bash
+python3 tools/z3_array_probe.py replay \
+  --capture-dir capture/array-copy \
+  --z3-build-dir /tmp/yardbird-z3-build
+```
+
+Use `--timeout` to change the default 60-second limit for each full replay.
+
+To measure stock Z3 repeatedly without changing the correctness replay command,
+use the separate `time` operation:
+
+```bash
+python3 tools/z3_array_probe.py time \
+  --capture-dir capture/array-copy \
+  --z3-build-dir /tmp/yardbird-z3-build \
+  --warmups 3 \
+  --repetitions 15
+```
+
+This retains every measured check sample, reports median and median absolute
+deviation, and groups checks by BMC depth. Depth samples are summed within each
+repetition before aggregation. The default machine-readable report is
+`capture/array-copy/stock-timing.json`.
+
+Once the instrumented Z3 build emits array-envelope summaries, join both timing
+boundaries with the Yardbird check metadata using `compare`:
+
+```bash
+python3 tools/z3_array_probe.py compare \
+  --capture-dir capture/array-copy \
+  --z3-build-dir /tmp/yardbird-z3-build \
+  --warmups 3 \
+  --repetitions 15
+```
+
+The comparison fails if either solver's ordered SAT/UNSAT results differ from
+the capture. Its `stock_external` and `instrumented_external` fields are
+equivalent pipe round trips and expose instrumentation overhead. The
+`instrumented_internal`, `array_envelope`, and `non_array_residual` fields come
+from the same internal Z3 check boundary, so only those fields are subtracted
+from one another. Measured stock and instrumented repetitions are paired and
+alternate execution order; the aggregate report retains the paired external
+overhead samples. It also includes per-depth and per-check medians and median
+absolute deviations. The default output is
+`capture/array-copy/z3-comparison.json`.
 
 ### 3. Run Light Review Benchmark Suite
 
@@ -58,6 +163,16 @@ This runs all array benchmarks at depth 10 with both BMC Cost and Z3 array theor
 `main_eval.py` is the top-level orchestration script for benchmark runs and reports.
 
 ```bash
+# Capture every Garden result, replay it through matched stock and instrumented
+# Z3 builds, and retain the comparison under one evaluation run.
+uv run main_eval.py compare_with_instrumentation \
+  --config benchmark_config.yml \
+  --run-type small-eval \
+  --run-id test-compare
+
+# Generate the ordinary evaluation workbook with the instrumentation section.
+uv run main_eval.py generate-report --run-id test-compare
+
 # Local run with a combined workbook report
 python3 main_eval.py \
   --env local \
@@ -78,6 +193,23 @@ python3 main_eval.py --aws-run-id <run-id> --status
 # When the AWS run is complete, download artifacts and build the report
 python3 main_eval.py --aws-run-id <run-id> --generate-report
 ```
+
+`compare_with_instrumentation` uses the benchmark selection and parameter matrix
+named by `--run-type`. It builds Yardbird and Garden, captures each Z3-backed
+solver session, enforces the captured SAT/UNSAT sequence during paired replay,
+and writes the raw Garden JSON, captures, per-session comparison JSON, and
+flattened comparison summary beneath
+`benchmark_results/main_eval/<run-id>/`. If `--z3-build-dir` is omitted, the
+command builds a matched Z3 pair under that run directory. It finds the
+instrumented checkout from `--z3-checkout`, `YARDBIRD_Z3_CHECKOUT`, or a sibling
+`z3` repository. Pass an existing builder output with `--z3-build-dir` to avoid
+rebuilding.
+
+The generated workbook retains the normal Garden strategy analysis and adds
+paired stock/instrumented external timing, instrumentation overhead, and the
+instrumented internal array-envelope versus non-array-residual breakdown. The
+complete flattened data is exported as
+`report/data/instrumentation_comparisons.csv`.
 
 Artifacts are stored under `benchmark_results/main_eval/<run-id>/`. Raw benchmark JSON files land in per-matrix `raw/` directories using `MM_DD_YYYY_HH_MM.json` names, while generated figures and the Typst workbook live under `report/`.
 
@@ -143,7 +275,7 @@ in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`
   - `src/driver.rs` - Verification orchestration
   - `src/strategies/` - Proof strategies (abstract, concrete)
   - `src/cost_functions/` - Heuristics for term selection
-  - `src/z3_ext.rs`, `src/smt_problem.rs` - Z3 integration
+  - `src/z3_ext.rs`, `src/vmt_bmc_session.rs` - Z3 integration and VMT BMC session state
 
 - **Parsing Library**: `smt2parser/` - VMT and SMT2 parsing with array abstraction
 

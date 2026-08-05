@@ -1,0 +1,6 @@
+(set-logic QF_AUFLIA)
+(set-option :random-seed 0)
+(declare-const a (Array Int Int))
+(assert (= (select (store a 0 1) 0) 2))
+(check-sat)
+(exit)

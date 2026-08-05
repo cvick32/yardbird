@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::{BTreeMap, HashMap},
+    time::Duration,
+};
 
 use cvc5::{Kind, Solver, Sort, Term, TermManager};
 use smt2parser::concrete::{
@@ -23,6 +26,7 @@ pub struct Cvc5SolverBackend {
     unsat_core_cache: Vec<String>,
     solver_statistics: SolverStatistics,
     last_result: Option<SolverCheckResult>,
+    model_captured: bool,
 }
 
 impl Cvc5SolverBackend {
@@ -46,6 +50,7 @@ impl Cvc5SolverBackend {
             unsat_core_cache: vec![],
             solver_statistics: SolverStatistics::new(),
             last_result: None,
+            model_captured: false,
         }
     }
 
@@ -572,6 +577,16 @@ impl YardbirdSolver for Cvc5SolverBackend {
         SolverBackend::Cvc5
     }
 
+    fn solver_parameters(&self) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            ("arrays-exp".to_string(), "true".to_string()),
+            ("incremental".to_string(), "true".to_string()),
+            ("produce-models".to_string(), "true".to_string()),
+            ("produce-unsat-assumptions".to_string(), "true".to_string()),
+            ("produce-unsat-cores".to_string(), "true".to_string()),
+        ])
+    }
+
     fn accept_command(&mut self, command: &Command) -> anyhow::Result<()> {
         match command {
             Command::DeclareSort { symbol, arity } => {
@@ -682,7 +697,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
         self.solver.pop(levels);
     }
 
-    fn check(&mut self) -> SolverCheckResult {
+    fn check_sat(&mut self) -> SolverCheckResult {
         let assumptions = self
             .tracked_labels
             .iter()
@@ -694,39 +709,22 @@ impl YardbirdSolver for Cvc5SolverBackend {
             self.solver.check_sat_assuming(&assumptions)
         };
         let check_result = SolverCheckResult::from_cvc5(&result);
-        self.unsat_core_cache =
-            if check_result == SolverCheckResult::Unsat && !self.tracked_labels.is_empty() {
-                self.current_unsat_core_labels()
-            } else {
-                vec![]
-            };
+        self.unsat_core_cache.clear();
         self.last_result = Some(check_result);
+        self.model_captured = false;
+        if check_result != SolverCheckResult::Sat {
+            self.model_value_cache.clear();
+        }
         check_result
     }
 
-    fn check_and_record_statistics(&mut self) -> SolverCheckResult {
-        let start_time = Instant::now();
-        let result = self.check();
-        self.record_statistics_since(start_time);
-        result
-    }
-
-    fn record_statistics_since(&mut self, start_time: Instant) {
-        join_from_cvc5_statistics(&mut self.solver_statistics, self.solver.get_statistics());
-        self.solver_statistics
-            .add_time("solver_time", start_time.elapsed().as_secs_f64());
-    }
-
-    fn has_model(&self) -> bool {
-        self.last_result == Some(SolverCheckResult::Sat)
-    }
-
-    fn preserve_model_values(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
+    fn capture_model(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
         if self.last_result != Some(SolverCheckResult::Sat) {
-            self.model_value_cache.clear();
-            return Ok(());
+            anyhow::bail!("a CVC5 model can only be captured after SAT");
         }
 
+        self.model_captured = false;
+        self.model_value_cache.clear();
         let values = terms
             .iter()
             .map(|term| {
@@ -738,12 +736,34 @@ impl YardbirdSolver for Cvc5SolverBackend {
             })
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
         self.model_value_cache = values;
+        self.model_captured = true;
         Ok(())
     }
 
+    fn capture_unsat_core(&mut self) -> anyhow::Result<()> {
+        self.unsat_core_cache = if self.last_result == Some(SolverCheckResult::Unsat)
+            && !self.tracked_labels.is_empty()
+        {
+            self.current_unsat_core_labels()
+        } else {
+            vec![]
+        };
+        Ok(())
+    }
+
+    fn record_statistics(&mut self, solver_elapsed: Duration) {
+        join_from_cvc5_statistics(&mut self.solver_statistics, self.solver.get_statistics());
+        self.solver_statistics
+            .add_time("solver_time", solver_elapsed.as_secs_f64());
+    }
+
+    fn has_model(&self) -> bool {
+        self.model_captured
+    }
+
     fn eval_to_string(&self, term: &SmtTerm) -> anyhow::Result<String> {
-        if self.last_result != Some(SolverCheckResult::Sat) {
-            anyhow::bail!("CVC5 model values are only available after SAT");
+        if !self.model_captured {
+            anyhow::bail!("CVC5 model values are only available after model capture");
         }
         if let Some(value) = self.model_value_cache.get(term) {
             return Ok(value.clone());
@@ -755,7 +775,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn model_to_string(&self) -> anyhow::Result<String> {
-        if self.last_result != Some(SolverCheckResult::Sat) {
+        if !self.model_captured {
             return Ok("<no model>".to_string());
         }
         Ok("<CVC5 model dump is not implemented in Phase 4>".to_string())
@@ -1031,8 +1051,11 @@ mod tests {
                 vec![symbol_term("x"), "0".parse::<Term>().unwrap()],
             ))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Sat);
-        assert!(!solver.eval_to_string(&symbol_term("x")).unwrap().is_empty());
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        assert!(!solver.has_model());
+        let x = symbol_term("x");
+        solver.capture_model(std::slice::from_ref(&x)).unwrap();
+        assert!(!solver.eval_to_string(&x).unwrap().is_empty());
     }
 
     #[test]
@@ -1056,7 +1079,7 @@ mod tests {
                 vec![symbol_term("x"), "0".parse::<Term>().unwrap()],
             ))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
     }
 
     #[test]
@@ -1095,7 +1118,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            solver.check_and_record_statistics(),
+            solver.check_sat_and_record_statistics(),
             SolverCheckResult::Unsat
         );
         let stats = solver.get_solver_statistics();
@@ -1127,7 +1150,7 @@ mod tests {
                 "(not (= (select (store arr idx val) idx) val))",
             ))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
     }
 
     #[test]
@@ -1155,7 +1178,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            solver.check_and_record_statistics(),
+            solver.check_sat_and_record_statistics(),
             SolverCheckResult::Unsat
         );
         let stats = solver.get_solver_statistics();
@@ -1190,7 +1213,7 @@ mod tests {
                 "(not (= (select (store arr idx val) idx) val))",
             ))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
     }
 
     #[test]
@@ -1208,7 +1231,7 @@ mod tests {
             solver.assert_term(&parsed_term(term)).unwrap();
         }
 
-        assert_eq!(solver.check(), SolverCheckResult::Sat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
     }
 
     #[test]
@@ -1219,7 +1242,7 @@ mod tests {
                 "(not (= (select ((as const (Array Int Int)) 7) 0) 7))",
             ))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
     }
 
     #[test]
@@ -1228,7 +1251,7 @@ mod tests {
         solver
             .assert_term(&parsed_term("(forall ((x Int)) (= x x))"))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Sat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
     }
 
     #[test]
@@ -1255,7 +1278,9 @@ mod tests {
             .unwrap();
 
         solver.push();
-        assert_eq!(solver.check(), SolverCheckResult::Unsat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
+        assert!(solver.get_unsat_core().unwrap().is_empty());
+        solver.capture_unsat_core().unwrap();
         solver.pop(1);
         let core = solver.get_unsat_core().unwrap();
         assert!(core.contains(&"positive_inst".to_string()));
@@ -1278,7 +1303,8 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(solver.check(), SolverCheckResult::Sat);
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        assert!(!solver.has_model());
         assert!(solver.get_unsat_core().unwrap().is_empty());
     }
 
@@ -1300,10 +1326,9 @@ mod tests {
         solver
             .assert_term(&app(">", vec![x.clone(), parsed_term("0")]))
             .unwrap();
-        assert_eq!(solver.check(), SolverCheckResult::Sat);
-        solver
-            .preserve_model_values(std::slice::from_ref(&x))
-            .unwrap();
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        assert!(!solver.has_model());
+        solver.capture_model(std::slice::from_ref(&x)).unwrap();
         solver.pop(1);
 
         assert_eq!(solver.eval_to_string(&x).unwrap(), "7");
