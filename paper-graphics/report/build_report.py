@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import html
 import json
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -36,6 +39,7 @@ GENERATED_TEX_PATTERNS = (
     "unique_solves_*.tex",
 )
 GENERATED_ASSET_PATTERNS = ("runtime_*.pdf", "instantiation_*.pdf")
+INSTRUMENTATION_ASSET_PATTERNS = ("instrumentation_*.svg",)
 
 
 def load_json(path: Path) -> dict:
@@ -192,6 +196,354 @@ def seconds(runtime_ms: int | float | None) -> str:
     if runtime_ms is None:
         return "-"
     return f"{runtime_ms / 1000.0:.3f}s"
+
+
+def milliseconds(runtime_ns: int | float | None) -> str:
+    if runtime_ns is None:
+        return "-"
+    return f"{runtime_ns / 1_000_000.0:.3f}ms"
+
+
+def instrumentation_label(entry: dict) -> str:
+    benchmark = short_benchmark_name(str(entry.get("example", "unknown")))
+    strategy = str(entry.get("strategy", "unknown"))
+    cost = entry.get("cost_function")
+    if strategy == "abstract" and cost:
+        strategy = f"{strategy}/{cost}"
+    return f"{benchmark} - {strategy} - d{entry.get('depth', '?')}"
+
+
+def write_instrumentation_csv(path: Path, entries: list[dict]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [
+        "run_type",
+        "example",
+        "solver",
+        "strategy",
+        "cost_function",
+        "depth",
+        "yardbird_result_type",
+        "yardbird_run_time_ms",
+        "comparison_status",
+        "comparison_error",
+        "capture_dir",
+        "comparison_path",
+        "check_count",
+        "depth_count",
+        "stock_external_median_ns",
+        "instrumented_external_median_ns",
+        "external_overhead_median_ns",
+        "external_overhead_pct",
+        "instrumented_internal_median_ns",
+        "array_envelope_median_ns",
+        "non_array_residual_median_ns",
+        "array_fraction_pct",
+    ]
+    with path.open("w", newline="", encoding="utf-8") as output:
+        writer = csv.DictWriter(output, fieldnames=fields)
+        writer.writeheader()
+        for entry in entries:
+            metrics = entry.get("metrics") or {}
+            writer.writerow(
+                {field: metrics.get(field, entry.get(field, "")) for field in fields}
+            )
+    return path
+
+
+def _svg_text(x: float, y: float, value: str, **attributes: object) -> str:
+    attrs = " ".join(
+        f'{name.replace("_", "-")}="{item}"' for name, item in attributes.items()
+    )
+    return f'<text x="{x}" y="{y}" {attrs}>{html.escape(value)}</text>'
+
+
+def write_instrumentation_chart(
+    path: Path,
+    entries: list[dict],
+    *,
+    kind: str,
+) -> Path:
+    shown = entries[:20]
+    width = 1200
+    label_width = 390
+    chart_width = 730
+    top = 100
+    row_height = 45
+    height = top + max(1, len(shown)) * row_height + 45
+
+    if kind == "external":
+        title = "Captured-session replay time: stock vs instrumented Z3"
+        first_label, second_label = "Stock external", "Instrumented external"
+        first_color, second_color = "#5084c4", "#c44e52"
+        values = [
+            (
+                entry["metrics"]["stock_external_median_ns"],
+                entry["metrics"]["instrumented_external_median_ns"],
+            )
+            for entry in shown
+        ]
+    elif kind == "breakdown":
+        title = "Instrumented Z3 internal time: array envelope vs residual"
+        first_label, second_label = "Array envelope", "Non-array residual"
+        first_color, second_color = "#4ea397", "#dd8452"
+        values = [
+            (
+                entry["metrics"]["array_envelope_median_ns"],
+                entry["metrics"]["non_array_residual_median_ns"],
+            )
+            for entry in shown
+        ]
+    else:
+        raise ValueError(f"Unknown instrumentation chart kind: {kind}")
+
+    maximum = max((first + second for first, second in values), default=1)
+    if kind == "external":
+        maximum = max((max(first, second) for first, second in values), default=1)
+    maximum = max(maximum, 1)
+    scale = chart_width / maximum
+
+    lines = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="white"/>',
+        _svg_text(
+            12, 32, title, font_family="sans-serif", font_size="30", font_weight="bold"
+        ),
+        f'<rect x="{label_width}" y="39" width="12" height="12" fill="{first_color}"/>',
+        _svg_text(
+            label_width + 18, 64, first_label, font_family="sans-serif", font_size="20"
+        ),
+        f'<rect x="{label_width + 165}" y="39" width="12" height="12" fill="{second_color}"/>',
+        _svg_text(
+            label_width + 183,
+            64,
+            second_label,
+            font_family="sans-serif",
+            font_size="20",
+        ),
+    ]
+    for fraction in (0.0, 0.5, 1.0):
+        x = label_width + chart_width * fraction
+        lines.append(
+            f'<line x1="{x:.1f}" y1="{top - 8}" x2="{x:.1f}" y2="{height - 30}" stroke="#dddddd" stroke-width="1"/>'
+        )
+        lines.append(
+            _svg_text(
+                x,
+                height - 10,
+                f"{maximum * fraction / 1_000_000:.2f}ms",
+                font_family="sans-serif",
+                font_size="16",
+                text_anchor="middle",
+                fill="#555555",
+            )
+        )
+
+    for row, (entry, (first, second)) in enumerate(zip(shown, values)):
+        y = top + row * row_height
+        label = instrumentation_label(entry)
+        if len(label) > 54:
+            label = label[:51] + "..."
+        lines.append(
+            _svg_text(
+                label_width - 8,
+                y + 17,
+                label,
+                font_family="sans-serif",
+                font_size="18",
+                text_anchor="end",
+            )
+        )
+        if kind == "external":
+            lines.extend(
+                [
+                    f'<rect x="{label_width}" y="{y + 5}" width="{first * scale:.2f}" height="9" fill="{first_color}"/>',
+                    f'<rect x="{label_width}" y="{y + 17}" width="{second * scale:.2f}" height="9" fill="{second_color}"/>',
+                ]
+            )
+        else:
+            first_width = first * scale
+            lines.extend(
+                [
+                    f'<rect x="{label_width}" y="{y + 8}" width="{first_width:.2f}" height="16" fill="{first_color}"/>',
+                    f'<rect x="{label_width + first_width:.2f}" y="{y + 8}" width="{second * scale:.2f}" height="16" fill="{second_color}"/>',
+                ]
+            )
+    lines.append("</svg>")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def instrumentation_workbook_sections(
+    manifest: dict, report_dir: Path
+) -> tuple[list[str], dict[str, object]]:
+    instrumentation = manifest.get("instrumentation")
+    if not isinstance(instrumentation, dict):
+        return [], {}
+    summary_value = instrumentation.get("comparison_summary_path")
+    if not summary_value:
+        return [], {}
+    summary_path = Path(summary_value)
+    summary = load_json(summary_path)
+    entries = summary.get("entries", [])
+    completed = [
+        entry for entry in entries if entry.get("comparison_status") == "completed"
+    ]
+    unavailable = [
+        entry for entry in entries if entry.get("comparison_status") != "completed"
+    ]
+    csv_path = write_instrumentation_csv(
+        report_dir / "data" / "instrumentation_comparisons.csv", entries
+    )
+    if not completed:
+        rows = [
+            [
+                instrumentation_label(entry),
+                entry.get("yardbird_result_type", "unknown"),
+                entry.get("comparison_error", "unknown"),
+            ]
+            for entry in unavailable[:20]
+        ]
+        return [
+            "#pagebreak()",
+            "",
+            "= Instrumented Z3 Replay Comparison",
+            "",
+            "No Yardbird run in this evaluation produced a completed solver capture, "
+            "so no paired replay timing is available.",
+            "",
+            typst_table(
+                ["Session", "Yardbird result", "Reason"],
+                rows,
+                columns="(1.4fr, .8fr, 1.8fr)",
+                size="7pt",
+            ),
+            "",
+        ], {
+            "instrumentation_summary": str(summary_path),
+            "instrumentation_csv": str(csv_path),
+            "instrumentation_figure_assets": [],
+        }
+
+    external_chart = write_instrumentation_chart(
+        report_dir / "assets" / "instrumentation_external.svg",
+        completed,
+        kind="external",
+    )
+    breakdown_chart = write_instrumentation_chart(
+        report_dir / "assets" / "instrumentation_breakdown.svg",
+        completed,
+        kind="breakdown",
+    )
+    overheads = [entry["metrics"]["external_overhead_pct"] for entry in completed]
+    fractions = [entry["metrics"]["array_fraction_pct"] for entry in completed]
+    rows = []
+    for entry in completed[:40]:
+        metrics = entry["metrics"]
+        rows.append(
+            [
+                instrumentation_label(entry),
+                milliseconds(metrics["stock_external_median_ns"]),
+                milliseconds(metrics["instrumented_external_median_ns"]),
+                f"{metrics['external_overhead_pct']:+.1f}%",
+                milliseconds(metrics["instrumented_internal_median_ns"]),
+                milliseconds(metrics["array_envelope_median_ns"]),
+                f"{metrics['array_fraction_pct']:.1f}%",
+            ]
+        )
+
+    lines = [
+        "#pagebreak()",
+        "",
+        "= Instrumented Z3 Replay Comparison",
+        "",
+        f"This section compares *{len(completed)} captured Yardbird solver sessions* "
+        "against matched stock and instrumented Z3 binaries. Each entry reports the "
+        f"median of {summary['repetitions']} paired repetitions after "
+        f"{summary['warmups']} warmups.",
+        "",
+        "External time is the solver pipe round trip. Internal time is measured inside "
+        "instrumented Z3; the array envelope is a subset of that internal check time, "
+        "and the residual contains SAT, EUF, arithmetic, other theories, and unclassified "
+        "solver work.",
+        "",
+        typst_table(
+            ["Sessions", "Unavailable", "Median overhead", "Median array share"],
+            [
+                [
+                    len(completed),
+                    len(unavailable),
+                    f"{statistics.median(overheads):+.1f}%",
+                    f"{statistics.median(fractions):.1f}%",
+                ]
+            ],
+            columns="(.8fr, .8fr, 1.1fr, 1.1fr)",
+        ),
+        "",
+        '#image("assets/instrumentation_external.svg", width: 100%)',
+        "",
+        '#image("assets/instrumentation_breakdown.svg", width: 100%)',
+        "",
+        f"Charts show {min(len(completed), 20)} of {len(completed)} completed sessions; "
+        "the detail table and CSV retain the complete comparison set.",
+        "",
+        "== Session Details",
+        "",
+        typst_table(
+            [
+                "Session",
+                "Stock",
+                "Instr. ext.",
+                "Overhead",
+                "Instr. int.",
+                "Array",
+                "Array share",
+            ],
+            rows,
+            columns="(2fr, .75fr, .75fr, .7fr, .75fr, .75fr, .7fr)",
+            size="6.5pt",
+        ),
+        "",
+    ]
+    if len(completed) > len(rows):
+        lines.extend(
+            [
+                f"Showing {len(rows)} of {len(completed)} completed sessions; see "
+                "`data/instrumentation_comparisons.csv` for all rows.",
+                "",
+            ]
+        )
+    if unavailable:
+        unavailable_rows = [
+            [
+                instrumentation_label(entry),
+                entry.get("yardbird_result_type", "unknown"),
+                entry.get("comparison_error", "unknown"),
+            ]
+            for entry in unavailable[:20]
+        ]
+        lines.extend(
+            [
+                "== Unavailable Comparisons",
+                "",
+                typst_table(
+                    ["Session", "Yardbird result", "Reason"],
+                    unavailable_rows,
+                    columns="(1.4fr, .8fr, 1.8fr)",
+                    size="7pt",
+                ),
+                "",
+            ]
+        )
+
+    return lines, {
+        "instrumentation_summary": str(summary_path),
+        "instrumentation_csv": str(csv_path),
+        "instrumentation_figure_assets": [
+            str(external_chart),
+            str(breakdown_chart),
+        ],
+    }
 
 
 def analysis_workbook_sections(analysis: dict) -> list[str]:
@@ -413,6 +765,7 @@ def workbook_body(
     analysis: dict,
     figure_assets: list[Path],
     table_sources: list[Path],
+    instrumentation_sections: list[str],
 ) -> str:
     benchmark_types = ", ".join(manifest.get("benchmark_types", []))
     lines = [
@@ -451,6 +804,7 @@ def workbook_body(
     lines.append("")
 
     lines.extend(analysis_workbook_sections(analysis))
+    lines.extend(instrumentation_sections)
 
     for asset in figure_assets:
         rel_asset = asset.relative_to(asset.parent.parent).as_posix()
@@ -506,6 +860,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
     assets_dir.mkdir(parents=True, exist_ok=True)
     clear_generated_files(tex_dir, GENERATED_TEX_PATTERNS)
     clear_generated_files(assets_dir, GENERATED_ASSET_PATTERNS)
+    clear_generated_files(assets_dir, INSTRUMENTATION_ASSET_PATTERNS)
     (report_dir / "template.typ").write_text(TEMPLATE_PATH.read_text())
 
     json_files = [Path(subrun["result_path"]) for subrun in manifest["subruns"]]
@@ -515,6 +870,9 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
         raise RuntimeError("No benchmark strategies were found in the run artifacts")
     analysis = build_analysis(grouped, strategy_keys, baseline_strategy)
     data_exports = write_analysis_exports(report_dir, analysis)
+    instrumentation_sections, instrumentation_exports = (
+        instrumentation_workbook_sections(manifest, report_dir)
+    )
     generate_figures(grouped, strategy_keys, all_results, tex_dir)
 
     figure_sources = figure_tex_paths(tex_dir)
@@ -531,6 +889,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
             analysis,
             compiled_assets,
             table_sources,
+            instrumentation_sections,
         )
     )
     run_command(
@@ -546,6 +905,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
         "figure_tex": [str(path) for path in figure_sources],
         "figure_assets": [str(path) for path in compiled_assets],
         "table_tex": [str(path) for path in table_sources],
+        **instrumentation_exports,
         **data_exports,
     }
     write_json(report_dir / "report_metadata.json", report_metadata)
