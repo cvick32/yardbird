@@ -8,7 +8,12 @@ use log::debug;
 use smt2parser::{
     concrete::{Command, Term},
     vmt::{
-        bmc::BMCBuilder, quantified_instantiator::Instance, smtinterpol_utils, variable::Variable,
+        bmc::BMCBuilder,
+        definition_graph::DefinitionFrameInfo,
+        definition_materializer::{DefinitionMaterializer, MaterializedTerm},
+        quantified_instantiator::Instance,
+        smtinterpol_utils,
+        variable::Variable,
         VMTModel,
     },
 };
@@ -44,11 +49,14 @@ impl NamedAssertion {
 
 pub struct SMTProblem {
     bmc_builder: BMCBuilder,
+    definition_materializer: DefinitionMaterializer,
     sorts: Vec<Command>,
     function_definitions: Vec<Command>,
     variable_definitions: Vec<Command>,
+    input_variables: Vec<Command>,
     init_assertion: Term,
     trans_assertion: Term,
+    property_assertion: Term,
     init_and_transition_assertions: Vec<NamedAssertion>,
     theory_axiom_assertions: Vec<Term>,
     asserted_instantiation_terms: Vec<Term>,
@@ -130,6 +138,9 @@ impl SMTProblem {
     ) -> Self {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
+        let helper_definitions = vmt_model.get_helper_definitions().clone();
+        let definition_frames =
+            DefinitionFrameInfo::new(&helper_definitions, &current_vars, &next_to_current_vars);
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
         let solver = new_solver_backend(
@@ -150,6 +161,7 @@ impl SMTProblem {
             ),
             init_assertion,
             trans_assertion,
+            property_assertion,
             init_and_transition_assertions: vec![],
             theory_axiom_assertions: vec![],
             asserted_instantiation_terms: vec![],
@@ -158,8 +170,16 @@ impl SMTProblem {
             auxiliary_transition_assertions: vec![],
             instantiations: vec![],
             depth: 0,
-            bmc_builder: BMCBuilder::new(current_vars, next_to_current_vars),
-            variables: vmt_model.get_state_holding_variables(),
+            bmc_builder: BMCBuilder::with_definition_frames(
+                current_vars,
+                next_to_current_vars,
+                definition_frames.clone(),
+            ),
+            definition_materializer: DefinitionMaterializer::new(
+                helper_definitions,
+                definition_frames,
+            ),
+            variables: vmt_model.get_state_variables(),
             solver,
             num_quantifiers_instantiated: 0,
             track_instantiations,
@@ -326,6 +346,7 @@ impl SMTProblem {
             abstract_instantiation_id,
             self.depth,
             &mut self.bmc_builder,
+            &mut self.definition_materializer,
             self.solver.as_mut(),
             &mut self.subterm_handler,
             self.track_instantiations,
@@ -351,8 +372,21 @@ impl SMTProblem {
         let sort_names = unique_command_lines(&self.sorts);
         let function_definitions = unique_command_lines(&self.function_definitions);
         let variable_definitions = unique_command_lines(&self.variable_definitions);
+        let helper_declarations =
+            unique_command_lines(&self.definition_materializer.declarations());
 
         let mut assertion_index = 0;
+        let helper_definition_asserts = self
+            .definition_materializer
+            .definitions()
+            .iter()
+            .map(|assertion| {
+                let named = smtinterpol_utils::assert_term_interpolant(assertion_index, assertion);
+                assertion_index += 1;
+                named
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
         let init_and_trans_asserts = self
             .init_and_transition_assertions
             .iter()
@@ -381,7 +415,7 @@ impl SMTProblem {
         let interpolant_command = smtinterpol_utils::get_interpolant_command(assertion_index);
 
         format!(
-            "{options}\n{sort_names}\n{function_definitions}\n{variable_definitions}\n{init_and_trans_asserts}\n{instantiation_asserts}\n{property_assert}\n{interpolant_command}",
+            "{options}\n{sort_names}\n{function_definitions}\n{variable_definitions}\n{helper_declarations}\n{helper_definition_asserts}\n{init_and_trans_asserts}\n{instantiation_asserts}\n{property_assert}\n{interpolant_command}",
             options = smtinterpol_utils::SMT_INTERPOL_OPTIONS
         )
     }
@@ -458,7 +492,9 @@ impl SMTProblem {
             unique_command_lines(&self.sorts),
             unique_command_lines(&self.function_definitions),
             unique_command_lines(&self.variable_definitions),
+            unique_command_lines(&self.definition_materializer.declarations()),
             format_assertions(&self.theory_axiom_assertions),
+            format_assertions(&self.definition_materializer.definitions()),
             format_named_assertions(&self.init_and_transition_assertions),
             self.format_instantiation_assertions(),
         ];
@@ -568,11 +604,11 @@ fn unique_command_lines(commands: &[Command]) -> String {
 
 impl SMTProblem {
     fn add_variable_declaration_at_current_depth(&mut self, variable: &Variable) {
-        let bmc_variable = variable
-            .current
-            .clone()
-            .accept(&mut self.bmc_builder)
-            .unwrap();
+        self.add_declaration_at_current_depth(&variable.current);
+    }
+
+    fn add_declaration_at_current_depth(&mut self, declaration: &Command) {
+        let bmc_variable = declaration.clone().accept(&mut self.bmc_builder).unwrap();
         self.solver
             .accept_command(&bmc_variable)
             .expect("solver should accept BMC variable declarations");
@@ -627,13 +663,19 @@ impl SMTProblem {
     }
 
     fn assert_auxiliary_term(&mut self, term: Term, label: impl Into<String>) {
+        let materialized = self.materialize(term);
+        self.install_materialized_support(&materialized);
         self.solver
-            .assert_term(&term)
+            .assert_term(&materialized.root)
             .expect("solver should assert auxiliary terms");
         self.subterm_handler
-            .register_instantiation_term(term.clone());
+            .register_instantiation_term(materialized.root.clone());
+        for support in &materialized.support {
+            self.subterm_handler
+                .register_instantiation_term(support.clone());
+        }
         self.init_and_transition_assertions
-            .push(NamedAssertion::new(label, term));
+            .push(NamedAssertion::new(label, materialized.root));
     }
 
     fn assert_auxiliary_localized_axiom(&mut self, spec: &AuxiliarySpec, localized_axiom: Term) {
@@ -744,7 +786,8 @@ impl SMTProblem {
             // Set new depth.
             self.depth = depth;
             self.bmc_builder.set_depth(self.depth);
-            // Generate subterms.
+            // Preserve the established subterm generation order; helper
+            // support is appended when each indexed root is materialized.
             let generate_subterms_start = Instant::now();
             self.subterm_handler
                 .generate_subterms(&mut self.bmc_builder);
@@ -759,9 +802,10 @@ impl SMTProblem {
                 "unroll_add_solver_variables".to_string(),
                 add_variables_start.elapsed().as_secs_f64(),
             );
-            // Add assertion for current depth.
+            // Add the transition into the current depth and prepare its property.
             let add_assertion_start = Instant::now();
-            self.add_assertion();
+            self.add_transition_assertion();
+            self.update_property();
             self.last_unroll_profile.insert(
                 "unroll_add_assertion".to_string(),
                 add_assertion_start.elapsed().as_secs_f64(),
@@ -775,7 +819,9 @@ impl SMTProblem {
                     self.depth,
                     &instantiations_snapshot,
                     &mut self.bmc_builder,
+                    &mut self.definition_materializer,
                     self.solver.as_mut(),
+                    &mut self.subterm_handler,
                     self.track_instantiations,
                     &mut self.tracked_labels,
                     &mut self.asserted_instantiation_terms,
@@ -851,6 +897,13 @@ impl ProblemContext for SMTProblem {
         self.num_quantifiers_instantiated
     }
 
+    fn make_unquantified_instance(&self, term: Term) -> Option<Instance> {
+        smt2parser::vmt::UnquantifiedInstantiator::rewrite_with_definitions(
+            term,
+            self.bmc_builder.definition_frames().clone(),
+        )
+    }
+
     fn get_init_and_transition_subterms(&self) -> Vec<String> {
         let mut trans = self.subterm_handler.get_transition_system_subterms();
         trans.extend(self.subterm_handler.get_initial_subterms());
@@ -884,8 +937,9 @@ impl ProblemContext for SMTProblem {
 #[cfg(test)]
 mod tests {
     use smt2parser::{
-        concrete::{QualIdentifier, Sort, Term},
+        concrete::{QualIdentifier, Sort, SyntaxBuilder, Term},
         vmt::VMTModel,
+        CommandStream,
     };
 
     use crate::{
@@ -895,7 +949,7 @@ mod tests {
         },
         cost_functions::array::ArrayBMCCost,
         instantiation_strategy::full_unroll::FullUnrollStrategy,
-        strategies::{Abstract, ArrayRefinementState, ProofStrategy},
+        strategies::{Abstract, ArrayRefinementState, ConcreteArrayZ3, ProofStrategy},
     };
 
     use super::*;
@@ -926,6 +980,91 @@ mod tests {
 
         assert!(output.contains("(assert (! (= i@0 0) :named yardbird_init_0))"));
         assert!(output.contains("(assert (! (= i@1 (+ i@0 1)) :named yardbird_trans_0_to_1))"));
+    }
+
+    #[test]
+    fn generated_instances_materialize_helper_definitions_at_their_anchor_frame() {
+        let input = br#"
+            (declare-fun x () Int)
+            (define-fun x.relationship () Int (! x :next x.next))
+            (define-fun next-only () Int (+ x.next 1))
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! (= x.next x) :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+        "#;
+        let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(
+            2,
+            false,
+            (),
+            crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
+            false,
+        );
+        let model = concrete_strategy.configure_model(model);
+        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(concrete_strategy);
+        let mut smt = SMTProblem::new(
+            &model,
+            &strategy,
+            SolverBackend::Z3,
+            false,
+            Box::new(FullUnrollStrategy::new()),
+        );
+        smt.unroll(1);
+
+        let instance =
+            ProblemContext::make_unquantified_instance(&smt, "(= next-only@0 1)".parse().unwrap())
+                .unwrap();
+        assert_eq!(instance.width(), 1);
+        assert!(smt.add_instantiation(instance, None));
+
+        assert!(smt
+            .definition_materializer
+            .declarations()
+            .iter()
+            .any(|command| command.to_string() == "(declare-fun next-only@0 () Int)"));
+        assert!(smt
+            .definition_materializer
+            .definitions()
+            .iter()
+            .any(|term| term.to_string() == "(= next-only@0 (+ x@1 1))"));
+        let dumped = smt.smt2_string_with_property_check();
+        assert!(dumped.contains("(declare-fun next-only@0 () Int)"));
+        assert!(dumped.contains("(assert (= next-only@0 (+ x@1 1)))"));
+    }
+
+    #[test]
+    fn declares_prefixed_state_variables_at_every_unrolled_frame() {
+        let input = br#"
+            (declare-fun __state () Int)
+            (declare-fun __state.next () Int)
+            (define-fun state.relationship () Int (! __state :next __state.next))
+            (define-fun init () Bool (! (= __state 0) :init true))
+            (define-fun transition () Bool (! (= __state.next __state) :trans true))
+            (define-fun property () Bool (! (>= __state 0) :invar-property 0))
+        "#;
+        let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(ConcreteArrayZ3::new(false));
+        let mut smt = SMTProblem::new(
+            &model,
+            &strategy,
+            SolverBackend::Z3,
+            false,
+            Box::new(FullUnrollStrategy::new()),
+        );
+
+        smt.unroll(1);
+
+        let dumped = smt.smt2_string_with_property_check();
+        assert!(dumped.contains("(declare-fun __state@0 () Int)"));
+        assert!(dumped.contains("(declare-fun __state@1 () Int)"));
     }
 
     #[test]
