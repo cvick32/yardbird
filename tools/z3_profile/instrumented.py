@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .replay import ReplayError, _builder_binaries, _load_capture
-from .timing import _run_repetition
+from .runner import BuilderBinaries, LoadedCapture, ReplayError, ReplayRunner
 
 
 @dataclass(frozen=True)
@@ -36,10 +35,8 @@ def profile_instrumented_replay(
 ) -> InstrumentedReplay:
     """Replay once with summary profiling and validate every emitted record."""
 
-    if timeout_seconds <= 0:
-        raise ReplayError("timeout must be positive")
-    transcript, indexed_checks = _load_capture(capture_dir)
-    binary = _builder_binaries(builder_manifest)["instrumented"]
+    capture = LoadedCapture.load(capture_dir)
+    binary = BuilderBinaries.from_manifest(builder_manifest).instrumented
 
     with tempfile.TemporaryDirectory(prefix="yardbird-z3-profile-") as temporary:
         output = Path(temporary) / "checks.jsonl"
@@ -51,25 +48,23 @@ def profile_instrumented_replay(
             "smt.array.profile=true",
             f"smt.array.profile_output={output}",
         )
-        external_timings = _run_repetition(
-            transcript,
-            indexed_checks,
+        replay = ReplayRunner(
             binary,
-            timeout_seconds,
             label="instrumented",
+            timeout_seconds=timeout_seconds,
             arguments=arguments,
-        )
+        ).run(capture)
         if not output.is_file():
             raise ReplayError("instrumented: Z3 produced no array profile")
         records = _read_records(output)
 
-    if len(records) != len(indexed_checks):
+    if len(records) != len(capture.checks):
         raise ReplayError(
             "instrumented: array profile count does not match the capture"
         )
     checks = []
     for indexed, external_elapsed, record in zip(
-        indexed_checks, external_timings, records
+        capture.checks, replay.timings_ns, records
     ):
         _validate_record(indexed.check_id, indexed.expected_result, record)
         checks.append(
@@ -115,9 +110,7 @@ def _validate_record(
         )
     for field in ("check_elapsed_ns", "array_envelope_ns"):
         if type(record.get(field)) is not int or record[field] < 0:
-            raise ReplayError(
-                f"instrumented: check {check_id} has invalid {field}"
-            )
+            raise ReplayError(f"instrumented: check {check_id} has invalid {field}")
     if record["array_envelope_ns"] > record["check_elapsed_ns"]:
         raise ReplayError(
             f"instrumented: check {check_id} array envelope exceeds check time"

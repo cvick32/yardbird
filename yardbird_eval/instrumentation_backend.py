@@ -145,28 +145,28 @@ def _clean_example_name(value: str) -> str:
 
 def _comparison_metrics(report: ComparisonReport) -> dict[str, int | float]:
     aggregate = report.aggregate
-    stock = aggregate.stock_external_median_ns
-    internal = aggregate.instrumented_internal_median_ns
+    stock = aggregate.stock_external.median_ns
+    internal = aggregate.instrumented_internal.median_ns
     return {
         "check_count": aggregate.check_count,
         "depth_count": aggregate.depth_count,
         "stock_external_median_ns": stock,
-        "stock_external_mad_ns": aggregate.stock_external_mad_ns,
-        "instrumented_external_median_ns": aggregate.instrumented_external_median_ns,
-        "instrumented_external_mad_ns": aggregate.instrumented_external_mad_ns,
-        "external_overhead_median_ns": aggregate.external_overhead_median_ns,
-        "external_overhead_mad_ns": aggregate.external_overhead_mad_ns,
+        "stock_external_mad_ns": aggregate.stock_external.mad_ns,
+        "instrumented_external_median_ns": (aggregate.instrumented_external.median_ns),
+        "instrumented_external_mad_ns": aggregate.instrumented_external.mad_ns,
+        "external_overhead_median_ns": aggregate.external_overhead.median_ns,
+        "external_overhead_mad_ns": aggregate.external_overhead.mad_ns,
         "external_overhead_pct": (
-            aggregate.external_overhead_median_ns / stock * 100.0 if stock else 0.0
+            aggregate.external_overhead.median_ns / stock * 100.0 if stock else 0.0
         ),
         "instrumented_internal_median_ns": internal,
-        "instrumented_internal_mad_ns": aggregate.instrumented_internal_mad_ns,
-        "array_envelope_median_ns": aggregate.array_envelope_median_ns,
-        "array_envelope_mad_ns": aggregate.array_envelope_mad_ns,
-        "non_array_residual_median_ns": aggregate.non_array_residual_median_ns,
-        "non_array_residual_mad_ns": aggregate.non_array_residual_mad_ns,
+        "instrumented_internal_mad_ns": aggregate.instrumented_internal.mad_ns,
+        "array_envelope_median_ns": aggregate.array_envelope.median_ns,
+        "array_envelope_mad_ns": aggregate.array_envelope.mad_ns,
+        "non_array_residual_median_ns": aggregate.non_array_residual.median_ns,
+        "non_array_residual_mad_ns": aggregate.non_array_residual.mad_ns,
         "array_fraction_pct": (
-            aggregate.array_envelope_median_ns / internal * 100.0 if internal else 0.0
+            aggregate.array_envelope.median_ns / internal * 100.0 if internal else 0.0
         ),
     }
 

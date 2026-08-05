@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tools.z3_profile.comparison import AggregateComparison, ComparisonReport
+from tools.z3_profile.distribution import TimingDistribution
 from yardbird_eval.cli import parse_args
 from yardbird_eval.instrumentation_backend import compare_garden_suite
 
@@ -74,24 +75,12 @@ class InstrumentationEvalTests(unittest.TestCase):
             aggregate = AggregateComparison(
                 check_count=2,
                 depth_count=2,
-                stock_external_samples_ns=(10_000_000,),
-                stock_external_median_ns=10_000_000,
-                stock_external_mad_ns=0,
-                instrumented_external_samples_ns=(11_000_000,),
-                instrumented_external_median_ns=11_000_000,
-                instrumented_external_mad_ns=0,
-                external_overhead_samples_ns=(1_000_000,),
-                external_overhead_median_ns=1_000_000,
-                external_overhead_mad_ns=0,
-                instrumented_internal_samples_ns=(8_000_000,),
-                instrumented_internal_median_ns=8_000_000,
-                instrumented_internal_mad_ns=0,
-                array_envelope_samples_ns=(2_000_000,),
-                array_envelope_median_ns=2_000_000,
-                array_envelope_mad_ns=0,
-                non_array_residual_samples_ns=(6_000_000,),
-                non_array_residual_median_ns=6_000_000,
-                non_array_residual_mad_ns=0,
+                stock_external=TimingDistribution((10_000_000,), 10_000_000, 0),
+                instrumented_external=TimingDistribution((11_000_000,), 11_000_000, 0),
+                external_overhead=TimingDistribution((1_000_000,), 1_000_000, 0),
+                instrumented_internal=TimingDistribution((8_000_000,), 8_000_000, 0),
+                array_envelope=TimingDistribution((2_000_000,), 2_000_000, 0),
+                non_array_residual=TimingDistribution((6_000_000,), 6_000_000, 0),
             )
             report = ComparisonReport(
                 capture_dir=str(capture),

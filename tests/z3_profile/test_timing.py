@@ -58,7 +58,7 @@ class TimingTests(unittest.TestCase):
             440,
         ]
         with patch(
-            "tools.z3_profile.timing.time.perf_counter_ns",
+            "tools.z3_profile.runner.time.perf_counter_ns",
             side_effect=clock_values,
         ):
             report = time_stock_replay(
@@ -68,13 +68,17 @@ class TimingTests(unittest.TestCase):
                 repetitions=2,
             )
 
-        self.assertEqual(report.checks[0].samples_ns, (10, 30))
-        self.assertEqual(report.checks[0].median_ns, 20)
-        self.assertEqual(report.checks[0].mad_ns, 10)
-        self.assertEqual(report.checks[1].samples_ns, (20, 40))
-        self.assertEqual(report.depths[0].samples_ns, (30, 70))
-        self.assertEqual(report.depths[0].median_ns, 50)
-        self.assertEqual(report.depths[0].mad_ns, 20)
+        self.assertEqual(report.checks[0].timing.samples_ns, (10, 30))
+        self.assertEqual(report.checks[0].timing.median_ns, 20)
+        self.assertEqual(report.checks[0].timing.mad_ns, 10)
+        self.assertEqual(report.checks[1].timing.samples_ns, (20, 40))
+        self.assertEqual(report.depths[0].timing.samples_ns, (30, 70))
+        self.assertEqual(report.depths[0].timing.median_ns, 50)
+        self.assertEqual(report.depths[0].timing.mad_ns, 20)
+        self.assertEqual(report.depths[0].refinement_ids, (1, 2))
+        self.assertEqual(report.depths[0].refinement_steps, (0, 1))
+        self.assertEqual(report.depths[0].instances_total, 2)
+        self.assertEqual(report.depths[0].instances_added, 2)
         self.assertEqual(report.checks[1].instances_total, 2)
         self.assertEqual(report.checks[1].instances_added_since_previous_check, 2)
 
@@ -111,7 +115,7 @@ class TimingTests(unittest.TestCase):
         self.assertIn("stock timing: 2 repetitions after 0 warmups", completed.stdout)
         payload = json.loads(output.read_text())
         self.assertEqual(payload["repetitions"], 2)
-        self.assertEqual(len(payload["checks"][0]["samples_ns"]), 2)
+        self.assertEqual(len(payload["checks"][0]["timing"]["samples_ns"]), 2)
 
     def _capture(self) -> Path:
         capture = self.root / "capture"

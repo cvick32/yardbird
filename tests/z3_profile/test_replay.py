@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.z3_profile import ReplayError, replay_build_pair
+from tools.z3_profile import LoadedCapture, ReplayError, ReplayRunner, replay_build_pair
 
 
 FAKE_SOLVER = """#!/usr/bin/env python3
@@ -44,13 +44,20 @@ class ReplayTests(unittest.TestCase):
         stock = self._solver("persistent", "stock z3")
         instrumented = self._solver("persistent", "instrumented z3")
 
-        replay = replay_build_pair(
-            capture, self._builder_manifest(stock, instrumented)
-        )
+        replay = replay_build_pair(capture, self._builder_manifest(stock, instrumented))
 
         self.assertEqual(replay.expected, ("sat", "unsat"))
         self.assertEqual(replay.stock.results, replay.expected)
         self.assertEqual(replay.instrumented.results, replay.expected)
+
+    def test_public_capture_and_runner_interfaces_compose(self) -> None:
+        capture = LoadedCapture.load(self._capture(["sat", "unsat"]))
+        stock = self._solver("persistent", "stock z3")
+
+        replay = ReplayRunner(stock, label="stock").run(capture)
+
+        self.assertEqual(replay.results, capture.expected_results)
+        self.assertEqual(len(replay.timings_ns), 2)
 
     def test_mismatch_identifies_the_solver_and_check(self) -> None:
         capture = self._capture(["sat", "unsat"])
@@ -61,9 +68,7 @@ class ReplayTests(unittest.TestCase):
             ReplayError,
             "instrumented: check 1 expected unsat, observed sat",
         ):
-            replay_build_pair(
-                capture, self._builder_manifest(stock, instrumented)
-            )
+            replay_build_pair(capture, self._builder_manifest(stock, instrumented))
 
     def test_rejects_a_corrupt_index_before_starting_a_solver(self) -> None:
         capture = self._capture(["sat", "unsat"])
@@ -75,9 +80,7 @@ class ReplayTests(unittest.TestCase):
         instrumented = self._solver("persistent", "instrumented-z3")
 
         with self.assertRaisesRegex(ReplayError, "invalid byte boundaries"):
-            replay_build_pair(
-                capture, self._builder_manifest(stock, instrumented)
-            )
+            replay_build_pair(capture, self._builder_manifest(stock, instrumented))
 
         self.assertFalse(stock.with_suffix(".started").exists())
         self.assertFalse(instrumented.with_suffix(".started").exists())
@@ -87,7 +90,7 @@ class ReplayTests(unittest.TestCase):
         stock = self._solver("slow", "stock-z3")
         instrumented = self._solver("persistent", "instrumented-z3")
 
-        with self.assertRaisesRegex(ReplayError, "stock: replay timed out"):
+        with self.assertRaisesRegex(ReplayError, "stock: check 0 timed out"):
             replay_build_pair(
                 capture,
                 self._builder_manifest(stock, instrumented),
@@ -187,9 +190,7 @@ class ReplayTests(unittest.TestCase):
             check_start = len(transcript)
             transcript.extend(b"(check-sat)\n")
             check_end = len(transcript)
-            transcript.extend(
-                f"; yardbird check {check_id} result {result}\n".encode()
-            )
+            transcript.extend(f"; yardbird check {check_id} result {result}\n".encode())
             post_end = len(transcript)
             checks.append(
                 {

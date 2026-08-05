@@ -59,7 +59,7 @@ class ComparisonTests(unittest.TestCase):
 
     def test_joins_stock_array_and_residual_samples_by_depth(self) -> None:
         with patch(
-            "tools.z3_profile.timing.time.perf_counter_ns",
+            "tools.z3_profile.runner.time.perf_counter_ns",
             side_effect=[
                 0,
                 10,
@@ -86,38 +86,28 @@ class ComparisonTests(unittest.TestCase):
                 repetitions=2,
             )
 
-        self.assertEqual(report.checks[0].stock_external_samples_ns, (10, 30))
-        self.assertEqual(
-            report.checks[0].instrumented_internal_samples_ns, (100, 100)
-        )
-        self.assertEqual(
-            report.checks[0].instrumented_external_samples_ns, (50, 55)
-        )
-        self.assertEqual(report.checks[0].array_envelope_samples_ns, (40, 40))
-        self.assertEqual(
-            report.checks[0].non_array_residual_samples_ns, (60, 60)
-        )
-        self.assertEqual(report.depths[0].stock_external_samples_ns, (30, 70))
-        self.assertEqual(
-            report.depths[0].instrumented_internal_samples_ns, (300, 300)
-        )
-        self.assertEqual(
-            report.depths[0].instrumented_external_samples_ns, (110, 120)
-        )
-        self.assertEqual(report.depths[0].array_envelope_samples_ns, (90, 90))
-        self.assertEqual(
-            report.depths[0].non_array_residual_samples_ns, (210, 210)
-        )
+        self.assertEqual(report.checks[0].stock_external.samples_ns, (10, 30))
+        self.assertEqual(report.checks[0].instrumented_internal.samples_ns, (100, 100))
+        self.assertEqual(report.checks[0].instrumented_external.samples_ns, (50, 55))
+        self.assertEqual(report.checks[0].array_envelope.samples_ns, (40, 40))
+        self.assertEqual(report.checks[0].non_array_residual.samples_ns, (60, 60))
+        self.assertEqual(report.depths[0].stock_external.samples_ns, (30, 70))
+        self.assertEqual(report.depths[0].instrumented_internal.samples_ns, (300, 300))
+        self.assertEqual(report.depths[0].instrumented_external.samples_ns, (110, 120))
+        self.assertEqual(report.depths[0].array_envelope.samples_ns, (90, 90))
+        self.assertEqual(report.depths[0].non_array_residual.samples_ns, (210, 210))
+        self.assertEqual(report.depths[0].refinement_ids, (1, 2))
+        self.assertEqual(report.depths[0].refinement_steps, (0, 1))
+        self.assertEqual(report.depths[0].instances_total, 1)
+        self.assertEqual(report.depths[0].instances_added, 1)
         self.assertEqual(report.aggregate.check_count, 2)
         self.assertEqual(report.aggregate.depth_count, 1)
-        self.assertEqual(report.aggregate.stock_external_samples_ns, (30, 70))
-        self.assertEqual(
-            report.aggregate.instrumented_external_samples_ns, (110, 120)
-        )
-        self.assertEqual(report.aggregate.array_envelope_samples_ns, (90, 90))
-        self.assertEqual(report.aggregate.external_overhead_samples_ns, (80, 50))
-        self.assertEqual(report.aggregate.external_overhead_median_ns, 65)
-        self.assertEqual(report.aggregate.external_overhead_mad_ns, 15)
+        self.assertEqual(report.aggregate.stock_external.samples_ns, (30, 70))
+        self.assertEqual(report.aggregate.instrumented_external.samples_ns, (110, 120))
+        self.assertEqual(report.aggregate.array_envelope.samples_ns, (90, 90))
+        self.assertEqual(report.aggregate.external_overhead.samples_ns, (80, 50))
+        self.assertEqual(report.aggregate.external_overhead.median_ns, 65)
+        self.assertEqual(report.aggregate.external_overhead.mad_ns, 15)
         self.assertIn("aggregate: checks=2 depths=1", report.summary())
         self.assertIn("check_ids=0,1", report.summary())
 
@@ -167,9 +157,7 @@ class ComparisonTests(unittest.TestCase):
                             "refinement_step": check["refinement_step"],
                             "result": check["expected_result"],
                             "instances_total": check["check_id"],
-                            "instances_added_since_previous_check": check[
-                                "check_id"
-                            ],
+                            "instances_added_since_previous_check": check["check_id"],
                         }
                         for check in checks
                     ]

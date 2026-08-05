@@ -11,19 +11,24 @@ from .instrumented import (
 )
 from .replay import (
     PairReplay,
-    ReplayError,
     SolverReplay,
     load_builder_manifest,
     replay_build_pair,
 )
+from .distribution import TimingDistribution
+from .runner import BuilderBinaries, LoadedCapture, ReplayError, ReplayRunner
 from .timing import TimingReport, time_stock_replay, write_timing_report
 
 __all__ = [
     "PairReplay",
     "ComparisonReport",
+    "BuilderBinaries",
     "InstrumentedReplay",
+    "LoadedCapture",
     "ReplayError",
+    "ReplayRunner",
     "SolverReplay",
+    "TimingDistribution",
     "load_builder_manifest",
     "replay_build_pair",
     "compare_capture",
