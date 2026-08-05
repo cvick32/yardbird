@@ -1,10 +1,7 @@
 use std::mem;
 
 use log::info;
-use smt2parser::{
-    concrete::Term,
-    vmt::{UnquantifiedInstantiator, VMTModel},
-};
+use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
     cost_functions::YardbirdCostFunction,
@@ -139,12 +136,12 @@ where
             .into_iter()
             .flat_map(|inst| inst.to_string().parse())
             .collect();
-        let variables = smt.get_variables().to_vec();
-        let _ = terms
+        let instances = terms
             .into_iter()
-            .flat_map(|term| {
-                UnquantifiedInstantiator::rewrite_unquantified(term, variables.clone())
-            })
+            .filter_map(|term| smt.make_unquantified_instance(term))
+            .collect::<Vec<_>>();
+        let _ = instances
+            .into_iter()
             .map(|inst| !smt.add_instantiation(inst, None))
             .fold(true, |a, b| a && b);
 
