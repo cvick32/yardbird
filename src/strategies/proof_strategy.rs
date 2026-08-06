@@ -33,6 +33,15 @@ pub trait ProofStrategy<'ctx, S> {
         250
     }
 
+    /// Whether the VMT driver should fall back to the concrete theory when a
+    /// refinement step produces no new facts.
+    ///
+    /// This is opt-in because not every abstract theory has a corresponding
+    /// concrete solver configuration in the driver.
+    fn check_concrete_counterexample_on_no_progress(&self) -> bool {
+        false
+    }
+
     fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> driver::Result<S>;
 
     fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> driver::Result<ProofAction>;
