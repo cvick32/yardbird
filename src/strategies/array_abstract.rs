@@ -195,6 +195,10 @@ where
         //     .abstract_constants_over(self.bmc_depth)
     }
 
+    fn check_concrete_counterexample_on_no_progress(&self) -> bool {
+        true
+    }
+
     fn setup(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
