@@ -83,6 +83,23 @@ it remains experimental.
 5. Implement guarded-store factoring only if the initial measurements justify
    it.
 
+## Priority From the Depth-50 Evaluation
+
+The exact same-index rewrite should be tested before broader demand-guided
+selection. It directly removes a read/write term and the equality instance that
+would otherwise explain it, making the result easy to attribute.
+
+Keep guarded-store factoring second. Although it may combine duplicate store
+structure, it introduces an `ite`; the depth-50 evaluation shows that preserving
+the abstract strategy's smaller clause and Boolean-variable state is important
+to its hard-tail wins. Count the pattern first and accept the rewrite only when
+it reduces asserted equalities without increasing Z3 decisions or resource
+work on the paired benchmarks.
+
+Report this preprocessing result separately from demand-guided ranking. The
+preprocessor changes the input formula, while the ranker changes which valid
+array formula Yardbird selects next.
+
 ## Correctness Rules
 
 - Match indices by exact AST equality only.

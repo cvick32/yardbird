@@ -1,170 +1,263 @@
 # Demand-Guided Instantiation Plan
 
-Status: proposal
+Status: evidence-informed proposal
 
 ## Goal
 
-Reduce SAT/SMT round trips by giving the solver more useful theory information
-after the cost function selects a good conflict.
+Reduce unnecessary array instantiations by preferring formulas that lie on the
+data-flow path from the failing property back to the array writes that can
+determine it.
 
-The central idea is:
+The first version remains a one-formula-per-refinement strategy:
 
 ```text
-cost function selects one seed
+failing property read/value
               ↓
-DemandClosure derives its direct consequences
+backward data-flow demand
               ↓
-unrolling policy places the instances into BMC frames
+rank matching array-axiom candidates
               ↓
-solver checks the stronger formula
+add the best demanded formula
+              ↓
+new model either proves progress or exposes the next demand
 ```
 
-The heuristic remains human-interpretable: the cost function chooses what
-matters. Demand closure performs deterministic theory reasoning after that
-choice.
+This plan does **not** initially generate a batch of consequences for a nested
+write chain. Demand changes which existing candidate is selected first. It does
+not add a second source of instantiations.
+
+## What Counts as Demand
+
+A demand is a frame-aware request for a value that matters to the current
+counterexample. The initial roots come from the negated property at the current
+BMC depth:
+
+- array reads used by the property;
+- their index expressions;
+- scalar values and predicates that consume those reads; and
+- helper definitions reachable from those expressions.
+
+Walk backward from those roots through:
+
+- zero-argument helper definitions;
+- current/next-state assignments in the transition relation;
+- `Read(array, index)` dependencies;
+- `Write(base, index, value)` dependencies; and
+- scalar dependencies in array indices and written values.
+
+The result is a small demand graph. Each node retains its BMC frame and edge
+kind so that “same symbol at another frame” is not treated as equally relevant.
+
+For example, if the property depends on `Read(B@k, j@k)` and the transition
+defines `B@k` from `Write(A@(k-1), i@(k-1), v@(k-1))`, candidates connecting
+that write to the demanded read should outrank unrelated reads and writes from
+the same model.
 
 ## Current Seams
 
-The array scheduler currently stops after finding one regular conflict:
-[array_conflict_scheduler.rs](../src/theories/array/array_conflict_scheduler.rs#L246-L285).
-That preserves the existing one-seed cost-function decision.
+The necessary information is already present, but it is currently flattened:
 
-The selected array expressions are returned to `Abstract::finish`, converted to
-SMT terms, and added to the problem:
-[array_abstract.rs](../src/strategies/array_abstract.rs#L232-L361).
+- `SubtermHandler` keeps property, transition, initial, and instantiation
+  subterms separately:
+  [subterm_handler.rs](../src/subterm_handler.rs).
+- `ReadsAndWrites` records array/read/index and array/write/index/value tuples:
+  [reads_and_write.rs](../smt2parser/src/vmt/reads_and_write.rs).
+- `DefinitionGraph` and `DefinitionMaterializer` preserve helper-definition
+  dependencies:
+  [definition_graph.rs](../smt2parser/src/vmt/definition_graph.rs) and
+  [definition_materializer.rs](../smt2parser/src/vmt/definition_materializer.rs).
+- `ArrayConflictScheduler` already enumerates candidate axiom violations and
+  asks the extractor to choose concrete terms:
+  [array_conflict_scheduler.rs](../src/theories/array/array_conflict_scheduler.rs).
 
-`InstantiationStrategy` already has two lifecycle hooks:
+Do not hide the demand graph inside a new monolithic cost function. Build it as
+a small analysis object that can annotate candidates, then retain the existing
+BMC cost as the tie-breaker and fallback.
 
-- `on_generate`, when an instance is found;
-- `on_loop`, when BMC advances to another depth.
+## Candidate Ranking
 
-See
-[instantiation_strategy/mod.rs](../src/instantiation_strategy/mod.rs#L18-L60).
+Begin with a tiered rank rather than a hard filter:
 
-The main refactor is to make "instance found" a first-class event carrying enough
-information for deterministic expansion.
+1. **Direct demand:** the candidate explains a demanded read over the write that
+   defines its array value at the relevant frame.
+2. **Demand predecessor:** the candidate exposes a read or written value that is
+   the next predecessor on a demanded path.
+3. **Index/value support:** the candidate uses an index or value expression on a
+   demanded path but does not directly connect the demanded read and write.
+4. **Unrelated:** no known connection to the current demand graph.
 
-## Instantiator Shape
+Within a tier, prefer:
 
-Treat instantiators as composable policies with two events:
+- shorter graph distance to the property;
+- exact array and index-expression matches;
+- closer frame alignment;
+- terms already present in the property or transition formula; and then
+- the existing BMC cost and deterministic textual tie-breaking.
 
-```rust
-trait Instantiator {
-    fn on_find(&mut self, found: FoundInstantiation, context: &mut Context);
-    fn on_loop(&mut self, depth: u16, context: &mut Context);
-}
-```
+The fallback is essential. If no candidate is demand-related, use the current
+selector unchanged. This preserves refinement progress while the graph analysis
+is incomplete.
 
-The existing policies remain simple:
+After adding the selected formula, update the demand frontier from the next SAT
+model. Do not eagerly walk the whole graph and assert every formula on it. The
+next model tells us which predecessor is actually still missing.
 
-- `FullUnroll` handles a found instance using its current frame expansion and
-  handles later BMC depths using its current loop behavior.
-- `NoUnrollOnLoop` handles a found instance but does nothing extra on a loop.
+## Smaller Equality-Reduction Changes
 
-`DemandClosure` wraps one of those policies:
+These should be evaluated before or alongside the ranker because they are
+narrower and easier to attribute.
 
-```text
-DemandClosure<FullUnroll>
-DemandClosure<NoUnrollOnLoop>
-```
+### 1. Eliminate exact read-after-write formulas before abstraction
 
-On `on_find`, it derives the closure and passes every resulting instance to the
-wrapped policy. On `on_loop`, it simply delegates. This keeps theory expansion
-separate from frame placement.
-
-## Seed Information
-
-The scheduler should return a `FoundInstantiation` containing:
-
-- the selected lemma;
-- its axiom and cost-function provenance; and
-- an optional theory-specific seed.
-
-For the first implementation, the only special seed is an array read over a
-write:
-
-```text
-Read(Write(A, i, v), j)
-```
-
-The seed must contain stable expressions, not `egg::Id` values. The e-graph is
-recreated for every refinement step in
-[array_abstract.rs](../src/strategies/array_abstract.rs#L201-L220).
-
-## Demand Closure
-
-Version one walks only the explicit write chain in the selected expression:
+Implement the exact syntactic rewrite already specified in
+[array-preprocessing-optimizations.md](array-preprocessing-optimizations.md):
 
 ```text
-Read(Write(Write(A, i1, v1), i2, v2), j)
+select(store(A, i, v), i)  ->  v
 ```
 
-For each write edge it emits the valid equality:
+This removes an array term that would otherwise require a read-after-write
+equality instance. It is the lowest-risk first change.
 
-```text
-Read(Write(A, i, v), j)
-    = ite(i = j, v, Read(A, j))
-```
+### 2. Canonicalize and deduplicate asserted equalities
 
-When `i` and `j` are exactly the same expression, it may emit the simpler:
+Count ground equality assertions before changing behavior. Then canonicalize
+the two sides for deduplication so syntactic variants such as `a = b` and
+`b = a` share an identity. Apply deduplication after BMC indexing and helper
+materialization, because that is the formula Z3 actually receives.
 
-```text
-Read(Write(A, i, v), i) = v
-```
+Keep separate counts for:
 
-Otherwise it keeps the `ite`; it does not guess equality or disequality from the
-current SAT model.
+- abstract theory instances;
+- indexed theory equalities;
+- helper-definition equalities; and
+- unique assertions accepted by Z3.
 
-Use a small fixed internal step limit initially, such as eight writes. Record
-when the limit is reached, but do not add another normal user-facing option until
-there is evidence that users need it.
+Do not infer from Z3's `added eqs` counter that Yardbird asserted the same
+number of equality formulas. `added eqs` counts internal equality-processing
+attempts, not input assertions.
+
+### 3. Place instances only on demanded frames
+
+The current full-unroll policy can materialize a newly found instance at every
+eligible historical frame and then at later frames. Once candidate provenance
+contains a demanded path and frame, compare full unrolling with asserting the
+instance only at frames touched by that path.
+
+This is a direct way to reduce indexed equality assertions. It should follow the
+rank-only experiment because frame restriction changes placement and can add
+refinement rounds if the demand slice is incomplete.
+
+### 4. Slice model/e-graph equalities only after ranking works
+
+`ArrayRefinementState::update_with_subterms` currently evaluates every collected
+non-Boolean subterm and unions it with its model value in the e-graph. A later
+experiment can begin with demanded subterms and widen to all subterms on no
+progress.
+
+This reduces e-graph model equalities and candidate-search work; it does not
+directly reduce Z3 input equalities. Keep those measurements distinct.
+
+## Evidence From the Depth-50 Evaluation
+
+The full evaluation gives the ranker a clear optimization target. See
+[z3-deep-clean-solver-stats.md](z3-deep-clean-solver-stats.md).
+
+- Abstract's large aggregate Z3 win is concentrated in expensive solves. The
+  new selector must preserve the formulas that prevent the hard-tail search
+  state from exploding.
+- On end-to-end wins, abstract had substantially fewer decisions, added
+  equalities, resource work, clauses, and Boolean variables in aggregate. Those
+  are better primary signals than raw conflict count.
+- Conflicts are not equal-cost events. Do not optimize the demand score directly
+  for fewer conflicts.
+- `array_split_20` and `array_split_21` are already 21--26x faster in Z3 under
+  abstraction but lose roughly 50--68 seconds outside `check_sat`. They are
+  useful for testing whether better ordering reduces repeated Yardbird search.
+- `array_nonlin_square` is a genuine solver regression and should guard against
+  a ranking rule that prefers formulas producing expensive arithmetic search.
+
+## Experiment Order
+
+1. **Baseline counters.** Record candidate count, selected candidate, demand
+   tier/distance in shadow mode, abstract instances, indexed equalities,
+   helper-definition equalities, unique Z3 assertions, checks, and timing.
+2. **Exact read-after-write preprocessing.** Measure it alone so its equality
+   reduction is attributable.
+3. **Shadow demand ranking.** Build the property-rooted demand graph and log what
+   it would select without changing the current choice.
+4. **Rank-only demand selection.** Still emit exactly one formula per refinement
+   and retain the current selector as fallback.
+5. **Canonical ground-equality deduplication.** Measure how many real duplicates
+   exist before relying on it for a performance claim.
+6. **Demand-local frame placement.** Compare with full unrolling after the
+   selected formula has stable frame provenance.
+7. **Demand-sliced e-graph population with widening fallback.** Attempt only if
+   candidate search remains a material cost after the earlier changes.
+
+Do not begin with top-k selection or eager formula generation. Those conflate
+formula quality with batching and move away from the goal of fewer
+instantiations.
+
+## Target Cohorts
+
+Use a small stratified set before a full sweep:
+
+- **Yardbird-search targets:** `array_split_20` and `array_split_21`.
+- **Solver-regression targets:** `array_nonlin_square` and the other
+  nonlinear/decision-heavy losses identified by the paired report.
+- **Hard-tail guardrails:** `array_tiling_tcpy2`, `array_tiling_tcpy3`, and
+  `array_init_addvar7`.
+- **Simple attribution cases:** benchmarks containing exact
+  `select(store(...), same-index)` patterns.
+
+## Validation and Stop/Go Criteria
+
+Correctness requires identical bounded outcomes and no lost counterexamples.
+
+Primary measurements are paired per benchmark:
+
+- abstract and indexed instantiation counts;
+- unique equality assertions sent to Z3;
+- refinement checks per depth;
+- time outside `check_sat`;
+- Z3 time and total wall time; and
+- decisions, resource count, added equalities, clauses, and Boolean variables.
+
+Use conflicts and propagations as secondary explanations.
+
+Advance the demand ranker if it reduces instantiations or repeated Yardbird work
+without moving Z3's hard-tail curve backward. A modest median improvement is
+not enough if the existing large tail wins regress.
+
+Advance frame-local placement only if it materially reduces indexed assertions
+without widespread extra refinement. Stop a restriction or slicing experiment
+when it repeatedly falls back to the full set or increases checks enough to
+erase the assertion reduction.
+
+For timing claims, repeat the target cohort locally before a full benchmark
+sweep. The full report should include the Z3-only cactus plot and the paired
+Z3-versus-end-to-end boundary plot.
 
 ## Implementation Steps
 
-1. Refactor the instantiator interface around `on_find` and `on_loop` without
-   changing behavior.
-2. Preserve the selected array conflict as a stable `FoundInstantiation`.
-3. Implement `DemandClosure` for explicit read/write chains.
-4. Pass the seed and all derived instances to the wrapped unrolling policy.
-5. Add exact instance deduplication before solver assertion.
-6. Compare baseline, `DemandClosure<FullUnroll>`, and
-   `DemandClosure<NoUnrollOnLoop>`.
-
-## Cost-Guided Multiple Seeds
-
-Selecting the best several conflicts before returning to the solver is a logical
-follow-up, but it changes the heuristic story more than demand closure does.
-
-Evaluate it only after single-seed demand closure:
-
-1. Baseline: one seed, no closure.
-2. One seed with demand closure.
-3. Top-k cost-ranked seeds without closure.
-4. Top-k seeds with closure, only if both ideas help independently.
-
-Top-k should use the existing cost function ranking and retain a readable record
-of why every seed was selected.
-
-## Validation
-
-Unit tests should cover one write, nested writes, exact same indices, unknown
-index relations, closure limits, and duplicate instances.
-
-Benchmark measurements should include:
-
-- solver checks per BMC depth;
-- total and unique instances;
-- indexed assertions;
-- solver time and total wall time; and
-- timeouts and verification outcomes.
-
-The change is successful if it substantially reduces solver checks or solver
-time without correctness differences or widespread instance growth. Adding more
-lemmas is not itself a win; the solver must benefit from them.
+1. Add a frame-aware `DemandGraph` analysis over property, definition, and
+   transition dependencies.
+2. Annotate scheduler candidates with demand tier, graph distance, array/index
+   match, and frame match.
+3. Log the annotations in shadow mode using existing decision provenance.
+4. Add a demand-first comparator ahead of the existing BMC-cost tie-breaker.
+5. Implement the exact preprocessing rewrite and ground-equality counters as
+   independent changes.
+6. Add canonical ground-equality deduplication if the counters show duplicates.
+7. Add demand-local frame placement as a separate experimental policy.
+8. Add demanded-subterm e-graph slicing only if profiling still justifies it.
 
 ## Expected Effort
 
-- Interface refactor with unchanged behavior: 2–3 days.
-- First explicit-chain demand closure: 3–5 days.
-- Benchmarking and tuning: 2–4 days.
-- Top-k seed selection, if pursued: another 2–4 days.
+- Demand graph and shadow annotations: 2--4 days.
+- Rank-only selection experiment: 2--3 days.
+- Exact preprocessing and equality counters: 1--2 days.
+- Equality deduplication, if justified: 1--2 days.
+- Demand-local frame placement: 2--4 days.
+- Benchmarking and analysis: 2--4 days.
