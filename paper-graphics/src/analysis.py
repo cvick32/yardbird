@@ -11,8 +11,23 @@ from typing import Any
 from .benchmark_parsing import BenchmarkResult
 
 
-ANALYSIS_SCHEMA_VERSION = "yardbird-analysis-v1"
+ANALYSIS_SCHEMA_VERSION = "yardbird-analysis-v2"
 DEFAULT_RUNTIME_TIE_TOLERANCE = 0.05
+SOLVER_DIAGNOSTIC_METRICS = (
+    ("conflicts", "Conflicts", "solver_conflicts"),
+    ("decisions", "Decisions", "solver_decisions"),
+    ("propagations", "Propagations", "solver_propagations"),
+    (
+        "binary propagations",
+        "Binary propagations",
+        "solver_binary_propagations",
+    ),
+    ("added eqs", "Added equalities", "solver_added_equalities"),
+    ("rlimit count", "Resource-limit count", "solver_rlimit_count"),
+    ("mk clause", "Clauses created", "solver_clauses_created"),
+    ("mk bool var", "Boolean variables created", "solver_bool_vars_created"),
+    ("arith-conflicts", "Arithmetic conflicts", "solver_arith_conflicts"),
+)
 
 
 def _strategy_sort_key(strategy_id: str, baseline_strategy: str) -> tuple[int, str]:
@@ -54,8 +69,176 @@ def _geometric_mean(values: list[float]) -> float | None:
     return math.exp(sum(math.log(value) for value in positive) / len(positive))
 
 
+def _ranks(values: list[float]) -> list[float]:
+    """Return one-based average ranks, including tied values."""
+    indexed = sorted(enumerate(values), key=lambda item: item[1])
+    ranks = [0.0] * len(values)
+    start = 0
+    while start < len(indexed):
+        end = start + 1
+        while end < len(indexed) and indexed[end][1] == indexed[start][1]:
+            end += 1
+        average_rank = (start + 1 + end) / 2.0
+        for original_index, _ in indexed[start:end]:
+            ranks[original_index] = average_rank
+        start = end
+    return ranks
+
+
+def _spearman(xs: list[float], ys: list[float]) -> float | None:
+    if len(xs) != len(ys) or len(xs) < 3:
+        return None
+    x_ranks = _ranks(xs)
+    y_ranks = _ranks(ys)
+    x_mean = statistics.fmean(x_ranks)
+    y_mean = statistics.fmean(y_ranks)
+    numerator = sum(
+        (x_value - x_mean) * (y_value - y_mean)
+        for x_value, y_value in zip(x_ranks, y_ranks)
+    )
+    x_scale = math.sqrt(sum((value - x_mean) ** 2 for value in x_ranks))
+    y_scale = math.sqrt(sum((value - y_mean) ** 2 for value in y_ranks))
+    if x_scale == 0 or y_scale == 0:
+        return None
+    return numerator / (x_scale * y_scale)
+
+
+def _solver_stat_value(result: BenchmarkResult, stat_key: str) -> float | None:
+    if stat_key == "conflicts":
+        if result.total_conflicts is not None:
+            return result.total_conflicts
+        return 0.0 if result.solver_stats else None
+    if stat_key in result.solver_stats:
+        return result.solver_stats[stat_key]
+    # Z3 omits zero-valued statistics from otherwise populated snapshots.
+    return 0.0 if result.solver_stats else None
+
+
+def _build_solver_diagnostics(
+    grouped_results: dict[str, dict[str, BenchmarkResult]],
+    strategies: list[str],
+    baseline_strategy: str,
+    display_names: dict[str, str],
+    runtime_tie_tolerance: float,
+) -> list[dict[str, Any]]:
+    """Summarize paired Z3 counters on benchmarks solved by both strategies."""
+    diagnostics = []
+    for candidate_id in strategies:
+        if candidate_id == baseline_strategy:
+            continue
+
+        pairs = []
+        for results in grouped_results.values():
+            candidate = results.get(candidate_id)
+            baseline = results.get(baseline_strategy)
+            if (
+                candidate is not None
+                and baseline is not None
+                and candidate.success
+                and baseline.success
+            ):
+                pairs.append((candidate, baseline))
+
+        metric_rows = []
+        for stat_key, label, export_name in SOLVER_DIAGNOSTIC_METRICS:
+            observed = []
+            for candidate, baseline in pairs:
+                candidate_value = _solver_stat_value(candidate, stat_key)
+                baseline_value = _solver_stat_value(baseline, stat_key)
+                if candidate_value is None or baseline_value is None:
+                    continue
+                observed.append((candidate, baseline, candidate_value, baseline_value))
+
+            positive = [
+                (candidate, baseline, candidate_value, baseline_value)
+                for candidate, baseline, candidate_value, baseline_value in observed
+                if candidate_value > 0
+                and baseline_value > 0
+            ]
+            correlation_pairs = [
+                item
+                for item in observed
+                if item[0].solver_time_s > 0 and item[1].solver_time_s > 0
+            ]
+            stat_log_ratios = [
+                math.log1p(candidate_value) - math.log1p(baseline_value)
+                for _, _, candidate_value, baseline_value in correlation_pairs
+            ]
+            solver_time_log_ratios = [
+                math.log(candidate.solver_time_s / baseline.solver_time_s)
+                for candidate, baseline, _, _ in correlation_pairs
+            ]
+            runtime_win_relations = Counter()
+            for candidate, baseline, candidate_value, baseline_value in observed:
+                if candidate.runtime_ms <= 0 or baseline.runtime_ms <= 0:
+                    continue
+                speedup = baseline.runtime_ms / candidate.runtime_ms
+                if speedup <= 1.0 + runtime_tie_tolerance:
+                    continue
+                if candidate_value < baseline_value:
+                    runtime_win_relations["lower"] += 1
+                elif candidate_value > baseline_value:
+                    runtime_win_relations["higher"] += 1
+                else:
+                    runtime_win_relations["equal"] += 1
+
+            metric_rows.append(
+                {
+                    "stat_key": stat_key,
+                    "label": label,
+                    "export_name": export_name,
+                    "paired_count": len(observed),
+                    "positive_paired_count": len(positive),
+                    "candidate_median": _round(
+                        _median([item[2] for item in observed]), 1
+                    ),
+                    "baseline_median": _round(
+                        _median([item[3] for item in observed]), 1
+                    ),
+                    "paired_median_ratio": _round(
+                        _median(
+                            [
+                                candidate_value / baseline_value
+                                for _, _, candidate_value, baseline_value in positive
+                            ]
+                        )
+                    ),
+                    "candidate_lower_count": sum(
+                        candidate_value < baseline_value
+                        for _, _, candidate_value, baseline_value in observed
+                    ),
+                    "equal_count": sum(
+                        candidate_value == baseline_value
+                        for _, _, candidate_value, baseline_value in observed
+                    ),
+                    "candidate_higher_count": sum(
+                        candidate_value > baseline_value
+                        for _, _, candidate_value, baseline_value in observed
+                    ),
+                    "runtime_win_candidate_lower_count": runtime_win_relations["lower"],
+                    "runtime_win_equal_count": runtime_win_relations["equal"],
+                    "runtime_win_candidate_higher_count": runtime_win_relations["higher"],
+                    "paired_log_ratio_solver_time_spearman": _round(
+                        _spearman(stat_log_ratios, solver_time_log_ratios)
+                    ),
+                }
+            )
+
+        diagnostics.append(
+            {
+                "candidate_strategy_id": candidate_id,
+                "candidate_display_name": display_names[candidate_id],
+                "baseline_strategy_id": baseline_strategy,
+                "baseline_display_name": display_names[baseline_strategy],
+                "shared_solved_count": len(pairs),
+                "metrics": metric_rows,
+            }
+        )
+    return diagnostics
+
+
 def _benchmark_row(result: BenchmarkResult, strategy_id: str) -> dict[str, Any]:
-    return {
+    row = {
         "benchmark": result.example_name,
         "strategy_id": strategy_id,
         "strategy": result.strategy,
@@ -71,6 +254,11 @@ def _benchmark_row(result: BenchmarkResult, strategy_id: str) -> dict[str, Any]:
         "num_checks": result.num_checks if result.success else None,
         "total_conflicts": result.total_conflicts if result.success else None,
     }
+    for stat_key, _, export_name in SOLVER_DIAGNOSTIC_METRICS:
+        row[export_name] = (
+            _solver_stat_value(result, stat_key) if result.success else None
+        )
+    return row
 
 
 def _comparison_row(
@@ -320,6 +508,13 @@ def build_analysis(
         for results in grouped_results.values()
         if all(strategy_id in results for strategy_id in strategy_keys)
     )
+    solver_diagnostics = _build_solver_diagnostics(
+        grouped_results,
+        strategies,
+        baseline_strategy,
+        display_names,
+        runtime_tie_tolerance,
+    )
 
     return {
         "schema_version": ANALYSIS_SCHEMA_VERSION,
@@ -339,6 +534,7 @@ def build_analysis(
         },
         "strategy_summaries": strategy_summaries,
         "baseline_comparisons": comparison_summaries,
+        "solver_diagnostics": solver_diagnostics,
         "benchmark_results": sorted(
             normalized_rows,
             key=lambda row: (row["benchmark"], row["strategy_id"]),
@@ -392,6 +588,42 @@ def analysis_markdown(analysis: dict[str, Any]) -> str:
             f"{summary['unsolved']} | {summary['missing_results']} | "
             f"{solve_rate_text} | {median_text} | "
             f"{summary['fastest_solve_count']} | {summary['exclusive_solve_count']} |"
+        )
+
+    for diagnostic in analysis["solver_diagnostics"]:
+        lines.extend(
+            [
+                "",
+                f"## Paired Z3 diagnostics: {diagnostic['candidate_display_name']} vs "
+                f"{diagnostic['baseline_display_name']}",
+                "",
+                f"Shared successful solves: {diagnostic['shared_solved_count']}",
+                "",
+                "| Counter | Candidate median | Baseline median | Median ratio | "
+                "Lower / equal / higher | Ratio correlation |",
+                "|---|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for metric in diagnostic["metrics"]:
+            ratio = metric["paired_median_ratio"]
+            ratio_text = f"{ratio:.3f}x" if ratio is not None else "-"
+            correlation = metric["paired_log_ratio_solver_time_spearman"]
+            correlation_text = (
+                f"{correlation:.3f}" if correlation is not None else "-"
+            )
+            lines.append(
+                f"| {metric['label']} | {metric['candidate_median'] or 0:g} | "
+                f"{metric['baseline_median'] or 0:g} | {ratio_text} | "
+                f"{metric['candidate_lower_count']} / {metric['equal_count']} / "
+                f"{metric['candidate_higher_count']} | {correlation_text} |"
+            )
+        lines.extend(
+            [
+                "",
+                "Ratios use candidate/baseline on positive paired counters. Ratio "
+                "correlation is Spearman rho between the log1p counter difference and log "
+                "solver-time ratio; it is descriptive, not causal.",
+            ]
         )
 
     for comparison in analysis["baseline_comparisons"]:
@@ -472,6 +704,7 @@ def write_analysis_exports(
     comparison_summary_csv = data_dir / "baseline_comparisons.csv"
     benchmark_results_csv = data_dir / "benchmark_results.csv"
     benchmark_comparisons_csv = data_dir / "benchmark_comparisons.csv"
+    solver_diagnostics_csv = data_dir / "solver_diagnostics.csv"
 
     _write_csv(
         strategy_csv,
@@ -540,6 +773,7 @@ def write_analysis_exports(
             "used_instantiations",
             "num_checks",
             "total_conflicts",
+            *[export_name for _, _, export_name in SOLVER_DIAGNOSTIC_METRICS],
         ],
     )
     _write_csv(
@@ -561,6 +795,45 @@ def write_analysis_exports(
             "baseline_instantiations",
         ],
     )
+    solver_diagnostic_rows = []
+    for diagnostic in analysis["solver_diagnostics"]:
+        for metric in diagnostic["metrics"]:
+            solver_diagnostic_rows.append(
+                {
+                    "candidate_strategy_id": diagnostic["candidate_strategy_id"],
+                    "candidate_display_name": diagnostic["candidate_display_name"],
+                    "baseline_strategy_id": diagnostic["baseline_strategy_id"],
+                    "baseline_display_name": diagnostic["baseline_display_name"],
+                    "shared_solved_count": diagnostic["shared_solved_count"],
+                    **metric,
+                }
+            )
+    _write_csv(
+        solver_diagnostics_csv,
+        solver_diagnostic_rows,
+        [
+            "candidate_strategy_id",
+            "candidate_display_name",
+            "baseline_strategy_id",
+            "baseline_display_name",
+            "shared_solved_count",
+            "stat_key",
+            "label",
+            "export_name",
+            "paired_count",
+            "positive_paired_count",
+            "candidate_median",
+            "baseline_median",
+            "paired_median_ratio",
+            "candidate_lower_count",
+            "equal_count",
+            "candidate_higher_count",
+            "runtime_win_candidate_lower_count",
+            "runtime_win_equal_count",
+            "runtime_win_candidate_higher_count",
+            "paired_log_ratio_solver_time_spearman",
+        ],
+    )
 
     return {
         "analysis_json": str(analysis_json),
@@ -570,5 +843,6 @@ def write_analysis_exports(
             str(comparison_summary_csv),
             str(benchmark_results_csv),
             str(benchmark_comparisons_csv),
+            str(solver_diagnostics_csv),
         ],
     }

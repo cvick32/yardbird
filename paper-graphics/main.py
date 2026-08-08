@@ -7,9 +7,15 @@ from src.unique_solves import unique_solves
 from src.data_generators import (
     RuntimeScatterPlotGenerator,
     CactusPlotGenerator,
+    SolverRuntimeCactusPlotGenerator,
     InstantiationScatterPlotGenerator,
     InstCactusPlotGenerator,
     ConflictCactusPlotGenerator,
+    SolverStatRatioPlotGenerator,
+    RuntimeBoundaryPlotGenerator,
+    ABSTRACT_BETTER_COLOR,
+    Z3_BETTER_COLOR,
+    EQUAL_COLOR,
 )
 from src.tikz_generators import (
     ScatterPlotTikzGenerator,
@@ -17,6 +23,17 @@ from src.tikz_generators import (
     InstCactusPlotTikzGenerator,
     ConflictCactusPlotTikzGenerator,
     TableTikzGenerator,
+)
+
+
+SOLVER_STAT_PLOTS = (
+    ("conflicts", "Conflicts", "conflicts"),
+    ("decisions", "Decisions", "decisions"),
+    ("propagations", "Propagations", "propagations"),
+    ("added eqs", "Added Equalities", "added_equalities"),
+    ("rlimit count", "Resource-Limit Count", "rlimit_count"),
+    ("mk clause", "Clauses Created", "clauses_created"),
+    ("mk bool var", "Boolean Variables Created", "bool_vars_created"),
 )
 
 
@@ -111,6 +128,8 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     # Initialize generators
     runtime_gen = RuntimeScatterPlotGenerator(grouped)
     inst_gen = InstantiationScatterPlotGenerator(grouped)
+    solver_stat_gen = SolverStatRatioPlotGenerator(grouped)
+    runtime_boundary_gen = RuntimeBoundaryPlotGenerator(grouped)
 
     # Generate runtime and instantiation plots for each non-concrete strategy
     for strategy_key in non_baseline_strategies:
@@ -138,6 +157,11 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
                 ylabel=f"{display_name} Runtime (s)",
                 caption=f"Runtime comparison between {display_name} and {baseline_display_name}.",
                 use_log_scale=True,
+                series_labels={
+                    ABSTRACT_BETTER_COLOR: f"{display_name} faster",
+                    Z3_BETTER_COLOR: f"{baseline_display_name} faster",
+                    EQUAL_COLOR: "Equal runtime",
+                },
             )
 
             output_file = output_dir / f"runtime_scatter_{strategy_key}.tex"
@@ -171,9 +195,77 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
                 ylabel=f"{display_name} Instantiations",
                 caption=f"Array axiom instantiation comparison between {display_name} and {baseline_display_name} (only successful benchmarks shown).",
                 use_log_scale=True,
+                series_labels={
+                    ABSTRACT_BETTER_COLOR: f"{display_name} fewer",
+                    Z3_BETTER_COLOR: f"{baseline_display_name} fewer",
+                    EQUAL_COLOR: "Equal count",
+                },
             )
 
             output_file = output_dir / f"instantiation_scatter_{strategy_key}.tex"
+            output_file.write_text(tikz_code)
+            print(f"    Saved: {output_file}")
+
+        # Generate paired solver-stat plots, colored by end-to-end runtime outcome.
+        print("\n  Generating paired solver-stat plots...")
+        display_name = display_name_for_strategy(grouped, strategy_key)
+        for stat_key, stat_label, stat_slug in SOLVER_STAT_PLOTS:
+            stat_points = solver_stat_gen.generate_points(
+                baseline_strategy,
+                strategy_key,
+                stat_key,
+            )
+            if not stat_points:
+                continue
+            tikz_code = ScatterPlotTikzGenerator.generate(
+                stat_points,
+                label=f"fig:{strategy_key}_{stat_slug}_scatter",
+                title=f"{stat_label} Reduction vs Z3 Speedup",
+                xlabel=f"{stat_label} Reduction (Baseline / Candidate)",
+                ylabel="Z3 Speedup (Baseline / Candidate)",
+                caption=(
+                    f"Paired {stat_label.lower()} reduction versus Z3 speedup for shared "
+                    "successful solves. Values above 1 favor the candidate on each axis; "
+                    "upper-left points are faster in Z3 despite more counter events. Point "
+                    "color records end-to-end runtime outcome using a 5 percent tie band."
+                ),
+                use_log_scale=True,
+                reference_mode="unit",
+                series_labels={
+                    ABSTRACT_BETTER_COLOR: f"{display_name} runtime win",
+                    Z3_BETTER_COLOR: f"{baseline_display_name} runtime win",
+                    EQUAL_COLOR: "Runtime tie",
+                },
+            )
+            output_file = output_dir / f"solver_stat_{stat_slug}_{strategy_key}.tex"
+            output_file.write_text(tikz_code)
+            print(f"    Saved: {output_file}")
+
+        boundary_points = runtime_boundary_gen.generate_points(
+            baseline_strategy,
+            strategy_key,
+        )
+        if boundary_points:
+            tikz_code = ScatterPlotTikzGenerator.generate(
+                boundary_points,
+                label=f"fig:{strategy_key}_solver_boundary",
+                title="Z3 Speedup vs End-to-End Speedup",
+                xlabel="Z3 Speedup (Baseline / Candidate)",
+                ylabel="End-to-End Speedup (Baseline / Candidate)",
+                caption=(
+                    "Paired time inside Z3 versus end-to-end runtime. Values above 1 favor "
+                    "the candidate. Lower-right points are Z3 wins erased by work outside "
+                    "check-sat, including refinement and model processing."
+                ),
+                use_log_scale=True,
+                reference_mode="unit",
+                series_labels={
+                    ABSTRACT_BETTER_COLOR: f"{display_name} runtime win",
+                    Z3_BETTER_COLOR: f"{baseline_display_name} runtime win",
+                    EQUAL_COLOR: "Runtime tie",
+                },
+            )
+            output_file = output_dir / f"solver_boundary_{strategy_key}.tex"
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
 
@@ -208,6 +300,33 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
         )
 
         output_file = output_dir / "runtime_cactus_plot.tex"
+        output_file.write_text(tikz_code)
+        print(f"  Saved: {output_file}")
+
+    # Generate Z3-only runtime cactus plot
+    print(f"\n{'=' * 60}")
+    print("Generating Z3 runtime cactus plot")
+    print(f"{'=' * 60}")
+
+    solver_runtime_gen = SolverRuntimeCactusPlotGenerator(all_results)
+    solver_runtime_data = solver_runtime_gen.generate_data()
+
+    if solver_runtime_data:
+        tikz_code = CactusPlotTikzGenerator.generate(
+            solver_runtime_data,
+            title="Z3 Runtime Performance Comparison",
+            xlabel="Number of Solved Instances",
+            ylabel="Time in Z3 (s)",
+            caption=(
+                "Cactus plot of time spent inside Z3 for each strategy's successful "
+                "runs (lower lines are better). Runs without solver timing data are "
+                "omitted; curves may contain different solved benchmark populations."
+            ),
+            use_log_scale=True,
+            label="fig:cactus_z3_runtime",
+        )
+
+        output_file = output_dir / "solver_runtime_cactus_plot.tex"
         output_file.write_text(tikz_code)
         print(f"  Saved: {output_file}")
 
@@ -247,7 +366,11 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             title="Solver Conflict Count Comparison",
             xlabel="Number of Benchmarks",
             ylabel="Total Solver Conflicts",
-            caption="Cactus plot comparing the total solver conflicts needed across all strategies (lower lines are better).",
+            caption=(
+                "Marginal cactus plot of conflict counts for each strategy's successful "
+                "runs. The curves include different solved benchmark populations; use the "
+                "paired conflict-reduction panel for shared-solve comparisons."
+            ),
             use_log_scale=True,
         )
 

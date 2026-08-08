@@ -28,6 +28,7 @@ class BenchmarkParserTests(unittest.TestCase):
                                             "num checks": 3,
                                             "solver_time": 0.1,
                                             "conflicts": 11,
+                                            "decisions": 23,
                                         }
                                     },
                                 }
@@ -47,6 +48,7 @@ class BenchmarkParserTests(unittest.TestCase):
         self.assertEqual(parsed.used_instantiations, 7)
         self.assertEqual(parsed.num_checks, 3)
         self.assertEqual(parsed.total_conflicts, 11)
+        self.assertEqual(parsed.solver_stats["decisions"], 23)
 
 
 if __name__ == "__main__":

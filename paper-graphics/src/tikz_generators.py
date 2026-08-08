@@ -22,6 +22,8 @@ class ScatterPlotTikzGenerator:
         ylabel: str = "Strategy B Runtime (s)",
         caption: str = None,
         use_log_scale: bool = True,
+        series_labels: Optional[Dict[str, str]] = None,
+        reference_mode: str = "diagonal",
     ) -> str:
         """Generate TikZ scatter plot code
 
@@ -32,6 +34,8 @@ class ScatterPlotTikzGenerator:
             ylabel: Y-axis label
             caption: Optional figure caption
             use_log_scale: If True, use log-log scale; if False, use linear scale
+            series_labels: Optional legend labels keyed by point color
+            reference_mode: ``diagonal`` for x=y or ``unit`` for x=1/y=1
 
         Returns:
             TikZ/LaTeX code string
@@ -47,7 +51,10 @@ class ScatterPlotTikzGenerator:
         y_min, y_max = min(y_vals), max(y_vals)
 
         # Use log scale bounds with safety margins
-        if "Instantiation" in title:
+        if reference_mode == "unit":
+            x_min_bound = min(0.5, max(0.0001, x_min * 0.5))
+            y_min_bound = min(0.5, max(0.0001, y_min * 0.5))
+        elif "Instantiation" in title:
             x_min_bound = max(10, x_min * 0.5)
             y_min_bound = max(10, y_min * 0.5)
         else:
@@ -55,7 +62,16 @@ class ScatterPlotTikzGenerator:
             y_min_bound = max(0.1, y_min * 0.5)
         x_max_bound = max(x_max * 2, x_min_bound * 10)
         y_max_bound = max(y_max * 2, y_min_bound * 10)
+        if reference_mode == "unit":
+            x_max_bound = max(x_max_bound, 2)
+            y_max_bound = max(y_max_bound, 2)
         axis_env = "loglogaxis"
+
+        legend_options = ""
+        if series_labels:
+            legend_options = """
+    legend style={font=\\scriptsize},
+    legend pos=north west,"""
 
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
@@ -68,7 +84,7 @@ class ScatterPlotTikzGenerator:
     ymin={y_min_bound:.3f}, ymax={y_max_bound:.3f},
     grid=major,
     width=\\columnwidth,
-    height=8cm
+    height=8cm,{legend_options}
 ]
 
 % Data points"""
@@ -83,12 +99,18 @@ class ScatterPlotTikzGenerator:
             for point in abs_points:
                 tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
             tikz_code += "};\n"
+            if series_labels and ABSTRACT_BETTER_COLOR in series_labels:
+                tikz_code += (
+                    f"\\addlegendentry{{{series_labels[ABSTRACT_BETTER_COLOR]}}}\n"
+                )
 
         if z3_points:
             tikz_code += f"\n\\addplot[only marks, mark=*, color={Z3_BETTER_COLOR}] coordinates {{\n"
             for point in z3_points:
                 tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
             tikz_code += "};\n"
+            if series_labels and Z3_BETTER_COLOR in series_labels:
+                tikz_code += f"\\addlegendentry{{{series_labels[Z3_BETTER_COLOR]}}}\n"
 
         if equal_points:
             tikz_code += (
@@ -97,10 +119,20 @@ class ScatterPlotTikzGenerator:
             for point in equal_points:
                 tikz_code += f"    ({point.x:.6f}, {point.y:.6f})\n"
             tikz_code += "};\n"
+            if series_labels and EQUAL_COLOR in series_labels:
+                tikz_code += f"\\addlegendentry{{{series_labels[EQUAL_COLOR]}}}\n"
+
+        if reference_mode == "unit":
+            tikz_code += f"""
+% Unit lines divide counter reduction and Z3 speedup quadrants.
+\\addplot[dashed, color=black, forget plot] coordinates {{(1, {y_min_bound:.6f}) (1, {y_max_bound:.6f})}};
+\\addplot[dashed, color=black, forget plot] coordinates {{({x_min_bound:.6f}, 1) ({x_max_bound:.6f}, 1)}};"""
+        else:
+            tikz_code += f"""
+% Diagonal line (x=y)
+\\addplot[dashed, color=black, forget plot, domain={min(x_min_bound, y_min_bound):.6f}:{max(x_max_bound, y_max_bound):.6f}] {{x}};"""
 
         tikz_code += f"""
-% Diagonal line (x=y)
-\\addplot[dashed, color=black, domain={min(x_min_bound, x_max_bound):.6f}:{max(x_min_bound, x_max_bound):.6f}] {{x}};
 \\end{{{axis_env}}}
 \\end{{tikzpicture}}"""
 
@@ -124,6 +156,7 @@ class CactusPlotTikzGenerator:
         ylabel: str = "Runtime (s)",
         caption: str = None,
         use_log_scale: bool = True,
+        label: str = "fig:cactus_runtime",
     ) -> str:
         """Generate a cactus plot comparing strategies
 
@@ -138,6 +171,7 @@ class CactusPlotTikzGenerator:
             ylabel: Y-axis label (runtime)
             caption: Optional figure caption
             use_log_scale: If True, use log scale for y-axis
+            label: LaTeX figure label
 
         Returns:
             TikZ/LaTeX code string
@@ -145,18 +179,20 @@ class CactusPlotTikzGenerator:
         if not strategy_data:
             return "% No strategy data to plot"
 
-        # Find max values for axis bounds
+        # Find values for axis bounds
         max_instances = max(len(runtimes) for runtimes in strategy_data.values())
         max_time = max(max(runtimes) for runtimes in strategy_data.values() if runtimes)
+        min_time = min(min(runtimes) for runtimes in strategy_data.values() if runtimes)
 
         # Determine axis type and bounds
         if use_log_scale:
             y_axis = "semilogyaxis"
             y_max = max_time * 1.2
+            y_min = max(min_time * 0.8, 0.000001)
         else:
             y_axis = "axis"
             y_max = max_time * 1.05
-        y_min = 0.01
+            y_min = 0
         x_max = max_instances * 1.05
         # Color mapping for strategies
         strategy_colors = {
@@ -168,6 +204,9 @@ class CactusPlotTikzGenerator:
             "Prefer Constants": "softYellow",
             "Logistic Regression": "softTeal",
             "Z3 MBQI": "softBrown",
+            "Adaptive Cost": "softBrown",
+            "Split Cost": "softTeal",
+            "Index-Aware Cost": "softPurple",
         }
 
         tikz_code = f"""\\begin{{figure}}[htbp]
@@ -178,7 +217,7 @@ class CactusPlotTikzGenerator:
     xlabel={{{xlabel}}},
     ylabel={{{ylabel}}},
     xmin=0, xmax={x_max:.0f},
-    ymin={y_min:.3f}, ymax={y_max:.3f},
+    ymin={y_min:.6g}, ymax={y_max:.3f},
     grid=major,
     width=\\columnwidth,
     height=8cm,
@@ -190,7 +229,8 @@ class CactusPlotTikzGenerator:
 
         # Plot each strategy
         for strategy_name, sorted_times in sorted(strategy_data.items()):
-            tikz_code += f"\\addplot[thick, color={strategy_colors[strategy_name]}] coordinates {{\n"
+            color = strategy_colors.get(strategy_name, "black")
+            tikz_code += f"\\addplot[thick, color={color}] coordinates {{\n"
             for i, runtime in enumerate(sorted_times, start=1):
                 tikz_code += f"    ({i}, {runtime:.6f})\n"
             tikz_code += f"}};\n\\addlegendentry{{{strategy_name}}}\n\n"
@@ -202,7 +242,7 @@ class CactusPlotTikzGenerator:
         if caption:
             tikz_code += f"\n\\caption{{{caption}}}"
 
-        tikz_code += "\n\\label{fig:cactus_runtime}\n\\end{figure}"
+        tikz_code += f"\n\\label{{{label}}}\n\\end{{figure}}"
 
         return tikz_code
 

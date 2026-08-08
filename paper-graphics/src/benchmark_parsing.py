@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 from typing import Optional
@@ -23,6 +23,7 @@ class BenchmarkResult:
     num_checks: int
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
     total_conflicts: Optional[float] = None
+    solver_stats: dict[str, float] = field(default_factory=dict)
 
     def get_strategy_id(self) -> str:
         if self.strategy == "abstract" and self.cost_function:
@@ -133,6 +134,27 @@ def extract_total_conflicts(full_entry: dict, success: bool) -> Optional[float]:
         return None
 
 
+def extract_solver_stats(full_entry: dict, success: bool) -> dict[str, float]:
+    """Extract all numeric Z3 statistics for later paired diagnostics."""
+    if not success:
+        return {}
+
+    try:
+        stats = successful_payload(full_entry, success)["solver_statistics"]["stats"]
+    except (KeyError, TypeError):
+        return {}
+
+    numeric_stats: dict[str, float] = {}
+    for key, value in stats.items():
+        if isinstance(value, bool):
+            continue
+        try:
+            numeric_stats[str(key)] = float(value)
+        except (ValueError, TypeError):
+            continue
+    return numeric_stats
+
+
 class BenchmarkParser:
     """Parser for benchmark JSON results"""
 
@@ -178,6 +200,7 @@ class BenchmarkParser:
         )
         solver_time = extract_solver_time(result_entry, success)
         total_conflicts = extract_total_conflicts(result_entry, success)
+        solver_stats = extract_solver_stats(result_entry, success)
 
         return BenchmarkResult(
             example_name=example_name,
@@ -191,4 +214,5 @@ class BenchmarkParser:
             num_checks=find_num_checks(result_entry, strategy, success),
             solver_time_s=solver_time,
             total_conflicts=total_conflicts,
+            solver_stats=solver_stats,
         )

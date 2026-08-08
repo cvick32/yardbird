@@ -8,8 +8,9 @@
 #set heading(numbering: "1.")
 #set figure.caption(position: bottom)
 
-#show heading.where(level: 1): it => [
-  #v(0.75em)
+#show heading.where(level: 1): it => block(
+  width: 100%,
+  inset: (top: 0.75em, bottom: 0.5em),
+)[
   #text(size: 17pt, weight: "bold")[#it.body]
-  #v(0.25em)
 ]

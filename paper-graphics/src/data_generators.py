@@ -152,6 +152,32 @@ class CactusPlotGenerator:
         return strategy_runtimes
 
 
+class SolverRuntimeCactusPlotGenerator:
+    """Generate cactus data using only time reported inside Z3."""
+
+    def __init__(self, all_results: List[BenchmarkResult]):
+        self.all_results = all_results
+
+    def generate_data(self) -> Dict[str, List[float]]:
+        """Return sorted Z3 runtimes for successful runs with timing data.
+
+        Solver time is unavailable for failed runs and older result artifacts, so
+        those entries are omitted instead of being assigned an end-to-end timeout.
+        """
+        strategy_solver_times: Dict[str, List[float]] = {}
+        for result in self.all_results:
+            if not result.success or result.solver_time_s <= 0:
+                continue
+            strategy_solver_times.setdefault(result.get_display_name(), []).append(
+                result.solver_time_s
+            )
+
+        for solver_times in strategy_solver_times.values():
+            solver_times.sort()
+
+        return strategy_solver_times
+
+
 class InstantiationScatterPlotGenerator:
     """Generates axiom instantiation comparison scatter plots"""
 
@@ -211,6 +237,119 @@ class InstantiationScatterPlotGenerator:
 
             points.append(TikzPoint(x=inst1, y=inst2, label=label, color=color))
 
+        return points
+
+
+class SolverStatRatioPlotGenerator:
+    """Relate paired counter reduction to paired Z3 speedup."""
+
+    def __init__(self, grouped_results: Dict[str, Dict[str, BenchmarkResult]]):
+        self.grouped_results = grouped_results
+
+    def generate_points(
+        self,
+        baseline_strategy_key: str,
+        candidate_strategy_key: str,
+        stat_key: str,
+        runtime_tie_tolerance: float = 0.05,
+    ) -> List[TikzPoint]:
+        points = []
+        for example_name, strategies in self.grouped_results.items():
+            baseline = strategies.get(baseline_strategy_key)
+            candidate = strategies.get(candidate_strategy_key)
+            if (
+                baseline is None
+                or candidate is None
+                or not baseline.success
+                or not candidate.success
+            ):
+                continue
+
+            if stat_key == "conflicts":
+                baseline_value = baseline.total_conflicts
+                candidate_value = candidate.total_conflicts
+                if baseline_value is None and baseline.solver_stats:
+                    baseline_value = 0.0
+                if candidate_value is None and candidate.solver_stats:
+                    candidate_value = 0.0
+            elif baseline.solver_stats and candidate.solver_stats:
+                baseline_value = baseline.solver_stats.get(stat_key, 0.0)
+                candidate_value = candidate.solver_stats.get(stat_key, 0.0)
+            else:
+                baseline_value = None
+                candidate_value = None
+            if (
+                baseline_value is None
+                or candidate_value is None
+                or baseline.solver_time_s <= 0
+                or candidate.solver_time_s <= 0
+            ):
+                continue
+
+            speedup = baseline.runtime_ms / candidate.runtime_ms
+            if speedup > 1.0 + runtime_tie_tolerance:
+                color = ABSTRACT_BETTER_COLOR
+            elif speedup < 1.0 / (1.0 + runtime_tie_tolerance):
+                color = Z3_BETTER_COLOR
+            else:
+                color = EQUAL_COLOR
+
+            label = example_name.replace("examples/", "").replace(".vmt", "")
+            points.append(
+                TikzPoint(
+                    x=(baseline_value + 1.0) / (candidate_value + 1.0),
+                    y=baseline.solver_time_s / candidate.solver_time_s,
+                    label=label,
+                    color=color,
+                )
+            )
+        return points
+
+
+class RuntimeBoundaryPlotGenerator:
+    """Compare paired time inside Z3 with paired end-to-end time."""
+
+    def __init__(self, grouped_results: Dict[str, Dict[str, BenchmarkResult]]):
+        self.grouped_results = grouped_results
+
+    def generate_points(
+        self,
+        baseline_strategy_key: str,
+        candidate_strategy_key: str,
+        runtime_tie_tolerance: float = 0.05,
+    ) -> List[TikzPoint]:
+        points = []
+        for example_name, strategies in self.grouped_results.items():
+            baseline = strategies.get(baseline_strategy_key)
+            candidate = strategies.get(candidate_strategy_key)
+            if (
+                baseline is None
+                or candidate is None
+                or not baseline.success
+                or not candidate.success
+                or baseline.solver_time_s <= 0
+                or candidate.solver_time_s <= 0
+                or baseline.runtime_ms <= 0
+                or candidate.runtime_ms <= 0
+            ):
+                continue
+
+            wall_speedup = baseline.runtime_ms / candidate.runtime_ms
+            if wall_speedup > 1.0 + runtime_tie_tolerance:
+                color = ABSTRACT_BETTER_COLOR
+            elif wall_speedup < 1.0 / (1.0 + runtime_tie_tolerance):
+                color = Z3_BETTER_COLOR
+            else:
+                color = EQUAL_COLOR
+            label = example_name.replace("examples/", "").replace(".vmt", "")
+            points.append(
+                TikzPoint(
+                    x=baseline.solver_time_s / candidate.solver_time_s,
+                    y=wall_speedup,
+                    label=label,
+                    color=color,
+                )
+            )
         return points
 
 

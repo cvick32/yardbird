@@ -16,6 +16,7 @@ def result(
     runtime_ms: float,
     *,
     success: bool = True,
+    solver_stats: dict[str, float] | None = None,
 ) -> BenchmarkResult:
     return BenchmarkResult(
         example_name=benchmark,
@@ -29,6 +30,7 @@ def result(
         num_checks=5 if success else 10_000_000,
         solver_time_s=runtime_ms / 2000.0 if success else 0.0,
         total_conflicts=20 if success else None,
+        solver_stats=solver_stats or {},
     )
 
 
@@ -108,13 +110,33 @@ class AnalysisTests(unittest.TestCase):
             analysis_json = Path(metadata["analysis_json"])
             self.assertEqual(
                 json.loads(analysis_json.read_text())["schema_version"],
-                "yardbird-analysis-v1",
+                "yardbird-analysis-v2",
             )
             benchmark_csv = Path(temp_dir) / "data" / "benchmark_results.csv"
             with benchmark_csv.open(newline="") as input_file:
                 rows = list(csv.DictReader(input_file))
             self.assertEqual(len(rows), 10)
             self.assertEqual(rows[0]["total_conflicts"], "20")
+            self.assertTrue((Path(temp_dir) / "data" / "solver_diagnostics.csv").is_file())
+
+    def test_solver_diagnostics_are_paired_and_track_runtime_wins(self) -> None:
+        self.grouped["examples/array/a.vmt"]["concrete"].solver_stats = {
+            "decisions": 100
+        }
+        self.grouped["examples/array/a.vmt"]["abstract_bmc-cost"].solver_stats = {
+            "decisions": 25
+        }
+        analysis = build_analysis(
+            self.grouped, {"concrete", "abstract_bmc-cost"}, "concrete"
+        )
+        decisions = next(
+            metric
+            for metric in analysis["solver_diagnostics"][0]["metrics"]
+            if metric["stat_key"] == "decisions"
+        )
+        self.assertEqual(decisions["paired_count"], 1)
+        self.assertEqual(decisions["paired_median_ratio"], 0.25)
+        self.assertEqual(decisions["runtime_win_candidate_lower_count"], 1)
 
 
 if __name__ == "__main__":

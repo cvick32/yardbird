@@ -29,6 +29,9 @@ FIGURE_PREFIXES = (
     "runtime_cactus_plot",
     "instantiation_cactus_plot",
     "conflict_cactus_plot",
+    "solver_runtime_cactus_plot",
+    "solver_stat_",
+    "solver_boundary_",
 )
 GENERATED_TEX_PATTERNS = (
     "all_benchmarks_table.tex",
@@ -37,6 +40,9 @@ GENERATED_TEX_PATTERNS = (
     "runtime_*.tex",
     "instantiation_*.tex",
     "conflict_*.tex",
+    "solver_runtime_*.tex",
+    "solver_stat_*.tex",
+    "solver_boundary_*.tex",
     "unique_solves_*.tex",
 )
 
@@ -44,6 +50,15 @@ GENERATED_ASSET_PATTERNS = (
     "runtime_*.pdf",
     "instantiation_*.pdf",
     "conflict_*.pdf",
+    "solver_runtime_*.pdf",
+    "solver_stat_*.pdf",
+    "solver_boundary_*.pdf",
+    "runtime_*.png",
+    "instantiation_*.png",
+    "conflict_*.png",
+    "solver_runtime_*.png",
+    "solver_stat_*.png",
+    "solver_boundary_*.png",
 )
 
 
@@ -156,11 +171,38 @@ def compile_figure_fragment(fragment_path: Path, assets_dir: Path) -> Path:
             temp_artifact = assets_dir / f"wrapper{suffix}"
             if temp_artifact.exists():
                 temp_artifact.unlink()
-    return output_pdf
+    # Typst/Poppler can render overlapping PDF form resources incorrectly when
+    # many independently compiled PGF plots share a workbook. Embed a high-DPI
+    # raster while retaining the cropped PDF as a reusable report asset.
+    output_png = assets_dir / f"{fragment_path.stem}.png"
+    run_command(
+        [
+            "pdftoppm",
+            "-png",
+            "-r",
+            "180",
+            "-singlefile",
+            str(output_pdf),
+            str(output_png.with_suffix("")),
+        ],
+        cwd=assets_dir,
+    )
+    return output_png
 
 
 def figure_title(fragment: Path) -> str:
     title = fragment.stem.replace("_", " ").strip()
+    if title.startswith("instantiation scatter "):
+        return "Instantiation Comparison"
+    if title.startswith("runtime scatter "):
+        return "Runtime Comparison"
+    if title.startswith("solver boundary "):
+        return "Z3 vs End-to-End Speedup"
+    if title == "solver runtime cactus plot":
+        return "Z3 Runtime Across Strategies"
+    if title.startswith("solver stat "):
+        metric = title.removeprefix("solver stat ").split(" abstract", 1)[0]
+        return f"Paired Z3: {metric.title()}"
     return " ".join(word.capitalize() for word in title.split())
 
 
@@ -172,6 +214,14 @@ def seconds(runtime_ms: int | float | None) -> str:
     if runtime_ms is None:
         return "-"
     return f"{runtime_ms / 1000.0:.3f}s"
+
+
+def diagnostic_number(value: int | float | None) -> str:
+    if value is None:
+        return "-"
+    if abs(value) >= 1000:
+        return f"{value:,.0f}"
+    return f"{value:g}"
 
 
 def analysis_workbook_sections(analysis: dict) -> list[str]:
@@ -285,6 +335,72 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
             ]
         )
 
+    for diagnostic in analysis.get("solver_diagnostics", []):
+        metric_rows = []
+        for metric in diagnostic["metrics"]:
+            ratio = metric["paired_median_ratio"]
+            correlation = metric["paired_log_ratio_solver_time_spearman"]
+            metric_rows.append(
+                [
+                    metric["label"],
+                    diagnostic_number(metric["candidate_median"]),
+                    diagnostic_number(metric["baseline_median"]),
+                    f"{ratio:.3f}x" if ratio is not None else "-",
+                    f"{metric['candidate_lower_count']} / {metric['equal_count']} / "
+                    f"{metric['candidate_higher_count']}",
+                    f"{correlation:.3f}" if correlation is not None else "-",
+                ]
+            )
+        lines.extend(
+            [
+                "#pagebreak()",
+                "",
+                f"= Paired Z3 Diagnostics: {diagnostic['candidate_display_name']} vs "
+                f"{diagnostic['baseline_display_name']}",
+                "",
+                f"These counters compare the *{diagnostic['shared_solved_count']} benchmarks* "
+                "solved by both strategies. This paired view avoids the differing-population "
+                "effect in the cactus curves.",
+                "",
+                typst_table(
+                    [
+                        "Counter",
+                        "Candidate",
+                        "Baseline",
+                        "C/B ratio",
+                        "C lower/= /higher",
+                        "rho time",
+                    ],
+                    metric_rows,
+                    columns="(1.45fr, .75fr, .75fr, .7fr, 1fr, .65fr)",
+                ),
+                "",
+                "The ratio is the median of positive per-benchmark candidate/baseline "
+                "ratios. _rho time_ is Spearman correlation between the log1p counter "
+                "difference "
+                "and log solver-time ratio; it measures association, not causal cost.",
+                "",
+            ]
+        )
+        conflict_metric = next(
+            (
+                metric
+                for metric in diagnostic["metrics"]
+                if metric["stat_key"] == "conflicts"
+            ),
+            None,
+        )
+        if conflict_metric is not None:
+            lines.extend(
+                [
+                    "Among candidate end-to-end runtime wins, candidate conflicts were "
+                    f"lower / equal / higher in *{conflict_metric['runtime_win_candidate_lower_count']} / "
+                    f"{conflict_metric['runtime_win_equal_count']} / "
+                    f"{conflict_metric['runtime_win_candidate_higher_count']}* cases.",
+                    "",
+                ]
+            )
+
     for comparison in analysis["baseline_comparisons"]:
         candidate_name = comparison["candidate_display_name"]
         speedup = comparison["geomean_runtime_speedup"]
@@ -360,7 +476,7 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
             ("Largest Runtime Improvements", "top_runtime_wins"),
             ("Largest Runtime Regressions", "top_runtime_losses"),
         ):
-            rows = comparison[key][:8]
+            rows = comparison[key][:7]
             if not rows:
                 continue
             table_rows = [
@@ -458,6 +574,7 @@ def workbook_body(
             "- `data/baseline_comparisons.csv`: one row per candidate/baseline comparison",
             "- `data/benchmark_results.csv`: normalized benchmark/strategy results",
             "- `data/benchmark_comparisons.csv`: benchmark-level win/loss classification",
+            "- `data/solver_diagnostics.csv`: paired Z3 counter summaries and correlations",
             "",
             "== Supplemental LaTeX/TikZ",
             "",
