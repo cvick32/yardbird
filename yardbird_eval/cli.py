@@ -247,6 +247,11 @@ def downloaded_instrumentation_parser() -> argparse.ArgumentParser:
         description="Compare solver captures downloaded from a completed AWS run"
     )
     parser.add_argument("--run-id", required=True, help="Completed AWS evaluation run id")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse compatible per-capture comparison reports that already exist",
+    )
     add_z3_replay_arguments(parser)
     return parser
 

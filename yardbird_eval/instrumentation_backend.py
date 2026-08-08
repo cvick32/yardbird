@@ -127,7 +127,8 @@ def prepare_z3_build(args: Any, run_dir: Path) -> tuple[Path, dict[str, Any]]:
         builder_manifest = load_builder_manifest(build_dir)
 
     snapshot_path = run_dir / "instrumentation" / "z3-builder-manifest.json"
-    write_json(snapshot_path, builder_manifest)
+    if not (getattr(args, "resume", False) and snapshot_path.is_file()):
+        write_json(snapshot_path, builder_manifest)
     return build_dir, builder_manifest
 
 
@@ -192,6 +193,95 @@ def _comparison_metrics(report: ComparisonReport) -> dict[str, int | float]:
     }
 
 
+def _comparison_metrics_from_payload(payload: dict[str, Any]) -> dict[str, int | float]:
+    try:
+        aggregate = payload["aggregate"]
+        stock = aggregate["stock_external"]["median_ns"]
+        internal = aggregate["instrumented_internal"]["median_ns"]
+        return {
+            "check_count": aggregate["check_count"],
+            "depth_count": aggregate["depth_count"],
+            "stock_external_median_ns": stock,
+            "stock_external_mad_ns": aggregate["stock_external"]["mad_ns"],
+            "instrumented_external_median_ns": aggregate["instrumented_external"][
+                "median_ns"
+            ],
+            "instrumented_external_mad_ns": aggregate["instrumented_external"][
+                "mad_ns"
+            ],
+            "external_overhead_median_ns": aggregate["external_overhead"][
+                "median_ns"
+            ],
+            "external_overhead_mad_ns": aggregate["external_overhead"]["mad_ns"],
+            "external_overhead_pct": (
+                aggregate["external_overhead"]["median_ns"] / stock * 100.0
+                if stock
+                else 0.0
+            ),
+            "instrumented_internal_median_ns": internal,
+            "instrumented_internal_mad_ns": aggregate["instrumented_internal"][
+                "mad_ns"
+            ],
+            "array_envelope_median_ns": aggregate["array_envelope"]["median_ns"],
+            "array_envelope_mad_ns": aggregate["array_envelope"]["mad_ns"],
+            "non_array_residual_median_ns": aggregate["non_array_residual"][
+                "median_ns"
+            ],
+            "non_array_residual_mad_ns": aggregate["non_array_residual"]["mad_ns"],
+            "array_fraction_pct": (
+                aggregate["array_envelope"]["median_ns"] / internal * 100.0
+                if internal
+                else 0.0
+            ),
+        }
+    except (KeyError, TypeError) as error:
+        raise RuntimeError("existing comparison report has an invalid aggregate") from error
+
+
+def _builder_binary_path(builder_manifest: dict[str, Any], label: str) -> Path:
+    builds = builder_manifest.get("builds")
+    build = builds.get(label) if isinstance(builds, dict) else None
+    binary = build.get("binary") if isinstance(build, dict) else None
+    if not isinstance(binary, str) or not binary:
+        raise RuntimeError(f"Z3 builder manifest has no {label} binary")
+    return Path(binary).expanduser().resolve()
+
+
+def _load_resumed_comparison(
+    output_path: Path,
+    capture_dir: Path,
+    builder_manifest: dict[str, Any],
+    *,
+    warmups: int,
+    repetitions: int,
+) -> dict[str, int | float]:
+    payload = load_json(output_path)
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"existing comparison report is invalid: {output_path}")
+
+    expected = {
+        "capture_dir": capture_dir.expanduser().resolve(),
+        "stock_binary": _builder_binary_path(builder_manifest, "stock"),
+        "instrumented_binary": _builder_binary_path(builder_manifest, "instrumented"),
+    }
+    for field, expected_path in expected.items():
+        value = payload.get(field)
+        if not isinstance(value, str) or Path(value).expanduser().resolve() != expected_path:
+            raise RuntimeError(
+                f"existing comparison report has incompatible {field}: {output_path}"
+            )
+    for field, expected_value in {
+        "warmups": warmups,
+        "repetitions": repetitions,
+    }.items():
+        if payload.get(field) != expected_value:
+            raise RuntimeError(
+                f"existing comparison report has incompatible {field}: {output_path}"
+            )
+
+    return _comparison_metrics_from_payload(payload)
+
+
 def compare_garden_suite(
     raw_path: Path,
     comparison_dir: Path,
@@ -201,6 +291,7 @@ def compare_garden_suite(
     repetitions: int,
     timeout_seconds: float,
     downloaded_capture_root: Path | None = None,
+    resume: bool = False,
     compare: Callable[..., ComparisonReport] = compare_capture,
 ) -> list[dict[str, Any]]:
     suite = load_json(raw_path)
@@ -262,6 +353,26 @@ def compare_garden_suite(
             entry["example"] = str(capture_metadata["benchmark_id"])
 
         output_path = comparison_dir / f"{index:05}.json"
+        if resume and output_path.is_file():
+            metrics = _load_resumed_comparison(
+                output_path,
+                capture_dir,
+                builder_manifest,
+                warmups=warmups,
+                repetitions=repetitions,
+            )
+            print(
+                f"  [resume {index + 1}/{len(raw_entries)}] "
+                f"{entry['strategy']} {entry['example']}",
+                flush=True,
+            )
+            entry.update(
+                comparison_status="completed",
+                comparison_path=str(output_path),
+                metrics=metrics,
+            )
+            entries.append(entry)
+            continue
         print(
             f"  [replay {index + 1}/{len(raw_entries)}] "
             f"{entry['strategy']} {entry['example']}",
@@ -352,6 +463,7 @@ def compare_downloaded_aws_run(args: Any, manifest: dict[str, Any]) -> dict[str,
             repetitions=args.repetitions,
             timeout_seconds=args.replay_timeout,
             downloaded_capture_root=capture_root,
+            resume=args.resume,
         )
         for entry in matrix_entries:
             entry["run_type"] = run_type
