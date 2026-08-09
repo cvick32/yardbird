@@ -1,0 +1,43 @@
+# A bounded, reproducible baseline over the locally symlinked external corpus.
+global:
+  examples_dir: "external-benchmarks"
+  timeout_seconds: 10
+  retry_count: 1
+  jobs: 8
+  benchmark_limit: 200
+  sample_seed: 20260806
+  require_array_reads_and_writes: true
+  output_format: "json"
+  include_patterns: []
+  exclude_patterns: []
+
+parameter_matrices:
+  external-depth20:
+    depths: [20]
+    solvers: ["z3"]
+    strategies: ["abstract", "concrete"]
+    cost_functions: ["bmc-cost"]
+    timeout_seconds: 10
+
+  # Compare structurally different abstraction heuristics without redundantly
+  # applying every cost-function label to the concrete Z3 strategy.
+  external-cost-functions-depth20:
+    depths: [20]
+    solvers: ["z3"]
+    strategies: ["abstract"]
+    cost_functions: ["ast-size", "adaptive-cost", "split-cost"]
+    timeout_seconds: 10
+
+  external-cost-functions-z3-depth20:
+    depths: [20]
+    solvers: ["z3"]
+    strategies: ["concrete"]
+    cost_functions: ["bmc-cost"]
+    timeout_seconds: 10
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: true
+  timestamp_format: "%Y%m%d_%H%M%S"

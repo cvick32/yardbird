@@ -107,7 +107,8 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
         replay_problem.get_logic(),
         SolverBackend::Z3,
         None,
-    );
+    )
+    .unwrap();
     replay.execute(&replay_problem).unwrap();
     assert_eq!(replay.get_results().len(), 1);
     assert_eq!(replay.get_results()[0].result, SolverCheckResult::Unsat);
@@ -192,7 +193,8 @@ fn abstract_capture_declares_each_uninterpreted_function_once() {
         replay_problem.get_logic(),
         SolverBackend::Z3,
         None,
-    );
+    )
+    .unwrap();
     replay.execute(&replay_problem).unwrap();
     assert_eq!(replay.get_results()[0].result, SolverCheckResult::Unsat);
 }
@@ -212,6 +214,7 @@ fn incremental_capture_preserves_every_check_and_ordered_result() {
         SolverBackend::Z3,
         Some(capture.clone()),
     )
+    .unwrap()
     .with_profiler(options.build_profiler());
 
     solver.execute(&problem).unwrap();
@@ -425,7 +428,8 @@ fn setup_slice<'a>(transcript: &'a str, index: &SolverSessionIndex, check_id: us
 fn replay_with_yardbird(path: &std::path::Path) -> Vec<SolverCheckResult> {
     let problem = SMTLIBProblem::from_path(path).unwrap();
     let mut replay =
-        SmtlibCommandExecutor::new_with_backend(problem.get_logic(), SolverBackend::Z3, None);
+        SmtlibCommandExecutor::new_with_backend(problem.get_logic(), SolverBackend::Z3, None)
+            .unwrap();
     replay.execute(&problem).unwrap();
     replay
         .get_results()

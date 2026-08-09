@@ -90,7 +90,7 @@ fn extract_assertions(problem: &SMTLIBProblem) -> Vec<Term> {
 fn logic_for_problem(
     theory: &dyn crate::theory_support::TheorySupport,
     problem: &SMTLIBProblem,
-) -> String {
+) -> anyhow::Result<String> {
     let terms = problem
         .get_assertions()
         .iter()
@@ -99,7 +99,9 @@ fn logic_for_problem(
             _ => None,
         })
         .collect::<Vec<_>>();
-    theory.get_logic_string_for_terms(&terms)
+    let logic = theory.get_logic_string_for_terms(&terms)?;
+    crate::theory_support::validate_logic_for_commands(&logic, problem.get_commands())?;
+    Ok(logic)
 }
 
 /// Helper to combine assertions into a single term
@@ -167,14 +169,12 @@ impl SmtlibRefinementSession {
             }
         }
 
-        // Handle theory-specific function declarations
-        if theory.requires_abstraction() {
-            for function_def in problem.get_function_definitions() {
-                if accepted_declarations.insert(function_def.clone()) {
-                    smt.solver
-                        .accept_command(&function_def)
-                        .expect("solver should accept SMT-LIB function declarations");
-                }
+        // Register the problem's declarations for both native and abstract theories.
+        for function_def in problem.get_function_definitions() {
+            if accepted_declarations.insert(function_def.clone()) {
+                smt.solver
+                    .accept_command(&function_def)
+                    .expect("solver should accept SMT-LIB function declarations");
             }
         }
 
@@ -222,18 +222,18 @@ impl SmtlibRefinementSession {
         solver_backend: SolverBackend,
         track_instantiations: bool,
         solver_capture: Option<SolverCapture>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let theory = strategy.get_theory_support();
-        let logic = logic_for_problem(theory.as_ref(), problem);
-        let solver = new_solver_backend(solver_backend, &logic, solver_capture);
-        Self::init_common(
+        let logic = logic_for_problem(theory.as_ref(), problem)?;
+        let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
+        Ok(Self::init_common(
             problem,
             theory.as_ref(),
             solver,
             track_instantiations,
             vec![],
             logic,
-        )
+        ))
     }
 
     /// Create a new SmtlibRefinementSession with explicit array types for correct logic detection.
@@ -245,35 +245,41 @@ impl SmtlibRefinementSession {
         track_instantiations: bool,
         array_types: Vec<(String, String)>,
         solver_capture: Option<SolverCapture>,
-    ) -> Self {
-        use crate::theory_support::{ArrayTheorySupport, ArrayWithQuantifiersTheorySupport};
+    ) -> anyhow::Result<Self> {
+        use crate::theory_support::{
+            ArrayTheorySupport, ArrayWithQuantifiersTheorySupport, ConcreteArrayTheory,
+        };
 
         let stored_array_types = array_types.clone();
         let original_theory = strategy.get_theory_support();
 
         // Create theory support with discovered array types for correct logic string
-        let theory: Box<dyn crate::theory_support::TheorySupport> = if array_types.is_empty() {
-            original_theory
-        } else if original_theory.uses_quantified_axioms() {
-            debug!("Using ArrayWithQuantifiersTheorySupport for axiom generation");
-            Box::new(ArrayWithQuantifiersTheorySupport::new(array_types))
-        } else {
-            debug!("Using ArrayTheorySupport (no axioms)");
-            Box::new(ArrayTheorySupport::new(array_types))
-        };
+        let theory: Box<dyn crate::theory_support::TheorySupport> =
+            if original_theory.requires_abstraction() && original_theory.uses_quantified_axioms() {
+                debug!("Using ArrayWithQuantifiersTheorySupport for axiom generation");
+                Box::new(ArrayWithQuantifiersTheorySupport::new(array_types))
+            } else if original_theory.requires_abstraction() {
+                debug!("Using ArrayTheorySupport (no axioms)");
+                Box::new(ArrayTheorySupport::new(array_types))
+            } else if original_theory.requires_array_information() {
+                debug!("Using ConcreteArrayTheory with discovered array types");
+                Box::new(ConcreteArrayTheory::new(array_types))
+            } else {
+                original_theory
+            };
 
-        let logic_string = logic_for_problem(theory.as_ref(), problem);
+        let logic_string = logic_for_problem(theory.as_ref(), problem)?;
         debug!("Using logic: {}", logic_string);
-        let solver = new_solver_backend(solver_backend, logic_string.as_str(), solver_capture);
+        let solver = new_solver_backend(solver_backend, logic_string.as_str(), solver_capture)?;
 
-        Self::init_common(
+        Ok(Self::init_common(
             problem,
             theory.as_ref(),
             solver,
             track_instantiations,
             stored_array_types,
             logic_string,
-        )
+        ))
     }
 
     /// Add all assertions to the solver

@@ -1,5 +1,5 @@
 use egg::Language;
-use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
+use smt2parser::vmt::{split_framed_symbol, ReadsAndWrites};
 
 use crate::{
     cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
@@ -136,9 +136,7 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
                 let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
                 let in_prop = self.property_terms.contains(&symbol_str);
 
-                if let Some((name, frame_number)) =
-                    sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
-                {
+                if let Some((name, frame_number)) = split_framed_symbol(sym.as_str()) {
                     // Special handling for program counter
                     if name == "pc" {
                         // Allow pc in some contexts, but make it expensive
@@ -157,7 +155,7 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
 
                     // More balanced frame preference: prefer recent frames, but not too strongly
                     // This allows the solver to consider older frames when needed
-                    match frame_number.parse::<u32>() {
+                    match u32::try_from(frame_number) {
                         Ok(n) => {
                             let frame_distance = if n <= self.current_bmc_depth {
                                 self.current_bmc_depth - n
@@ -177,7 +175,7 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
                                 2 + ((frame_distance - 5) / 3) // Older: grows slowly
                             }
                         }
-                        Err(_) => panic!("Couldn't parse `{frame_number}`"),
+                        Err(_) => 100,
                     }
                 } else {
                     // Uninterpreted constants - allow but make expensive

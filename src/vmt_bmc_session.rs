@@ -29,6 +29,7 @@ use crate::{
     },
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
+    theory_support::validate_logic_for_commands,
     training::IndexedInstantiationRecord,
     utils::SolverStatistics,
     SolverBackend,
@@ -148,7 +149,7 @@ impl VmtBmcSession {
         instantiation_strategy: Box<dyn InstantiationStrategy>,
         collect_check_profiles: bool,
         solver_capture: Option<SolverCapture>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let current_vars = vmt_model.get_all_current_variable_names();
         let next_to_current_vars = vmt_model.get_next_to_current_varible_names();
         let helper_definitions = vmt_model.get_helper_definitions().clone();
@@ -162,8 +163,9 @@ impl VmtBmcSession {
             &init_assertion,
             &trans_assertion,
             &property_assertion,
-        ]);
-        let solver = new_solver_backend(solver_backend, &logic, solver_capture);
+        ])?;
+        validate_logic_for_commands(&logic, &vmt_model.as_commands())?;
+        let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
 
         let mut smt = VmtBmcSession {
             sorts: vmt_model.get_sorts(),
@@ -216,15 +218,13 @@ impl VmtBmcSession {
             }
         }
 
-        // Handle theory-specific function declarations
-        if theory.requires_abstraction() {
-            // Add in abstracted function definitions from VMT model
-            for function_def in vmt_model.get_function_definitions() {
-                if accepted_declarations.insert(function_def.clone()) {
-                    smt.solver
-                        .accept_command(&function_def)
-                        .expect("solver should accept VMT function declarations");
-                }
+        // VMT-level function declarations are part of the problem regardless
+        // of whether array operations are abstracted or sent to Z3 natively.
+        for function_def in vmt_model.get_function_definitions() {
+            if accepted_declarations.insert(function_def.clone()) {
+                smt.solver
+                    .accept_command(&function_def)
+                    .expect("solver should accept VMT function declarations");
             }
         }
 
@@ -263,7 +263,7 @@ impl VmtBmcSession {
         smt.add_initial_assertion();
         smt.update_property();
         debug!("{:#?}", smt);
-        smt
+        Ok(smt)
     }
 
     /// Adds in all variables at the current depth that is recorded in self.bmc_builder.
@@ -1013,9 +1013,13 @@ mod tests {
         let input = br#"
             (declare-fun x () Int)
             (define-fun x.relationship () Int (! x :next x.next))
+            (declare-fun a () (Array Int Int))
+            (define-fun a.relationship () (Array Int Int) (! a :next a.next))
             (define-fun next-only () Int (+ x.next 1))
             (define-fun init () Bool (! true :init true))
-            (define-fun transition () Bool (! (= x.next x) :trans true))
+            (define-fun transition () Bool (!
+                (and (= x.next x) (= a.next (store a 0 (select a 0))))
+                :trans true))
             (define-fun property () Bool (! true :invar-property 0))
         "#;
         let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
@@ -1040,7 +1044,8 @@ mod tests {
             Box::new(FullUnrollStrategy::new()),
             false,
             None,
-        );
+        )
+        .unwrap();
         smt.unroll(1);
 
         let instance =
@@ -1070,16 +1075,21 @@ mod tests {
             (declare-fun __state () Int)
             (declare-fun __state.next () Int)
             (define-fun state.relationship () Int (! __state :next __state.next))
+            (declare-fun a () (Array Int Int))
+            (define-fun a.relationship () (Array Int Int) (! a :next a.next))
             (define-fun init () Bool (! (= __state 0) :init true))
-            (define-fun transition () Bool (! (= __state.next __state) :trans true))
+            (define-fun transition () Bool (!
+                (and (= __state.next __state) (= a.next (store a 0 (select a 0))))
+                :trans true))
             (define-fun property () Bool (! (>= __state 0) :invar-property 0))
         "#;
         let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(ConcreteArrayZ3::new(false));
+        let model = strategy.configure_model(model);
         let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
@@ -1088,13 +1098,53 @@ mod tests {
             Box::new(FullUnrollStrategy::new()),
             false,
             None,
-        );
+        )
+        .unwrap();
 
         smt.unroll(1);
 
         let dumped = smt.smt2_string_with_property_check();
         assert!(dumped.contains("(declare-fun __state@0 () Int)"));
         assert!(dumped.contains("(declare-fun __state@1 () Int)"));
+    }
+
+    #[test]
+    fn concrete_session_registers_declared_uninterpreted_functions() {
+        let input = br#"
+            (declare-fun a () (Array Int Int))
+            (declare-fun a.next () (Array Int Int))
+            (define-fun a.relationship () (Array Int Int) (! a :next a.next))
+            (declare-fun P (Int) Bool)
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (!
+                (= a.next (store a 0 0))
+                :trans true))
+            (define-fun property () Bool (! (P (select a 0)) :invar-property 0))
+        "#;
+        let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(ConcreteArrayZ3::new(false));
+        let model = strategy.configure_model(model);
+
+        let mut smt = VmtBmcSession::new(
+            &model,
+            &strategy,
+            SolverBackend::Z3,
+            false,
+            Box::new(FullUnrollStrategy::new()),
+            false,
+            None,
+        )
+        .unwrap();
+
+        let _ = smt.check_property();
+
+        assert!(smt
+            .smt2_string_with_property_check()
+            .contains("(declare-fun P (Int) Bool)"));
     }
 
     #[test]
@@ -1118,7 +1168,8 @@ mod tests {
             Box::new(FullUnrollStrategy::new()),
             false,
             None,
-        );
+        )
+        .unwrap();
 
         smt.unroll(1);
         smt.unroll(2);

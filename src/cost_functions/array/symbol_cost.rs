@@ -1,6 +1,6 @@
 use egg::{Language, Symbol};
 use rustc_hash::FxHashSet;
-use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
+use smt2parser::vmt::{split_framed_symbol, ReadsAndWrites};
 
 use crate::{
     cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
@@ -117,9 +117,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBMCCost {
                 let in_trans = self.init_and_transition_system_terms.contains(sym);
                 let in_prop = self.property_terms.contains(sym);
 
-                if let Some((name, frame_number)) =
-                    sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
-                {
+                if let Some((name, frame_number)) = split_framed_symbol(sym.as_str()) {
                     if name == "pc" {
                         // Never instantiate with the program counter.
                         return 10000;
@@ -129,10 +127,10 @@ impl egg::CostFunction<ArrayLanguage> for ArrayBMCCost {
                         return 3;
                     }
                     // Prefer terms that are close to the property check.
-                    match frame_number.parse::<u32>() {
-                        Ok(n) => self.current_bmc_depth - n,
-                        Err(_) => panic!("Couldn't parse `{frame_number}`"),
-                    }
+                    let Ok(n) = u32::try_from(frame_number) else {
+                        return 100;
+                    };
+                    self.current_bmc_depth.saturating_sub(n)
                 } else {
                     // TODO: extend language to uninterpreted sort constants to
                     // constants instead of symbols.
@@ -183,5 +181,24 @@ impl YardbirdCostFunction<ArrayLanguage> for ArrayBMCCost {
 
     fn get_reads_and_writes(&self) -> ReadsAndWrites {
         self.reads_writes.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egg::CostFunction;
+
+    #[test]
+    fn opaque_application_with_framed_arguments_has_a_finite_cost() {
+        let mut cost = ArrayBMCCost::new(
+            3,
+            FxHashSet::default(),
+            FxHashSet::default(),
+            ReadsAndWrites::default(),
+        );
+        let opaque = ArrayLanguage::Symbol("(main@is_ends_valid_state_0)@0".into());
+
+        assert!(cost.cost(&opaque, |_| 0) < u32::MAX);
     }
 }
