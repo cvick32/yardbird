@@ -158,6 +158,37 @@ cargo build -p garden --release
 
 This runs all array benchmarks at depth 10 with both BMC Cost and Z3 array theory strategies, generating a JSON file with detailed results.
 
+### Run a bounded external-corpus baseline
+
+The external baseline config expects a local `external-benchmarks` directory or
+symlink at the repository root. It recursively discovers VMT files and selects
+the same 200-file sample on every run using a fixed seed. Before sampling, it
+scans SMT-LIB applications and keeps only benchmarks with at least one array
+read and one array write, so every selected problem exercises array reasoning. The
+default matrix runs BMC Cost and concrete Z3 to depth 20 with eight workers and
+a 10-second timeout per strategy/benchmark pair.
+
+```bash
+python3 main_eval.py \
+  --env local \
+  --benchmark-type external-depth20 \
+  --config garden/external_benchmark_config.yaml \
+  --name external-baseline-depth20
+```
+
+For a smaller smoke run or a different deterministic sample, invoke Garden
+directly and override `--limit`, `--sample-seed`, or `--jobs`:
+
+```bash
+./target/release/garden \
+  --config garden/external_benchmark_config.yaml \
+  --matrix external-depth20 \
+  --limit 20 \
+  --sample-seed 20260806 \
+  --jobs 4 \
+  --output external_smoke.json
+```
+
 ### 4. Use The Unified Evaluation Entry Point
 
 `main_eval.py` is the top-level orchestration script for benchmark runs and reports.

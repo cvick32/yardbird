@@ -8,9 +8,25 @@ pub struct GlobalConfig {
     pub examples_dir: PathBuf,
     pub timeout_seconds: u64,
     pub retry_count: usize,
+    #[serde(default = "default_jobs")]
+    pub jobs: usize,
+    #[serde(default)]
+    pub benchmark_limit: Option<usize>,
+    #[serde(default = "default_sample_seed")]
+    pub sample_seed: u64,
+    #[serde(default)]
+    pub require_array_reads_and_writes: bool,
     pub output_format: String,
     pub include_patterns: Vec<String>,
     pub exclude_patterns: Vec<String>,
+}
+
+fn default_jobs() -> usize {
+    1
+}
+
+fn default_sample_seed() -> u64 {
+    0
 }
 
 impl Default for GlobalConfig {
@@ -19,6 +35,10 @@ impl Default for GlobalConfig {
             examples_dir: PathBuf::from("examples"),
             timeout_seconds: 30,
             retry_count: 2,
+            jobs: default_jobs(),
+            benchmark_limit: None,
+            sample_seed: default_sample_seed(),
+            require_array_reads_and_writes: false,
             output_format: "json".to_string(),
             include_patterns: vec![],
             exclude_patterns: vec![],
@@ -200,5 +220,31 @@ impl BenchmarkConfig {
         }
 
         Ok(runs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BenchmarkConfig;
+
+    #[test]
+    fn older_global_configs_receive_sampling_defaults() {
+        let config: BenchmarkConfig = serde_yaml::from_str(
+            r#"
+global:
+  examples_dir: examples/array
+  timeout_seconds: 30
+  retry_count: 1
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+"#,
+        )
+        .expect("legacy config should still parse");
+
+        assert_eq!(config.global.jobs, 1);
+        assert_eq!(config.global.benchmark_limit, None);
+        assert_eq!(config.global.sample_seed, 0);
+        assert!(!config.global.require_array_reads_and_writes);
     }
 }

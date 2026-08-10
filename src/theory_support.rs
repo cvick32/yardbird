@@ -1,5 +1,6 @@
 use std::vec;
 
+use anyhow::{bail, Result};
 use smt2parser::concrete::{Command, Identifier, QualIdentifier, Sort, Symbol, Term};
 use smt2parser::vmt::array_abstractor::string_to_sort;
 use smt2parser::vmt::VMTModel;
@@ -13,19 +14,21 @@ pub trait TheorySupport {
     fn get_axiom_formulas(&self) -> Vec<Command>;
 
     /// Returns the SMT logic string for this theory (e.g., "QF_LIA", "UFLIA")
-    fn get_logic_string(&self) -> String;
+    fn get_logic_string(&self) -> Result<String>;
 
     /// Returns a logic strong enough for the arithmetic used by these terms.
-    fn get_logic_string_for_terms(&self, terms: &[&Term]) -> String {
-        let logic = self.get_logic_string();
-        if terms
+    fn get_logic_string_for_terms(&self, terms: &[&Term]) -> Result<String> {
+        let logic = self.get_logic_string()?;
+        let logic = if terms
             .iter()
             .any(|term| requires_nonlinear_integer_logic(term))
         {
             nonlinear_integer_logic(&logic).to_string()
         } else {
             logic
-        }
+        };
+        validate_logic_for_terms(&logic, terms)?;
+        Ok(logic)
     }
 
     /// Abstracts the VMT model for this theory (replaces theory-specific operations with uninterpreted functions)
@@ -34,10 +37,202 @@ pub trait TheorySupport {
     /// Returns true if this theory requires abstraction
     fn requires_abstraction(&self) -> bool;
 
+    /// Returns true when the theory is meaningful only for array-bearing inputs.
+    fn requires_array_information(&self) -> bool {
+        false
+    }
+
     /// Returns true if this theory support uses quantified axioms
     /// (e.g., read-after-write axiom for arrays)
     fn uses_quantified_axioms(&self) -> bool {
         false // Default: no axioms
+    }
+}
+
+fn validate_logic_for_terms(logic: &str, terms: &[&Term]) -> Result<()> {
+    if logic == "ALL" {
+        return Ok(());
+    }
+
+    let uses_bitvectors = terms.iter().any(|term| term_uses_bitvectors(term));
+    if uses_bitvectors && !logic.contains("BV") {
+        bail!("selected SMT logic {logic} does not support bit-vector terms");
+    }
+
+    let uses_native_arrays = terms.iter().any(|term| term_uses_native_arrays(term));
+    if uses_native_arrays && !logic.contains('A') {
+        bail!("selected SMT logic {logic} does not support native array terms");
+    }
+
+    let uses_quantifiers = terms.iter().any(|term| term_uses_quantifiers(term));
+    if uses_quantifiers && logic.starts_with("QF_") {
+        bail!("selected SMT logic {logic} does not support quantified terms");
+    }
+
+    Ok(())
+}
+
+pub(crate) fn validate_logic_for_commands(logic: &str, commands: &[Command]) -> Result<()> {
+    if logic == "ALL" {
+        return Ok(());
+    }
+
+    let commands = commands.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let uses_bitvectors = commands.iter().any(|command| {
+        command.contains("BitVec")
+            || command.contains("#x")
+            || command.contains("#b")
+            || command.contains("(bv")
+    });
+    if uses_bitvectors && !logic.contains("BV") {
+        bail!("selected SMT logic {logic} does not support bit-vector declarations or terms");
+    }
+
+    let uses_integers = commands
+        .iter()
+        .any(|command| command.contains(" Int") || command.contains("(to_int "));
+    if uses_integers && !(logic.contains("IA") || logic.contains("IRA")) {
+        bail!("selected SMT logic {logic} does not support integer declarations or terms");
+    }
+
+    let uses_reals = commands
+        .iter()
+        .any(|command| command.contains(" Real") || command.contains("(to_real "));
+    if uses_reals && !logic.contains("RA") {
+        bail!("selected SMT logic {logic} does not support real declarations or terms");
+    }
+
+    let uses_floating_point = commands
+        .iter()
+        .any(|command| command.contains("FloatingPoint") || command.contains("(_ fp "));
+    if uses_floating_point && !logic.contains("FP") {
+        bail!("selected SMT logic {logic} does not support floating-point declarations or terms");
+    }
+
+    let uses_native_arrays = commands.iter().any(|command| {
+        command.contains("(Array ") || command.contains("(select ") || command.contains("(store ")
+    });
+    if uses_native_arrays && !logic.contains('A') {
+        bail!("selected SMT logic {logic} does not support native array declarations or terms");
+    }
+
+    let uses_quantifiers = commands
+        .iter()
+        .any(|command| command.contains("(forall ") || command.contains("(exists "));
+    if uses_quantifiers && logic.starts_with("QF_") {
+        bail!("selected SMT logic {logic} does not support quantified terms");
+    }
+
+    Ok(())
+}
+
+fn term_uses_bitvectors(term: &Term) -> bool {
+    match term {
+        Term::Constant(smt2parser::concrete::Constant::Hexadecimal(_))
+        | Term::Constant(smt2parser::concrete::Constant::Binary(_)) => true,
+        Term::Constant(_) => false,
+        Term::QualIdentifier(identifier) => qualified_identifier_uses_bitvectors(identifier),
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            let name = qual_identifier.get_name();
+            name.starts_with("bv")
+                || matches!(
+                    name.as_str(),
+                    "concat"
+                        | "extract"
+                        | "repeat"
+                        | "zero_extend"
+                        | "sign_extend"
+                        | "rotate_left"
+                        | "rotate_right"
+                )
+                || qualified_identifier_uses_bitvectors(qual_identifier)
+                || arguments.iter().any(term_uses_bitvectors)
+        }
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| term_uses_bitvectors(binding))
+                || term_uses_bitvectors(term)
+        }
+        Term::Forall { vars, term } | Term::Exists { vars, term } => {
+            vars.iter().any(|(_, sort)| sort_uses_bitvectors(sort)) || term_uses_bitvectors(term)
+        }
+        Term::Match { term, cases } => {
+            term_uses_bitvectors(term) || cases.iter().any(|(_, case)| term_uses_bitvectors(case))
+        }
+        Term::Attributes { term, .. } => term_uses_bitvectors(term),
+    }
+}
+
+fn qualified_identifier_uses_bitvectors(identifier: &QualIdentifier) -> bool {
+    match identifier {
+        QualIdentifier::Simple { identifier } => identifier.to_string().contains("BitVec"),
+        QualIdentifier::Sorted { identifier, sort } => {
+            identifier.to_string().contains("BitVec") || sort_uses_bitvectors(sort)
+        }
+    }
+}
+
+fn sort_uses_bitvectors(sort: &Sort) -> bool {
+    sort.to_string().contains("BitVec")
+}
+
+fn term_uses_native_arrays(term: &Term) -> bool {
+    match term {
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            matches!(qual_identifier.get_name().as_str(), "select" | "store")
+                || qualified_identifier_uses_native_arrays(qual_identifier)
+                || arguments.iter().any(term_uses_native_arrays)
+        }
+        Term::QualIdentifier(identifier) => qualified_identifier_uses_native_arrays(identifier),
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| term_uses_native_arrays(binding))
+                || term_uses_native_arrays(term)
+        }
+        Term::Forall { vars, term } | Term::Exists { vars, term } => {
+            vars.iter().any(|(_, sort)| sort_uses_native_arrays(sort))
+                || term_uses_native_arrays(term)
+        }
+        Term::Match { term, cases } => {
+            term_uses_native_arrays(term)
+                || cases.iter().any(|(_, case)| term_uses_native_arrays(case))
+        }
+        Term::Attributes { term, .. } => term_uses_native_arrays(term),
+        Term::Constant(_) => false,
+    }
+}
+
+fn qualified_identifier_uses_native_arrays(identifier: &QualIdentifier) -> bool {
+    matches!(identifier, QualIdentifier::Sorted { sort, .. } if sort_uses_native_arrays(sort))
+}
+
+fn sort_uses_native_arrays(sort: &Sort) -> bool {
+    sort.to_string().contains("Array")
+}
+
+fn term_uses_quantifiers(term: &Term) -> bool {
+    match term {
+        Term::Forall { .. } | Term::Exists { .. } => true,
+        Term::Application { arguments, .. } => arguments.iter().any(term_uses_quantifiers),
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| term_uses_quantifiers(binding))
+                || term_uses_quantifiers(term)
+        }
+        Term::Match { term, cases } => {
+            term_uses_quantifiers(term) || cases.iter().any(|(_, case)| term_uses_quantifiers(case))
+        }
+        Term::Attributes { term, .. } => term_uses_quantifiers(term),
+        Term::Constant(_) | Term::QualIdentifier(_) => false,
     }
 }
 
@@ -183,8 +378,8 @@ impl TheorySupport for ListTheorySupport {
         ]
     }
 
-    fn get_logic_string(&self) -> String {
-        "QF_LIA".to_string() // Quantifier-free linear integer arithmetic + uninterpreted functions
+    fn get_logic_string(&self) -> Result<String> {
+        Ok("QF_LIA".to_string()) // Quantifier-free linear integer arithmetic + uninterpreted functions
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -227,6 +422,32 @@ fn has_bitvector_types(array_types: &[(String, String)]) -> bool {
     array_types
         .iter()
         .any(|(idx, val)| idx.starts_with("BitVec") || val.starts_with("BitVec"))
+}
+
+fn has_integer_types(array_types: &[(String, String)]) -> bool {
+    array_types
+        .iter()
+        .any(|(idx, val)| idx.contains("Int") || val.contains("Int"))
+}
+
+fn array_logic(array_types: &[(String, String)], quantifier_free: bool) -> Result<String> {
+    if array_types.is_empty() {
+        bail!("array theory requires at least one discovered array type");
+    }
+
+    let has_bitvectors = has_bitvector_types(array_types);
+    let has_integers = has_integer_types(array_types);
+    if has_bitvectors && has_integers {
+        return Ok("ALL".to_string());
+    }
+
+    Ok(match (quantifier_free, has_bitvectors) {
+        (true, true) => "QF_AUFBV",
+        (false, true) => "AUFBV",
+        (true, false) => "QF_AUFLIA",
+        (false, false) => "UFLIA",
+    }
+    .to_string())
 }
 
 pub fn get_uninterpreted_array_functions(
@@ -272,14 +493,8 @@ impl TheorySupport for ArrayTheorySupport {
         get_uninterpreted_array_functions(&self.array_types)
     }
 
-    fn get_logic_string(&self) -> String {
-        if has_bitvector_types(&self.array_types) {
-            // Use AUFBV for arrays with bitvector indices or values
-            // The UF is implicit in AUFBV (arrays + uninterpreted functions + bitvectors)
-            "AUFBV".to_string()
-        } else {
-            "UFLIA".to_string()
-        }
+    fn get_logic_string(&self) -> Result<String> {
+        array_logic(&self.array_types, false)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -287,6 +502,10 @@ impl TheorySupport for ArrayTheorySupport {
     }
 
     fn requires_abstraction(&self) -> bool {
+        true
+    }
+
+    fn requires_array_information(&self) -> bool {
         true
     }
 
@@ -311,13 +530,8 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
         get_uninterpreted_array_functions(&self.array_types)
     }
 
-    fn get_logic_string(&self) -> String {
-        if has_bitvector_types(&self.array_types) {
-            // Use AUFBV for arrays with bitvector indices or values
-            "AUFBV".to_string()
-        } else {
-            "UFLIA".to_string()
-        }
+    fn get_logic_string(&self) -> Result<String> {
+        array_logic(&self.array_types, false)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -325,6 +539,10 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     }
 
     fn requires_abstraction(&self) -> bool {
+        true
+    }
+
+    fn requires_array_information(&self) -> bool {
         true
     }
 
@@ -625,16 +843,24 @@ fn generate_const_array_axiom(index_sort: &str, value_sort: &str) -> Command {
     }
 }
 
-/// No theory support (for strategies that don't use any specific theory)
-pub struct ConcreteArrayTheory;
+/// Native Z3 array support.
+pub struct ConcreteArrayTheory {
+    pub array_types: Vec<(String, String)>,
+}
+
+impl ConcreteArrayTheory {
+    pub fn new(array_types: Vec<(String, String)>) -> Self {
+        Self { array_types }
+    }
+}
 
 impl TheorySupport for ConcreteArrayTheory {
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
         vec![]
     }
 
-    fn get_logic_string(&self) -> String {
-        "QF_AUFLIA".to_string()
+    fn get_logic_string(&self) -> Result<String> {
+        array_logic(&self.array_types, true)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -643,6 +869,10 @@ impl TheorySupport for ConcreteArrayTheory {
 
     fn requires_abstraction(&self) -> bool {
         false
+    }
+
+    fn requires_array_information(&self) -> bool {
+        true
     }
 
     fn get_axiom_formulas(&self) -> Vec<Command> {
@@ -697,10 +927,46 @@ mod tests {
         assert!(function_names.contains(&"ConstArr_Int_Int"));
 
         // Test logic string
-        assert_eq!(array_theory.get_logic_string(), "UFLIA");
+        assert_eq!(array_theory.get_logic_string().unwrap(), "UFLIA");
 
         // Test requires abstraction
         assert!(array_theory.requires_abstraction());
+    }
+
+    #[test]
+    fn array_theory_rejects_models_without_array_types() {
+        let array_theory = ArrayTheorySupport::new(vec![]);
+
+        assert!(array_theory.get_logic_string().is_err());
+    }
+
+    #[test]
+    fn array_theory_rejects_terms_outside_the_selected_logic() {
+        let array_theory = ArrayTheorySupport::new(vec![("Int".into(), "Int".into())]);
+        let bitvector_term: Term = "(bvslt #x01 #x02)".parse().unwrap();
+
+        let error = array_theory
+            .get_logic_string_for_terms(&[&bitvector_term])
+            .unwrap_err();
+
+        assert!(error.to_string().contains("does not support bit-vector"));
+    }
+
+    #[test]
+    fn logic_validation_checks_declared_sorts() {
+        let command =
+            smt2parser::get_command_from_command_string(b"(declare-fun x () (_ BitVec 8))");
+
+        let error = validate_logic_for_commands("UFLIA", &[command]).unwrap_err();
+
+        assert!(error.to_string().contains("bit-vector declarations"));
+    }
+
+    #[test]
+    fn mixed_integer_and_bitvector_arrays_use_z3s_general_logic() {
+        let theory = ConcreteArrayTheory::new(vec![("BitVec32".into(), "Int".into())]);
+
+        assert_eq!(theory.get_logic_string().unwrap(), "ALL");
     }
 
     #[test]
@@ -724,7 +990,7 @@ mod tests {
         assert!(function_names.contains(&"is-nil"));
 
         // Test logic string
-        assert_eq!(list_theory.get_logic_string(), "QF_LIA");
+        assert_eq!(list_theory.get_logic_string().unwrap(), "QF_LIA");
 
         // Test requires abstraction
         assert!(!list_theory.requires_abstraction());
@@ -732,14 +998,14 @@ mod tests {
 
     #[test]
     fn test_no_theory_support() {
-        let no_theory = ConcreteArrayTheory;
+        let no_theory = ConcreteArrayTheory::new(vec![("Int".into(), "Int".into())]);
 
         // Test function declarations
         let functions = no_theory.get_uninterpreted_functions();
         assert_eq!(functions.len(), 0);
 
         // Test logic string
-        assert_eq!(no_theory.get_logic_string(), "QF_AUFLIA");
+        assert_eq!(no_theory.get_logic_string().unwrap(), "QF_AUFLIA");
 
         // Test requires abstraction
         assert!(!no_theory.requires_abstraction());

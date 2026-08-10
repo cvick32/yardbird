@@ -194,14 +194,11 @@ impl Z3VarContext {
                                     .unwrap();
                                 function_definition.apply(argument_values)
                             } else {
-                                self.call_z3_function(function_name.clone(), argument_values)
+                                self.call_z3_function(function_name.clone(), argument_values, None)
                             }
                         }
                     },
-                    QualIdentifier::Sorted {
-                        identifier,
-                        sort: _,
-                    } => {
+                    QualIdentifier::Sorted { identifier, sort } => {
                         // For sorted identifiers, use the base symbol
                         let function_name = match identifier {
                             Identifier::Simple { symbol } => &symbol.0,
@@ -218,7 +215,11 @@ impl Z3VarContext {
                                 .unwrap();
                             function_definition.apply(argument_values)
                         } else {
-                            self.call_z3_function(function_name.clone(), argument_values)
+                            self.call_z3_function(
+                                function_name.clone(),
+                                argument_values,
+                                Some(sort),
+                            )
                         }
                     }
                 }
@@ -329,7 +330,12 @@ impl Z3VarContext {
 
     /// Builds and calls the Z3 function corresponding to `function_name`. Returns
     /// the application of the function with the given arguments.
-    fn call_z3_function(&self, function_name: String, argument_values: Vec<Dynamic>) -> Dynamic {
+    fn call_z3_function(
+        &self,
+        function_name: String,
+        argument_values: Vec<Dynamic>,
+        result_sort: Option<&smt2parser::concrete::Sort>,
+    ) -> Dynamic {
         if function_name == "+" {
             if let Some(args) = argument_values
                 .iter()
@@ -502,11 +508,16 @@ impl Z3VarContext {
             let val = argument_values[2].clone();
             z3::ast::Array::store(&arr, &idx, &val).into()
         } else if function_name == "const" {
-            let sort = match argument_values[0].sort_kind() {
-                z3::SortKind::Int => z3::Sort::int(),
-                _ => todo!("Add Z3 array value: {:?}", argument_values[0].sort_kind()),
+            let index_sort = match result_sort {
+                Some(smt2parser::concrete::Sort::Parameterized {
+                    identifier: smt2parser::concrete::Identifier::Simple { symbol },
+                    parameters,
+                }) if symbol.0 == "Array" && parameters.len() == 2 => {
+                    self.get_z3_sort(&parameters[0])
+                }
+                _ => panic!("SMT-LIB const array requires a sorted Array identifier"),
             };
-            z3::ast::Array::const_array(&sort, &argument_values[0]).into()
+            z3::ast::Array::const_array(&index_sort, &argument_values[0]).into()
         } else if function_name == "concat" {
             let bv1 = argument_values[0]
                 .as_bv()
@@ -915,6 +926,26 @@ mod tests {
         assert_eq!(equal.as_u64(), Some(1));
         assert_eq!(unequal.get_size(), 1);
         assert_eq!(unequal.as_u64(), Some(0));
+    }
+
+    #[test]
+    fn rewrites_bitvector_constant_arrays_using_their_index_sort() {
+        let term = "((as const (Array (_ BitVec 4) (_ BitVec 4))) #b0110)"
+            .parse::<Term>()
+            .unwrap();
+        let context = Z3VarContext::new();
+
+        let array = context
+            .rewrite_term(&term)
+            .as_array()
+            .expect("const should produce an array");
+        let selected = array
+            .select(&BV::from_u64(3, 4))
+            .as_bv()
+            .expect("the array range should be a bitvector")
+            .simplify();
+
+        assert_eq!(selected.as_u64(), Some(6));
     }
 
     #[test]

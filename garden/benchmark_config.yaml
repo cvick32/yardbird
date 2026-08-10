@@ -6,6 +6,10 @@ global:
   examples_dir: "examples/array"
   timeout_seconds: 30
   retry_count: 1
+  jobs: 1
+  benchmark_limit:
+  sample_seed: 0
+  require_array_reads_and_writes: false
   output_format: "json"
   include_patterns: []
   exclude_patterns: []

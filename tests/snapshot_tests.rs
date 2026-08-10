@@ -297,7 +297,7 @@ fn solve_smt2_simple(filename: &Path) -> Smt2SimpleOutcome {
 
     z3::with_z3_config(&config, move || {
         let problem = SMTLIBProblem::from_path(&path).unwrap();
-        let mut solver = SmtlibCommandExecutor::new(problem.get_logic());
+        let mut solver = SmtlibCommandExecutor::new(problem.get_logic()).unwrap();
         solver.execute(&problem).unwrap();
         let results = solver
             .get_results()

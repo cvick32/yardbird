@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use egg::*;
 use rustc_hash::FxHashMap;
-use smt2parser::concrete::{Constant, QualIdentifier, Term};
+use smt2parser::concrete::{Constant, Identifier, QualIdentifier, Symbol as SmtSymbol, Term};
 
 use crate::{
     auxiliary_synthesis::ArrayConflictRecord,
@@ -554,7 +554,13 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                 other => Some(expr.add(ArrayLanguage::Symbol(other.to_string().into()))),
             },
             Term::QualIdentifier(qi) => {
-                Some(expr.add(ArrayLanguage::Symbol(qi.to_string().into())))
+                let symbol = match qi {
+                    QualIdentifier::Simple {
+                        identifier: Identifier::Simple { symbol },
+                    } => symbol.0,
+                    other => other.to_string(),
+                };
+                Some(expr.add(ArrayLanguage::Symbol(symbol.into())))
             }
             Term::Application {
                 qual_identifier,
@@ -737,12 +743,21 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                         let zero = expr.add(ArrayLanguage::Symbol("#b0".into()));
                         Some(expr.add(ArrayLanguage::Ite([condition, one, zero])))
                     }
-                    x => todo!("Unsupported operator: {x}"),
+                    _ => {
+                        let opaque = Term::Application {
+                            qual_identifier,
+                            arguments,
+                        }
+                        .to_string();
+                        Some(expr.add(ArrayLanguage::Symbol(opaque.into())))
+                    }
                 }
             }
             Term::Forall { .. } => None,
             Term::Attributes { term, .. } => inner(*term, expr),
-            x @ (Term::Let { .. } | Term::Exists { .. } | Term::Match { .. }) => todo!("{x}"),
+            opaque @ (Term::Let { .. } | Term::Exists { .. } | Term::Match { .. }) => {
+                Some(expr.add(ArrayLanguage::Symbol(opaque.to_string().into())))
+            }
         }
     }
 
@@ -875,14 +890,12 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
                     inner(expr, *else_term),
                 ],
             },
-            ArrayLanguage::Symbol(sym)
-                if sym.as_str().starts_with("#b") || sym.as_str().starts_with("#x") =>
-            {
-                sym.as_str()
+            ArrayLanguage::Symbol(sym) => sym.as_str().parse().unwrap_or_else(|_| {
+                SmtSymbol(sym.as_str().to_string())
+                    .to_string()
                     .parse()
-                    .expect("bitvector literal preserved by the array e-graph must remain valid")
-            }
-            ArrayLanguage::Symbol(sym) => Term::QualIdentifier(QualIdentifier::simple(sym)),
+                    .expect("symbol preserved by the array e-graph must remain valid SMT-LIB")
+            }),
         }
     }
 
@@ -1013,6 +1026,28 @@ mod test {
         let translated = translate_term(term).unwrap();
 
         assert_eq!(expr_to_term(translated).to_string(), "(to_real (- 1))");
+    }
+
+    #[test]
+    fn egraph_round_trip_does_not_embed_smt_symbol_quotes() {
+        let term = Term::QualIdentifier(QualIdentifier::simple(".x{78}@1"));
+
+        let translated = translate_term(term).unwrap();
+        let round_tripped = expr_to_term(translated);
+
+        assert_eq!(
+            round_tripped,
+            Term::QualIdentifier(QualIdentifier::simple(".x{78}@1"))
+        );
+    }
+
+    #[test]
+    fn unsupported_scalar_applications_round_trip_as_opaque_terms() {
+        let term: Term = "(bvadd #b0001 #b0010)".parse().unwrap();
+
+        let translated = translate_term(term.clone()).unwrap();
+
+        assert_eq!(expr_to_term(translated), term);
     }
 
     #[test]

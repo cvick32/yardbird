@@ -441,7 +441,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             self.instantiation_strategy.clone_box(),
             profiling,
             self.solver_capture.clone(),
-        );
+        )?;
 
         'bmc: for depth in 0..target_depth {
             info!("STARTING BMC FOR DEPTH {depth}");
@@ -574,7 +574,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                                 "No new refinements at depth {depth}; checking the concrete array theory"
                             );
                             let (concrete_result, concrete_problem) =
-                                self.check_concrete_counterexample(&concrete_vmt_model, depth);
+                                self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
 
                             if let Some(mut record) = driver_record {
                                 record.record_timing("finish", finish_start.elapsed());
@@ -713,24 +713,26 @@ impl<'ctx, S> Driver<'ctx, S> {
         &self,
         concrete_vmt_model: &VMTModel,
         depth: u16,
-    ) -> (SolverCheckResult, crate::vmt_bmc_session::VmtBmcSession) {
-        let concrete_strategy: Box<dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>> =
-            Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+    ) -> Result<(SolverCheckResult, crate::vmt_bmc_session::VmtBmcSession)> {
+        let mut concrete_strategy: Box<
+            dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
+        > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+        let concrete_vmt_model = concrete_strategy.configure_model(concrete_vmt_model.clone());
         let mut concrete_problem = crate::vmt_bmc_session::VmtBmcSession::new(
-            concrete_vmt_model,
+            &concrete_vmt_model,
             &concrete_strategy,
             self.solver_backend,
             false,
             self.instantiation_strategy.clone_box(),
             false,
             None,
-        );
+        )?;
 
         for unroll_depth in 0..=depth {
             concrete_problem.unroll(unroll_depth);
         }
         let result = concrete_problem.check_property();
-        (result, concrete_problem)
+        Ok((result, concrete_problem))
     }
 
     /// Build UnsatCoreInfo from the SMT problem if tracking is enabled

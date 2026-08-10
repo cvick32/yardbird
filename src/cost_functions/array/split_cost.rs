@@ -1,5 +1,5 @@
 use egg::Language;
-use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
+use smt2parser::vmt::{split_framed_symbol, ReadsAndWrites};
 
 use crate::{
     cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
@@ -241,9 +241,7 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
                 let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
                 let in_prop = self.property_terms.contains(&symbol_str);
 
-                if let Some((name, frame_number)) =
-                    sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
-                {
+                if let Some((name, frame_number)) = split_framed_symbol(sym.as_str()) {
                     // Log Z and N specifically
                     if name == "Z" || name == "N" {
                         log::info!(
@@ -260,7 +258,7 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
 
                     // CRITICAL: Check if this variable appears in our critical terms
                     // If so, make it essentially FREE to strongly bias toward using it
-                    if self.is_critical_variable(name) {
+                    if self.is_critical_variable(&name) {
                         log::info!("COST: CRITICAL VARIABLE DETECTED: {}", name);
                         return 0;
                     }
@@ -277,9 +275,9 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
 
                     // Z is THE most important variable (property), then i, N, a, b, c
                     let is_z = name == "Z";
-                    let is_key_var = matches!(name, "i" | "N" | "a" | "b" | "c");
+                    let is_key_var = matches!(name.as_str(), "i" | "N" | "a" | "b" | "c");
 
-                    match frame_number.parse::<u32>() {
+                    match u32::try_from(frame_number) {
                         Ok(n) => {
                             let frame_distance = if n <= self.current_bmc_depth {
                                 self.current_bmc_depth - n
@@ -312,7 +310,7 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
                                 }
                             }
                         }
-                        Err(_) => panic!("Couldn't parse `{frame_number}`"),
+                        Err(_) => 200,
                     }
                 } else {
                     // Uninterpreted constants

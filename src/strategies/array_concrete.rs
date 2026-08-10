@@ -13,14 +13,24 @@ use super::{ArrayRefinementState, ProofAction, ProofStrategy};
 #[derive(Default)]
 pub struct ConcreteArrayZ3 {
     run_ic3ia: bool,
+    discovered_array_types: Vec<(String, String)>,
 }
 impl ConcreteArrayZ3 {
     pub fn new(run_ic3ia: bool) -> Self {
-        Self { run_ic3ia }
+        Self {
+            run_ic3ia,
+            discovered_array_types: vec![],
+        }
     }
 }
 
 impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
+    fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        let (_, discovered_array_types) = model.abstract_array_theory();
+        self.discovered_array_types = discovered_array_types;
+        model
+    }
+
     fn n_refines(&mut self) -> u32 {
         1
     }
@@ -103,6 +113,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
     }
 
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
-        Box::new(ConcreteArrayTheory)
+        Box::new(ConcreteArrayTheory::new(
+            self.discovered_array_types.clone(),
+        ))
     }
 }

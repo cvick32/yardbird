@@ -30,17 +30,19 @@ pub struct Z3SolverBackend {
 }
 
 impl Z3SolverBackend {
-    pub(crate) fn new(logic: &str) -> Self {
-        let solver = z3::Solver::new_for_logic(logic).unwrap();
+    pub(crate) fn new(logic: &str) -> anyhow::Result<Self> {
+        let solver = z3::Solver::new_for_logic(logic).ok_or_else(|| {
+            anyhow::anyhow!("Z3 does not support the requested SMT logic {logic}")
+        })?;
         configure_z3_solver(&solver);
-        Self {
+        Ok(Self {
             z3_var_context: Z3VarContext::new(),
             solver,
             solver_statistics: SolverStatistics::new(),
             last_result: None,
             model_captured: false,
             newest_model: None,
-        }
+        })
     }
 }
 
@@ -239,8 +241,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn unsupported_logic_is_returned_as_an_error() {
+        let error = Z3SolverBackend::new("NOT_A_REAL_SMT_LOGIC")
+            .err()
+            .expect("unsupported logic should fail");
+
+        assert!(error.to_string().contains("does not support"));
+    }
+
+    #[test]
+    fn z3_accepts_the_general_logic_used_for_mixed_array_sorts() {
+        assert!(Z3SolverBackend::new("ALL").is_ok());
+    }
+
+    #[test]
     fn raw_check_does_not_capture_a_z3_model() {
-        let mut solver = Z3SolverBackend::new("QF_UF");
+        let mut solver = Z3SolverBackend::new("QF_UF").unwrap();
         solver
             .assert_term(&"true".parse::<Term>().unwrap())
             .unwrap();
@@ -255,7 +271,7 @@ mod tests {
 
     #[test]
     fn solver_time_is_finalized_before_model_capture() {
-        let mut solver = Z3SolverBackend::new("QF_UF");
+        let mut solver = Z3SolverBackend::new("QF_UF").unwrap();
         solver
             .assert_term(&"true".parse::<Term>().unwrap())
             .unwrap();
@@ -285,7 +301,7 @@ mod tests {
 
     #[test]
     fn z3_model_capture_requires_a_sat_result() {
-        let mut solver = Z3SolverBackend::new("QF_UF");
+        let mut solver = Z3SolverBackend::new("QF_UF").unwrap();
         assert!(solver.capture_model(&[]).is_err());
 
         solver
