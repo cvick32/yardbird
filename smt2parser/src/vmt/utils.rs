@@ -140,19 +140,6 @@ fn get_or_create_next_variable_command(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::get_and_terms;
-    use crate::concrete::Term;
-
-    #[test]
-    fn non_conjunction_is_a_single_top_level_conjunct() {
-        let term: Term = "(or left right)".parse().unwrap();
-
-        assert_eq!(get_and_terms(term.clone()), vec![term]);
-    }
-}
-
 pub fn scrub_variable_name(variable_name: String) -> String {
     if variable_name.starts_with("|") && variable_name.ends_with("|") {
         let mut chars = variable_name.chars();
@@ -190,5 +177,18 @@ pub fn get_annotated_term(command: &Command, attribute: &str) -> Option<Term> {
                 attributes: vec![attribute.clone()],
             }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_and_terms;
+    use crate::concrete::Term;
+
+    #[test]
+    fn non_conjunction_is_a_single_top_level_conjunct() {
+        let term: Term = "(or left right)".parse().unwrap();
+
+        assert_eq!(get_and_terms(term.clone()), vec![term]);
     }
 }
