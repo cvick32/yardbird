@@ -243,7 +243,7 @@ pub struct SmtlibCommandExecutor {
 
 impl SmtlibCommandExecutor {
     /// Create a new SMTLIB solver with the given logic, defaulting to Z3.
-    pub fn new(logic: Option<String>) -> Self {
+    pub fn new(logic: Option<String>) -> anyhow::Result<Self> {
         Self::new_with_backend(logic, SolverBackend::Z3, None)
     }
 
@@ -252,16 +252,16 @@ impl SmtlibCommandExecutor {
         logic: Option<String>,
         backend: SolverBackend,
         capture: Option<SolverCapture>,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let logic = logic.unwrap_or_else(|| "QF_UFLIA".to_string());
-        SmtlibCommandExecutor {
-            solver: new_solver_backend(backend, logic.as_str(), capture),
+        Ok(SmtlibCommandExecutor {
+            solver: new_solver_backend(backend, logic.as_str(), capture)?,
             logic,
             check_sat_results: Vec::new(),
             profiler: None,
             active_assertion_count: 0,
             assertion_scope_stack: vec![],
-        }
+        })
     }
 
     pub fn with_profiler(mut self, profiler: Option<Profiler>) -> Self {
@@ -271,6 +271,7 @@ impl SmtlibCommandExecutor {
 
     /// Execute all commands from an SMTLIB problem
     pub fn execute(&mut self, problem: &SMTLIBProblem) -> anyhow::Result<()> {
+        crate::theory_support::validate_logic_for_commands(&self.logic, problem.get_commands())?;
         for (idx, command) in problem.get_commands().iter().enumerate() {
             self.execute_command(command, idx)?;
         }
@@ -507,12 +508,16 @@ impl SmtlibRefinementRunner {
         use log::info;
 
         // 1. Abstract if needed
-        let (working_problem, array_types) = if strategy.get_theory_support().requires_abstraction()
-        {
+        let theory = strategy.get_theory_support();
+        let (working_problem, array_types) = if theory.requires_abstraction() {
             info!("Abstracting array theory");
             let (abs_problem, types) = problem.abstract_array_theory();
             info!("Discovered array types: {:?}", types);
             (abs_problem, types)
+        } else if theory.requires_array_information() {
+            let (_, types) = problem.abstract_array_theory();
+            info!("Discovered concrete array types: {:?}", types);
+            (problem.clone(), types)
         } else {
             (problem.clone(), vec![])
         };
@@ -538,7 +543,7 @@ impl SmtlibRefinementRunner {
             //instantiation_strategy,
             array_types,
             solver_capture,
-        );
+        )?;
         if profiler.is_some() {
             smt_problem.enable_check_profiling();
         }

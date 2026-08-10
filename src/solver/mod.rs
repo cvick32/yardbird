@@ -22,18 +22,18 @@ pub fn new_solver_backend(
     backend: SolverBackend,
     logic: &str,
     capture: Option<SolverCapture>,
-) -> Box<dyn YardbirdSolver> {
+) -> anyhow::Result<Box<dyn YardbirdSolver>> {
     let solver: Box<dyn YardbirdSolver> = match backend {
-        SolverBackend::Z3 => Box::new(Z3SolverBackend::new(logic)),
+        SolverBackend::Z3 => Box::new(Z3SolverBackend::new(logic)?),
         #[cfg(feature = "cvc5-backend")]
         SolverBackend::Cvc5 => Box::new(Cvc5SolverBackend::new(logic)),
         #[cfg(not(feature = "cvc5-backend"))]
         SolverBackend::Cvc5 => {
-            panic!("yardbird was built without the cvc5-backend Cargo feature")
+            anyhow::bail!("yardbird was built without the cvc5-backend Cargo feature")
         }
     };
-    match capture {
+    Ok(match capture {
         Some(capture) => capture.wrap(solver, logic),
         None => solver,
-    }
+    })
 }

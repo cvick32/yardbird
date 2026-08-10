@@ -1,10 +1,10 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, convert::TryFrom};
 
 use log::debug;
 
 use crate::{
     concrete::{Symbol, SyntaxBuilder, Term},
-    vmt::{variable::var_is_immutable, VARIABLE_FRAME_DELIMITER},
+    vmt::{split_framed_symbol, variable::var_is_immutable},
 };
 
 use super::definition_graph::DefinitionFrameInfo;
@@ -134,15 +134,16 @@ impl crate::rewriter::Rewriter for ArrayAxiomFrameNumGetter {
     }
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
-        if let Some((var_name, time_str)) = s.0.split_once(VARIABLE_FRAME_DELIMITER) {
-            if !var_is_immutable(var_name) {
-                let time = time_str.parse().unwrap();
-                let var_sort = self.get_var_sort(var_name);
+        if let Some((var_name, time)) = split_framed_symbol(&s.0) {
+            if !var_is_immutable(&var_name) {
+                let Ok(time) = u64::try_from(time) else {
+                    return Ok(s);
+                };
+                let var_sort = self.get_var_sort(&var_name);
                 if var_sort.contains("Array") {
-                    self.array_term_frame_map
-                        .insert((var_name.to_string(), time));
+                    self.array_term_frame_map.insert((var_name, time));
                 } else {
-                    self.int_term_frame_map.insert((var_name.to_string(), time));
+                    self.int_term_frame_map.insert((var_name, time));
                 }
             }
         }
@@ -221,13 +222,10 @@ impl crate::rewriter::Rewriter for VariableOffsetGetter {
     }
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
-        if let Some((var_name, time_str)) = s.0.split_once(VARIABLE_FRAME_DELIMITER) {
-            if let Some(relative_offsets) = self.definition_frames.offsets(var_name) {
-                let anchor: i64 = time_str.parse().unwrap();
-                let offsets = self
-                    .variable_offsets
-                    .entry(var_name.to_string())
-                    .or_default();
+        if let Some((var_name, frame)) = split_framed_symbol(&s.0) {
+            if let Some(relative_offsets) = self.definition_frames.offsets(&var_name) {
+                let anchor = frame;
+                let offsets = self.variable_offsets.entry(var_name).or_default();
                 // The helper symbol exists at its anchor even when its body is
                 // next-state-only. Keeping the anchor in the span prevents a
                 // reusable instance from being shifted to a negative frame.
@@ -237,15 +235,29 @@ impl crate::rewriter::Rewriter for VariableOffsetGetter {
                         .iter()
                         .map(|offset| anchor + i64::from(*offset)),
                 );
-            } else if !var_is_immutable(var_name) {
-                let time: i64 = time_str.parse().unwrap();
+            } else if !var_is_immutable(&var_name) {
                 // Calculate offset relative to the current frame (0)
                 self.variable_offsets
-                    .entry(var_name.to_string())
+                    .entry(var_name)
                     .or_default()
-                    .push(time);
+                    .push(frame);
             }
         }
         Ok(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VariableOffsetGetter;
+    use crate::concrete::{QualIdentifier, Term};
+
+    #[test]
+    fn variable_offset_getter_reads_quoted_framed_symbols() {
+        let term = Term::QualIdentifier(QualIdentifier::simple("|.x{78}@1|"));
+
+        let getter = VariableOffsetGetter::new(term);
+
+        assert_eq!(getter.variable_offsets.get("|.x{78}|"), Some(&vec![1]));
     }
 }

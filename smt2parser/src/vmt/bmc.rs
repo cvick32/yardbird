@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::concrete::{Symbol, SyntaxBuilder, Term};
 
-use super::definition_graph::DefinitionFrameInfo;
+use super::{definition_graph::DefinitionFrameInfo, format_framed_symbol};
 
 #[derive(Clone)]
 pub struct BMCBuilder {
@@ -97,27 +97,22 @@ impl crate::rewriter::Rewriter for BMCBuilder {
                 // };
                 // assert!((self.depth + self.width) >= normalized_offset, "UnquantifiedInstantiator is incorrect");
 
-                return Ok(Symbol(format!(
-                    "{}@{}",
+                return Ok(Symbol(format_framed_symbol(
                     var_name,
-                    (self.depth as i64) + (normalized_offset - i64::from(self.width.unwrap_or(0)))
+                    (self.depth as i64) + (normalized_offset - i64::from(self.width.unwrap_or(0))),
                 )));
             }
         }
 
         // Original logic for @ notation
         if self.current_variables.contains(&s.0) {
-            Ok(Symbol(format!("{}@{}", s.0, &self.depth)))
+            Ok(Symbol(format_framed_symbol(&s.0, self.depth)))
         } else if self.next_variables.contains_key(&s.0) {
             let next = self.depth + 1;
             let current_variable_name = self.next_variables.get(&s.0).unwrap();
-            Ok(Symbol(format!(
-                "{}@{}",
-                current_variable_name,
-                &next.to_string()
-            )))
+            Ok(Symbol(format_framed_symbol(current_variable_name, next)))
         } else if self.definition_frames.is_state_dependent(&s.0) {
-            Ok(Symbol(format!("{}@{}", s.0, self.depth)))
+            Ok(Symbol(format_framed_symbol(&s.0, self.depth)))
         } else {
             Ok(s)
         }

@@ -67,6 +67,7 @@ fn simple_incremental_smtlib_profiles_every_check() {
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
     let mut solver =
         SmtlibCommandExecutor::new_with_backend(problem.get_logic(), SolverBackend::Z3, None)
+            .unwrap()
             .with_profiler(options.build_profiler());
 
     solver.execute(&problem).unwrap();

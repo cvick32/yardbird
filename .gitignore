@@ -18,6 +18,8 @@ ec2
 *.tikz
 *.tex
 benchmark_results
+external-benchmarks
+.z3-trace
 tmp/
 *.pyc
 run_all_benchmarks.sh

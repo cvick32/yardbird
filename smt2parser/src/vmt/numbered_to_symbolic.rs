@@ -1,4 +1,4 @@
-use super::{NEXT_VARIABLE_NAME, VARIABLE_FRAME_DELIMITER};
+use super::{split_framed_symbol, NEXT_VARIABLE_NAME};
 use crate::concrete::{Symbol, SyntaxBuilder};
 
 /// This is effectively the opposite of the BMCBuilder.
@@ -26,12 +26,10 @@ impl crate::rewriter::Rewriter for NumberedToSymbolic {
     }
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
-        if s.0.contains(VARIABLE_FRAME_DELIMITER) {
-            let split: Vec<_> = s.0.split(VARIABLE_FRAME_DELIMITER).collect();
-            let (var_name, frame_number): (&str, usize) = (split[0], split[1].parse().unwrap());
-            if frame_number == self.step {
-                Ok(Symbol(var_name.to_string()))
-            } else if frame_number == self.step + 1 {
+        if let Some((var_name, frame_number)) = split_framed_symbol(&s.0) {
+            if frame_number == self.step as i64 {
+                Ok(Symbol(var_name))
+            } else if frame_number == (self.step + 1) as i64 {
                 Ok(Symbol(format!("{var_name}_{NEXT_VARIABLE_NAME}")))
             } else {
                 panic!(

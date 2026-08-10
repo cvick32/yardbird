@@ -18,33 +18,14 @@ pub fn is_boolean_connective(qual_identifier: &QualIdentifier) -> bool {
     BOOLEAN_CONNECTIVES.contains(&qual_identifier.get_name().as_str())
 }
 
-/// Only call this method if you're sure that the given Term is or should be
-/// an `and` Application. It will panic if not.
-pub fn get_and_terms(term: Box<Term>) -> Vec<Term> {
-    match *term.clone() {
+/// Flattens a top-level `and`; every other term is a single conjunct.
+pub fn get_and_terms(term: Term) -> Vec<Term> {
+    match term {
         Term::Application {
             qual_identifier,
             arguments,
-        } => match qual_identifier {
-            crate::concrete::QualIdentifier::Simple { identifier } => match identifier {
-                Identifier::Simple { symbol } => {
-                    if symbol.0 == "and" {
-                        arguments
-                    } else {
-                        panic!("Inner term of condition is not `and` Application: {}", term)
-                    }
-                }
-                Identifier::Indexed {
-                    symbol: _,
-                    indices: _,
-                } => panic!("Inner term of condition is not `and` Application: {}", term),
-            },
-            crate::concrete::QualIdentifier::Sorted {
-                identifier: _,
-                sort: _,
-            } => todo!(),
-        },
-        _ => panic!("Inner term of condition is not Application: {}", term),
+        } if qual_identifier.get_name() == "and" => arguments,
+        other => vec![other],
     }
 }
 
@@ -156,6 +137,19 @@ fn get_or_create_next_variable_command(
             entry.insert(command.clone());
             command
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_and_terms;
+    use crate::concrete::Term;
+
+    #[test]
+    fn non_conjunction_is_a_single_top_level_conjunct() {
+        let term: Term = "(or left right)".parse().unwrap();
+
+        assert_eq!(get_and_terms(term.clone()), vec![term]);
     }
 }
 

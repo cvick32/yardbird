@@ -177,7 +177,7 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
         problem.get_logic(),
         options.solver,
         solver_capture.clone(),
-    )
+    )?
     .with_profiler(options.build_profiler());
     solver.execute(problem)?;
     let profiling = solver.profiling();

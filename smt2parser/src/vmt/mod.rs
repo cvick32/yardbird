@@ -46,6 +46,33 @@ pub mod variable;
 pub static VARIABLE_FRAME_DELIMITER: &str = "@";
 pub static NEXT_VARIABLE_NAME: &str = "next";
 
+/// Splits a BMC-indexed symbol into its original symbol and signed frame.
+///
+/// SMT-LIB quoted symbols keep their frame inside the surrounding pipes, so
+/// `|state.value@3|` maps back to `|state.value|` at frame 3. Symbols whose
+/// final `@` suffix is not numeric are ordinary identifiers, not framed ones.
+pub fn split_framed_symbol(symbol: &str) -> Option<(String, i64)> {
+    let (body, quoted) = match symbol.strip_prefix('|').and_then(|s| s.strip_suffix('|')) {
+        Some(body) => (body, true),
+        None => (symbol, false),
+    };
+    let (base, frame) = body.rsplit_once(VARIABLE_FRAME_DELIMITER)?;
+    let frame = frame.parse().ok()?;
+    let base = if quoted {
+        format!("|{base}|")
+    } else {
+        base.to_string()
+    };
+    Some((base, frame))
+}
+
+pub fn format_framed_symbol(symbol: &str, frame: impl std::fmt::Display) -> String {
+    match symbol.strip_prefix('|').and_then(|s| s.strip_suffix('|')) {
+        Some(body) => format!("|{body}{VARIABLE_FRAME_DELIMITER}{frame}|"),
+        None => format!("{symbol}{VARIABLE_FRAME_DELIMITER}{frame}"),
+    }
+}
+
 fn is_assert_true(command: &Command) -> bool {
     matches!(
         command,
@@ -578,7 +605,7 @@ impl VMTModel {
             Term::Attributes { term, attributes } => (term, attributes),
             _ => panic!("Condition is not an Attributes: {}", condition),
         };
-        let mut and_terms = get_and_terms(term);
+        let mut and_terms = get_and_terms(*term);
         and_terms.push(instantiation.clone());
         Term::Attributes {
             term: Box::new(Term::Application {

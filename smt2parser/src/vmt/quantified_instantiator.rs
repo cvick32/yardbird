@@ -1,8 +1,10 @@
 use std::{collections::BTreeMap, fmt::Display};
 
+use std::convert::TryFrom;
+
 use crate::{
     concrete::{Identifier, Sort, Symbol, SyntaxBuilder, Term},
-    vmt::{variable::var_is_immutable, VARIABLE_FRAME_DELIMITER},
+    vmt::{split_framed_symbol, variable::var_is_immutable},
 };
 
 use super::{
@@ -137,11 +139,14 @@ impl crate::rewriter::Rewriter for QuantifiedInstantiator {
     }
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
-        match s.0.split_once(VARIABLE_FRAME_DELIMITER) {
-            Some((var_name, _)) if var_is_immutable(var_name) => Ok(Symbol(var_name.to_string())),
-            Some((var_name, frame)) => Ok(Symbol(
-                self.subst[&(var_name.to_string(), frame.parse().unwrap())].clone(),
-            )),
+        match split_framed_symbol(&s.0) {
+            Some((var_name, _)) if var_is_immutable(&var_name) => Ok(Symbol(var_name)),
+            Some((var_name, frame)) => {
+                let Ok(frame) = u64::try_from(frame) else {
+                    return Ok(s);
+                };
+                Ok(Symbol(self.subst[&(var_name, frame)].clone()))
+            }
             None => Ok(s),
         }
     }
@@ -156,11 +161,10 @@ impl crate::rewriter::Rewriter for UnquantifiedInstantiator {
     }
 
     fn process_symbol(&mut self, s: Symbol) -> Result<Symbol, Self::Error> {
-        match s.0.split_once(VARIABLE_FRAME_DELIMITER) {
-            Some((var_name, _)) if var_is_immutable(var_name) => Ok(Symbol(var_name.to_string())),
+        match split_framed_symbol(&s.0) {
+            Some((var_name, _)) if var_is_immutable(&var_name) => Ok(Symbol(var_name)),
             Some((var_name, frame)) => {
-                let frame_num = frame.parse::<i64>().unwrap();
-                let new_frame = frame_num - self.variable_offsets.min_offset();
+                let new_frame = frame - self.variable_offsets.min_offset();
                 Ok(Symbol(format!("{var_name}+{new_frame}")))
             }
             None => Ok(s),

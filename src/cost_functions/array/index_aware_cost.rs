@@ -1,6 +1,6 @@
 use egg::{Language, Symbol};
 use rustc_hash::FxHashSet;
-use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
+use smt2parser::vmt::{split_framed_symbol, ReadsAndWrites};
 
 use crate::{
     cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
@@ -110,7 +110,7 @@ impl IndexAwareArrayCost {
             return true;
         }
         // Also check unframed name: if "i+5" is an index symbol, treat "i" as index-related
-        if let Some((name, _frame)) = sym.as_str().split_once(VARIABLE_FRAME_DELIMITER) {
+        if let Some((name, _frame)) = split_framed_symbol(sym.as_str()) {
             let name_sym: Symbol = name.into();
             return self.index_symbols.contains(&name_sym);
         }
@@ -188,9 +188,7 @@ impl egg::CostFunction<ArrayLanguage> for IndexAwareArrayCost {
                 let in_prop = self.property_terms.contains(sym);
                 let is_index = self.is_index_symbol(sym);
 
-                if let Some((name, frame_number)) =
-                    sym.as_str().split_once(VARIABLE_FRAME_DELIMITER)
-                {
+                if let Some((name, frame_number)) = split_framed_symbol(sym.as_str()) {
                     if name == "pc" {
                         // Never instantiate with the program counter.
                         return 10000;
@@ -206,13 +204,13 @@ impl egg::CostFunction<ArrayLanguage> for IndexAwareArrayCost {
                     // Dampen frame-distance penalty: use half the distance
                     // so early-frame terms in multi-phase programs aren't
                     // prohibitively expensive.
-                    match frame_number.parse::<u32>() {
+                    match u32::try_from(frame_number) {
                         Ok(n) => {
                             let distance = self.current_bmc_depth.saturating_sub(n);
                             // Half the distance, minimum 1
                             (distance / 2).max(1)
                         }
-                        Err(_) => panic!("Couldn't parse `{frame_number}`"),
+                        Err(_) => 100,
                     }
                 } else {
                     // Uninterpreted sort constants, etc.
