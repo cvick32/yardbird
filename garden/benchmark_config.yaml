@@ -66,6 +66,13 @@ parameter_matrices:
     cost_functions: ["bmc-cost"]
     timeout_seconds: 120
 
+  deep-abstract-cone-then-full:
+    depths: [50]
+    strategies: ["abstract"]
+    cost_functions: ["bmc-cost"]
+    egraph_builders: ["cone-then-full"]
+    timeout_seconds: 120
+
   deep-abstract-ast:
     depths: [50]
     strategies: ["abstract"]

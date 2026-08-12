@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Instant};
+use std::time::Instant;
 
 use itertools::Itertools;
 use log::info;
@@ -57,6 +57,29 @@ impl ProofLoopResult {
             .map(|inst| format!(" - {inst}"))
             .join("\n")
     }
+}
+
+fn record_total_solver_time(
+    result: &mut ProofLoopResult,
+    concrete_validation_checks: u64,
+    concrete_validation_solver_time: f64,
+) {
+    let primary_solver_time = result
+        .solver_statistics
+        .get_f64("solver_time")
+        .unwrap_or_default();
+    result.solver_statistics.add_time(
+        "concrete_validation_solver_time",
+        concrete_validation_solver_time,
+    );
+    result.solver_statistics.add_time(
+        "total_solver_time",
+        primary_solver_time + concrete_validation_solver_time,
+    );
+    result.solver_statistics.insert(
+        "concrete_validation_checks".to_string(),
+        crate::utils::StatisticsValue::UInt(concrete_validation_checks),
+    );
 }
 
 impl Serialize for ProofLoopResult {
@@ -428,6 +451,8 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.vmt_model = strat.configure_model(concrete_vmt_model.clone());
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;
+        let mut concrete_validation_checks = 0_u64;
+        let mut concrete_validation_solver_time = 0.0;
         let mut unsat_event_tracker = UnsatEventTracker::default();
         let mut profiler = self.profiler.take();
         let profiling = profiler.is_some();
@@ -552,69 +577,8 @@ impl<'ctx, S> Driver<'ctx, S> {
                 match action {
                     ProofAction::Continue => {
                         let finish_start = Instant::now();
-                        let instantiations_before = smt_problem
-                            .get_instantiations()
-                            .into_iter()
-                            .collect::<HashSet<_>>();
-                        let auxiliary_records_before = smt_problem.get_auxiliary_records().len();
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
                         strat.finish(state, &mut smt_problem)?;
-                        let added_new_instantiation = smt_problem
-                            .get_instantiations()
-                            .into_iter()
-                            .any(|instantiation| !instantiations_before.contains(&instantiation));
-                        let added_auxiliary_record =
-                            smt_problem.get_auxiliary_records().len() > auxiliary_records_before;
-
-                        if strat.check_concrete_counterexample_on_no_progress()
-                            && !added_new_instantiation
-                            && !added_auxiliary_record
-                        {
-                            info!(
-                                "No new refinements at depth {depth}; checking the concrete array theory"
-                            );
-                            let (concrete_result, concrete_problem) =
-                                self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
-
-                            if let Some(mut record) = driver_record {
-                                record.record_timing("finish", finish_start.elapsed());
-                                record.record_timing("driver_step_total", step_start.elapsed());
-                                if let Some(profiler) = &mut profiler {
-                                    let action = match concrete_result {
-                                        SolverCheckResult::Sat => "concrete_counterexample",
-                                        SolverCheckResult::Unsat => "concrete_next_depth",
-                                        SolverCheckResult::Unknown => "concrete_unknown",
-                                    };
-                                    profiler.add_driver_record(record.finish(
-                                        action,
-                                        smt_problem.get_instantiations().len(),
-                                        smt_problem.get_number_instantiations_added(),
-                                    ));
-                                }
-                            }
-
-                            match concrete_result {
-                                SolverCheckResult::Sat => {
-                                    info!("Concrete counterexample found at depth {depth}");
-                                    info!(
-                                        "Counterexample:\n{}",
-                                        concrete_problem.model_to_string()?
-                                    );
-                                    return Err(Error::Counterexample);
-                                }
-                                SolverCheckResult::Unsat => {
-                                    info!(
-                                        "Concrete array theory ruled out counterexamples at depth {depth}"
-                                    );
-                                    continue 'bmc;
-                                }
-                                SolverCheckResult::Unknown => {
-                                    return Err(Error::SolverUnknown(
-                                        concrete_problem.get_reason_unknown(),
-                                    ));
-                                }
-                            }
-                        }
 
                         if let Some(mut record) = driver_record {
                             record.record_timing("finish", finish_start.elapsed());
@@ -624,6 +588,55 @@ impl<'ctx, S> Driver<'ctx, S> {
                                     "continue",
                                     smt_problem.get_instantiations().len(),
                                     smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
+                        }
+                    }
+                    ProofAction::ValidateConcreteCounterexample => {
+                        info!(
+                            "Abstract e-graph search exhausted at depth {depth}; checking the concrete array theory"
+                        );
+                        let concrete_start = Instant::now();
+                        let (concrete_result, concrete_problem) =
+                            self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
+                        concrete_validation_checks += 1;
+                        concrete_validation_solver_time += concrete_problem
+                            .get_solver_statistics()
+                            .get_f64("solver_time")
+                            .unwrap_or_default();
+
+                        if let Some(mut record) = driver_record {
+                            record.record_timing("concrete_validation", concrete_start.elapsed());
+                            record.record_timing("driver_step_total", step_start.elapsed());
+                            if let Some(profiler) = &mut profiler {
+                                let action = match concrete_result {
+                                    SolverCheckResult::Sat => "concrete_counterexample",
+                                    SolverCheckResult::Unsat => "concrete_next_depth",
+                                    SolverCheckResult::Unknown => "concrete_unknown",
+                                };
+                                profiler.add_driver_record(record.finish(
+                                    action,
+                                    smt_problem.get_instantiations().len(),
+                                    smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
+                        }
+
+                        match concrete_result {
+                            SolverCheckResult::Sat => {
+                                info!("Concrete counterexample found at depth {depth}");
+                                info!("Counterexample:\n{}", concrete_problem.model_to_string()?);
+                                return Err(Error::Counterexample);
+                            }
+                            SolverCheckResult::Unsat => {
+                                info!(
+                                    "Concrete array theory ruled out counterexamples at depth {depth}"
+                                );
+                                continue 'bmc;
+                            }
+                            SolverCheckResult::Unknown => {
+                                return Err(Error::SolverUnknown(
+                                    concrete_problem.get_reason_unknown(),
                                 ));
                             }
                         }
@@ -667,6 +680,11 @@ impl<'ctx, S> Driver<'ctx, S> {
                         }
                         info!("Building final proof result");
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
+                        record_total_solver_time(
+                            &mut result,
+                            concrete_validation_checks,
+                            concrete_validation_solver_time,
+                        );
                         result.total_refinement_steps = total_refinement_steps;
                         result.unsat_events = unsat_event_tracker.events.clone();
                         if let Some(mut profiler) = profiler {
@@ -693,6 +711,11 @@ impl<'ctx, S> Driver<'ctx, S> {
 
         info!("Building final proof result");
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
+        record_total_solver_time(
+            &mut result,
+            concrete_validation_checks,
+            concrete_validation_solver_time,
+        );
         result.total_refinement_steps = total_refinement_steps;
         result.unsat_events = unsat_event_tracker.events;
         if let Some(mut profiler) = profiler {

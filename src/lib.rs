@@ -22,7 +22,10 @@ use crate::{
         list::list_ast_size_cost_factory,
     },
     strategies::ListRefinementState,
-    theories::array::array_conflict_scheduler::ArrayArtifactCapture,
+    theories::array::{
+        array_conflict_scheduler::ArrayArtifactCapture,
+        array_egraph_builder::{ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder},
+    },
     training::LogisticRegressionModel,
 };
 
@@ -86,6 +89,10 @@ pub struct YardbirdOptions {
     // Choose Cost Function
     #[arg(short, long, value_enum, default_value_t = CostFunction::BmcCost)]
     pub cost_function: CostFunction,
+
+    /// Choose how model equalities are admitted to the array refinement e-graph.
+    #[arg(long, value_enum, default_value_t = EGraphBuilderStrategy::Full)]
+    pub egraph_builder: EGraphBuilderStrategy,
 
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
@@ -184,6 +191,7 @@ impl Default for YardbirdOptions {
             repl: false,
             run_ic3ia: false,
             cost_function: CostFunction::BmcCost,
+            egraph_builder: EGraphBuilderStrategy::Full,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -398,6 +406,7 @@ impl YardbirdOptions {
             self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
+        .with_egraph_builder(self.build_array_egraph_builder())
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -419,6 +428,14 @@ impl YardbirdOptions {
             self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
+        .with_egraph_builder(self.build_array_egraph_builder())
+    }
+
+    fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {
+        match self.egraph_builder {
+            EGraphBuilderStrategy::Full => Box::<FullEGraphBuilder>::default(),
+            EGraphBuilderStrategy::ConeThenFull => Box::<ConeThenFullEGraphBuilder>::default(),
+        }
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
@@ -585,6 +602,23 @@ pub enum CostFunction {
     IndexAware,
     Generated,
     LogisticRegression,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum EGraphBuilderStrategy {
+    Full,
+    ConeThenFull,
+}
+
+impl Display for EGraphBuilderStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Full => write!(f, "full"),
+            Self::ConeThenFull => write!(f, "cone-then-full"),
+        }
+    }
 }
 
 impl Display for CostFunction {

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use yardbird::{CostFunction, SolverBackend, Strategy};
+use yardbird::{CostFunction, EGraphBuilderStrategy, SolverBackend, Strategy};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
@@ -53,6 +53,8 @@ pub struct ParameterMatrix {
     pub solvers: Vec<SolverBackend>,
     pub strategies: Vec<Strategy>,
     pub cost_functions: Vec<CostFunction>,
+    #[serde(default = "default_egraph_builders")]
+    pub egraph_builders: Vec<EGraphBuilderStrategy>,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
@@ -65,6 +67,14 @@ fn default_solvers() -> Vec<SolverBackend> {
     vec![SolverBackend::Z3]
 }
 
+fn default_egraph_builder() -> EGraphBuilderStrategy {
+    EGraphBuilderStrategy::Full
+}
+
+fn default_egraph_builders() -> Vec<EGraphBuilderStrategy> {
+    vec![default_egraph_builder()]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
     pub name: String,
@@ -73,6 +83,8 @@ pub struct IndividualConfig {
     pub solver: SolverBackend,
     pub strategy: Strategy,
     pub cost_function: CostFunction,
+    #[serde(default = "default_egraph_builder")]
+    pub egraph_builder: EGraphBuilderStrategy,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
@@ -134,7 +146,26 @@ pub struct BenchmarkRun {
     pub solver: SolverBackend,
     pub strategy: Strategy,
     pub cost_function: CostFunction,
+    pub egraph_builder: EGraphBuilderStrategy,
     pub timeout_seconds: u64,
+}
+
+fn matrix_run_name(
+    matrix_name: &str,
+    depth: u16,
+    solver: SolverBackend,
+    strategy: Strategy,
+    cost_function: CostFunction,
+    egraph_builder: EGraphBuilderStrategy,
+) -> String {
+    let base = format!(
+        "{}_d{}_solver{:?}_s{:?}_c{:?}",
+        matrix_name, depth, solver, strategy, cost_function
+    );
+    match egraph_builder {
+        EGraphBuilderStrategy::Full => base,
+        EGraphBuilderStrategy::ConeThenFull => format!("{base}_e{egraph_builder:?}"),
+    }
 }
 
 impl BenchmarkConfig {
@@ -159,19 +190,26 @@ impl BenchmarkConfig {
                 for &solver in &matrix.solvers {
                     for &strategy in &matrix.strategies {
                         for &cost_function in &matrix.cost_functions {
-                            runs.push(BenchmarkRun {
-                                name: format!(
-                                    "{}_d{}_solver{:?}_s{:?}_c{:?}",
-                                    matrix_name, depth, solver, strategy, cost_function
-                                ),
-                                depth,
-                                solver,
-                                strategy,
-                                cost_function,
-                                timeout_seconds: matrix
-                                    .timeout_seconds
-                                    .unwrap_or(self.global.timeout_seconds),
-                            });
+                            for &egraph_builder in &matrix.egraph_builders {
+                                runs.push(BenchmarkRun {
+                                    name: matrix_run_name(
+                                        matrix_name,
+                                        depth,
+                                        solver,
+                                        strategy,
+                                        cost_function,
+                                        egraph_builder,
+                                    ),
+                                    depth,
+                                    solver,
+                                    strategy,
+                                    cost_function,
+                                    egraph_builder,
+                                    timeout_seconds: matrix
+                                        .timeout_seconds
+                                        .unwrap_or(self.global.timeout_seconds),
+                                });
+                            }
                         }
                     }
                 }
@@ -187,6 +225,7 @@ impl BenchmarkConfig {
                     solver: config.solver,
                     strategy: config.strategy,
                     cost_function: config.cost_function,
+                    egraph_builder: config.egraph_builder,
                     timeout_seconds: config
                         .timeout_seconds
                         .unwrap_or(self.global.timeout_seconds),
@@ -199,19 +238,26 @@ impl BenchmarkConfig {
                     for &solver in &matrix.solvers {
                         for &strategy in &matrix.strategies {
                             for &cost_function in &matrix.cost_functions {
-                                runs.push(BenchmarkRun {
-                                    name: format!(
-                                        "{}_d{}_solver{:?}_s{:?}_c{:?}",
-                                        matrix_name, depth, solver, strategy, cost_function
-                                    ),
-                                    depth,
-                                    solver,
-                                    strategy,
-                                    cost_function,
-                                    timeout_seconds: matrix
-                                        .timeout_seconds
-                                        .unwrap_or(self.global.timeout_seconds),
-                                });
+                                for &egraph_builder in &matrix.egraph_builders {
+                                    runs.push(BenchmarkRun {
+                                        name: matrix_run_name(
+                                            matrix_name,
+                                            depth,
+                                            solver,
+                                            strategy,
+                                            cost_function,
+                                            egraph_builder,
+                                        ),
+                                        depth,
+                                        solver,
+                                        strategy,
+                                        cost_function,
+                                        egraph_builder,
+                                        timeout_seconds: matrix
+                                            .timeout_seconds
+                                            .unwrap_or(self.global.timeout_seconds),
+                                    });
+                                }
                             }
                         }
                     }
@@ -225,7 +271,8 @@ impl BenchmarkConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::BenchmarkConfig;
+    use super::{matrix_run_name, BenchmarkConfig};
+    use yardbird::{CostFunction, EGraphBuilderStrategy, SolverBackend, Strategy};
 
     #[test]
     fn older_global_configs_receive_sampling_defaults() {
@@ -246,5 +293,28 @@ global:
         assert_eq!(config.global.benchmark_limit, None);
         assert_eq!(config.global.sample_seed, 0);
         assert!(!config.global.require_array_reads_and_writes);
+    }
+
+    #[test]
+    fn full_builder_preserves_existing_run_names() {
+        let full = matrix_run_name(
+            "deep",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            EGraphBuilderStrategy::Full,
+        );
+        let cone = matrix_run_name(
+            "deep",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            EGraphBuilderStrategy::ConeThenFull,
+        );
+
+        assert_eq!(full, "deep_d50_solverZ3_sAbstract_cBmcCost");
+        assert_eq!(cone, "deep_d50_solverZ3_sAbstract_cBmcCost_eConeThenFull");
     }
 }

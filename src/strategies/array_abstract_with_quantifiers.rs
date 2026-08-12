@@ -49,6 +49,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             instantiations: vec![],
             const_instantiations: vec![],
             array_types: vec![],
+            egraph_builder:
+                Box::<crate::theories::array::array_egraph_builder::FullEGraphBuilder>::default(),
         })
     }
 

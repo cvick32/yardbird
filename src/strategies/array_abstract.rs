@@ -15,10 +15,14 @@ use crate::{
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
-            ArraySaturationInstrumentation,
+            expr_to_term, saturate_with_array_types, ArrayExpr, ArrayLanguage,
+            ArraySaturationInstrumentation, ArraySaturationResult,
         },
-        array_conflict_scheduler::{preprocess_array_expr, ArrayArtifactCapture},
+        array_conflict_scheduler::ArrayArtifactCapture,
+        array_egraph_builder::{
+            ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
+        },
+        property_cone::{build_property_cone, PropertyCone},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -57,6 +61,8 @@ where
     aux_covered_term_hashes: HashSet<String>,
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
+    egraph_builder: Box<dyn ArrayEGraphBuilder>,
+    property_cone: PropertyCone,
 }
 
 impl<F> Abstract<F>
@@ -92,12 +98,19 @@ where
             aux_covered_term_hashes: HashSet::new(),
             profile,
             profiling_records: vec![],
+            egraph_builder: Box::<FullEGraphBuilder>::default(),
+            property_cone: PropertyCone::default(),
         }
     }
 
     pub fn with_artifact_capture(mut self, mut artifact_capture: ArrayArtifactCapture) -> Self {
         artifact_capture.conflicts |= !self.aux_config.is_off();
         self.artifact_capture = artifact_capture;
+        self
+    }
+
+    pub fn with_egraph_builder(mut self, egraph_builder: Box<dyn ArrayEGraphBuilder>) -> Self {
+        self.egraph_builder = egraph_builder;
         self
     }
 }
@@ -109,6 +122,13 @@ where
     egraph.classes().map(|class| class.nodes.len()).sum()
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SaturationSummary {
+    regular_instantiations: usize,
+    const_instantiations: usize,
+    conflicts: usize,
+}
+
 /// State for the inner refinement looop
 pub struct ArrayRefinementState {
     pub depth: u16,
@@ -116,68 +136,7 @@ pub struct ArrayRefinementState {
     pub instantiations: Vec<ArrayExpr>,
     pub const_instantiations: Vec<ArrayExpr>,
     pub array_types: Vec<(String, String)>,
-}
-
-impl ArrayRefinementState {
-    pub fn update_with_subterms(
-        &mut self,
-        smt: &dyn crate::problem_context::ProblemContext,
-        profiling: Option<&Rc<RefCell<ArrayProfilingCollector>>>,
-    ) -> anyhow::Result<()> {
-        let all_subterms_start = Instant::now();
-        let subterms = smt.get_all_subterms();
-        if let Some(profiling) = profiling {
-            let mut profiling = profiling.borrow_mut();
-            profiling.record_timing("update_get_all_subterms", all_subterms_start.elapsed());
-            profiling.add_counter("update_subterms", subterms.len() as u64);
-        }
-
-        for term in subterms {
-            let eval_start = Instant::now();
-            let interp_str = smt.eval_to_string(term)?;
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_eval_to_string", eval_start.elapsed());
-            }
-
-            let translate_start = Instant::now();
-            let translated = translate_term(term.clone()).unwrap();
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_translate_term", translate_start.elapsed());
-            }
-
-            let parse_start = Instant::now();
-            let preprocessed = preprocess_array_expr(&interp_str);
-            let parsed_interp = preprocessed.parse()?;
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_preprocess_parse_interp", parse_start.elapsed());
-            }
-
-            let egraph_start = Instant::now();
-            let term_id = self.egraph.add_expr(&translated);
-            let interp_id = self.egraph.add_expr(&parsed_interp);
-            self.egraph.union(term_id, interp_id);
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_egraph_add_union", egraph_start.elapsed());
-            }
-        }
-
-        let rebuild_start = Instant::now();
-        self.egraph.rebuild();
-        if let Some(profiling) = profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("update_egraph_rebuild", rebuild_start.elapsed());
-        }
-        Ok(())
-    }
+    pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
 
 impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
@@ -189,14 +148,15 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        self.property_cone = if self.egraph_builder.requires_property_cone() {
+            build_property_cone(&model)
+        } else {
+            PropertyCone::default()
+        };
         let (abstracted_model, discovered_types) = model.abstract_array_theory();
         self.discovered_array_types = discovered_types;
         abstracted_model
         //     .abstract_constants_over(self.bmc_depth)
-    }
-
-    fn check_concrete_counterexample_on_no_progress(&self) -> bool {
-        true
     }
 
     fn setup(
@@ -218,6 +178,7 @@ where
             instantiations: vec![],
             const_instantiations: vec![],
             array_types,
+            egraph_builder: self.egraph_builder.clone(),
         })
     }
 
@@ -261,87 +222,86 @@ where
                 egraph_node_count(&state.egraph),
             );
         }
-        let update_start = Instant::now();
-        state.update_with_subterms(smt, profiling.as_ref())?;
-        if let Some(profiling) = &profiling {
-            let mut profiling = profiling.borrow_mut();
-            profiling.record_timing("update_with_subterms", update_start.elapsed());
-            profiling.set_egraph_after_update(
-                state.egraph.number_of_classes(),
-                egraph_node_count(&state.egraph),
-            );
-        }
-
-        let cost_factory_start = Instant::now();
-        let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
-        if let Some(profiling) = &profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("cost_factory", cost_factory_start.elapsed());
-        }
-
-        let saturation_start = Instant::now();
-        let saturation = saturate_with_array_types(
-            &mut state.egraph,
-            cost_fn,
-            refinement_step,
-            self.term_selection_counts.clone(),
-            state.depth,
-            &state.array_types,
-            ArraySaturationInstrumentation {
-                artifact_capture: self.artifact_capture,
-                profiling: profiling.clone(),
-            },
-        );
-        if let Some(profiling) = &profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("saturation_total", saturation_start.elapsed());
-        }
-        state
-            .instantiations
-            .extend_from_slice(&saturation.instantiations);
-        state
-            .const_instantiations
-            .extend_from_slice(&saturation.const_instantiations);
-        self.decision_data.extend(saturation.decisions);
-        self.abstract_instantiations
-            .extend(saturation.abstract_instantiations);
-        for (decision_key, term_hash) in saturation.selection_history_decisions {
-            self.term_selection_decisions
-                .insert(decision_key, term_hash);
-        }
-        for decision_keys in saturation.instantiation_decision_keys {
-            for decision_key in decision_keys {
-                if let Some(term_hash) = self.term_selection_decisions.get(&decision_key) {
-                    *self
-                        .term_selection_counts
-                        .entry(term_hash.clone())
-                        .or_default() += 1;
+        loop {
+            let build_start = Instant::now();
+            let build_step =
+                state
+                    .egraph_builder
+                    .expand(&mut state.egraph, smt, &self.property_cone)?;
+            let expansion = match build_step {
+                ArrayEGraphBuildStep::Expanded(expansion) => expansion,
+                ArrayEGraphBuildStep::Exhausted => {
+                    self.finish_profiling_record(profiling);
+                    return Ok(ProofAction::ValidateConcreteCounterexample);
                 }
+            };
+            if let Some(profiling) = &profiling {
+                let mut profiling = profiling.borrow_mut();
+                profiling.record_timing("egraph_build", build_start.elapsed());
+                profiling.add_counter("egraph_build_stages", 1);
+                profiling.add_counter(
+                    match expansion.stage {
+                        ArrayEGraphBuildStage::Cone => "egraph_build_cone_stages",
+                        ArrayEGraphBuildStage::Full => "egraph_build_full_stages",
+                    },
+                    1,
+                );
+                profiling.add_counter(
+                    "egraph_build_newly_admitted_subterms",
+                    expansion.newly_admitted_subterms as u64,
+                );
+                profiling.set_egraph_after_update(
+                    state.egraph.number_of_classes(),
+                    egraph_node_count(&state.egraph),
+                );
             }
-        }
-        self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
-        if let Some(profiling) = profiling {
-            if let Ok(profiling) = Rc::try_unwrap(profiling) {
-                self.profiling_records.push(profiling.into_inner().finish());
-            } else {
-                warn!("Unable to unwrap array profiling collector; profiling record dropped");
+
+            let cost_factory_start = Instant::now();
+            let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
+            if let Some(profiling) = &profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("cost_factory", cost_factory_start.elapsed());
             }
-        }
-        if trace_conflicts_enabled() {
-            trace!(
-                "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
-                state.depth,
+
+            let saturation_start = Instant::now();
+            let saturation = saturate_with_array_types(
+                &mut state.egraph,
+                cost_fn,
                 refinement_step,
-                saturation.instantiations.len(),
-                saturation.const_instantiations.len(),
-                saturation.conflicts.len(),
-                state.instantiations.len(),
-                state.const_instantiations.len()
+                self.term_selection_counts.clone(),
+                state.depth,
+                &state.array_types,
+                ArraySaturationInstrumentation {
+                    artifact_capture: self.artifact_capture,
+                    profiling: profiling.clone(),
+                },
             );
+            if let Some(profiling) = &profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("saturation_total", saturation_start.elapsed());
+            }
+            let summary = self.absorb_saturation(state, smt, saturation, refinement_step);
+
+            if trace_conflicts_enabled() {
+                trace!(
+                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
+                    state.depth,
+                    refinement_step,
+                    expansion.stage.as_str(),
+                    summary.regular_instantiations,
+                    summary.const_instantiations,
+                    summary.conflicts,
+                    state.instantiations.len(),
+                    state.const_instantiations.len()
+                );
+            }
+            if summary.regular_instantiations > 0 || summary.const_instantiations > 0 {
+                self.finish_profiling_record(profiling);
+                return Ok(ProofAction::Continue);
+            }
         }
-        Ok(ProofAction::Continue)
     }
 
     #[allow(clippy::unnecessary_fold)]
@@ -569,6 +529,53 @@ impl<F> Abstract<F>
 where
     F: ArrayCostFactory + 'static,
 {
+    fn absorb_saturation(
+        &mut self,
+        state: &mut ArrayRefinementState,
+        smt: &dyn crate::problem_context::ProblemContext,
+        saturation: ArraySaturationResult,
+        refinement_step: u32,
+    ) -> SaturationSummary {
+        let summary = SaturationSummary {
+            regular_instantiations: saturation.instantiations.len(),
+            const_instantiations: saturation.const_instantiations.len(),
+            conflicts: saturation.conflicts.len(),
+        };
+        state.instantiations.extend(saturation.instantiations);
+        state
+            .const_instantiations
+            .extend(saturation.const_instantiations);
+        self.decision_data.extend(saturation.decisions);
+        self.abstract_instantiations
+            .extend(saturation.abstract_instantiations);
+        for (decision_key, term_hash) in saturation.selection_history_decisions {
+            self.term_selection_decisions
+                .insert(decision_key, term_hash);
+        }
+        for decision_keys in saturation.instantiation_decision_keys {
+            for decision_key in decision_keys {
+                if let Some(term_hash) = self.term_selection_decisions.get(&decision_key) {
+                    *self
+                        .term_selection_counts
+                        .entry(term_hash.clone())
+                        .or_default() += 1;
+                }
+            }
+        }
+        self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
+        summary
+    }
+
+    fn finish_profiling_record(&mut self, profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>) {
+        if let Some(profiling) = profiling {
+            if let Ok(profiling) = Rc::try_unwrap(profiling) {
+                self.profiling_records.push(profiling.into_inner().finish());
+            } else {
+                warn!("Unable to unwrap array profiling collector; profiling record dropped");
+            }
+        }
+    }
+
     fn handle_aux_synthesis_detection(
         &mut self,
         state: &ArrayRefinementState,

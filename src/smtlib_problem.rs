@@ -616,6 +616,41 @@ impl SmtlibRefinementRunner {
                     info!("  Action: Continue refinement");
                     strategy.finish(state, &mut smt_problem)?;
                 }
+                ProofAction::ValidateConcreteCounterexample => {
+                    info!("  Action: Abstract e-graph exhausted; validating concretely");
+                    let concrete_strategy: Box<
+                        dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
+                    > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+                    let (_, concrete_array_types) = problem.abstract_array_theory();
+                    let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(
+                        problem,
+                        &concrete_strategy,
+                        solver_backend,
+                        false,
+                        concrete_array_types,
+                        None,
+                    )?;
+                    match concrete_problem.check_current_query() {
+                        SolverCheckResult::Sat => {
+                            info!("  Concrete validation: SAT");
+                            counterexample = true;
+                            break;
+                        }
+                        SolverCheckResult::Unsat => {
+                            info!("  Concrete validation: UNSAT");
+                            found_proof = true;
+                            break;
+                        }
+                        SolverCheckResult::Unknown => {
+                            return Err(anyhow::anyhow!(
+                                "concrete validation returned unknown: {}",
+                                concrete_problem
+                                    .get_reason_unknown()
+                                    .unwrap_or_else(|| "no reason given".to_string())
+                            ));
+                        }
+                    }
+                }
                 ProofAction::FoundProof => {
                     info!("  Action: Found proof!");
                     found_proof = true;
