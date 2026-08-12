@@ -21,13 +21,17 @@ class BenchmarkResult:
     success: bool
     used_instantiations: int
     num_checks: int
+    egraph_builder: Optional[str] = None
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
     total_conflicts: Optional[float] = None
     solver_stats: dict[str, float] = field(default_factory=dict)
 
     def get_strategy_id(self) -> str:
         if self.strategy == "abstract" and self.cost_function:
-            return f"{self.strategy}_{self.cost_function}"
+            strategy_id = f"{self.strategy}_{self.cost_function}"
+            if self.egraph_builder and self.egraph_builder != "full":
+                strategy_id = f"{strategy_id}_{self.egraph_builder}"
+            return strategy_id
         return self.strategy
 
     def get_display_name(self) -> str:
@@ -49,11 +53,15 @@ class BenchmarkResult:
                 "logistic-regression": "Logistic Regression",
                 "index-aware-cost": "Index-Aware Cost",
             }
-            if self.cost_function in display_names:
-                return display_names[self.cost_function]
-            if self.cost_function:
-                return self.cost_function.replace("-", " ").title()
-            return "Abstract"
+            name = display_names.get(
+                self.cost_function,
+                self.cost_function.replace("-", " ").title()
+                if self.cost_function
+                else "Abstract",
+            )
+            if self.egraph_builder and self.egraph_builder != "full":
+                name = f"{name} + {self.egraph_builder.replace('-', ' ').title()}"
+            return name
         else:
             return self.strategy.replace("-", " ").title()
 
@@ -116,7 +124,8 @@ def extract_solver_time(full_entry: dict, success: bool) -> float:
         return 0.0
     try:
         entry = successful_payload(full_entry, success)
-        solver_time = entry["solver_statistics"]["stats"].get("solver_time", 0.0)
+        stats = entry["solver_statistics"]["stats"]
+        solver_time = stats.get("total_solver_time", stats.get("solver_time", 0.0))
         return float(solver_time)
     except (KeyError, ValueError, TypeError):
         return 0.0
@@ -187,6 +196,7 @@ class BenchmarkParser:
         """Parse a single strategy result"""
         strategy = result_entry.get("strategy", "unknown")
         cost_function = result_entry.get("cost_function")
+        egraph_builder = result_entry.get("egraph_builder")
         runtime_ms = result_entry.get("run_time", 0)
         depth = result_entry.get("depth", 0)
 
@@ -206,6 +216,7 @@ class BenchmarkParser:
             example_name=example_name,
             strategy=strategy,
             cost_function=cost_function,
+            egraph_builder=egraph_builder,
             runtime_ms=runtime_ms,
             depth=depth,
             result_type=result_type,
