@@ -8,9 +8,14 @@ BenchmarkResult {
     used_instantiations: [
         "(= (Read_Int_Int (Write_Int_Int a+0 Z Z) Z) Z)",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) i+0) (+ i+0 y+0))",
-        "(= (Read_Int_Int (Write_Int_Int b+0 Z N) Z) N)",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) i+0) (+ i+0 x+0))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z (- 1910)) Z) (- 1910))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z (- 23117)) Z) (- 23117))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z (- 34320)) Z) (- 34320))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z (- 47011)) Z) (- 47011))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 Z (- 57036)) Z) (- 57036))",
         "(= (Read_Int_Int (Write_Int_Int c+0 i+0 (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) i+0) (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0)))",
+        "(= (Read_Int_Int (Write_Int_Int c+0 i+2 (- 135580)) i+2) (- 135580))",
         "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) 0) (Read_Int_Int a+0 0)))",
         "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) 0) (Read_Int_Int b+0 0)))",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) N) (Read_Int_Int a+0 N)))",
@@ -20,5 +25,7 @@ BenchmarkResult {
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ i+0 y+0)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int b+0 i+0 (+ i+0 x+0)) Z) (Read_Int_Int b+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int c+0 i+0 (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) Z) (Read_Int_Int c+0 Z)))",
+        "(=> (not (= i+0 i+1)) (= (Read_Int_Int (Write_Int_Int c+1 i+1 (- (Read_Int_Int a+1 i+1) (Read_Int_Int b+1 i+1))) i+0) (Read_Int_Int c+1 i+0)))",
+        "(=> (not (= i+4 i+0)) (= (Read_Int_Int (Write_Int_Int c+0 i+0 (- (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) i+4) (Read_Int_Int c+0 i+4)))",
     ],
 }

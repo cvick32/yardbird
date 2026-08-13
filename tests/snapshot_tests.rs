@@ -190,6 +190,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     }
 }
 
+#[cfg(feature = "cvc5-backend")]
 fn run_benchmark_with_solver(
     filename: impl AsRef<Path>,
     solver_backend: SolverBackend,
@@ -399,6 +400,7 @@ fn smt2_array_bitvec_simple_strategy() {
 }
 
 #[test]
+#[cfg(feature = "cvc5-backend")]
 fn cvc5_vmt_array_copy() {
     assert_debug_snapshot!(
         "cvc5_vmt_array_copy",

@@ -6,10 +6,11 @@ BenchmarkResult {
     example_name: "examples/array/array_two_counters_sum.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 Z 14976) Z) 14976)",
         "(= (Read_Int_Int (Write_Int_Int a+0 Z 840) Z) 840)",
-        "(= (Read_Int_Int (Write_Int_Int a+0 Z Z) Z) Z)",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) i+0) (+ (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0)))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+0) 0)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 i+1 j+0) i+1) j+0)",
         "(= (Read_Int_Int (Write_Int_Int b+0 j+0 1) j+0) 1)",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) N) (Read_Int_Int a+0 N)))",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) N) (Read_Int_Int a+0 N)))",
@@ -17,8 +18,5 @@ BenchmarkResult {
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) (Read_Int_Int b+0 i+0))) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z j+0)) (= (Read_Int_Int (Write_Int_Int b+0 j+0 1) Z) (Read_Int_Int b+0 Z)))",
-        "(=> (not (= i+2 Z)) (= (Read_Int_Int (Write_Int_Int a+0 Z 24079) i+2) (Read_Int_Int a+0 i+2)))",
-        "(=> (not (= i+3 j+0)) (= (Read_Int_Int (Write_Int_Int b+0 j+0 1) i+3) (Read_Int_Int b+0 i+3)))",
-        "(=> (not (= i+4 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+4) (Read_Int_Int a+0 i+4)))",
     ],
 }
