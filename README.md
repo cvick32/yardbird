@@ -211,6 +211,16 @@ python3 main_eval.py \
   --benchmark-type deep-concrete \
   --name paper-smoke
 
+# Iterate on a deterministic sample of benchmarks where either abstract
+# BMC-cost or concrete exceeded 30 seconds (or timed out) in a prior run.
+python3 main_eval.py \
+  --env local \
+  --benchmark-type deep-abstract-cone-then-full \
+  --difficult-benchmarks <baseline-run-id> \
+  --limit 8 \
+  --sample-seed 0 \
+  --name difficult-cone-smoke
+
 # AWS launch only: records a local run manifest and exits immediately
 python3 main_eval.py \
   --env aws \
@@ -243,6 +253,12 @@ python3 main_eval.py compare-downloaded-instrumentation \
 # Regenerate the combined workbook with the local replay measurements.
 python3 main_eval.py generate-report --run-id <run-id>
 ```
+
+Passing `--difficult-benchmarks` without a run id selects the newest downloaded
+`main_eval` run containing both abstract BMC-cost and concrete results. The
+threshold defaults to 30 seconds and can be changed with
+`--difficult-threshold-seconds`. The resolved source, complete cohort, and
+selection reason for each benchmark are recorded in the new run manifest.
 
 `compare_with_instrumentation` uses the benchmark selection and parameter matrix
 named by `--run-type`. It builds Yardbird and Garden, captures each Z3-backed

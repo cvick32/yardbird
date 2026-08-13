@@ -79,6 +79,24 @@ class CaptureArchiveTests(unittest.TestCase):
         self.assertIn('if [ "false" = "true" ]; then', ordinary)
         self.assertIn('if [ "true" = "true" ]; then', captured)
 
+    def test_benchmark_filters_are_rendered_as_worker_arguments(self) -> None:
+        rendered = read_user_data(
+            "deep-concrete",
+            "filtered",
+            "bucket",
+            garden_args=[
+                "--include",
+                "examples/array/hard.vmt",
+                "--limit",
+                "1",
+            ],
+        )
+
+        self.assertIn(
+            "benchmark_filter_args=(--include examples/array/hard.vmt --limit 1)",
+            rendered,
+        )
+
     def test_capture_archive_is_extracted_under_matrix_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
