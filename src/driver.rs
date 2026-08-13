@@ -59,27 +59,95 @@ impl ProofLoopResult {
     }
 }
 
-fn record_total_solver_time(
-    result: &mut ProofLoopResult,
-    concrete_validation_checks: u64,
-    concrete_validation_solver_time: f64,
+const COMBINED_SOLVER_STATISTICS: &[&str] = &[
+    "solver_time",
+    "conflicts",
+    "decisions",
+    "propagations",
+    "restarts",
+    "array ax1",
+    "array ax2",
+    "array ext ax",
+    "arith-conflicts",
+    "num checks",
+];
+
+pub(crate) fn accumulate_solver_statistics(
+    accumulated: &mut SolverStatistics,
+    current: &SolverStatistics,
 ) {
-    let primary_solver_time = result
-        .solver_statistics
-        .get_f64("solver_time")
-        .unwrap_or_default();
-    result.solver_statistics.add_time(
-        "concrete_validation_solver_time",
-        concrete_validation_solver_time,
+    for key in COMBINED_SOLVER_STATISTICS {
+        if let Some(value) = current.get_f64(key) {
+            accumulated.add_time(key, value);
+        }
+    }
+}
+
+pub(crate) fn record_solver_phase_statistics(
+    primary: &mut SolverStatistics,
+    concrete_validation_checks: u64,
+    concrete: &SolverStatistics,
+) {
+    for key in COMBINED_SOLVER_STATISTICS {
+        let abstract_value = primary.get_f64(key).unwrap_or_default();
+        let concrete_value = concrete.get_f64(key).unwrap_or_default();
+        primary.insert(
+            format!("abstract.{key}"),
+            crate::utils::StatisticsValue::Double(abstract_value),
+        );
+        primary.insert(
+            format!("concrete_validation.{key}"),
+            crate::utils::StatisticsValue::Double(concrete_value),
+        );
+        primary.insert(
+            format!("total.{key}"),
+            crate::utils::StatisticsValue::Double(abstract_value + concrete_value),
+        );
+    }
+    primary.insert(
+        "concrete_validation_solver_time".to_string(),
+        crate::utils::StatisticsValue::Double(concrete.get_f64("solver_time").unwrap_or_default()),
     );
-    result.solver_statistics.add_time(
-        "total_solver_time",
-        primary_solver_time + concrete_validation_solver_time,
+    primary.insert(
+        "total_solver_time".to_string(),
+        crate::utils::StatisticsValue::Double(
+            primary.get_f64("total.solver_time").unwrap_or_default(),
+        ),
     );
-    result.solver_statistics.insert(
+    primary.insert(
         "concrete_validation_checks".to_string(),
         crate::utils::StatisticsValue::UInt(concrete_validation_checks),
     );
+}
+
+#[cfg(test)]
+mod solver_phase_statistics_tests {
+    use super::*;
+    use crate::utils::StatisticsValue;
+
+    #[test]
+    fn solver_phase_statistics_keep_abstract_concrete_and_total_counters_separate() {
+        let mut abstract_stats = SolverStatistics::new();
+        abstract_stats.insert("solver_time".into(), StatisticsValue::Double(1.5));
+        abstract_stats.insert("conflicts".into(), StatisticsValue::UInt(10));
+        abstract_stats.insert("decisions".into(), StatisticsValue::UInt(20));
+        let mut concrete_stats = SolverStatistics::new();
+        concrete_stats.insert("solver_time".into(), StatisticsValue::Double(0.5));
+        concrete_stats.insert("conflicts".into(), StatisticsValue::UInt(3));
+        concrete_stats.insert("decisions".into(), StatisticsValue::UInt(4));
+
+        record_solver_phase_statistics(&mut abstract_stats, 1, &concrete_stats);
+
+        assert_eq!(abstract_stats.get_f64("abstract.solver_time"), Some(1.5));
+        assert_eq!(
+            abstract_stats.get_f64("concrete_validation.solver_time"),
+            Some(0.5)
+        );
+        assert_eq!(abstract_stats.get_f64("total_solver_time"), Some(2.0));
+        assert_eq!(abstract_stats.get_f64("total.conflicts"), Some(13.0));
+        assert_eq!(abstract_stats.get_f64("total.decisions"), Some(24.0));
+        assert_eq!(abstract_stats.get_f64("conflicts"), Some(10.0));
+    }
 }
 
 impl Serialize for ProofLoopResult {
@@ -452,7 +520,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;
         let mut concrete_validation_checks = 0_u64;
-        let mut concrete_validation_solver_time = 0.0;
+        let mut concrete_validation_statistics = SolverStatistics::new();
         let mut unsat_event_tracker = UnsatEventTracker::default();
         let mut profiler = self.profiler.take();
         let profiling = profiler.is_some();
@@ -600,10 +668,10 @@ impl<'ctx, S> Driver<'ctx, S> {
                         let (concrete_result, concrete_problem) =
                             self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
                         concrete_validation_checks += 1;
-                        concrete_validation_solver_time += concrete_problem
-                            .get_solver_statistics()
-                            .get_f64("solver_time")
-                            .unwrap_or_default();
+                        accumulate_solver_statistics(
+                            &mut concrete_validation_statistics,
+                            &concrete_problem.get_solver_statistics(),
+                        );
 
                         if let Some(mut record) = driver_record {
                             record.record_timing("concrete_validation", concrete_start.elapsed());
@@ -680,10 +748,10 @@ impl<'ctx, S> Driver<'ctx, S> {
                         }
                         info!("Building final proof result");
                         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
-                        record_total_solver_time(
-                            &mut result,
+                        record_solver_phase_statistics(
+                            &mut result.solver_statistics,
                             concrete_validation_checks,
-                            concrete_validation_solver_time,
+                            &concrete_validation_statistics,
                         );
                         result.total_refinement_steps = total_refinement_steps;
                         result.unsat_events = unsat_event_tracker.events.clone();
@@ -711,10 +779,10 @@ impl<'ctx, S> Driver<'ctx, S> {
 
         info!("Building final proof result");
         let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
-        record_total_solver_time(
-            &mut result,
+        record_solver_phase_statistics(
+            &mut result.solver_statistics,
             concrete_validation_checks,
-            concrete_validation_solver_time,
+            &concrete_validation_statistics,
         );
         result.total_refinement_steps = total_refinement_steps;
         result.unsat_events = unsat_event_tracker.events;

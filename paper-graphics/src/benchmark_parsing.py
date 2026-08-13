@@ -113,7 +113,8 @@ def find_num_checks(full_entry: dict, strategy: str, success: bool) -> int:
         return 10000000  # Large penalty for unsuccessful results
     entry = successful_payload(full_entry, success)
     try:
-        return int(entry["solver_statistics"]["stats"].get("num checks") or 0)
+        stats = entry["solver_statistics"]["stats"]
+        return int(stats.get("total.num checks", stats.get("num checks")) or 0)
     except (KeyError, ValueError, TypeError):
         return 0
 
@@ -137,7 +138,8 @@ def extract_total_conflicts(full_entry: dict, success: bool) -> Optional[float]:
         return None
     try:
         entry = successful_payload(full_entry, success)
-        conflicts = entry["solver_statistics"]["stats"].get("conflicts")
+        stats = entry["solver_statistics"]["stats"]
+        conflicts = stats.get("total.conflicts", stats.get("conflicts"))
         return float(conflicts) if conflicts is not None else None
     except (KeyError, ValueError, TypeError):
         return None
@@ -161,6 +163,9 @@ def extract_solver_stats(full_entry: dict, success: bool) -> dict[str, float]:
             numeric_stats[str(key)] = float(value)
         except (ValueError, TypeError):
             continue
+    for key, value in list(numeric_stats.items()):
+        if key.startswith("total."):
+            numeric_stats[key.removeprefix("total.")] = value
     return numeric_stats
 
 

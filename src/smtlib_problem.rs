@@ -4,6 +4,7 @@ use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
+use crate::driver::{accumulate_solver_statistics, record_solver_phase_statistics};
 use crate::profiling::{Profiler, ProfilingRunRecord, SolverCheckContext, SolverProfileMetadata};
 use crate::smtlib_refinement_session::SmtlibRefinementSession;
 use crate::solver::{
@@ -552,6 +553,8 @@ impl SmtlibRefinementRunner {
         let mut found_proof = false;
         let mut counterexample = false;
         let mut total_refinement_steps = 0;
+        let mut concrete_validation_checks = 0_u64;
+        let mut concrete_validation_statistics = SolverStatistics::new();
         let mut unsat_events = Vec::new();
         let mut last_unsat_instantiation_count = 0;
         let mut last_unsat_stats: Option<SolverStatistics> = None;
@@ -630,7 +633,13 @@ impl SmtlibRefinementRunner {
                         concrete_array_types,
                         None,
                     )?;
-                    match concrete_problem.check_current_query() {
+                    let concrete_result = concrete_problem.check_current_query();
+                    concrete_validation_checks += 1;
+                    accumulate_solver_statistics(
+                        &mut concrete_validation_statistics,
+                        &concrete_problem.get_solver_statistics(),
+                    );
+                    match concrete_result {
                         SolverCheckResult::Sat => {
                             info!("  Concrete validation: SAT");
                             counterexample = true;
@@ -739,6 +748,11 @@ impl SmtlibRefinementRunner {
             auxiliary_records: vec![],
             profiling: ProfilingRunRecord::default(),
         };
+        record_solver_phase_statistics(
+            &mut result.solver_statistics,
+            concrete_validation_checks,
+            &concrete_validation_statistics,
+        );
         if let Some(mut profiler) = profiler {
             profiler.extend_cost_records(profiling_records);
             result.profiling = profiler.finish();

@@ -30,7 +30,10 @@ class BenchmarkParserTests(unittest.TestCase):
                                             "solver_time": 0.1,
                                             "total_solver_time": 0.2,
                                             "conflicts": 11,
+                                            "total.conflicts": 14,
                                             "decisions": 23,
+                                            "abstract.decisions": 23,
+                                            "total.decisions": 27,
                                         }
                                     },
                                 }
@@ -49,9 +52,10 @@ class BenchmarkParserTests(unittest.TestCase):
         self.assertEqual(parsed.result_type, "_FoundProof")
         self.assertEqual(parsed.used_instantiations, 7)
         self.assertEqual(parsed.num_checks, 3)
-        self.assertEqual(parsed.total_conflicts, 11)
+        self.assertEqual(parsed.total_conflicts, 14)
         self.assertEqual(parsed.solver_time_s, 0.2)
-        self.assertEqual(parsed.solver_stats["decisions"], 23)
+        self.assertEqual(parsed.solver_stats["decisions"], 27)
+        self.assertEqual(parsed.solver_stats["abstract.decisions"], 23)
         self.assertEqual(
             parsed.get_strategy_id(), "abstract_bmc-cost_cone-then-full"
         )
