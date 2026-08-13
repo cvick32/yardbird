@@ -63,6 +63,7 @@ where
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
     egraph_builder: Box<dyn ArrayEGraphBuilder>,
+    cone_attempted_depths: HashSet<u16>,
     instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
     property_cone: PropertyCone,
 }
@@ -101,6 +102,7 @@ where
             profile,
             profiling_records: vec![],
             egraph_builder: Box::<FullEGraphBuilder>::default(),
+            cone_attempted_depths: HashSet::new(),
             instantiation_ranker: Box::<CompleteCostInstantiationRanker>::default(),
             property_cone: PropertyCone::default(),
         }
@@ -228,6 +230,13 @@ where
         depth: u16,
     ) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(());
+        let egraph_builder = if self.egraph_builder.requires_property_cone()
+            && !self.cone_attempted_depths.insert(depth)
+        {
+            Box::<FullEGraphBuilder>::default()
+        } else {
+            self.egraph_builder.clone()
+        };
         // Use discovered_array_types if available (VMT mode via configure_model),
         // otherwise get from ProblemContext (SMTLIB mode)
         let array_types = if self.discovered_array_types.is_empty() {
@@ -241,7 +250,7 @@ where
             instantiations: vec![],
             const_instantiations: vec![],
             array_types,
-            egraph_builder: self.egraph_builder.clone(),
+            egraph_builder,
         })
     }
 

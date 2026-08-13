@@ -37,6 +37,44 @@ fn unproductive_cone_search_widens_without_exhausting_refinement_budget() {
 }
 
 #[test]
+fn cone_search_is_attempted_at_most_once_per_bmc_depth() {
+    let result = run_cone_then_full("examples/array/array_split_16.vmt", 14, true);
+    let mut cone_stages_by_depth = std::collections::BTreeMap::<u16, u64>::new();
+    let mut full_stages_after_initial_refinement = 0;
+
+    for record in &result.profiling.cost_records {
+        let Some(depth) = record.bmc_depth else {
+            continue;
+        };
+        *cone_stages_by_depth.entry(depth).or_default() += record
+            .counters
+            .get("egraph_build_cone_stages")
+            .copied()
+            .unwrap_or_default();
+        if record.refinement_step.is_some_and(|step| step > 0) {
+            full_stages_after_initial_refinement += record
+                .counters
+                .get("egraph_build_full_stages")
+                .copied()
+                .unwrap_or_default();
+        }
+    }
+
+    assert!(
+        !cone_stages_by_depth.is_empty(),
+        "the cone-once strategy should attempt a cone at some SAT depth"
+    );
+    assert!(
+        cone_stages_by_depth.values().all(|count| *count <= 1),
+        "cone construction must not restart after every solver call: {cone_stages_by_depth:?}"
+    );
+    assert!(
+        full_stages_after_initial_refinement > 0,
+        "later refinement models should use the legacy full-BMC path"
+    );
+}
+
+#[test]
 fn source_grounded_cone_preserves_complete_write_sites() {
     let result = run_cone_then_full("examples/array/array_partial_init.vmt", 3, false);
     let instantiations = result

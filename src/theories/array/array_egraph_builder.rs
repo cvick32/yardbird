@@ -175,7 +175,7 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                         add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
                     return Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                         stage: ArrayEGraphBuildStage::Full,
-                        candidate_scope: CandidateScope::SourceThenDerived,
+                        candidate_scope: CandidateScope::AllCandidates,
                         total_subterms,
                         admitted_subterms: self.admitted.len(),
                         newly_admitted_subterms,
@@ -203,7 +203,7 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                     add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
                 Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                     stage: ArrayEGraphBuildStage::Full,
-                    candidate_scope: CandidateScope::SourceThenDerived,
+                    candidate_scope: CandidateScope::AllCandidates,
                     total_subterms,
                     admitted_subterms: self.admitted.len(),
                     newly_admitted_subterms,
@@ -457,6 +457,7 @@ mod tests {
             second,
             ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                 stage: ArrayEGraphBuildStage::Full,
+                candidate_scope: CandidateScope::AllCandidates,
                 ..
             })
         ));
