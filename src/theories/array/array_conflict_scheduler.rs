@@ -1,4 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    rc::Rc,
+    time::Instant,
+};
 
 use egg::{Analysis, Language};
 use log::{debug, trace};
@@ -10,7 +15,7 @@ use crate::{
     profiling::ArrayProfilingCollector,
     theories::array::{
         array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage},
-        array_term_extractor::ArrayTermExtractor,
+        array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
     },
     training::{canonical_term_hash, AbstractInstantiationRecord, DecisionRecord},
 };
@@ -38,6 +43,16 @@ pub struct ArrayArtifactCapture {
 pub(crate) struct SelectionHistoryDecision {
     pub decision_key: String,
     pub chosen_term_hash: String,
+}
+
+type InstantiationDecisionLog = Rc<RefCell<Vec<(ArrayExpr, Vec<String>)>>>;
+
+pub struct ArrayConflictSchedulerOptions {
+    pub excluded_instantiations: HashSet<ArrayExpr>,
+    pub refinement_step: u32,
+    pub depth: u16,
+    pub artifact_capture: ArrayArtifactCapture,
+    pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
 /// Preprocess array operation strings for egg parsing.
@@ -122,11 +137,12 @@ where
     decisions: Rc<RefCell<Vec<DecisionRecord>>>,
     abstract_instantiations: Rc<RefCell<Vec<AbstractInstantiationRecord>>>,
     selection_history_decisions: Rc<RefCell<Vec<SelectionHistoryDecision>>>,
-    instantiation_decision_keys: Rc<RefCell<Vec<Vec<String>>>>,
+    instantiation_decision_keys: InstantiationDecisionLog,
     artifact_capture: ArrayArtifactCapture,
     next_instantiation_ordinal: usize,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
+    excluded_instantiations: HashSet<ArrayExpr>,
     refinement_step: u32,
     depth: u16,
     profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
@@ -140,11 +156,15 @@ where
         scheduler: S,
         cost_fn: CF,
         extractor: ArrayTermExtractor<CF>,
-        refinement_step: u32,
-        depth: u16,
-        artifact_capture: ArrayArtifactCapture,
-        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
+        options: ArrayConflictSchedulerOptions,
     ) -> Self {
+        let ArrayConflictSchedulerOptions {
+            excluded_instantiations,
+            refinement_step,
+            depth,
+            artifact_capture,
+            profiling,
+        } = options;
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
@@ -158,6 +178,7 @@ where
             next_instantiation_ordinal: 0,
             cost_fn,
             extractor,
+            excluded_instantiations,
             refinement_step,
             depth,
             profiling,
@@ -188,7 +209,7 @@ where
         Rc::clone(&self.selection_history_decisions)
     }
 
-    pub(crate) fn instantiation_decision_keys(&self) -> Rc<RefCell<Vec<Vec<String>>>> {
+    pub(crate) fn instantiation_decision_keys(&self) -> InstantiationDecisionLog {
         Rc::clone(&self.instantiation_decision_keys)
     }
 }
@@ -268,11 +289,8 @@ where
                 self.instantiations.borrow().len()
             ));
         }
-        if !self.instantiations.borrow().is_empty() {
-            // don't try to keep applying rewrites if we've found an inst
-            if tracing {
-                trace_conflicts("  skipping because a regular instantiation already exists");
-            }
+        let explore_all_matches = self.extractor.explores_all_matches();
+        if !explore_all_matches && !self.instantiations.borrow().is_empty() {
             if let Some(profiling) = &self.profiling {
                 profiling.borrow_mut().record_apply_rewrite(
                     rewrite.name.as_str(),
@@ -283,7 +301,7 @@ where
             }
             return 0;
         }
-        for (match_ix, m) in matches.iter().enumerate() {
+        'matches: for (match_ix, m) in matches.iter().enumerate() {
             if let Some(searcher_ast) = &m.ast {
                 debug!("Number of subs: {}", m.substs.len());
                 if tracing {
@@ -306,15 +324,18 @@ where
                         let mut memo = HashMap::default();
                         let mut slot_index = 0;
                         let mut decisions = self.decisions.borrow_mut();
+                        let decision_start = decisions.len();
                         let mut selection_history_decisions =
                             self.selection_history_decisions.borrow_mut();
                         let selection_start = selection_history_decisions.len();
+                        let mut used_derived_candidate = false;
                         let mut ctx = DecisionLogContext {
                             decisions: &mut decisions,
                             selection_history_decisions: &mut selection_history_decisions,
                             record_decisions: self.artifact_capture.decisions,
                             axiom_name: rewrite.name.as_str(),
                             slot_index: &mut slot_index,
+                            used_derived_candidate: &mut used_derived_candidate,
                         };
                         let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
                             searcher_ast.as_ref(),
@@ -335,6 +356,19 @@ where
                             &mut memo,
                             &mut ctx,
                         ));
+
+                        if self.extractor.requires_source_grounded_candidates()
+                            && used_derived_candidate
+                        {
+                            decisions.truncate(decision_start);
+                            selection_history_decisions.truncate(selection_start);
+                            if tracing {
+                                trace_conflicts(format!(
+                                    "    subst[{subst_ix}] skipped because cone selection required a derived candidate"
+                                ));
+                            }
+                            continue;
+                        }
 
                         let rhs_eclass = egraph.lookup_expr(&new_rhs);
                         if tracing {
@@ -366,6 +400,16 @@ where
                                 } else {
                                     ArrayLanguage::equals(&new_lhs, &new_rhs)
                                 };
+                            if self.excluded_instantiations.contains(&instantiation) {
+                                decisions.truncate(decision_start);
+                                selection_history_decisions.truncate(selection_start);
+                                if tracing {
+                                    trace_conflicts(format!(
+                                        "    subst[{subst_ix}] skipped because the complete instantiation was excluded"
+                                    ));
+                                }
+                                continue;
+                            }
                             let selection_decision_keys = selection_history_decisions
                                 [selection_start..]
                                 .iter()
@@ -373,7 +417,7 @@ where
                                 .collect::<Vec<_>>();
                             self.instantiation_decision_keys
                                 .borrow_mut()
-                                .push(selection_decision_keys.clone());
+                                .push((instantiation.clone(), selection_decision_keys.clone()));
                             let decision_keys = if self.artifact_capture.decisions {
                                 selection_decision_keys
                             } else {
@@ -393,7 +437,7 @@ where
                                     .borrow_mut()
                                     .push(abstract_instantiation);
                             }
-                            let cost = if let Some(profiling) = &self.profiling {
+                            let classification_cost = if let Some(profiling) = &self.profiling {
                                 let mut cost_fn = self.cost_fn.clone();
                                 profiling.borrow_mut().record_cost(
                                     "conflict_classification",
@@ -403,15 +447,30 @@ where
                             } else {
                                 self.cost_fn.cost_rec(&new_rhs)
                             };
-                            let classification = if cost >= 100 {
+                            let cost = if explore_all_matches {
+                                if let Some(profiling) = &self.profiling {
+                                    let mut cost_fn = self.cost_fn.clone();
+                                    profiling.borrow_mut().record_cost(
+                                        "complete_instantiation_ranking",
+                                        instantiation.as_ref().len(),
+                                        || cost_fn.cost_rec(&instantiation),
+                                    )
+                                } else {
+                                    self.cost_fn.cost_rec(&instantiation)
+                                }
+                            } else {
+                                classification_cost
+                            };
+                            let classification = if classification_cost >= 100 {
                                 ConflictClassification::ConstOrHighCost
                             } else {
                                 ConflictClassification::Regular
                             };
                             if let Some(profiling) = &self.profiling {
-                                profiling
-                                    .borrow_mut()
-                                    .record_conflict(rewrite.name.as_str(), cost >= 100);
+                                profiling.borrow_mut().record_conflict(
+                                    rewrite.name.as_str(),
+                                    classification_cost >= 100,
+                                );
                             }
                             if self.artifact_capture.conflicts {
                                 let conflict_record = ArrayConflictRecord::new(
@@ -438,7 +497,7 @@ where
                                 cost,
                                 instantiation.pretty(80)
                             );
-                            if cost >= 100 {
+                            if classification_cost >= 100 {
                                 debug!("rejecting because of cost");
                                 if tracing {
                                     trace_conflicts(
@@ -453,6 +512,9 @@ where
                                     trace_conflicts("    accepted as regular instantiation");
                                 }
                                 self.instantiations.borrow_mut().push(instantiation);
+                                if !explore_all_matches {
+                                    break 'matches;
+                                }
                             }
                         } else if tracing {
                             trace_conflicts(format!(
@@ -484,6 +546,7 @@ struct DecisionLogContext<'a> {
     record_decisions: bool,
     axiom_name: &'a str,
     slot_index: &'a mut u32,
+    used_derived_candidate: &'a mut bool,
 }
 
 impl DecisionLogContext<'_> {
@@ -497,6 +560,9 @@ impl DecisionLogContext<'_> {
         N: egg::Analysis<ArrayLanguage>,
         CF: YardbirdCostFunction<ArrayLanguage>,
     {
+        if extractor.candidate_origin(egraph, eclass, chosen_term) == CandidateOrigin::Derived {
+            *self.used_derived_candidate = true;
+        }
         let chosen_hash = canonical_term_hash(chosen_term);
         let decision_key = extractor.decision_key(self.axiom_name, *self.slot_index, eclass);
         self.selection_history_decisions
@@ -742,13 +808,17 @@ where
                 ))
             };
 
-            ArrayLanguage::write_typed(
+            let write = ArrayLanguage::write_typed(
                 index_sort.as_str(),
                 value_sort.as_str(),
                 array_expr,
                 index_expr,
                 value_expr,
-            )
+            );
+            if !extractor.is_source_write(&write) {
+                *candidate_ctx.used_derived_candidate = true;
+            }
+            write
         },
     )
 }
@@ -852,6 +922,7 @@ where
         Vec<DecisionRecord>,
         Vec<SelectionHistoryDecision>,
         u32,
+        bool,
     );
 
     let mut best: Option<ExpectedCandidate> = None;
@@ -861,6 +932,7 @@ where
         let mut candidate_decisions = Vec::new();
         let mut candidate_selection_history_decisions = Vec::new();
         let mut candidate_slot_index = *ctx.slot_index;
+        let mut candidate_used_derived = *ctx.used_derived_candidate;
         let expr = build_expr(
             candidate,
             &mut candidate_memo,
@@ -870,16 +942,22 @@ where
                 record_decisions: ctx.record_decisions,
                 axiom_name: ctx.axiom_name,
                 slot_index: &mut candidate_slot_index,
+                used_derived_candidate: &mut candidate_used_derived,
             },
         );
 
         let cost = extractor.cost_of_at("expected_read_write_candidate", &expr);
         let rendered = expr.to_string();
-        let should_replace =
-            best.as_ref()
-                .is_none_or(|(best_cost, best_rendered, _, _, _, _, _)| {
+        let should_replace = best.as_ref().is_none_or(
+            |(best_cost, best_rendered, _, _, _, _, _, best_used_derived)| {
+                if extractor.prefers_source_on_cost_tie() {
+                    (cost, candidate_used_derived, rendered.as_str())
+                        < (*best_cost, *best_used_derived, best_rendered.as_str())
+                } else {
                     (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
-                });
+                }
+            },
+        );
 
         if should_replace {
             best = Some((
@@ -890,6 +968,7 @@ where
                 candidate_decisions,
                 candidate_selection_history_decisions,
                 candidate_slot_index,
+                candidate_used_derived,
             ));
         }
     }
@@ -902,12 +981,14 @@ where
         chosen_decisions,
         chosen_selection_history_decisions,
         chosen_slot_index,
+        chosen_used_derived,
     ) = best?;
     *memo = chosen_memo;
     ctx.decisions.extend(chosen_decisions);
     ctx.selection_history_decisions
         .extend(chosen_selection_history_decisions);
     *ctx.slot_index = chosen_slot_index;
+    *ctx.used_derived_candidate = chosen_used_derived;
     Some(chosen_pattern)
 }
 
@@ -952,24 +1033,25 @@ where
     N: egg::Analysis<ArrayLanguage>,
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    let mut best: Option<(u32, String, ArrayExpr, ArrayExpr)> = None;
+    let index_eclass = egraph.find(index_eclass);
+    let value_eclass = egraph.find(value_eclass);
+    if let Some(cached) = extractor.cached_matching_write(
+        array_expr,
+        index_sort,
+        value_sort,
+        index_eclass,
+        value_eclass,
+    ) {
+        return cached;
+    }
 
-    for raw_index in extractor.reads_and_writes.write_array(array_expr) {
-        let Ok(index_expr) = preprocess_array_expr(&raw_index).parse::<ArrayExpr>() else {
-            continue;
-        };
-        if !egraph_contains_at(egraph, &index_expr, index_eclass) {
-            continue;
-        }
-
-        for raw_value in extractor
-            .reads_and_writes
-            .write_array_index(array_expr, &index_expr)
-        {
-            let Ok(value_expr) = preprocess_array_expr(&raw_value).parse::<ArrayExpr>() else {
+    let best_in_pool = |candidates: &[(ArrayExpr, ArrayExpr)]| {
+        let mut best: Option<(u32, String, ArrayExpr, ArrayExpr)> = None;
+        for (index_expr, value_expr) in candidates {
+            if !egraph_contains_at(egraph, index_expr, index_eclass) {
                 continue;
-            };
-            if !egraph_contains_at(egraph, &value_expr, value_eclass) {
+            }
+            if !egraph_contains_at(egraph, value_expr, value_eclass) {
                 continue;
             }
 
@@ -991,9 +1073,39 @@ where
                 best = Some((cost, rendered, index_expr.clone(), value_expr.clone()));
             }
         }
-    }
+        best
+    };
 
-    best.map(|(_, _, index_expr, value_expr)| (index_expr, value_expr))
+    let best = if extractor.prefers_source_on_cost_tie() {
+        let source = best_in_pool(extractor.source_write_candidates(array_expr));
+        let derived = extractor
+            .allows_derived_candidates()
+            .then(|| best_in_pool(extractor.derived_write_candidates(array_expr)))
+            .flatten();
+        match (source, derived) {
+            (Some(source), Some(derived)) => {
+                if (source.0, false, source.1.as_str()) <= (derived.0, true, derived.1.as_str()) {
+                    Some(source)
+                } else {
+                    Some(derived)
+                }
+            }
+            (source @ Some(_), None) => source,
+            (None, derived) => derived,
+        }
+    } else {
+        best_in_pool(extractor.all_write_candidates(array_expr))
+    };
+    let result = best.map(|(_, _, index_expr, value_expr)| (index_expr, value_expr));
+    extractor.cache_matching_write(
+        array_expr,
+        index_sort,
+        value_sort,
+        index_eclass,
+        value_eclass,
+        result.clone(),
+    );
+    result
 }
 
 fn reify_exact_variable_substitution<N, CF>(
@@ -1133,4 +1245,261 @@ where
         .map(egg::ENodeOrVar::ENode)
         .collect::<Vec<_>>()
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        cost_functions::YardbirdCostFunction,
+        problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
+        theories::array::{
+            array_term_extractor::ArrayTermExtractorOptions, candidate_scope::CandidateScope,
+        },
+    };
+    use rustc_hash::FxHashMap;
+    use smt2parser::vmt::ReadsAndWrites;
+
+    #[derive(Clone)]
+    struct ZeroCost;
+
+    impl egg::CostFunction<ArrayLanguage> for ZeroCost {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            0
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for ZeroCost {
+        fn get_string_terms(&self) -> Vec<String> {
+            vec![]
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+    }
+
+    #[derive(Clone)]
+    struct PreferDerivedWrite {
+        terms: Vec<ArrayExpr>,
+    }
+
+    impl egg::CostFunction<ArrayLanguage> for PreferDerivedWrite {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            let self_cost = match enode {
+                ArrayLanguage::Symbol(symbol) if symbol.as_str() == "source_index" => 10,
+                _ => 0,
+            };
+            enode.fold(self_cost, |sum, id| sum.saturating_add(costs(id)))
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for PreferDerivedWrite {
+        fn get_string_terms(&self) -> Vec<String> {
+            self.terms.iter().map(ToString::to_string).collect()
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+    }
+
+    #[test]
+    fn source_only_lookup_returns_the_exact_source_write_children() {
+        let write: ArrayExpr = "(Write Int Int A i v)".parse().unwrap();
+        let array: ArrayExpr = "A".parse().unwrap();
+        let index: ArrayExpr = "i".parse().unwrap();
+        let value: ArrayExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&write);
+        egraph.rebuild();
+        let index_eclass = egraph.lookup_expr(&index).unwrap();
+        let value_eclass = egraph.lookup_expr(&value).unwrap();
+        let source_reads_and_writes = ReadsAndWrites::from(
+            std::collections::HashSet::new(),
+            std::collections::HashSet::from([("A".to_string(), "i".to_string(), "v".to_string())]),
+        );
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCost,
+            ArrayTermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog {
+                    source_grounded: ArrayCandidatePool {
+                        terms: vec![
+                            "A".to_string(),
+                            "i".to_string(),
+                            "v".to_string(),
+                            "(Write_Int_Int A i v)".to_string(),
+                        ],
+                        reads_and_writes: source_reads_and_writes,
+                    },
+                    derived: ArrayCandidatePool::default(),
+                },
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        );
+
+        assert_eq!(
+            best_matching_write_children(
+                &egraph,
+                &extractor,
+                &array,
+                "Int",
+                "Int",
+                index_eclass,
+                value_eclass,
+            ),
+            Some((index, value))
+        );
+    }
+
+    #[test]
+    fn source_write_lookup_canonicalizes_nested_array_lineage() {
+        let array: ArrayExpr = "(Write Int Int A outer previous)".parse().unwrap();
+        let index: ArrayExpr = "i".parse().unwrap();
+        let value: ArrayExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&array);
+        let index_eclass = egraph.add_expr(&index);
+        let value_eclass = egraph.add_expr(&value);
+        egraph.rebuild();
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCost,
+            ArrayTermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog {
+                    source_grounded: ArrayCandidatePool {
+                        terms: vec![],
+                        reads_and_writes: ReadsAndWrites::from(
+                            std::collections::HashSet::new(),
+                            std::collections::HashSet::from([(
+                                "(Write_Int_Int A outer previous)".into(),
+                                "i".into(),
+                                "v".into(),
+                            )]),
+                        ),
+                    },
+                    derived: ArrayCandidatePool::default(),
+                },
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        );
+
+        assert_eq!(
+            best_matching_write_children(
+                &egraph,
+                &extractor,
+                &array,
+                "Int",
+                "Int",
+                index_eclass,
+                value_eclass,
+            ),
+            Some((index, value))
+        );
+    }
+
+    #[test]
+    fn specialized_write_matching_uses_source_only_as_a_cost_tie_breaker() {
+        let array: ArrayExpr = "A".parse().unwrap();
+        let source_index: ArrayExpr = "source_index".parse().unwrap();
+        let derived_index: ArrayExpr = "derived_index".parse().unwrap();
+        let value: ArrayExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let source_index_id = egraph.add_expr(&source_index);
+        let derived_index_id = egraph.add_expr(&derived_index);
+        egraph.union(source_index_id, derived_index_id);
+        let value_id = egraph.add_expr(&value);
+        egraph.rebuild();
+        let index_eclass = egraph.find(source_index_id);
+        let source_write = ArrayLanguage::write_typed(
+            "Int",
+            "Int",
+            array.clone(),
+            source_index.clone(),
+            value.clone(),
+        );
+        let derived_write = ArrayLanguage::write_typed(
+            "Int",
+            "Int",
+            array.clone(),
+            derived_index.clone(),
+            value.clone(),
+        );
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            PreferDerivedWrite {
+                terms: vec![
+                    array.clone(),
+                    source_index.clone(),
+                    derived_index.clone(),
+                    value.clone(),
+                    source_write,
+                    derived_write,
+                ],
+            },
+            ArrayTermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog {
+                    source_grounded: ArrayCandidatePool {
+                        terms: vec!["A".into(), "source_index".into(), "v".into()],
+                        reads_and_writes: ReadsAndWrites::from(
+                            std::collections::HashSet::new(),
+                            std::collections::HashSet::from([(
+                                "A".into(),
+                                "source_index".into(),
+                                "v".into(),
+                            )]),
+                        ),
+                    },
+                    derived: ArrayCandidatePool {
+                        terms: vec!["derived_index".into()],
+                        reads_and_writes: ReadsAndWrites::from(
+                            std::collections::HashSet::new(),
+                            std::collections::HashSet::from([(
+                                "A".into(),
+                                "derived_index".into(),
+                                "v".into(),
+                            )]),
+                        ),
+                    },
+                },
+                candidate_scope: CandidateScope::SourceThenDerived,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        );
+
+        assert_eq!(
+            best_matching_write_children(
+                &egraph,
+                &extractor,
+                &array,
+                "Int",
+                "Int",
+                index_eclass,
+                value_id,
+            ),
+            Some((derived_index, value))
+        );
+    }
 }

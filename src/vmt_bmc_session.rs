@@ -937,12 +937,34 @@ impl ProblemContext for VmtBmcSession {
         trans
     }
 
+    fn get_source_init_and_transition_subterms(&self) -> Vec<String> {
+        let mut trans = self.subterm_handler.get_transition_system_subterms();
+        trans.extend(self.subterm_handler.get_initial_subterms());
+        trans
+    }
+
     fn get_property_subterms(&self) -> Vec<String> {
         self.subterm_handler.get_property_subterms()
     }
 
     fn get_reads_and_writes(&self) -> smt2parser::vmt::ReadsAndWrites {
         self.subterm_handler.get_reads_and_writes()
+    }
+
+    fn get_array_candidate_catalog(&self) -> crate::problem_context::ArrayCandidateCatalog {
+        let mut source_terms = self.subterm_handler.get_transition_system_subterms();
+        source_terms.extend(self.subterm_handler.get_initial_subterms());
+        source_terms.extend(self.subterm_handler.get_property_subterms());
+        crate::problem_context::ArrayCandidateCatalog {
+            source_grounded: crate::problem_context::ArrayCandidatePool {
+                terms: source_terms,
+                reads_and_writes: self.subterm_handler.get_source_reads_and_writes(),
+            },
+            derived: crate::problem_context::ArrayCandidatePool {
+                terms: self.subterm_handler.get_instantiation_subterms(),
+                reads_and_writes: self.subterm_handler.get_derived_reads_and_writes(),
+            },
+        }
     }
 
     fn get_array_types(&self) -> Vec<(String, String)> {

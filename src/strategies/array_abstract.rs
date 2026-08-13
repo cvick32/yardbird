@@ -9,20 +9,21 @@ use crate::{
         term_contains_auxiliary_symbol, ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState,
         AuxiliarySpec, SynthesisTrigger,
     },
-    cost_functions::array::ArrayCostFactory,
+    cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types, ArrayExpr, ArrayLanguage,
-            ArraySaturationInstrumentation, ArraySaturationResult,
+            expr_to_term, saturate_with_array_types_and_ranker, ArrayExpr, ArrayLanguage,
+            ArraySaturationInstrumentation, ArraySaturationOptions, ArraySaturationResult,
         },
         array_conflict_scheduler::ArrayArtifactCapture,
+        array_dataflow::{build_property_cone, PropertyCone},
         array_egraph_builder::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
         },
-        property_cone::{build_property_cone, PropertyCone},
+        array_instantiation_ranker::{ArrayInstantiationRanker, CompleteCostInstantiationRanker},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -62,6 +63,7 @@ where
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
     egraph_builder: Box<dyn ArrayEGraphBuilder>,
+    instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
     property_cone: PropertyCone,
 }
 
@@ -99,6 +101,7 @@ where
             profile,
             profiling_records: vec![],
             egraph_builder: Box::<FullEGraphBuilder>::default(),
+            instantiation_ranker: Box::<CompleteCostInstantiationRanker>::default(),
             property_cone: PropertyCone::default(),
         }
     }
@@ -112,6 +115,66 @@ where
     pub fn with_egraph_builder(mut self, egraph_builder: Box<dyn ArrayEGraphBuilder>) -> Self {
         self.egraph_builder = egraph_builder;
         self
+    }
+
+    pub fn with_instantiation_ranker(
+        mut self,
+        instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
+    ) -> Self {
+        self.instantiation_ranker = instantiation_ranker;
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
+
+    use super::*;
+
+    #[test]
+    fn shifted_copies_of_an_instantiation_are_duplicate_after_normalization() {
+        let installed = "(=> (not (= i@12 i@11)) (= (Read Int Int a@11 i@12) 0))"
+            .parse::<ArrayExpr>()
+            .unwrap();
+        let mut instantiations = vec!["(=> (not (= i@5 i@4)) (= (Read Int Int a@4 i@5) 0))"
+            .parse::<ArrayExpr>()
+            .unwrap()];
+        let mut known = HashSet::from([UnquantifiedInstantiator::rewrite_unquantified(
+            expr_to_term(installed),
+            vec![],
+        )
+        .unwrap()
+        .get_term()
+        .clone()]);
+
+        let duplicates = retain_novel_by(&mut instantiations, &mut known, |expr| {
+            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(expr.clone()), vec![])
+                .map(|instance| instance.get_term().clone())
+        });
+
+        assert_eq!(duplicates.len(), 1);
+        assert!(instantiations.is_empty());
+        assert_eq!(known.len(), 1);
+    }
+
+    #[test]
+    fn only_axioms_false_in_the_current_model_remain_eligible() {
+        let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
+        let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
+        let mut candidates = vec![satisfied.clone(), violated.clone()];
+
+        let rejected = retain_model_violations(&mut candidates, |term| {
+            Ok(if term.to_string().contains("Read_Int_Int A") {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            })
+        })
+        .unwrap();
+
+        assert_eq!(candidates, vec![violated]);
+        assert_eq!(rejected, vec![satisfied]);
     }
 }
 
@@ -148,12 +211,12 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        let (abstracted_model, discovered_types) = model.abstract_array_theory();
         self.property_cone = if self.egraph_builder.requires_property_cone() {
-            build_property_cone(&model)
+            build_property_cone(&abstracted_model)
         } else {
             PropertyCone::default()
         };
-        let (abstracted_model, discovered_types) = model.abstract_array_theory();
         self.discovered_array_types = discovered_types;
         abstracted_model
         //     .abstract_constants_over(self.bmc_depth)
@@ -224,10 +287,12 @@ where
         }
         loop {
             let build_start = Instant::now();
-            let build_step =
-                state
-                    .egraph_builder
-                    .expand(&mut state.egraph, smt, &self.property_cone)?;
+            let build_step = state.egraph_builder.expand(
+                &mut state.egraph,
+                smt,
+                &self.property_cone,
+                state.depth,
+            )?;
             let expansion = match build_step {
                 ArrayEGraphBuildStep::Expanded(expansion) => expansion,
                 ArrayEGraphBuildStep::Exhausted => {
@@ -250,6 +315,10 @@ where
                     "egraph_build_newly_admitted_subterms",
                     expansion.newly_admitted_subterms as u64,
                 );
+                profiling.add_counter(
+                    "egraph_build_demand_frontier_sites",
+                    expansion.demand_frontier_sites as u64,
+                );
                 profiling.set_egraph_after_update(
                     state.egraph.number_of_classes(),
                     egraph_node_count(&state.egraph),
@@ -257,7 +326,14 @@ where
             }
 
             let cost_factory_start = Instant::now();
-            let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
+            let candidate_catalog = if expansion.candidate_scope.tracks_provenance() {
+                smt.get_array_candidate_catalog()
+            } else {
+                crate::problem_context::ArrayCandidateCatalog::default()
+            };
+            let cost_context =
+                ArrayCostContext::from_problem(smt, &candidate_catalog, expansion.candidate_scope);
+            let cost_fn = F::from_context(&cost_context, state.depth as u32, &self.cost_config);
             if let Some(profiling) = &profiling {
                 profiling
                     .borrow_mut()
@@ -265,24 +341,87 @@ where
             }
 
             let saturation_start = Instant::now();
-            let saturation = saturate_with_array_types(
-                &mut state.egraph,
-                cost_fn,
-                refinement_step,
-                self.term_selection_counts.clone(),
-                state.depth,
-                &state.array_types,
-                ArraySaturationInstrumentation {
-                    artifact_capture: self.artifact_capture,
-                    profiling: profiling.clone(),
-                },
-            );
+            let mut known_instantiations =
+                smt.get_instantiations().into_iter().collect::<HashSet<_>>();
+            let mut excluded_instantiations = HashSet::new();
+            let require_model_violation = expansion.candidate_scope.requires_model_violation();
+            let retry_rejected_candidates =
+                expansion.candidate_scope.retries_rejected_instantiations();
+            let summary = loop {
+                let mut saturation = saturate_with_array_types_and_ranker(
+                    &mut state.egraph,
+                    cost_fn.clone(),
+                    &state.array_types,
+                    ArraySaturationOptions {
+                        candidate_catalog: candidate_catalog.clone(),
+                        candidate_scope: expansion.candidate_scope,
+                        excluded_instantiations: excluded_instantiations.clone(),
+                        refinement_step,
+                        selection_counts: self.term_selection_counts.clone(),
+                        depth: state.depth,
+                        instrumentation: ArraySaturationInstrumentation {
+                            artifact_capture: self.artifact_capture,
+                            profiling: profiling.clone(),
+                        },
+                    },
+                    self.instantiation_ranker.as_ref(),
+                );
+                let (rejected_model_regular, rejected_model_const) = if require_model_violation {
+                    (
+                        retain_model_violations(&mut saturation.instantiations, |term| {
+                            smt.eval_to_string(term)
+                        })?,
+                        retain_model_violations(&mut saturation.const_instantiations, |term| {
+                            smt.eval_to_string(term)
+                        })?,
+                    )
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                let rejected_regular = retain_novel_by(
+                    &mut saturation.instantiations,
+                    &mut known_instantiations,
+                    |expr| self.installable_instance_term(smt, expr),
+                );
+                let rejected_const = retain_novel_by(
+                    &mut saturation.const_instantiations,
+                    &mut known_instantiations,
+                    |expr| self.installable_instance_term(smt, expr),
+                );
+                let rejected_model_count =
+                    rejected_model_regular.len() + rejected_model_const.len();
+                let rejected_count =
+                    rejected_model_count + rejected_regular.len() + rejected_const.len();
+                excluded_instantiations.extend(rejected_model_regular);
+                excluded_instantiations.extend(rejected_model_const);
+                excluded_instantiations.extend(rejected_regular);
+                excluded_instantiations.extend(rejected_const);
+                if let Some(profiling) = &profiling {
+                    let mut profiling = profiling.borrow_mut();
+                    profiling.add_counter(
+                        "model_satisfied_instantiations_filtered",
+                        rejected_model_count as u64,
+                    );
+                    profiling.add_counter(
+                        "duplicate_or_uninstallable_instantiations_filtered",
+                        (rejected_count - rejected_model_count) as u64,
+                    );
+                }
+
+                let summary = self.absorb_saturation(state, smt, saturation, refinement_step);
+                if summary.regular_instantiations > 0
+                    || summary.const_instantiations > 0
+                    || rejected_count == 0
+                    || !retry_rejected_candidates
+                {
+                    break summary;
+                }
+            };
             if let Some(profiling) = &profiling {
                 profiling
                     .borrow_mut()
                     .record_timing("saturation_total", saturation_start.elapsed());
             }
-            let summary = self.absorb_saturation(state, smt, saturation, refinement_step);
 
             if trace_conflicts_enabled() {
                 trace!(
@@ -525,10 +664,68 @@ where
     }
 }
 
+fn retain_novel_by(
+    instantiations: &mut Vec<ArrayExpr>,
+    known: &mut HashSet<Term>,
+    mut normalize: impl FnMut(&ArrayExpr) -> Option<Term>,
+) -> Vec<ArrayExpr> {
+    let mut rejected = Vec::new();
+    instantiations.retain(|instantiation| {
+        let keep = normalize(instantiation).is_some_and(|normalized| known.insert(normalized));
+        if !keep {
+            rejected.push(instantiation.clone());
+        }
+        keep
+    });
+    rejected
+}
+
+fn retain_model_violations(
+    instantiations: &mut Vec<ArrayExpr>,
+    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+) -> anyhow::Result<Vec<ArrayExpr>> {
+    let mut rejected = Vec::new();
+    let mut evaluation_error = None;
+    instantiations.retain(|instantiation| {
+        let term = expr_to_term(instantiation.clone());
+        match evaluate(&term) {
+            Ok(value) if value.trim() == "false" => true,
+            Ok(_) => {
+                rejected.push(instantiation.clone());
+                false
+            }
+            Err(error) => {
+                evaluation_error = Some(error);
+                false
+            }
+        }
+    });
+    if let Some(error) = evaluation_error {
+        return Err(error);
+    }
+    Ok(rejected)
+}
+
 impl<F> Abstract<F>
 where
     F: ArrayCostFactory + 'static,
 {
+    fn installable_instance_term(
+        &self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        instantiation: &ArrayExpr,
+    ) -> Option<Term> {
+        let term_hash = crate::training::canonical_term_hash(instantiation);
+        let term = expr_to_term(instantiation.clone());
+        if self.aux_covered_term_hashes.contains(&term_hash)
+            || term_contains_auxiliary_symbol(&term)
+        {
+            return None;
+        }
+        smt.make_unquantified_instance(term)
+            .map(|instance| instance.get_term().clone())
+    }
+
     fn absorb_saturation(
         &mut self,
         state: &mut ArrayRefinementState,

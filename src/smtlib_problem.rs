@@ -4,7 +4,9 @@ use smt2parser::vmt::array_abstractor::ArrayAbstractor;
 use smt2parser::CommandStream;
 use std::path::Path;
 
-use crate::driver::{accumulate_solver_statistics, record_solver_phase_statistics};
+use crate::driver::{
+    accumulate_solver_statistics, record_solver_phase_statistics, refinement_made_progress,
+};
 use crate::profiling::{Profiler, ProfilingRunRecord, SolverCheckContext, SolverProfileMetadata};
 use crate::smtlib_refinement_session::SmtlibRefinementSession;
 use crate::solver::{
@@ -617,7 +619,19 @@ impl SmtlibRefinementRunner {
             match action {
                 ProofAction::Continue => {
                     info!("  Action: Continue refinement");
+                    let instantiations_before = smt_problem.get_instantiations();
                     strategy.finish(state, &mut smt_problem)?;
+                    let instantiations_after = smt_problem.get_instantiations();
+                    if !refinement_made_progress(
+                        &instantiations_before,
+                        0,
+                        &instantiations_after,
+                        0,
+                    ) {
+                        anyhow::bail!(
+                            "refinement requested another SMTLIB solve without installing a new instantiation"
+                        );
+                    }
                 }
                 ProofAction::ValidateConcreteCounterexample => {
                     info!("  Action: Abstract e-graph exhausted; validating concretely");

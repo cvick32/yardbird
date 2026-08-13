@@ -56,6 +56,7 @@ impl ReadsAndWrites {
             .map(|(_a, i, _v)| i.to_string())
             .collect::<Vec<_>>();
         indices.sort();
+        indices.dedup();
         indices.into_iter()
     }
 
@@ -203,5 +204,25 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Rea
             term: Box::new(term),
             attributes,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_array_returns_each_index_once() {
+        let writes = ReadsAndWrites::from(
+            HashSet::new(),
+            HashSet::from([
+                ("a".to_string(), "i".to_string(), "v1".to_string()),
+                ("a".to_string(), "i".to_string(), "v2".to_string()),
+                ("a".to_string(), "j".to_string(), "v3".to_string()),
+                ("b".to_string(), "i".to_string(), "v4".to_string()),
+            ]),
+        );
+
+        assert_eq!(writes.write_array("a").collect::<Vec<_>>(), ["i", "j"]);
     }
 }

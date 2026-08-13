@@ -9,7 +9,8 @@ use crate::{
     theories::array::{
         array_axioms::{translate_term, ArrayLanguage},
         array_conflict_scheduler::preprocess_array_expr,
-        property_cone::PropertyCone,
+        array_dataflow::PropertyCone,
+        candidate_scope::CandidateScope,
     },
 };
 
@@ -31,9 +32,11 @@ impl ArrayEGraphBuildStage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ArrayEGraphExpansion {
     pub stage: ArrayEGraphBuildStage,
+    pub candidate_scope: CandidateScope,
     pub total_subterms: usize,
     pub admitted_subterms: usize,
     pub newly_admitted_subterms: usize,
+    pub demand_frontier_sites: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,6 +62,7 @@ pub trait ArrayEGraphBuilder: Debug + Send {
         egraph: &mut egg::EGraph<ArrayLanguage, ()>,
         smt: &dyn ProblemContext,
         property_cone: &PropertyCone,
+        depth: u16,
     ) -> anyhow::Result<ArrayEGraphBuildStep>;
 }
 
@@ -84,6 +88,7 @@ impl ArrayEGraphBuilder for FullEGraphBuilder {
         egraph: &mut egg::EGraph<ArrayLanguage, ()>,
         smt: &dyn ProblemContext,
         _property_cone: &PropertyCone,
+        _depth: u16,
     ) -> anyhow::Result<ArrayEGraphBuildStep> {
         if self.expanded {
             return Ok(ArrayEGraphBuildStep::Exhausted);
@@ -94,9 +99,11 @@ impl ArrayEGraphBuilder for FullEGraphBuilder {
         let newly_admitted_subterms = add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
         Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
             stage: ArrayEGraphBuildStage::Full,
+            candidate_scope: CandidateScope::AllCandidates,
             total_subterms,
             admitted_subterms: self.admitted.len(),
             newly_admitted_subterms,
+            demand_frontier_sites: 0,
         }))
     }
 }
@@ -129,17 +136,33 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
         egraph: &mut egg::EGraph<ArrayLanguage, ()>,
         smt: &dyn ProblemContext,
         property_cone: &PropertyCone,
+        depth: u16,
     ) -> anyhow::Result<ArrayEGraphBuildStep> {
         match self.stage {
             ConeThenFullStage::Cone => {
                 let subterms = smt.get_all_subterms();
                 let total_subterms = subterms.len();
-                let cone_symbols = property_cone
-                    .array_distances
-                    .keys()
-                    .cloned()
-                    .collect::<HashSet<_>>();
-                let cone_terms = cone_admitted_subterms(&subterms, &cone_symbols);
+                let dynamic_terms =
+                    property_cone
+                        .provenance
+                        .demand_frontier(depth, smt)
+                        .map(|frontier| {
+                            let site_count = frontier.sites().len();
+                            (
+                                frontier.expressions().cloned().collect::<HashSet<_>>(),
+                                site_count,
+                            )
+                        });
+                let (cone_terms, demand_frontier_sites) = match dynamic_terms {
+                    Ok((terms, site_count)) if !terms.is_empty() => (terms, site_count),
+                    Ok(_) => (static_cone_terms(property_cone, &subterms), 0),
+                    Err(error) => {
+                        log::warn!(
+                            "dynamic array demand frontier failed at depth {depth}: {error:#}; using the static cone"
+                        );
+                        (static_cone_terms(property_cone, &subterms), 0)
+                    }
+                };
                 let cone_refs = subterms
                     .iter()
                     .copied()
@@ -152,9 +175,11 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                         add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
                     return Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                         stage: ArrayEGraphBuildStage::Full,
+                        candidate_scope: CandidateScope::SourceThenDerived,
                         total_subterms,
                         admitted_subterms: self.admitted.len(),
                         newly_admitted_subterms,
+                        demand_frontier_sites: 0,
                     }));
                 }
 
@@ -163,9 +188,11 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                     add_subterms(egraph, smt, &cone_refs, &mut self.admitted)?;
                 Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                     stage: ArrayEGraphBuildStage::Cone,
+                    candidate_scope: CandidateScope::SourceGroundedOnly,
                     total_subterms,
                     admitted_subterms: self.admitted.len(),
                     newly_admitted_subterms,
+                    demand_frontier_sites,
                 }))
             }
             ConeThenFullStage::Full => {
@@ -176,14 +203,25 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                     add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
                 Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                     stage: ArrayEGraphBuildStage::Full,
+                    candidate_scope: CandidateScope::SourceThenDerived,
                     total_subterms,
                     admitted_subterms: self.admitted.len(),
                     newly_admitted_subterms,
+                    demand_frontier_sites: 0,
                 }))
             }
             ConeThenFullStage::Exhausted => Ok(ArrayEGraphBuildStep::Exhausted),
         }
     }
+}
+
+fn static_cone_terms(property_cone: &PropertyCone, subterms: &[&Term]) -> HashSet<Term> {
+    let cone_symbols = property_cone
+        .array_states
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    cone_admitted_subterms(subterms, &cone_symbols)
 }
 
 fn add_subterms(
@@ -396,17 +434,17 @@ mod tests {
             ],
         };
         let cone = PropertyCone {
-            array_distances: [("a".to_string(), 0)].into_iter().collect(),
+            array_states: HashSet::from(["a".to_string()]),
             ..PropertyCone::default()
         };
         let mut builder = ConeThenFullEGraphBuilder::default();
         let mut egraph = egg::EGraph::new(());
 
-        let first = builder.expand(&mut egraph, &context, &cone).unwrap();
+        let first = builder.expand(&mut egraph, &context, &cone, 3).unwrap();
         let classes_after_cone = egraph.number_of_classes();
-        let second = builder.expand(&mut egraph, &context, &cone).unwrap();
+        let second = builder.expand(&mut egraph, &context, &cone, 3).unwrap();
         let classes_after_full = egraph.number_of_classes();
-        let third = builder.expand(&mut egraph, &context, &cone).unwrap();
+        let third = builder.expand(&mut egraph, &context, &cone, 3).unwrap();
 
         assert!(matches!(
             first,

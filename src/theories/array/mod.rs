@@ -1,5 +1,7 @@
 pub mod array_axioms;
 pub mod array_conflict_scheduler;
+pub mod array_dataflow;
 pub mod array_egraph_builder;
+pub mod array_instantiation_ranker;
 pub mod array_term_extractor;
-pub mod property_cone;
+pub mod candidate_scope;

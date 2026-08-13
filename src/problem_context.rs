@@ -11,6 +11,23 @@ use crate::{
     utils::SolverStatistics,
 };
 
+/// Candidate terms and array-operation sites with the same provenance.
+#[derive(Clone, Default)]
+pub struct ArrayCandidatePool {
+    pub terms: Vec<String>,
+    pub reads_and_writes: ReadsAndWrites,
+}
+
+/// Keeps problem-authored candidates separate from terms introduced by refinement.
+///
+/// Derived terms remain available to full refinement, but they must not silently
+/// become source sites merely because an earlier instantiation was asserted.
+#[derive(Clone, Default)]
+pub struct ArrayCandidateCatalog {
+    pub source_grounded: ArrayCandidatePool,
+    pub derived: ArrayCandidatePool,
+}
+
 /// Common refinement context that proof strategies can work with.
 ///
 /// This sits above the solver backend and exposes problem-specific data such as
@@ -43,10 +60,30 @@ pub trait ProblemContext {
     // Methods for cost functions
     /// Get subterms from initial state and transition relation (VMT-specific, empty for SMTLIB)
     fn get_init_and_transition_subterms(&self) -> Vec<String>;
+    /// Get only problem-authored initial/transition subterms.
+    fn get_source_init_and_transition_subterms(&self) -> Vec<String> {
+        self.get_init_and_transition_subterms()
+    }
     /// Get subterms from property (for SMTLIB, this is all assertion subterms)
     fn get_property_subterms(&self) -> Vec<String>;
     /// Get reads and writes from the problem
     fn get_reads_and_writes(&self) -> ReadsAndWrites;
+
+    /// Return array-refinement candidates grouped by provenance.
+    ///
+    /// Backends without separate refinement bookkeeping can treat all of their
+    /// terms as source-grounded.
+    fn get_array_candidate_catalog(&self) -> ArrayCandidateCatalog {
+        let mut source_terms = self.get_init_and_transition_subterms();
+        source_terms.extend(self.get_property_subterms());
+        ArrayCandidateCatalog {
+            source_grounded: ArrayCandidatePool {
+                terms: source_terms,
+                reads_and_writes: self.get_reads_and_writes(),
+            },
+            derived: ArrayCandidatePool::default(),
+        }
+    }
 
     /// Get discovered array types (index_sort, value_sort) pairs
     fn get_array_types(&self) -> Vec<(String, String)>;
