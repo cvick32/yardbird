@@ -95,6 +95,10 @@ pub struct YardbirdOptions {
     #[arg(long, value_enum, default_value_t = EGraphBuilderStrategy::Full)]
     pub egraph_builder: EGraphBuilderStrategy,
 
+    /// Simplify exact select(store(A, i, v), i) terms before array abstraction.
+    #[arg(long, default_value_t = false)]
+    pub preprocess_exact_read_after_write: bool,
+
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
     pub ranker_model: Option<String>,
@@ -193,6 +197,7 @@ impl Default for YardbirdOptions {
             run_ic3ia: false,
             cost_function: CostFunction::BmcCost,
             egraph_builder: EGraphBuilderStrategy::Full,
+            preprocess_exact_read_after_write: false,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -408,6 +413,7 @@ impl YardbirdOptions {
         )
         .with_artifact_capture(self.build_array_artifact_capture())
         .with_egraph_builder(self.build_array_egraph_builder())
+        .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -430,6 +436,7 @@ impl YardbirdOptions {
         )
         .with_artifact_capture(self.build_array_artifact_capture())
         .with_egraph_builder(self.build_array_egraph_builder())
+        .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
     }
 
     fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {
@@ -478,9 +485,12 @@ impl YardbirdOptions {
                     self.build_abstract_array_strategy::<ArrayGenerated>(self.depth, aux_config),
                 ),
             },
-            Strategy::AbstractWithQuantifiers => {
-                Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
-            }
+            Strategy::AbstractWithQuantifiers => Box::new(
+                AbstractArrayWithQuantifiers::new(self.run_ic3ia)
+                    .with_exact_read_after_write_preprocessing(
+                        self.preprocess_exact_read_after_write,
+                    ),
+            ),
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
@@ -520,9 +530,12 @@ impl YardbirdOptions {
                 }
                 CostFunction::Generated => todo!(),
             },
-            Strategy::AbstractWithQuantifiers => {
-                Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
-            }
+            Strategy::AbstractWithQuantifiers => Box::new(
+                AbstractArrayWithQuantifiers::new(self.run_ic3ia)
+                    .with_exact_read_after_write_preprocessing(
+                        self.preprocess_exact_read_after_write,
+                    ),
+            ),
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
@@ -692,5 +705,36 @@ impl Display for InstantiationStrategyType {
             InstantiationStrategyType::FullUnroll => write!(f, "full-unroll"),
             InstantiationStrategyType::NoUnrollOnLoop => write!(f, "no-unroll-on-loop"),
         }
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn exact_read_after_write_preprocessing_is_disabled_by_default() {
+        let options = YardbirdOptions::from_filename("input.vmt".to_string());
+
+        assert!(!options.preprocess_exact_read_after_write);
+        assert!(!options
+            .build_array_strategy()
+            .preprocess_exact_read_after_write());
+    }
+
+    #[test]
+    fn cli_flag_enables_exact_read_after_write_preprocessing() {
+        let options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--filename",
+            "input.vmt",
+            "--preprocess-exact-read-after-write",
+        ])
+        .unwrap();
+
+        assert!(options.preprocess_exact_read_after_write);
+        assert!(options
+            .build_array_strategy()
+            .preprocess_exact_read_after_write());
     }
 }

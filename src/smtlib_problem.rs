@@ -1,6 +1,8 @@
 use smt2parser::concrete::{Command, SyntaxBuilder, Term};
 use smt2parser::let_extract::LetExtract;
-use smt2parser::vmt::array_abstractor::ArrayAbstractor;
+use smt2parser::vmt::{
+    array_abstractor::ArrayAbstractor, array_term_simplifier::ArrayTermSimplifier,
+};
 use smt2parser::CommandStream;
 use std::path::Path;
 
@@ -190,11 +192,30 @@ impl SMTLIBProblem {
     /// Returns (abstracted_problem, discovered_array_types) where discovered_array_types is a vector
     /// of (index_sort, value_sort) pairs for all array types found in the problem.
     pub fn abstract_array_theory(&self) -> (SMTLIBProblem, Vec<(String, String)>) {
+        self.abstract_array_theory_with_preprocessing(false)
+    }
+
+    pub fn abstract_array_theory_with_preprocessing(
+        &self,
+        preprocess_exact_read_after_write: bool,
+    ) -> (SMTLIBProblem, Vec<(String, String)>) {
         let mut abstractor = ArrayAbstractor::default();
+        let mut simplifier = ArrayTermSimplifier::from_commands(&self.commands);
         let mut abstracted_commands = vec![];
 
         for command in &self.commands {
-            abstracted_commands.push(command.clone().accept(&mut abstractor).unwrap());
+            let command = if preprocess_exact_read_after_write {
+                simplifier.simplify_command(command.clone())
+            } else {
+                command.clone()
+            };
+            abstracted_commands.push(command.accept(&mut abstractor).unwrap());
+        }
+        if preprocess_exact_read_after_write {
+            log::debug!(
+                "simplified {} exact native read-after-write terms before SMT-LIB abstraction",
+                simplifier.exact_read_after_write_rewrites()
+            );
         }
 
         // Add array type definitions at the beginning
@@ -514,7 +535,9 @@ impl SmtlibRefinementRunner {
         let theory = strategy.get_theory_support();
         let (working_problem, array_types) = if theory.requires_abstraction() {
             info!("Abstracting array theory");
-            let (abs_problem, types) = problem.abstract_array_theory();
+            let (abs_problem, types) = problem.abstract_array_theory_with_preprocessing(
+                strategy.preprocess_exact_read_after_write(),
+            );
             info!("Discovered array types: {:?}", types);
             (abs_problem, types)
         } else if theory.requires_array_information() {
@@ -780,5 +803,40 @@ impl SmtlibRefinementRunner {
         info!("Final SMTLIB result is ready");
 
         Ok((result, abstracted_problem))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn exact_read_after_write_preprocessing_is_opt_in() {
+        let input = br#"
+            (set-logic QF_AUFLIA)
+            (declare-const a (Array Int Int))
+            (declare-const i Int)
+            (declare-const v Int)
+            (assert (= (select (store a i v) i) v))
+            (check-sat)
+        "#;
+        let commands = CommandStream::new(Cursor::new(input), SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let problem = SMTLIBProblem::from_commands(commands).unwrap();
+
+        let (default_abstracted, _) = problem.abstract_array_theory();
+        assert!(default_abstracted
+            .as_smt2_string()
+            .contains("(Read_Int_Int (Write_Int_Int"));
+
+        let (abstracted, types) = problem.abstract_array_theory_with_preprocessing(true);
+        let output = abstracted.as_smt2_string();
+
+        assert_eq!(types, vec![("Int".to_string(), "Int".to_string())]);
+        assert!(output.contains("(assert (= v v))"));
+        assert!(!output.contains("(Read_Int_Int (Write_Int_Int"));
     }
 }

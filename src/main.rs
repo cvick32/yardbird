@@ -260,9 +260,12 @@ fn build_smtlib_strategy(
                 Box::new(options.build_abstract_array_strategy::<ArrayGenerated>(0, aux_config))
             }
         },
-        Strategy::AbstractWithQuantifiers => {
-            Box::new(AbstractArrayWithQuantifiers::new(options.run_ic3ia))
-        }
+        Strategy::AbstractWithQuantifiers => Box::new(
+            AbstractArrayWithQuantifiers::new(options.run_ic3ia)
+                .with_exact_read_after_write_preprocessing(
+                    options.preprocess_exact_read_after_write,
+                ),
+        ),
         Strategy::Concrete => Box::new(ConcreteArrayZ3::new(options.run_ic3ia)),
     }
 }

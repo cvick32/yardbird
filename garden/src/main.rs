@@ -84,6 +84,9 @@ struct GardenOptions {
     #[arg(long, value_enum, default_value_t = yardbird::EGraphBuilderStrategy::Full)]
     pub egraph_builder: yardbird::EGraphBuilderStrategy,
 
+    #[arg(long, default_value_t = false)]
+    pub preprocess_exact_read_after_write: bool,
+
     #[arg(long, value_enum, default_value_t = yardbird::SolverBackend::Z3)]
     pub solver: yardbird::SolverBackend,
 
@@ -164,6 +167,7 @@ struct StrategyResult {
     strategy: yardbird::Strategy,
     cost_function: yardbird::CostFunction,
     egraph_builder: yardbird::EGraphBuilderStrategy,
+    preprocess_exact_read_after_write: bool,
     result: BenchmarkResult,
     run_time: u128,
     depth: u16,
@@ -247,6 +251,10 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .arg("--synthesis-guard-policy")
         .arg(options.synthesis_guard_policy.to_string())
         .arg("--json-output");
+
+    if options.preprocess_exact_read_after_write {
+        command.arg("--preprocess-exact-read-after-write");
+    }
 
     if options.run_ic3ia {
         command.arg("--run-ic3ia");
@@ -433,6 +441,7 @@ fn run_single(
             result,
             cost_function: options.cost_function,
             egraph_builder: options.egraph_builder,
+            preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
             run_time: run_time.as_millis(),
             depth: options.depth,
             record_decisions: options.record_decisions || options.train,
@@ -521,6 +530,8 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 run_ic3ia: options.run_ic3ia,
                                 cost_function,
                                 egraph_builder: options.egraph_builder,
+                                preprocess_exact_read_after_write: options
+                                    .preprocess_exact_read_after_write,
                                 solver: options.solver,
                                 theory: yardbird::Theory::Array,
                                 json_output: false,
@@ -759,6 +770,7 @@ fn run_config_benchmark(
             run_ic3ia: options.run_ic3ia,
             cost_function: run.cost_function,
             egraph_builder: run.egraph_builder,
+            preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
             solver: run.solver,
             theory: yardbird::Theory::Array,
             json_output: false,
