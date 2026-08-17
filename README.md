@@ -382,7 +382,12 @@ in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`
   - Supports parameter matrices
   - JSON output with metadata
 
-- **Examples**: `examples/array/` - VMT benchmark files
+- **Examples**: `examples/array/` - paper VMT benchmark files
+
+- **Large local test corpus**: `examples/svcomp-vmt-bench/` - locally generated
+  VMT inputs used for Yardbird stress testing and AWS benchmark runs. Exact
+  upstream revisions and conversion provenance are still pending; see the
+  corpus README before publishing or redistributing it independently.
 
 **Is the artifact consistent and relevant to the associated paper, contributing to its main results?**
 
