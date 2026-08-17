@@ -10,6 +10,7 @@ from unittest.mock import patch
 from yardbird_eval.benchmark_selection import (
     garden_filter_args,
     select_difficult_benchmarks,
+    select_formula_research_cohort,
 )
 
 
@@ -191,6 +192,63 @@ class DifficultBenchmarkSelectionTests(unittest.TestCase):
                 "7",
             ],
         )
+
+    def test_formula_research_cohort_combines_fixed_and_dynamic_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            suite_path = root / "results.json"
+            cohort_path = root / "formula-cohort.json"
+            write_json(
+                cohort_path,
+                {
+                    "existing-yardbird-hard-tail-wins": [
+                        "examples/array/known-win.vmt"
+                    ],
+                    "abstract-z3-regressions": [
+                        "examples/array/known-regression.vmt"
+                    ],
+                },
+            )
+            write_json(
+                suite_path,
+                {
+                    "benchmarks": [
+                        {
+                            "example": "examples/array/concrete-only-win.vmt",
+                            "result": [
+                                strategy_result("concrete", 1_000, {"Success": {}}),
+                                strategy_result("abstract", 120_000, {"Timeout": 120_000}),
+                            ],
+                        },
+                        {
+                            "example": "examples/array/both-succeed.vmt",
+                            "result": [
+                                strategy_result("concrete", 1_000, {"Success": {}}),
+                                strategy_result("abstract", 2_000, {"Success": {}}),
+                            ],
+                        },
+                    ]
+                },
+            )
+
+            with patch(
+                "yardbird_eval.benchmark_selection.FORMULA_RESEARCH_COHORT",
+                cohort_path,
+            ):
+                selection = select_formula_research_cohort(str(suite_path))
+
+            self.assertEqual(
+                selection["benchmarks"],
+                [
+                    "examples/array/concrete-only-win.vmt",
+                    "examples/array/known-regression.vmt",
+                    "examples/array/known-win.vmt",
+                ],
+            )
+            self.assertEqual(
+                selection["reasons"]["examples/array/concrete-only-win.vmt"],
+                ["concrete-success-yardbird-timeout"],
+            )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,9 @@ from .common import BENCHMARK_ROOT, load_json
 
 
 DEFAULT_DIFFICULT_THRESHOLD_SECONDS = 30.0
+FORMULA_RESEARCH_COHORT = (
+    Path(__file__).resolve().parent / "cohorts" / "formula-transformations.json"
+)
 
 
 def _strategy_identity(result: dict[str, Any]) -> str | None:
@@ -27,6 +30,11 @@ def _strategy_identity(result: dict[str, Any]) -> str | None:
 def _timed_out(result: dict[str, Any]) -> bool:
     outcome = result.get("result")
     return isinstance(outcome, dict) and "Timeout" in outcome
+
+
+def _succeeded(result: dict[str, Any]) -> bool:
+    outcome = result.get("result")
+    return isinstance(outcome, dict) and "Success" in outcome
 
 
 def _normalize_example_path(example: str) -> str:
@@ -168,6 +176,62 @@ def select_difficult_benchmarks(
         "benchmarks": sorted(selected),
         "reasons": {
             example: sorted(identities) for example, identities in sorted(selected.items())
+        },
+    }
+
+
+def select_formula_research_cohort(source: str) -> dict[str, Any]:
+    """Build the stable formula-transformation cohort plus live baseline failures."""
+    if source == "auto":
+        resolved_source, suite_files = _auto_source()
+    else:
+        resolved_source, suite_files = _source_suite_files(source)
+
+    fixed = load_json(FORMULA_RESEARCH_COHORT)
+    if not isinstance(fixed, dict):
+        raise RuntimeError(f"Invalid formula cohort file: {FORMULA_RESEARCH_COHORT}")
+
+    reasons: dict[str, set[str]] = {}
+    for category, examples in fixed.items():
+        if not isinstance(category, str) or not isinstance(examples, list):
+            raise RuntimeError(f"Invalid formula cohort category: {category!r}")
+        for example in examples:
+            if not isinstance(example, str):
+                raise RuntimeError(f"Invalid formula cohort benchmark: {example!r}")
+            reasons.setdefault(_normalize_example_path(example), set()).add(category)
+
+    baseline_outcomes: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for suite_file in suite_files:
+        suite = load_json(suite_file, default={})
+        for benchmark in suite.get("benchmarks", []):
+            example = benchmark.get("example")
+            if not isinstance(example, str):
+                continue
+            normalized_example = _normalize_example_path(example)
+            identities = baseline_outcomes.setdefault(normalized_example, {})
+            for result in benchmark.get("result", []):
+                identity = _strategy_identity(result)
+                if identity:
+                    identities.setdefault(identity, []).append(result)
+
+    dynamic_category = "concrete-success-yardbird-timeout"
+    for example, identities in baseline_outcomes.items():
+        concrete_success = any(
+            _succeeded(result) for result in identities.get("concrete", [])
+        )
+        abstract_timeout = any(
+            _timed_out(result) for result in identities.get("abstract-bmc-cost", [])
+        )
+        if concrete_success and abstract_timeout:
+            reasons.setdefault(example, set()).add(dynamic_category)
+
+    return {
+        "kind": "formula-research-cohort",
+        "source": resolved_source,
+        "benchmarks": sorted(reasons),
+        "reasons": {
+            example: sorted(categories)
+            for example, categories in sorted(reasons.items())
         },
     }
 

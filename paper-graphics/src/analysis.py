@@ -27,6 +27,26 @@ SOLVER_DIAGNOSTIC_METRICS = (
     ("mk clause", "Clauses created", "solver_clauses_created"),
     ("mk bool var", "Boolean variables created", "solver_bool_vars_created"),
     ("arith-conflicts", "Arithmetic conflicts", "solver_arith_conflicts"),
+    (
+        "yardbird.indexed equality attempts",
+        "Indexed equality attempts",
+        "indexed_equality_attempts",
+    ),
+    (
+        "yardbird.indexed equality duplicates",
+        "Indexed equality duplicates removed",
+        "indexed_equality_duplicates",
+    ),
+    (
+        "yardbird.unique instantiation assertions",
+        "Unique instantiation assertions",
+        "unique_instantiation_assertions",
+    ),
+    (
+        "yardbird.all-eligible-frame placements",
+        "All-eligible-frame placements",
+        "all_eligible_frame_placements",
+    ),
 )
 
 

@@ -5,7 +5,10 @@ import os
 import sys
 
 from .aws_backend import download_aws_artifacts, launch_aws_run, refresh_aws_run
-from .benchmark_selection import select_difficult_benchmarks
+from .benchmark_selection import (
+    select_difficult_benchmarks,
+    select_formula_research_cohort,
+)
 from .common import (
     BENCHMARK_ROOT,
     DEFAULT_CONFIG,
@@ -113,6 +116,17 @@ def legacy_parser() -> argparse.ArgumentParser:
         type=float,
         default=30.0,
         help="Runtime cutoff for --difficult-benchmarks (default: 30 seconds)",
+    )
+    parser.add_argument(
+        "--formula-research-cohort",
+        nargs="?",
+        const="auto",
+        metavar="BASELINE",
+        help=(
+            "Run the fixed formula-transformation guardrails plus benchmarks where "
+            "concrete succeeds and abstract BMC-cost times out in BASELINE. BASELINE "
+            "accepts the same sources as --difficult-benchmarks."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -373,6 +387,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.limit is not None and args.limit <= 0:
         raise RuntimeError("--limit must be greater than zero")
+    if args.difficult_benchmarks and args.formula_research_cohort:
+        raise RuntimeError(
+            "Use only one of --difficult-benchmarks and --formula-research-cohort"
+        )
     if args.difficult_benchmarks:
         args.benchmark_selection = select_difficult_benchmarks(
             args.difficult_benchmarks,
@@ -385,6 +403,17 @@ def main(argv: list[str] | None = None) -> int:
             f"{len(args.benchmark_selection['benchmarks'])} benchmarks from "
             f"{args.benchmark_selection['source']} "
             f"(>{args.difficult_threshold_seconds:g}s or timeout)"
+        )
+    elif args.formula_research_cohort:
+        args.benchmark_selection = select_formula_research_cohort(
+            args.formula_research_cohort
+        )
+        args.benchmark_selection["limit"] = args.limit
+        args.benchmark_selection["sample_seed"] = args.sample_seed
+        print(
+            "Formula research cohort: "
+            f"{len(args.benchmark_selection['benchmarks'])} benchmarks from "
+            f"{args.benchmark_selection['source']}"
         )
     else:
         args.benchmark_selection = None
