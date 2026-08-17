@@ -2,6 +2,7 @@ use std::{collections::HashMap, fs::File, io::Write, path::Path};
 
 use action::Action;
 use array_abstractor::ArrayAbstractor;
+use array_term_simplifier::ArrayTermSimplifier;
 use axiom::Axiom;
 use bmc::BMCBuilder;
 use definition_graph::{DefinitionFrameInfo, DefinitionGraph, MetadataAliasExpander};
@@ -29,6 +30,7 @@ static INITIAL_ATTRIBUTE: &str = "init";
 mod action;
 pub mod array_abstractor;
 mod array_axiom_frame_num_getter;
+pub mod array_term_simplifier;
 mod axiom;
 pub mod bmc;
 pub mod canonicalize_boolean;
@@ -266,11 +268,31 @@ impl VMTModel {
     /// Returns (abstracted_model, discovered_types) where discovered_types is a vector of
     /// (index_sort, value_sort) pairs for all array types found in the model.
     pub fn abstract_array_theory(&self) -> (VMTModel, Vec<(String, String)>) {
+        self.abstract_array_theory_with_preprocessing(false)
+    }
+
+    pub fn abstract_array_theory_with_preprocessing(
+        &self,
+        preprocess_exact_read_after_write: bool,
+    ) -> (VMTModel, Vec<(String, String)>) {
         let mut abstractor =
             ArrayAbstractor::with_helper_definitions(self.helper_definitions.names());
+        let commands = self.as_commands();
+        let mut simplifier = ArrayTermSimplifier::from_commands(&commands);
         let mut abstracted_commands = vec![];
-        for command in self.as_commands() {
+        for command in commands {
+            let command = if preprocess_exact_read_after_write {
+                simplifier.simplify_command(command)
+            } else {
+                command
+            };
             abstracted_commands.push(command.accept(&mut abstractor).unwrap());
+        }
+        if preprocess_exact_read_after_write {
+            log::debug!(
+                "simplified {} exact native read-after-write terms before abstraction",
+                simplifier.exact_read_after_write_rewrites()
+            );
         }
         let mut array_definitions = abstractor.get_array_type_definitions();
         array_definitions.extend(abstracted_commands);
@@ -926,13 +948,25 @@ mod test {
             (define-fun a.relationship () (Array Int Int) (! a :next a.next))
             (define-fun updated () (Array Int Int) (store a 0 1))
             (define-fun read-updated () Int (select updated 0))
+            (define-fun direct-read () Int (select (store a 0 1) 0))
             (define-fun init () Bool (! true :init true))
             (define-fun transition () Bool (! (= a.next updated) :trans true))
             (define-fun property () Bool (! (= read-updated 1) :invar-property 0))
         "#;
 
         let model = parse_vmt(input).unwrap();
-        let (abstracted, types) = model.abstract_array_theory();
+        let (abstracted_without_preprocessing, _) = model.abstract_array_theory();
+        assert_eq!(
+            abstracted_without_preprocessing
+                .get_helper_definitions()
+                .get("direct-read")
+                .unwrap()
+                .body()
+                .to_string(),
+            "(Read_Int_Int (Write_Int_Int a 0 1) 0)"
+        );
+
+        let (abstracted, types) = model.abstract_array_theory_with_preprocessing(true);
         assert_eq!(types, vec![("Int".to_string(), "Int".to_string())]);
 
         let updated = abstracted.get_helper_definitions().get("updated").unwrap();
@@ -946,6 +980,15 @@ mod test {
                 .body()
                 .to_string(),
             "(Read_Int_Int updated 0)"
+        );
+        assert_eq!(
+            abstracted
+                .get_helper_definitions()
+                .get("direct-read")
+                .unwrap()
+                .body()
+                .to_string(),
+            "1"
         );
     }
 

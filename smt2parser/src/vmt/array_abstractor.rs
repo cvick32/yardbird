@@ -269,6 +269,21 @@ impl crate::rewriter::Rewriter for ArrayAbstractor {
         &mut self.visitor
     }
 
+    fn visit_declare_const(
+        &mut self,
+        symbol: <Self::V as crate::visitors::Smt2Visitor>::Symbol,
+        sort: <Self::V as crate::visitors::Smt2Visitor>::Sort,
+    ) -> Result<<Self::V as crate::visitors::Smt2Visitor>::Command, Self::Error> {
+        if let Some((index_sort, value_sort)) = self.extract_array_sorts_from_sort(&sort) {
+            self.variable_types
+                .insert(symbol.0.clone(), (index_sort, value_sort));
+        }
+        Ok(Command::DeclareConst {
+            symbol,
+            sort: self.convert_sort_to_abstracted(&sort),
+        })
+    }
+
     fn visit_declare_fun(
         &mut self,
         symbol: <Self::V as crate::visitors::Smt2Visitor>::Symbol,
