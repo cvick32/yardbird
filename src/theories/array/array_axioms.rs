@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc, time::Instant};
+use std::{cell::RefCell, collections::HashSet, fmt, rc::Rc, time::Instant};
 
 use egg::*;
 use rustc_hash::FxHashMap;
@@ -7,6 +7,7 @@ use smt2parser::concrete::{Constant, Identifier, QualIdentifier, Symbol as SmtSy
 use crate::{
     auxiliary_synthesis::ArrayConflictRecord,
     cost_functions::YardbirdCostFunction,
+    instantiation_provenance::InstantiationProvenance,
     problem_context::ArrayCandidateCatalog,
     profiling::ArrayProfilingCollector,
     theories::array::{
@@ -54,9 +55,30 @@ define_language! {
 pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
 
+/// One complete array-axiom candidate with the exact provenance selected by the
+/// scheduler. Keeping the expression and provenance together prevents later
+/// stages from trying to reconstruct identity from a non-unique term hash.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArrayAxiomInstantiation {
+    pub expression: ArrayExpr,
+    pub provenance: InstantiationProvenance,
+}
+
+impl PartialEq<ArrayExpr> for ArrayAxiomInstantiation {
+    fn eq(&self, other: &ArrayExpr) -> bool {
+        &self.expression == other
+    }
+}
+
+impl fmt::Display for ArrayAxiomInstantiation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.expression.fmt(formatter)
+    }
+}
+
 pub struct ArraySaturationResult {
-    pub instantiations: Vec<ArrayExpr>,
-    pub const_instantiations: Vec<ArrayExpr>,
+    pub instantiations: Vec<ArrayAxiomInstantiation>,
+    pub const_instantiations: Vec<ArrayAxiomInstantiation>,
     pub conflicts: Vec<ArrayConflictRecord>,
     pub decisions: Vec<crate::training::DecisionRecord>,
     pub abstract_instantiations: Vec<crate::training::AbstractInstantiationRecord>,
@@ -446,8 +468,8 @@ where
             .map(
                 |(discovery_order, (instantiation, is_const_or_high_cost))| {
                     ArrayInstantiationCandidate {
-                        expression: instantiation.clone(),
-                        complete_cost: complete_ranking_cost_fn.cost_rec(instantiation),
+                        expression: instantiation.expression.clone(),
+                        complete_cost: complete_ranking_cost_fn.cost_rec(&instantiation.expression),
                         is_const_or_high_cost,
                         discovery_order,
                     }
@@ -463,20 +485,27 @@ where
             .next()
             .map(|index| {
                 let candidate = &candidates[index];
-                (
-                    candidate.expression.clone(),
-                    candidate.is_const_or_high_cost,
-                )
+                let instantiation = if candidate.is_const_or_high_cost {
+                    all_const_insts.get(index.saturating_sub(all_regular_insts.len()))
+                } else {
+                    all_regular_insts.get(index)
+                }
+                .expect("ranker returned a valid candidate index")
+                .clone();
+                (instantiation, candidate.is_const_or_high_cost)
             });
-        let selected_instantiation = selected
+        let selected_abstract_id = selected.as_ref().map(|(instantiation, _)| {
+            instantiation
+                .provenance
+                .abstract_instantiation_id()
+                .to_string()
+        });
+        let selected_decision_keys = selected_abstract_id
             .as_ref()
-            .map(|(instantiation, _)| instantiation.clone());
-        let selected_decision_keys = selected_instantiation
-            .as_ref()
-            .and_then(|selected| {
+            .and_then(|selected_id| {
                 all_instantiation_decision_keys
                     .iter()
-                    .find(|(candidate, _)| candidate == selected)
+                    .find(|(candidate_id, _)| candidate_id == selected_id)
                     .map(|(_, keys)| keys.clone())
             })
             .unwrap_or_default();
@@ -484,26 +513,23 @@ where
             .iter()
             .cloned()
             .collect::<HashSet<_>>();
-        let selected_hash = selected_instantiation
-            .as_ref()
-            .map(crate::training::canonical_term_hash);
         let mut selected_conflicts = all_conflicts;
-        let mut selected_abstract_instantiations = all_abstract_instantiations;
-        let mut selected_decisions = all_decisions;
+        let mut candidate_abstract_instantiations = all_abstract_instantiations;
         let mut selected_history = all_selection_history_decisions;
-        if let Some(selected_hash) = selected_hash.as_ref() {
-            selected_conflicts.retain(|record| &record.term_hash == selected_hash);
-            selected_abstract_instantiations.retain(|record| &record.term_hash == selected_hash);
-            selected_decisions
-                .retain(|record| selected_decision_key_set.contains(&record.decision_key));
+        if let Some(selected_id) = selected_abstract_id.as_ref() {
+            selected_conflicts.retain(|record| &record.abstract_instantiation_id == selected_id);
+            for record in &mut candidate_abstract_instantiations {
+                record.was_selected = &record.abstract_instantiation_id == selected_id;
+            }
             selected_history.retain(|(key, _)| selected_decision_key_set.contains(key));
         } else {
             selected_conflicts.clear();
-            selected_abstract_instantiations.clear();
-            selected_decisions.clear();
+            for record in &mut candidate_abstract_instantiations {
+                record.was_selected = false;
+            }
             selected_history.clear();
         }
-        let selected_instantiation_decision_keys = selected_instantiation
+        let selected_instantiation_decision_keys = selected_abstract_id
             .as_ref()
             .map(|_| vec![selected_decision_keys])
             .unwrap_or_default();
@@ -516,8 +542,8 @@ where
             selected_regular,
             selected_const,
             selected_conflicts,
-            selected_decisions,
-            selected_abstract_instantiations,
+            all_decisions,
+            candidate_abstract_instantiations,
             selected_history,
             selected_instantiation_decision_keys,
         )
@@ -1306,7 +1332,7 @@ mod test {
         let instantiation = &result.instantiations[0];
         assert!(instantiation.to_string().starts_with("(=> "));
 
-        let term = expr_to_term(instantiation.clone()).to_string();
+        let term = expr_to_term(instantiation.expression.clone()).to_string();
         assert_eq!(
             term,
             "(=> (not (= 1 0)) (= (Read_Int_Int (Write_Int_Int A 0 0) 1) (Read_Int_Int A 1)))"
@@ -1519,6 +1545,70 @@ mod test {
         );
 
         assert_eq!(result.instantiations, vec![expected]);
+    }
+
+    #[test]
+    fn whole_instantiation_capture_keeps_all_candidates_and_marks_one_selected() {
+        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&first);
+        egraph.add_expr(&second);
+        egraph.rebuild();
+
+        let result = saturate_with_array_types(
+            &mut egraph,
+            PreferB,
+            &[("Int".into(), "Int".into())],
+            ArraySaturationOptions {
+                candidate_catalog: ArrayCandidateCatalog::default(),
+                candidate_scope: CandidateScope::SourceThenDerived,
+                excluded_instantiations: HashSet::new(),
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                instrumentation: ArraySaturationInstrumentation {
+                    artifact_capture: ArrayArtifactCapture {
+                        decisions: true,
+                        instantiation_provenance: true,
+                        conflicts: false,
+                    },
+                    profiling: None,
+                },
+            },
+        );
+
+        assert!(result.abstract_instantiations.len() >= 2);
+        assert_eq!(
+            result
+                .abstract_instantiations
+                .iter()
+                .filter(|record| record.was_selected)
+                .count(),
+            1
+        );
+        let selected_id = result.instantiations[0]
+            .provenance
+            .abstract_instantiation_id();
+        let selected_record = result
+            .abstract_instantiations
+            .iter()
+            .find(|record| record.was_selected)
+            .unwrap();
+        assert_eq!(selected_record.abstract_instantiation_id, selected_id);
+        assert!(!selected_record.substitution.is_empty());
+        assert!(!result.decisions.is_empty());
+        let decision_keys = result
+            .decisions
+            .iter()
+            .map(|decision| decision.decision_key.clone())
+            .collect::<HashSet<_>>();
+        assert_eq!(decision_keys.len(), result.decisions.len());
+        assert!(result
+            .abstract_instantiations
+            .iter()
+            .flat_map(|record| record.decision_keys.iter())
+            .all(|key| decision_keys.contains(key)));
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use smt2parser::{
     concrete::{QualIdentifier, Term},
-    vmt::{variable::var_is_immutable, VARIABLE_FRAME_DELIMITER},
+    vmt::{split_framed_symbol, variable::var_is_immutable},
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -88,15 +88,13 @@ fn collect_qual_identifier_frames(qi: &QualIdentifier, frames: &mut BTreeSet<i64
 }
 
 fn collect_symbol_frames(symbol: &str, frames: &mut BTreeSet<i64>) {
-    let Some((name, frame)) = symbol.split_once(VARIABLE_FRAME_DELIMITER) else {
+    let Some((name, frame)) = split_framed_symbol(symbol) else {
         return;
     };
-    if var_is_immutable(name) {
+    if var_is_immutable(&name) {
         return;
     }
-    if let Ok(frame) = frame.parse::<i64>() {
-        frames.insert(frame);
-    }
+    frames.insert(frame);
 }
 
 #[cfg(test)]
@@ -139,5 +137,14 @@ mod tests {
         let span = FrameSpan::from_term(&term);
         assert!(span.frames.is_empty());
         assert!(!span.is_non_local());
+    }
+
+    #[test]
+    fn quoted_symbols_retain_frame_provenance() {
+        let term = get_term_from_term_string("(= |state.value@2| |state.value@3|)");
+        let span = FrameSpan::from_term(&term);
+        assert_eq!(span.frames, BTreeSet::from([2, 3]));
+        assert_eq!(span.min_frame, Some(2));
+        assert_eq!(span.max_frame, Some(3));
     }
 }

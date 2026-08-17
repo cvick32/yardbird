@@ -30,6 +30,12 @@ pub trait ProofStrategy<'ctx, S> {
         model
     }
 
+    /// Whether exact native read-after-write terms should be simplified before
+    /// array operations are abstracted into uninterpreted functions.
+    fn preprocess_exact_read_after_write(&self) -> bool {
+        false
+    }
+
     fn n_refines(&mut self) -> u32 {
         250
     }

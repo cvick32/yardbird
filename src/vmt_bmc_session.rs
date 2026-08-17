@@ -20,7 +20,14 @@ use smt2parser::{
 
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
-    instantiation_strategy::{InstantiationStrategy, StoredInstantiation},
+    instantiation_provenance::{
+        InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
+        StoredInstantiation,
+    },
+    instantiation_strategy::{
+        assertion_tracker::InstantiationAssertionTracker, InstantiationContext,
+        InstantiationStrategy,
+    },
     problem_context::ProblemContext,
     profiling::{SolverCheckMeasurement, SolverProfileMetadata},
     solver::{
@@ -77,6 +84,7 @@ pub struct VmtBmcSession {
     track_instantiations: bool,
     tracked_labels: Vec<crate::training::IndexedInstantiationRecord>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
+    assertion_tracker: InstantiationAssertionTracker,
     logic: String,
     collect_check_profiles: bool,
     last_solver_check_profile: Option<SolverCheckMeasurement>,
@@ -203,6 +211,7 @@ impl VmtBmcSession {
             track_instantiations,
             tracked_labels: vec![],
             instantiation_strategy,
+            assertion_tracker: InstantiationAssertionTracker::default(),
             logic,
             collect_check_profiles,
             last_solver_check_profile: None,
@@ -355,19 +364,20 @@ impl VmtBmcSession {
 
     pub(crate) fn add_instantiation(
         &mut self,
-        inst: Instance,
-        abstract_instantiation_id: Option<String>,
-    ) -> bool {
+        request: InstantiationRequest,
+    ) -> InstantiationInstallResult {
         let trace_instantiations = log::log_enabled!(log::Level::Trace);
         let initial_count = self.instantiations.len();
-        let inst_text = trace_instantiations.then(|| inst.to_string());
-        let abstract_id_for_log = trace_instantiations.then(|| abstract_instantiation_id.clone());
+        let inst_text = trace_instantiations.then(|| request.inst.to_string());
+        let abstract_id_for_log = trace_instantiations.then(|| {
+            request
+                .provenance
+                .as_ref()
+                .map(|provenance| provenance.abstract_instantiation_id().to_string())
+        });
 
-        self.instantiation_strategy.on_generate(
-            inst,
+        let mut context = InstantiationContext::new(
             &mut self.instantiations,
-            abstract_instantiation_id,
-            self.depth,
             &mut self.bmc_builder,
             &mut self.definition_materializer,
             self.solver.as_mut(),
@@ -376,20 +386,24 @@ impl VmtBmcSession {
             &mut self.tracked_labels,
             &mut self.asserted_instantiation_terms,
             &mut self.num_quantifiers_instantiated,
+            &mut self.assertion_tracker,
         );
+        let result = self
+            .instantiation_strategy
+            .on_generate(request, &mut context);
 
-        // Return true if a new instantiation was added
-        let added = self.instantiations.len() > initial_count;
         if trace_instantiations {
             log::trace!(
-                "[yardbird::inst-trace] solver-add abstract-id={abstract_instantiation_id:?} added={added} before={before} after={after} term={term}",
+                "[yardbird::inst-trace] solver-add abstract-id={abstract_instantiation_id:?} abstract-added={} solver-assertions-added={} before={before} after={after} term={term}",
+                result.abstract_instance_added,
+                result.solver_assertions_added(),
                 before = initial_count,
                 after = self.instantiations.len(),
                 term = inst_text.unwrap_or_default(),
                 abstract_instantiation_id = abstract_id_for_log.unwrap_or_default(),
             );
         }
-        added
+        result
     }
     pub(crate) fn to_smtinterpol(&self) -> String {
         let sort_names = unique_command_lines(&self.sorts);
@@ -591,6 +605,9 @@ impl VmtBmcSession {
         struct TrackedInst {
             label: String,
             term: String,
+            abstract_instantiation_id: Option<String>,
+            frame: u16,
+            substitution: Vec<crate::instantiation_provenance::InstantiationSubstitution>,
             in_core: bool,
         }
 
@@ -602,6 +619,9 @@ impl VmtBmcSession {
             .map(|record| TrackedInst {
                 label: record.label.clone(),
                 term: record.term.clone(),
+                abstract_instantiation_id: record.abstract_instantiation_id.clone(),
+                frame: record.frame,
+                substitution: record.substitution.clone(),
                 in_core: core_set.contains(&record.label),
             })
             .collect();
@@ -840,10 +860,8 @@ impl VmtBmcSession {
             // Call instantiation strategy's on_loop hook to handle instantiations at this depth
             if !self.instantiations.is_empty() {
                 let on_loop_start = Instant::now();
-                let instantiations_snapshot: Vec<StoredInstantiation> = self.instantiations.clone();
-                self.instantiation_strategy.on_loop(
-                    self.depth,
-                    &instantiations_snapshot,
+                let mut context = InstantiationContext::new(
+                    &mut self.instantiations,
                     &mut self.bmc_builder,
                     &mut self.definition_materializer,
                     self.solver.as_mut(),
@@ -852,7 +870,10 @@ impl VmtBmcSession {
                     &mut self.tracked_labels,
                     &mut self.asserted_instantiation_terms,
                     &mut self.num_quantifiers_instantiated,
+                    &mut self.assertion_tracker,
                 );
+                self.instantiation_strategy
+                    .on_loop(self.depth, &mut context);
                 self.last_unroll_profile.insert(
                     "unroll_instantiation_on_loop".to_string(),
                     on_loop_start.elapsed().as_secs_f64(),
@@ -893,19 +914,23 @@ impl ProblemContext for VmtBmcSession {
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver.get_solver_statistics()
+        let mut statistics = self.solver.get_solver_statistics();
+        self.assertion_tracker
+            .metrics()
+            .add_to_solver_statistics(&mut statistics);
+        statistics.add_count(
+            "yardbird.helper definition equalities",
+            self.definition_materializer.definitions().len() as u64,
+        );
+        statistics
     }
 
     fn get_reason_unknown(&self) -> Option<String> {
         self.solver.get_reason_unknown()
     }
 
-    fn add_instantiation(
-        &mut self,
-        inst: Instance,
-        abstract_instantiation_id: Option<String>,
-    ) -> bool {
-        self.add_instantiation(inst, abstract_instantiation_id)
+    fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult {
+        self.add_instantiation(request)
     }
 
     fn get_instantiations(&self) -> Vec<Term> {
@@ -923,11 +948,33 @@ impl ProblemContext for VmtBmcSession {
         self.num_quantifiers_instantiated
     }
 
+    fn get_number_instantiation_assertions_added(&self) -> u64 {
+        self.assertion_tracker.metrics().unique_assertions
+    }
+
     fn make_unquantified_instance(&self, term: Term) -> Option<Instance> {
         smt2parser::vmt::UnquantifiedInstantiator::rewrite_with_definitions(
             term,
             self.bmc_builder.definition_frames().clone(),
         )
+    }
+
+    fn make_provenanced_unquantified_instance(
+        &self,
+        term: Term,
+        provenance: InstantiationProvenance,
+    ) -> Option<InstantiationRequest> {
+        let (abstract_instantiation_id, substitution) = provenance.into_parts();
+        let (inst, relative_substitution) =
+            smt2parser::vmt::UnquantifiedInstantiator::rewrite_with_definitions_and_substitution(
+                term,
+                self.bmc_builder.definition_frames().clone(),
+                substitution,
+            )?;
+        Some(InstantiationRequest::provenanced(
+            inst,
+            InstantiationProvenance::new(abstract_instantiation_id, relative_substitution),
+        ))
     }
 
     fn get_init_and_transition_subterms(&self) -> Vec<String> {
@@ -1074,7 +1121,24 @@ mod tests {
             ProblemContext::make_unquantified_instance(&smt, "(= next-only@0 1)".parse().unwrap())
                 .unwrap();
         assert_eq!(instance.width(), 1);
-        assert!(smt.add_instantiation(instance, None));
+        assert!(
+            smt.add_instantiation(InstantiationRequest::untracked(instance))
+                .abstract_instance_added
+        );
+
+        let first =
+            ProblemContext::make_unquantified_instance(&smt, "(= x@0 1)".parse().unwrap()).unwrap();
+        let first = smt.add_instantiation(InstantiationRequest::untracked(first));
+        assert!(first.solver_assertions_added() > 0);
+        let reversed =
+            ProblemContext::make_unquantified_instance(&smt, "(= 1 x@0)".parse().unwrap()).unwrap();
+        let reversed = smt.add_instantiation(InstantiationRequest::untracked(reversed));
+        assert!(reversed.abstract_instance_added);
+        assert_eq!(reversed.solver_assertions_added(), 0);
+        assert_eq!(
+            reversed.indexed_assertions_attempted,
+            reversed.indexed_assertions_deduplicated
+        );
 
         assert!(smt
             .definition_materializer

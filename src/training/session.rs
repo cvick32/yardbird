@@ -16,7 +16,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "training")]
-const TRAINING_SCHEMA_VERSION: &str = "004_training_runs";
+const TRAINING_SCHEMA_VERSION: &str = "006_instantiation_substitutions";
 
 pub struct TrainingSession {
     logger: Box<dyn TrainingLogger>,

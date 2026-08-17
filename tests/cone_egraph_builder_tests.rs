@@ -94,6 +94,13 @@ fn source_grounded_cone_preserves_complete_write_sites() {
             .all(|term| !term.contains("(Write_Int_Int c+0 Z Z)")),
         "individually source-grounded slots must not be recombined into a write site absent from the source: {instantiations:#?}"
     );
+    assert!(
+        result
+            .solver_statistics
+            .get_f64("yardbird.all-eligible-frame placements")
+            .is_some_and(|count| count > 0.0),
+        "cone-selected instances should conservatively cover every eligible frame"
+    );
 }
 
 #[test]

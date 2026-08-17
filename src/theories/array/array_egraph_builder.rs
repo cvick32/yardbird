@@ -338,7 +338,7 @@ fn canonical_leaf_symbol(symbol: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use smt2parser::vmt::{quantified_instantiator::Instance, variable::Variable, ReadsAndWrites};
+    use smt2parser::vmt::{variable::Variable, ReadsAndWrites};
 
     use crate::utils::SolverStatistics;
 
@@ -377,10 +377,9 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _inst: Instance,
-            _abstract_instantiation_id: Option<String>,
-        ) -> bool {
-            false
+            _request: crate::instantiation_provenance::InstantiationRequest,
+        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            Default::default()
         }
 
         fn get_instantiations(&self) -> Vec<Term> {
@@ -392,6 +391,10 @@ mod tests {
         }
 
         fn get_number_instantiations_added(&self) -> u64 {
+            0
+        }
+
+        fn get_number_instantiation_assertions_added(&self) -> u64 {
             0
         }
 

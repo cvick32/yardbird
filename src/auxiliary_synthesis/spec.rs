@@ -524,6 +524,7 @@ mod tests {
         let term = get_term_from_term_string("(= x@0 y@2)");
         let conflict = ArrayConflictRecord::new(
             0,
+            "abstract-instantiation-0",
             "test",
             "(= x@0 y@2)".parse().unwrap(),
             term,

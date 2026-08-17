@@ -173,9 +173,15 @@ impl DbConnection {
             r#"
             INSERT INTO abstract_instantiations (
                 benchmark_id, abstract_instantiation_id, term, term_hash,
-                axiom_name, bmc_depth, refinement_step, in_unsat_core
+                axiom_name, bmc_depth, refinement_step, was_selected, in_unsat_core,
+                substitution, indexed_assertions_attempted, indexed_assertions_added,
+                indexed_assertions_deduplicated, helper_assertions_attempted,
+                helper_assertions_added, helper_assertions_deduplicated
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9,
+                $10::jsonb, $11, $12, $13, $14, $15, $16
+            )
             RETURNING id
             "#,
         )
@@ -186,7 +192,15 @@ impl DbConnection {
         .bind(&record.axiom_name)
         .bind(record.bmc_depth as i32)
         .bind(record.refinement_step as i32)
+        .bind(record.was_selected)
         .bind(record.in_unsat_core)
+        .bind(serde_json::to_string(&record.substitution).expect("substitution should serialize"))
+        .bind(record.indexed_assertions_attempted as i64)
+        .bind(record.indexed_assertions_added as i64)
+        .bind(record.indexed_assertions_deduplicated as i64)
+        .bind(record.helper_assertions_attempted as i64)
+        .bind(record.helper_assertions_added as i64)
+        .bind(record.helper_assertions_deduplicated as i64)
         .fetch_one(&self.pool)
         .await?;
 
@@ -222,10 +236,11 @@ impl DbConnection {
         sqlx::query(
             r#"
             INSERT INTO indexed_instantiations (
-                benchmark_id, label, term, term_hash, depth, unroll_index,
-                abstract_instantiation_db_id, abstract_instantiation_id, in_unsat_core
+                benchmark_id, label, term, term_hash, depth, frame, unroll_index,
+                abstract_instantiation_db_id, abstract_instantiation_id, in_unsat_core,
+                substitution
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
             ON CONFLICT (benchmark_id, label) DO NOTHING
             "#,
         )
@@ -234,10 +249,12 @@ impl DbConnection {
         .bind(&record.term)
         .bind(&record.term_hash)
         .bind(record.depth as i32)
+        .bind(record.frame as i32)
         .bind(record.unroll_index as i32)
         .bind(abstract_instantiation_db_id)
         .bind(&record.abstract_instantiation_id)
         .bind(record.in_unsat_core)
+        .bind(serde_json::to_string(&record.substitution).expect("substitution should serialize"))
         .execute(&self.pool)
         .await?;
 
@@ -352,6 +369,16 @@ impl DbConnection {
         sqlx::raw_sql(include_str!("migrations/004_training_runs.sql"))
             .execute(&self.pool)
             .await?;
+        sqlx::raw_sql(include_str!(
+            "migrations/005_whole_instantiation_selection.sql"
+        ))
+        .execute(&self.pool)
+        .await?;
+        sqlx::raw_sql(include_str!(
+            "migrations/006_instantiation_substitutions.sql"
+        ))
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

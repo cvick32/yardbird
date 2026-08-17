@@ -62,6 +62,38 @@ The output directory contains:
 Ranking metrics are computed only for decisions with at least one positive
 candidate. Negative-only decisions still contribute training examples.
 
+## Whole-instantiation dataset
+
+The integrated cone strategy records every complete formula considered by the
+whole-instantiation ranker and marks only the formula that survives validation
+and is selected for installation with `abstract_instantiations.was_selected`.
+Each selected row also carries its complete frame-relative axiom-variable
+substitution and the initial installation's indexed/helper assertion counts:
+attempted, installed, and removed by post-materialization deduplication. Indexed
+rows store the same substitution after rewriting it at the exact BMC frame, so
+an unsat-core label joins directly to the candidate and substitution that
+produced it.
+Export those rows with their aggregated
+chosen-slot features and solver-resource outcomes using:
+
+```bash
+uv run --project tools/ml_ranker \
+  python tools/ml_ranker/export_whole_instantiations.py \
+  --training-run <run-version> \
+  --output tmp/ml-ranker/whole-instantiations.csv
+```
+
+The resource columns prioritize Z3 `rlimit count`, decisions, added equalities,
+clauses, Boolean variables, conflicts, propagations, and solver time. They are
+the final snapshot and last delta at the candidate's BMC depth, so the target is
+shared by all candidates in that refinement cohort; it is an empirical ranking
+signal, not a claim of per-candidate causal attribution.
+
+Current limitation: this export cannot train a causal per-candidate resource
+target. A future exporter should associate each installed candidate with the
+delta from its next solver check and mark unselected counterfactuals as
+unobserved rather than copying the cohort outcome onto them.
+
 ## Evaluate In Yardbird
 
 Use the trained `model.json` as the `logistic-regression` cost function:

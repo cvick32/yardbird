@@ -12,9 +12,10 @@ use crate::{
     auxiliary_synthesis::{ArrayConflictRecord, ConflictClassification},
     cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
+    instantiation_provenance::InstantiationProvenance,
     profiling::ArrayProfilingCollector,
     theories::array::{
-        array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage},
+        array_axioms::{expr_to_term, ArrayAxiomInstantiation, ArrayExpr, ArrayLanguage},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
     },
     training::{canonical_term_hash, AbstractInstantiationRecord, DecisionRecord},
@@ -45,7 +46,7 @@ pub(crate) struct SelectionHistoryDecision {
     pub chosen_term_hash: String,
 }
 
-type InstantiationDecisionLog = Rc<RefCell<Vec<(ArrayExpr, Vec<String>)>>>;
+type InstantiationDecisionLog = Rc<RefCell<Vec<(String, Vec<String>)>>>;
 
 pub struct ArrayConflictSchedulerOptions {
     pub excluded_instantiations: HashSet<ArrayExpr>,
@@ -131,8 +132,8 @@ where
     /// `Rc<RefCell<...>>` here because the scheduler isn't public on `egg::Runner`. So
     /// in order to be able to get data out of the scheduler after a saturation run, we
     /// need to use interior mutability.
-    instantiations: Rc<RefCell<Vec<ArrayExpr>>>,
-    instantiations_w_constants: Rc<RefCell<Vec<ArrayExpr>>>,
+    instantiations: Rc<RefCell<Vec<ArrayAxiomInstantiation>>>,
+    instantiations_w_constants: Rc<RefCell<Vec<ArrayAxiomInstantiation>>>,
     conflicts: Rc<RefCell<Vec<ArrayConflictRecord>>>,
     decisions: Rc<RefCell<Vec<DecisionRecord>>>,
     abstract_instantiations: Rc<RefCell<Vec<AbstractInstantiationRecord>>>,
@@ -185,11 +186,11 @@ where
         }
     }
 
-    pub fn instantiations(&self) -> Rc<RefCell<Vec<ArrayExpr>>> {
+    pub fn instantiations(&self) -> Rc<RefCell<Vec<ArrayAxiomInstantiation>>> {
         Rc::clone(&self.instantiations)
     }
 
-    pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ArrayExpr>>> {
+    pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ArrayAxiomInstantiation>>> {
         Rc::clone(&self.instantiations_w_constants)
     }
 
@@ -410,29 +411,70 @@ where
                                 }
                                 continue;
                             }
+                            let ordinal = self.next_instantiation_ordinal;
+                            self.next_instantiation_ordinal += 1;
+                            let instantiation_hash = canonical_term_hash(&instantiation);
+                            if explore_all_matches && self.artifact_capture.decisions {
+                                for decision in &mut decisions[decision_start..] {
+                                    decision.decision_key = format!(
+                                        "{}:candidate:{instantiation_hash}",
+                                        decision.decision_key
+                                    );
+                                }
+                                for decision in &mut selection_history_decisions[selection_start..]
+                                {
+                                    decision.decision_key = format!(
+                                        "{}:candidate:{instantiation_hash}",
+                                        decision.decision_key
+                                    );
+                                }
+                            }
                             let selection_decision_keys = selection_history_decisions
                                 [selection_start..]
                                 .iter()
                                 .map(|decision| decision.decision_key.clone())
                                 .collect::<Vec<_>>();
-                            self.instantiation_decision_keys
-                                .borrow_mut()
-                                .push((instantiation.clone(), selection_decision_keys.clone()));
                             let decision_keys = if self.artifact_capture.decisions {
-                                selection_decision_keys
+                                selection_decision_keys.clone()
                             } else {
                                 vec![]
                             };
-                            let ordinal = self.next_instantiation_ordinal;
-                            self.next_instantiation_ordinal += 1;
+                            let mut substitution = memo
+                                .iter()
+                                .map(|(variable, expression)| {
+                                    (
+                                        variable.to_string(),
+                                        expr_to_term(unpatternify(expression.clone())),
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            substitution.sort_by(|left, right| left.0.cmp(&right.0));
+                            let (_, substitution) = smt2parser::vmt::UnquantifiedInstantiator::rewrite_unquantified_with_substitution(
+                                expr_to_term(instantiation.clone()),
+                                vec![],
+                                substitution,
+                            )
+                            .expect("array candidates should have a relative-frame substitution");
+                            let abstract_instantiation =
+                                self.extractor.abstract_instantiation_record(
+                                    rewrite.name.as_str(),
+                                    &instantiation,
+                                    decision_keys.clone(),
+                                    &substitution,
+                                );
+                            let abstract_instantiation_id =
+                                abstract_instantiation.abstract_instantiation_id.clone();
+                            let candidate = ArrayAxiomInstantiation {
+                                expression: instantiation.clone(),
+                                provenance: InstantiationProvenance::new(
+                                    abstract_instantiation_id.clone(),
+                                    substitution,
+                                ),
+                            };
+                            self.instantiation_decision_keys
+                                .borrow_mut()
+                                .push((abstract_instantiation_id.clone(), selection_decision_keys));
                             if self.artifact_capture.instantiation_provenance {
-                                let abstract_instantiation =
-                                    self.extractor.abstract_instantiation_record(
-                                        rewrite.name.as_str(),
-                                        ordinal,
-                                        &instantiation,
-                                        decision_keys.clone(),
-                                    );
                                 self.abstract_instantiations
                                     .borrow_mut()
                                     .push(abstract_instantiation);
@@ -475,6 +517,7 @@ where
                             if self.artifact_capture.conflicts {
                                 let conflict_record = ArrayConflictRecord::new(
                                     ordinal,
+                                    abstract_instantiation_id,
                                     rewrite.name.as_str(),
                                     instantiation.clone(),
                                     expr_to_term(instantiation.clone()),
@@ -504,14 +547,12 @@ where
                                         "    classified as const/high-cost instantiation",
                                     );
                                 }
-                                self.instantiations_w_constants
-                                    .borrow_mut()
-                                    .push(instantiation);
+                                self.instantiations_w_constants.borrow_mut().push(candidate);
                             } else {
                                 if tracing {
                                     trace_conflicts("    accepted as regular instantiation");
                                 }
-                                self.instantiations.borrow_mut().push(instantiation);
+                                self.instantiations.borrow_mut().push(candidate);
                                 if !explore_all_matches {
                                     break 'matches;
                                 }

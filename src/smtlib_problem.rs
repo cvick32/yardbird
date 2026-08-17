@@ -619,13 +619,15 @@ impl SmtlibRefinementRunner {
             match action {
                 ProofAction::Continue => {
                     info!("  Action: Continue refinement");
-                    let instantiations_before = smt_problem.get_instantiations();
+                    let solver_assertions_before =
+                        smt_problem.get_number_instantiation_assertions_added();
                     strategy.finish(state, &mut smt_problem)?;
-                    let instantiations_after = smt_problem.get_instantiations();
+                    let solver_assertions_after =
+                        smt_problem.get_number_instantiation_assertions_added();
                     if !refinement_made_progress(
-                        &instantiations_before,
+                        solver_assertions_before,
                         0,
-                        &instantiations_after,
+                        solver_assertions_after,
                         0,
                     ) {
                         anyhow::bail!(
@@ -715,6 +717,9 @@ impl SmtlibRefinementRunner {
                     .map(|record| crate::driver::CoreInstantiation {
                         label: record.label.clone(),
                         term: record.term.clone(),
+                        abstract_instantiation_id: record.abstract_instantiation_id.clone(),
+                        frame: record.frame,
+                        substitution: record.substitution.clone(),
                     })
                     .collect::<Vec<_>>();
                 crate::driver::UnsatCoreInfo {

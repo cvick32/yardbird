@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
+use std::{cell::RefCell, collections::HashSet, hash::Hash, mem, rc::Rc, time::Instant};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
@@ -12,11 +12,13 @@ use crate::{
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
+    instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types_and_ranker, ArrayExpr, ArrayLanguage,
-            ArraySaturationInstrumentation, ArraySaturationOptions, ArraySaturationResult,
+            expr_to_term, saturate_with_array_types_and_ranker, ArrayAxiomInstantiation, ArrayExpr,
+            ArrayLanguage, ArraySaturationInstrumentation, ArraySaturationOptions,
+            ArraySaturationResult,
         },
         array_conflict_scheduler::ArrayArtifactCapture,
         array_dataflow::{build_property_cone, PropertyCone},
@@ -66,6 +68,7 @@ where
     cone_attempted_depths: HashSet<u16>,
     instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
     property_cone: PropertyCone,
+    preprocess_exact_read_after_write: bool,
 }
 
 impl<F> Abstract<F>
@@ -105,6 +108,7 @@ where
             cone_attempted_depths: HashSet::new(),
             instantiation_ranker: Box::<CompleteCostInstantiationRanker>::default(),
             property_cone: PropertyCone::default(),
+            preprocess_exact_read_after_write: false,
         }
     }
 
@@ -116,6 +120,11 @@ where
 
     pub fn with_egraph_builder(mut self, egraph_builder: Box<dyn ArrayEGraphBuilder>) -> Self {
         self.egraph_builder = egraph_builder;
+        self
+    }
+
+    pub fn with_exact_read_after_write_preprocessing(mut self, enabled: bool) -> Self {
+        self.preprocess_exact_read_after_write = enabled;
         self
     }
 
@@ -161,6 +170,25 @@ mod tests {
     }
 
     #[test]
+    fn reversed_equalities_are_duplicate_before_whole_candidate_selection() {
+        let installed: ArrayExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
+        let reversed: ArrayExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
+        let mut candidates = vec![reversed];
+        let installed =
+            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(installed), vec![])
+                .unwrap();
+        let mut known = HashSet::from([canonical_instantiation_key(installed.get_term())]);
+
+        let duplicates = retain_novel_by(&mut candidates, &mut known, |expression| {
+            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(expression.clone()), vec![])
+                .map(|instance| canonical_instantiation_key(instance.get_term()))
+        });
+
+        assert_eq!(duplicates.len(), 1);
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
     fn only_axioms_false_in_the_current_model_remain_eligible() {
         let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
         let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
@@ -198,8 +226,8 @@ struct SaturationSummary {
 pub struct ArrayRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
-    pub instantiations: Vec<ArrayExpr>,
-    pub const_instantiations: Vec<ArrayExpr>,
+    pub instantiations: Vec<ArrayAxiomInstantiation>,
+    pub const_instantiations: Vec<ArrayAxiomInstantiation>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
@@ -213,7 +241,8 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        let (abstracted_model, discovered_types) = model.abstract_array_theory();
+        let (abstracted_model, discovered_types) =
+            model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
         self.property_cone = if self.egraph_builder.requires_property_cone() {
             build_property_cone(&abstracted_model)
         } else {
@@ -222,6 +251,10 @@ where
         self.discovered_array_types = discovered_types;
         abstracted_model
         //     .abstract_constants_over(self.bmc_depth)
+    }
+
+    fn preprocess_exact_read_after_write(&self) -> bool {
+        self.preprocess_exact_read_after_write
     }
 
     fn setup(
@@ -350,8 +383,11 @@ where
             }
 
             let saturation_start = Instant::now();
-            let mut known_instantiations =
-                smt.get_instantiations().into_iter().collect::<HashSet<_>>();
+            let mut known_instantiations = smt
+                .get_instantiations()
+                .into_iter()
+                .map(|term| canonical_instantiation_key(&term))
+                .collect::<HashSet<_>>();
             let mut excluded_instantiations = HashSet::new();
             let require_model_violation = expansion.candidate_scope.requires_model_violation();
             let retry_rejected_candidates =
@@ -390,21 +426,47 @@ where
                 let rejected_regular = retain_novel_by(
                     &mut saturation.instantiations,
                     &mut known_instantiations,
-                    |expr| self.installable_instance_term(smt, expr),
+                    |expr| self.installable_instance(smt, expr),
                 );
                 let rejected_const = retain_novel_by(
                     &mut saturation.const_instantiations,
                     &mut known_instantiations,
-                    |expr| self.installable_instance_term(smt, expr),
+                    |expr| self.installable_instance(smt, expr),
                 );
+                let installable_candidate_ids = saturation
+                    .instantiations
+                    .iter()
+                    .chain(&saturation.const_instantiations)
+                    .map(|candidate| candidate.provenance.abstract_instantiation_id())
+                    .collect::<HashSet<_>>();
+                for record in &mut saturation.abstract_instantiations {
+                    record.was_selected = installable_candidate_ids
+                        .contains(record.abstract_instantiation_id.as_str());
+                }
                 let rejected_model_count =
                     rejected_model_regular.len() + rejected_model_const.len();
                 let rejected_count =
                     rejected_model_count + rejected_regular.len() + rejected_const.len();
-                excluded_instantiations.extend(rejected_model_regular);
-                excluded_instantiations.extend(rejected_model_const);
-                excluded_instantiations.extend(rejected_regular);
-                excluded_instantiations.extend(rejected_const);
+                excluded_instantiations.extend(
+                    rejected_model_regular
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                excluded_instantiations.extend(
+                    rejected_model_const
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                excluded_instantiations.extend(
+                    rejected_regular
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                excluded_instantiations.extend(
+                    rejected_const
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
                 if let Some(profiling) = &profiling {
                     let mut profiling = profiling.borrow_mut();
                     profiling.add_counter(
@@ -464,158 +526,58 @@ where
             info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
             smt.install_auxiliary_specs(specs)?;
         }
-        let raw_const_pairs: Vec<(String, Term)> = state
+        for (kind, candidate) in state
             .const_instantiations
-            .iter()
-            .map(|inst| {
-                (
-                    crate::training::canonical_term_hash(inst),
-                    expr_to_term(inst.clone()),
-                )
-            })
-            .collect();
-        let skipped_const_aux_symbol = raw_const_pairs
-            .iter()
-            .filter(|(_, term)| term_contains_auxiliary_symbol(term))
-            .count();
-        let const_pairs: Vec<(String, Term)> = raw_const_pairs
             .into_iter()
-            .filter(|(term_hash, _)| !self.aux_covered_term_hashes.contains(term_hash))
-            .filter(|(_, term)| !term_contains_auxiliary_symbol(term))
-            .collect();
-        let skipped_const_aux_covered = state
-            .const_instantiations
-            .iter()
-            .filter(|inst| {
-                self.aux_covered_term_hashes
-                    .contains(&crate::training::canonical_term_hash(inst))
-            })
-            .count();
-        if skipped_const_aux_covered > 0 {
-            info!("AUX-SYNTH skipped {skipped_const_aux_covered} aux-covered const instantiations");
-        }
-        if skipped_const_aux_symbol > 0 {
-            info!(
-                "AUX-SYNTH skipped {skipped_const_aux_symbol} const instantiations containing auxiliary symbols"
-            );
-        }
-        for (term_hash, term) in &const_pairs {
+            .map(|candidate| ("const", candidate))
+            .chain(
+                state
+                    .instantiations
+                    .into_iter()
+                    .map(|candidate| ("regular", candidate)),
+            )
+        {
+            let term_hash = crate::training::canonical_term_hash(&candidate.expression);
+            let term = expr_to_term(candidate.expression.clone());
+            if self.aux_covered_term_hashes.contains(&term_hash) {
+                info!("AUX-SYNTH skipped aux-covered {kind} instantiation");
+                continue;
+            }
+            if term_contains_auxiliary_symbol(&term) {
+                info!("AUX-SYNTH skipped {kind} instantiation containing auxiliary symbols");
+                continue;
+            }
+
+            let abstract_id = candidate.provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
                 trace!(
-                    "[yardbird::inst-trace] const abstract-hash={} abstract-term={}",
-                    term_hash,
-                    term
+                    "[yardbird::inst-trace] {kind} abstract-hash={term_hash} abstract-id={abstract_id} abstract-term={term} substitution={:?}",
+                    candidate.provenance.relative_substitution(),
                 );
             }
-            if let Some(inst) = smt.make_unquantified_instance(term.clone()) {
-                let abstract_id = self
-                    .abstract_instantiations
-                    .iter()
-                    .find(|record| record.term_hash == *term_hash)
-                    .map(|record| record.abstract_instantiation_id.clone());
+            if kind == "const" {
+                self.const_instantiations.push(term.clone());
+            }
+
+            let Some(request) =
+                smt.make_provenanced_unquantified_instance(term, candidate.provenance)
+            else {
                 if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] const concrete abstract-hash={} abstract-id={abstract_id:?} concrete-term={}",
-                        term_hash,
-                        inst
-                    );
+                    trace!("[yardbird::inst-trace] {kind} rewrite-none abstract-id={abstract_id}");
                 }
-                let added = smt.add_instantiation(inst, abstract_id);
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] const add-result abstract-hash={} added={added}",
-                        term_hash
-                    );
-                }
-            } else if trace_instantiations {
+                continue;
+            };
+            let result = smt.add_instantiation(request);
+            self.record_installation_outcome(&abstract_id, result);
+            if trace_instantiations {
                 trace!(
-                    "[yardbird::inst-trace] const rewrite-none abstract-hash={}",
-                    term_hash
+                    "[yardbird::inst-trace] {kind} add-result abstract-id={abstract_id} abstract-added={} solver-assertions-added={} indexed-deduplicated={} helper-deduplicated={}",
+                    result.abstract_instance_added,
+                    result.solver_assertions_added(),
+                    result.indexed_assertions_deduplicated,
+                    result.helper_assertions_deduplicated,
                 );
             }
-        }
-        self.const_instantiations
-            .extend(const_pairs.iter().map(|(_, term)| term.clone()));
-
-        let raw_terms: Vec<(String, Term)> = state
-            .instantiations
-            .iter()
-            .map(|inst| {
-                let hash = crate::training::canonical_term_hash(inst);
-                (hash, expr_to_term(inst.clone()))
-            })
-            .collect();
-        let skipped_regular_aux_symbol = raw_terms
-            .iter()
-            .filter(|(_, term)| term_contains_auxiliary_symbol(term))
-            .count();
-        let terms: Vec<(String, Term)> = raw_terms
-            .into_iter()
-            .filter(|(term_hash, _)| !self.aux_covered_term_hashes.contains(term_hash))
-            .filter(|(_, term)| !term_contains_auxiliary_symbol(term))
-            .collect();
-        let skipped_regular_aux_covered = state
-            .instantiations
-            .iter()
-            .filter(|inst| {
-                self.aux_covered_term_hashes
-                    .contains(&crate::training::canonical_term_hash(inst))
-            })
-            .count();
-        if skipped_regular_aux_covered > 0 {
-            info!(
-                "AUX-SYNTH skipped {skipped_regular_aux_covered} aux-covered regular instantiations"
-            );
-        }
-        if skipped_regular_aux_symbol > 0 {
-            info!(
-                "AUX-SYNTH skipped {skipped_regular_aux_symbol} regular instantiations containing auxiliary symbols"
-            );
-        }
-        let instances = terms
-            .into_iter()
-            .filter_map(|(term_hash, term)| {
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] regular abstract-hash={} abstract-term={}",
-                        term_hash,
-                        term
-                    );
-                }
-                smt.make_unquantified_instance(term)
-                    .map(move |inst| (term_hash.clone(), inst))
-            })
-            .collect::<Vec<_>>();
-        let _ = instances
-            .into_iter()
-            .map(|(term_hash, inst)| {
-                let abstract_id = self
-                    .abstract_instantiations
-                    .iter()
-                    .find(|record| record.term_hash == term_hash)
-                    .map(|record| record.abstract_instantiation_id.clone());
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] regular concrete abstract-hash={} abstract-id={abstract_id:?} concrete-term={}",
-                        term_hash,
-                        inst
-                    );
-                }
-                let added = smt.add_instantiation(inst, abstract_id);
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] regular add-result abstract-hash={} added={added}",
-                        term_hash
-                    );
-                }
-                !added
-            })
-            .fold(true, |a, b| a && b);
-
-        if !self.pending_aux_specs.is_empty() {
-            let specs = mem::take(&mut self.pending_aux_specs);
-            info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
-            smt.install_auxiliary_specs(specs)?;
         }
 
         Ok(())
@@ -673,11 +635,15 @@ where
     }
 }
 
-fn retain_novel_by(
-    instantiations: &mut Vec<ArrayExpr>,
-    known: &mut HashSet<Term>,
-    mut normalize: impl FnMut(&ArrayExpr) -> Option<Term>,
-) -> Vec<ArrayExpr> {
+fn retain_novel_by<T, K>(
+    instantiations: &mut Vec<T>,
+    known: &mut HashSet<K>,
+    mut normalize: impl FnMut(&T) -> Option<K>,
+) -> Vec<T>
+where
+    T: Clone,
+    K: Eq + Hash,
+{
     let mut rejected = Vec::new();
     instantiations.retain(|instantiation| {
         let keep = normalize(instantiation).is_some_and(|normalized| known.insert(normalized));
@@ -689,14 +655,33 @@ fn retain_novel_by(
     rejected
 }
 
-fn retain_model_violations(
-    instantiations: &mut Vec<ArrayExpr>,
+trait HasArrayExpression {
+    fn array_expression(&self) -> &ArrayExpr;
+}
+
+impl HasArrayExpression for ArrayExpr {
+    fn array_expression(&self) -> &ArrayExpr {
+        self
+    }
+}
+
+impl HasArrayExpression for ArrayAxiomInstantiation {
+    fn array_expression(&self) -> &ArrayExpr {
+        &self.expression
+    }
+}
+
+fn retain_model_violations<T>(
+    instantiations: &mut Vec<T>,
     mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
-) -> anyhow::Result<Vec<ArrayExpr>> {
+) -> anyhow::Result<Vec<T>>
+where
+    T: Clone + HasArrayExpression,
+{
     let mut rejected = Vec::new();
     let mut evaluation_error = None;
     instantiations.retain(|instantiation| {
-        let term = expr_to_term(instantiation.clone());
+        let term = expr_to_term(instantiation.array_expression().clone());
         match evaluate(&term) {
             Ok(value) if value.trim() == "false" => true,
             Ok(_) => {
@@ -719,20 +704,40 @@ impl<F> Abstract<F>
 where
     F: ArrayCostFactory + 'static,
 {
-    fn installable_instance_term(
+    fn record_installation_outcome(
+        &mut self,
+        abstract_instantiation_id: &str,
+        result: crate::instantiation_provenance::InstantiationInstallResult,
+    ) {
+        let Some(record) = self
+            .abstract_instantiations
+            .iter_mut()
+            .find(|record| record.abstract_instantiation_id == abstract_instantiation_id)
+        else {
+            return;
+        };
+        record.indexed_assertions_attempted += result.indexed_assertions_attempted;
+        record.indexed_assertions_added += result.indexed_assertions_added;
+        record.indexed_assertions_deduplicated += result.indexed_assertions_deduplicated;
+        record.helper_assertions_attempted += result.helper_assertions_attempted;
+        record.helper_assertions_added += result.helper_assertions_added;
+        record.helper_assertions_deduplicated += result.helper_assertions_deduplicated;
+    }
+
+    fn installable_instance(
         &self,
         smt: &dyn crate::problem_context::ProblemContext,
-        instantiation: &ArrayExpr,
+        instantiation: &ArrayAxiomInstantiation,
     ) -> Option<Term> {
-        let term_hash = crate::training::canonical_term_hash(instantiation);
-        let term = expr_to_term(instantiation.clone());
+        let term_hash = crate::training::canonical_term_hash(&instantiation.expression);
+        let term = expr_to_term(instantiation.expression.clone());
         if self.aux_covered_term_hashes.contains(&term_hash)
             || term_contains_auxiliary_symbol(&term)
         {
             return None;
         }
         smt.make_unquantified_instance(term)
-            .map(|instance| instance.get_term().clone())
+            .map(|instance| canonical_instantiation_key(instance.get_term()))
     }
 
     fn absorb_saturation(
@@ -751,9 +756,31 @@ where
         state
             .const_instantiations
             .extend(saturation.const_instantiations);
-        self.decision_data.extend(saturation.decisions);
-        self.abstract_instantiations
-            .extend(saturation.abstract_instantiations);
+        for decision in saturation.decisions {
+            if !self
+                .decision_data
+                .iter()
+                .any(|known| known.decision_key == decision.decision_key)
+            {
+                self.decision_data.push(decision);
+            }
+        }
+        for record in saturation.abstract_instantiations {
+            if let Some(known) = self
+                .abstract_instantiations
+                .iter_mut()
+                .find(|known| known.abstract_instantiation_id == record.abstract_instantiation_id)
+            {
+                known.was_selected |= record.was_selected;
+                for decision_key in record.decision_keys {
+                    if !known.decision_keys.contains(&decision_key) {
+                        known.decision_keys.push(decision_key);
+                    }
+                }
+            } else {
+                self.abstract_instantiations.push(record);
+            }
+        }
         for (decision_key, term_hash) in saturation.selection_history_decisions {
             self.term_selection_decisions
                 .insert(decision_key, term_hash);

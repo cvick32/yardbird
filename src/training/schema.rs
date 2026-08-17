@@ -5,6 +5,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::instantiation_provenance::InstantiationSubstitution;
+
+fn default_true() -> bool {
+    true
+}
+
 /// Record for a top-level training campaign that groups many benchmark rows.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingRunRecord {
@@ -97,6 +103,33 @@ pub struct AbstractInstantiationRecord {
     pub refinement_step: u32,
     /// Decision keys that were used to build this instantiation
     pub decision_keys: Vec<String>,
+    /// Complete axiom-variable substitution before relative BMC normalization.
+    #[serde(default)]
+    pub substitution: Vec<InstantiationSubstitution>,
+    /// Whether whole-instantiation ranking selected this candidate for assertion.
+    ///
+    /// Older artifacts contain only selected candidates, so a missing field is
+    /// interpreted as `true` during deserialization.
+    #[serde(default = "default_true")]
+    pub was_selected: bool,
+    /// Post-materialization indexed assertions attempted for this selection.
+    #[serde(default)]
+    pub indexed_assertions_attempted: u64,
+    /// Indexed assertions that survived canonical deduplication.
+    #[serde(default)]
+    pub indexed_assertions_added: u64,
+    /// Indexed assertions removed by canonical deduplication.
+    #[serde(default)]
+    pub indexed_assertions_deduplicated: u64,
+    /// Helper definitions attempted while materializing this selection.
+    #[serde(default)]
+    pub helper_assertions_attempted: u64,
+    /// Helper definitions actually sent to the solver.
+    #[serde(default)]
+    pub helper_assertions_added: u64,
+    /// Helper definitions removed by canonical deduplication.
+    #[serde(default)]
+    pub helper_assertions_deduplicated: u64,
     /// Whether any tracked solver assertion derived from this instantiation appeared in the core
     pub in_unsat_core: bool,
 }
@@ -113,8 +146,14 @@ pub struct IndexedInstantiationRecord {
     pub term_hash: String,
     /// BMC depth at which this indexed instantiation was added
     pub depth: u16,
+    /// Exact BMC frame at which this assertion was placed.
+    #[serde(default)]
+    pub frame: u16,
     /// Index within the unroll (0 = deepest, counting back)
     pub unroll_index: u16,
+    /// Complete axiom-variable substitution after rewriting at `frame`.
+    #[serde(default)]
+    pub substitution: Vec<InstantiationSubstitution>,
     /// Stable id of the original abstract instantiation this indexed assertion came from
     pub abstract_instantiation_id: Option<String>,
     /// Whether this tracked indexed instantiation appeared in the unsat core

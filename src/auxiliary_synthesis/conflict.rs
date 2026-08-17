@@ -13,6 +13,8 @@ pub enum ConflictClassification {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArrayConflictRecord {
     pub conflict_id: String,
+    #[serde(default)]
+    pub abstract_instantiation_id: String,
     pub axiom_name: String,
     #[serde(skip)]
     pub abstract_expr: ArrayExpr,
@@ -31,6 +33,7 @@ impl ArrayConflictRecord {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         ordinal: usize,
+        abstract_instantiation_id: impl Into<String>,
         axiom_name: impl Into<String>,
         abstract_expr: ArrayExpr,
         term: Term,
@@ -46,6 +49,7 @@ impl ArrayConflictRecord {
         let is_non_local = frame_span.is_non_local();
         Self {
             conflict_id: format!("conflict-{depth}-{refinement_step}-{ordinal}"),
+            abstract_instantiation_id: abstract_instantiation_id.into(),
             axiom_name,
             abstract_expr,
             term,

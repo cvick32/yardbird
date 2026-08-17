@@ -147,6 +147,14 @@ impl SolverStatistics {
         }
     }
 
+    pub fn add_count(&mut self, key: &str, count: u64) {
+        let previous = self.get_f64(key).unwrap_or(0.0);
+        self.stats.insert(
+            key.to_string(),
+            StatisticsValue::Double(previous + count as f64),
+        );
+    }
+
     pub fn get_f64(&self, key: &str) -> Option<f64> {
         self.stats.get(key).map(StatisticsValue::as_f64)
     }

@@ -29,6 +29,12 @@ pub struct UnsatCoreInfo {
 pub struct CoreInstantiation {
     pub label: String,
     pub term: String,
+    #[serde(default)]
+    pub abstract_instantiation_id: Option<String>,
+    #[serde(default)]
+    pub frame: u16,
+    #[serde(default)]
+    pub substitution: Vec<crate::instantiation_provenance::InstantiationSubstitution>,
 }
 
 #[derive(Debug, Default)]
@@ -121,18 +127,12 @@ pub(crate) fn record_solver_phase_statistics(
 }
 
 pub(crate) fn refinement_made_progress(
-    instantiations_before: &[Term],
+    solver_assertions_before: u64,
     auxiliary_records_before: usize,
-    instantiations_after: &[Term],
+    solver_assertions_after: u64,
     auxiliary_records_after: usize,
 ) -> bool {
-    let before = instantiations_before
-        .iter()
-        .cloned()
-        .collect::<std::collections::HashSet<_>>();
-    instantiations_after
-        .iter()
-        .any(|instantiation| !before.contains(instantiation))
+    solver_assertions_after > solver_assertions_before
         || auxiliary_records_after > auxiliary_records_before
 }
 
@@ -167,23 +167,9 @@ mod solver_phase_statistics_tests {
 
     #[test]
     fn refinement_progress_requires_a_new_solver_visible_effect() {
-        let existing: Term = "(= x 1)".parse().unwrap();
-        let novel: Term = "(= y 2)".parse().unwrap();
-        let with_novel = [existing.clone(), novel];
-
-        assert!(!refinement_made_progress(
-            std::slice::from_ref(&existing),
-            0,
-            std::slice::from_ref(&existing),
-            0,
-        ));
-        assert!(refinement_made_progress(
-            std::slice::from_ref(&existing),
-            0,
-            &with_novel,
-            0,
-        ));
-        assert!(refinement_made_progress(&[], 0, &[], 1));
+        assert!(!refinement_made_progress(1, 0, 1, 0));
+        assert!(refinement_made_progress(1, 0, 2, 0));
+        assert!(refinement_made_progress(1, 0, 1, 1));
     }
 }
 
@@ -682,16 +668,19 @@ impl<'ctx, S> Driver<'ctx, S> {
                 match action {
                     ProofAction::Continue => {
                         let finish_start = Instant::now();
-                        let instantiations_before = smt_problem.get_instantiations();
+                        let solver_assertions_before =
+                            smt_problem.get_number_instantiation_assertions_added();
                         let auxiliary_records_before = smt_problem.get_auxiliary_records().len();
                         self.extensions.finish(&mut self.vmt_model, &mut state)?;
                         strat.finish(state, &mut smt_problem)?;
                         let instantiations_after = smt_problem.get_instantiations();
+                        let solver_assertions_after =
+                            smt_problem.get_number_instantiation_assertions_added();
                         let auxiliary_records_after = smt_problem.get_auxiliary_records().len();
                         if !refinement_made_progress(
-                            &instantiations_before,
+                            solver_assertions_before,
                             auxiliary_records_before,
-                            &instantiations_after,
+                            solver_assertions_after,
                             auxiliary_records_after,
                         ) {
                             return Err(Error::NoProgress {
@@ -897,6 +886,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                 .map(|record| CoreInstantiation {
                     label: record.label.clone(),
                     term: record.term.clone(),
+                    abstract_instantiation_id: record.abstract_instantiation_id.clone(),
+                    frame: record.frame,
+                    substitution: record.substitution.clone(),
                 })
                 .collect::<Vec<_>>();
             UnsatCoreInfo {

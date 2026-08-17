@@ -107,6 +107,60 @@ impl UnquantifiedInstantiator {
         Self::rewrite_with_offsets(term, offset_getter)
     }
 
+    /// Normalize a complete axiom instantiation and its variable substitution
+    /// with the same frame origin.
+    ///
+    /// Rewriting bindings independently would lose their relative offsets. For
+    /// example, `?a -> a@4` and `?i -> i@5` must become `a+0` and `i+1`, not two
+    /// unrelated `+0` terms.
+    pub fn rewrite_unquantified_with_substitution(
+        term: Term,
+        _variables: Vec<Variable>,
+        substitution: Vec<(String, Term)>,
+    ) -> Option<(Instance, Vec<(String, Term)>)> {
+        let offset_getter = VariableOffsetGetter::new(term.clone());
+        Self::rewrite_with_offsets_and_substitution(term, offset_getter, substitution)
+    }
+
+    pub fn rewrite_with_definitions_and_substitution(
+        term: Term,
+        definition_frames: DefinitionFrameInfo,
+        substitution: Vec<(String, Term)>,
+    ) -> Option<(Instance, Vec<(String, Term)>)> {
+        let offset_getter =
+            VariableOffsetGetter::with_definition_frames(term.clone(), definition_frames);
+        Self::rewrite_with_offsets_and_substitution(term, offset_getter, substitution)
+    }
+
+    fn rewrite_with_offsets_and_substitution(
+        term: Term,
+        offset_getter: VariableOffsetGetter,
+        substitution: Vec<(String, Term)>,
+    ) -> Option<(Instance, Vec<(String, Term)>)> {
+        let mut ui = Self {
+            visitor: SyntaxBuilder,
+            variable_offsets: offset_getter,
+        };
+        let rewritten = term.accept(&mut ui).unwrap();
+        let rewritten_substitution = substitution
+            .into_iter()
+            .map(|(variable, term)| {
+                term.accept(&mut ui)
+                    .map(|term| (variable, term))
+                    .expect("substitution terms should normalize")
+            })
+            .collect();
+        let width = ui.variable_offsets.offset_span() as u16;
+        Some((
+            Instance {
+                instance: rewritten,
+                all_substitution_variables_are_current: false,
+                width,
+            },
+            rewritten_substitution,
+        ))
+    }
+
     pub fn rewrite_with_definitions(
         term: Term,
         definition_frames: DefinitionFrameInfo,
@@ -470,5 +524,39 @@ mod tests {
         } else {
             panic!("Failed to create unquantified instance");
         }
+    }
+
+    #[test]
+    fn complete_substitution_uses_the_formula_frame_origin() {
+        let formula: Term = "(= (Read_Int_Int a@4 i@5) v@4)".parse().unwrap();
+        let substitution = vec![
+            ("?a".to_string(), "a@4".parse().unwrap()),
+            ("?i".to_string(), "i@5".parse().unwrap()),
+            ("?v".to_string(), "v@4".parse().unwrap()),
+        ];
+
+        let (instance, substitution) =
+            UnquantifiedInstantiator::rewrite_unquantified_with_substitution(
+                formula,
+                vec![],
+                substitution,
+            )
+            .unwrap();
+
+        assert_eq!(
+            instance.get_term().to_string(),
+            "(= (Read_Int_Int a+0 i+1) v+0)"
+        );
+        assert_eq!(
+            substitution
+                .into_iter()
+                .map(|(variable, term)| (variable, term.to_string()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("?a".to_string(), "a+0".to_string()),
+                ("?i".to_string(), "i+1".to_string()),
+                ("?v".to_string(), "v+0".to_string()),
+            ]
+        );
     }
 }

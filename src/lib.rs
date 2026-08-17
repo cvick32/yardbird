@@ -35,6 +35,7 @@ pub mod cost_functions;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
+pub mod instantiation_provenance;
 pub mod instantiation_strategy;
 mod interpolant;
 pub mod logger;

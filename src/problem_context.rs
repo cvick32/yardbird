@@ -8,6 +8,9 @@ use std::any::Any;
 
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
+    instantiation_provenance::{
+        InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
+    },
     utils::SolverStatistics,
 };
 
@@ -44,11 +47,7 @@ pub trait ProblemContext {
     fn get_reason_unknown(&self) -> Option<String>;
 
     // Methods for instantiation management
-    fn add_instantiation(
-        &mut self,
-        inst: Instance,
-        abstract_instantiation_id: Option<String>,
-    ) -> bool;
+    fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult;
     fn get_instantiations(&self) -> Vec<Term>;
     fn get_variables(&self) -> &[Variable];
     fn get_number_instantiations_added(&self) -> u64;
@@ -56,6 +55,27 @@ pub trait ProblemContext {
     fn make_unquantified_instance(&self, term: Term) -> Option<Instance> {
         UnquantifiedInstantiator::rewrite_unquantified(term, self.get_variables().to_vec())
     }
+
+    fn make_provenanced_unquantified_instance(
+        &self,
+        term: Term,
+        provenance: InstantiationProvenance,
+    ) -> Option<InstantiationRequest> {
+        let (abstract_instantiation_id, substitution) = provenance.into_parts();
+        let (inst, relative_substitution) =
+            UnquantifiedInstantiator::rewrite_unquantified_with_substitution(
+                term,
+                self.get_variables().to_vec(),
+                substitution,
+            )?;
+        Some(InstantiationRequest::provenanced(
+            inst,
+            InstantiationProvenance::new(abstract_instantiation_id, relative_substitution),
+        ))
+    }
+
+    /// Number of post-materialization assertions actually sent to the solver.
+    fn get_number_instantiation_assertions_added(&self) -> u64;
 
     // Methods for cost functions
     /// Get subterms from initial state and transition relation (VMT-specific, empty for SMTLIB)

@@ -142,7 +142,12 @@ where
             .collect::<Vec<_>>();
         let _ = instances
             .into_iter()
-            .map(|inst| !smt.add_instantiation(inst, None))
+            .map(|inst| {
+                smt.add_instantiation(
+                    crate::instantiation_provenance::InstantiationRequest::untracked(inst),
+                )
+                .abstract_instance_added
+            })
             .fold(true, |a, b| a && b);
 
         Ok(())

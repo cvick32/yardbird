@@ -513,22 +513,43 @@ where
     pub fn abstract_instantiation_record(
         &self,
         axiom_name: &str,
-        ordinal: usize,
         instantiation: &ArrayExpr,
         decision_keys: Vec<String>,
+        substitution: &[(String, smt2parser::concrete::Term)],
     ) -> AbstractInstantiationRecord {
         let abstract_term = deindex_abstract_term(instantiation);
+        let term_hash = canonical_term_hash(instantiation);
+        let substitution = substitution
+            .iter()
+            .map(
+                |(variable, term)| crate::instantiation_provenance::InstantiationSubstitution {
+                    variable: variable.clone(),
+                    term: term.to_string(),
+                },
+            )
+            .collect::<Vec<_>>();
+        let substitution_key =
+            serde_json::to_string(&substitution).expect("substitution should serialize");
+        let substitution_hash = crate::training::canonical_term_hash_from_string(&substitution_key);
         AbstractInstantiationRecord {
             abstract_instantiation_id: format!(
-                "{}:{}:{}:{}",
-                axiom_name, self.depth, self.refinement_step, ordinal
+                "{}:{}:{}:{}:{}",
+                axiom_name, self.depth, self.refinement_step, term_hash, substitution_hash
             ),
             term: abstract_term.to_string(),
-            term_hash: canonical_term_hash(instantiation),
+            term_hash,
             axiom_name: axiom_name.to_string(),
             bmc_depth: self.depth,
             refinement_step: self.refinement_step,
             decision_keys,
+            substitution,
+            was_selected: true,
+            indexed_assertions_attempted: 0,
+            indexed_assertions_added: 0,
+            indexed_assertions_deduplicated: 0,
+            helper_assertions_attempted: 0,
+            helper_assertions_added: 0,
+            helper_assertions_deduplicated: 0,
             in_unsat_core: false,
         }
     }
