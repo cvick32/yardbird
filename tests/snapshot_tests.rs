@@ -429,6 +429,35 @@ fn smt2_auxiliary_synthesis_trigger_rejected() {
     );
 }
 
+fn run_distributed_protocol_depth_2(filename: &str) -> CliResult {
+    run_yardbird_cli(&[
+        "--filename",
+        filename,
+        "--depth",
+        "2",
+        "--strategy",
+        "abstract-with-quantifiers",
+    ])
+}
+
+#[test]
+fn distributed_protocol_german_depth_2() {
+    assert_debug_snapshot!(
+        "distributed_protocol_german_depth_2",
+        run_distributed_protocol_depth_2("examples/distributed_protocols/german/german.vmt")
+    );
+}
+
+#[test]
+fn distributed_protocol_flash_coherence_depth_2() {
+    assert_debug_snapshot!(
+        "distributed_protocol_flash_coherence_depth_2",
+        run_distributed_protocol_depth_2(
+            "examples/distributed_protocols/flash-coherence/flash-coherence.vmt"
+        )
+    );
+}
+
 // TODO: would be nice to automatically generate this
 create_array_snapshot_test!(array2dim_copy);
 create_array_snapshot_test!(array2dim_init);
