@@ -946,7 +946,7 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                     }
                 }
             }
-            Term::Forall { .. } => None,
+            Term::Lambda { .. } | Term::Forall { .. } => None,
             Term::Attributes { term, .. } => inner(*term, expr),
             opaque @ (Term::Let { .. } | Term::Exists { .. } | Term::Match { .. }) => {
                 Some(expr.add(ArrayLanguage::Symbol(opaque.to_string().into())))

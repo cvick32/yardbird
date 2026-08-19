@@ -489,7 +489,7 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ListLanguage>> {
                 }
                 x => todo!("Unsupported operator: {x}"),
             },
-            Term::Forall { .. } => None,
+            Term::Lambda { .. } | Term::Forall { .. } => None,
             x @ (Term::Let { .. }
             | Term::Exists { .. }
             | Term::Match { .. }

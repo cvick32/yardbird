@@ -13,6 +13,20 @@ impl LetExtract {
         extractor.substitute_scoped_symbols(term)
     }
 
+    fn substitute_binder_body(&mut self, bound_symbols: &[Symbol], term: Term) -> Term {
+        let shadowed = bound_symbols
+            .iter()
+            .map(|symbol| (symbol.clone(), self.scope.remove(symbol)))
+            .collect::<Vec<_>>();
+        let new_term = self.substitute_scoped_symbols(term);
+        for (symbol, previous) in shadowed.into_iter().rev() {
+            if let Some(previous) = previous {
+                self.scope.insert(symbol, previous);
+            }
+        }
+        new_term
+    }
+
     fn substitute_scoped_symbols(&mut self, term: Term) -> Term {
         match term {
             Term::Constant(constant) => Term::Constant(constant),
@@ -49,15 +63,34 @@ impl LetExtract {
                     arguments: new_arguments,
                 }
             }
+            Term::Lambda { vars, term } => {
+                let bound_symbols = vars
+                    .iter()
+                    .map(|(symbol, _)| symbol.clone())
+                    .collect::<Vec<_>>();
+                let new_term = self.substitute_binder_body(&bound_symbols, *term);
+                Term::Lambda {
+                    vars,
+                    term: Box::new(new_term),
+                }
+            }
             Term::Forall { vars, term } => {
-                let new_term = self.substitute_scoped_symbols(*term);
+                let bound_symbols = vars
+                    .iter()
+                    .map(|(symbol, _)| symbol.clone())
+                    .collect::<Vec<_>>();
+                let new_term = self.substitute_binder_body(&bound_symbols, *term);
                 Term::Forall {
                     vars,
                     term: Box::new(new_term),
                 }
             }
             Term::Exists { vars, term } => {
-                let new_term = self.substitute_scoped_symbols(*term);
+                let bound_symbols = vars
+                    .iter()
+                    .map(|(symbol, _)| symbol.clone())
+                    .collect::<Vec<_>>();
+                let new_term = self.substitute_binder_body(&bound_symbols, *term);
                 Term::Exists {
                     vars,
                     term: Box::new(new_term),

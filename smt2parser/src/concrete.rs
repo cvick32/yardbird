@@ -113,6 +113,10 @@ pub enum Term<
         var_bindings: Vec<(Symbol, Self)>,
         term: Box<Self>,
     },
+    Lambda {
+        vars: Vec<(Symbol, Sort)>,
+        term: Box<Self>,
+    },
     Forall {
         vars: Vec<(Symbol, Sort)>,
         term: Box<Self>,
@@ -496,6 +500,17 @@ impl<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort>
         Ok(Term::Let { var_bindings, term })
     }
 
+    fn visit_lambda(
+        &mut self,
+        vars: Vec<(Symbol, Sort)>,
+        term: Self::T,
+    ) -> Result<Self::T, Self::E> {
+        Ok(Term::Lambda {
+            vars,
+            term: Box::new(term),
+        })
+    }
+
     fn visit_forall(
         &mut self,
         vars: Vec<(Symbol, Sort)>,
@@ -554,6 +569,7 @@ impl Term {
                 visitor.visit_application(qual_identifier, arguments)?
             }
             Let { var_bindings, term } => visitor.visit_let(var_bindings, *term)?,
+            Lambda { vars, term } => visitor.visit_lambda(vars, *term)?,
             Forall { vars, term } => visitor.visit_forall(vars, *term)?,
             Exists { vars, term } => visitor.visit_exists(vars, *term)?,
             Match { term, cases } => visitor.visit_match(*term, cases)?,
@@ -607,6 +623,21 @@ impl Term {
                 let t = term.accept(visitor)?;
                 bs.iter().for_each(|(s, _)| visitor.unbind_symbol(s));
                 visitor.visit_let(bs, t)
+            }
+            Lambda { vars, term } => {
+                let vs = vars
+                    .into_iter()
+                    .map(|(v, s)| {
+                        Ok((
+                            visitor.visit_fresh_symbol(v.0, SymbolKind::Variable)?,
+                            s.accept(visitor)?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, E>>()?;
+                vs.iter().for_each(|(s, _)| visitor.bind_symbol(s));
+                let t = term.accept(visitor)?;
+                vs.iter().for_each(|(s, _)| visitor.unbind_symbol(s));
+                visitor.visit_lambda(vs, t)
             }
             Forall { vars, term } => {
                 let vs = vars
@@ -1282,6 +1313,15 @@ where
                     var_bindings
                         .iter()
                         .format_with(" ", |(v, t), f| f(&format_args!("({v} {t})"))),
+                    term
+                )
+            }
+            Lambda { vars, term } => {
+                write!(
+                    f,
+                    "(lambda ({}) {})",
+                    vars.iter()
+                        .format_with(" ", |(v, s), f| f(&format_args!("({v} {s})"))),
                     term
                 )
             }

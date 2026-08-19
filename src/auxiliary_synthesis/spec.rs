@@ -335,6 +335,10 @@ fn replace_framed_symbol(term: &Term, base_name: &str, frame: i64, replacement: 
                 .collect(),
             term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
         },
+        Term::Lambda { vars, term } => Term::Lambda {
+            vars: vars.clone(),
+            term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
+        },
         Term::Forall { vars, term } => Term::Forall {
             vars: vars.clone(),
             term: Box::new(replace_framed_symbol(term, base_name, frame, replacement)),
@@ -379,7 +383,7 @@ pub fn term_contains_auxiliary_symbol(term: &Term) -> bool {
                 .any(|(_, binding)| term_contains_auxiliary_symbol(binding))
                 || term_contains_auxiliary_symbol(term)
         }
-        Term::Forall { term, .. } | Term::Exists { term, .. } => {
+        Term::Lambda { term, .. } | Term::Forall { term, .. } | Term::Exists { term, .. } => {
             term_contains_auxiliary_symbol(term)
         }
         Term::Match { term, cases } => {
@@ -415,7 +419,7 @@ fn collect_framed_symbols(term: &Term, symbols: &mut Vec<(String, i64)>) {
             }
             collect_framed_symbols(term, symbols);
         }
-        Term::Forall { term, .. } | Term::Exists { term, .. } => {
+        Term::Lambda { term, .. } | Term::Forall { term, .. } | Term::Exists { term, .. } => {
             collect_framed_symbols(term, symbols);
         }
         Term::Match { term, cases } => {

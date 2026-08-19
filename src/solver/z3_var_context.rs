@@ -224,6 +224,43 @@ impl Z3VarContext {
                     }
                 }
             }
+            Term::Lambda { vars, term } => {
+                let mut bounds = vec![];
+                let mut shadowed_vars = Vec::new();
+
+                for (symbol, sort) in vars {
+                    {
+                        let var_map = self.var_name_to_z3_term.borrow();
+                        if let Some(old_var) = var_map.get(&symbol.0) {
+                            shadowed_vars.push((symbol.0.clone(), old_var.clone()));
+                        }
+                    }
+                    let var_sort = self.get_z3_sort(sort);
+                    let var_func_decl = FuncDecl::new(symbol.0.clone(), &[], &var_sort);
+                    let var_dynamic = var_func_decl.apply(&[]);
+                    self.var_name_to_z3_term
+                        .borrow_mut()
+                        .insert(symbol.0.clone(), var_dynamic.clone());
+                    bounds.push(var_dynamic);
+                }
+
+                let body = self.rewrite_term(term);
+
+                {
+                    let mut var_map = self.var_name_to_z3_term.borrow_mut();
+                    for (symbol, old_var) in &shadowed_vars {
+                        var_map.insert(symbol.clone(), old_var.clone());
+                    }
+                    for (symbol, _) in vars {
+                        if !shadowed_vars.iter().any(|(s, _)| s == &symbol.0) {
+                            var_map.remove(&symbol.0);
+                        }
+                    }
+                }
+
+                let bound_refs: Vec<&dyn Ast> = bounds.iter().map(|d| d as &dyn Ast).collect();
+                z3::ast::lambda_const(&bound_refs, &body).into()
+            }
             Term::Forall { vars, term } => {
                 let mut bounds = vec![];
                 let mut shadowed_vars = Vec::new();
@@ -264,11 +301,73 @@ impl Z3VarContext {
                 let bound_refs: Vec<&dyn Ast> = bounds.iter().map(|d| d as &dyn Ast).collect();
                 z3::ast::forall_const(&bound_refs, &[], &quantified_term).into()
             }
-            Term::Let {
-                var_bindings: _,
-                term: _,
-            } => todo!(),
-            Term::Exists { vars: _, term: _ } => todo!(),
+            Term::Let { var_bindings, term } => {
+                let values = var_bindings
+                    .iter()
+                    .map(|(_, value)| self.rewrite_term(value))
+                    .collect::<Vec<_>>();
+                let mut shadowed_vars = Vec::new();
+
+                {
+                    let mut var_map = self.var_name_to_z3_term.borrow_mut();
+                    for ((symbol, _), value) in var_bindings.iter().zip(values) {
+                        if let Some(old_var) = var_map.insert(symbol.0.clone(), value) {
+                            shadowed_vars.push((symbol.0.clone(), old_var));
+                        }
+                    }
+                }
+
+                let body = self.rewrite_term(term);
+
+                {
+                    let mut var_map = self.var_name_to_z3_term.borrow_mut();
+                    for (symbol, _) in var_bindings {
+                        var_map.remove(&symbol.0);
+                    }
+                    for (symbol, old_var) in shadowed_vars {
+                        var_map.insert(symbol, old_var);
+                    }
+                }
+
+                body
+            }
+            Term::Exists { vars, term } => {
+                let mut bounds = vec![];
+                let mut shadowed_vars = Vec::new();
+
+                for (symbol, sort) in vars {
+                    {
+                        let var_map = self.var_name_to_z3_term.borrow();
+                        if let Some(old_var) = var_map.get(&symbol.0) {
+                            shadowed_vars.push((symbol.0.clone(), old_var.clone()));
+                        }
+                    }
+                    let var_sort = self.get_z3_sort(sort);
+                    let var_func_decl = FuncDecl::new(symbol.0.clone(), &[], &var_sort);
+                    let var_dynamic = var_func_decl.apply(&[]);
+                    self.var_name_to_z3_term
+                        .borrow_mut()
+                        .insert(symbol.0.clone(), var_dynamic.clone());
+                    bounds.push(var_dynamic);
+                }
+
+                let quantified_term = self.rewrite_term(term).as_bool().unwrap();
+
+                {
+                    let mut var_map = self.var_name_to_z3_term.borrow_mut();
+                    for (symbol, old_var) in &shadowed_vars {
+                        var_map.insert(symbol.clone(), old_var.clone());
+                    }
+                    for (symbol, _) in vars {
+                        if !shadowed_vars.iter().any(|(s, _)| s == &symbol.0) {
+                            var_map.remove(&symbol.0);
+                        }
+                    }
+                }
+
+                let bound_refs: Vec<&dyn Ast> = bounds.iter().map(|d| d as &dyn Ast).collect();
+                z3::ast::exists_const(&bound_refs, &[], &quantified_term).into()
+            }
             Term::Match { term: _, cases: _ } => todo!(),
             // SMT-LIB attributes annotate a term without changing its value.
             // Yardbird handles the VMT-defining attributes while parsing the
@@ -878,7 +977,7 @@ mod tests {
     use super::Z3VarContext;
     use smt2parser::concrete::{Identifier, Sort, Symbol, Term};
     use z3::ast::{Ast, BV};
-    use z3::SortKind;
+    use z3::{SatResult, Solver, SortKind};
 
     fn rewrite_binary_literal(literal: &str) -> BV {
         let term = literal.parse::<Term>().unwrap();
@@ -955,6 +1054,47 @@ mod tests {
             .rewrite_term(&term)
             .as_bool()
             .expect("the attributed equality should remain Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_lambda_arrays() {
+        let term = "(select (lambda ((x Int)) (= x 3)) 3)"
+            .parse::<Term>()
+            .unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("selecting a Boolean lambda array should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_existential_quantifiers() {
+        let term = "(exists ((x Int)) (= x 3))".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("an existential formula should be Boolean");
+        let solver = Solver::new();
+        solver.assert(rewritten.not());
+
+        assert_eq!(solver.check(), SatResult::Unsat);
+    }
+
+    #[test]
+    fn rewrites_nested_shadowing_let_terms() {
+        let term = "(let ((a 1)) (= (let ((a 2)) a) 2))"
+            .parse::<Term>()
+            .unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("the let equality should be Boolean")
             .simplify();
 
         assert_eq!(rewritten.as_bool(), Some(true));

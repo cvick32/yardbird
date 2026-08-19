@@ -68,7 +68,7 @@ fn collect_term_frames(term: &Term, frames: &mut BTreeSet<i64>) {
             }
             collect_term_frames(term, frames);
         }
-        Term::Forall { term, .. } | Term::Exists { term, .. } => {
+        Term::Lambda { term, .. } | Term::Forall { term, .. } | Term::Exists { term, .. } => {
             collect_term_frames(term, frames);
         }
         Term::Match { term, cases } => {

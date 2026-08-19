@@ -66,10 +66,13 @@ pub struct VmtBmcSession {
     function_definitions: Vec<Command>,
     variable_definitions: Vec<Command>,
     input_variables: Vec<Command>,
+    action_variables: Vec<Command>,
     init_assertion: Term,
     trans_assertion: Term,
     property_assertion: Term,
     init_and_transition_assertions: Vec<NamedAssertion>,
+    model_axioms: Vec<Term>,
+    model_axiom_assertions: Vec<Term>,
     theory_axiom_assertions: Vec<Term>,
     asserted_instantiation_terms: Vec<Term>,
     auxiliary_specs: Vec<AuxiliarySpec>,
@@ -166,12 +169,11 @@ impl VmtBmcSession {
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
         let property_assertion = vmt_model.get_property_for_yardbird();
+        let model_axioms = vmt_model.get_axioms();
         let theory = strategy.get_theory_support();
-        let logic = theory.get_logic_string_for_terms(&[
-            &init_assertion,
-            &trans_assertion,
-            &property_assertion,
-        ])?;
+        let mut logic_terms = vec![&init_assertion, &trans_assertion, &property_assertion];
+        logic_terms.extend(model_axioms.iter());
+        let logic = theory.get_logic_string_for_terms(&logic_terms)?;
         validate_logic_for_commands(&logic, &vmt_model.as_commands())?;
         let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
 
@@ -180,6 +182,7 @@ impl VmtBmcSession {
             function_definitions: vmt_model.get_function_definitions(),
             variable_definitions: vec![],
             input_variables: vmt_model.get_input_variables(),
+            action_variables: vmt_model.get_action_variables(),
             subterm_handler: SubtermHandler::new(
                 init_assertion.clone(),
                 trans_assertion.clone(),
@@ -189,6 +192,8 @@ impl VmtBmcSession {
             trans_assertion,
             property_assertion,
             init_and_transition_assertions: vec![],
+            model_axioms,
+            model_axiom_assertions: vec![],
             theory_axiom_assertions: vec![],
             asserted_instantiation_terms: vec![],
             auxiliary_specs: vec![],
@@ -268,6 +273,7 @@ impl VmtBmcSession {
 
         // Add initial 0-state variables here, so in the future we only have to add, depth + 1 variables.
         smt.add_solver_variables();
+        smt.add_model_axioms_at_current_depth();
         smt.subterm_handler.generate_subterms(&mut smt.bmc_builder);
         smt.add_initial_assertion();
         smt.update_property();
@@ -284,6 +290,23 @@ impl VmtBmcSession {
         let input_variables = self.input_variables.clone();
         for input in &input_variables {
             self.add_declaration_at_current_depth(input);
+        }
+        let action_variables = self.action_variables.clone();
+        for action in &action_variables {
+            self.add_declaration_at_current_depth(action);
+        }
+    }
+
+    fn add_model_axioms_at_current_depth(&mut self) {
+        for axiom in self.model_axioms.clone() {
+            let indexed = self.bmc_builder.index_single_step_term(axiom);
+            if self.model_axiom_assertions.contains(&indexed) {
+                continue;
+            }
+            self.solver
+                .assert_term(&indexed)
+                .expect("solver should assert VMT model axioms");
+            self.model_axiom_assertions.push(indexed);
         }
     }
 
@@ -543,6 +566,7 @@ impl VmtBmcSession {
             unique_command_lines(&self.function_definitions),
             unique_command_lines(&self.variable_definitions),
             unique_command_lines(&self.definition_materializer.declarations()),
+            format_assertions(&self.model_axiom_assertions),
             format_assertions(&self.theory_axiom_assertions),
             format_assertions(&self.definition_materializer.definitions()),
             format_named_assertions(&self.init_and_transition_assertions),
@@ -769,7 +793,8 @@ impl VmtBmcSession {
     pub(crate) fn check_property(&mut self) -> SolverCheckResult {
         self.last_check_profile.clear();
         self.last_solver_check_profile = None;
-        let assertion_count = (self.theory_axiom_assertions.len()
+        let assertion_count = (self.model_axiom_assertions.len()
+            + self.theory_axiom_assertions.len()
             + self.init_and_transition_assertions.len()
             + self.asserted_instantiation_terms.len()
             + 1) as u64;
@@ -844,6 +869,7 @@ impl VmtBmcSession {
             // Add new variables for this depth to the solver backend.
             let add_variables_start = Instant::now();
             self.add_solver_variables();
+            self.add_model_axioms_at_current_depth();
             self.last_unroll_profile.insert(
                 "unroll_add_solver_variables".to_string(),
                 add_variables_start.elapsed().as_secs_f64(),
@@ -1192,6 +1218,48 @@ mod tests {
         let dumped = smt.smt2_string_with_property_check();
         assert!(dumped.contains("(declare-fun __state@0 () Int)"));
         assert!(dumped.contains("(declare-fun __state@1 () Int)"));
+    }
+
+    #[test]
+    fn declares_action_variables_at_every_unrolled_frame() {
+        let input = br#"
+            (declare-fun state () Int)
+            (declare-fun state.next () Int)
+            (define-fun state.relationship () Int (! state :next state.next))
+            (declare-fun a () (Array Int Int))
+            (declare-fun a.next () (Array Int Int))
+            (define-fun a.relationship () (Array Int Int) (! a :next a.next))
+            (declare-fun step () Bool)
+            (define-fun step.relationship () Bool (! step :action 0))
+            (define-fun init () Bool (! (= state 0) :init true))
+            (define-fun transition () Bool (!
+                (and (= a.next a) (=> step (= state.next (+ state 1))))
+                :trans true))
+            (define-fun property () Bool (! (>= state 0) :invar-property 0))
+        "#;
+        let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(ConcreteArrayZ3::new(false));
+        let model = strategy.configure_model(model);
+        let mut smt = VmtBmcSession::new(
+            &model,
+            &strategy,
+            SolverBackend::Z3,
+            false,
+            Box::new(FullUnrollStrategy::new()),
+            false,
+            None,
+        )
+        .unwrap();
+
+        smt.unroll(1);
+
+        let dumped = smt.smt2_string_with_property_check();
+        assert!(dumped.contains("(declare-fun step@0 () Bool)"));
+        assert!(dumped.contains("(declare-fun step@1 () Bool)"));
     }
 
     #[test]

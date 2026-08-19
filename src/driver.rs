@@ -539,6 +539,20 @@ impl<'ctx, S> Driver<'ctx, S> {
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
     ) -> Result<ProofLoopResult> {
         let concrete_vmt_model = self.vmt_model.clone();
+        if self.solver_backend == SolverBackend::Cvc5 && concrete_vmt_model.uses_lambda_terms() {
+            return Err(anyhow::anyhow!(
+                "the CVC5 backend does not support SMT lambda array terms; use --solver z3"
+            )
+            .into());
+        }
+        if strat.get_theory_support().requires_abstraction()
+            && concrete_vmt_model.uses_lambda_terms()
+        {
+            return Err(anyhow::anyhow!(
+                "abstract strategies do not support SMT lambda array terms; rerun with --strategy concrete"
+            )
+            .into());
+        }
         self.vmt_model = strat.configure_model(concrete_vmt_model.clone());
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;

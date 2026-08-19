@@ -162,6 +162,7 @@ impl Cvc5SolverBackend {
                 anyhow::bail!("CVC5 forall conversion requires assertion context")
             }
             SmtTerm::Let { .. }
+            | SmtTerm::Lambda { .. }
             | SmtTerm::Exists { .. }
             | SmtTerm::Match { .. }
             | SmtTerm::Attributes { .. } => {
@@ -188,6 +189,7 @@ impl Cvc5SolverBackend {
                 self.make_application(qual_identifier, args)
             }
             SmtTerm::Let { .. }
+            | SmtTerm::Lambda { .. }
             | SmtTerm::Exists { .. }
             | SmtTerm::Match { .. }
             | SmtTerm::Attributes { .. } => {

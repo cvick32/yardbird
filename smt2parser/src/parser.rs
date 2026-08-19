@@ -179,6 +179,8 @@ pomelo! {
     term ::= qual_identifier(x) { extra.0.visit_qual_identifier(x)? }
     //   ( let ( ⟨var_binding⟩+ ) ⟨term⟩ )
     term ::= LeftParen Let LeftParen var_bindings(xs) RightParen term(t) RightParen { extra.0.visit_let(xs, t)? }
+    //   ( lambda ( ⟨sorted_var⟩+ ) ⟨term⟩ )
+    term ::= LeftParen Lambda LeftParen sorted_vars(xs) RightParen term(t) RightParen { extra.0.visit_lambda(xs, t)? }
     //   ( forall ( ⟨sorted_var⟩+ ) ⟨term⟩ )
     term ::= LeftParen Forall LeftParen sorted_vars(xs) RightParen term(t) RightParen { extra.0.visit_forall(xs, t)? }
     //   ( exists ( ⟨sorted_var⟩+ ) ⟨term⟩ )
@@ -502,6 +504,17 @@ pub(crate) mod tests {
                 term: Term::Application { .. }
             }
         ));
+    }
+
+    #[test]
+    fn test_lambda_term() {
+        let input = b"(assert (lambda ((|W:server| server)) true))";
+        let value = parse_tokens(Lexer::new(&input[..])).unwrap();
+
+        assert_eq!(
+            value.to_string(),
+            "(assert (lambda ((|W:server| server)) true))"
+        );
     }
 
     #[test]

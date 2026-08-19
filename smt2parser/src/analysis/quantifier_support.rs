@@ -353,6 +353,7 @@ fn count_quantifiers(term: &Term) -> QuantifierCounts {
                 exists: counts.exists + 1,
             }
         }
+        Term::Lambda { term, .. } => count_quantifiers(term),
         Term::Application { arguments, .. } => arguments.iter().fold(
             QuantifierCounts {
                 forall: 0,

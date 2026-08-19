@@ -6,6 +6,12 @@ pub struct Axiom {
 }
 
 impl Axiom {
+    pub(crate) fn as_command(&self) -> Command {
+        Command::Assert {
+            term: self._axiom.clone(),
+        }
+    }
+
     pub(crate) fn _as_commands(&self) -> Vec<Command> {
         let dd = FunctionDec {
             name: Symbol("axiom".into()),
