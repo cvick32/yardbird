@@ -1,0 +1,136 @@
+(declare-sort node 0)
+(declare-sort request 0)
+(declare-sort db_request_id 0)
+(declare-sort response 0)
+(declare-fun new_db_request_sent () (Array db_request_id (Array request Bool)))
+(declare-fun new_t () (Array db_request_id (Array node Bool)))
+(declare-fun |__fml:n| () node)
+(declare-fun new_request_sent () (Array node (Array request Bool)))
+(declare-fun |__fml:r| () request)
+(declare-fun response_sent () (Array node (Array response Bool)))
+(declare-fun request_sent () (Array node (Array request Bool)))
+(declare-fun new_db_response_sent () (Array db_request_id (Array response Bool)))
+(declare-fun |__fml:i| () db_request_id)
+(declare-fun db_request_sent () (Array db_request_id (Array request Bool)))
+(declare-fun t () (Array db_request_id (Array node Bool)))
+(declare-fun |__fml:p| () response)
+(declare-fun |match| (request response) Bool)
+(declare-fun db_response_sent () (Array db_request_id (Array response Bool)))
+(declare-fun new_response_sent () (Array node (Array response Bool)))
+(declare-fun new_response_received () (Array node (Array response Bool)))
+(declare-fun response_received () (Array node (Array response Bool)))
+(define-fun .db_request_sent () (Array db_request_id (Array request Bool)) (! db_request_sent :next new_db_request_sent))
+(define-fun .t () (Array db_request_id (Array node Bool)) (! t :next new_t))
+(declare-fun new___fmln () node)
+(define-fun .__fmln () node (! |__fml:n| :next new___fmln))
+(define-fun .request_sent () (Array node (Array request Bool)) (! request_sent :next new_request_sent))
+(declare-fun new___fmlr () request)
+(define-fun .__fmlr () request (! |__fml:r| :next new___fmlr))
+(define-fun .db_response_sent () (Array db_request_id (Array response Bool)) (! db_response_sent :next new_db_response_sent))
+(declare-fun new___fmli () db_request_id)
+(define-fun .__fmli () db_request_id (! |__fml:i| :next new___fmli))
+(declare-fun new___fmlp () response)
+(define-fun .__fmlp () response (! |__fml:p| :next new___fmlp))
+(define-fun .response_sent () (Array node (Array response Bool)) (! response_sent :next new_response_sent))
+(define-fun .response_received () (Array node (Array response Bool)) (! response_received :next new_response_received))
+(declare-fun db_process_request () Bool)
+(define-fun .db_process_request () Bool (! db_process_request :action 0))
+(declare-fun new_request () Bool)
+(define-fun .new_request () Bool (! new_request :action 0))
+(declare-fun receive_response () Bool)
+(define-fun .receive_response () Bool (! receive_response :action 0))
+(declare-fun server_process_db_response () Bool)
+(define-fun .server_process_db_response () Bool (! server_process_db_response :action 0))
+(declare-fun server_process_request () Bool)
+(define-fun .server_process_request () Bool (! server_process_request :action 0))
+(define-fun init () Bool (! (let ((a!1 (lambda ((|N:node| node)) (lambda ((|P:response| response)) false))))
+  (and (= request_sent
+          (lambda ((|N:node| node)) (lambda ((|R:request| request)) false)))
+       (= response_sent a!1)
+       (= response_received a!1)
+       (= db_request_sent
+          (lambda ((|I:db_request_id| db_request_id))
+            (lambda ((|R:request| request)) false)))
+       (= db_response_sent
+          (lambda ((|I:db_request_id| db_request_id))
+            (lambda ((|P:response| response)) false)))
+       (= t
+          (lambda ((|I:db_request_id| db_request_id))
+            (lambda ((|N:node| node)) false))))) :init true))
+(define-fun trans () Bool (! (and (=> db_process_request (let ((a!1 (= new_db_response_sent
+              (store db_response_sent
+                     |__fml:i|
+                     (store (select db_response_sent |__fml:i|) |__fml:p| true)))))
+  (and a!1
+       (= request_sent new_request_sent)
+       (= response_received new_response_received)
+       (= response_sent new_response_sent)
+       (= db_request_sent new_db_request_sent)
+       (= t new_t)
+       (select (select db_request_sent |__fml:i|) |__fml:r|)
+       (|match| |__fml:r| |__fml:p|))))
+(=> new_request (let ((a!1 (= new_request_sent
+              (store request_sent
+                     |__fml:n|
+                     (store (select request_sent |__fml:n|) |__fml:r| true)))))
+  (and a!1
+       (= db_response_sent new_db_response_sent)
+       (= response_received new_response_received)
+       (= response_sent new_response_sent)
+       (= db_request_sent new_db_request_sent)
+       (= t new_t))))
+(=> receive_response (let ((a!1 (= new_response_received
+              (store response_received
+                     |__fml:n|
+                     (store (select response_received |__fml:n|) |__fml:p| true)))))
+  (and a!1
+       (= db_response_sent new_db_response_sent)
+       (= request_sent new_request_sent)
+       (= response_sent new_response_sent)
+       (= db_request_sent new_db_request_sent)
+       (= t new_t)
+       (select (select response_sent |__fml:n|) |__fml:p|))))
+(=> server_process_db_response (let ((a!1 (= new_response_sent
+              (store response_sent
+                     |__fml:n|
+                     (store (select response_sent |__fml:n|) |__fml:p| true)))))
+  (and a!1
+       (= db_response_sent new_db_response_sent)
+       (= request_sent new_request_sent)
+       (= response_received new_response_received)
+       (= db_request_sent new_db_request_sent)
+       (= t new_t)
+       (select (select db_response_sent |__fml:i|) |__fml:p|)
+       (select (select t |__fml:i|) |__fml:n|))))
+(=> server_process_request (let ((a!1 (= new_t
+              (store t |__fml:i| (store (select t |__fml:i|) |__fml:n| true))))
+      (a!2 (= new_db_request_sent
+              (store db_request_sent
+                     |__fml:i|
+                     (store (select db_request_sent |__fml:i|) |__fml:r| true))))
+      (a!3 (forall ((|N:node| node))
+             (not (select (select t |__fml:i|) |N:node|)))))
+  (and a!1
+       a!2
+       (= db_response_sent new_db_response_sent)
+       (= request_sent new_request_sent)
+       (= response_received new_response_received)
+       (= response_sent new_response_sent)
+       (select (select request_sent |__fml:n|) |__fml:r|)
+       a!3)))
+(or db_process_request new_request receive_response server_process_db_response server_process_request)
+(or (not db_process_request) (not new_request))
+(or (not db_process_request) (not receive_response))
+(or (not db_process_request) (not server_process_db_response))
+(or (not db_process_request) (not server_process_request))
+(or (not new_request) (not receive_response))
+(or (not new_request) (not server_process_db_response))
+(or (not new_request) (not server_process_request))
+(or (not receive_response) (not server_process_db_response))
+(or (not receive_response) (not server_process_request))
+(or (not server_process_db_response) (not server_process_request))) :trans true))
+(define-fun property () Bool (! (forall ((|N:node| node) (|P:response| response))
+  (let ((a!1 (exists ((|R:request| request))
+               (and (select (select request_sent |N:node|) |R:request|)
+                    (|match| |R:request| |P:response|)))))
+    (=> (select (select response_received |N:node|) |P:response|) a!1))) :invar-property 0))

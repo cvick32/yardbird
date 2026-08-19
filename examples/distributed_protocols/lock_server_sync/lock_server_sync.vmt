@@ -1,0 +1,41 @@
+(declare-sort client 0)
+(declare-sort server 0)
+(declare-fun semaphore () (Array server Bool))
+(declare-fun |__fml:x| () client)
+(declare-fun |__fml:y| () server)
+(declare-fun new_link () (Array client (Array server Bool)))
+(declare-fun link () (Array client (Array server Bool)))
+(declare-fun new_semaphore () (Array server Bool))
+(declare-fun new___fmlx () client)
+(define-fun .__fmlx () client (! |__fml:x| :next new___fmlx))
+(declare-fun new___fmly () server)
+(define-fun .__fmly () server (! |__fml:y| :next new___fmly))
+(define-fun .link () (Array client (Array server Bool)) (! link :next new_link))
+(define-fun .semaphore () (Array server Bool) (! semaphore :next new_semaphore))
+(declare-fun connect () Bool)
+(define-fun .connect () Bool (! connect :action 0))
+(declare-fun disconnect () Bool)
+(define-fun .disconnect () Bool (! disconnect :action 0))
+(define-fun init () Bool (! (and (= semaphore (lambda ((|W:server| server)) true))
+     (= link
+        (lambda ((|X:client| client)) (lambda ((|Y:server| server)) false)))) :init true))
+(define-fun trans () Bool (! (and (=> connect (let ((a!1 (= new_link
+              (store link
+                     |__fml:x|
+                     (store (select link |__fml:x|) |__fml:y| true)))))
+  (and a!1
+       (= new_semaphore (store semaphore |__fml:y| false))
+       (select semaphore |__fml:y|))))
+(=> disconnect (let ((a!1 (= new_link
+              (store link
+                     |__fml:x|
+                     (store (select link |__fml:x|) |__fml:y| false)))))
+  (and a!1
+       (= new_semaphore (store semaphore |__fml:y| true))
+       (select (select link |__fml:x|) |__fml:y|))))
+(or connect disconnect)
+(or (not connect) (not disconnect))) :trans true))
+(define-fun property () Bool (! (forall ((|C1:client| client) (|C2:client| client) (|S:server| server))
+  (=> (and (select (select link |C1:client|) |S:server|)
+           (select (select link |C2:client|) |S:server|))
+      (= |C1:client| |C2:client|))) :invar-property 0))

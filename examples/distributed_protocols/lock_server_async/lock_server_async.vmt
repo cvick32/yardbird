@@ -1,0 +1,116 @@
+(declare-sort node 0)
+(declare-sort lock 0)
+(declare-fun new_unlock_msg () (Array node (Array lock Bool)))
+(declare-fun new_server_holds_lock () (Array lock Bool))
+(declare-fun lock_msg () (Array node (Array lock Bool)))
+(declare-fun new_holds_lock () (Array node (Array lock Bool)))
+(declare-fun new_lock_msg () (Array node (Array lock Bool)))
+(declare-fun grant_msg () (Array node (Array lock Bool)))
+(declare-fun |__fml:n| () node)
+(declare-fun server_holds_lock () (Array lock Bool))
+(declare-fun new_grant_msg () (Array node (Array lock Bool)))
+(declare-fun |__fml:l| () lock)
+(declare-fun holds_lock () (Array node (Array lock Bool)))
+(declare-fun unlock_msg () (Array node (Array lock Bool)))
+(define-fun .unlock_msg () (Array node (Array lock Bool)) (! unlock_msg :next new_unlock_msg))
+(define-fun .server_holds_lock () (Array lock Bool) (! server_holds_lock :next new_server_holds_lock))
+(define-fun .holds_lock () (Array node (Array lock Bool)) (! holds_lock :next new_holds_lock))
+(define-fun .lock_msg () (Array node (Array lock Bool)) (! lock_msg :next new_lock_msg))
+(declare-fun new___fmln () node)
+(define-fun .__fmln () node (! |__fml:n| :next new___fmln))
+(define-fun .grant_msg () (Array node (Array lock Bool)) (! grant_msg :next new_grant_msg))
+(declare-fun new___fmll () lock)
+(define-fun .__fmll () lock (! |__fml:l| :next new___fmll))
+(declare-fun recv_grant () Bool)
+(define-fun .recv_grant () Bool (! recv_grant :action 0))
+(declare-fun recv_lock () Bool)
+(define-fun .recv_lock () Bool (! recv_lock :action 0))
+(declare-fun recv_unlock () Bool)
+(define-fun .recv_unlock () Bool (! recv_unlock :action 0))
+(declare-fun send_lock () Bool)
+(define-fun .send_lock () Bool (! send_lock :action 0))
+(declare-fun unlock () Bool)
+(define-fun .unlock () Bool (! unlock :action 0))
+(define-fun init () Bool (! (let ((a!1 (lambda ((|N:node| node)) (lambda ((|L:lock| lock)) false))))
+  (and (= lock_msg a!1)
+       (= grant_msg a!1)
+       (= unlock_msg a!1)
+       (= holds_lock a!1)
+       (= server_holds_lock (lambda ((|L:lock| lock)) true)))) :init true))
+(define-fun trans () Bool (! (and (=> recv_grant (let ((a!1 (= new_grant_msg
+              (store grant_msg
+                     |__fml:n|
+                     (store (select grant_msg |__fml:n|) |__fml:l| false))))
+      (a!2 (= new_holds_lock
+              (store holds_lock
+                     |__fml:n|
+                     (store (select holds_lock |__fml:n|) |__fml:l| true)))))
+  (and a!1
+       a!2
+       (= lock_msg new_lock_msg)
+       (= server_holds_lock new_server_holds_lock)
+       (= unlock_msg new_unlock_msg)
+       (select (select grant_msg |__fml:n|) |__fml:l|))))
+(=> recv_lock (let ((a!1 (= new_lock_msg
+              (store lock_msg
+                     |__fml:n|
+                     (store (select lock_msg |__fml:n|) |__fml:l| false))))
+      (a!2 (= new_grant_msg
+              (store grant_msg
+                     |__fml:n|
+                     (store (select grant_msg |__fml:n|) |__fml:l| true)))))
+  (and (= new_server_holds_lock (store server_holds_lock |__fml:l| false))
+       a!1
+       a!2
+       (= holds_lock new_holds_lock)
+       (= unlock_msg new_unlock_msg)
+       (select (select lock_msg |__fml:n|) |__fml:l|)
+       (select server_holds_lock |__fml:l|))))
+(=> recv_unlock (let ((a!1 (= new_unlock_msg
+              (store unlock_msg
+                     |__fml:n|
+                     (store (select unlock_msg |__fml:n|) |__fml:l| false)))))
+  (and a!1
+       (= new_server_holds_lock (store server_holds_lock |__fml:l| true))
+       (= grant_msg new_grant_msg)
+       (= holds_lock new_holds_lock)
+       (= lock_msg new_lock_msg)
+       (select (select unlock_msg |__fml:n|) |__fml:l|))))
+(=> send_lock (let ((a!1 (= new_lock_msg
+              (store lock_msg
+                     |__fml:n|
+                     (store (select lock_msg |__fml:n|) |__fml:l| true)))))
+  (and a!1
+       (= grant_msg new_grant_msg)
+       (= holds_lock new_holds_lock)
+       (= server_holds_lock new_server_holds_lock)
+       (= unlock_msg new_unlock_msg))))
+(=> unlock (let ((a!1 (= new_holds_lock
+              (store holds_lock
+                     |__fml:n|
+                     (store (select holds_lock |__fml:n|) |__fml:l| false))))
+      (a!2 (= new_unlock_msg
+              (store unlock_msg
+                     |__fml:n|
+                     (store (select unlock_msg |__fml:n|) |__fml:l| true)))))
+  (and a!1
+       a!2
+       (= grant_msg new_grant_msg)
+       (= lock_msg new_lock_msg)
+       (= server_holds_lock new_server_holds_lock)
+       (select (select holds_lock |__fml:n|) |__fml:l|))))
+(or recv_grant recv_lock recv_unlock send_lock unlock)
+(or (not recv_grant) (not recv_lock))
+(or (not recv_grant) (not recv_unlock))
+(or (not recv_grant) (not send_lock))
+(or (not recv_grant) (not unlock))
+(or (not recv_lock) (not recv_unlock))
+(or (not recv_lock) (not send_lock))
+(or (not recv_lock) (not unlock))
+(or (not recv_unlock) (not send_lock))
+(or (not recv_unlock) (not unlock))
+(or (not send_lock) (not unlock))) :trans true))
+(define-fun property () Bool (! (forall ((|L:lock| lock) (|N1:node| node) (|N2:node| node))
+  (=> (and (select (select holds_lock |N1:node|) |L:lock|)
+           (select (select holds_lock |N2:node|) |L:lock|))
+      (= |N1:node| |N2:node|))) :invar-property 0))

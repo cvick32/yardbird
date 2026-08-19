@@ -1,0 +1,42 @@
+(declare-sort node 0)
+(declare-fun new_has_lock () (Array node Bool))
+(declare-fun new_message () (Array node (Array node Bool)))
+(declare-fun has_lock () (Array node Bool))
+(declare-fun message () (Array node (Array node Bool)))
+(declare-fun |__fml:src| () node)
+(declare-fun start_node () node)
+(declare-fun |__fml:dst| () node)
+(define-fun .has_lock () (Array node Bool) (! has_lock :next new_has_lock))
+(define-fun .message () (Array node (Array node Bool)) (! message :next new_message))
+(declare-fun new___fmlsrc () node)
+(define-fun .__fmlsrc () node (! |__fml:src| :next new___fmlsrc))
+(declare-fun new_start_node () node)
+(define-fun .start_node () node (! start_node :next new_start_node))
+(declare-fun new___fmldst () node)
+(define-fun .__fmldst () node (! |__fml:dst| :next new___fmldst))
+(declare-fun recv () Bool)
+(define-fun .recv () Bool (! recv :action 0))
+(declare-fun send () Bool)
+(define-fun .send () Bool (! send :action 0))
+(define-fun init () Bool (! (and (= message (lambda ((|Src:node| node)) (lambda ((|Dst:node| node)) false)))
+     (= has_lock (lambda ((|X:node| node)) (= |X:node| start_node)))) :init true))
+(define-fun trans () Bool (! (and (=> recv (let ((a!1 (= new_message
+              (store message
+                     |__fml:src|
+                     (store (select message |__fml:src|) |__fml:dst| false)))))
+  (and a!1
+       (= new_has_lock (store has_lock |__fml:dst| true))
+       (select (select message |__fml:src|) |__fml:dst|))))
+(=> send (let ((a!1 (= new_message
+              (store message
+                     |__fml:src|
+                     (store (select message |__fml:src|) |__fml:dst| true)))))
+  (and a!1
+       (= new_has_lock (store has_lock |__fml:src| false))
+       (select has_lock |__fml:src|))))
+(or recv send)
+(or (not recv) (not send))
+(= start_node new_start_node)) :trans true))
+(define-fun property () Bool (! (forall ((|X:node| node) (|Y:node| node))
+  (=> (not (= |X:node| |Y:node|))
+      (not (and (select has_lock |X:node|) (select has_lock |Y:node|))))) :invar-property 0))
