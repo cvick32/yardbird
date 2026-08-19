@@ -254,6 +254,17 @@ pub trait Rewriter {
         let value = self.visitor().visit_let(var_bindings, term)?;
         self.process_term(value)
     }
+    fn visit_lambda(
+        &mut self,
+        vars: Vec<(
+            <Self::V as Smt2Visitor>::Symbol,
+            <Self::V as Smt2Visitor>::Sort,
+        )>,
+        term: <Self::V as Smt2Visitor>::Term,
+    ) -> Result<<Self::V as Smt2Visitor>::Term, Self::Error> {
+        let value = self.visitor().visit_lambda(vars, term)?;
+        self.process_term(value)
+    }
     fn visit_forall(
         &mut self,
         vars: Vec<(
@@ -685,6 +696,14 @@ where
         term: Self::T,
     ) -> Result<Self::T, Self::E> {
         self.visit_let(var_bindings, term)
+    }
+
+    fn visit_lambda(
+        &mut self,
+        vars: Vec<(V::Symbol, V::Sort)>,
+        term: Self::T,
+    ) -> Result<Self::T, Self::E> {
+        self.visit_lambda(vars, term)
     }
 
     fn visit_forall(

@@ -11,6 +11,7 @@ use crate::{
 
 pub enum ProofAction {
     Continue,
+    ValidateConcreteCounterexample,
     NextDepth,
     FoundCounterexample,
     FoundProof,
@@ -29,17 +30,14 @@ pub trait ProofStrategy<'ctx, S> {
         model
     }
 
-    fn n_refines(&mut self) -> u32 {
-        250
+    /// Whether exact native read-after-write terms should be simplified before
+    /// array operations are abstracted into uninterpreted functions.
+    fn preprocess_exact_read_after_write(&self) -> bool {
+        false
     }
 
-    /// Whether the VMT driver should fall back to the concrete theory when a
-    /// refinement step produces no new facts.
-    ///
-    /// This is opt-in because not every abstract theory has a corresponding
-    /// concrete solver configuration in the driver.
-    fn check_concrete_counterexample_on_no_progress(&self) -> bool {
-        false
+    fn n_refines(&mut self) -> u32 {
+        250
     }
 
     fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> driver::Result<S>;

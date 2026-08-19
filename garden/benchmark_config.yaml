@@ -66,6 +66,24 @@ parameter_matrices:
     cost_functions: ["bmc-cost"]
     timeout_seconds: 120
 
+  deep-abstract-cone-then-full:
+    depths: [50]
+    strategies: ["abstract"]
+    cost_functions: ["bmc-cost"]
+    egraph_builders: ["cone-then-full"]
+    timeout_seconds: 120
+
+  # Single integrated formula-transformation prototype. Evaluate it on the
+  # checked-in/dynamic research cohort via --formula-research-cohort.
+  formula-transformations:
+    depths: [50]
+    solvers: ["z3"]
+    strategies: ["abstract"]
+    cost_functions: ["bmc-cost"]
+    egraph_builders: ["cone-then-full"]
+    preprocess_exact_read_after_write: true
+    timeout_seconds: 120
+
   deep-abstract-ast:
     depths: [50]
     strategies: ["abstract"]

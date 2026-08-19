@@ -9,7 +9,7 @@ BenchmarkResult {
         "(= (Read_Int_Int (Write_Int_Int b+0 Z min+5) Z) min+5)",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 max+0) i+0) max+0)",
         "(= (Read_Int_Int (Write_Int_Int b+0 i+0 min+0) i+0) min+0)",
-        "(=> (not (= Z 0)) (= (Read_Int_Int (Write_Int_Int b+0 0 max+6) Z) (Read_Int_Int b+0 Z)))",
+        "(=> (not (= 1 0)) (= (Read_Int_Int (Write_Int_Int b+0 0 max+4) 1) (Read_Int_Int b+0 1)))",
         "(=> (not (= Z N)) (= (Read_Int_Int (Write_Int_Int b+0 N min+5) Z) (Read_Int_Int b+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int b+0 i+0 max+0) Z) (Read_Int_Int b+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int b+0 i+0 min+0) Z) (Read_Int_Int b+0 Z)))",

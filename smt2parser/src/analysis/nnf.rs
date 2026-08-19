@@ -37,6 +37,10 @@ pub fn to_nnf_with_polarity(term: Term, polarity: Polarity) -> Result<Term, NnfE
             arguments,
         } => rewrite_application(qual_identifier, arguments, polarity),
         Term::Let { .. } => Err(NnfError::UnexpectedLet),
+        Term::Lambda { vars, term } => Ok(Term::Lambda {
+            vars,
+            term: Box::new(to_nnf_with_polarity(*term, Polarity::Positive)?),
+        }),
         Term::Forall { vars, term } => {
             let inner = to_nnf_with_polarity(*term, polarity)?;
             let quantifier = match polarity {

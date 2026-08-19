@@ -324,6 +324,15 @@ impl MetadataAliasExpander {
                     term: Box::new(term),
                 })
             }
+            Term::Lambda { vars, term } => {
+                let inserted = bind_symbols(bindings, vars.iter().map(|(symbol, _)| symbol));
+                let term = self.expand_with_bindings(*term, bindings)?;
+                unbind_symbols(bindings, inserted);
+                Ok(Term::Lambda {
+                    vars,
+                    term: Box::new(term),
+                })
+            }
             Term::Forall { vars, term } => {
                 let inserted = bind_symbols(bindings, vars.iter().map(|(symbol, _)| symbol));
                 let term = self.expand_with_bindings(*term, bindings)?;
@@ -471,7 +480,7 @@ fn collect_free_symbols(
             collect_free_symbols(term, bindings, symbols);
             unbind_symbols(bindings, inserted);
         }
-        Term::Forall { vars, term } | Term::Exists { vars, term } => {
+        Term::Lambda { vars, term } | Term::Forall { vars, term } | Term::Exists { vars, term } => {
             let inserted = bind_symbols(bindings, vars.iter().map(|(symbol, _)| symbol));
             collect_free_symbols(term, bindings, symbols);
             unbind_symbols(bindings, inserted);

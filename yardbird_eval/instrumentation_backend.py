@@ -319,6 +319,7 @@ def compare_garden_suite(
             "solver": result.get("solver"),
             "strategy": result.get("strategy"),
             "cost_function": result.get("cost_function"),
+            "egraph_builder": result.get("egraph_builder"),
             "depth": result.get("depth"),
             "yardbird_result_type": result_type,
             "yardbird_run_time_ms": result.get("run_time"),

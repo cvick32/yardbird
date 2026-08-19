@@ -13,9 +13,13 @@ BenchmarkResult {
         "(=> (not (= CC (- (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (- (* 2 i+0) 1) 0) CC) (Read_Int_Int a1+0 CC)))",
         "(=> (not (= CC (- (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (- (* 2 i+0) 1) val1+0) CC) (Read_Int_Int a1+0 CC)))",
         "(=> (not (= CC (- (* 2 i+0) 2))) (= (Read_Int_Int (Write_Int_Int a+0 (- (* 2 i+0) 2) 0) CC) (Read_Int_Int a+0 CC)))",
+        "(=> (not (= CC (- (* 2 i+0) 2))) (= (Read_Int_Int (Write_Int_Int a+0 (- (* 2 i+0) 2) val2+0) CC) (Read_Int_Int a+0 CC)))",
         "(=> (not (= Z (- (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (- (* 2 i+0) 1) 0) Z) (Read_Int_Int a1+0 Z)))",
         "(=> (not (= Z (- (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (- (* 2 i+0) 1) val1+0) Z) (Read_Int_Int a1+0 Z)))",
         "(=> (not (= Z (- (* 2 i+0) 2))) (= (Read_Int_Int (Write_Int_Int a+0 (- (* 2 i+0) 2) 0) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z (- (* 2 i+0) 2))) (= (Read_Int_Int (Write_Int_Int a+0 (- (* 2 i+0) 2) val2+0) Z) (Read_Int_Int a+0 Z)))",
+        "(=> (not (= minval+1 (- (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (- (* 2 i+0) 1) val1+0) minval+1) (Read_Int_Int a1+0 minval+1)))",
+        "(=> (not (= minval+1 (- (* 2 i+0) 2))) (= (Read_Int_Int (Write_Int_Int a+0 (- (* 2 i+0) 2) 0) minval+1) (Read_Int_Int a+0 minval+1)))",
+        "(=> (not (= minval+1 (- (* 2 i+0) 2))) (= (Read_Int_Int (Write_Int_Int a+0 (- (* 2 i+0) 2) val2+0) minval+1) (Read_Int_Int a+0 minval+1)))",
     ],
 }

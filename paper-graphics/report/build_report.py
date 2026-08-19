@@ -98,17 +98,31 @@ def benchmark_groupings(json_files: list[Path]) -> tuple[dict, set[str], list]:
     return grouped, strategy_keys, parser.all_results
 
 
+def is_figure_tex_path(path: Path) -> bool:
+    return any(path.stem.startswith(prefix) for prefix in FIGURE_PREFIXES)
+
+
+def has_renderable_latex(path: Path) -> bool:
+    return any(
+        line.strip() and not line.lstrip().startswith("%")
+        for line in path.read_text().splitlines()
+    )
+
+
 def figure_tex_paths(tex_dir: Path) -> list[Path]:
-    paths = []
-    for path in sorted(tex_dir.glob("*.tex")):
-        if any(path.stem.startswith(prefix) for prefix in FIGURE_PREFIXES):
-            paths.append(path)
-    return paths
+    return [
+        path
+        for path in sorted(tex_dir.glob("*.tex"))
+        if is_figure_tex_path(path) and has_renderable_latex(path)
+    ]
 
 
 def table_tex_paths(tex_dir: Path) -> list[Path]:
-    figure_paths = set(figure_tex_paths(tex_dir))
-    return [path for path in sorted(tex_dir.glob("*.tex")) if path not in figure_paths]
+    return [
+        path
+        for path in sorted(tex_dir.glob("*.tex"))
+        if not is_figure_tex_path(path)
+    ]
 
 
 def clear_generated_files(directory: Path, patterns: tuple[str, ...]) -> None:

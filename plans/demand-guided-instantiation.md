@@ -2,6 +2,22 @@
 
 Status: evidence-informed proposal
 
+## Implementation boundary (August 2026)
+
+- Static property-cone construction and dynamic active-path demand now share
+  `array_dataflow.rs`; do not introduce a second VMT/helper traversal.
+- `CandidateScope` owns candidate eligibility and search extent. Slot scoring
+  remains the cost function's job, and complete-formula comparison is provided
+  independently by `ArrayInstantiationRanker`.
+- Frame offsets and graph-distance fields are intentionally absent until a
+  ranker consumes them. Add static annotations to `ExpressionSite` and dynamic
+  annotations at `FramedDemandSite`/`insert_framed_site` when an experiment has
+  a concrete comparator for them.
+- Saturation remains in `array_axioms.rs` for this change. If its orchestration
+  is extracted later, the seam is `saturate_with_array_types_and_ranker`; move
+  runner/scheduler plumbing as a unit without moving candidate eligibility,
+  term cost, or complete-instantiation ranking into that module.
+
 ## Goal
 
 Reduce unnecessary array instantiations by preferring formulas that lie on the

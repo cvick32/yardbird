@@ -1,0 +1,98 @@
+(declare-sort key 0)
+(declare-sort node 0)
+(declare-sort value 0)
+(declare-fun new_owner () (Array node (Array key Bool)))
+(declare-fun new_table () (Array node (Array key (Array value Bool))))
+(declare-fun |__fml:k| () key)
+(declare-fun table () (Array node (Array key (Array value Bool))))
+(declare-fun |__fml:n| () node)
+(declare-fun |__fml:n_old| () node)
+(declare-fun |__fml:v| () value)
+(declare-fun owner () (Array node (Array key Bool)))
+(declare-fun |__fml:n_new| () node)
+(declare-fun transfer_msg () (Array node (Array key (Array value Bool))))
+(declare-fun new_transfer_msg () (Array node (Array key (Array value Bool))))
+(define-fun .owner () (Array node (Array key Bool)) (! owner :next new_owner))
+(define-fun .table () (Array node (Array key (Array value Bool))) (! table :next new_table))
+(declare-fun new___fmlk () key)
+(define-fun .__fmlk () key (! |__fml:k| :next new___fmlk))
+(declare-fun new___fmln () node)
+(define-fun .__fmln () node (! |__fml:n| :next new___fmln))
+(declare-fun new___fmln_old () node)
+(define-fun .__fmln_old () node (! |__fml:n_old| :next new___fmln_old))
+(declare-fun new___fmlv () value)
+(define-fun .__fmlv () value (! |__fml:v| :next new___fmlv))
+(declare-fun new___fmln_new () node)
+(define-fun .__fmln_new () node (! |__fml:n_new| :next new___fmln_new))
+(define-fun .transfer_msg () (Array node (Array key (Array value Bool))) (! transfer_msg :next new_transfer_msg))
+(declare-fun put () Bool)
+(define-fun .put () Bool (! put :action 0))
+(declare-fun recv_transfer_msg () Bool)
+(define-fun .recv_transfer_msg () Bool (! recv_transfer_msg :action 0))
+(declare-fun reshard () Bool)
+(define-fun .reshard () Bool (! reshard :action 0))
+(define-fun init () Bool (! (let ((a!1 (lambda ((|N:node| node))
+             (lambda ((|K:key| key)) (lambda ((|V:value| value)) false)))))
+  (and (= table a!1)
+       (= transfer_msg a!1)
+       (forall ((|K:key| key) (|N2:node| node) (|N1:node| node))
+         (let ((a!1 (not (and (select (select owner |N1:node|) |K:key|)
+                              (select (select owner |N2:node|) |K:key|)))))
+           (or a!1 (= |N1:node| |N2:node|)))))) :init true))
+(define-fun trans () Bool (! (and (=> put (let ((a!1 (store table
+                  |__fml:n|
+                  (store (select table |__fml:n|)
+                         |__fml:k|
+                         (lambda ((|V:value| value)) (= |V:value| |__fml:v|))))))
+  (and (= new_table a!1)
+       (= transfer_msg new_transfer_msg)
+       (= owner new_owner)
+       (select (select owner |__fml:n|) |__fml:k|))))
+(=> recv_transfer_msg (let ((a!1 (store (select transfer_msg |__fml:n|)
+                  |__fml:k|
+                  (store (select (select transfer_msg |__fml:n|) |__fml:k|)
+                         |__fml:v|
+                         false)))
+      (a!2 (store (select table |__fml:n|)
+                  |__fml:k|
+                  (store (select (select table |__fml:n|) |__fml:k|)
+                         |__fml:v|
+                         true)))
+      (a!3 (= new_owner
+              (store owner
+                     |__fml:n|
+                     (store (select owner |__fml:n|) |__fml:k| true)))))
+  (and (= new_transfer_msg (store transfer_msg |__fml:n| a!1))
+       (= new_table (store table |__fml:n| a!2))
+       a!3
+       (select (select (select transfer_msg |__fml:n|) |__fml:k|) |__fml:v|))))
+(=> reshard (let ((a!1 (store (select table |__fml:n_old|)
+                  |__fml:k|
+                  (store (select (select table |__fml:n_old|) |__fml:k|)
+                         |__fml:v|
+                         false)))
+      (a!2 (= new_owner
+              (store owner
+                     |__fml:n_old|
+                     (store (select owner |__fml:n_old|) |__fml:k| false))))
+      (a!3 (store (select transfer_msg |__fml:n_new|)
+                  |__fml:k|
+                  (store (select (select transfer_msg |__fml:n_new|) |__fml:k|)
+                         |__fml:v|
+                         true))))
+  (and (= new_table (store table |__fml:n_old| a!1))
+       a!2
+       (= new_transfer_msg (store transfer_msg |__fml:n_new| a!3))
+       (select (select (select table |__fml:n_old|) |__fml:k|) |__fml:v|))))
+(or put recv_transfer_msg reshard)
+(or (not put) (not recv_transfer_msg))
+(or (not put) (not reshard))
+(or (not recv_transfer_msg) (not reshard))) :trans true))
+(define-fun property () Bool (! (forall ((|K:key| key)
+         (|N1:node| node)
+         (|N2:node| node)
+         (|V1:value| value)
+         (|V2:value| value))
+  (let ((a!1 (and (select (select (select table |N1:node|) |K:key|) |V1:value|)
+                  (select (select (select table |N2:node|) |K:key|) |V2:value|))))
+    (=> a!1 (and (= |N1:node| |N2:node|) (= |V1:value| |V2:value|))))) :invar-property 0))

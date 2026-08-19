@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use yardbird::{CostFunction, SolverBackend, Strategy};
+use yardbird::{CostFunction, EGraphBuilderStrategy, SolverBackend, Strategy};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
@@ -53,6 +53,10 @@ pub struct ParameterMatrix {
     pub solvers: Vec<SolverBackend>,
     pub strategies: Vec<Strategy>,
     pub cost_functions: Vec<CostFunction>,
+    #[serde(default = "default_egraph_builders")]
+    pub egraph_builders: Vec<EGraphBuilderStrategy>,
+    #[serde(default)]
+    pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
@@ -65,6 +69,14 @@ fn default_solvers() -> Vec<SolverBackend> {
     vec![SolverBackend::Z3]
 }
 
+fn default_egraph_builder() -> EGraphBuilderStrategy {
+    EGraphBuilderStrategy::Full
+}
+
+fn default_egraph_builders() -> Vec<EGraphBuilderStrategy> {
+    vec![default_egraph_builder()]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
     pub name: String,
@@ -73,6 +85,10 @@ pub struct IndividualConfig {
     pub solver: SolverBackend,
     pub strategy: Strategy,
     pub cost_function: CostFunction,
+    #[serde(default = "default_egraph_builder")]
+    pub egraph_builder: EGraphBuilderStrategy,
+    #[serde(default)]
+    pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
@@ -134,7 +150,33 @@ pub struct BenchmarkRun {
     pub solver: SolverBackend,
     pub strategy: Strategy,
     pub cost_function: CostFunction,
+    pub egraph_builder: EGraphBuilderStrategy,
+    pub preprocess_exact_read_after_write: bool,
     pub timeout_seconds: u64,
+}
+
+fn matrix_run_name(
+    matrix_name: &str,
+    depth: u16,
+    solver: SolverBackend,
+    strategy: Strategy,
+    cost_function: CostFunction,
+    egraph_builder: EGraphBuilderStrategy,
+    preprocess_exact_read_after_write: bool,
+) -> String {
+    let base = format!(
+        "{}_d{}_solver{:?}_s{:?}_c{:?}",
+        matrix_name, depth, solver, strategy, cost_function
+    );
+    let name = match egraph_builder {
+        EGraphBuilderStrategy::Full => base,
+        EGraphBuilderStrategy::ConeThenFull => format!("{base}_e{egraph_builder:?}"),
+    };
+    if preprocess_exact_read_after_write {
+        format!("{name}_preprocessExactReadAfterWrite")
+    } else {
+        name
+    }
 }
 
 impl BenchmarkConfig {
@@ -150,24 +192,63 @@ impl BenchmarkConfig {
         let mut runs = Vec::new();
 
         if let Some(matrix_name) = matrix_name {
-            // If a specific matrix is requested, only run that matrix
             let matrix = self
                 .parameter_matrices
                 .get(matrix_name)
                 .with_context(|| format!("Unknown parameter matrix: {matrix_name}"))?;
-            for &depth in &matrix.depths {
-                for &solver in &matrix.solvers {
-                    for &strategy in &matrix.strategies {
-                        for &cost_function in &matrix.cost_functions {
+            runs.extend(self.generate_matrix_runs(matrix_name, matrix));
+        } else {
+            for config in &self.individual_configs {
+                runs.push(BenchmarkRun {
+                    name: config.name.clone(),
+                    depth: config.depth,
+                    solver: config.solver,
+                    strategy: config.strategy,
+                    cost_function: config.cost_function,
+                    egraph_builder: config.egraph_builder,
+                    preprocess_exact_read_after_write: config.preprocess_exact_read_after_write,
+                    timeout_seconds: config
+                        .timeout_seconds
+                        .unwrap_or(self.global.timeout_seconds),
+                });
+            }
+
+            for (matrix_name, matrix) in &self.parameter_matrices {
+                runs.extend(self.generate_matrix_runs(matrix_name, matrix));
+            }
+        }
+
+        Ok(runs)
+    }
+
+    fn generate_matrix_runs(
+        &self,
+        matrix_name: &str,
+        matrix: &ParameterMatrix,
+    ) -> Vec<BenchmarkRun> {
+        let mut runs = Vec::new();
+        for &depth in &matrix.depths {
+            for &solver in &matrix.solvers {
+                for &strategy in &matrix.strategies {
+                    for &cost_function in &matrix.cost_functions {
+                        for &egraph_builder in &matrix.egraph_builders {
                             runs.push(BenchmarkRun {
-                                name: format!(
-                                    "{}_d{}_solver{:?}_s{:?}_c{:?}",
-                                    matrix_name, depth, solver, strategy, cost_function
+                                name: matrix_run_name(
+                                    matrix_name,
+                                    depth,
+                                    solver,
+                                    strategy,
+                                    cost_function,
+                                    egraph_builder,
+                                    matrix.preprocess_exact_read_after_write,
                                 ),
                                 depth,
                                 solver,
                                 strategy,
                                 cost_function,
+                                egraph_builder,
+                                preprocess_exact_read_after_write: matrix
+                                    .preprocess_exact_read_after_write,
                                 timeout_seconds: matrix
                                     .timeout_seconds
                                     .unwrap_or(self.global.timeout_seconds),
@@ -176,56 +257,17 @@ impl BenchmarkConfig {
                     }
                 }
             }
-        } else {
-            // If no specific matrix requested, run individual configs + all matrices
-
-            // Add individual configs
-            for config in &self.individual_configs {
-                runs.push(BenchmarkRun {
-                    name: config.name.clone(),
-                    depth: config.depth,
-                    solver: config.solver,
-                    strategy: config.strategy,
-                    cost_function: config.cost_function,
-                    timeout_seconds: config
-                        .timeout_seconds
-                        .unwrap_or(self.global.timeout_seconds),
-                });
-            }
-
-            // Generate all matrices if none specified
-            for (matrix_name, matrix) in &self.parameter_matrices {
-                for &depth in &matrix.depths {
-                    for &solver in &matrix.solvers {
-                        for &strategy in &matrix.strategies {
-                            for &cost_function in &matrix.cost_functions {
-                                runs.push(BenchmarkRun {
-                                    name: format!(
-                                        "{}_d{}_solver{:?}_s{:?}_c{:?}",
-                                        matrix_name, depth, solver, strategy, cost_function
-                                    ),
-                                    depth,
-                                    solver,
-                                    strategy,
-                                    cost_function,
-                                    timeout_seconds: matrix
-                                        .timeout_seconds
-                                        .unwrap_or(self.global.timeout_seconds),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
         }
-
-        Ok(runs)
+        runs
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::BenchmarkConfig;
+    use std::path::PathBuf;
+
+    use super::{matrix_run_name, BenchmarkConfig};
+    use yardbird::{CostFunction, EGraphBuilderStrategy, SolverBackend, Strategy};
 
     #[test]
     fn older_global_configs_receive_sampling_defaults() {
@@ -246,5 +288,77 @@ global:
         assert_eq!(config.global.benchmark_limit, None);
         assert_eq!(config.global.sample_seed, 0);
         assert!(!config.global.require_array_reads_and_writes);
+    }
+
+    #[test]
+    fn full_builder_preserves_existing_run_names() {
+        let full = matrix_run_name(
+            "deep",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            EGraphBuilderStrategy::Full,
+            false,
+        );
+        let cone = matrix_run_name(
+            "deep",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            EGraphBuilderStrategy::ConeThenFull,
+            false,
+        );
+
+        assert_eq!(full, "deep_d50_solverZ3_sAbstract_cBmcCost");
+        assert_eq!(cone, "deep_d50_solverZ3_sAbstract_cBmcCost_eConeThenFull");
+    }
+
+    #[test]
+    fn preprocessing_is_explicit_in_run_names() {
+        let name = matrix_run_name(
+            "formula",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            EGraphBuilderStrategy::ConeThenFull,
+            true,
+        );
+
+        assert!(name.ends_with("_preprocessExactReadAfterWrite"));
+    }
+
+    #[test]
+    fn formula_transformation_matrix_enables_preprocessing() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benchmark_config.yaml");
+        let config = BenchmarkConfig::from_file(&path).unwrap();
+        let runs = config
+            .generate_benchmark_runs(Some("formula-transformations"))
+            .unwrap();
+
+        assert!(!runs.is_empty());
+        assert!(runs.iter().all(|run| run.preprocess_exact_read_after_write));
+    }
+
+    #[test]
+    fn selected_matrix_uses_the_same_generation_path_as_all_matrices() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benchmark_config.yaml");
+        let config = BenchmarkConfig::from_file(&path).unwrap();
+        let selected = config
+            .generate_benchmark_runs(Some("formula-transformations"))
+            .unwrap();
+        let all = config.generate_benchmark_runs(None).unwrap();
+        let selected_names = selected
+            .iter()
+            .map(|run| run.name.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        let matching_all = all
+            .iter()
+            .filter(|run| selected_names.contains(run.name.as_str()))
+            .count();
+
+        assert_eq!(matching_all, selected.len());
     }
 }

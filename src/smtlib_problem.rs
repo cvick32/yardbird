@@ -1,9 +1,14 @@
 use smt2parser::concrete::{Command, SyntaxBuilder, Term};
 use smt2parser::let_extract::LetExtract;
-use smt2parser::vmt::array_abstractor::ArrayAbstractor;
+use smt2parser::vmt::{
+    array_abstractor::ArrayAbstractor, array_term_simplifier::ArrayTermSimplifier,
+};
 use smt2parser::CommandStream;
 use std::path::Path;
 
+use crate::driver::{
+    accumulate_solver_statistics, record_solver_phase_statistics, refinement_made_progress,
+};
 use crate::profiling::{Profiler, ProfilingRunRecord, SolverCheckContext, SolverProfileMetadata};
 use crate::smtlib_refinement_session::SmtlibRefinementSession;
 use crate::solver::{
@@ -187,11 +192,30 @@ impl SMTLIBProblem {
     /// Returns (abstracted_problem, discovered_array_types) where discovered_array_types is a vector
     /// of (index_sort, value_sort) pairs for all array types found in the problem.
     pub fn abstract_array_theory(&self) -> (SMTLIBProblem, Vec<(String, String)>) {
+        self.abstract_array_theory_with_preprocessing(false)
+    }
+
+    pub fn abstract_array_theory_with_preprocessing(
+        &self,
+        preprocess_exact_read_after_write: bool,
+    ) -> (SMTLIBProblem, Vec<(String, String)>) {
         let mut abstractor = ArrayAbstractor::default();
+        let mut simplifier = ArrayTermSimplifier::from_commands(&self.commands);
         let mut abstracted_commands = vec![];
 
         for command in &self.commands {
-            abstracted_commands.push(command.clone().accept(&mut abstractor).unwrap());
+            let command = if preprocess_exact_read_after_write {
+                simplifier.simplify_command(command.clone())
+            } else {
+                command.clone()
+            };
+            abstracted_commands.push(command.accept(&mut abstractor).unwrap());
+        }
+        if preprocess_exact_read_after_write {
+            log::debug!(
+                "simplified {} exact native read-after-write terms before SMT-LIB abstraction",
+                simplifier.exact_read_after_write_rewrites()
+            );
         }
 
         // Add array type definitions at the beginning
@@ -511,7 +535,9 @@ impl SmtlibRefinementRunner {
         let theory = strategy.get_theory_support();
         let (working_problem, array_types) = if theory.requires_abstraction() {
             info!("Abstracting array theory");
-            let (abs_problem, types) = problem.abstract_array_theory();
+            let (abs_problem, types) = problem.abstract_array_theory_with_preprocessing(
+                strategy.preprocess_exact_read_after_write(),
+            );
             info!("Discovered array types: {:?}", types);
             (abs_problem, types)
         } else if theory.requires_array_information() {
@@ -552,6 +578,8 @@ impl SmtlibRefinementRunner {
         let mut found_proof = false;
         let mut counterexample = false;
         let mut total_refinement_steps = 0;
+        let mut concrete_validation_checks = 0_u64;
+        let mut concrete_validation_statistics = SolverStatistics::new();
         let mut unsat_events = Vec::new();
         let mut last_unsat_instantiation_count = 0;
         let mut last_unsat_stats: Option<SolverStatistics> = None;
@@ -614,7 +642,62 @@ impl SmtlibRefinementRunner {
             match action {
                 ProofAction::Continue => {
                     info!("  Action: Continue refinement");
+                    let solver_assertions_before =
+                        smt_problem.get_number_instantiation_assertions_added();
                     strategy.finish(state, &mut smt_problem)?;
+                    let solver_assertions_after =
+                        smt_problem.get_number_instantiation_assertions_added();
+                    if !refinement_made_progress(
+                        solver_assertions_before,
+                        0,
+                        solver_assertions_after,
+                        0,
+                    ) {
+                        anyhow::bail!(
+                            "refinement requested another SMTLIB solve without installing a new instantiation"
+                        );
+                    }
+                }
+                ProofAction::ValidateConcreteCounterexample => {
+                    info!("  Action: Abstract e-graph exhausted; validating concretely");
+                    let concrete_strategy: Box<
+                        dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
+                    > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+                    let (_, concrete_array_types) = problem.abstract_array_theory();
+                    let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(
+                        problem,
+                        &concrete_strategy,
+                        solver_backend,
+                        false,
+                        concrete_array_types,
+                        None,
+                    )?;
+                    let concrete_result = concrete_problem.check_current_query();
+                    concrete_validation_checks += 1;
+                    accumulate_solver_statistics(
+                        &mut concrete_validation_statistics,
+                        &concrete_problem.get_solver_statistics(),
+                    );
+                    match concrete_result {
+                        SolverCheckResult::Sat => {
+                            info!("  Concrete validation: SAT");
+                            counterexample = true;
+                            break;
+                        }
+                        SolverCheckResult::Unsat => {
+                            info!("  Concrete validation: UNSAT");
+                            found_proof = true;
+                            break;
+                        }
+                        SolverCheckResult::Unknown => {
+                            return Err(anyhow::anyhow!(
+                                "concrete validation returned unknown: {}",
+                                concrete_problem
+                                    .get_reason_unknown()
+                                    .unwrap_or_else(|| "no reason given".to_string())
+                            ));
+                        }
+                    }
                 }
                 ProofAction::FoundProof => {
                     info!("  Action: Found proof!");
@@ -657,6 +740,9 @@ impl SmtlibRefinementRunner {
                     .map(|record| crate::driver::CoreInstantiation {
                         label: record.label.clone(),
                         term: record.term.clone(),
+                        abstract_instantiation_id: record.abstract_instantiation_id.clone(),
+                        frame: record.frame,
+                        substitution: record.substitution.clone(),
                     })
                     .collect::<Vec<_>>();
                 crate::driver::UnsatCoreInfo {
@@ -704,6 +790,11 @@ impl SmtlibRefinementRunner {
             auxiliary_records: vec![],
             profiling: ProfilingRunRecord::default(),
         };
+        record_solver_phase_statistics(
+            &mut result.solver_statistics,
+            concrete_validation_checks,
+            &concrete_validation_statistics,
+        );
         if let Some(mut profiler) = profiler {
             profiler.extend_cost_records(profiling_records);
             result.profiling = profiler.finish();
@@ -712,5 +803,40 @@ impl SmtlibRefinementRunner {
         info!("Final SMTLIB result is ready");
 
         Ok((result, abstracted_problem))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn exact_read_after_write_preprocessing_is_opt_in() {
+        let input = br#"
+            (set-logic QF_AUFLIA)
+            (declare-const a (Array Int Int))
+            (declare-const i Int)
+            (declare-const v Int)
+            (assert (= (select (store a i v) i) v))
+            (check-sat)
+        "#;
+        let commands = CommandStream::new(Cursor::new(input), SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let problem = SMTLIBProblem::from_commands(commands).unwrap();
+
+        let (default_abstracted, _) = problem.abstract_array_theory();
+        assert!(default_abstracted
+            .as_smt2_string()
+            .contains("(Read_Int_Int (Write_Int_Int"));
+
+        let (abstracted, types) = problem.abstract_array_theory_with_preprocessing(true);
+        let output = abstracted.as_smt2_string();
+
+        assert_eq!(types, vec![("Int".to_string(), "Int".to_string())]);
+        assert!(output.contains("(assert (= v v))"));
+        assert!(!output.contains("(Read_Int_Int (Write_Int_Int"));
     }
 }

@@ -211,6 +211,24 @@ python3 main_eval.py \
   --benchmark-type deep-concrete \
   --name paper-smoke
 
+# Iterate on a deterministic sample of benchmarks where either abstract
+# BMC-cost or concrete exceeded 30 seconds (or timed out) in a prior run.
+python3 main_eval.py \
+  --env local \
+  --benchmark-type deep-abstract-cone-then-full \
+  --difficult-benchmarks <baseline-run-id> \
+  --limit 8 \
+  --sample-seed 0 \
+  --name difficult-cone-smoke
+
+# Evaluate the integrated formula transformations against the durable hard
+# cases plus concrete-success/abstract-timeout cases derived from a baseline.
+python3 main_eval.py \
+  --env local \
+  --benchmark-type formula-transformations \
+  --formula-research-cohort <baseline-run-id> \
+  --name formula-transformations
+
 # AWS launch only: records a local run manifest and exits immediately
 python3 main_eval.py \
   --env aws \
@@ -243,6 +261,26 @@ python3 main_eval.py compare-downloaded-instrumentation \
 # Regenerate the combined workbook with the local replay measurements.
 python3 main_eval.py generate-report --run-id <run-id>
 ```
+
+Passing `--difficult-benchmarks` without a run id selects the newest downloaded
+`main_eval` run containing both abstract BMC-cost and concrete results. The
+threshold defaults to 30 seconds and can be changed with
+`--difficult-threshold-seconds`. The resolved source, complete cohort, and
+selection reason for each benchmark are recorded in the new run manifest.
+
+`--formula-research-cohort` combines the checked-in hard-tail wins, known
+abstract Z3 regressions, and search-overhead cases with every benchmark where
+concrete succeeds while abstract BMC-cost times out in the chosen baseline.
+For this cohort, compare Z3 resource signals (`rlimit count`, decisions, added
+equalities, clauses, and solver time) first. Raw abstract-instance count is a
+diagnostic because frame unrolling and assertion deduplication deliberately
+change how one abstract formula expands into solver assertions.
+
+Phase-prefixed `abstract.*`, `concrete_validation.*`, and `total.*` statistics
+are limited to the portable counters exposed by both Z3 and CVC5. Z3-only
+signals such as `rlimit count`, `added eqs`, `mk clause`, and `mk bool var`
+remain available under their backend-native names and are not synthesized for
+CVC5 runs.
 
 `compare_with_instrumentation` uses the benchmark selection and parameter matrix
 named by `--run-type`. It builds Yardbird and Garden, captures each Z3-backed
@@ -344,7 +382,12 @@ in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`
   - Supports parameter matrices
   - JSON output with metadata
 
-- **Examples**: `examples/array/` - VMT benchmark files
+- **Examples**: `examples/array/` - paper VMT benchmark files
+
+- **Large local test corpus**: `examples/svcomp-vmt-bench/` - locally generated
+  VMT inputs used for Yardbird stress testing and AWS benchmark runs. Exact
+  upstream revisions and conversion provenance are still pending; see the
+  corpus README before publishing or redistributing it independently.
 
 **Is the artifact consistent and relevant to the associated paper, contributing to its main results?**
 
@@ -387,6 +430,9 @@ in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`
 **YES.** Multiple execution modes:
 
 1. **Direct CLI**: `cargo run -- --filename <file> [options]`
+
+   Exact `select(store(A, i, v), i)` preprocessing is disabled by default. Enable
+   it explicitly with `--preprocess-exact-read-after-write`.
 2. **Benchmark Suite**: `garden --config <yaml> --matrix <name>`
 
 All benchmarks are accessible VMT files in `examples/`. Results are output as:

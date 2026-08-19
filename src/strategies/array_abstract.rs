@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
+use std::{cell::RefCell, collections::HashSet, hash::Hash, mem, rc::Rc, time::Instant};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
@@ -9,16 +9,23 @@ use crate::{
         term_contains_auxiliary_symbol, ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState,
         AuxiliarySpec, SynthesisTrigger,
     },
-    cost_functions::array::ArrayCostFactory,
+    cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
+    instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types, translate_term, ArrayExpr, ArrayLanguage,
-            ArraySaturationInstrumentation,
+            expr_to_term, saturate_with_array_types_and_ranker, ArrayAxiomInstantiation, ArrayExpr,
+            ArrayLanguage, ArraySaturationInstrumentation, ArraySaturationOptions,
+            ArraySaturationResult,
         },
-        array_conflict_scheduler::{preprocess_array_expr, ArrayArtifactCapture},
+        array_conflict_scheduler::ArrayArtifactCapture,
+        array_dataflow::{build_property_cone, PropertyCone},
+        array_egraph_builder::{
+            ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
+        },
+        array_instantiation_ranker::{ArrayInstantiationRanker, CompleteCostInstantiationRanker},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -57,6 +64,11 @@ where
     aux_covered_term_hashes: HashSet<String>,
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
+    egraph_builder: Box<dyn ArrayEGraphBuilder>,
+    cone_attempted_depths: HashSet<u16>,
+    instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
+    property_cone: PropertyCone,
+    preprocess_exact_read_after_write: bool,
 }
 
 impl<F> Abstract<F>
@@ -92,6 +104,11 @@ where
             aux_covered_term_hashes: HashSet::new(),
             profile,
             profiling_records: vec![],
+            egraph_builder: Box::<FullEGraphBuilder>::default(),
+            cone_attempted_depths: HashSet::new(),
+            instantiation_ranker: Box::<CompleteCostInstantiationRanker>::default(),
+            property_cone: PropertyCone::default(),
+            preprocess_exact_read_after_write: false,
         }
     }
 
@@ -99,6 +116,95 @@ where
         artifact_capture.conflicts |= !self.aux_config.is_off();
         self.artifact_capture = artifact_capture;
         self
+    }
+
+    pub fn with_egraph_builder(mut self, egraph_builder: Box<dyn ArrayEGraphBuilder>) -> Self {
+        self.egraph_builder = egraph_builder;
+        self
+    }
+
+    pub fn with_exact_read_after_write_preprocessing(mut self, enabled: bool) -> Self {
+        self.preprocess_exact_read_after_write = enabled;
+        self
+    }
+
+    pub fn with_instantiation_ranker(
+        mut self,
+        instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
+    ) -> Self {
+        self.instantiation_ranker = instantiation_ranker;
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
+
+    use super::*;
+
+    #[test]
+    fn shifted_copies_of_an_instantiation_are_duplicate_after_normalization() {
+        let installed = "(=> (not (= i@12 i@11)) (= (Read Int Int a@11 i@12) 0))"
+            .parse::<ArrayExpr>()
+            .unwrap();
+        let mut instantiations = vec!["(=> (not (= i@5 i@4)) (= (Read Int Int a@4 i@5) 0))"
+            .parse::<ArrayExpr>()
+            .unwrap()];
+        let mut known = HashSet::from([UnquantifiedInstantiator::rewrite_unquantified(
+            expr_to_term(installed),
+            vec![],
+        )
+        .unwrap()
+        .get_term()
+        .clone()]);
+
+        let duplicates = retain_novel_by(&mut instantiations, &mut known, |expr| {
+            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(expr.clone()), vec![])
+                .map(|instance| instance.get_term().clone())
+        });
+
+        assert_eq!(duplicates.len(), 1);
+        assert!(instantiations.is_empty());
+        assert_eq!(known.len(), 1);
+    }
+
+    #[test]
+    fn reversed_equalities_are_duplicate_before_whole_candidate_selection() {
+        let installed: ArrayExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
+        let reversed: ArrayExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
+        let mut candidates = vec![reversed];
+        let installed =
+            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(installed), vec![])
+                .unwrap();
+        let mut known = HashSet::from([canonical_instantiation_key(installed.get_term())]);
+
+        let duplicates = retain_novel_by(&mut candidates, &mut known, |expression| {
+            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(expression.clone()), vec![])
+                .map(|instance| canonical_instantiation_key(instance.get_term()))
+        });
+
+        assert_eq!(duplicates.len(), 1);
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn only_axioms_false_in_the_current_model_remain_eligible() {
+        let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
+        let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
+        let mut candidates = vec![satisfied.clone(), violated.clone()];
+
+        let rejected = retain_model_violations(&mut candidates, |term| {
+            Ok(if term.to_string().contains("Read_Int_Int A") {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            })
+        })
+        .unwrap();
+
+        assert_eq!(candidates, vec![violated]);
+        assert_eq!(rejected, vec![satisfied]);
     }
 }
 
@@ -109,75 +215,21 @@ where
     egraph.classes().map(|class| class.nodes.len()).sum()
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SaturationSummary {
+    regular_instantiations: usize,
+    const_instantiations: usize,
+    conflicts: usize,
+}
+
 /// State for the inner refinement looop
 pub struct ArrayRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
-    pub instantiations: Vec<ArrayExpr>,
-    pub const_instantiations: Vec<ArrayExpr>,
+    pub instantiations: Vec<ArrayAxiomInstantiation>,
+    pub const_instantiations: Vec<ArrayAxiomInstantiation>,
     pub array_types: Vec<(String, String)>,
-}
-
-impl ArrayRefinementState {
-    pub fn update_with_subterms(
-        &mut self,
-        smt: &dyn crate::problem_context::ProblemContext,
-        profiling: Option<&Rc<RefCell<ArrayProfilingCollector>>>,
-    ) -> anyhow::Result<()> {
-        let all_subterms_start = Instant::now();
-        let subterms = smt.get_all_subterms();
-        if let Some(profiling) = profiling {
-            let mut profiling = profiling.borrow_mut();
-            profiling.record_timing("update_get_all_subterms", all_subterms_start.elapsed());
-            profiling.add_counter("update_subterms", subterms.len() as u64);
-        }
-
-        for term in subterms {
-            let eval_start = Instant::now();
-            let interp_str = smt.eval_to_string(term)?;
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_eval_to_string", eval_start.elapsed());
-            }
-
-            let translate_start = Instant::now();
-            let translated = translate_term(term.clone()).unwrap();
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_translate_term", translate_start.elapsed());
-            }
-
-            let parse_start = Instant::now();
-            let preprocessed = preprocess_array_expr(&interp_str);
-            let parsed_interp = preprocessed.parse()?;
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_preprocess_parse_interp", parse_start.elapsed());
-            }
-
-            let egraph_start = Instant::now();
-            let term_id = self.egraph.add_expr(&translated);
-            let interp_id = self.egraph.add_expr(&parsed_interp);
-            self.egraph.union(term_id, interp_id);
-            if let Some(profiling) = profiling {
-                profiling
-                    .borrow_mut()
-                    .record_timing("update_egraph_add_union", egraph_start.elapsed());
-            }
-        }
-
-        let rebuild_start = Instant::now();
-        self.egraph.rebuild();
-        if let Some(profiling) = profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("update_egraph_rebuild", rebuild_start.elapsed());
-        }
-        Ok(())
-    }
+    pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
 
 impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
@@ -189,14 +241,20 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        let (abstracted_model, discovered_types) = model.abstract_array_theory();
+        let (abstracted_model, discovered_types) =
+            model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
+        self.property_cone = if self.egraph_builder.requires_property_cone() {
+            build_property_cone(&abstracted_model)
+        } else {
+            PropertyCone::default()
+        };
         self.discovered_array_types = discovered_types;
         abstracted_model
         //     .abstract_constants_over(self.bmc_depth)
     }
 
-    fn check_concrete_counterexample_on_no_progress(&self) -> bool {
-        true
+    fn preprocess_exact_read_after_write(&self) -> bool {
+        self.preprocess_exact_read_after_write
     }
 
     fn setup(
@@ -205,6 +263,13 @@ where
         depth: u16,
     ) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(());
+        let egraph_builder = if self.egraph_builder.requires_property_cone()
+            && !self.cone_attempted_depths.insert(depth)
+        {
+            Box::<FullEGraphBuilder>::default()
+        } else {
+            self.egraph_builder.clone()
+        };
         // Use discovered_array_types if available (VMT mode via configure_model),
         // otherwise get from ProblemContext (SMTLIB mode)
         let array_types = if self.discovered_array_types.is_empty() {
@@ -218,6 +283,7 @@ where
             instantiations: vec![],
             const_instantiations: vec![],
             array_types,
+            egraph_builder,
         })
     }
 
@@ -261,87 +327,191 @@ where
                 egraph_node_count(&state.egraph),
             );
         }
-        let update_start = Instant::now();
-        state.update_with_subterms(smt, profiling.as_ref())?;
-        if let Some(profiling) = &profiling {
-            let mut profiling = profiling.borrow_mut();
-            profiling.record_timing("update_with_subterms", update_start.elapsed());
-            profiling.set_egraph_after_update(
-                state.egraph.number_of_classes(),
-                egraph_node_count(&state.egraph),
-            );
-        }
-
-        let cost_factory_start = Instant::now();
-        let cost_fn = F::from_context(smt, state.depth as u32, &self.cost_config);
-        if let Some(profiling) = &profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("cost_factory", cost_factory_start.elapsed());
-        }
-
-        let saturation_start = Instant::now();
-        let saturation = saturate_with_array_types(
-            &mut state.egraph,
-            cost_fn,
-            refinement_step,
-            self.term_selection_counts.clone(),
-            state.depth,
-            &state.array_types,
-            ArraySaturationInstrumentation {
-                artifact_capture: self.artifact_capture,
-                profiling: profiling.clone(),
-            },
-        );
-        if let Some(profiling) = &profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("saturation_total", saturation_start.elapsed());
-        }
-        state
-            .instantiations
-            .extend_from_slice(&saturation.instantiations);
-        state
-            .const_instantiations
-            .extend_from_slice(&saturation.const_instantiations);
-        self.decision_data.extend(saturation.decisions);
-        self.abstract_instantiations
-            .extend(saturation.abstract_instantiations);
-        for (decision_key, term_hash) in saturation.selection_history_decisions {
-            self.term_selection_decisions
-                .insert(decision_key, term_hash);
-        }
-        for decision_keys in saturation.instantiation_decision_keys {
-            for decision_key in decision_keys {
-                if let Some(term_hash) = self.term_selection_decisions.get(&decision_key) {
-                    *self
-                        .term_selection_counts
-                        .entry(term_hash.clone())
-                        .or_default() += 1;
-                }
-            }
-        }
-        self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
-        if let Some(profiling) = profiling {
-            if let Ok(profiling) = Rc::try_unwrap(profiling) {
-                self.profiling_records.push(profiling.into_inner().finish());
-            } else {
-                warn!("Unable to unwrap array profiling collector; profiling record dropped");
-            }
-        }
-        if trace_conflicts_enabled() {
-            trace!(
-                "[yardbird::conflict-trace] sat depth={} refinement_step={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
+        loop {
+            let build_start = Instant::now();
+            let build_step = state.egraph_builder.expand(
+                &mut state.egraph,
+                smt,
+                &self.property_cone,
                 state.depth,
-                refinement_step,
-                saturation.instantiations.len(),
-                saturation.const_instantiations.len(),
-                saturation.conflicts.len(),
-                state.instantiations.len(),
-                state.const_instantiations.len()
-            );
+            )?;
+            let expansion = match build_step {
+                ArrayEGraphBuildStep::Expanded(expansion) => expansion,
+                ArrayEGraphBuildStep::Exhausted => {
+                    self.finish_profiling_record(profiling);
+                    return Ok(ProofAction::ValidateConcreteCounterexample);
+                }
+            };
+            if let Some(profiling) = &profiling {
+                let mut profiling = profiling.borrow_mut();
+                profiling.record_timing("egraph_build", build_start.elapsed());
+                profiling.add_counter("egraph_build_stages", 1);
+                profiling.add_counter(
+                    match expansion.stage {
+                        ArrayEGraphBuildStage::Cone => "egraph_build_cone_stages",
+                        ArrayEGraphBuildStage::Full => "egraph_build_full_stages",
+                    },
+                    1,
+                );
+                profiling.add_counter(
+                    "egraph_build_newly_admitted_subterms",
+                    expansion.newly_admitted_subterms as u64,
+                );
+                profiling.add_counter(
+                    "egraph_build_demand_frontier_sites",
+                    expansion.demand_frontier_sites as u64,
+                );
+                profiling.set_egraph_after_update(
+                    state.egraph.number_of_classes(),
+                    egraph_node_count(&state.egraph),
+                );
+            }
+
+            let cost_factory_start = Instant::now();
+            let candidate_catalog = if expansion.candidate_scope.tracks_provenance() {
+                smt.get_array_candidate_catalog()
+            } else {
+                crate::problem_context::ArrayCandidateCatalog::default()
+            };
+            let cost_context =
+                ArrayCostContext::from_problem(smt, &candidate_catalog, expansion.candidate_scope);
+            let cost_fn = F::from_context(&cost_context, state.depth as u32, &self.cost_config);
+            if let Some(profiling) = &profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("cost_factory", cost_factory_start.elapsed());
+            }
+
+            let saturation_start = Instant::now();
+            let mut known_instantiations = smt
+                .get_instantiations()
+                .into_iter()
+                .map(|term| canonical_instantiation_key(&term))
+                .collect::<HashSet<_>>();
+            let mut excluded_instantiations = HashSet::new();
+            let require_model_violation = expansion.candidate_scope.requires_model_violation();
+            let retry_rejected_candidates =
+                expansion.candidate_scope.retries_rejected_instantiations();
+            let summary = loop {
+                let mut saturation = saturate_with_array_types_and_ranker(
+                    &mut state.egraph,
+                    cost_fn.clone(),
+                    &state.array_types,
+                    ArraySaturationOptions {
+                        candidate_catalog: candidate_catalog.clone(),
+                        candidate_scope: expansion.candidate_scope,
+                        excluded_instantiations: excluded_instantiations.clone(),
+                        refinement_step,
+                        selection_counts: self.term_selection_counts.clone(),
+                        depth: state.depth,
+                        instrumentation: ArraySaturationInstrumentation {
+                            artifact_capture: self.artifact_capture,
+                            profiling: profiling.clone(),
+                        },
+                    },
+                    self.instantiation_ranker.as_ref(),
+                );
+                let (rejected_model_regular, rejected_model_const) = if require_model_violation {
+                    (
+                        retain_model_violations(&mut saturation.instantiations, |term| {
+                            smt.eval_to_string(term)
+                        })?,
+                        retain_model_violations(&mut saturation.const_instantiations, |term| {
+                            smt.eval_to_string(term)
+                        })?,
+                    )
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                let rejected_regular = retain_novel_by(
+                    &mut saturation.instantiations,
+                    &mut known_instantiations,
+                    |expr| self.installable_instance(smt, expr),
+                );
+                let rejected_const = retain_novel_by(
+                    &mut saturation.const_instantiations,
+                    &mut known_instantiations,
+                    |expr| self.installable_instance(smt, expr),
+                );
+                let installable_candidate_ids = saturation
+                    .instantiations
+                    .iter()
+                    .chain(&saturation.const_instantiations)
+                    .map(|candidate| candidate.provenance.abstract_instantiation_id())
+                    .collect::<HashSet<_>>();
+                for record in &mut saturation.abstract_instantiations {
+                    record.was_selected = installable_candidate_ids
+                        .contains(record.abstract_instantiation_id.as_str());
+                }
+                let rejected_model_count =
+                    rejected_model_regular.len() + rejected_model_const.len();
+                let rejected_count =
+                    rejected_model_count + rejected_regular.len() + rejected_const.len();
+                excluded_instantiations.extend(
+                    rejected_model_regular
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                excluded_instantiations.extend(
+                    rejected_model_const
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                excluded_instantiations.extend(
+                    rejected_regular
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                excluded_instantiations.extend(
+                    rejected_const
+                        .into_iter()
+                        .map(|candidate| candidate.expression),
+                );
+                if let Some(profiling) = &profiling {
+                    let mut profiling = profiling.borrow_mut();
+                    profiling.add_counter(
+                        "model_satisfied_instantiations_filtered",
+                        rejected_model_count as u64,
+                    );
+                    profiling.add_counter(
+                        "duplicate_or_uninstallable_instantiations_filtered",
+                        (rejected_count - rejected_model_count) as u64,
+                    );
+                }
+
+                let summary = self.absorb_saturation(state, smt, saturation, refinement_step);
+                if summary.regular_instantiations > 0
+                    || summary.const_instantiations > 0
+                    || rejected_count == 0
+                    || !retry_rejected_candidates
+                {
+                    break summary;
+                }
+            };
+            if let Some(profiling) = &profiling {
+                profiling
+                    .borrow_mut()
+                    .record_timing("saturation_total", saturation_start.elapsed());
+            }
+
+            if trace_conflicts_enabled() {
+                trace!(
+                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
+                    state.depth,
+                    refinement_step,
+                    expansion.stage.as_str(),
+                    summary.regular_instantiations,
+                    summary.const_instantiations,
+                    summary.conflicts,
+                    state.instantiations.len(),
+                    state.const_instantiations.len()
+                );
+            }
+            if summary.regular_instantiations > 0 || summary.const_instantiations > 0 {
+                self.finish_profiling_record(profiling);
+                return Ok(ProofAction::Continue);
+            }
         }
-        Ok(ProofAction::Continue)
     }
 
     #[allow(clippy::unnecessary_fold)]
@@ -356,158 +526,58 @@ where
             info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
             smt.install_auxiliary_specs(specs)?;
         }
-        let raw_const_pairs: Vec<(String, Term)> = state
+        for (kind, candidate) in state
             .const_instantiations
-            .iter()
-            .map(|inst| {
-                (
-                    crate::training::canonical_term_hash(inst),
-                    expr_to_term(inst.clone()),
-                )
-            })
-            .collect();
-        let skipped_const_aux_symbol = raw_const_pairs
-            .iter()
-            .filter(|(_, term)| term_contains_auxiliary_symbol(term))
-            .count();
-        let const_pairs: Vec<(String, Term)> = raw_const_pairs
             .into_iter()
-            .filter(|(term_hash, _)| !self.aux_covered_term_hashes.contains(term_hash))
-            .filter(|(_, term)| !term_contains_auxiliary_symbol(term))
-            .collect();
-        let skipped_const_aux_covered = state
-            .const_instantiations
-            .iter()
-            .filter(|inst| {
-                self.aux_covered_term_hashes
-                    .contains(&crate::training::canonical_term_hash(inst))
-            })
-            .count();
-        if skipped_const_aux_covered > 0 {
-            info!("AUX-SYNTH skipped {skipped_const_aux_covered} aux-covered const instantiations");
-        }
-        if skipped_const_aux_symbol > 0 {
-            info!(
-                "AUX-SYNTH skipped {skipped_const_aux_symbol} const instantiations containing auxiliary symbols"
-            );
-        }
-        for (term_hash, term) in &const_pairs {
+            .map(|candidate| ("const", candidate))
+            .chain(
+                state
+                    .instantiations
+                    .into_iter()
+                    .map(|candidate| ("regular", candidate)),
+            )
+        {
+            let term_hash = crate::training::canonical_term_hash(&candidate.expression);
+            let term = expr_to_term(candidate.expression.clone());
+            if self.aux_covered_term_hashes.contains(&term_hash) {
+                info!("AUX-SYNTH skipped aux-covered {kind} instantiation");
+                continue;
+            }
+            if term_contains_auxiliary_symbol(&term) {
+                info!("AUX-SYNTH skipped {kind} instantiation containing auxiliary symbols");
+                continue;
+            }
+
+            let abstract_id = candidate.provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
                 trace!(
-                    "[yardbird::inst-trace] const abstract-hash={} abstract-term={}",
-                    term_hash,
-                    term
+                    "[yardbird::inst-trace] {kind} abstract-hash={term_hash} abstract-id={abstract_id} abstract-term={term} substitution={:?}",
+                    candidate.provenance.relative_substitution(),
                 );
             }
-            if let Some(inst) = smt.make_unquantified_instance(term.clone()) {
-                let abstract_id = self
-                    .abstract_instantiations
-                    .iter()
-                    .find(|record| record.term_hash == *term_hash)
-                    .map(|record| record.abstract_instantiation_id.clone());
+            if kind == "const" {
+                self.const_instantiations.push(term.clone());
+            }
+
+            let Some(request) =
+                smt.make_provenanced_unquantified_instance(term, candidate.provenance)
+            else {
                 if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] const concrete abstract-hash={} abstract-id={abstract_id:?} concrete-term={}",
-                        term_hash,
-                        inst
-                    );
+                    trace!("[yardbird::inst-trace] {kind} rewrite-none abstract-id={abstract_id}");
                 }
-                let added = smt.add_instantiation(inst, abstract_id);
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] const add-result abstract-hash={} added={added}",
-                        term_hash
-                    );
-                }
-            } else if trace_instantiations {
+                continue;
+            };
+            let result = smt.add_instantiation(request);
+            self.record_installation_outcome(&abstract_id, result);
+            if trace_instantiations {
                 trace!(
-                    "[yardbird::inst-trace] const rewrite-none abstract-hash={}",
-                    term_hash
+                    "[yardbird::inst-trace] {kind} add-result abstract-id={abstract_id} abstract-added={} solver-assertions-added={} indexed-deduplicated={} helper-deduplicated={}",
+                    result.abstract_instance_added,
+                    result.solver_assertions_added(),
+                    result.indexed_assertions_deduplicated,
+                    result.helper_assertions_deduplicated,
                 );
             }
-        }
-        self.const_instantiations
-            .extend(const_pairs.iter().map(|(_, term)| term.clone()));
-
-        let raw_terms: Vec<(String, Term)> = state
-            .instantiations
-            .iter()
-            .map(|inst| {
-                let hash = crate::training::canonical_term_hash(inst);
-                (hash, expr_to_term(inst.clone()))
-            })
-            .collect();
-        let skipped_regular_aux_symbol = raw_terms
-            .iter()
-            .filter(|(_, term)| term_contains_auxiliary_symbol(term))
-            .count();
-        let terms: Vec<(String, Term)> = raw_terms
-            .into_iter()
-            .filter(|(term_hash, _)| !self.aux_covered_term_hashes.contains(term_hash))
-            .filter(|(_, term)| !term_contains_auxiliary_symbol(term))
-            .collect();
-        let skipped_regular_aux_covered = state
-            .instantiations
-            .iter()
-            .filter(|inst| {
-                self.aux_covered_term_hashes
-                    .contains(&crate::training::canonical_term_hash(inst))
-            })
-            .count();
-        if skipped_regular_aux_covered > 0 {
-            info!(
-                "AUX-SYNTH skipped {skipped_regular_aux_covered} aux-covered regular instantiations"
-            );
-        }
-        if skipped_regular_aux_symbol > 0 {
-            info!(
-                "AUX-SYNTH skipped {skipped_regular_aux_symbol} regular instantiations containing auxiliary symbols"
-            );
-        }
-        let instances = terms
-            .into_iter()
-            .filter_map(|(term_hash, term)| {
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] regular abstract-hash={} abstract-term={}",
-                        term_hash,
-                        term
-                    );
-                }
-                smt.make_unquantified_instance(term)
-                    .map(move |inst| (term_hash.clone(), inst))
-            })
-            .collect::<Vec<_>>();
-        let _ = instances
-            .into_iter()
-            .map(|(term_hash, inst)| {
-                let abstract_id = self
-                    .abstract_instantiations
-                    .iter()
-                    .find(|record| record.term_hash == term_hash)
-                    .map(|record| record.abstract_instantiation_id.clone());
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] regular concrete abstract-hash={} abstract-id={abstract_id:?} concrete-term={}",
-                        term_hash,
-                        inst
-                    );
-                }
-                let added = smt.add_instantiation(inst, abstract_id);
-                if trace_instantiations {
-                    trace!(
-                        "[yardbird::inst-trace] regular add-result abstract-hash={} added={added}",
-                        term_hash
-                    );
-                }
-                !added
-            })
-            .fold(true, |a, b| a && b);
-
-        if !self.pending_aux_specs.is_empty() {
-            let specs = mem::take(&mut self.pending_aux_specs);
-            info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
-            smt.install_auxiliary_specs(specs)?;
         }
 
         Ok(())
@@ -565,10 +635,180 @@ where
     }
 }
 
+fn retain_novel_by<T, K>(
+    instantiations: &mut Vec<T>,
+    known: &mut HashSet<K>,
+    mut normalize: impl FnMut(&T) -> Option<K>,
+) -> Vec<T>
+where
+    T: Clone,
+    K: Eq + Hash,
+{
+    let mut rejected = Vec::new();
+    instantiations.retain(|instantiation| {
+        let keep = normalize(instantiation).is_some_and(|normalized| known.insert(normalized));
+        if !keep {
+            rejected.push(instantiation.clone());
+        }
+        keep
+    });
+    rejected
+}
+
+trait HasArrayExpression {
+    fn array_expression(&self) -> &ArrayExpr;
+}
+
+impl HasArrayExpression for ArrayExpr {
+    fn array_expression(&self) -> &ArrayExpr {
+        self
+    }
+}
+
+impl HasArrayExpression for ArrayAxiomInstantiation {
+    fn array_expression(&self) -> &ArrayExpr {
+        &self.expression
+    }
+}
+
+fn retain_model_violations<T>(
+    instantiations: &mut Vec<T>,
+    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+) -> anyhow::Result<Vec<T>>
+where
+    T: Clone + HasArrayExpression,
+{
+    let mut rejected = Vec::new();
+    let mut evaluation_error = None;
+    instantiations.retain(|instantiation| {
+        let term = expr_to_term(instantiation.array_expression().clone());
+        match evaluate(&term) {
+            Ok(value) if value.trim() == "false" => true,
+            Ok(_) => {
+                rejected.push(instantiation.clone());
+                false
+            }
+            Err(error) => {
+                evaluation_error = Some(error);
+                false
+            }
+        }
+    });
+    if let Some(error) = evaluation_error {
+        return Err(error);
+    }
+    Ok(rejected)
+}
+
 impl<F> Abstract<F>
 where
     F: ArrayCostFactory + 'static,
 {
+    fn record_installation_outcome(
+        &mut self,
+        abstract_instantiation_id: &str,
+        result: crate::instantiation_provenance::InstantiationInstallResult,
+    ) {
+        let Some(record) = self
+            .abstract_instantiations
+            .iter_mut()
+            .find(|record| record.abstract_instantiation_id == abstract_instantiation_id)
+        else {
+            return;
+        };
+        record.indexed_assertions_attempted += result.indexed_assertions_attempted;
+        record.indexed_assertions_added += result.indexed_assertions_added;
+        record.indexed_assertions_deduplicated += result.indexed_assertions_deduplicated;
+        record.helper_assertions_attempted += result.helper_assertions_attempted;
+        record.helper_assertions_added += result.helper_assertions_added;
+        record.helper_assertions_deduplicated += result.helper_assertions_deduplicated;
+    }
+
+    fn installable_instance(
+        &self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        instantiation: &ArrayAxiomInstantiation,
+    ) -> Option<Term> {
+        let term_hash = crate::training::canonical_term_hash(&instantiation.expression);
+        let term = expr_to_term(instantiation.expression.clone());
+        if self.aux_covered_term_hashes.contains(&term_hash)
+            || term_contains_auxiliary_symbol(&term)
+        {
+            return None;
+        }
+        smt.make_unquantified_instance(term)
+            .map(|instance| canonical_instantiation_key(instance.get_term()))
+    }
+
+    fn absorb_saturation(
+        &mut self,
+        state: &mut ArrayRefinementState,
+        smt: &dyn crate::problem_context::ProblemContext,
+        saturation: ArraySaturationResult,
+        refinement_step: u32,
+    ) -> SaturationSummary {
+        let summary = SaturationSummary {
+            regular_instantiations: saturation.instantiations.len(),
+            const_instantiations: saturation.const_instantiations.len(),
+            conflicts: saturation.conflicts.len(),
+        };
+        state.instantiations.extend(saturation.instantiations);
+        state
+            .const_instantiations
+            .extend(saturation.const_instantiations);
+        for decision in saturation.decisions {
+            if !self
+                .decision_data
+                .iter()
+                .any(|known| known.decision_key == decision.decision_key)
+            {
+                self.decision_data.push(decision);
+            }
+        }
+        for record in saturation.abstract_instantiations {
+            if let Some(known) = self
+                .abstract_instantiations
+                .iter_mut()
+                .find(|known| known.abstract_instantiation_id == record.abstract_instantiation_id)
+            {
+                known.was_selected |= record.was_selected;
+                for decision_key in record.decision_keys {
+                    if !known.decision_keys.contains(&decision_key) {
+                        known.decision_keys.push(decision_key);
+                    }
+                }
+            } else {
+                self.abstract_instantiations.push(record);
+            }
+        }
+        for (decision_key, term_hash) in saturation.selection_history_decisions {
+            self.term_selection_decisions
+                .insert(decision_key, term_hash);
+        }
+        for decision_keys in saturation.instantiation_decision_keys {
+            for decision_key in decision_keys {
+                if let Some(term_hash) = self.term_selection_decisions.get(&decision_key) {
+                    *self
+                        .term_selection_counts
+                        .entry(term_hash.clone())
+                        .or_default() += 1;
+                }
+            }
+        }
+        self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
+        summary
+    }
+
+    fn finish_profiling_record(&mut self, profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>) {
+        if let Some(profiling) = profiling {
+            if let Ok(profiling) = Rc::try_unwrap(profiling) {
+                self.profiling_records.push(profiling.into_inner().finish());
+            } else {
+                warn!("Unable to unwrap array profiling collector; profiling record dropped");
+            }
+        }
+    }
+
     fn handle_aux_synthesis_detection(
         &mut self,
         state: &ArrayRefinementState,

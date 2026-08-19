@@ -4,9 +4,9 @@ use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
     cost_functions::{
-        array::ArrayCostFactory, CandidateChoice, CandidateChoiceContext, YardbirdCostFunction,
+        array::{ArrayCostContext, ArrayCostFactory},
+        CandidateChoice, CandidateChoiceContext, YardbirdCostFunction,
     },
-    problem_context::ProblemContext,
     theories::array::array_axioms::ArrayLanguage,
     training::{
         canonical_term_hash, LogisticRegressionCandidateFeatures, LogisticRegressionModel,
@@ -54,7 +54,7 @@ impl LogisticRegression {
 impl ArrayCostFactory for LogisticRegression {
     type Config = LogisticRegressionModel;
 
-    fn from_context(smt: &dyn ProblemContext, depth: u32, model: &Self::Config) -> Self {
+    fn from_context(smt: &ArrayCostContext, depth: u32, model: &Self::Config) -> Self {
         Self::new(
             depth,
             smt.get_init_and_transition_subterms(),

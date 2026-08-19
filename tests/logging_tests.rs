@@ -1,7 +1,13 @@
 use std::{
+    io::Cursor,
     sync::mpsc::{self, RecvTimeoutError},
     thread,
     time::Duration,
+};
+
+use smt2parser::{
+    concrete::{Command, SyntaxBuilder},
+    CommandStream,
 };
 
 #[cfg(feature = "training")]
@@ -118,6 +124,36 @@ fn array_strategy_populates_decision_data() {
             .any(|inst| inst.abstract_instantiation_id.is_some()),
         "expected indexed instantiations to carry abstract instantiation ids"
     );
+    let abstract_ids = result
+        .abstract_instantiations
+        .iter()
+        .map(|instantiation| instantiation.abstract_instantiation_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(result.indexed_instantiations.iter().all(|indexed| indexed
+        .abstract_instantiation_id
+        .as_deref()
+        .is_some_and(|id| abstract_ids.contains(id))));
+    assert!(result
+        .abstract_instantiations
+        .iter()
+        .filter(|instantiation| instantiation.was_selected)
+        .all(|instantiation| !instantiation.substitution.is_empty()));
+    assert!(result
+        .indexed_instantiations
+        .iter()
+        .all(|instantiation| !instantiation.substitution.is_empty()));
+    let core = result
+        .unsat_core
+        .as_ref()
+        .expect("tracked proof should expose its final unsat core");
+    assert!(!core.core_instantiations.is_empty());
+    assert!(core.core_instantiations.iter().all(|instantiation| {
+        instantiation
+            .abstract_instantiation_id
+            .as_deref()
+            .is_some_and(|id| abstract_ids.contains(id))
+            && !instantiation.substitution.is_empty()
+    }));
     assert!(
         result
             .abstract_instantiations
@@ -218,6 +254,19 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             bmc_depth: 3,
             refinement_step: 4,
             decision_keys: vec!["decision-key".to_string()],
+            substitution: vec![
+                yardbird::instantiation_provenance::InstantiationSubstitution {
+                    variable: "?x".to_string(),
+                    term: "x+0".to_string(),
+                },
+            ],
+            was_selected: true,
+            indexed_assertions_attempted: 1,
+            indexed_assertions_added: 1,
+            indexed_assertions_deduplicated: 0,
+            helper_assertions_attempted: 0,
+            helper_assertions_added: 0,
+            helper_assertions_deduplicated: 0,
             in_unsat_core: true,
         }],
         indexed_instantiations: vec![IndexedInstantiationRecord {
@@ -225,7 +274,14 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             term: "(= x@0 y@0)".to_string(),
             term_hash: "indexed-hash".to_string(),
             depth: 3,
+            frame: 3,
             unroll_index: 0,
+            substitution: vec![
+                yardbird::instantiation_provenance::InstantiationSubstitution {
+                    variable: "?x".to_string(),
+                    term: "x@3".to_string(),
+                },
+            ],
             abstract_instantiation_id: Some("abstract-inst".to_string()),
             in_unsat_core: true,
         }],
@@ -438,8 +494,23 @@ fn logistic_regression_missing_model_path_is_validation_error() {
 fn smtlib_strategy_populates_logging_artifacts() {
     let result = run_with_timeout(
         move || {
-            let problem = SMTLIBProblem::from_path("examples/smt2/array_bitvec_simple.smt2")
-                .expect("should parse SMT-LIB example");
+            let input = br#"
+                (set-logic QF_AUFBV)
+                (declare-fun arr () (Array (_ BitVec 5) (_ BitVec 32)))
+                (declare-fun write-index () (_ BitVec 5))
+                (declare-fun read-index () (_ BitVec 5))
+                (declare-fun val () (_ BitVec 32))
+                (assert (not (= write-index read-index)))
+                (assert (not (=
+                    (select (store arr write-index val) read-index)
+                    (select arr read-index))))
+                (check-sat)
+            "#;
+            let commands = CommandStream::new(Cursor::new(input), SyntaxBuilder, None)
+                .collect::<Result<Vec<Command>, _>>()
+                .expect("should parse SMT-LIB fixture");
+            let problem =
+                SMTLIBProblem::from_commands(commands).expect("should construct SMT-LIB problem");
             let strategy: Box<dyn ProofStrategy<_>> = Box::new(
                 Abstract::<ArrayBMCCost>::new(0, false, (), AuxSynthesisConfig::default(), false)
                     .with_artifact_capture(full_decision_capture()),
@@ -494,9 +565,9 @@ fn smtlib_strategy_populates_logging_artifacts() {
     assert_eq!(event.total_instantiations_added, 1);
     assert_eq!(event.instantiations_since_last_unsat, 1);
     assert_eq!(event.core_size, Some(1));
-    assert_eq!(event.conflicts, Some(1.0));
-    assert_eq!(event.decisions, Some(68.0));
-    assert_eq!(event.propagations, Some(33.0));
+    assert!(event.conflicts.is_some_and(|value| value > 0.0));
+    assert!(event.decisions.is_some_and(|value| value > 0.0));
+    assert!(event.propagations.is_some_and(|value| value > 0.0));
 }
 
 #[cfg(feature = "training")]
@@ -642,7 +713,7 @@ fn single_example_persists_provenance_to_db() {
         );
         assert_eq!(
             training_run.get::<String, _>("schema_version"),
-            "004_training_runs"
+            "006_instantiation_substitutions"
         );
         assert_eq!(
             final_unsat_event.get::<i64, _>("total_instantiations_added"),

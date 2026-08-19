@@ -1,8 +1,10 @@
 use smt2parser::vmt::ReadsAndWrites;
 
 use crate::{
-    cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
-    problem_context::ProblemContext,
+    cost_functions::{
+        array::{ArrayCostContext, ArrayCostFactory},
+        YardbirdCostFunction,
+    },
     theories::array::array_axioms::ArrayLanguage,
 };
 
@@ -17,7 +19,7 @@ pub struct ArrayGenerated {
 impl ArrayCostFactory for ArrayGenerated {
     type Config = ();
 
-    fn from_context(smt: &dyn ProblemContext, depth: u32, _config: &Self::Config) -> Self {
+    fn from_context(smt: &ArrayCostContext, depth: u32, _config: &Self::Config) -> Self {
         Self {
             current_bmc_depth: depth,
             init_and_transition_system_terms: smt.get_init_and_transition_subterms(),

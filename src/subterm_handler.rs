@@ -152,20 +152,32 @@ impl SubtermHandler {
         self.prop_subterm_order = prop_subterms.ordered_subterms;
     }
 
-    pub fn get_reads_and_writes(&self) -> ReadsAndWrites {
+    pub fn get_source_reads_and_writes(&self) -> ReadsAndWrites {
         let mut all_reads_from = HashSet::new();
         all_reads_from.extend(self.initial_reads_and_writes.reads_from.clone());
         all_reads_from.extend(self.trans_reads_and_writes.reads_from.clone());
         all_reads_from.extend(self.prop_reads_and_writes.reads_from.clone());
-        all_reads_from.extend(self.instantiation_reads_and_writes.reads_from.clone());
 
         let mut all_writes_to = HashSet::new();
         all_writes_to.extend(self.initial_reads_and_writes.writes_to.clone());
         all_writes_to.extend(self.trans_reads_and_writes.writes_to.clone());
         all_writes_to.extend(self.prop_reads_and_writes.writes_to.clone());
-        all_writes_to.extend(self.instantiation_reads_and_writes.writes_to.clone());
 
         ReadsAndWrites::from(all_reads_from, all_writes_to)
+    }
+
+    pub fn get_derived_reads_and_writes(&self) -> ReadsAndWrites {
+        self.instantiation_reads_and_writes.clone()
+    }
+
+    pub fn get_reads_and_writes(&self) -> ReadsAndWrites {
+        let source = self.get_source_reads_and_writes();
+        let derived = self.get_derived_reads_and_writes();
+        let mut reads_from = source.reads_from;
+        reads_from.extend(derived.reads_from);
+        let mut writes_to = source.writes_to;
+        writes_to.extend(derived.writes_to);
+        ReadsAndWrites::from(reads_from, writes_to)
     }
 
     pub(crate) fn get_initial_subterms(&self) -> Vec<String> {
@@ -224,5 +236,39 @@ fn extend_unique(
         if seen.insert(term.clone()) {
             ordered.push(term);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refinement_terms_do_not_become_source_array_sites() {
+        let seed: Term = "true".parse().unwrap();
+        let mut handler = SubtermHandler::new(seed.clone(), seed.clone(), seed);
+        handler.register_transition_support(&[
+            "(Write_Int_Int source_array source_index source_value)"
+                .parse()
+                .unwrap(),
+        ]);
+        handler.register_instantiation_term(
+            "(= (Read_Int_Int (Write_Int_Int derived_array derived_index 137) probe) 137)"
+                .parse()
+                .unwrap(),
+        );
+
+        let source = handler.get_source_reads_and_writes();
+        let derived = handler.get_derived_reads_and_writes();
+
+        assert_eq!(
+            source.write_array("source_array").collect::<Vec<_>>(),
+            ["source_index"]
+        );
+        assert!(source.write_array("derived_array").next().is_none());
+        assert_eq!(
+            derived.write_array("derived_array").collect::<Vec<_>>(),
+            ["derived_index"]
+        );
     }
 }

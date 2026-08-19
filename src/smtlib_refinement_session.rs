@@ -3,11 +3,14 @@ use std::collections::HashSet;
 use log::debug;
 use smt2parser::{
     concrete::{Command, Identifier, QualIdentifier, Symbol, Term},
-    vmt::{quantified_instantiator::Instance, ReadsAndWrites},
+    vmt::ReadsAndWrites,
 };
 
 use crate::{
-    instantiation_strategy::StoredInstantiation,
+    instantiation_provenance::{
+        InstantiationInstallResult, InstantiationRequest, StoredInstantiation,
+    },
+    instantiation_strategy::assertion_tracker::{AssertionKind, InstantiationAssertionTracker},
     problem_context::ProblemContext,
     profiling::{SolverCheckMeasurement, SolverProfileMetadata},
     smtlib_problem::SMTLIBProblem,
@@ -50,6 +53,7 @@ pub struct SmtlibRefinementSession {
     theory_axiom_count: u64,
     collect_check_profiles: bool,
     last_solver_check_profile: Option<SolverCheckMeasurement>,
+    assertion_tracker: InstantiationAssertionTracker,
 }
 
 impl std::fmt::Debug for SmtlibRefinementSession {
@@ -157,6 +161,7 @@ impl SmtlibRefinementSession {
             theory_axiom_count,
             collect_check_profiles: false,
             last_solver_check_profile: None,
+            assertion_tracker: InstantiationAssertionTracker::default(),
         };
         let mut accepted_declarations = HashSet::new();
 
@@ -293,14 +298,35 @@ impl SmtlibRefinementSession {
 
     pub fn add_instantiation(
         &mut self,
-        inst: Instance,
-        abstract_instantiation_id: Option<String>,
-    ) -> bool {
-        let initial_count = self.instantiations.len();
+        request: InstantiationRequest,
+    ) -> InstantiationInstallResult {
+        if self
+            .instantiations
+            .iter()
+            .any(|stored| stored.inst == request.inst)
+        {
+            return InstantiationInstallResult::default();
+        }
+        let mut result = InstantiationInstallResult {
+            abstract_instance_added: true,
+            indexed_assertions_attempted: 1,
+            ..InstantiationInstallResult::default()
+        };
 
-        // For SMTLIB, we don't have a BMCBuilder, so we pass dummy values
-        // The instantiation strategy might need to be adapted for SMTLIB
-        let term = inst.get_term();
+        let term = request.inst.get_term();
+        self.assertion_tracker.record_abstract_instance();
+        if !self
+            .assertion_tracker
+            .accept(term, AssertionKind::IndexedTheory)
+        {
+            result.indexed_assertions_deduplicated = 1;
+            self.instantiations.push(StoredInstantiation {
+                inst: request.inst,
+                provenance: request.provenance,
+            });
+            return result;
+        }
+        result.indexed_assertions_added = 1;
 
         // Add the instantiation directly to the solver
         if self.track_instantiations {
@@ -312,13 +338,23 @@ impl SmtlibRefinementSession {
                 .assert_tracked_term(term, label_name.as_str())
                 .expect("solver should assert tracked SMT-LIB instantiations");
             let term_string = term.to_string();
+            let substitution = request
+                .provenance
+                .as_ref()
+                .map(|provenance| provenance.relative_substitution())
+                .unwrap_or_default();
             self.tracked_labels.push(IndexedInstantiationRecord {
                 label: label_name,
                 term: term_string.clone(),
                 term_hash: crate::training::canonical_term_hash_from_string(&term_string),
                 depth: 0,
+                frame: 0,
                 unroll_index: 0,
-                abstract_instantiation_id: abstract_instantiation_id.clone(),
+                substitution,
+                abstract_instantiation_id: request
+                    .provenance
+                    .as_ref()
+                    .map(|provenance| provenance.abstract_instantiation_id().to_string()),
                 in_unsat_core: false,
             });
         } else {
@@ -328,17 +364,20 @@ impl SmtlibRefinementSession {
         }
 
         self.instantiations.push(StoredInstantiation {
-            inst,
-            abstract_instantiation_id,
+            inst: request.inst,
+            provenance: request.provenance,
         });
         self.num_quantifiers_instantiated += 1;
 
-        // Return true if a new instantiation was added
-        self.instantiations.len() > initial_count
+        result
     }
 
     pub fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver.get_solver_statistics()
+        let mut statistics = self.solver.get_solver_statistics();
+        self.assertion_tracker
+            .metrics()
+            .add_to_solver_statistics(&mut statistics);
+        statistics
     }
 
     pub fn get_reason_unknown(&self) -> Option<String> {
@@ -363,6 +402,10 @@ impl SmtlibRefinementSession {
 
     pub fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
+    }
+
+    pub fn get_number_instantiation_assertions_added(&self) -> u64 {
+        self.assertion_tracker.metrics().unique_assertions
     }
 
     pub(crate) fn enable_check_profiling(&mut self) {
@@ -494,19 +537,15 @@ impl ProblemContext for SmtlibRefinementSession {
     }
 
     fn get_solver_statistics(&self) -> SolverStatistics {
-        self.solver.get_solver_statistics()
+        SmtlibRefinementSession::get_solver_statistics(self)
     }
 
     fn get_reason_unknown(&self) -> Option<String> {
         self.solver.get_reason_unknown()
     }
 
-    fn add_instantiation(
-        &mut self,
-        inst: Instance,
-        abstract_instantiation_id: Option<String>,
-    ) -> bool {
-        self.add_instantiation(inst, abstract_instantiation_id)
+    fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult {
+        self.add_instantiation(request)
     }
 
     fn get_instantiations(&self) -> Vec<Term> {
@@ -520,6 +559,10 @@ impl ProblemContext for SmtlibRefinementSession {
 
     fn get_number_instantiations_added(&self) -> u64 {
         self.num_quantifiers_instantiated
+    }
+
+    fn get_number_instantiation_assertions_added(&self) -> u64 {
+        self.get_number_instantiation_assertions_added()
     }
 
     fn get_init_and_transition_subterms(&self) -> Vec<String> {

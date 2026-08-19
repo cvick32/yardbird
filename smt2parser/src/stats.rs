@@ -40,6 +40,7 @@ pub struct Smt2Counters {
     pub qual_identifier_count: usize,
     pub application_count: usize,
     pub let_count: usize,
+    pub lambda_count: usize,
     pub forall_count: usize,
     pub exists_count: usize,
     pub match_count: usize,
@@ -307,6 +308,15 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> for Smt
         Ok(Term::node(
             std::iter::once(term).chain(var_bindings.into_iter().map(|(_, t)| t)),
         ))
+    }
+
+    fn visit_lambda(
+        &mut self,
+        _vars: Vec<(Symbol, Sort)>,
+        term: Self::T,
+    ) -> Result<Self::T, Self::E> {
+        self.lambda_count += 1;
+        Ok(Term::node(std::iter::once(term)))
     }
 
     fn visit_forall(

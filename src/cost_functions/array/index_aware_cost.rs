@@ -3,8 +3,10 @@ use rustc_hash::FxHashSet;
 use smt2parser::vmt::{split_framed_symbol, ReadsAndWrites};
 
 use crate::{
-    cost_functions::{array::ArrayCostFactory, YardbirdCostFunction},
-    problem_context::ProblemContext,
+    cost_functions::{
+        array::{ArrayCostContext, ArrayCostFactory},
+        YardbirdCostFunction,
+    },
     theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
 };
 
@@ -121,7 +123,7 @@ impl IndexAwareArrayCost {
 impl ArrayCostFactory for IndexAwareArrayCost {
     type Config = ();
 
-    fn from_context(smt: &dyn ProblemContext, depth: u32, _config: &Self::Config) -> Self {
+    fn from_context(smt: &ArrayCostContext, depth: u32, _config: &Self::Config) -> Self {
         let init_and_transition_system_terms: FxHashSet<Symbol> = smt
             .get_init_and_transition_subterms()
             .into_iter()

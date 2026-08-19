@@ -111,6 +111,7 @@ echo "$(cat garden/benchmark_config.yaml)"
 log_status "INFO" "Running benchmarks with garden"
 capture_root="benchmark_captures_${unique_benchmark_name}"
 capture_args=()
+benchmark_filter_args=(${garden_filter_args})
 if [ "${capture_solver_journals}" = "true" ]; then
     capture_args=(--profile --solver-capture-root "$capture_root")
     log_status "INFO" "Solver journal capture is enabled"
@@ -121,6 +122,7 @@ if ! ./target/release/garden \
     --config garden/benchmark_config.yaml \
     --matrix ${matrix_name} \
     --output benchmark_results_${unique_benchmark_name}.json \
+    "${benchmark_filter_args[@]}" \
     "${capture_args[@]}"; then
     log_status "ERROR" "Benchmark execution failed"
     exit 1

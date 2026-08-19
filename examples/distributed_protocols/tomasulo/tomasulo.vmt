@@ -1,0 +1,598 @@
+(declare-sort word_t 0)
+(declare-sort opcode 0)
+(declare-sort reg_t 0)
+(declare-sort tag_t 0)
+(declare-sort eu_t 0)
+(declare-fun toma.st.oprb.val () (Array tag_t word_t))
+(declare-fun |__new_loc:exe_rdy| () Bool)
+(declare-fun toma.st.opra.tag () (Array tag_t tag_t))
+(declare-fun __ts0__ts0_a () Bool)
+(declare-fun __ts0__ts0_c () Bool)
+(declare-fun toma.aux.eu () (Array tag_t eu_t))
+(declare-fun toma.st.oprb.tag () (Array tag_t tag_t))
+(declare-fun __m_toma.st.opra.val () (Array tag_t word_t))
+(declare-fun |__ts0__new_loc:oprb| () word_t)
+(declare-fun |__ts0__new_fml:opin_a| () opcode)
+(declare-fun __B () word_t)
+(declare-fun __ts0__ts0__ts0__ts0_a_a_a_a () Bool)
+(declare-fun new_toma.st.oprb.tag () (Array tag_t tag_t))
+(declare-fun new_toma.aux.opra () (Array tag_t word_t))
+(declare-fun new_toma.aux.oprb () (Array tag_t word_t))
+(declare-fun |__ts0__new_loc:opra| () word_t)
+(declare-fun |__fml:dout| () word_t)
+(declare-fun __ts0__ts0__ts0_b_a () Bool)
+(declare-fun err_flag () Bool)
+(declare-fun new_err_flag () Bool)
+(declare-fun |__ts0__new_fml:dst_a| () reg_t)
+(declare-fun __A () word_t)
+(declare-fun __m_toma.st.issued () (Array tag_t Bool))
+(declare-fun toma.ir.tag () (Array reg_t tag_t))
+(declare-fun |__ts0__new_loc:res| () word_t)
+(declare-fun __ts0_a_a () Bool)
+(declare-fun new_toma.eu.tag () (Array eu_t tag_t))
+(declare-fun |fml:din| () word_t)
+(declare-fun toma.ir.val () (Array reg_t word_t))
+(declare-fun __C () word_t)
+(declare-fun toma.eu.tag () (Array eu_t tag_t))
+(declare-fun |__new_loc:exe_valid| () Bool)
+(declare-fun __I () tag_t)
+(declare-fun new_toma.st.oprb.valid () (Array tag_t Bool))
+(declare-fun new_toma.aux.res () (Array tag_t word_t))
+(declare-fun |__ts0__new_loc:dout| () word_t)
+(declare-fun __m_err_flag_a () Bool)
+(declare-fun __m_toma.st.oprb.val () (Array tag_t word_t))
+(declare-fun __m_toma.st.oprb.valid () (Array tag_t Bool))
+(declare-fun op_wr () opcode)
+(declare-fun f (word_t word_t) word_t)
+(declare-fun __ts0_a_d () Bool)
+(declare-fun |__ts0__new_fml:exe_valid| () Bool)
+(declare-fun new_toma.st.opra.valid () (Array tag_t Bool))
+(declare-fun op_rd () opcode)
+(declare-fun __ts0_a_b () Bool)
+(declare-fun |fml:issue_eu| () eu_t)
+(declare-fun __ts0__ts0__ts0_a_a_a_a () Bool)
+(declare-fun __m_toma.ir.resvd () (Array reg_t Bool))
+(declare-fun __ts0_a_e () Bool)
+(declare-fun __ts0__ts0__ts0_b_a_a () Bool)
+(declare-fun |__ts0__new_fml:srca_a| () reg_t)
+(declare-fun ref.r () (Array reg_t word_t))
+(declare-fun __m_toma.st.valid () (Array tag_t Bool))
+(declare-fun |fml:stallout| () Bool)
+(declare-fun |new_fml:stallout| () Bool)
+(declare-fun new_toma.st.issued () (Array tag_t Bool))
+(declare-fun new_toma.aux.eu () (Array tag_t eu_t))
+(declare-fun toma.ir.resvd () (Array reg_t Bool))
+(declare-fun |fml:complete_eu| () eu_t)
+(declare-fun |fml:opin| () opcode)
+(declare-fun |__new_loc:exe_opra| () word_t)
+(declare-fun |__loc:opra| () word_t)
+(declare-fun toma.aux.opra () (Array tag_t word_t))
+(declare-fun op_alu () opcode)
+(declare-fun toma.aux.oprb () (Array tag_t word_t))
+(declare-fun toma.eu.ready (eu_t) Bool)
+(declare-fun |__ts0__new_fml:dout| () word_t)
+(declare-fun toma.eu.valid () (Array eu_t Bool))
+(declare-fun __m_toma.eu.valid () (Array eu_t Bool))
+(declare-fun |new_fml:dout| () word_t)
+(declare-fun toma.aux.res () (Array tag_t word_t))
+(declare-fun toma.st.opra.val () (Array tag_t word_t))
+(declare-fun toma.st.oprb.valid () (Array tag_t Bool))
+(declare-fun |__ts0__new_fml:issue_eu_a| () eu_t)
+(declare-fun __m_toma.ir.val () (Array reg_t word_t))
+(declare-fun toma.pout.tag () tag_t)
+(declare-fun new_toma.pout.tag () tag_t)
+(declare-fun |fml:dst| () reg_t)
+(declare-fun new_toma.st.opra.tag () (Array tag_t tag_t))
+(declare-fun |__ts0__new_fml:issue_choice_a| () tag_t)
+(declare-fun toma.eu.res () (Array eu_t word_t))
+(declare-fun toma.st.valid () (Array tag_t Bool))
+(declare-fun op_nop () opcode)
+(declare-fun new_toma.eu.res () (Array eu_t word_t))
+(declare-fun |__new_loc:exe_oprb| () word_t)
+(declare-fun __ts0__ts0_a_a () Bool)
+(declare-fun |fml:st_choice| () tag_t)
+(declare-fun new_toma.st.oprb.val () (Array tag_t word_t))
+(declare-fun new_toma.ir.val () (Array reg_t word_t))
+(declare-fun new_toma.eu.valid () (Array eu_t Bool))
+(declare-fun toma.pout.valid () Bool)
+(declare-fun new_toma.pout.valid () Bool)
+(declare-fun __ts0_a_c () Bool)
+(declare-fun __m_err_flag () Bool)
+(declare-fun |fml:srcb| () reg_t)
+(declare-fun |__loc:res| () word_t)
+(declare-fun __ts0_b () Bool)
+(declare-fun new_toma.ir.resvd () (Array reg_t Bool))
+(declare-fun |__loc:oprb| () word_t)
+(declare-fun __ts0_a () Bool)
+(declare-fun __ts0__ts0__ts0__ts0_a_a_a () Bool)
+(declare-fun new_toma.st.opra.val () (Array tag_t word_t))
+(declare-fun new_toma.st.valid () (Array tag_t Bool))
+(declare-fun toma.st.issued () (Array tag_t Bool))
+(declare-fun |__ts0__new_loc:0| () word_t)
+(declare-fun |__ts0__new_fml:st_choice_a| () tag_t)
+(declare-fun |__ts0__new_fml:din_a| () word_t)
+(declare-fun __E () eu_t)
+(declare-fun toma.pout.val () word_t)
+(declare-fun new_toma.pout.val () word_t)
+(declare-fun __ts0__ts0__ts0_a () Bool)
+(declare-fun |__ts0__new_fml:srcb_a| () reg_t)
+(declare-fun new_ref.r () (Array reg_t word_t))
+(declare-fun |fml:srca| () reg_t)
+(declare-fun |fml:issue_choice| () tag_t)
+(declare-fun |__new_loc:exe_tag| () tag_t)
+(declare-fun |fml:dout| () word_t)
+(declare-fun new_toma.ir.tag () (Array reg_t tag_t))
+(declare-fun __m_toma.st.opra.valid () (Array tag_t Bool))
+(declare-fun toma.st.opra.valid () (Array tag_t Bool))
+(declare-fun new___new_locexe_rdy () Bool)
+(define-fun .__new_locexe_rdy () Bool (! |__new_loc:exe_rdy| :next new___new_locexe_rdy))
+(declare-fun new___ts0__ts0_a () Bool)
+(define-fun .__ts0__ts0_a () Bool (! __ts0__ts0_a :next new___ts0__ts0_a))
+(declare-fun new___ts0__ts0_c () Bool)
+(define-fun .__ts0__ts0_c () Bool (! __ts0__ts0_c :next new___ts0__ts0_c))
+(declare-fun new___m_toma.st.opra.val () (Array tag_t word_t))
+(define-fun .__m_toma.st.opra.val () (Array tag_t word_t) (! __m_toma.st.opra.val :next new___m_toma.st.opra.val))
+(declare-fun new___ts0__new_locoprb () word_t)
+(define-fun .__ts0__new_locoprb () word_t (! |__ts0__new_loc:oprb| :next new___ts0__new_locoprb))
+(declare-fun new___ts0__new_fmlopin_a () opcode)
+(define-fun .__ts0__new_fmlopin_a () opcode (! |__ts0__new_fml:opin_a| :next new___ts0__new_fmlopin_a))
+(declare-fun new___B () word_t)
+(define-fun .__B () word_t (! __B :next new___B))
+(declare-fun new___ts0__ts0__ts0__ts0_a_a_a_a () Bool)
+(define-fun .__ts0__ts0__ts0__ts0_a_a_a_a () Bool (! __ts0__ts0__ts0__ts0_a_a_a_a :next new___ts0__ts0__ts0__ts0_a_a_a_a))
+(define-fun .toma.st.oprb.tag () (Array tag_t tag_t) (! toma.st.oprb.tag :next new_toma.st.oprb.tag))
+(define-fun .toma.aux.opra () (Array tag_t word_t) (! toma.aux.opra :next new_toma.aux.opra))
+(define-fun .toma.aux.oprb () (Array tag_t word_t) (! toma.aux.oprb :next new_toma.aux.oprb))
+(declare-fun new___ts0__new_locopra () word_t)
+(define-fun .__ts0__new_locopra () word_t (! |__ts0__new_loc:opra| :next new___ts0__new_locopra))
+(declare-fun new___fmldout () word_t)
+(define-fun .__fmldout () word_t (! |__fml:dout| :next new___fmldout))
+(declare-fun new___ts0__ts0__ts0_b_a () Bool)
+(define-fun .__ts0__ts0__ts0_b_a () Bool (! __ts0__ts0__ts0_b_a :next new___ts0__ts0__ts0_b_a))
+(define-fun .err_flag () Bool (! err_flag :next new_err_flag))
+(declare-fun new___ts0__new_fmldst_a () reg_t)
+(define-fun .__ts0__new_fmldst_a () reg_t (! |__ts0__new_fml:dst_a| :next new___ts0__new_fmldst_a))
+(declare-fun new___A () word_t)
+(define-fun .__A () word_t (! __A :next new___A))
+(declare-fun new___m_toma.st.issued () (Array tag_t Bool))
+(define-fun .__m_toma.st.issued () (Array tag_t Bool) (! __m_toma.st.issued :next new___m_toma.st.issued))
+(declare-fun new___ts0__new_locres () word_t)
+(define-fun .__ts0__new_locres () word_t (! |__ts0__new_loc:res| :next new___ts0__new_locres))
+(declare-fun new___ts0_a_a () Bool)
+(define-fun .__ts0_a_a () Bool (! __ts0_a_a :next new___ts0_a_a))
+(define-fun .toma.eu.tag () (Array eu_t tag_t) (! toma.eu.tag :next new_toma.eu.tag))
+(declare-fun new_fmldin () word_t)
+(define-fun .fmldin () word_t (! |fml:din| :next new_fmldin))
+(declare-fun new___C () word_t)
+(define-fun .__C () word_t (! __C :next new___C))
+(declare-fun new___new_locexe_valid () Bool)
+(define-fun .__new_locexe_valid () Bool (! |__new_loc:exe_valid| :next new___new_locexe_valid))
+(declare-fun new___I () tag_t)
+(define-fun .__I () tag_t (! __I :next new___I))
+(define-fun .toma.st.oprb.valid () (Array tag_t Bool) (! toma.st.oprb.valid :next new_toma.st.oprb.valid))
+(define-fun .toma.aux.res () (Array tag_t word_t) (! toma.aux.res :next new_toma.aux.res))
+(declare-fun new___ts0__new_locdout () word_t)
+(define-fun .__ts0__new_locdout () word_t (! |__ts0__new_loc:dout| :next new___ts0__new_locdout))
+(declare-fun new___m_err_flag_a () Bool)
+(define-fun .__m_err_flag_a () Bool (! __m_err_flag_a :next new___m_err_flag_a))
+(declare-fun new___m_toma.st.oprb.val () (Array tag_t word_t))
+(define-fun .__m_toma.st.oprb.val () (Array tag_t word_t) (! __m_toma.st.oprb.val :next new___m_toma.st.oprb.val))
+(declare-fun new___m_toma.st.oprb.valid () (Array tag_t Bool))
+(define-fun .__m_toma.st.oprb.valid () (Array tag_t Bool) (! __m_toma.st.oprb.valid :next new___m_toma.st.oprb.valid))
+(declare-fun new___ts0_a_d () Bool)
+(define-fun .__ts0_a_d () Bool (! __ts0_a_d :next new___ts0_a_d))
+(declare-fun new___ts0__new_fmlexe_valid () Bool)
+(define-fun .__ts0__new_fmlexe_valid () Bool (! |__ts0__new_fml:exe_valid| :next new___ts0__new_fmlexe_valid))
+(define-fun .toma.st.opra.valid () (Array tag_t Bool) (! toma.st.opra.valid :next new_toma.st.opra.valid))
+(declare-fun new___ts0_a_b () Bool)
+(define-fun .__ts0_a_b () Bool (! __ts0_a_b :next new___ts0_a_b))
+(declare-fun new_fmlissue_eu () eu_t)
+(define-fun .fmlissue_eu () eu_t (! |fml:issue_eu| :next new_fmlissue_eu))
+(declare-fun new___ts0__ts0__ts0_a_a_a_a () Bool)
+(define-fun .__ts0__ts0__ts0_a_a_a_a () Bool (! __ts0__ts0__ts0_a_a_a_a :next new___ts0__ts0__ts0_a_a_a_a))
+(declare-fun new___m_toma.ir.resvd () (Array reg_t Bool))
+(define-fun .__m_toma.ir.resvd () (Array reg_t Bool) (! __m_toma.ir.resvd :next new___m_toma.ir.resvd))
+(declare-fun new___ts0_a_e () Bool)
+(define-fun .__ts0_a_e () Bool (! __ts0_a_e :next new___ts0_a_e))
+(declare-fun new___ts0__ts0__ts0_b_a_a () Bool)
+(define-fun .__ts0__ts0__ts0_b_a_a () Bool (! __ts0__ts0__ts0_b_a_a :next new___ts0__ts0__ts0_b_a_a))
+(declare-fun new___ts0__new_fmlsrca_a () reg_t)
+(define-fun .__ts0__new_fmlsrca_a () reg_t (! |__ts0__new_fml:srca_a| :next new___ts0__new_fmlsrca_a))
+(declare-fun new___m_toma.st.valid () (Array tag_t Bool))
+(define-fun .__m_toma.st.valid () (Array tag_t Bool) (! __m_toma.st.valid :next new___m_toma.st.valid))
+(define-fun |.fml:stallout| () Bool (! |fml:stallout| :next |new_fml:stallout|))
+(define-fun .toma.st.issued () (Array tag_t Bool) (! toma.st.issued :next new_toma.st.issued))
+(define-fun .toma.aux.eu () (Array tag_t eu_t) (! toma.aux.eu :next new_toma.aux.eu))
+(declare-fun new_fmlcomplete_eu () eu_t)
+(define-fun .fmlcomplete_eu () eu_t (! |fml:complete_eu| :next new_fmlcomplete_eu))
+(declare-fun new_fmlopin () opcode)
+(define-fun .fmlopin () opcode (! |fml:opin| :next new_fmlopin))
+(declare-fun new___new_locexe_opra () word_t)
+(define-fun .__new_locexe_opra () word_t (! |__new_loc:exe_opra| :next new___new_locexe_opra))
+(declare-fun new___locopra () word_t)
+(define-fun .__locopra () word_t (! |__loc:opra| :next new___locopra))
+(declare-fun new___ts0__new_fmldout () word_t)
+(define-fun .__ts0__new_fmldout () word_t (! |__ts0__new_fml:dout| :next new___ts0__new_fmldout))
+(declare-fun new___m_toma.eu.valid () (Array eu_t Bool))
+(define-fun .__m_toma.eu.valid () (Array eu_t Bool) (! __m_toma.eu.valid :next new___m_toma.eu.valid))
+(define-fun |.fml:dout| () word_t (! |fml:dout| :next |new_fml:dout|))
+(declare-fun new___ts0__new_fmlissue_eu_a () eu_t)
+(define-fun .__ts0__new_fmlissue_eu_a () eu_t (! |__ts0__new_fml:issue_eu_a| :next new___ts0__new_fmlissue_eu_a))
+(declare-fun new___m_toma.ir.val () (Array reg_t word_t))
+(define-fun .__m_toma.ir.val () (Array reg_t word_t) (! __m_toma.ir.val :next new___m_toma.ir.val))
+(define-fun .toma.pout.tag () tag_t (! toma.pout.tag :next new_toma.pout.tag))
+(declare-fun new_fmldst () reg_t)
+(define-fun .fmldst () reg_t (! |fml:dst| :next new_fmldst))
+(define-fun .toma.st.opra.tag () (Array tag_t tag_t) (! toma.st.opra.tag :next new_toma.st.opra.tag))
+(declare-fun new___ts0__new_fmlissue_choice_a () tag_t)
+(define-fun .__ts0__new_fmlissue_choice_a () tag_t (! |__ts0__new_fml:issue_choice_a| :next new___ts0__new_fmlissue_choice_a))
+(define-fun .toma.eu.res () (Array eu_t word_t) (! toma.eu.res :next new_toma.eu.res))
+(declare-fun new___new_locexe_oprb () word_t)
+(define-fun .__new_locexe_oprb () word_t (! |__new_loc:exe_oprb| :next new___new_locexe_oprb))
+(declare-fun new___ts0__ts0_a_a () Bool)
+(define-fun .__ts0__ts0_a_a () Bool (! __ts0__ts0_a_a :next new___ts0__ts0_a_a))
+(declare-fun new_fmlst_choice () tag_t)
+(define-fun .fmlst_choice () tag_t (! |fml:st_choice| :next new_fmlst_choice))
+(define-fun .toma.st.oprb.val () (Array tag_t word_t) (! toma.st.oprb.val :next new_toma.st.oprb.val))
+(define-fun .toma.ir.val () (Array reg_t word_t) (! toma.ir.val :next new_toma.ir.val))
+(define-fun .toma.eu.valid () (Array eu_t Bool) (! toma.eu.valid :next new_toma.eu.valid))
+(define-fun .toma.pout.valid () Bool (! toma.pout.valid :next new_toma.pout.valid))
+(declare-fun new___ts0_a_c () Bool)
+(define-fun .__ts0_a_c () Bool (! __ts0_a_c :next new___ts0_a_c))
+(declare-fun new___m_err_flag () Bool)
+(define-fun .__m_err_flag () Bool (! __m_err_flag :next new___m_err_flag))
+(declare-fun new_fmlsrcb () reg_t)
+(define-fun .fmlsrcb () reg_t (! |fml:srcb| :next new_fmlsrcb))
+(declare-fun new___locres () word_t)
+(define-fun .__locres () word_t (! |__loc:res| :next new___locres))
+(declare-fun new___ts0_b () Bool)
+(define-fun .__ts0_b () Bool (! __ts0_b :next new___ts0_b))
+(define-fun .toma.ir.resvd () (Array reg_t Bool) (! toma.ir.resvd :next new_toma.ir.resvd))
+(declare-fun new___locoprb () word_t)
+(define-fun .__locoprb () word_t (! |__loc:oprb| :next new___locoprb))
+(declare-fun new___ts0_a () Bool)
+(define-fun .__ts0_a () Bool (! __ts0_a :next new___ts0_a))
+(declare-fun new___ts0__ts0__ts0__ts0_a_a_a () Bool)
+(define-fun .__ts0__ts0__ts0__ts0_a_a_a () Bool (! __ts0__ts0__ts0__ts0_a_a_a :next new___ts0__ts0__ts0__ts0_a_a_a))
+(define-fun .toma.st.opra.val () (Array tag_t word_t) (! toma.st.opra.val :next new_toma.st.opra.val))
+(define-fun .toma.st.valid () (Array tag_t Bool) (! toma.st.valid :next new_toma.st.valid))
+(declare-fun new___ts0__new_loc0 () word_t)
+(define-fun .__ts0__new_loc0 () word_t (! |__ts0__new_loc:0| :next new___ts0__new_loc0))
+(declare-fun new___ts0__new_fmlst_choice_a () tag_t)
+(define-fun .__ts0__new_fmlst_choice_a () tag_t (! |__ts0__new_fml:st_choice_a| :next new___ts0__new_fmlst_choice_a))
+(declare-fun new___ts0__new_fmldin_a () word_t)
+(define-fun .__ts0__new_fmldin_a () word_t (! |__ts0__new_fml:din_a| :next new___ts0__new_fmldin_a))
+(declare-fun new___E () eu_t)
+(define-fun .__E () eu_t (! __E :next new___E))
+(define-fun .toma.pout.val () word_t (! toma.pout.val :next new_toma.pout.val))
+(declare-fun new___ts0__ts0__ts0_a () Bool)
+(define-fun .__ts0__ts0__ts0_a () Bool (! __ts0__ts0__ts0_a :next new___ts0__ts0__ts0_a))
+(declare-fun new___ts0__new_fmlsrcb_a () reg_t)
+(define-fun .__ts0__new_fmlsrcb_a () reg_t (! |__ts0__new_fml:srcb_a| :next new___ts0__new_fmlsrcb_a))
+(define-fun .ref.r () (Array reg_t word_t) (! ref.r :next new_ref.r))
+(declare-fun new_fmlsrca () reg_t)
+(define-fun .fmlsrca () reg_t (! |fml:srca| :next new_fmlsrca))
+(declare-fun new_fmlissue_choice () tag_t)
+(define-fun .fmlissue_choice () tag_t (! |fml:issue_choice| :next new_fmlissue_choice))
+(declare-fun new___new_locexe_tag () tag_t)
+(define-fun .__new_locexe_tag () tag_t (! |__new_loc:exe_tag| :next new___new_locexe_tag))
+(declare-fun new_fmldout () word_t)
+(define-fun .fmldout () word_t (! |fml:dout| :next new_fmldout))
+(define-fun .toma.ir.tag () (Array reg_t tag_t) (! toma.ir.tag :next new_toma.ir.tag))
+(declare-fun new___m_toma.st.opra.valid () (Array tag_t Bool))
+(define-fun .__m_toma.st.opra.valid () (Array tag_t Bool) (! __m_toma.st.opra.valid :next new___m_toma.st.opra.valid))
+(declare-fun toma.step () Bool)
+(define-fun .toma.step () Bool (! toma.step :action 0))
+(define-fun init () Bool (! (and (= toma.st.valid (lambda ((|T:tag_t| tag_t)) false))
+     (= toma.ir.resvd (lambda ((|R:reg_t| reg_t)) false))
+     (= toma.eu.valid (lambda ((|E:eu_t| eu_t)) false))
+     (= ref.r toma.ir.val)) :init true))
+(define-fun trans () Bool (! (and (=> toma.step (let ((a!1 (or (not (and (= __E |fml:complete_eu|) (= __I new_toma.pout.tag)))
+               (not new_toma.pout.valid)
+               (= |fml:complete_eu| (select toma.aux.eu new_toma.pout.tag))))
+      (a!2 (not (and (= __E |fml:complete_eu|)
+                     (= __A (select toma.aux.opra __I))
+                     (= __B (select toma.aux.oprb __I))
+                     (= __C (f __A __B)))))
+      (a!4 (= |new_fml:stallout|
+              (or (and (= |fml:opin| op_alu)
+                       (select toma.st.valid |fml:st_choice|))
+                  (and (= |fml:opin| op_rd) (select toma.ir.resvd |fml:srca|)))))
+      (a!5 (lambda ((|R:reg_t| reg_t))
+             (ite (and (select toma.ir.resvd |R:reg_t|)
+                       (= (select toma.ir.tag |R:reg_t|) new_toma.pout.tag))
+                  new_toma.pout.val
+                  (select toma.ir.val |R:reg_t|))))
+      (a!6 (lambda ((|R:reg_t| reg_t))
+             (and (not (= (select toma.ir.tag |R:reg_t|) new_toma.pout.tag))
+                  (select toma.ir.resvd |R:reg_t|))))
+      (a!7 (lambda ((|T:tag_t| tag_t))
+             (ite (and (not (select toma.st.opra.valid |T:tag_t|))
+                       (= (select toma.st.opra.tag |T:tag_t|) new_toma.pout.tag))
+                  new_toma.pout.val
+                  (select toma.st.opra.val |T:tag_t|))))
+      (a!8 (lambda ((|T:tag_t| tag_t))
+             (or (= (select toma.st.opra.tag |T:tag_t|) new_toma.pout.tag)
+                 (select toma.st.opra.valid |T:tag_t|))))
+      (a!9 (lambda ((|T:tag_t| tag_t))
+             (ite (and (not (select toma.st.oprb.valid |T:tag_t|))
+                       (= (select toma.st.oprb.tag |T:tag_t|) new_toma.pout.tag))
+                  new_toma.pout.val
+                  (select toma.st.oprb.val |T:tag_t|))))
+      (a!10 (lambda ((|T:tag_t| tag_t))
+              (or (= (select toma.st.oprb.tag |T:tag_t|) new_toma.pout.tag)
+                  (select toma.st.oprb.valid |T:tag_t|))))
+      (a!11 (lambda ((|T:tag_t| tag_t))
+              (and (not (and (select toma.st.issued |T:tag_t|)
+                             (= new_toma.pout.tag |T:tag_t|)))
+                   (select toma.st.valid |T:tag_t|))))
+      (a!12 (= new_toma.st.valid
+               (ite __ts0_a_b
+                    (ite __ts0__ts0_c
+                         (store __m_toma.st.valid |fml:st_choice| true)
+                         __m_toma.st.valid)
+                    __m_toma.st.valid)))
+      (a!13 (= __m_toma.st.issued
+               (ite __ts0_a_b
+                    (ite __ts0__ts0_c
+                         (store toma.st.issued |fml:st_choice| false)
+                         toma.st.issued)
+                    toma.st.issued)))
+      (a!14 (ite __ts0__ts0__ts0_a
+                 (store __m_toma.st.opra.valid |fml:st_choice| true)
+                 (store __m_toma.st.opra.valid
+                        |fml:st_choice|
+                        (not (select __m_toma.ir.resvd |fml:srca|)))))
+      (a!15 (ite __ts0_a_b
+                 (ite __ts0__ts0_c
+                      (store toma.st.opra.tag
+                             |fml:st_choice|
+                             (select toma.ir.tag |fml:srca|))
+                      toma.st.opra.tag)
+                 toma.st.opra.tag))
+      (a!16 (ite __ts0__ts0_c
+                 (ite __ts0__ts0__ts0_a
+                      (store __m_toma.st.opra.val
+                             |fml:st_choice|
+                             new_toma.pout.val)
+                      (store __m_toma.st.opra.val
+                             |fml:st_choice|
+                             (select __m_toma.ir.val |fml:srca|)))
+                 __m_toma.st.opra.val))
+      (a!17 (= __ts0__ts0__ts0_a
+               (and new_toma.pout.valid
+                    (select __m_toma.ir.resvd |fml:srca|)
+                    (= new_toma.pout.tag (select toma.ir.tag |fml:srca|)))))
+      (a!18 (ite __ts0__ts0__ts0_a_a_a_a
+                 (store __m_toma.st.oprb.valid |fml:st_choice| true)
+                 (store __m_toma.st.oprb.valid
+                        |fml:st_choice|
+                        (not (select __m_toma.ir.resvd |fml:srcb|)))))
+      (a!19 (ite __ts0_a_b
+                 (ite __ts0__ts0_c
+                      (store toma.st.oprb.tag
+                             |fml:st_choice|
+                             (select toma.ir.tag |fml:srcb|))
+                      toma.st.oprb.tag)
+                 toma.st.oprb.tag))
+      (a!20 (ite __ts0__ts0_c
+                 (ite __ts0__ts0__ts0_a_a_a_a
+                      (store __m_toma.st.oprb.val
+                             |fml:st_choice|
+                             new_toma.pout.val)
+                      (store __m_toma.st.oprb.val
+                             |fml:st_choice|
+                             (select __m_toma.ir.val |fml:srcb|)))
+                 __m_toma.st.oprb.val))
+      (a!21 (= __ts0__ts0__ts0_a_a_a_a
+               (and new_toma.pout.valid
+                    (select __m_toma.ir.resvd |fml:srcb|)
+                    (= new_toma.pout.tag (select toma.ir.tag |fml:srcb|)))))
+      (a!22 (ite __ts0__ts0_c
+                 (store __m_toma.ir.resvd |fml:dst| true)
+                 (ite __ts0__ts0__ts0_b_a
+                      __m_toma.ir.resvd
+                      (ite __ts0__ts0__ts0__ts0_a_a_a
+                           (store __m_toma.ir.resvd |fml:dst| false)
+                           __m_toma.ir.resvd))))
+      (a!23 (= new_toma.ir.tag
+               (ite __ts0_a_b
+                    (ite __ts0__ts0_c
+                         (store toma.ir.tag |fml:dst| |fml:st_choice|)
+                         toma.ir.tag)
+                    toma.ir.tag)))
+      (a!24 (ite __ts0_a_b
+                 (ite __ts0__ts0_c
+                      |fml:dout|
+                      (ite __ts0__ts0__ts0_b_a
+                           (select __m_toma.ir.val |fml:srca|)
+                           |fml:dout|))
+                 |fml:dout|))
+      (a!25 (ite __ts0__ts0_c
+                 __m_toma.ir.val
+                 (ite __ts0__ts0__ts0_b_a
+                      __m_toma.ir.val
+                      (ite __ts0__ts0__ts0__ts0_a_a_a
+                           (store __m_toma.ir.val |fml:dst| |fml:din|)
+                           __m_toma.ir.val))))
+      (a!26 (= __ts0_a_c
+               (and (select new_toma.st.valid |fml:issue_choice|)
+                    (select new_toma.st.opra.valid |fml:issue_choice|)
+                    (select new_toma.st.oprb.valid |fml:issue_choice|)
+                    (not (select __m_toma.st.issued |fml:issue_choice|))
+                    |__new_loc:exe_rdy|)))
+      (a!27 (= new_toma.eu.res
+               (ite __ts0_a_d
+                    (store toma.eu.res
+                           |fml:issue_eu|
+                           (f |__new_loc:exe_opra| |__new_loc:exe_oprb|))
+                    toma.eu.res)))
+      (a!28 (ite __ts0__ts0_a
+                 (store ref.r |__ts0__new_fml:dst_a| |__ts0__new_loc:res|)
+                 (ite __ts0__ts0__ts0_b_a_a
+                      ref.r
+                      (ite __ts0__ts0__ts0__ts0_a_a_a_a
+                           (store ref.r
+                                  |__ts0__new_fml:dst_a|
+                                  |__ts0__new_fml:din_a|)
+                           ref.r))))
+      (a!29 (= |__ts0__new_fml:dout|
+               (ite __ts0__ts0_a
+                    |__fml:dout|
+                    (ite __ts0__ts0__ts0_b_a_a
+                         (select ref.r |__ts0__new_fml:srca_a|)
+                         |__fml:dout|))))
+      (a!30 (= new_toma.aux.opra
+               (ite __ts0_b
+                    (ite __ts0__ts0_a_a
+                         (store toma.aux.opra
+                                |__ts0__new_fml:st_choice_a|
+                                |__ts0__new_loc:opra|)
+                         toma.aux.opra)
+                    toma.aux.opra)))
+      (a!31 (= new_toma.aux.oprb
+               (ite __ts0_b
+                    (ite __ts0__ts0_a_a
+                         (store toma.aux.oprb
+                                |__ts0__new_fml:st_choice_a|
+                                |__ts0__new_loc:oprb|)
+                         toma.aux.oprb)
+                    toma.aux.oprb)))
+      (a!32 (= new_toma.aux.res
+               (ite __ts0_b
+                    (ite __ts0__ts0_a_a
+                         (store toma.aux.res
+                                |__ts0__new_fml:st_choice_a|
+                                |__ts0__new_loc:res|)
+                         toma.aux.res)
+                    toma.aux.res)))
+      (a!33 (forall ((|I:tag_t| tag_t))
+              (or (not (and (= new_toma.pout.tag |I:tag_t|) new_toma.pout.valid))
+                  (= new_toma.pout.val (select toma.aux.res |I:tag_t|))))))
+(let ((a!3 (or a!2
+               (not (and (= new_toma.pout.tag __I) new_toma.pout.valid))
+               (= new_toma.pout.val (select toma.aux.res __I)))))
+  (and (not __m_err_flag_a)
+       (= new_toma.pout.valid
+          (and (select toma.eu.valid |fml:complete_eu|)
+               (toma.eu.ready |fml:complete_eu|)))
+       (= new_toma.pout.val (select toma.eu.res |fml:complete_eu|))
+       (= new_toma.pout.tag (select toma.eu.tag |fml:complete_eu|))
+       (= __m_toma.eu.valid
+          (ite __ts0_a
+               (store toma.eu.valid |fml:complete_eu| false)
+               toma.eu.valid))
+       (= __ts0_a new_toma.pout.valid)
+       (= __m_err_flag (or __m_err_flag_a (not a!1)))
+       (= new_err_flag (or __m_err_flag (not a!3)))
+       a!4
+       (= __m_toma.ir.val (ite __ts0_a_a a!5 toma.ir.val))
+       (= __m_toma.ir.resvd (ite __ts0_a_a a!6 toma.ir.resvd))
+       (= __m_toma.st.opra.val (ite __ts0_a_a a!7 toma.st.opra.val))
+       (= __m_toma.st.opra.valid (ite __ts0_a_a a!8 toma.st.opra.valid))
+       (= __m_toma.st.oprb.val (ite __ts0_a_a a!9 toma.st.oprb.val))
+       (= __m_toma.st.oprb.valid (ite __ts0_a_a a!10 toma.st.oprb.valid))
+       (= __m_toma.st.valid (ite __ts0_a_a a!11 toma.st.valid))
+       (= __ts0_a_a new_toma.pout.valid)
+       a!12
+       a!13
+       (= new_toma.st.opra.valid
+          (ite __ts0_a_b
+               (ite __ts0__ts0_c a!14 __m_toma.st.opra.valid)
+               __m_toma.st.opra.valid))
+       (= new_toma.st.opra.tag a!15)
+       (= new_toma.st.opra.val (ite __ts0_a_b a!16 __m_toma.st.opra.val))
+       a!17
+       (= new_toma.st.oprb.valid
+          (ite __ts0_a_b
+               (ite __ts0__ts0_c a!18 __m_toma.st.oprb.valid)
+               __m_toma.st.oprb.valid))
+       (= new_toma.st.oprb.tag a!19)
+       (= new_toma.st.oprb.val (ite __ts0_a_b a!20 __m_toma.st.oprb.val))
+       a!21
+       (= new_toma.ir.resvd (ite __ts0_a_b a!22 __m_toma.ir.resvd))
+       a!23
+       (= |new_fml:dout| a!24)
+       (= new_toma.ir.val (ite __ts0_a_b a!25 __m_toma.ir.val))
+       (= __ts0__ts0__ts0__ts0_a_a_a (= |fml:opin| op_wr))
+       (= __ts0__ts0__ts0_b_a (= |fml:opin| op_rd))
+       (= __ts0__ts0_c (= |fml:opin| op_alu))
+       (= __ts0_a_b (not |new_fml:stallout|))
+       (= |__new_loc:exe_rdy| (not (select __m_toma.eu.valid |fml:issue_eu|)))
+       (= |__new_loc:exe_valid| __ts0_a_c)
+       (= new_toma.st.issued
+          (ite __ts0_a_c
+               (store __m_toma.st.issued |fml:issue_choice| true)
+               __m_toma.st.issued))
+       a!26
+       (= |__new_loc:exe_tag| |fml:issue_choice|)
+       (= |__new_loc:exe_opra| (select new_toma.st.opra.val |fml:issue_choice|))
+       (= |__new_loc:exe_oprb| (select new_toma.st.oprb.val |fml:issue_choice|))
+       (= new_toma.eu.valid
+          (ite __ts0_a_d
+               (store __m_toma.eu.valid |fml:issue_eu| |__new_loc:exe_valid|)
+               __m_toma.eu.valid))
+       a!27
+       (= new_toma.eu.tag
+          (ite __ts0_a_d
+               (store toma.eu.tag |fml:issue_eu| |__new_loc:exe_tag|)
+               toma.eu.tag))
+       (= __ts0_a_d (not (select __m_toma.eu.valid |fml:issue_eu|)))
+       (= |__ts0__new_fml:opin_a| |fml:opin|)
+       (= |__ts0__new_fml:srca_a| |fml:srca|)
+       (= |__ts0__new_fml:srcb_a| |fml:srcb|)
+       (= |__ts0__new_fml:dst_a| |fml:dst|)
+       (= |__ts0__new_fml:din_a| |fml:din|)
+       (= |__ts0__new_fml:st_choice_a| |fml:st_choice|)
+       (= |__ts0__new_fml:issue_choice_a| |fml:issue_choice|)
+       (= |__ts0__new_fml:issue_eu_a| |fml:issue_eu|)
+       (= |__ts0__new_fml:exe_valid| |__new_loc:exe_valid|)
+       (= |__ts0__new_loc:opra|
+          (ite __ts0__ts0_a (select ref.r |__ts0__new_fml:srca_a|) |__loc:opra|))
+       (= |__ts0__new_loc:oprb|
+          (ite __ts0__ts0_a (select ref.r |__ts0__new_fml:srcb_a|) |__loc:oprb|))
+       (= |__ts0__new_loc:res|
+          (ite __ts0__ts0_a
+               (f |__ts0__new_loc:opra| |__ts0__new_loc:oprb|)
+               |__loc:res|))
+       (= new_ref.r (ite __ts0_b a!28 ref.r))
+       a!29
+       (= __ts0__ts0__ts0__ts0_a_a_a_a (= |__ts0__new_fml:opin_a| op_wr))
+       (= __ts0__ts0__ts0_b_a_a (= |__ts0__new_fml:opin_a| op_rd))
+       (= __ts0__ts0_a (= |__ts0__new_fml:opin_a| op_alu))
+       a!30
+       a!31
+       a!32
+       (= __ts0__ts0_a_a (= |__ts0__new_fml:opin_a| op_alu))
+       (= |__ts0__new_loc:0| |__ts0__new_fml:dout|)
+       (= |__ts0__new_loc:dout| |__ts0__new_loc:0|)
+       (= __ts0_b (not |new_fml:stallout|))
+       (= new_toma.aux.eu
+          (ite __ts0_a_e
+               (store toma.aux.eu |fml:issue_choice| |fml:issue_eu|)
+               toma.aux.eu))
+       (= __ts0_a_e |__new_loc:exe_valid|)
+       (or __m_err_flag
+           (not new_toma.pout.valid)
+           (= |fml:complete_eu| (select toma.aux.eu new_toma.pout.tag)))
+       (or new_err_flag a!33)))))
+(or toma.step)) :trans true))
+(define-fun property () Bool (! (forall ((|K:tag_t| tag_t))
+  (=> (and (select toma.st.valid |K:tag_t|)
+           (select toma.st.opra.valid |K:tag_t|))
+      (= (select toma.st.opra.val |K:tag_t|) (select toma.aux.opra |K:tag_t|)))) :invar-property 0))
+(define-fun property () Bool (! (forall ((|K:tag_t| tag_t))
+  (=> (and (select toma.st.valid |K:tag_t|)
+           (select toma.st.oprb.valid |K:tag_t|))
+      (= (select toma.st.oprb.val |K:tag_t|) (select toma.aux.oprb |K:tag_t|)))) :invar-property 1))
+(assert (forall ((|X:opcode| opcode))
+  (or (= |X:opcode| op_alu)
+      (= |X:opcode| op_rd)
+      (= |X:opcode| op_wr)
+      (= |X:opcode| op_nop))))
+(assert (not (= op_alu op_rd)))
+(assert (not (= op_alu op_wr)))
+(assert (not (= op_alu op_nop)))
+(assert (not (= op_rd op_wr)))
+(assert (not (= op_rd op_nop)))
+(assert (not (= op_wr op_nop)))

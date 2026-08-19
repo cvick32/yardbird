@@ -24,6 +24,7 @@ R2_COMPLETION_KEY=${r2_completion_key}
 R2_FAILURE_KEY=${r2_failure_key}
 LAB_DATABASE_URL=${lab_database_url}
 TRAINING_RUN_VERSION=${training_run_version}
+GARDEN_FILTER_ARGS=${garden_filter_args}
 
 export MATRIX_NAME
 export REPO_COMMIT
@@ -121,6 +122,12 @@ GARDEN_ARGS=(
     --matrix "$${MATRIX_NAME}"
     --output "$${RESULT_PATH}"
 )
+
+if [ -n "$${GARDEN_FILTER_ARGS}" ]; then
+    while IFS= read -r filter_arg; do
+        GARDEN_ARGS+=("$${filter_arg}")
+    done <<< "$${GARDEN_FILTER_ARGS}"
+fi
 
 if [ -n "$${LAB_DATABASE_URL}" ]; then
     GARDEN_ARGS+=(

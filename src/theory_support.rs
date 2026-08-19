@@ -18,7 +18,10 @@ pub trait TheorySupport {
 
     /// Returns a logic strong enough for the arithmetic used by these terms.
     fn get_logic_string_for_terms(&self, terms: &[&Term]) -> Result<String> {
-        let logic = self.get_logic_string()?;
+        let mut logic = self.get_logic_string()?;
+        if terms.iter().any(|term| term_uses_quantifiers(term)) {
+            logic = logic.strip_prefix("QF_").unwrap_or(&logic).to_string();
+        }
         let logic = if terms
             .iter()
             .any(|term| requires_nonlinear_integer_logic(term))
@@ -116,9 +119,9 @@ pub(crate) fn validate_logic_for_commands(logic: &str, commands: &[Command]) -> 
         bail!("selected SMT logic {logic} does not support native array declarations or terms");
     }
 
-    let uses_quantifiers = commands
-        .iter()
-        .any(|command| command.contains("(forall ") || command.contains("(exists "));
+    let uses_quantifiers = commands.iter().any(|command| {
+        command.contains("(lambda ") || command.contains("(forall ") || command.contains("(exists ")
+    });
     if uses_quantifiers && logic.starts_with("QF_") {
         bail!("selected SMT logic {logic} does not support quantified terms");
     }
@@ -157,7 +160,7 @@ fn term_uses_bitvectors(term: &Term) -> bool {
                 .any(|(_, binding)| term_uses_bitvectors(binding))
                 || term_uses_bitvectors(term)
         }
-        Term::Forall { vars, term } | Term::Exists { vars, term } => {
+        Term::Lambda { vars, term } | Term::Forall { vars, term } | Term::Exists { vars, term } => {
             vars.iter().any(|(_, sort)| sort_uses_bitvectors(sort)) || term_uses_bitvectors(term)
         }
         Term::Match { term, cases } => {
@@ -197,7 +200,7 @@ fn term_uses_native_arrays(term: &Term) -> bool {
                 .any(|(_, binding)| term_uses_native_arrays(binding))
                 || term_uses_native_arrays(term)
         }
-        Term::Forall { vars, term } | Term::Exists { vars, term } => {
+        Term::Lambda { vars, term } | Term::Forall { vars, term } | Term::Exists { vars, term } => {
             vars.iter().any(|(_, sort)| sort_uses_native_arrays(sort))
                 || term_uses_native_arrays(term)
         }
@@ -220,7 +223,7 @@ fn sort_uses_native_arrays(sort: &Sort) -> bool {
 
 fn term_uses_quantifiers(term: &Term) -> bool {
     match term {
-        Term::Forall { .. } | Term::Exists { .. } => true,
+        Term::Lambda { .. } | Term::Forall { .. } | Term::Exists { .. } => true,
         Term::Application { arguments, .. } => arguments.iter().any(term_uses_quantifiers),
         Term::Let { var_bindings, term } => {
             var_bindings
@@ -265,9 +268,10 @@ fn requires_nonlinear_integer_logic(term: &Term) -> bool {
                 .any(|(_, binding)| requires_nonlinear_integer_logic(binding))
                 || requires_nonlinear_integer_logic(term)
         }
-        Term::Forall { term, .. } | Term::Exists { term, .. } | Term::Attributes { term, .. } => {
-            requires_nonlinear_integer_logic(term)
-        }
+        Term::Lambda { term, .. }
+        | Term::Forall { term, .. }
+        | Term::Exists { term, .. }
+        | Term::Attributes { term, .. } => requires_nonlinear_integer_logic(term),
         Term::Match { term, cases } => {
             requires_nonlinear_integer_logic(term)
                 || cases
@@ -1009,6 +1013,20 @@ mod tests {
 
         // Test requires abstraction
         assert!(!no_theory.requires_abstraction());
+    }
+
+    #[test]
+    fn concrete_array_logic_widens_for_quantified_terms() {
+        let theory = ConcreteArrayTheory::new(vec![
+            ("client".into(), "Bool".into()),
+            ("server".into(), "Bool".into()),
+        ]);
+        let term: Term = "(forall ((x client)) true)".parse().unwrap();
+
+        assert_eq!(
+            theory.get_logic_string_for_terms(&[&term]).unwrap(),
+            "AUFLIA"
+        );
     }
 
     #[test]

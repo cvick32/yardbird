@@ -85,6 +85,17 @@ impl TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort>
         })
     }
 
+    fn visit_lambda(
+        &mut self,
+        vars: Vec<(Symbol, Sort)>,
+        term: Self::T,
+    ) -> Result<Self::T, Self::E> {
+        Ok(Term::Lambda {
+            vars,
+            term: Box::new(term.accept_term_visitor(self).unwrap()),
+        })
+    }
+
     fn visit_forall(
         &mut self,
         vars: Vec<(Symbol, Sort)>,

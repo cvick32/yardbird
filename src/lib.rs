@@ -22,7 +22,10 @@ use crate::{
         list::list_ast_size_cost_factory,
     },
     strategies::ListRefinementState,
-    theories::array::array_conflict_scheduler::ArrayArtifactCapture,
+    theories::array::{
+        array_conflict_scheduler::ArrayArtifactCapture,
+        array_egraph_builder::{ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder},
+    },
     training::LogisticRegressionModel,
 };
 
@@ -32,6 +35,7 @@ pub mod cost_functions;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
+pub mod instantiation_provenance;
 pub mod instantiation_strategy;
 mod interpolant;
 pub mod logger;
@@ -86,6 +90,14 @@ pub struct YardbirdOptions {
     // Choose Cost Function
     #[arg(short, long, value_enum, default_value_t = CostFunction::BmcCost)]
     pub cost_function: CostFunction,
+
+    /// Choose how model equalities are admitted to the array refinement e-graph.
+    #[arg(long, value_enum, default_value_t = EGraphBuilderStrategy::Full)]
+    pub egraph_builder: EGraphBuilderStrategy,
+
+    /// Simplify exact select(store(A, i, v), i) terms before array abstraction.
+    #[arg(long, default_value_t = false)]
+    pub preprocess_exact_read_after_write: bool,
 
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
@@ -184,6 +196,8 @@ impl Default for YardbirdOptions {
             repl: false,
             run_ic3ia: false,
             cost_function: CostFunction::BmcCost,
+            egraph_builder: EGraphBuilderStrategy::Full,
+            preprocess_exact_read_after_write: false,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -398,6 +412,8 @@ impl YardbirdOptions {
             self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
+        .with_egraph_builder(self.build_array_egraph_builder())
+        .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -419,6 +435,15 @@ impl YardbirdOptions {
             self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
+        .with_egraph_builder(self.build_array_egraph_builder())
+        .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
+    }
+
+    fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {
+        match self.egraph_builder {
+            EGraphBuilderStrategy::Full => Box::<FullEGraphBuilder>::default(),
+            EGraphBuilderStrategy::ConeThenFull => Box::<ConeThenFullEGraphBuilder>::default(),
+        }
     }
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
@@ -460,9 +485,12 @@ impl YardbirdOptions {
                     self.build_abstract_array_strategy::<ArrayGenerated>(self.depth, aux_config),
                 ),
             },
-            Strategy::AbstractWithQuantifiers => {
-                Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
-            }
+            Strategy::AbstractWithQuantifiers => Box::new(
+                AbstractArrayWithQuantifiers::new(self.run_ic3ia)
+                    .with_exact_read_after_write_preprocessing(
+                        self.preprocess_exact_read_after_write,
+                    ),
+            ),
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
@@ -502,9 +530,12 @@ impl YardbirdOptions {
                 }
                 CostFunction::Generated => todo!(),
             },
-            Strategy::AbstractWithQuantifiers => {
-                Box::new(AbstractArrayWithQuantifiers::new(self.run_ic3ia))
-            }
+            Strategy::AbstractWithQuantifiers => Box::new(
+                AbstractArrayWithQuantifiers::new(self.run_ic3ia)
+                    .with_exact_read_after_write_preprocessing(
+                        self.preprocess_exact_read_after_write,
+                    ),
+            ),
             Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
         }
     }
@@ -587,6 +618,23 @@ pub enum CostFunction {
     LogisticRegression,
 }
 
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum EGraphBuilderStrategy {
+    Full,
+    ConeThenFull,
+}
+
+impl Display for EGraphBuilderStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Full => write!(f, "full"),
+            Self::ConeThenFull => write!(f, "cone-then-full"),
+        }
+    }
+}
+
 impl Display for CostFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -657,5 +705,36 @@ impl Display for InstantiationStrategyType {
             InstantiationStrategyType::FullUnroll => write!(f, "full-unroll"),
             InstantiationStrategyType::NoUnrollOnLoop => write!(f, "no-unroll-on-loop"),
         }
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn exact_read_after_write_preprocessing_is_disabled_by_default() {
+        let options = YardbirdOptions::from_filename("input.vmt".to_string());
+
+        assert!(!options.preprocess_exact_read_after_write);
+        assert!(!options
+            .build_array_strategy()
+            .preprocess_exact_read_after_write());
+    }
+
+    #[test]
+    fn cli_flag_enables_exact_read_after_write_preprocessing() {
+        let options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--filename",
+            "input.vmt",
+            "--preprocess-exact-read-after-write",
+        ])
+        .unwrap();
+
+        assert!(options.preprocess_exact_read_after_write);
+        assert!(options
+            .build_array_strategy()
+            .preprocess_exact_read_after_write());
     }
 }

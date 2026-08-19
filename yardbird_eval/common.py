@@ -27,7 +27,14 @@ AWS_ENVIRONMENT_KEYS = frozenset(
     {
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_SECURITY_TOKEN",
+        "AWS_PROFILE",
+        "AWS_DEFAULT_PROFILE",
     }
+)
+AWS_DOTENV_OVERRIDE_KEYS = AWS_ENVIRONMENT_KEYS | frozenset(
+    {"AWS_REGION", "AWS_DEFAULT_REGION"}
 )
 AWS_CREDENTIAL_SOURCE_KEYS = frozenset(
     {"AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_DEFAULT_PROFILE"}
@@ -155,7 +162,7 @@ def prefer_aws_dotenv(path: Path | None = None) -> bool:
     # combined with static credentials from the project .env.
     for key in AWS_ENVIRONMENT_KEYS:
         os.environ.pop(key, None)
-    for key in AWS_ENVIRONMENT_KEYS.intersection(values):
+    for key in AWS_DOTENV_OVERRIDE_KEYS.intersection(values):
         os.environ[key] = values[key]
     return True
 

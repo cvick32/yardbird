@@ -14,6 +14,7 @@ use super::{ProofAction, ProofStrategy};
 pub struct AbstractArrayWithQuantifiers {
     run_ic3ia: bool,
     discovered_array_types: Vec<(String, String)>,
+    preprocess_exact_read_after_write: bool,
 }
 
 impl AbstractArrayWithQuantifiers {
@@ -21,7 +22,13 @@ impl AbstractArrayWithQuantifiers {
         Self {
             run_ic3ia,
             discovered_array_types: vec![],
+            preprocess_exact_read_after_write: false,
         }
+    }
+
+    pub fn with_exact_read_after_write_preprocessing(mut self, enabled: bool) -> Self {
+        self.preprocess_exact_read_after_write = enabled;
+        self
     }
 }
 
@@ -33,9 +40,14 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        let (model, types) = self.get_theory_support().abstract_model(model);
+        let (model, types) =
+            model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
         self.discovered_array_types = types;
         model
+    }
+
+    fn preprocess_exact_read_after_write(&self) -> bool {
+        self.preprocess_exact_read_after_write
     }
 
     fn setup(
@@ -49,6 +61,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             instantiations: vec![],
             const_instantiations: vec![],
             array_types: vec![],
+            egraph_builder:
+                Box::<crate::theories::array::array_egraph_builder::FullEGraphBuilder>::default(),
         })
     }
 

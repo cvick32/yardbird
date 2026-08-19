@@ -213,6 +213,12 @@ pub trait TermVisitor<Constant, QualIdentifier, Keyword, SExpr, Symbol, Sort> {
         term: Self::T,
     ) -> Result<Self::T, Self::E>;
 
+    fn visit_lambda(
+        &mut self,
+        vars: Vec<(Symbol, Sort)>,
+        term: Self::T,
+    ) -> Result<Self::T, Self::E>;
+
     fn visit_forall(
         &mut self,
         vars: Vec<(Symbol, Sort)>,

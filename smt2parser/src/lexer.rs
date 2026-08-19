@@ -45,6 +45,7 @@ const KEYWORDS: &[(&str, Token)] = {
         ("!", Exclam),
         ("as", As),
         ("let", Let),
+        ("lambda", Lambda),
         ("exists", Exists),
         ("forall", Forall),
         ("match", Match),

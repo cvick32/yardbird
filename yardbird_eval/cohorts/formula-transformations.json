@@ -1,0 +1,17 @@
+{
+  "existing-yardbird-hard-tail-wins": [
+    "examples/array/array_tiling_skipped.vmt",
+    "examples/array/array_two_counters_replace.vmt",
+    "examples/array/array_tiling_pnr2.vmt",
+    "examples/array/array_tiling_tcpy2.vmt",
+    "examples/array/array_tiling_tcpy3.vmt",
+    "examples/array/array_init_addvar7.vmt"
+  ],
+  "abstract-z3-regressions": [
+    "examples/array/array_nonlin_square.vmt"
+  ],
+  "yardbird-search-overhead": [
+    "examples/array/array_split_20.vmt",
+    "examples/array/array_split_21.vmt"
+  ]
+}

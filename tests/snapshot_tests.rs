@@ -190,6 +190,7 @@ fn run_benchmark(filename: impl AsRef<Path>) -> BenchmarkResult {
     }
 }
 
+#[cfg(feature = "cvc5-backend")]
 fn run_benchmark_with_solver(
     filename: impl AsRef<Path>,
     solver_backend: SolverBackend,
@@ -399,6 +400,7 @@ fn smt2_array_bitvec_simple_strategy() {
 }
 
 #[test]
+#[cfg(feature = "cvc5-backend")]
 fn cvc5_vmt_array_copy() {
     assert_debug_snapshot!(
         "cvc5_vmt_array_copy",
@@ -424,6 +426,35 @@ fn smt2_auxiliary_synthesis_trigger_rejected() {
             "--synthesis-trigger",
             "non-local",
         ])
+    );
+}
+
+fn run_distributed_protocol_depth_2(filename: &str) -> CliResult {
+    run_yardbird_cli(&[
+        "--filename",
+        filename,
+        "--depth",
+        "2",
+        "--strategy",
+        "abstract-with-quantifiers",
+    ])
+}
+
+#[test]
+fn distributed_protocol_german_depth_2() {
+    assert_debug_snapshot!(
+        "distributed_protocol_german_depth_2",
+        run_distributed_protocol_depth_2("examples/distributed_protocols/german/german.vmt")
+    );
+}
+
+#[test]
+fn distributed_protocol_flash_coherence_depth_2() {
+    assert_debug_snapshot!(
+        "distributed_protocol_flash_coherence_depth_2",
+        run_distributed_protocol_depth_2(
+            "examples/distributed_protocols/flash-coherence/flash-coherence.vmt"
+        )
     );
 }
 

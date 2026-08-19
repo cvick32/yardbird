@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import shlex
 import tarfile
 from pathlib import Path
 from typing import Any
 
+from .benchmark_selection import garden_filter_args
 from .common import (
     ROOT,
     STATUS_COMPLETED,
@@ -60,6 +62,7 @@ def read_user_data(
     s3_bucket: str,
     *,
     capture_solver_journals: bool = False,
+    garden_args: list[str] | None = None,
 ) -> str:
     template = USER_DATA_TEMPLATE.read_text()
     template = template.replace("${matrix_name}", matrix)
@@ -68,6 +71,9 @@ def read_user_data(
     template = template.replace(
         "${capture_solver_journals}",
         "true" if capture_solver_journals else "false",
+    )
+    template = template.replace(
+        "${garden_filter_args}", shlex.join(garden_args or [])
     )
     return template
 
@@ -118,6 +124,8 @@ def launch_aws_run(args) -> dict[str, Any]:
     bucket = outputs["s3_bucket_name"]
     capture_solver_journals = bool(args.capture_solver_journals)
     manifest["capture_solver_journals"] = capture_solver_journals
+    manifest["benchmark_selection"] = args.benchmark_selection
+    filter_args = garden_filter_args(args)
 
     for idx, matrix in enumerate(args.benchmark_type, start=1):
         remote_run_name = f"{matrix}-{now_local().strftime('%Y%m%d_%H%M%S')}-{idx:02d}"
@@ -126,6 +134,7 @@ def launch_aws_run(args) -> dict[str, Any]:
             remote_run_name,
             bucket,
             capture_solver_journals=capture_solver_journals,
+            garden_args=filter_args,
         )
         user_data_path = aws_dir / f"{slugify(matrix)}_user_data.sh"
         user_data_path.write_text(user_data)

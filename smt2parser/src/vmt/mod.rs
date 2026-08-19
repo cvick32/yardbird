@@ -2,6 +2,7 @@ use std::{collections::HashMap, fs::File, io::Write, path::Path};
 
 use action::Action;
 use array_abstractor::ArrayAbstractor;
+use array_term_simplifier::ArrayTermSimplifier;
 use axiom::Axiom;
 use bmc::BMCBuilder;
 use definition_graph::{DefinitionFrameInfo, DefinitionGraph, MetadataAliasExpander};
@@ -29,6 +30,7 @@ static INITIAL_ATTRIBUTE: &str = "init";
 mod action;
 pub mod array_abstractor;
 mod array_axiom_frame_num_getter;
+pub mod array_term_simplifier;
 mod axiom;
 pub mod bmc;
 pub mod canonicalize_boolean;
@@ -82,6 +84,54 @@ fn is_assert_true(command: &Command) -> bool {
             }),
         } if symbol.0 == "true"
     )
+}
+
+fn conjoin_annotated_terms(left: Term, right: Term) -> Term {
+    let Term::Attributes {
+        term: left,
+        attributes,
+    } = left
+    else {
+        unreachable!("VMT metadata terms are always attributed")
+    };
+    let Term::Attributes { term: right, .. } = right else {
+        unreachable!("VMT metadata terms are always attributed")
+    };
+    Term::Attributes {
+        term: Box::new(Term::Application {
+            qual_identifier: concrete::QualIdentifier::simple("and"),
+            arguments: vec![*left, *right],
+        }),
+        attributes,
+    }
+}
+
+fn term_uses_lambda(term: &Term) -> bool {
+    match term {
+        Term::Lambda { .. } => true,
+        Term::Application { arguments, .. } => arguments.iter().any(term_uses_lambda),
+        Term::Let { var_bindings, term } => {
+            var_bindings.iter().any(|(_, term)| term_uses_lambda(term)) || term_uses_lambda(term)
+        }
+        Term::Forall { term, .. } | Term::Exists { term, .. } | Term::Attributes { term, .. } => {
+            term_uses_lambda(term)
+        }
+        Term::Match { term, cases } => {
+            term_uses_lambda(term) || cases.iter().any(|(_, term)| term_uses_lambda(term))
+        }
+        Term::Constant(_) | Term::QualIdentifier(_) => false,
+    }
+}
+
+fn command_uses_lambda(command: &Command) -> bool {
+    match command {
+        Command::Assert { term }
+        | Command::DefineFun { term, .. }
+        | Command::DefineFunRec { term, .. } => term_uses_lambda(term),
+        Command::DefineFunsRec { funs } => funs.iter().any(|(_, term)| term_uses_lambda(term)),
+        Command::GetValue { terms } => terms.iter().any(term_uses_lambda),
+        _ => false,
+    }
 }
 
 /// VMTModel represents a transition system given in VMT format.
@@ -149,6 +199,7 @@ impl VMTModel {
         let mut variable_relationships = vec![];
         let mut function_definitions = vec![];
         let mut helper_definition_commands = vec![];
+        let mut axioms = vec![];
         let mut initial_condition = None;
         let mut transition_condition = None;
         let mut property_condition = None;
@@ -162,7 +213,6 @@ impl VMTModel {
             for (attribute, component) in [
                 (INITIAL_ATTRIBUTE, &mut initial_condition),
                 (TRANSITION_ATTRIBUTE, &mut transition_condition),
-                (PROPERTY_ATTRIBUTE, &mut property_condition),
             ] {
                 if let Some(term) = get_annotated_term(command, attribute) {
                     let term = metadata_alias_expander.expand(term)?;
@@ -171,6 +221,14 @@ impl VMTModel {
                     }
                     has_vmt_metadata = true;
                 }
+            }
+            if let Some(term) = get_annotated_term(command, PROPERTY_ATTRIBUTE) {
+                let term = metadata_alias_expander.expand(term)?;
+                property_condition = Some(match property_condition.take() {
+                    Some(existing) => conjoin_annotated_terms(existing, term),
+                    None => term,
+                });
+                has_vmt_metadata = true;
             }
 
             if let Command::DefineFun { sig, .. } = command {
@@ -227,6 +285,11 @@ impl VMTModel {
                 } => {
                     sorts.push(command.clone());
                 }
+                Command::Assert { term } => {
+                    axioms.push(Axiom {
+                        _axiom: metadata_alias_expander.expand(term.clone())?,
+                    });
+                }
                 _ => return Err(VMTError::UnknownCommand(command.to_string())),
             }
         }
@@ -243,6 +306,7 @@ impl VMTModel {
             variable_commands,
             variable_declaration_order,
         );
+        axioms.extend(classified_variables.axioms);
         let helper_definitions = DefinitionGraph::from_commands(helper_definition_commands)?;
 
         Ok(VMTModel {
@@ -253,7 +317,7 @@ impl VMTModel {
             state_variables: classified_variables.state_variables,
             input_variables: classified_variables.input_variables,
             actions: classified_variables.actions,
-            _axioms: classified_variables.axioms,
+            _axioms: axioms,
             initial_condition,
             transition_condition,
             property_condition,
@@ -266,11 +330,31 @@ impl VMTModel {
     /// Returns (abstracted_model, discovered_types) where discovered_types is a vector of
     /// (index_sort, value_sort) pairs for all array types found in the model.
     pub fn abstract_array_theory(&self) -> (VMTModel, Vec<(String, String)>) {
+        self.abstract_array_theory_with_preprocessing(false)
+    }
+
+    pub fn abstract_array_theory_with_preprocessing(
+        &self,
+        preprocess_exact_read_after_write: bool,
+    ) -> (VMTModel, Vec<(String, String)>) {
         let mut abstractor =
             ArrayAbstractor::with_helper_definitions(self.helper_definitions.names());
+        let commands = self.as_commands();
+        let mut simplifier = ArrayTermSimplifier::from_commands(&commands);
         let mut abstracted_commands = vec![];
-        for command in self.as_commands() {
+        for command in commands {
+            let command = if preprocess_exact_read_after_write {
+                simplifier.simplify_command(command)
+            } else {
+                command
+            };
             abstracted_commands.push(command.accept(&mut abstractor).unwrap());
+        }
+        if preprocess_exact_read_after_write {
+            log::debug!(
+                "simplified {} exact native read-after-write terms before abstraction",
+                simplifier.exact_read_after_write_rewrites()
+            );
         }
         let mut array_definitions = abstractor.get_array_type_definitions();
         array_definitions.extend(abstracted_commands);
@@ -461,6 +545,7 @@ impl VMTModel {
             commands.extend(action.as_commands());
         }
         commands.extend(self.helper_definitions.as_commands());
+        commands.extend(self._axioms.iter().map(Axiom::as_command));
         let init_command = Command::DefineFun {
             sig: FunctionDec {
                 name: Symbol("init".to_string()),
@@ -600,6 +685,13 @@ impl VMTModel {
         self.input_variables.clone()
     }
 
+    pub fn get_action_variables(&self) -> Vec<Command> {
+        self.actions
+            .iter()
+            .map(|action| action.action.clone())
+            .collect()
+    }
+
     fn add_instantiation_to_condition(&self, instantiation: Term, condition: Term) -> Term {
         let (term, attributes) = match condition {
             Term::Attributes { term, attributes } => (term, attributes),
@@ -645,6 +737,17 @@ impl VMTModel {
 
     pub fn get_sorts(&self) -> Vec<Command> {
         self.sorts.clone()
+    }
+
+    pub fn get_axioms(&self) -> Vec<Term> {
+        self._axioms
+            .iter()
+            .map(|axiom| LetExtract::substitute(axiom._axiom.clone()))
+            .collect()
+    }
+
+    pub fn uses_lambda_terms(&self) -> bool {
+        self.as_commands().iter().any(command_uses_lambda)
     }
 }
 
@@ -926,13 +1029,25 @@ mod test {
             (define-fun a.relationship () (Array Int Int) (! a :next a.next))
             (define-fun updated () (Array Int Int) (store a 0 1))
             (define-fun read-updated () Int (select updated 0))
+            (define-fun direct-read () Int (select (store a 0 1) 0))
             (define-fun init () Bool (! true :init true))
             (define-fun transition () Bool (! (= a.next updated) :trans true))
             (define-fun property () Bool (! (= read-updated 1) :invar-property 0))
         "#;
 
         let model = parse_vmt(input).unwrap();
-        let (abstracted, types) = model.abstract_array_theory();
+        let (abstracted_without_preprocessing, _) = model.abstract_array_theory();
+        assert_eq!(
+            abstracted_without_preprocessing
+                .get_helper_definitions()
+                .get("direct-read")
+                .unwrap()
+                .body()
+                .to_string(),
+            "(Read_Int_Int (Write_Int_Int a 0 1) 0)"
+        );
+
+        let (abstracted, types) = model.abstract_array_theory_with_preprocessing(true);
         assert_eq!(types, vec![("Int".to_string(), "Int".to_string())]);
 
         let updated = abstracted.get_helper_definitions().get("updated").unwrap();
@@ -947,31 +1062,60 @@ mod test {
                 .to_string(),
             "(Read_Int_Int updated 0)"
         );
+        assert_eq!(
+            abstracted
+                .get_helper_definitions()
+                .get("direct-read")
+                .unwrap()
+                .body()
+                .to_string(),
+            "1"
+        );
     }
 
     #[test]
-    fn rejects_nontrailing_or_meaningful_assertions() {
-        let nontrailing = br#"
-            (assert true)
+    fn accepts_top_level_axioms() {
+        let input = br#"
+            (declare-sort node 0)
+            (declare-fun member (node node) Bool)
+            (assert (forall ((x node)) (member x x)))
             (define-fun init () Bool (! true :init true))
             (define-fun transition () Bool (! true :trans true))
             (define-fun property () Bool (! true :invar-property 0))
-        "#;
-        let meaningful = br#"
-            (define-fun init () Bool (! true :init true))
-            (define-fun transition () Bool (! true :trans true))
-            (define-fun property () Bool (! true :invar-property 0))
-            (assert false)
         "#;
 
-        assert!(matches!(
-            parse_vmt(nontrailing),
-            Err(VMTError::UnknownCommand(_))
-        ));
-        assert!(matches!(
-            parse_vmt(meaningful),
-            Err(VMTError::UnknownCommand(_))
-        ));
+        assert!(parse_vmt(input).is_ok());
+    }
+
+    #[test]
+    fn conjoins_multiple_invariant_properties() {
+        let input = br#"
+            (declare-fun left () Bool)
+            (declare-fun right () Bool)
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun property.left () Bool (! left :invar-property 0))
+            (define-fun property.right () Bool (! right :invar-property 1))
+        "#;
+
+        let model = parse_vmt(input).unwrap();
+        assert_eq!(
+            model.get_property_for_yardbird().to_string(),
+            "(and left right)"
+        );
+    }
+
+    #[test]
+    fn detects_lambda_terms() {
+        let input = br#"
+            (define-fun array-value () (Array Int Int)
+                (lambda ((index Int)) 0))
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! true :trans true))
+            (define-fun property () Bool (! true :invar-property 0))
+        "#;
+
+        assert!(parse_vmt(input).unwrap().uses_lambda_terms());
     }
 
     #[test]
