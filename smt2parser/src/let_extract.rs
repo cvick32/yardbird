@@ -117,19 +117,30 @@ impl LetExtract {
                 }
             }
             Term::Let { var_bindings, term } => {
-                let to_remove: Vec<_> = var_bindings
+                // SMT-LIB let bindings are simultaneous: every right-hand side
+                // is evaluated in the incoming scope, before any sibling is bound.
+                let substituted_bindings = var_bindings
                     .into_iter()
                     .map(|(var, term)| {
-                        // Push onto the scope
                         let var_term = self.substitute_scoped_symbols(term);
-                        self.scope.insert(var.clone(), var_term);
-                        var
+                        (var, var_term)
                     })
-                    .collect();
+                    .collect::<Vec<_>>();
+                let shadowed = substituted_bindings
+                    .into_iter()
+                    .map(|(var, var_term)| {
+                        let previous = self.scope.insert(var.clone(), var_term);
+                        (var, previous)
+                    })
+                    .collect::<Vec<_>>();
                 let new_term = self.substitute_scoped_symbols(*term);
-                for var in to_remove {
+                for (var, previous) in shadowed.into_iter().rev() {
                     // Pop off the scope
-                    self.scope.remove(&var);
+                    if let Some(previous) = previous {
+                        self.scope.insert(var, previous);
+                    } else {
+                        self.scope.remove(&var);
+                    }
                 }
                 new_term
             }
@@ -177,7 +188,7 @@ mod test {
     create_let_test!(
         test_variable_usage,
         b"(assert (let ((a 10) (b (+ a 10))) (<= a b)))",
-        "(<= 10 (+ 10 10))"
+        "(<= 10 (+ a 10))"
     );
     create_let_test!(test_actual_usage, b"(assert (and (let ((a!1 (not (not (= (Read_Int_Int c@1 Z@1) 99))))) (=> (and (>= i@1 N@1) (>= Z@1 100) (< Z@1 N@1)) (and a!1)))))", "(and (=> (and (>= i@1 N@1) (>= Z@1 100) (< Z@1 N@1)) (and (not (not (= (Read_Int_Int c@1 Z@1) 99))))))");
     create_let_test!(test_transition_use, b"(assert (and (let ((a!1 (= (Read_Int_Int c@0 i@0 (+ i@0 (Read_Int_Int a@0 i@0))) c@1)) (a!2 (= (Read_Int_Int c@0 i@0 (Read_Int_Int c@0 (- i@0 1))) c@1))) (and (=> (< i@0 100) a!1) (=> (not (< i@0 100)) a!2))) (< i@0 N@0) (= (+ i@0 1) i@1) (= a@0 a@1) (= N@0 N@1) (= Z@0 Z@1)))", "(and (and (=> (< i@0 100) (= (Read_Int_Int c@0 i@0 (+ i@0 (Read_Int_Int a@0 i@0))) c@1)) (=> (not (< i@0 100)) (= (Read_Int_Int c@0 i@0 (Read_Int_Int c@0 (- i@0 1))) c@1))) (< i@0 N@0) (= (+ i@0 1) i@1) (= a@0 a@1) (= N@0 N@1) (= Z@0 Z@1))");
@@ -192,5 +203,25 @@ mod test {
         test_let_of_let,
         b"(assert (let ((a!1 (let ((a!2 3)) a!2))) a!1))",
         "3"
+    );
+    create_let_test!(
+        test_nested_shadowing_restores_outer_binding,
+        b"(assert (let ((a!1 true)) (and (let ((a!1 false)) (not a!1)) a!1)))",
+        "(and (not false) true)"
+    );
+    create_let_test!(
+        test_sibling_bindings_use_the_incoming_scope,
+        b"(assert (let ((a 7)) (let ((a 10) (b (+ a 1))) (and (= a 10) (= b 8)))))",
+        "(and (= 10 10) (= (+ 7 1) 8))"
+    );
+    create_let_test!(
+        test_quantifier_binding_shadows_let_binding,
+        b"(assert (let ((x 1)) (forall ((x Int)) (= x 1))))",
+        "(forall ((x Int)) (= x 1))"
+    );
+    create_let_test!(
+        test_lambda_binding_shadows_let_binding,
+        b"(assert (let ((x 1)) (lambda ((x Int)) (+ x 1))))",
+        "(lambda ((x Int)) (+ x 1))"
     );
 }
