@@ -276,9 +276,10 @@ fn term_contains_cone_symbol(term: &Term, cone_symbols: &HashSet<String>) -> boo
                 .any(|(_, value)| term_contains_cone_symbol(value, cone_symbols))
                 || term_contains_cone_symbol(term, cone_symbols)
         }
-        Term::Forall { term, .. } | Term::Exists { term, .. } | Term::Attributes { term, .. } => {
-            term_contains_cone_symbol(term, cone_symbols)
-        }
+        Term::Lambda { term, .. }
+        | Term::Forall { term, .. }
+        | Term::Exists { term, .. }
+        | Term::Attributes { term, .. } => term_contains_cone_symbol(term, cone_symbols),
         Term::Match { term, cases } => {
             term_contains_cone_symbol(term, cone_symbols)
                 || cases
@@ -305,9 +306,10 @@ fn collect_term_dependencies(term: &Term, admitted: &mut HashSet<Term>) {
             }
             collect_term_dependencies(term, admitted);
         }
-        Term::Forall { term, .. } | Term::Exists { term, .. } | Term::Attributes { term, .. } => {
-            collect_term_dependencies(term, admitted)
-        }
+        Term::Lambda { term, .. }
+        | Term::Forall { term, .. }
+        | Term::Exists { term, .. }
+        | Term::Attributes { term, .. } => collect_term_dependencies(term, admitted),
         Term::Match { term, cases } => {
             collect_term_dependencies(term, admitted);
             for (_, case) in cases {
@@ -426,6 +428,18 @@ mod tests {
         assert!(!admitted.contains(&unrelated));
         assert!(admitted.iter().any(|term| term.to_string() == "a@3"));
         assert!(admitted.iter().any(|term| term.to_string() == "i@3"));
+    }
+
+    #[test]
+    fn cone_admission_traverses_lambda_bodies() {
+        let lambda: Term = "(lambda ((i Int)) (Read_Int_Int a@3 i))".parse().unwrap();
+        let subterms = vec![&lambda];
+
+        let admitted = cone_admitted_subterms(&subterms, &HashSet::from(["a".to_string()]));
+
+        assert!(admitted.contains(&lambda));
+        assert!(admitted.iter().any(|term| term.to_string() == "a@3"));
+        assert!(admitted.iter().any(|term| term.to_string() == "i"));
     }
 
     #[test]

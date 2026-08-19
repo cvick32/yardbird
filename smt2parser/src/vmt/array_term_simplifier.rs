@@ -185,6 +185,21 @@ impl ArrayTermSimplifier {
                     native_array_operation: None,
                 }
             }
+            Term::Lambda { vars, term } => {
+                let mut body_locals = locals.clone();
+                for (symbol, sort) in &vars {
+                    body_locals.insert(symbol.0.clone(), Some(sort.clone()));
+                }
+                let body = self.simplify_term(*term, &body_locals);
+                SimplifiedTerm {
+                    term: Term::Lambda {
+                        vars,
+                        term: Box::new(body.term),
+                    },
+                    sort: None,
+                    native_array_operation: None,
+                }
+            }
             Term::Forall { vars, term } => {
                 let mut body_locals = locals.clone();
                 for (symbol, sort) in &vars {
@@ -502,6 +517,24 @@ mod tests {
         assert_eq!(
             asserted_term(&commands).to_string(),
             "(forall ((A (Array Int Int)) (i Int) (v Int)) (= v v))"
+        );
+        assert_eq!(rewrites, 1);
+    }
+
+    #[test]
+    fn simplifies_lambda_array_bodies() {
+        let (commands, rewrites) = simplify(
+            br#"
+                (declare-const A (Array Int Int))
+                (declare-const v Int)
+                (assert (= (lambda ((i Int)) (select (store A i v) i))
+                           (lambda ((i Int)) v)))
+            "#,
+        );
+
+        assert_eq!(
+            asserted_term(&commands).to_string(),
+            "(= (lambda ((i Int)) v) (lambda ((i Int)) v))"
         );
         assert_eq!(rewrites, 1);
     }

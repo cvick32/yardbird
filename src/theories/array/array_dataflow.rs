@@ -560,7 +560,8 @@ impl ProvenanceBuilder<'_> {
                 }
                 self.collect_expression_sites(term, role, active_helpers, sites);
             }
-            Term::Forall { term, .. }
+            Term::Lambda { term, .. }
+            | Term::Forall { term, .. }
             | Term::Exists { term, .. }
             | Term::Attributes { term, .. } => {
                 self.collect_expression_sites(term, role, active_helpers, sites);
@@ -790,6 +791,25 @@ mod tests {
         fn get_array_types(&self) -> Vec<(String, String)> {
             Vec::new()
         }
+    }
+
+    #[test]
+    fn expression_sites_traverse_lambda_bodies() {
+        let graph = DefinitionGraph::default();
+        let builder = ProvenanceBuilder {
+            graph: &graph,
+            next_to_current: std::collections::HashMap::new(),
+        };
+        let lambda: Term = "(lambda ((i Int)) (select A i))".parse().unwrap();
+
+        let sites = builder.expression_sites(&lambda, DataflowRole::ScalarUpdateDependency);
+
+        assert!(sites.iter().any(|site| {
+            site.role == DataflowRole::ArrayLineage && site.expression.to_string() == "A"
+        }));
+        assert!(sites.iter().any(|site| {
+            site.role == DataflowRole::DemandedReadIndex && site.expression.to_string() == "i"
+        }));
     }
 
     fn has_site(path: &StateUpdatePath, expression: &str, role: DataflowRole) -> bool {

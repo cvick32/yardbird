@@ -183,7 +183,9 @@ fn canonicalize_term(term: &Term) -> (Term, bool, bool) {
                 is_ground && body_is_ground,
             )
         }
-        Term::Forall { .. } | Term::Exists { .. } => (term.clone(), false, false),
+        Term::Lambda { .. } | Term::Forall { .. } | Term::Exists { .. } => {
+            (term.clone(), false, false)
+        }
         Term::Match { term, cases } => {
             let (canonical_term, mut contains_equality, mut is_ground) = canonicalize_term(term);
             let cases = cases
@@ -253,6 +255,16 @@ mod tests {
 
         assert!(tracker.accept(&quantified, AssertionKind::IndexedTheory));
         assert!(tracker.accept(&quantified, AssertionKind::IndexedTheory));
+        assert_eq!(tracker.metrics().indexed_equality_attempts, 0);
+    }
+
+    #[test]
+    fn does_not_deduplicate_lambda_terms() {
+        let mut tracker = InstantiationAssertionTracker::default();
+        let lambda: Term = "(lambda ((i Int)) (= i i))".parse().unwrap();
+
+        assert!(tracker.accept(&lambda, AssertionKind::IndexedTheory));
+        assert!(tracker.accept(&lambda, AssertionKind::IndexedTheory));
         assert_eq!(tracker.metrics().indexed_equality_attempts, 0);
     }
 }
