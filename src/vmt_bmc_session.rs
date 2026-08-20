@@ -36,7 +36,6 @@ use crate::{
     },
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
-    theory_support::validate_logic_for_commands,
     training::IndexedInstantiationRecord,
     utils::SolverStatistics,
     SolverBackend,
@@ -173,8 +172,7 @@ impl VmtBmcSession {
         let theory = strategy.get_theory_support();
         let mut logic_terms = vec![&init_assertion, &trans_assertion, &property_assertion];
         logic_terms.extend(model_axioms.iter());
-        let logic = theory.get_logic_string_for_terms(&logic_terms)?;
-        validate_logic_for_commands(&logic, &vmt_model.as_commands())?;
+        let logic = theory.get_logic_string_for_problem(&logic_terms, &vmt_model.as_commands())?;
         let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
 
         let mut smt = VmtBmcSession {

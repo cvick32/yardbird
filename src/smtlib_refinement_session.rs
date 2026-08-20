@@ -103,9 +103,7 @@ fn logic_for_problem(
             _ => None,
         })
         .collect::<Vec<_>>();
-    let logic = theory.get_logic_string_for_terms(&terms)?;
-    crate::theory_support::validate_logic_for_commands(&logic, problem.get_commands())?;
-    Ok(logic)
+    theory.get_logic_string_for_problem(&terms, problem.get_commands())
 }
 
 /// Helper to combine assertions into a single term

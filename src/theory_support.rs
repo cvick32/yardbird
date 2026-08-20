@@ -18,19 +18,21 @@ pub trait TheorySupport {
 
     /// Returns a logic strong enough for the arithmetic used by these terms.
     fn get_logic_string_for_terms(&self, terms: &[&Term]) -> Result<String> {
-        let mut logic = self.get_logic_string()?;
-        if terms.iter().any(|term| term_uses_quantifiers(term)) {
-            logic = logic.strip_prefix("QF_").unwrap_or(&logic).to_string();
-        }
-        let logic = if terms
-            .iter()
-            .any(|term| requires_nonlinear_integer_logic(term))
-        {
-            nonlinear_integer_logic(&logic).to_string()
-        } else {
-            logic
-        };
+        let logic = finalize_logic(self.get_logic_string()?, terms, &[]);
         validate_logic_for_terms(&logic, terms)?;
+        Ok(logic)
+    }
+
+    /// Returns a logic strong enough for both the asserted terms and the
+    /// declarations in a complete problem.
+    fn get_logic_string_for_problem(
+        &self,
+        terms: &[&Term],
+        commands: &[Command],
+    ) -> Result<String> {
+        let logic = finalize_logic(self.get_logic_string()?, terms, commands);
+        validate_logic_for_terms(&logic, terms)?;
+        validate_logic_for_commands(&logic, commands)?;
         Ok(logic)
     }
 
@@ -63,7 +65,7 @@ fn validate_logic_for_terms(logic: &str, terms: &[&Term]) -> Result<()> {
     }
 
     let uses_native_arrays = terms.iter().any(|term| term_uses_native_arrays(term));
-    if uses_native_arrays && !logic.contains('A') {
+    if uses_native_arrays && !logic_supports_native_arrays(logic) {
         bail!("selected SMT logic {logic} does not support native array terms");
     }
 
@@ -115,7 +117,7 @@ pub(crate) fn validate_logic_for_commands(logic: &str, commands: &[Command]) -> 
     let uses_native_arrays = commands.iter().any(|command| {
         command.contains("(Array ") || command.contains("(select ") || command.contains("(store ")
     });
-    if uses_native_arrays && !logic.contains('A') {
+    if uses_native_arrays && !logic_supports_native_arrays(logic) {
         bail!("selected SMT logic {logic} does not support native array declarations or terms");
     }
 
@@ -127,6 +129,102 @@ pub(crate) fn validate_logic_for_commands(logic: &str, commands: &[Command]) -> 
     }
 
     Ok(())
+}
+
+fn logic_supports_native_arrays(logic: &str) -> bool {
+    logic == "ALL" || logic.strip_prefix("QF_").unwrap_or(logic).starts_with('A')
+}
+
+fn logic_supports_integers(logic: &str) -> bool {
+    logic == "ALL" || logic.contains("IA") || logic.contains("IRA")
+}
+
+fn logic_supports_bitvectors(logic: &str) -> bool {
+    logic == "ALL" || logic.contains("BV")
+}
+
+fn widen_logic_for_integers(logic: &str) -> String {
+    if logic_supports_integers(logic) {
+        return logic.to_string();
+    }
+    if logic_supports_bitvectors(logic) {
+        return "ALL".to_string();
+    }
+
+    match logic {
+        "QF_UF" => "QF_UFLIA",
+        "UF" => "UFLIA",
+        "QF_AUF" => "QF_AUFLIA",
+        "AUF" => "AUFLIA",
+        _ => "ALL",
+    }
+    .to_string()
+}
+
+fn widen_logic_for_bitvectors(logic: &str) -> String {
+    if logic_supports_bitvectors(logic) {
+        return logic.to_string();
+    }
+    if logic_supports_integers(logic) {
+        return "ALL".to_string();
+    }
+
+    match logic {
+        "QF_UF" => "QF_UFBV",
+        "UF" => "UFBV",
+        "QF_AUF" => "QF_AUFBV",
+        "AUF" => "AUFBV",
+        _ => "ALL",
+    }
+    .to_string()
+}
+
+fn finalize_logic(base_logic: String, terms: &[&Term], commands: &[Command]) -> String {
+    let command_strings = commands.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let uses_quantifiers = terms.iter().any(|term| term_uses_quantifiers(term))
+        || command_strings.iter().any(|command| {
+            command.contains("(lambda ")
+                || command.contains("(forall ")
+                || command.contains("(exists ")
+        });
+    let uses_bitvectors = terms.iter().any(|term| term_uses_bitvectors(term))
+        || command_strings.iter().any(|command| {
+            command.contains("BitVec")
+                || command.contains("#x")
+                || command.contains("#b")
+                || command.contains("(bv")
+        });
+    let uses_integers = command_strings
+        .iter()
+        .any(|command| command.contains(" Int") || command.contains("(to_int "));
+    let uses_reals = command_strings
+        .iter()
+        .any(|command| command.contains(" Real") || command.contains("(to_real "));
+    let uses_floating_point = command_strings
+        .iter()
+        .any(|command| command.contains("FloatingPoint") || command.contains("(_ fp "));
+
+    let mut logic = base_logic;
+    if uses_integers {
+        logic = widen_logic_for_integers(&logic);
+    }
+    if uses_bitvectors {
+        logic = widen_logic_for_bitvectors(&logic);
+    }
+    if uses_reals || uses_floating_point {
+        logic = "ALL".to_string();
+    }
+    if uses_quantifiers {
+        logic = logic.strip_prefix("QF_").unwrap_or(&logic).to_string();
+    }
+    if terms
+        .iter()
+        .any(|term| requires_nonlinear_integer_logic(term))
+    {
+        logic = nonlinear_integer_logic(&logic).to_string();
+    }
+
+    logic
 }
 
 fn term_uses_bitvectors(term: &Term) -> bool {
@@ -434,7 +532,17 @@ fn has_integer_types(array_types: &[(String, String)]) -> bool {
         .any(|(idx, val)| idx.contains("Int") || val.contains("Int"))
 }
 
-fn array_logic(array_types: &[(String, String)], quantifier_free: bool) -> Result<String> {
+#[derive(Clone, Copy)]
+enum ArrayEncoding {
+    Abstracted,
+    Native,
+}
+
+fn array_logic(
+    array_types: &[(String, String)],
+    quantifier_free: bool,
+    encoding: ArrayEncoding,
+) -> Result<String> {
     if array_types.is_empty() {
         bail!("array theory requires at least one discovered array type");
     }
@@ -445,13 +553,21 @@ fn array_logic(array_types: &[(String, String)], quantifier_free: bool) -> Resul
         return Ok("ALL".to_string());
     }
 
-    Ok(match (quantifier_free, has_bitvectors) {
-        (true, true) => "QF_AUFBV",
-        (false, true) => "AUFBV",
-        (true, false) => "QF_AUFLIA",
-        (false, false) => "UFLIA",
-    }
-    .to_string())
+    let core_logic = match (encoding, has_bitvectors, has_integers) {
+        (ArrayEncoding::Abstracted, true, false) => "UFBV",
+        (ArrayEncoding::Abstracted, false, true) => "UFLIA",
+        (ArrayEncoding::Abstracted, false, false) => "UF",
+        (ArrayEncoding::Native, true, false) => "AUFBV",
+        (ArrayEncoding::Native, false, true) => "AUFLIA",
+        (ArrayEncoding::Native, false, false) => "AUF",
+        (_, true, true) => unreachable!("mixed integer/bit-vector arrays use ALL"),
+    };
+
+    Ok(if quantifier_free {
+        format!("QF_{core_logic}")
+    } else {
+        core_logic.to_string()
+    })
 }
 
 pub fn get_uninterpreted_array_functions(
@@ -498,7 +614,7 @@ impl TheorySupport for ArrayTheorySupport {
     }
 
     fn get_logic_string(&self) -> Result<String> {
-        array_logic(&self.array_types, false)
+        array_logic(&self.array_types, false, ArrayEncoding::Abstracted)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -535,7 +651,7 @@ impl TheorySupport for ArrayWithQuantifiersTheorySupport {
     }
 
     fn get_logic_string(&self) -> Result<String> {
-        array_logic(&self.array_types, false)
+        array_logic(&self.array_types, false, ArrayEncoding::Abstracted)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -864,7 +980,7 @@ impl TheorySupport for ConcreteArrayTheory {
     }
 
     fn get_logic_string(&self) -> Result<String> {
-        array_logic(&self.array_types, true)
+        array_logic(&self.array_types, true, ArrayEncoding::Native)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -945,15 +1061,16 @@ mod tests {
     }
 
     #[test]
-    fn array_theory_rejects_terms_outside_the_selected_logic() {
+    fn array_theory_widens_for_additional_term_theories() {
         let array_theory = ArrayTheorySupport::new(vec![("Int".into(), "Int".into())]);
         let bitvector_term: Term = "(bvslt #x01 #x02)".parse().unwrap();
 
-        let error = array_theory
-            .get_logic_string_for_terms(&[&bitvector_term])
-            .unwrap_err();
-
-        assert!(error.to_string().contains("does not support bit-vector"));
+        assert_eq!(
+            array_theory
+                .get_logic_string_for_terms(&[&bitvector_term])
+                .unwrap(),
+            "ALL"
+        );
     }
 
     #[test]
@@ -964,6 +1081,54 @@ mod tests {
         let error = validate_logic_for_commands("UFLIA", &[command]).unwrap_err();
 
         assert!(error.to_string().contains("bit-vector declarations"));
+    }
+
+    #[test]
+    fn logic_validation_does_not_treat_lia_as_array_support() {
+        let command =
+            smt2parser::get_command_from_command_string(b"(declare-fun a () (Array client Bool))");
+
+        let error = validate_logic_for_commands("UFLIA", &[command]).unwrap_err();
+
+        assert!(error.to_string().contains("native array declarations"));
+    }
+
+    #[test]
+    fn abstract_array_logic_uses_only_the_remaining_scalar_theories() {
+        let pure_uf = ArrayTheorySupport::new(vec![("client".into(), "Bool".into())]);
+        let integers = ArrayTheorySupport::new(vec![("Int".into(), "Bool".into())]);
+        let bitvectors = ArrayTheorySupport::new(vec![("BitVec32".into(), "Bool".into())]);
+
+        assert_eq!(pure_uf.get_logic_string().unwrap(), "UF");
+        assert_eq!(integers.get_logic_string().unwrap(), "UFLIA");
+        assert_eq!(bitvectors.get_logic_string().unwrap(), "UFBV");
+    }
+
+    #[test]
+    fn quantified_abstract_array_logic_uses_uf_without_native_arrays() {
+        let theory = ArrayWithQuantifiersTheorySupport::new(vec![("client".into(), "Bool".into())]);
+
+        assert_eq!(theory.get_logic_string().unwrap(), "UF");
+    }
+
+    #[test]
+    fn problem_logic_widens_for_scalar_declarations_without_restoring_arrays() {
+        let abstract_theory = ArrayTheorySupport::new(vec![("client".into(), "Bool".into())]);
+        let concrete_theory = ConcreteArrayTheory::new(vec![("client".into(), "Bool".into())]);
+        let command = smt2parser::get_command_from_command_string(b"(declare-fun count () Int)");
+
+        assert_eq!(
+            abstract_theory
+                .get_logic_string_for_problem(&[], std::slice::from_ref(&command))
+                .unwrap(),
+            "UFLIA"
+        );
+        assert_eq!(
+            concrete_theory
+                .get_logic_string_for_problem(&[], &[command])
+                .unwrap(),
+            "QF_AUFLIA"
+        );
     }
 
     #[test]
@@ -1023,10 +1188,7 @@ mod tests {
         ]);
         let term: Term = "(forall ((x client)) true)".parse().unwrap();
 
-        assert_eq!(
-            theory.get_logic_string_for_terms(&[&term]).unwrap(),
-            "AUFLIA"
-        );
+        assert_eq!(theory.get_logic_string_for_terms(&[&term]).unwrap(), "AUF");
     }
 
     #[test]
