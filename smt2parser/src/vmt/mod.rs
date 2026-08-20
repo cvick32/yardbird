@@ -7,6 +7,7 @@ use axiom::Axiom;
 use bmc::BMCBuilder;
 use definition_graph::{DefinitionFrameInfo, DefinitionGraph, MetadataAliasExpander};
 use definition_materializer::DefinitionMaterializer;
+use herbrandization::herbrandize_pure_universal_property;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
@@ -14,7 +15,10 @@ use utils::{classify_variables, get_and_terms, get_annotated_term};
 use variable::Variable;
 
 use crate::{
-    concrete::{self, Command, FunctionDec, Identifier, Sort, Symbol, SyntaxBuilder, Term},
+    concrete::{
+        self, AttributeValue, Command, FunctionDec, Identifier, Keyword, QualIdentifier, Sort,
+        Symbol, SyntaxBuilder, Term,
+    },
     constant_abstraction::ConstantAbstractor,
     let_extract::LetExtract,
     CommandStream,
@@ -36,6 +40,7 @@ pub mod bmc;
 pub mod canonicalize_boolean;
 pub mod definition_graph;
 pub mod definition_materializer;
+mod herbrandization;
 pub mod non_boolean_subterms;
 pub mod numbered_to_symbolic;
 pub mod quantified_instantiator;
@@ -337,8 +342,7 @@ impl VMTModel {
         &self,
         preprocess_exact_read_after_write: bool,
     ) -> (VMTModel, Vec<(String, String)>) {
-        let mut abstractor =
-            ArrayAbstractor::with_helper_definitions(self.helper_definitions.names());
+        let mut abstractor = ArrayAbstractor::default();
         let commands = self.as_commands();
         let mut simplifier = ArrayTermSimplifier::from_commands(&commands);
         let mut abstracted_commands = vec![];
@@ -366,6 +370,99 @@ impl VMTModel {
             VMTModel::checked_from(array_definitions).unwrap(),
             discovered_types,
         )
+    }
+
+    /// Herbrandize a forall-only invariant property for bounded checking.
+    /// The fresh constants are rigid BMC state variables so property-directed
+    /// extraction can refer to their framed occurrences throughout the trace.
+    /// Their stuttering transitions preserve the semantics of a single
+    /// Herbrand witness. Unsupported quantifier shapes leave the model
+    /// unchanged.
+    pub fn herbrandize_universal_property(mut self) -> (Self, usize) {
+        let Term::Attributes {
+            term,
+            attributes: property_attributes,
+        } = self.property_condition.clone()
+        else {
+            return (self, 0);
+        };
+        let reserved_names = self
+            .as_commands()
+            .into_iter()
+            .filter_map(|command| match command {
+                Command::DeclareFun { symbol, .. } => Some(symbol.0),
+                Command::DefineFun { sig, .. } | Command::DefineFunRec { sig, .. } => {
+                    Some(sig.name.0)
+                }
+                _ => None,
+            });
+        let Some(result) = herbrandize_pure_universal_property(*term, reserved_names) else {
+            return (self, 0);
+        };
+        let witness_count = result.declarations.len();
+        let mut stuttering_constraints = Vec::with_capacity(witness_count);
+        for declaration in result.declarations {
+            let Command::DeclareFun {
+                symbol,
+                parameters,
+                sort,
+            } = declaration
+            else {
+                unreachable!("Herbrand witnesses must be zero-argument declarations")
+            };
+            debug_assert!(parameters.is_empty());
+            let next_symbol = Symbol(format!("{}.next", symbol.0));
+            let current_term = Term::QualIdentifier(QualIdentifier::simple(&symbol.0));
+            let next_term = Term::QualIdentifier(QualIdentifier::simple(&next_symbol.0));
+            self.state_variables.push(Variable {
+                current: Command::DeclareFun {
+                    symbol: symbol.clone(),
+                    parameters: vec![],
+                    sort: sort.clone(),
+                },
+                next: Command::DeclareFun {
+                    symbol: next_symbol.clone(),
+                    parameters: vec![],
+                    sort: sort.clone(),
+                },
+                relationship: Command::DefineFun {
+                    sig: FunctionDec {
+                        name: Symbol(format!(".{}", symbol.0)),
+                        parameters: vec![],
+                        result: sort,
+                    },
+                    term: Term::Attributes {
+                        term: Box::new(current_term.clone()),
+                        attributes: vec![(
+                            Keyword("next".to_string()),
+                            AttributeValue::Symbol(next_symbol),
+                        )],
+                    },
+                },
+            });
+            stuttering_constraints.push(Term::Application {
+                qual_identifier: QualIdentifier::simple("="),
+                arguments: vec![current_term, next_term],
+            });
+        }
+        let (transition, transition_attributes) = match self.transition_condition {
+            Term::Attributes { term, attributes } => (*term, attributes),
+            transition => (transition, vec![]),
+        };
+        let mut transition_terms = get_and_terms(transition);
+        transition_terms.extend(stuttering_constraints);
+        self.transition_condition = Term::Attributes {
+            term: Box::new(Term::Application {
+                qual_identifier: QualIdentifier::simple("and"),
+                arguments: transition_terms,
+            }),
+            attributes: transition_attributes,
+        };
+        self.property_condition = Term::Attributes {
+            term: Box::new(result.term),
+            attributes: property_attributes,
+        };
+        (self, witness_count)
     }
 
     pub fn abstract_constants_over(mut self, depth: u16) -> Self {
@@ -1103,6 +1200,43 @@ mod test {
             model.get_property_for_yardbird().to_string(),
             "(and left right)"
         );
+    }
+
+    #[test]
+    fn herbrand_witnesses_are_rigid_framed_bmc_variables() {
+        let input = br#"
+            (declare-sort client 0)
+            (declare-fun x () Int)
+            (define-fun x.relationship () Int (! x :next x.next))
+            (define-fun init () Bool (! true :init true))
+            (define-fun transition () Bool (! (= x.next x) :trans true))
+            (define-fun property () Bool
+                (! (forall ((C client)) (= C C)) :invar-property 0))
+        "#;
+
+        let (model, witness_count) = parse_vmt(input).unwrap().herbrandize_universal_property();
+
+        assert_eq!(witness_count, 1);
+        assert!(model
+            .get_all_current_variable_names()
+            .contains(&"yardbird_herbrand_0".to_string()));
+        assert!(model
+            .get_input_variables()
+            .iter()
+            .all(|command| command.to_string() != "(declare-fun yardbird_herbrand_0 () client)"));
+        assert_eq!(
+            model
+                .get_next_to_current_varible_names()
+                .get("yardbird_herbrand_0.next"),
+            Some(&"yardbird_herbrand_0".to_string())
+        );
+        assert_eq!(
+            model.get_property_for_yardbird().to_string(),
+            "(= yardbird_herbrand_0 yardbird_herbrand_0)"
+        );
+        let bmc = model.unroll(2).to_bmc();
+        assert!(bmc.contains("yardbird_herbrand_0@2"));
+        assert!(bmc.contains("(= yardbird_herbrand_0@1 yardbird_herbrand_0@2)"));
     }
 
     #[test]
