@@ -243,6 +243,11 @@ where
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
+        let (abstracted_model, herbrand_witnesses) =
+            abstracted_model.herbrandize_universal_property();
+        if herbrand_witnesses > 0 {
+            info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
+        }
         self.property_cone = if self.egraph_builder.requires_property_cone() {
             build_property_cone(&abstracted_model)
         } else {

@@ -3,7 +3,7 @@ use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     instantiation_strategy::full_unroll::FullUnrollStrategy,
-    strategies::{Abstract, ProofStrategy},
+    strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
     Driver, Error, SolverBackend,
 };
 
@@ -44,6 +44,19 @@ fn check_abstract_model(
     driver.check_strategy(depth, strategy)
 }
 
+fn check_concrete_model(
+    model: VMTModel,
+    depth: u16,
+) -> yardbird::Result<yardbird::ProofLoopResult> {
+    let mut driver = Driver::new(
+        model,
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    );
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(ConcreteArrayZ3::new(false));
+    driver.check_strategy(depth, strategy)
+}
+
 #[test]
 fn no_refinements_trigger_a_concrete_counterexample_check() {
     let model = parse_vmt("(= (select a 0) 1)");
@@ -75,4 +88,29 @@ fn buggy_generated_array_copy_is_confirmed_concretely() {
         check_abstract_model(model, 3),
         Err(Error::Counterexample)
     ));
+}
+
+#[test]
+fn german_concrete_does_not_use_integer_array_logic() {
+    let model = VMTModel::from_path("examples/distributed_protocols/german/german.vmt").unwrap();
+
+    let result = check_concrete_model(model, 2).unwrap();
+
+    assert!(!result.counterexample);
+}
+
+#[test]
+fn german_abstract_is_discharged_through_depth_eight_without_concrete_fallback() {
+    let model = VMTModel::from_path("examples/distributed_protocols/german/german.vmt").unwrap();
+
+    let result = check_abstract_model(model, 9).unwrap();
+
+    assert!(!result.counterexample);
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks"),
+        Some(0.0),
+        "German should be discharged by abstract refinement without concrete fallback"
+    );
 }
