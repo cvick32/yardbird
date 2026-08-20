@@ -1,0 +1,15 @@
+---
+source: tests/snapshot_tests.rs
+expression: result
+---
+VmtSnapshotResult {
+    example_name: "examples/distributed_protocols/database_chain_replication/database_chain_replication.vmt",
+    config: VmtSnapshotConfig {
+        strategy: Concrete,
+        solver: Z3,
+        target_depth: 5,
+    },
+    outcome: BoundedSafe {
+        solver_checks: 5,
+    },
+}
