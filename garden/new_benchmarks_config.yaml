@@ -1,0 +1,41 @@
+# Full comparison over the newly added SV-COMP-derived and distributed-protocol
+# VMT corpora. Each matrix is launched on its own AWS worker by main_eval.py.
+global:
+  examples_dir: "examples"
+  timeout_seconds: 120
+  retry_count: 1
+  jobs: 8
+  benchmark_limit:
+  sample_seed: 20260819
+  require_array_reads_and_writes: true
+  output_format: "json"
+  include_patterns:
+    - "examples/svcomp-vmt-bench/**/*.vmt"
+    - "examples/distributed_protocols/**/*.vmt"
+  exclude_patterns: []
+
+parameter_matrices:
+  new-benchmarks-concrete-depth50:
+    depths: [50]
+    solvers: ["z3"]
+    strategies: ["concrete"]
+    cost_functions: ["bmc-cost"]
+
+  new-benchmarks-quantified-depth50:
+    depths: [50]
+    solvers: ["z3"]
+    strategies: ["abstract-with-quantifiers"]
+    cost_functions: ["bmc-cost"]
+
+  new-benchmarks-bmc-cost-depth50:
+    depths: [50]
+    solvers: ["z3"]
+    strategies: ["abstract"]
+    cost_functions: ["bmc-cost"]
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: true
+  timestamp_format: "%Y%m%d_%H%M%S"

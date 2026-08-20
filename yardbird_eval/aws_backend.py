@@ -61,6 +61,7 @@ def read_user_data(
     unique_name: str,
     s3_bucket: str,
     *,
+    benchmark_config_path: str = "garden/benchmark_config.yaml",
     capture_solver_journals: bool = False,
     garden_args: list[str] | None = None,
 ) -> str:
@@ -68,6 +69,9 @@ def read_user_data(
     template = template.replace("${matrix_name}", matrix)
     template = template.replace("${unique_benchmark_name}", unique_name)
     template = template.replace("${s3_bucket_name}", s3_bucket)
+    template = template.replace(
+        "${repository_benchmark_config}", shlex.quote(benchmark_config_path)
+    )
     template = template.replace(
         "${capture_solver_journals}",
         "true" if capture_solver_journals else "false",
@@ -112,9 +116,19 @@ def describe_instance_state(instance_id: str, region: str) -> str | None:
 
 
 def launch_aws_run(args) -> dict[str, Any]:
+    config_path = Path(args.config).expanduser().resolve()
+    if not config_path.is_file():
+        raise FileNotFoundError(f"AWS benchmark config not found: {config_path}")
+    try:
+        repository_config_path = config_path.relative_to(ROOT)
+    except ValueError as error:
+        raise ValueError(
+            "AWS benchmark config must be checked into the Yardbird repository"
+        ) from error
+
     run_id = run_id_for("aws", args.name)
     manifest = base_manifest(
-        run_id, "aws", args.benchmark_type, Path(args.config), args.name
+        run_id, "aws", args.benchmark_type, config_path, args.name
     )
     run_dir = Path(manifest["run_dir"])
     aws_dir = ensure_dir(run_dir / "aws")
@@ -133,6 +147,7 @@ def launch_aws_run(args) -> dict[str, Any]:
             matrix,
             remote_run_name,
             bucket,
+            benchmark_config_path=repository_config_path.as_posix(),
             capture_solver_journals=capture_solver_journals,
             garden_args=filter_args,
         )

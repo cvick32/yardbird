@@ -97,6 +97,23 @@ class CaptureArchiveTests(unittest.TestCase):
             rendered,
         )
 
+    def test_worker_updates_main_and_uses_the_selected_repository_config(self) -> None:
+        rendered = read_user_data(
+            "protocols",
+            "latest-main",
+            "bucket",
+            benchmark_config_path="garden/new_benchmarks_aws_config.yaml",
+        )
+
+        self.assertIn("git checkout main", rendered)
+        self.assertIn("git pull --ff-only origin main", rendered)
+        self.assertIn(
+            "benchmark_config_path=garden/new_benchmarks_aws_config.yaml",
+            rendered,
+        )
+        self.assertIn('--config "$benchmark_config_path"', rendered)
+        self.assertNotIn("git checkout --detach", rendered)
+
     def test_capture_archive_is_extracted_under_matrix_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

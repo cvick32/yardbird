@@ -85,7 +85,19 @@ if ! git clone https://github.com/cvick32/yardbird.git; then
 fi
 cd yardbird
 
-echo git log -1 --format="%H"
+log_status "INFO" "Updating to the latest origin/main"
+if ! git checkout main || ! git pull --ff-only origin main; then
+    log_status "ERROR" "Failed to update to the latest origin/main"
+    exit 1
+fi
+
+benchmark_config_path=${repository_benchmark_config}
+if [ ! -f "$benchmark_config_path" ]; then
+    log_status "ERROR" "Benchmark configuration not found: $benchmark_config_path"
+    exit 1
+fi
+
+log_status "INFO" "Using Yardbird commit $(git rev-parse HEAD)"
 
 log_status "INFO" "Building yardbird"
 if ! cargo build --release -p yardbird --no-default-features; then
@@ -106,7 +118,7 @@ if [ ! -f "./target/release/garden" ]; then
 fi
 log_status "INFO" "Garden binary built successfully"
 
-echo "$(cat garden/benchmark_config.yaml)"
+echo "$(cat "$benchmark_config_path")"
 
 log_status "INFO" "Running benchmarks with garden"
 capture_root="benchmark_captures_${unique_benchmark_name}"
@@ -119,7 +131,7 @@ else
     log_status "INFO" "Solver journal capture is disabled"
 fi
 if ! ./target/release/garden \
-    --config garden/benchmark_config.yaml \
+    --config "$benchmark_config_path" \
     --matrix ${matrix_name} \
     --output benchmark_results_${unique_benchmark_name}.json \
     "${benchmark_filter_args[@]}" \
