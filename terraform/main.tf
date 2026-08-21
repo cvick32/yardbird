@@ -177,6 +177,16 @@ resource "aws_launch_template" "benchmark_template" {
     name = aws_iam_instance_profile.benchmark_profile.name
   }
 
+  block_device_mappings {
+    device_name = "/dev/sda1"
+
+    ebs { 
+      volume_size     = 32
+      volume_type     = "gp3"
+      delete_on_termination = true
+    }
+  }
+
   tag_specifications {
     resource_type = "instance"
     tags = {
