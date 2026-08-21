@@ -114,3 +114,12 @@ fn german_abstract_is_discharged_through_depth_eight_without_concrete_fallback()
         "German should be discharged by abstract refinement without concrete fallback"
     );
 }
+
+#[test]
+fn abstract_herbrandization_keeps_array_sorted_witnesses_abstract() {
+    let model = parse_vmt("(forall ((b (Array Int Int))) (= (select b 0) (select b 0)))");
+
+    let result = check_abstract_model(model, 1).unwrap();
+
+    assert!(!result.counterexample);
+}
