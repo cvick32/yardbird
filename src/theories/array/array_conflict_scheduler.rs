@@ -14,6 +14,7 @@ use crate::{
     egg_utils::RecExprRoot,
     instantiation_provenance::InstantiationProvenance,
     profiling::ArrayProfilingCollector,
+    quantified_rule::{ArrayAxiomKind, QuantifiedRule, QuantifiedRuleKind},
     theories::array::{
         array_axioms::{expr_to_term, ArrayAxiomInstantiation, ArrayExpr, ArrayLanguage},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
@@ -27,10 +28,6 @@ fn trace_conflicts_enabled() -> bool {
 
 fn trace_conflicts(message: impl AsRef<str>) {
     trace!("[yardbird::conflict-trace] {}", message.as_ref());
-}
-
-fn is_write_does_not_overwrite_axiom(name: &str) -> bool {
-    name == "write-does-not-overwrite" || name.starts_with("write-does-not-overwrite-")
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -49,6 +46,7 @@ pub(crate) struct SelectionHistoryDecision {
 type InstantiationDecisionLog = Rc<RefCell<Vec<(String, Vec<String>)>>>;
 
 pub struct ArrayConflictSchedulerOptions {
+    pub quantified_rules: HashMap<String, QuantifiedRule>,
     pub excluded_instantiations: HashSet<ArrayExpr>,
     pub refinement_step: u32,
     pub depth: u16,
@@ -143,6 +141,7 @@ where
     next_instantiation_ordinal: usize,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
+    quantified_rules: HashMap<String, QuantifiedRule>,
     excluded_instantiations: HashSet<ArrayExpr>,
     refinement_step: u32,
     depth: u16,
@@ -160,6 +159,7 @@ where
         options: ArrayConflictSchedulerOptions,
     ) -> Self {
         let ArrayConflictSchedulerOptions {
+            quantified_rules,
             excluded_instantiations,
             refinement_step,
             depth,
@@ -179,6 +179,7 @@ where
             next_instantiation_ordinal: 0,
             cost_fn,
             extractor,
+            quantified_rules,
             excluded_instantiations,
             refinement_step,
             depth,
@@ -272,6 +273,11 @@ where
         rewrite: &egg::Rewrite<ArrayLanguage, N>,
         matches: Vec<egg::SearchMatches<ArrayLanguage>>,
     ) -> usize {
+        let rule = self
+            .quantified_rules
+            .get(rewrite.name.as_str())
+            .cloned()
+            .expect("every executable array rewrite must have quantified-rule metadata");
         let apply_start = Instant::now();
         let mut substitutions_explored = 0usize;
         let tracing = trace_conflicts_enabled();
@@ -294,7 +300,7 @@ where
         if !explore_all_matches && !self.instantiations.borrow().is_empty() {
             if let Some(profiling) = &self.profiling {
                 profiling.borrow_mut().record_apply_rewrite(
-                    rewrite.name.as_str(),
+                    rule.name(),
                     substitutions_explored,
                     true,
                     apply_start.elapsed(),
@@ -334,7 +340,7 @@ where
                             decisions: &mut decisions,
                             selection_history_decisions: &mut selection_history_decisions,
                             record_decisions: self.artifact_capture.decisions,
-                            axiom_name: rewrite.name.as_str(),
+                            axiom_name: rule.name(),
                             slot_index: &mut slot_index,
                             used_derived_candidate: &mut used_derived_candidate,
                         };
@@ -386,21 +392,23 @@ where
                         // e-graph. This is a conflict, so we record the rule instantiation
                         // here.
                         if Some(m.eclass) != rhs_eclass {
-                            let instantiation: ArrayExpr =
-                                if is_write_does_not_overwrite_axiom(rewrite.name.as_str()) {
-                                    let expr1 = &memo[&"?c".parse::<egg::Var>().unwrap()];
-                                    let expr2 = &memo[&"?idx".parse::<egg::Var>().unwrap()];
-                                    // construct: (=> (not (= {} {})) (= {} {}))
-                                    ArrayLanguage::not_implies(
-                                        &ArrayLanguage::equals(
-                                            &unpatternify(expr1.clone()),
-                                            &unpatternify(expr2.clone()),
-                                        ),
-                                        &ArrayLanguage::equals(&new_lhs, &new_rhs),
-                                    )
-                                } else {
-                                    ArrayLanguage::equals(&new_lhs, &new_rhs)
-                                };
+                            let instantiation: ArrayExpr = if rule.kind()
+                                == QuantifiedRuleKind::ArrayAxiom(
+                                    ArrayAxiomKind::WriteDoesNotOverwrite,
+                                ) {
+                                let expr1 = &memo[&"?c".parse::<egg::Var>().unwrap()];
+                                let expr2 = &memo[&"?idx".parse::<egg::Var>().unwrap()];
+                                // construct: (=> (not (= {} {})) (= {} {}))
+                                ArrayLanguage::not_implies(
+                                    &ArrayLanguage::equals(
+                                        &unpatternify(expr1.clone()),
+                                        &unpatternify(expr2.clone()),
+                                    ),
+                                    &ArrayLanguage::equals(&new_lhs, &new_rhs),
+                                )
+                            } else {
+                                ArrayLanguage::equals(&new_lhs, &new_rhs)
+                            };
                             if self.excluded_instantiations.contains(&instantiation) {
                                 decisions.truncate(decision_start);
                                 selection_history_decisions.truncate(selection_start);
@@ -457,7 +465,7 @@ where
                             .expect("array candidates should have a relative-frame substitution");
                             let abstract_instantiation =
                                 self.extractor.abstract_instantiation_record(
-                                    rewrite.name.as_str(),
+                                    rule.name(),
                                     &instantiation,
                                     decision_keys.clone(),
                                     &substitution,
@@ -509,16 +517,15 @@ where
                                 ConflictClassification::Regular
                             };
                             if let Some(profiling) = &self.profiling {
-                                profiling.borrow_mut().record_conflict(
-                                    rewrite.name.as_str(),
-                                    classification_cost >= 100,
-                                );
+                                profiling
+                                    .borrow_mut()
+                                    .record_conflict(rule.name(), classification_cost >= 100);
                             }
                             if self.artifact_capture.conflicts {
                                 let conflict_record = ArrayConflictRecord::new(
                                     ordinal,
                                     abstract_instantiation_id,
-                                    rewrite.name.as_str(),
+                                    rule.name(),
                                     instantiation.clone(),
                                     expr_to_term(instantiation.clone()),
                                     self.depth,
@@ -570,7 +577,7 @@ where
         debug!("<======");
         if let Some(profiling) = &self.profiling {
             profiling.borrow_mut().record_apply_rewrite(
-                rewrite.name.as_str(),
+                rule.name(),
                 substitutions_explored,
                 false,
                 apply_start.elapsed(),

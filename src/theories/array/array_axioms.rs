@@ -1,4 +1,10 @@
-use std::{cell::RefCell, collections::HashSet, fmt, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    fmt,
+    rc::Rc,
+    time::Instant,
+};
 
 use egg::*;
 use rustc_hash::FxHashMap;
@@ -10,6 +16,7 @@ use crate::{
     instantiation_provenance::InstantiationProvenance,
     problem_context::ArrayCandidateCatalog,
     profiling::ArrayProfilingCollector,
+    quantified_rule::{ArrayAxiomKind, QuantifiedRule},
     theories::array::{
         array_conflict_scheduler::{
             ArrayArtifactCapture, ArrayConflictScheduler, ArrayConflictSchedulerOptions,
@@ -337,11 +344,16 @@ where
             .borrow_mut()
             .record_timing("extractor_init", extractor_start.elapsed());
     }
+    let ArrayRuleSet {
+        quantified_rules,
+        rewrites,
+    } = array_rules_with_types(array_types);
     let scheduler = ArrayConflictScheduler::new(
         BackoffScheduler::default(),
         scheduler_cost_fn,
         extractor,
         ArrayConflictSchedulerOptions {
+            quantified_rules,
             excluded_instantiations,
             refinement_step,
             depth,
@@ -356,8 +368,6 @@ where
     let abstract_instantiations = scheduler.abstract_instantiations();
     let selection_history_decisions = scheduler.selection_history_decisions();
     let instantiation_decision_keys = scheduler.instantiation_decision_keys();
-    let axioms = array_axioms_with_types(array_types);
-
     #[cfg(debug_assertions)]
     {
         for class in taken_egraph.classes() {
@@ -377,7 +387,7 @@ where
     let mut runner = Runner::default()
         .with_egraph(taken_egraph)
         .with_scheduler(scheduler)
-        .run(&axioms);
+        .run(&rewrites);
     if let Some(profiling) = &profiling {
         profiling
             .borrow_mut()
@@ -545,15 +555,30 @@ where
     }
 }
 
-/// Generate array axioms for a specific type pair (index_sort, value_sort).
+struct ArrayRuleSet<N>
+where
+    N: Analysis<ArrayLanguage>,
+{
+    quantified_rules: HashMap<String, QuantifiedRule>,
+    rewrites: Vec<Rewrite<ArrayLanguage, N>>,
+}
+
+/// Generate array rules for a specific type pair (index_sort, value_sort).
 /// This creates type-specific versions of the three core array axioms.
-fn array_axioms_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<Rewrite<ArrayLanguage, N>>
+fn array_rules_for_type<N>(
+    index_sort: &str,
+    value_sort: &str,
+) -> Vec<(QuantifiedRule, Rewrite<ArrayLanguage, N>)>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {
     // Axiom 1: write-does-not-overwrite
     // (Read (Write a idx val) c) => (Read a c) when idx != c
-    let axiom_name_1 = format!("write-does-not-overwrite-{}-{}", index_sort, value_sort);
+    let rule_1 = QuantifiedRule::array_axiom(
+        ArrayAxiomKind::WriteDoesNotOverwrite,
+        index_sort,
+        value_sort,
+    );
     let pattern_1 = format!(
         "(Read {} {} (Write {} {} ?a ?idx ?val) ?c)",
         index_sort, value_sort, index_sort, value_sort
@@ -561,7 +586,7 @@ where
     let replacement_1 = format!("(Read {} {} ?a ?c)", index_sort, value_sort);
     let parsed_pattern: egg::Pattern<ArrayLanguage> = pattern_1.parse().unwrap();
     let axiom_1 = Rewrite::new(
-        axiom_name_1,
+        rule_1.name().to_string(),
         ConditionalSearcher::new(parsed_pattern, not_equal("?idx", "?c")),
         replacement_1
             .parse::<egg::Pattern<ArrayLanguage>>()
@@ -571,7 +596,8 @@ where
 
     // Axiom 2: read-after-write
     // (Read (Write a idx val) idx) => val
-    let axiom_name_2 = format!("read-after-write-{}-{}", index_sort, value_sort);
+    let rule_2 =
+        QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, index_sort, value_sort);
     let pattern_2 = format!(
         "(Read {} {} (Write {} {} ?a ?idx ?val) ?idx)",
         index_sort, value_sort, index_sort, value_sort
@@ -579,7 +605,7 @@ where
     let pat2 = pattern_2.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
     let replacement_2 = "?val";
     let axiom_2 = Rewrite::new(
-        axiom_name_2,
+        rule_2.name().to_string(),
         pat2,
         replacement_2
             .parse::<egg::Pattern<ArrayLanguage>>()
@@ -587,7 +613,7 @@ where
     )
     .unwrap();
 
-    let axiom_name_3 = format!("constant-array-{}-{}", index_sort, value_sort);
+    let rule_3 = QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, index_sort, value_sort);
     let pattern_3 = format!(
         "(Read {} {} (ConstArr {} {} ?a) ?b)",
         index_sort, value_sort, index_sort, value_sort
@@ -595,7 +621,7 @@ where
     let pat3 = pattern_3.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
     let replacement_3 = "?a";
     let axiom_3 = Rewrite::new(
-        axiom_name_3,
+        rule_3.name().to_string(),
         pat3,
         replacement_3
             .parse::<egg::Pattern<ArrayLanguage>>()
@@ -603,20 +629,27 @@ where
     )
     .unwrap();
 
-    vec![axiom_1, axiom_2, axiom_3]
+    vec![(rule_1, axiom_1), (rule_2, axiom_2), (rule_3, axiom_3)]
 }
 
-/// Generate array axioms for multiple discovered array types.
-/// This creates axioms for each discovered type.
-fn array_axioms_with_types<N>(array_types: &[(String, String)]) -> Vec<Rewrite<ArrayLanguage, N>>
+/// Generate the rule catalog and executable rewrites for all discovered array types.
+fn array_rules_with_types<N>(array_types: &[(String, String)]) -> ArrayRuleSet<N>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {
-    let mut all_axioms = Vec::new();
+    let mut quantified_rules = HashMap::new();
+    let mut rewrites = Vec::new();
     for (index_sort, value_sort) in array_types {
-        all_axioms.extend(array_axioms_for_type(index_sort, value_sort));
+        for (rule, rewrite) in array_rules_for_type(index_sort, value_sort) {
+            let previous = quantified_rules.insert(rule.name().to_string(), rule);
+            assert!(previous.is_none(), "quantified rule names must be unique");
+            rewrites.push(rewrite);
+        }
     }
-    all_axioms
+    ArrayRuleSet {
+        quantified_rules,
+        rewrites,
+    }
 }
 
 fn not_equal<N>(
@@ -1203,12 +1236,8 @@ mod test {
         init();
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
-        let runner = Runner::default()
-            .with_expr(&expr)
-            .run(&array_axioms_with_types::<()>(&[(
-                "Int".into(),
-                "Int".into(),
-            )]));
+        let rules = array_rules_with_types::<()>(&[("Int".into(), "Int".into())]);
+        let runner = Runner::default().with_expr(&expr).run(&rules.rewrites);
 
         let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 1)".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_some())
@@ -1219,12 +1248,8 @@ mod test {
         init();
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A 0 0) 0)".parse().unwrap();
-        let runner = Runner::default()
-            .with_expr(&expr)
-            .run(&array_axioms_with_types::<()>(&[(
-                "Int".into(),
-                "Int".into(),
-            )]));
+        let rules = array_rules_with_types::<()>(&[("Int".into(), "Int".into())]);
+        let runner = Runner::default().with_expr(&expr).run(&rules.rewrites);
         let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 0)".parse().unwrap();
         assert!(runner.egraph.lookup_expr(&gold).is_none())
     }
