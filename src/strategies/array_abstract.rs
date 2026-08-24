@@ -16,7 +16,7 @@ use crate::{
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types_and_ranker, ArrayAxiomInstantiation, ArrayExpr,
+            expr_to_term, saturate_with_array_types, ArrayAxiomInstantiation, ArrayExpr,
             ArrayLanguage, ArraySaturationInstrumentation, ArraySaturationOptions,
             ArraySaturationResult,
         },
@@ -25,7 +25,6 @@ use crate::{
         array_egraph_builder::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
         },
-        array_instantiation_ranker::{ArrayInstantiationRanker, CompleteCostInstantiationRanker},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -66,7 +65,6 @@ where
     profiling_records: Vec<ProfilingRecord>,
     egraph_builder: Box<dyn ArrayEGraphBuilder>,
     cone_attempted_depths: HashSet<u16>,
-    instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
 }
@@ -106,7 +104,6 @@ where
             profiling_records: vec![],
             egraph_builder: Box::<FullEGraphBuilder>::default(),
             cone_attempted_depths: HashSet::new(),
-            instantiation_ranker: Box::<CompleteCostInstantiationRanker>::default(),
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
         }
@@ -125,14 +122,6 @@ where
 
     pub fn with_exact_read_after_write_preprocessing(mut self, enabled: bool) -> Self {
         self.preprocess_exact_read_after_write = enabled;
-        self
-    }
-
-    pub fn with_instantiation_ranker(
-        mut self,
-        instantiation_ranker: Box<dyn ArrayInstantiationRanker>,
-    ) -> Self {
-        self.instantiation_ranker = instantiation_ranker;
         self
     }
 }
@@ -397,7 +386,7 @@ where
             let retry_rejected_candidates =
                 expansion.candidate_scope.retries_rejected_instantiations();
             let summary = loop {
-                let mut saturation = saturate_with_array_types_and_ranker(
+                let mut saturation = saturate_with_array_types(
                     &mut state.egraph,
                     cost_fn.clone(),
                     &state.array_types,
@@ -413,7 +402,6 @@ where
                             profiling: profiling.clone(),
                         },
                     },
-                    self.instantiation_ranker.as_ref(),
                 );
                 let (rejected_model_regular, rejected_model_const) = if require_model_violation {
                     (
