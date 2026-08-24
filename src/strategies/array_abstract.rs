@@ -14,6 +14,7 @@ use crate::{
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
+    quantified_rule::TransitionGuardRule,
     theories::array::{
         array_axioms::{
             expr_to_term, saturate_with_array_types, ArrayAxiomInstantiation, ArrayExpr,
@@ -51,6 +52,7 @@ where
     run_ic3ia: bool,
     cost_config: F::Config,
     discovered_array_types: Vec<(String, String)>,
+    transition_guard_rules: Vec<TransitionGuardRule>,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     term_selection_counts: FxHashMap<String, u32>,
@@ -88,6 +90,7 @@ where
             const_instantiations: vec![],
             cost_config,
             discovered_array_types: vec![],
+            transition_guard_rules: vec![],
             decision_data: vec![],
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
@@ -236,6 +239,18 @@ where
         }
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
+        self.transition_guard_rules = abstracted_model
+            .get_transition_guards()
+            .into_iter()
+            .enumerate()
+            .map(|(ordinal, guard)| TransitionGuardRule::from_parsed(guard, ordinal))
+            .collect();
+        if !self.transition_guard_rules.is_empty() {
+            info!(
+                "Discovered {} quantified transition guard(s)",
+                self.transition_guard_rules.len()
+            );
+        }
         self.property_cone = if self.egraph_builder.requires_property_cone() {
             build_property_cone(&abstracted_model)
         } else {

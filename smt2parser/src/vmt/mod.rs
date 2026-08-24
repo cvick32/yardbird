@@ -26,6 +26,7 @@ use crate::{
 
 pub use quantified_instantiator::{Instance, QuantifiedInstantiator, UnquantifiedInstantiator};
 pub use reads_and_write::ReadsAndWrites;
+pub use transition_quantifier::TransitionGuard;
 
 static PROPERTY_ATTRIBUTE: &str = "invar-property";
 static TRANSITION_ATTRIBUTE: &str = "trans";
@@ -47,6 +48,7 @@ pub mod quantified_instantiator;
 mod reads_and_write;
 mod smt;
 pub mod smtinterpol_utils;
+mod transition_quantifier;
 mod utils;
 pub mod variable;
 
@@ -547,6 +549,13 @@ impl VMTModel {
 
     pub fn get_trans_condition_for_yardbird(&self) -> Term {
         self.unwrap_attributes(&self.transition_condition)
+    }
+
+    /// Return positive universal guards in the supported German transition
+    /// shape. Call this after array abstraction when consumers need guard bodies
+    /// expressed with abstract `Read` functions.
+    pub fn get_transition_guards(&self) -> Vec<TransitionGuard> {
+        transition_quantifier::discover_transition_guards(&self.get_trans_condition_for_yardbird())
     }
 
     pub fn get_property_for_yardbird(&self) -> Term {

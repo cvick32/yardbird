@@ -1,6 +1,8 @@
 //! Identity and provenance shared by quantified rules, independent of how a
 //! particular rule is matched or instantiated.
 
+use smt2parser::{concrete::Term, vmt::TransitionGuard};
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum QuantifiedRuleCategory {
     ArrayAxiom,
@@ -48,13 +50,16 @@ pub enum QuantifiedRuleProvenance {
         index_sort: String,
         value_sort: String,
     },
+    TransitionGuard {
+        action: String,
+        ordinal: usize,
+    },
 }
 
 /// Stable rule metadata carried beside the rule's current executable form.
 ///
-/// Array rules are currently executed as `egg::Rewrite`s. Transition guards
-/// will eventually have a different executable form, but both can share this
-/// identity and provenance without teaching cost functions about egg types.
+/// Array rules and transition guards can share this identity without teaching
+/// cost functions about their executable egg searchers.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct QuantifiedRule {
     name: String,
@@ -80,6 +85,15 @@ impl QuantifiedRule {
         }
     }
 
+    pub fn transition_guard(action: impl Into<String>, ordinal: usize) -> Self {
+        let action = action.into();
+        Self {
+            name: format!("transition-guard-{action}-{ordinal}"),
+            kind: QuantifiedRuleKind::TransitionGuard,
+            provenance: QuantifiedRuleProvenance::TransitionGuard { action, ordinal },
+        }
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -94,5 +108,33 @@ impl QuantifiedRule {
 
     pub fn provenance(&self) -> &QuantifiedRuleProvenance {
         &self.provenance
+    }
+}
+
+/// A positive universal guard found in the consequent of one transition action.
+///
+/// This first representation deliberately retains the original quantifier. A
+/// later phase will compile it to an egg searcher and remove it from the
+/// transition relation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TransitionGuardRule {
+    metadata: QuantifiedRule,
+    parsed: TransitionGuard,
+}
+
+impl TransitionGuardRule {
+    pub fn from_parsed(parsed: TransitionGuard, ordinal: usize) -> Self {
+        Self {
+            metadata: QuantifiedRule::transition_guard(parsed.action(), ordinal),
+            parsed,
+        }
+    }
+
+    pub fn metadata(&self) -> &QuantifiedRule {
+        &self.metadata
+    }
+
+    pub fn quantified_formula(&self) -> &Term {
+        self.parsed.quantified_formula()
     }
 }

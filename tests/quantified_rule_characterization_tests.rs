@@ -2,8 +2,12 @@ use std::collections::HashSet;
 
 use rustc_hash::FxHashMap;
 use smt2parser::vmt::ReadsAndWrites;
+use smt2parser::vmt::VMTModel;
 use yardbird::cost_functions::array::ArrayAstSize;
 use yardbird::problem_context::ArrayCandidateCatalog;
+use yardbird::quantified_rule::{
+    QuantifiedRuleKind, QuantifiedRuleProvenance, TransitionGuardRule,
+};
 use yardbird::theories::array::{
     array_axioms::{
         expr_to_term, saturate_with_array_types, ArrayExpr, ArrayLanguage,
@@ -74,6 +78,37 @@ fn run_abstract_german_depth_two() -> ProofLoopResult {
             .check_strategy(options.depth, options.build_array_strategy())
             .expect("German should be bounded-safe through depth 1")
     })
+}
+
+#[test]
+fn german_catalogs_only_its_quantified_transition_guard() {
+    let model = VMTModel::from_path("examples/distributed_protocols/german/german.vmt").unwrap();
+    let (abstracted_model, _) = model.abstract_array_theory();
+    let guards = abstracted_model
+        .get_transition_guards()
+        .into_iter()
+        .enumerate()
+        .map(|(ordinal, guard)| TransitionGuardRule::from_parsed(guard, ordinal))
+        .collect::<Vec<_>>();
+
+    assert_eq!(guards.len(), 1);
+    let guard = &guards[0];
+    assert_eq!(
+        guard.metadata().name(),
+        "transition-guard-grantExclusiveRule-0"
+    );
+    assert_eq!(guard.metadata().kind(), QuantifiedRuleKind::TransitionGuard);
+    assert_eq!(
+        guard.metadata().provenance(),
+        &QuantifiedRuleProvenance::TransitionGuard {
+            action: "grantExclusiveRule".to_string(),
+            ordinal: 0,
+        }
+    );
+    assert_eq!(
+        guard.quantified_formula().to_string(),
+        "(forall ((|I:client| client)) (not (Read_client_Bool homeSharerList |I:client|)))"
+    );
 }
 
 #[test]
