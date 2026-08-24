@@ -1118,22 +1118,7 @@ where
     };
 
     let best = if extractor.prefers_source_on_cost_tie() {
-        let source = best_in_pool(extractor.source_write_candidates(array_expr));
-        let derived = extractor
-            .allows_derived_candidates()
-            .then(|| best_in_pool(extractor.derived_write_candidates(array_expr)))
-            .flatten();
-        match (source, derived) {
-            (Some(source), Some(derived)) => {
-                if (source.0, false, source.1.as_str()) <= (derived.0, true, derived.1.as_str()) {
-                    Some(source)
-                } else {
-                    Some(derived)
-                }
-            }
-            (source @ Some(_), None) => source,
-            (None, derived) => derived,
-        }
+        best_in_pool(extractor.source_write_candidates(array_expr))
     } else {
         best_in_pool(extractor.all_write_candidates(array_expr))
     };
@@ -1325,36 +1310,6 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
-    struct PreferDerivedWrite {
-        terms: Vec<ArrayExpr>,
-    }
-
-    impl egg::CostFunction<ArrayLanguage> for PreferDerivedWrite {
-        type Cost = u32;
-
-        fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
-        where
-            C: FnMut(egg::Id) -> Self::Cost,
-        {
-            let self_cost = match enode {
-                ArrayLanguage::Symbol(symbol) if symbol.as_str() == "source_index" => 10,
-                _ => 0,
-            };
-            enode.fold(self_cost, |sum, id| sum.saturating_add(costs(id)))
-        }
-    }
-
-    impl YardbirdCostFunction<ArrayLanguage> for PreferDerivedWrite {
-        fn get_string_terms(&self) -> Vec<String> {
-            self.terms.iter().map(ToString::to_string).collect()
-        }
-
-        fn get_reads_and_writes(&self) -> ReadsAndWrites {
-            ReadsAndWrites::default()
-        }
-    }
-
     #[test]
     fn source_only_lookup_returns_the_exact_source_write_children() {
         let write: ArrayExpr = "(Write Int Int A i v)".parse().unwrap();
@@ -1455,92 +1410,6 @@ mod tests {
                 value_eclass,
             ),
             Some((index, value))
-        );
-    }
-
-    #[test]
-    fn specialized_write_matching_uses_source_only_as_a_cost_tie_breaker() {
-        let array: ArrayExpr = "A".parse().unwrap();
-        let source_index: ArrayExpr = "source_index".parse().unwrap();
-        let derived_index: ArrayExpr = "derived_index".parse().unwrap();
-        let value: ArrayExpr = "v".parse().unwrap();
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let source_index_id = egraph.add_expr(&source_index);
-        let derived_index_id = egraph.add_expr(&derived_index);
-        egraph.union(source_index_id, derived_index_id);
-        let value_id = egraph.add_expr(&value);
-        egraph.rebuild();
-        let index_eclass = egraph.find(source_index_id);
-        let source_write = ArrayLanguage::write_typed(
-            "Int",
-            "Int",
-            array.clone(),
-            source_index.clone(),
-            value.clone(),
-        );
-        let derived_write = ArrayLanguage::write_typed(
-            "Int",
-            "Int",
-            array.clone(),
-            derived_index.clone(),
-            value.clone(),
-        );
-        let extractor = ArrayTermExtractor::new(
-            &egraph,
-            PreferDerivedWrite {
-                terms: vec![
-                    array.clone(),
-                    source_index.clone(),
-                    derived_index.clone(),
-                    value.clone(),
-                    source_write,
-                    derived_write,
-                ],
-            },
-            ArrayTermExtractorOptions {
-                candidate_catalog: ArrayCandidateCatalog {
-                    source_grounded: ArrayCandidatePool {
-                        terms: vec!["A".into(), "source_index".into(), "v".into()],
-                        reads_and_writes: ReadsAndWrites::from(
-                            std::collections::HashSet::new(),
-                            std::collections::HashSet::from([(
-                                "A".into(),
-                                "source_index".into(),
-                                "v".into(),
-                            )]),
-                        ),
-                    },
-                    derived: ArrayCandidatePool {
-                        terms: vec!["derived_index".into()],
-                        reads_and_writes: ReadsAndWrites::from(
-                            std::collections::HashSet::new(),
-                            std::collections::HashSet::from([(
-                                "A".into(),
-                                "derived_index".into(),
-                                "v".into(),
-                            )]),
-                        ),
-                    },
-                },
-                candidate_scope: CandidateScope::SourceThenDerived,
-                refinement_step: 0,
-                selection_counts: FxHashMap::default(),
-                depth: 0,
-                profiling: None,
-            },
-        );
-
-        assert_eq!(
-            best_matching_write_children(
-                &egraph,
-                &extractor,
-                &array,
-                "Int",
-                "Int",
-                index_eclass,
-                value_id,
-            ),
-            Some((derived_index, value))
         );
     }
 }

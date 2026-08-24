@@ -119,7 +119,6 @@ where
     cost_function: CF,
     refinement_step: u32,
     source_write_candidates: WriteCandidateIndex,
-    derived_write_candidates: WriteCandidateIndex,
     all_write_candidates: WriteCandidateIndex,
     candidate_scope: CandidateScope,
     property_terms: FxHashSet<String>,
@@ -198,31 +197,7 @@ where
                     "precompute_source_term_map",
                     &term,
                 );
-                if candidate_scope.combines_provenance_catalogs() {
-                    insert_candidate(&mut all_term_map, expr, term.clone(), cost);
-                }
                 insert_candidate(&mut source_term_map, expr, term, cost);
-            }
-
-            for raw_term in &candidate_catalog.derived.terms {
-                let Some(term) = raw_term.parse().ok().and_then(translate_term) else {
-                    continue;
-                };
-                if contains_z3_model_value(&term) {
-                    continue;
-                }
-                let Some(expr) = egraph.lookup_expr(&term) else {
-                    continue;
-                };
-                let cost = self_cost(
-                    &mut cost_function,
-                    &profiling,
-                    "precompute_derived_term_map",
-                    &term,
-                );
-                if candidate_scope.combines_provenance_catalogs() {
-                    insert_candidate(&mut all_term_map, expr, term.clone(), cost);
-                }
             }
         }
 
@@ -269,8 +244,6 @@ where
         let all_reads_and_writes = cost_function.get_reads_and_writes();
         let source_write_candidates =
             index_write_candidates(&candidate_catalog.source_grounded.reads_and_writes);
-        let derived_write_candidates =
-            index_write_candidates(&candidate_catalog.derived.reads_and_writes);
         let all_write_candidates = index_write_candidates(&all_reads_and_writes);
 
         Self {
@@ -280,7 +253,6 @@ where
             cost_function,
             refinement_step,
             source_write_candidates,
-            derived_write_candidates,
             all_write_candidates,
             candidate_scope,
             property_terms,
@@ -336,13 +308,6 @@ where
 
     pub(crate) fn source_write_candidates(&self, array: &ArrayExpr) -> &[(ArrayExpr, ArrayExpr)] {
         self.source_write_candidates
-            .get(&array.to_string())
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-    }
-
-    pub(crate) fn derived_write_candidates(&self, array: &ArrayExpr) -> &[(ArrayExpr, ArrayExpr)] {
-        self.derived_write_candidates
             .get(&array.to_string())
             .map(Vec::as_slice)
             .unwrap_or_default()
@@ -405,10 +370,6 @@ where
 
     pub fn requires_source_grounded_candidates(&self) -> bool {
         self.candidate_scope.requires_source_grounded()
-    }
-
-    pub fn allows_derived_candidates(&self) -> bool {
-        self.candidate_scope.allows_derived()
     }
 
     pub fn prefers_source_on_cost_tie(&self) -> bool {
@@ -796,14 +757,6 @@ where
                 .source_term_map
                 .get(&eclass)
                 .map(|terms| (terms, CandidateOrigin::SourceGrounded)),
-            CandidateScope::SourceThenDerived => self.all_term_map.get(&eclass).map(|terms| {
-                let origin = if self.source_term_map.contains_key(&eclass) {
-                    CandidateOrigin::SourceGrounded
-                } else {
-                    CandidateOrigin::Derived
-                };
-                (terms, origin)
-            }),
             CandidateScope::AllCandidates => self.all_term_map.get(&eclass).map(|terms| {
                 let origin = if self.source_term_map.contains_key(&eclass) {
                     CandidateOrigin::SourceGrounded
@@ -957,7 +910,7 @@ mod tests {
         theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
         training::canonical_term_hash,
     };
-    use rustc_hash::{FxHashMap, FxHashSet};
+    use rustc_hash::FxHashMap;
     use smt2parser::vmt::ReadsAndWrites;
 
     #[derive(Clone)]
@@ -1074,7 +1027,7 @@ mod tests {
             },
             options(
                 ArrayCandidateCatalog::default(),
-                CandidateScope::SourceThenDerived,
+                CandidateScope::AllCandidates,
                 FxHashMap::default(),
             ),
         );
@@ -1167,7 +1120,7 @@ mod tests {
             },
             options(
                 ArrayCandidateCatalog::default(),
-                CandidateScope::SourceThenDerived,
+                CandidateScope::AllCandidates,
                 selection_counts,
             ),
         );
@@ -1211,83 +1164,6 @@ mod tests {
     }
 
     #[test]
-    fn source_then_derived_exposes_both_candidate_pools() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let derived: ArrayExpr = "a".parse().unwrap();
-        let source: ArrayExpr = "z".parse().unwrap();
-        let derived_id = egraph.add_expr(&derived);
-        let source_id = egraph.add_expr(&source);
-        egraph.union(derived_id, source_id);
-        egraph.rebuild();
-
-        let extractor = ArrayTermExtractor::new(
-            &egraph,
-            ZeroCostTerms {
-                terms: vec![source.clone(), derived.clone()],
-            },
-            options(
-                ArrayCandidateCatalog {
-                    source_grounded: ArrayCandidatePool {
-                        terms: vec!["z".to_string()],
-                        ..ArrayCandidatePool::default()
-                    },
-                    derived: ArrayCandidatePool {
-                        terms: vec!["a".to_string()],
-                        ..ArrayCandidatePool::default()
-                    },
-                },
-                CandidateScope::SourceThenDerived,
-                FxHashMap::default(),
-            ),
-        );
-
-        let candidates = extractor
-            .ranked_candidates(&egraph, source_id)
-            .into_iter()
-            .map(|(term, _)| term.to_string())
-            .collect::<FxHashSet<_>>();
-
-        assert_eq!(candidates, FxHashSet::from_iter(["a".into(), "z".into()]));
-    }
-
-    #[test]
-    fn source_then_derived_prefers_source_when_effective_costs_tie() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let derived: ArrayExpr = "a".parse().unwrap();
-        let source: ArrayExpr = "z".parse().unwrap();
-        let derived_id = egraph.add_expr(&derived);
-        let source_id = egraph.add_expr(&source);
-        egraph.union(derived_id, source_id);
-        egraph.rebuild();
-
-        let extractor = ArrayTermExtractor::new(
-            &egraph,
-            ZeroCostTerms {
-                terms: vec![derived, source.clone()],
-            },
-            options(
-                ArrayCandidateCatalog {
-                    source_grounded: ArrayCandidatePool {
-                        terms: vec![source.to_string()],
-                        ..ArrayCandidatePool::default()
-                    },
-                    derived: ArrayCandidatePool {
-                        terms: vec!["a".to_string()],
-                        ..ArrayCandidatePool::default()
-                    },
-                },
-                CandidateScope::SourceThenDerived,
-                FxHashMap::default(),
-            ),
-        );
-
-        let (chosen, origin) =
-            extractor.extract_for_decision_with_origin(&egraph, source_id, "test", 0);
-        assert_eq!(chosen, source);
-        assert_eq!(origin, CandidateOrigin::SourceGrounded);
-    }
-
-    #[test]
     fn source_only_scope_classifies_egraph_fallback_as_derived() {
         let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
         let value: ArrayExpr = "137".parse().unwrap();
@@ -1323,7 +1199,7 @@ mod tests {
             ZeroCostTerms { terms: vec![] },
             options(
                 ArrayCandidateCatalog::default(),
-                CandidateScope::SourceThenDerived,
+                CandidateScope::AllCandidates,
                 FxHashMap::default(),
             ),
         );
@@ -1346,7 +1222,7 @@ mod tests {
             ZeroCostTerms { terms: vec![] },
             options(
                 ArrayCandidateCatalog::default(),
-                CandidateScope::SourceThenDerived,
+                CandidateScope::AllCandidates,
                 FxHashMap::default(),
             ),
         );
