@@ -14,13 +14,17 @@ use crate::{
     egg_utils::RecExprRoot,
     instantiation_provenance::InstantiationProvenance,
     profiling::ArrayProfilingCollector,
-    quantified_rule::{ArrayAxiomKind, QuantifiedRule, QuantifiedRuleKind},
     theories::array::{
-        array_axioms::{expr_to_term, ArrayAxiomInstantiation, ArrayExpr, ArrayLanguage},
+        array_axioms::{
+            expr_to_term, ArrayAxiomInstantiation, ArrayExpr, ArrayLanguage, ArrayQuantifiedRule,
+        },
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
     },
     training::{canonical_term_hash, AbstractInstantiationRecord, DecisionRecord},
 };
+
+const INITIAL_RULE_MATCH_LIMIT: usize = 500;
+const MAX_RULE_SEARCH_ROUNDS: usize = 15;
 
 fn trace_conflicts_enabled() -> bool {
     log::log_enabled!(log::Level::Trace)
@@ -43,10 +47,7 @@ pub(crate) struct SelectionHistoryDecision {
     pub chosen_term_hash: String,
 }
 
-type InstantiationDecisionLog = Rc<RefCell<Vec<(String, Vec<String>)>>>;
-
-pub struct ArrayConflictSchedulerOptions {
-    pub quantified_rules: HashMap<String, QuantifiedRule>,
+pub struct ArrayRuleInstantiatorOptions {
     pub excluded_instantiations: HashSet<ArrayExpr>,
     pub refinement_step: u32,
     pub depth: u16,
@@ -120,46 +121,47 @@ pub fn preprocess_array_expr(input: &str) -> String {
     result
 }
 
-pub struct ArrayConflictScheduler<S, CF>
+pub(crate) struct ArrayRuleInstantiationCandidates {
+    pub instantiations: Vec<ArrayAxiomInstantiation>,
+    pub instantiations_w_constants: Vec<ArrayAxiomInstantiation>,
+    pub conflicts: Vec<ArrayConflictRecord>,
+    pub decisions: Vec<DecisionRecord>,
+    pub abstract_instantiations: Vec<AbstractInstantiationRecord>,
+    pub selection_history_decisions: Vec<SelectionHistoryDecision>,
+    pub instantiation_decision_keys: Vec<(String, Vec<String>)>,
+}
+
+pub struct ArrayRuleInstantiator<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    inner: S,
-    /// TODO: use RecExpr instead of String
-    /// Keep track of rule instantiations that caused conflicts. We use an
-    /// `Rc<RefCell<...>>` here because the scheduler isn't public on `egg::Runner`. So
-    /// in order to be able to get data out of the scheduler after a saturation run, we
-    /// need to use interior mutability.
-    instantiations: Rc<RefCell<Vec<ArrayAxiomInstantiation>>>,
-    instantiations_w_constants: Rc<RefCell<Vec<ArrayAxiomInstantiation>>>,
-    conflicts: Rc<RefCell<Vec<ArrayConflictRecord>>>,
-    decisions: Rc<RefCell<Vec<DecisionRecord>>>,
-    abstract_instantiations: Rc<RefCell<Vec<AbstractInstantiationRecord>>>,
-    selection_history_decisions: Rc<RefCell<Vec<SelectionHistoryDecision>>>,
-    instantiation_decision_keys: InstantiationDecisionLog,
+    instantiations: Vec<ArrayAxiomInstantiation>,
+    instantiations_w_constants: Vec<ArrayAxiomInstantiation>,
+    conflicts: Vec<ArrayConflictRecord>,
+    decisions: Vec<DecisionRecord>,
+    abstract_instantiations: Vec<AbstractInstantiationRecord>,
+    selection_history_decisions: Vec<SelectionHistoryDecision>,
+    instantiation_decision_keys: Vec<(String, Vec<String>)>,
     artifact_capture: ArrayArtifactCapture,
     next_instantiation_ordinal: usize,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
-    quantified_rules: HashMap<String, QuantifiedRule>,
     excluded_instantiations: HashSet<ArrayExpr>,
     refinement_step: u32,
     depth: u16,
     profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
-impl<S, CF> ArrayConflictScheduler<S, CF>
+impl<CF> ArrayRuleInstantiator<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
     pub fn new(
-        scheduler: S,
         cost_fn: CF,
         extractor: ArrayTermExtractor<CF>,
-        options: ArrayConflictSchedulerOptions,
+        options: ArrayRuleInstantiatorOptions,
     ) -> Self {
-        let ArrayConflictSchedulerOptions {
-            quantified_rules,
+        let ArrayRuleInstantiatorOptions {
             excluded_instantiations,
             refinement_step,
             depth,
@@ -167,19 +169,17 @@ where
             profiling,
         } = options;
         Self {
-            inner: scheduler,
-            instantiations: Rc::new(RefCell::new(vec![])),
-            instantiations_w_constants: Rc::new(RefCell::new(vec![])),
-            conflicts: Rc::new(RefCell::new(vec![])),
-            decisions: Rc::new(RefCell::new(vec![])),
-            abstract_instantiations: Rc::new(RefCell::new(vec![])),
-            selection_history_decisions: Rc::new(RefCell::new(vec![])),
-            instantiation_decision_keys: Rc::new(RefCell::new(vec![])),
+            instantiations: vec![],
+            instantiations_w_constants: vec![],
+            conflicts: vec![],
+            decisions: vec![],
+            abstract_instantiations: vec![],
+            selection_history_decisions: vec![],
+            instantiation_decision_keys: vec![],
             artifact_capture,
             next_instantiation_ordinal: 0,
             cost_fn,
             extractor,
-            quantified_rules,
             excluded_instantiations,
             refinement_step,
             depth,
@@ -187,404 +187,387 @@ where
         }
     }
 
-    pub fn instantiations(&self) -> Rc<RefCell<Vec<ArrayAxiomInstantiation>>> {
-        Rc::clone(&self.instantiations)
-    }
-
-    pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ArrayAxiomInstantiation>>> {
-        Rc::clone(&self.instantiations_w_constants)
-    }
-
-    pub fn conflicts(&self) -> Rc<RefCell<Vec<ArrayConflictRecord>>> {
-        Rc::clone(&self.conflicts)
-    }
-
-    pub fn decisions(&self) -> Rc<RefCell<Vec<DecisionRecord>>> {
-        Rc::clone(&self.decisions)
-    }
-
-    pub fn abstract_instantiations(&self) -> Rc<RefCell<Vec<AbstractInstantiationRecord>>> {
-        Rc::clone(&self.abstract_instantiations)
-    }
-
-    pub(crate) fn selection_history_decisions(&self) -> Rc<RefCell<Vec<SelectionHistoryDecision>>> {
-        Rc::clone(&self.selection_history_decisions)
-    }
-
-    pub(crate) fn instantiation_decision_keys(&self) -> InstantiationDecisionLog {
-        Rc::clone(&self.instantiation_decision_keys)
+    pub(crate) fn into_candidates(self) -> ArrayRuleInstantiationCandidates {
+        ArrayRuleInstantiationCandidates {
+            instantiations: self.instantiations,
+            instantiations_w_constants: self.instantiations_w_constants,
+            conflicts: self.conflicts,
+            decisions: self.decisions,
+            abstract_instantiations: self.abstract_instantiations,
+            selection_history_decisions: self.selection_history_decisions,
+            instantiation_decision_keys: self.instantiation_decision_keys,
+        }
     }
 }
 
-impl<S, N, CF> egg::RewriteScheduler<ArrayLanguage, N> for ArrayConflictScheduler<S, CF>
+impl<CF> ArrayRuleInstantiator<CF>
 where
-    S: egg::RewriteScheduler<ArrayLanguage, N>,
     CF: YardbirdCostFunction<ArrayLanguage>,
-    N: egg::Analysis<ArrayLanguage>,
 {
-    fn can_stop(&mut self, iteration: usize) -> bool {
-        self.inner.can_stop(iteration)
-    }
-
-    fn search_rewrite<'a>(
+    pub(crate) fn search_rules<N>(
         &mut self,
-        iteration: usize,
         egraph: &egg::EGraph<ArrayLanguage, N>,
-        rewrite: &'a egg::Rewrite<ArrayLanguage, N>,
-    ) -> Vec<egg::SearchMatches<'a, ArrayLanguage>> {
-        let search_start = Instant::now();
-        let matches = self.inner.search_rewrite(iteration, egraph, rewrite);
-        if let Some(profiling) = &self.profiling {
-            let substitutions = matches
-                .iter()
-                .map(|search_match| search_match.substs.len())
-                .sum();
-            profiling.borrow_mut().record_search_rewrite(
-                rewrite.name.as_str(),
-                matches.len(),
-                substitutions,
-                search_start.elapsed(),
-            );
-        }
-        if trace_conflicts_enabled() {
-            trace_conflicts(format!(
-                "search iteration={iteration} rewrite={} eclasses={} matches={} existing_insts={}",
-                rewrite.name,
-                egraph.number_of_classes(),
-                matches.len(),
-                self.instantiations.borrow().len()
-            ));
-            for (match_ix, search_match) in matches.iter().enumerate() {
-                trace_conflicts(format!(
-                    "  match[{match_ix}] eclass={} subst_count={} has_ast={}",
-                    search_match.eclass,
-                    search_match.substs.len(),
-                    search_match.ast.is_some()
-                ));
+        rules: &[ArrayQuantifiedRule<N>],
+    ) -> usize
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        // A broad quantified rule should not monopolize one search pass. Start
+        // with a bounded search and double only the limits of rules that exceed
+        // it. This retains egg's former BackoffScheduler behavior without
+        // modeling quantified rules as rewrites.
+        let mut times_over_limit = vec![0u32; rules.len()];
+        for round in 0..MAX_RULE_SEARCH_ROUNDS {
+            let mut any_rule_over_limit = false;
+            let mut matches_by_rule = Vec::with_capacity(rules.len());
+
+            for (rule_index, rule) in rules.iter().enumerate() {
+                let threshold = INITIAL_RULE_MATCH_LIMIT
+                    .checked_shl(times_over_limit[rule_index])
+                    .unwrap_or(usize::MAX);
+                let search_start = Instant::now();
+                let mut matches = rule.search_with_limit(egraph, threshold.saturating_add(1));
+                let substitutions = matches
+                    .iter()
+                    .map(|search_match| search_match.substs.len())
+                    .sum::<usize>();
+                let over_limit = substitutions > threshold;
+                if over_limit {
+                    times_over_limit[rule_index] += 1;
+                    any_rule_over_limit = true;
+                    matches.clear();
+                }
+                if let Some(profiling) = &self.profiling {
+                    profiling.borrow_mut().record_rule_search(
+                        rule.metadata().name(),
+                        matches.len(),
+                        if over_limit { 0 } else { substitutions },
+                        search_start.elapsed(),
+                    );
+                }
+                if trace_conflicts_enabled() {
+                    trace_conflicts(format!(
+                        "search round={round} rule={} eclasses={} matches={} substitutions={} threshold={} backed_off={} existing_insts={}",
+                        rule.metadata().name(),
+                        egraph.number_of_classes(),
+                        matches.len(),
+                        substitutions,
+                        threshold,
+                        over_limit,
+                        self.instantiations.len()
+                    ));
+                    for (match_ix, search_match) in matches.iter().enumerate() {
+                        trace_conflicts(format!(
+                            "  match[{match_ix}] eclass={} subst_count={}",
+                            search_match.eclass,
+                            search_match.substs.len(),
+                        ));
+                    }
+                }
+                matches_by_rule.push(matches);
+            }
+
+            for (rule, matches) in rules.iter().zip(matches_by_rule) {
+                self.instantiate_rule(egraph, rule, matches);
+            }
+
+            if !any_rule_over_limit {
+                return round + 1;
             }
         }
-        matches
+
+        MAX_RULE_SEARCH_ROUNDS
     }
 
-    fn apply_rewrite(
+    fn instantiate_rule<'a, N>(
         &mut self,
-        iteration: usize,
-        egraph: &mut egg::EGraph<ArrayLanguage, N>,
-        rewrite: &egg::Rewrite<ArrayLanguage, N>,
-        matches: Vec<egg::SearchMatches<ArrayLanguage>>,
-    ) -> usize {
-        let rule = self
-            .quantified_rules
-            .get(rewrite.name.as_str())
-            .cloned()
-            .expect("every executable array rewrite must have quantified-rule metadata");
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        executable_rule: &'a ArrayQuantifiedRule<N>,
+        matches: Vec<egg::SearchMatches<'a, ArrayLanguage>>,
+    ) where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        let rule = executable_rule.metadata();
         let apply_start = Instant::now();
         let mut substitutions_explored = 0usize;
         let tracing = trace_conflicts_enabled();
         debug!("======>");
         debug!(
-            "apply_rewrite: {} with {} matches, inst_count={}",
-            rewrite.name,
+            "instantiate_rule: {} with {} matches, inst_count={}",
+            rule.name(),
             matches.len(),
-            self.instantiations.borrow().len()
+            self.instantiations.len()
         );
         if tracing {
             trace_conflicts(format!(
-                "apply iteration={iteration} rewrite={} matches={} existing_insts={}",
-                rewrite.name,
+                "instantiate rule={} matches={} existing_insts={}",
+                rule.name(),
                 matches.len(),
-                self.instantiations.borrow().len()
+                self.instantiations.len()
             ));
         }
         let explore_all_matches = self.extractor.explores_all_matches();
-        if !explore_all_matches && !self.instantiations.borrow().is_empty() {
+        if !explore_all_matches && !self.instantiations.is_empty() {
             if let Some(profiling) = &self.profiling {
-                profiling.borrow_mut().record_apply_rewrite(
+                profiling.borrow_mut().record_rule_instantiation(
                     rule.name(),
                     substitutions_explored,
                     true,
                     apply_start.elapsed(),
                 );
             }
-            return 0;
+            return;
         }
+        let searcher_ast = executable_rule.trigger();
+        let consequence_ast = executable_rule.consequence();
         'matches: for (match_ix, m) in matches.iter().enumerate() {
-            if let Some(searcher_ast) = &m.ast {
-                debug!("Number of subs: {}", m.substs.len());
+            debug!("Number of subs: {}", m.substs.len());
+            if tracing {
+                trace_conflicts(format!(
+                    "  exploring match[{match_ix}] eclass={} subst_count={}",
+                    m.eclass,
+                    m.substs.len()
+                ));
+            }
+            for (subst_ix, subst) in m.substs.iter().enumerate() {
+                substitutions_explored += 1;
+                debug!("Current Sub: {:?}", subst);
                 if tracing {
-                    trace_conflicts(format!(
-                        "  exploring match[{match_ix}] eclass={} subst_count={}",
-                        m.eclass,
-                        m.substs.len()
-                    ));
+                    trace_conflicts(format!("    subst[{subst_ix}] raw={subst:?}"));
                 }
-                for (subst_ix, subst) in m.substs.iter().enumerate() {
-                    substitutions_explored += 1;
-                    debug!("Current Sub: {:?}", subst);
+                // construct a new term by instantiating variables in the pattern ast with terms
+                // from the substitution.
+                let mut memo = HashMap::default();
+                let mut slot_index = 0;
+                let decision_start = self.decisions.len();
+                let selection_start = self.selection_history_decisions.len();
+                let mut used_derived_candidate = false;
+                let mut ctx = DecisionLogContext {
+                    decisions: &mut self.decisions,
+                    selection_history_decisions: &mut self.selection_history_decisions,
+                    record_decisions: self.artifact_capture.decisions,
+                    axiom_name: rule.name(),
+                    slot_index: &mut slot_index,
+                    used_derived_candidate: &mut used_derived_candidate,
+                };
+                let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
+                    searcher_ast,
+                    egraph,
+                    Some(m.eclass),
+                    subst,
+                    &self.extractor,
+                    &mut memo,
+                    &mut ctx,
+                ));
+
+                let new_rhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
+                    consequence_ast,
+                    egraph,
+                    None,
+                    subst,
+                    &self.extractor,
+                    &mut memo,
+                    &mut ctx,
+                ));
+
+                if self.extractor.requires_source_grounded_candidates()
+                    && *ctx.used_derived_candidate
+                {
+                    ctx.decisions.truncate(decision_start);
+                    ctx.selection_history_decisions.truncate(selection_start);
                     if tracing {
-                        trace_conflicts(format!("    subst[{subst_ix}] raw={subst:?}"));
-                    }
-
-                    if let Some(applier_ast) = rewrite.applier.get_pattern_ast() {
-                        // construct a new term by instantiating variables in the pattern ast with terms
-                        // from the substitution.
-                        let mut memo = HashMap::default();
-                        let mut slot_index = 0;
-                        let mut decisions = self.decisions.borrow_mut();
-                        let decision_start = decisions.len();
-                        let mut selection_history_decisions =
-                            self.selection_history_decisions.borrow_mut();
-                        let selection_start = selection_history_decisions.len();
-                        let mut used_derived_candidate = false;
-                        let mut ctx = DecisionLogContext {
-                            decisions: &mut decisions,
-                            selection_history_decisions: &mut selection_history_decisions,
-                            record_decisions: self.artifact_capture.decisions,
-                            axiom_name: rule.name(),
-                            slot_index: &mut slot_index,
-                            used_derived_candidate: &mut used_derived_candidate,
-                        };
-                        let new_lhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
-                            searcher_ast.as_ref(),
-                            egraph,
-                            Some(m.eclass),
-                            subst,
-                            &self.extractor,
-                            &mut memo,
-                            &mut ctx,
-                        ));
-
-                        let new_rhs: egg::RecExpr<_> = unpatternify(reify_pattern_ast(
-                            applier_ast,
-                            egraph,
-                            None,
-                            subst,
-                            &self.extractor,
-                            &mut memo,
-                            &mut ctx,
-                        ));
-
-                        if self.extractor.requires_source_grounded_candidates()
-                            && used_derived_candidate
-                        {
-                            decisions.truncate(decision_start);
-                            selection_history_decisions.truncate(selection_start);
-                            if tracing {
-                                trace_conflicts(format!(
+                        trace_conflicts(format!(
                                     "    subst[{subst_ix}] skipped because cone selection required a derived candidate"
                                 ));
-                            }
-                            continue;
-                        }
+                    }
+                    continue;
+                }
 
-                        let rhs_eclass = egraph.lookup_expr(&new_rhs);
-                        if tracing {
-                            trace_conflicts(format!(
+                let rhs_eclass = egraph.lookup_expr(&new_rhs);
+                if tracing {
+                    trace_conflicts(format!(
                                 "    subst[{subst_ix}] lhs={} rhs={} lhs_eclass={} rhs_eclass={rhs_eclass:?}",
                                 new_lhs,
                                 new_rhs,
                                 m.eclass
                             ));
-                        }
-                        // the eclass that we would have inserted from this pattern
-                        // would cause a union from `rhs_eclass` to `eclass`. This means it
-                        // is creating an equality that wouldn't otherwise be in the
-                        // e-graph. This is a conflict, so we record the rule instantiation
-                        // here.
-                        if Some(m.eclass) != rhs_eclass {
-                            let instantiation: ArrayExpr = if rule.kind()
-                                == QuantifiedRuleKind::ArrayAxiom(
-                                    ArrayAxiomKind::WriteDoesNotOverwrite,
-                                ) {
-                                let expr1 = &memo[&"?c".parse::<egg::Var>().unwrap()];
-                                let expr2 = &memo[&"?idx".parse::<egg::Var>().unwrap()];
-                                // construct: (=> (not (= {} {})) (= {} {}))
-                                ArrayLanguage::not_implies(
-                                    &ArrayLanguage::equals(
-                                        &unpatternify(expr1.clone()),
-                                        &unpatternify(expr2.clone()),
-                                    ),
-                                    &ArrayLanguage::equals(&new_lhs, &new_rhs),
-                                )
-                            } else {
-                                ArrayLanguage::equals(&new_lhs, &new_rhs)
-                            };
-                            if self.excluded_instantiations.contains(&instantiation) {
-                                decisions.truncate(decision_start);
-                                selection_history_decisions.truncate(selection_start);
-                                if tracing {
-                                    trace_conflicts(format!(
+                }
+                // the eclass that we would have inserted from this pattern
+                // would cause a union from `rhs_eclass` to `eclass`. This means it
+                // is creating an equality that wouldn't otherwise be in the
+                // e-graph. This is a conflict, so we record the rule instantiation
+                // here.
+                if Some(m.eclass) != rhs_eclass {
+                    let instantiation = unpatternify(reify_pattern_ast(
+                        executable_rule.formula(),
+                        egraph,
+                        None,
+                        subst,
+                        &self.extractor,
+                        &mut memo,
+                        &mut ctx,
+                    ));
+                    if self.excluded_instantiations.contains(&instantiation) {
+                        ctx.decisions.truncate(decision_start);
+                        ctx.selection_history_decisions.truncate(selection_start);
+                        if tracing {
+                            trace_conflicts(format!(
                                         "    subst[{subst_ix}] skipped because the complete instantiation was excluded"
                                     ));
-                                }
-                                continue;
-                            }
-                            let ordinal = self.next_instantiation_ordinal;
-                            self.next_instantiation_ordinal += 1;
-                            let instantiation_hash = canonical_term_hash(&instantiation);
-                            if explore_all_matches && self.artifact_capture.decisions {
-                                for decision in &mut decisions[decision_start..] {
-                                    decision.decision_key = format!(
-                                        "{}:candidate:{instantiation_hash}",
-                                        decision.decision_key
-                                    );
-                                }
-                                for decision in &mut selection_history_decisions[selection_start..]
-                                {
-                                    decision.decision_key = format!(
-                                        "{}:candidate:{instantiation_hash}",
-                                        decision.decision_key
-                                    );
-                                }
-                            }
-                            let selection_decision_keys = selection_history_decisions
-                                [selection_start..]
-                                .iter()
-                                .map(|decision| decision.decision_key.clone())
-                                .collect::<Vec<_>>();
-                            let decision_keys = if self.artifact_capture.decisions {
-                                selection_decision_keys.clone()
-                            } else {
-                                vec![]
-                            };
-                            let mut substitution = memo
-                                .iter()
-                                .map(|(variable, expression)| {
-                                    (
-                                        variable.to_string(),
-                                        expr_to_term(unpatternify(expression.clone())),
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-                            substitution.sort_by(|left, right| left.0.cmp(&right.0));
-                            let (_, substitution) = smt2parser::vmt::UnquantifiedInstantiator::rewrite_unquantified_with_substitution(
+                        }
+                        continue;
+                    }
+                    let ordinal = self.next_instantiation_ordinal;
+                    self.next_instantiation_ordinal += 1;
+                    let instantiation_hash = canonical_term_hash(&instantiation);
+                    if explore_all_matches && self.artifact_capture.decisions {
+                        for decision in &mut ctx.decisions[decision_start..] {
+                            decision.decision_key =
+                                format!("{}:candidate:{instantiation_hash}", decision.decision_key);
+                        }
+                        for decision in &mut ctx.selection_history_decisions[selection_start..] {
+                            decision.decision_key =
+                                format!("{}:candidate:{instantiation_hash}", decision.decision_key);
+                        }
+                    }
+                    let selection_decision_keys = ctx.selection_history_decisions
+                        [selection_start..]
+                        .iter()
+                        .map(|decision| decision.decision_key.clone())
+                        .collect::<Vec<_>>();
+                    let decision_keys = if self.artifact_capture.decisions {
+                        selection_decision_keys.clone()
+                    } else {
+                        vec![]
+                    };
+                    let mut substitution = memo
+                        .iter()
+                        .map(|(variable, expression)| {
+                            (
+                                variable.to_string(),
+                                expr_to_term(unpatternify(expression.clone())),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    substitution.sort_by(|left, right| left.0.cmp(&right.0));
+                    let (_, substitution) = smt2parser::vmt::UnquantifiedInstantiator::rewrite_unquantified_with_substitution(
                                 expr_to_term(instantiation.clone()),
                                 vec![],
                                 substitution,
                             )
                             .expect("array candidates should have a relative-frame substitution");
-                            let abstract_instantiation =
-                                self.extractor.abstract_instantiation_record(
-                                    rule.name(),
-                                    &instantiation,
-                                    decision_keys.clone(),
-                                    &substitution,
-                                );
-                            let abstract_instantiation_id =
-                                abstract_instantiation.abstract_instantiation_id.clone();
-                            let candidate = ArrayAxiomInstantiation {
-                                expression: instantiation.clone(),
-                                provenance: InstantiationProvenance::new(
-                                    abstract_instantiation_id.clone(),
-                                    substitution,
-                                ),
-                            };
-                            self.instantiation_decision_keys
-                                .borrow_mut()
-                                .push((abstract_instantiation_id.clone(), selection_decision_keys));
-                            if self.artifact_capture.instantiation_provenance {
-                                self.abstract_instantiations
-                                    .borrow_mut()
-                                    .push(abstract_instantiation);
-                            }
-                            let classification_cost = if let Some(profiling) = &self.profiling {
-                                let mut cost_fn = self.cost_fn.clone();
-                                profiling.borrow_mut().record_cost(
-                                    "conflict_classification",
-                                    new_rhs.as_ref().len(),
-                                    || cost_fn.cost_rec(&new_rhs),
-                                )
-                            } else {
-                                self.cost_fn.cost_rec(&new_rhs)
-                            };
-                            let cost = if explore_all_matches {
-                                if let Some(profiling) = &self.profiling {
-                                    let mut cost_fn = self.cost_fn.clone();
-                                    profiling.borrow_mut().record_cost(
-                                        "complete_instantiation_ranking",
-                                        instantiation.as_ref().len(),
-                                        || cost_fn.cost_rec(&instantiation),
-                                    )
-                                } else {
-                                    self.cost_fn.cost_rec(&instantiation)
-                                }
-                            } else {
-                                classification_cost
-                            };
-                            let classification = if classification_cost >= 100 {
-                                ConflictClassification::ConstOrHighCost
-                            } else {
-                                ConflictClassification::Regular
-                            };
-                            if let Some(profiling) = &self.profiling {
-                                profiling
-                                    .borrow_mut()
-                                    .record_conflict(rule.name(), classification_cost >= 100);
-                            }
-                            if self.artifact_capture.conflicts {
-                                let conflict_record = ArrayConflictRecord::new(
-                                    ordinal,
-                                    abstract_instantiation_id,
-                                    rule.name(),
-                                    instantiation.clone(),
-                                    expr_to_term(instantiation.clone()),
-                                    self.depth,
-                                    self.refinement_step,
-                                    cost,
-                                    classification,
-                                    decision_keys,
-                                );
-                                self.conflicts.borrow_mut().push(conflict_record);
-                            }
-                            if tracing {
-                                trace_conflicts(format!(
-                                    "    subst[{subst_ix}] conflict cost={} instantiation={}",
-                                    cost, instantiation
-                                ));
-                            }
-                            debug!(
-                                "FOUND VIOLATION (cost {}): \n{}",
-                                cost,
-                                instantiation.pretty(80)
-                            );
-                            if classification_cost >= 100 {
-                                debug!("rejecting because of cost");
-                                if tracing {
-                                    trace_conflicts(
-                                        "    classified as const/high-cost instantiation",
-                                    );
-                                }
-                                self.instantiations_w_constants.borrow_mut().push(candidate);
-                            } else {
-                                if tracing {
-                                    trace_conflicts("    accepted as regular instantiation");
-                                }
-                                self.instantiations.borrow_mut().push(candidate);
-                                if !explore_all_matches {
-                                    break 'matches;
-                                }
-                            }
-                        } else if tracing {
-                            trace_conflicts(format!(
-                                "    subst[{subst_ix}] no conflict because rhs already maps to eclass {}",
-                                m.eclass
-                            ));
+                    let abstract_instantiation = self.extractor.abstract_instantiation_record(
+                        rule.name(),
+                        &instantiation,
+                        decision_keys.clone(),
+                        &substitution,
+                    );
+                    let abstract_instantiation_id =
+                        abstract_instantiation.abstract_instantiation_id.clone();
+                    let candidate = ArrayAxiomInstantiation {
+                        expression: instantiation.clone(),
+                        provenance: InstantiationProvenance::new(
+                            abstract_instantiation_id.clone(),
+                            substitution,
+                        ),
+                    };
+                    self.instantiation_decision_keys
+                        .push((abstract_instantiation_id.clone(), selection_decision_keys));
+                    if self.artifact_capture.instantiation_provenance {
+                        self.abstract_instantiations.push(abstract_instantiation);
+                    }
+                    let classification_cost = if let Some(profiling) = &self.profiling {
+                        let mut cost_fn = self.cost_fn.clone();
+                        profiling.borrow_mut().record_cost(
+                            "conflict_classification",
+                            new_rhs.as_ref().len(),
+                            || cost_fn.cost_rec(&new_rhs),
+                        )
+                    } else {
+                        self.cost_fn.cost_rec(&new_rhs)
+                    };
+                    let cost = if explore_all_matches {
+                        if let Some(profiling) = &self.profiling {
+                            let mut cost_fn = self.cost_fn.clone();
+                            profiling.borrow_mut().record_cost(
+                                "complete_instantiation_ranking",
+                                instantiation.as_ref().len(),
+                                || cost_fn.cost_rec(&instantiation),
+                            )
+                        } else {
+                            self.cost_fn.cost_rec(&instantiation)
+                        }
+                    } else {
+                        classification_cost
+                    };
+                    let classification = if classification_cost >= 100 {
+                        ConflictClassification::ConstOrHighCost
+                    } else {
+                        ConflictClassification::Regular
+                    };
+                    if let Some(profiling) = &self.profiling {
+                        profiling
+                            .borrow_mut()
+                            .record_conflict(rule.name(), classification_cost >= 100);
+                    }
+                    if self.artifact_capture.conflicts {
+                        let conflict_record = ArrayConflictRecord::new(
+                            ordinal,
+                            abstract_instantiation_id,
+                            rule.name(),
+                            instantiation.clone(),
+                            expr_to_term(instantiation.clone()),
+                            self.depth,
+                            self.refinement_step,
+                            cost,
+                            classification,
+                            decision_keys,
+                        );
+                        self.conflicts.push(conflict_record);
+                    }
+                    if tracing {
+                        trace_conflicts(format!(
+                            "    subst[{subst_ix}] conflict cost={} instantiation={}",
+                            cost, instantiation
+                        ));
+                    }
+                    debug!(
+                        "FOUND VIOLATION (cost {}): \n{}",
+                        cost,
+                        instantiation.pretty(80)
+                    );
+                    if classification_cost >= 100 {
+                        debug!("rejecting because of cost");
+                        if tracing {
+                            trace_conflicts("    classified as const/high-cost instantiation");
+                        }
+                        self.instantiations_w_constants.push(candidate);
+                    } else {
+                        if tracing {
+                            trace_conflicts("    accepted as regular instantiation");
+                        }
+                        self.instantiations.push(candidate);
+                        if !explore_all_matches {
+                            break 'matches;
                         }
                     }
+                } else if tracing {
+                    trace_conflicts(format!(
+                        "    subst[{subst_ix}] no conflict because rhs already maps to eclass {}",
+                        m.eclass
+                    ));
                 }
             }
         }
         debug!("<======");
         if let Some(profiling) = &self.profiling {
-            profiling.borrow_mut().record_apply_rewrite(
+            profiling.borrow_mut().record_rule_instantiation(
                 rule.name(),
                 substitutions_explored,
                 false,
                 apply_start.elapsed(),
             );
         }
-        // we don't actually want to apply the rewrite, because it would be a violation
-        0
     }
 }
 

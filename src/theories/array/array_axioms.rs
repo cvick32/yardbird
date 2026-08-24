@@ -1,10 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    fmt,
-    rc::Rc,
-    time::Instant,
-};
+use std::{cell::RefCell, collections::HashSet, fmt, rc::Rc, time::Instant};
 
 use egg::*;
 use rustc_hash::FxHashMap;
@@ -19,7 +13,8 @@ use crate::{
     quantified_rule::{ArrayAxiomKind, QuantifiedRule},
     theories::array::{
         array_conflict_scheduler::{
-            ArrayArtifactCapture, ArrayConflictScheduler, ArrayConflictSchedulerOptions,
+            ArrayArtifactCapture, ArrayRuleInstantiationCandidates, ArrayRuleInstantiator,
+            ArrayRuleInstantiatorOptions,
         },
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
         candidate_scope::CandidateScope,
@@ -60,7 +55,7 @@ pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
 
 /// One complete array-axiom candidate with the exact provenance selected by the
-/// scheduler. Keeping the expression and provenance together prevents later
+/// instantiator. Keeping the expression and provenance together prevents later
 /// stages from trying to reconstruct identity from a non-unique term hash.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArrayAxiomInstantiation {
@@ -115,50 +110,6 @@ where
 }
 
 impl ArrayLanguage {
-    pub fn equals(lhs: &ArrayExpr, rhs: &ArrayExpr) -> ArrayExpr {
-        let mut expr = egg::RecExpr::default();
-        let lhs_placeholder = expr.add(ArrayLanguage::Symbol("lhs".into()));
-        let rhs_placeholder = expr.add(ArrayLanguage::Symbol("rhs".into()));
-        let equals = expr.add(ArrayLanguage::Eq([lhs_placeholder, rhs_placeholder]));
-
-        expr[equals].join_recexprs(|id| {
-            if id == lhs_placeholder {
-                lhs.clone()
-            } else if id == rhs_placeholder {
-                rhs.clone()
-            } else {
-                unreachable!()
-            }
-        })
-    }
-
-    pub fn not_implies(not_clause: &ArrayExpr, other: &ArrayExpr) -> ArrayExpr {
-        let mut not_expr = egg::RecExpr::default();
-        let n = not_expr.add(ArrayLanguage::Symbol("n".into()));
-        let not = not_expr.add(ArrayLanguage::Not(n));
-
-        let mut expr = egg::RecExpr::default();
-        let x = expr.add(ArrayLanguage::Symbol("x".into()));
-        let o = expr.add(ArrayLanguage::Symbol("o".into()));
-        let implies = expr.add(ArrayLanguage::Implies([x, o]));
-
-        expr[implies].join_recexprs(|id| {
-            if id == x {
-                not_expr[not].join_recexprs(|id| {
-                    if id == n {
-                        not_clause.clone()
-                    } else {
-                        unreachable!()
-                    }
-                })
-            } else if id == o {
-                other.clone()
-            } else {
-                unreachable!()
-            }
-        })
-    }
-
     pub fn sort_to_name(sort: &smt2parser::concrete::Sort) -> String {
         use smt2parser::concrete::{Identifier, Sort};
         match sort {
@@ -317,14 +268,15 @@ where
         artifact_capture,
         profiling,
     } = instrumentation;
-    let taken_egraph = std::mem::take(egraph);
+    let mut taken_egraph = std::mem::take(egraph);
+    taken_egraph.rebuild();
     if let Some(profiling) = &profiling {
         profiling.borrow_mut().set_egraph_before_saturation(
             taken_egraph.number_of_classes(),
             egraph_node_count(&taken_egraph),
         );
     }
-    let scheduler_cost_fn = cost_fn.clone();
+    let instantiation_cost_fn = cost_fn.clone();
     let mut complete_ranking_cost_fn = cost_fn.clone();
     let extractor_start = Instant::now();
     let extractor = ArrayTermExtractor::new(
@@ -344,16 +296,11 @@ where
             .borrow_mut()
             .record_timing("extractor_init", extractor_start.elapsed());
     }
-    let ArrayRuleSet {
-        quantified_rules,
-        rewrites,
-    } = array_rules_with_types(array_types);
-    let scheduler = ArrayConflictScheduler::new(
-        BackoffScheduler::default(),
-        scheduler_cost_fn,
+    let rules = array_rules_with_types(array_types);
+    let mut instantiator = ArrayRuleInstantiator::new(
+        instantiation_cost_fn,
         extractor,
-        ArrayConflictSchedulerOptions {
-            quantified_rules,
+        ArrayRuleInstantiatorOptions {
             excluded_instantiations,
             refinement_step,
             depth,
@@ -361,13 +308,6 @@ where
             profiling: profiling.clone(),
         },
     );
-    let instantiations = scheduler.instantiations();
-    let const_instantiations = scheduler.instantiations_w_constants();
-    let conflicts = scheduler.conflicts();
-    let decisions = scheduler.decisions();
-    let abstract_instantiations = scheduler.abstract_instantiations();
-    let selection_history_decisions = scheduler.selection_history_decisions();
-    let instantiation_decision_keys = scheduler.instantiation_decision_keys();
     #[cfg(debug_assertions)]
     {
         for class in taken_egraph.classes() {
@@ -383,41 +323,33 @@ where
         }
     }
 
-    let runner_start = Instant::now();
-    let mut runner = Runner::default()
-        .with_egraph(taken_egraph)
-        .with_scheduler(scheduler)
-        .run(&rewrites);
+    let search_start = Instant::now();
+    let search_rounds = instantiator.search_rules(&taken_egraph, &rules);
     if let Some(profiling) = &profiling {
         profiling
             .borrow_mut()
-            .record_timing("runner_total", runner_start.elapsed());
+            .record_timing("rule_search_total", search_start.elapsed());
         profiling.borrow_mut().set_egraph_after_saturation(
-            runner.egraph.number_of_classes(),
-            egraph_node_count(&runner.egraph),
-            runner.iterations.len(),
+            taken_egraph.number_of_classes(),
+            egraph_node_count(&taken_egraph),
+            search_rounds,
         );
     }
 
-    *egraph = std::mem::take(&mut runner.egraph);
-    drop(runner);
-
-    let all_regular_insts = Rc::into_inner(instantiations).unwrap().into_inner();
-    let all_const_insts = Rc::into_inner(const_instantiations).unwrap().into_inner();
-    let all_conflicts = Rc::into_inner(conflicts).unwrap().into_inner();
-    let all_decisions = Rc::into_inner(decisions).unwrap().into_inner();
-    let all_abstract_instantiations = Rc::into_inner(abstract_instantiations)
-        .unwrap()
-        .into_inner();
-    let all_selection_history_decisions = Rc::into_inner(selection_history_decisions)
-        .unwrap()
-        .into_inner()
+    *egraph = taken_egraph;
+    let ArrayRuleInstantiationCandidates {
+        instantiations: all_regular_insts,
+        instantiations_w_constants: all_const_insts,
+        conflicts: all_conflicts,
+        decisions: all_decisions,
+        abstract_instantiations: all_abstract_instantiations,
+        selection_history_decisions,
+        instantiation_decision_keys: all_instantiation_decision_keys,
+    } = instantiator.into_candidates();
+    let all_selection_history_decisions = selection_history_decisions
         .into_iter()
         .map(|decision| (decision.decision_key, decision.chosen_term_hash))
         .collect::<Vec<_>>();
-    let all_instantiation_decision_keys = Rc::into_inner(instantiation_decision_keys)
-        .unwrap()
-        .into_inner();
     let (
         final_insts,
         final_const_insts,
@@ -555,20 +487,81 @@ where
     }
 }
 
-struct ArrayRuleSet<N>
+pub(crate) struct ArrayQuantifiedRule<N>
 where
     N: Analysis<ArrayLanguage>,
 {
-    quantified_rules: HashMap<String, QuantifiedRule>,
-    rewrites: Vec<Rewrite<ArrayLanguage, N>>,
+    metadata: QuantifiedRule,
+    searcher: Box<dyn Searcher<ArrayLanguage, N> + Send + Sync>,
+    trigger: ArrayPattern,
+    consequence: ArrayPattern,
+    formula: ArrayPattern,
+}
+
+impl<N> ArrayQuantifiedRule<N>
+where
+    N: Analysis<ArrayLanguage>,
+{
+    fn new<S>(
+        metadata: QuantifiedRule,
+        searcher: S,
+        consequence: Pattern<ArrayLanguage>,
+        formula: Pattern<ArrayLanguage>,
+    ) -> Result<Self, String>
+    where
+        S: Searcher<ArrayLanguage, N> + Send + Sync + 'static,
+    {
+        let trigger = searcher
+            .get_pattern_ast()
+            .cloned()
+            .ok_or_else(|| format!("quantified rule {} has no trigger pattern", metadata.name()))?;
+        let bound_variables = searcher.vars();
+        for variable in consequence.vars().into_iter().chain(formula.vars()) {
+            if !bound_variables.contains(&variable) {
+                return Err(format!(
+                    "quantified rule {} refers to unbound variable {variable}",
+                    metadata.name()
+                ));
+            }
+        }
+
+        Ok(Self {
+            metadata,
+            searcher: Box::new(searcher),
+            trigger,
+            consequence: consequence.ast,
+            formula: formula.ast,
+        })
+    }
+
+    pub(crate) fn metadata(&self) -> &QuantifiedRule {
+        &self.metadata
+    }
+
+    pub(crate) fn search_with_limit<'a>(
+        &'a self,
+        egraph: &EGraph<ArrayLanguage, N>,
+        limit: usize,
+    ) -> Vec<SearchMatches<'a, ArrayLanguage>> {
+        self.searcher.search_with_limit(egraph, limit)
+    }
+
+    pub(crate) fn trigger(&self) -> &ArrayPattern {
+        &self.trigger
+    }
+
+    pub(crate) fn consequence(&self) -> &ArrayPattern {
+        &self.consequence
+    }
+
+    pub(crate) fn formula(&self) -> &ArrayPattern {
+        &self.formula
+    }
 }
 
 /// Generate array rules for a specific type pair (index_sort, value_sort).
 /// This creates type-specific versions of the three core array axioms.
-fn array_rules_for_type<N>(
-    index_sort: &str,
-    value_sort: &str,
-) -> Vec<(QuantifiedRule, Rewrite<ArrayLanguage, N>)>
+fn array_rules_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<ArrayQuantifiedRule<N>>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {
@@ -585,12 +578,12 @@ where
     );
     let replacement_1 = format!("(Read {} {} ?a ?c)", index_sort, value_sort);
     let parsed_pattern: egg::Pattern<ArrayLanguage> = pattern_1.parse().unwrap();
-    let axiom_1 = Rewrite::new(
-        rule_1.name().to_string(),
+    let formula_1 = format!("(=> (not (= ?c ?idx)) (= {pattern_1} {replacement_1}))");
+    let axiom_1 = ArrayQuantifiedRule::new(
+        rule_1,
         ConditionalSearcher::new(parsed_pattern, not_equal("?idx", "?c")),
-        replacement_1
-            .parse::<egg::Pattern<ArrayLanguage>>()
-            .unwrap(),
+        replacement_1.parse().unwrap(),
+        formula_1.parse().unwrap(),
     )
     .unwrap();
 
@@ -604,12 +597,12 @@ where
     );
     let pat2 = pattern_2.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
     let replacement_2 = "?val";
-    let axiom_2 = Rewrite::new(
-        rule_2.name().to_string(),
+    let formula_2 = format!("(= {pattern_2} {replacement_2})");
+    let axiom_2 = ArrayQuantifiedRule::new(
+        rule_2,
         pat2,
-        replacement_2
-            .parse::<egg::Pattern<ArrayLanguage>>()
-            .unwrap(),
+        replacement_2.parse().unwrap(),
+        formula_2.parse().unwrap(),
     )
     .unwrap();
 
@@ -620,36 +613,28 @@ where
     );
     let pat3 = pattern_3.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
     let replacement_3 = "?a";
-    let axiom_3 = Rewrite::new(
-        rule_3.name().to_string(),
+    let formula_3 = format!("(= {pattern_3} {replacement_3})");
+    let axiom_3 = ArrayQuantifiedRule::new(
+        rule_3,
         pat3,
-        replacement_3
-            .parse::<egg::Pattern<ArrayLanguage>>()
-            .unwrap(),
+        replacement_3.parse().unwrap(),
+        formula_3.parse().unwrap(),
     )
     .unwrap();
 
-    vec![(rule_1, axiom_1), (rule_2, axiom_2), (rule_3, axiom_3)]
+    vec![axiom_1, axiom_2, axiom_3]
 }
 
-/// Generate the rule catalog and executable rewrites for all discovered array types.
-fn array_rules_with_types<N>(array_types: &[(String, String)]) -> ArrayRuleSet<N>
+/// Generate executable quantified rules for all discovered array types.
+fn array_rules_with_types<N>(array_types: &[(String, String)]) -> Vec<ArrayQuantifiedRule<N>>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {
-    let mut quantified_rules = HashMap::new();
-    let mut rewrites = Vec::new();
+    let mut rules = Vec::new();
     for (index_sort, value_sort) in array_types {
-        for (rule, rewrite) in array_rules_for_type(index_sort, value_sort) {
-            let previous = quantified_rules.insert(rule.name().to_string(), rule);
-            assert!(previous.is_none(), "quantified rule names must be unique");
-            rewrites.push(rewrite);
-        }
+        rules.extend(array_rules_for_type(index_sort, value_sort));
     }
-    ArrayRuleSet {
-        quantified_rules,
-        rewrites,
-    }
+    rules
 }
 
 fn not_equal<N>(
@@ -1232,26 +1217,47 @@ mod test {
     }
 
     #[test]
-    fn test_conditional_axioms0() {
+    fn write_does_not_overwrite_searcher_matches_distinct_indices() {
         init();
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&expr);
+        egraph.rebuild();
         let rules = array_rules_with_types::<()>(&[("Int".into(), "Int".into())]);
-        let runner = Runner::default().with_expr(&expr).run(&rules.rewrites);
+        let rule = rules
+            .iter()
+            .find(|rule| {
+                rule.metadata().kind()
+                    == crate::quantified_rule::QuantifiedRuleKind::ArrayAxiom(
+                        ArrayAxiomKind::WriteDoesNotOverwrite,
+                    )
+            })
+            .unwrap();
 
-        let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 1)".parse().unwrap();
-        assert!(runner.egraph.lookup_expr(&gold).is_some())
+        assert_eq!(rule.search_with_limit(&egraph, usize::MAX).len(), 1);
     }
 
     #[test]
-    fn test_conditional_axioms1() {
+    fn write_does_not_overwrite_searcher_rejects_equal_indices() {
         init();
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A 0 0) 0)".parse().unwrap();
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&expr);
+        egraph.rebuild();
         let rules = array_rules_with_types::<()>(&[("Int".into(), "Int".into())]);
-        let runner = Runner::default().with_expr(&expr).run(&rules.rewrites);
-        let gold: RecExpr<ArrayLanguage> = "(Read Int Int A 0)".parse().unwrap();
-        assert!(runner.egraph.lookup_expr(&gold).is_none())
+        let rule = rules
+            .iter()
+            .find(|rule| {
+                rule.metadata().kind()
+                    == crate::quantified_rule::QuantifiedRuleKind::ArrayAxiom(
+                        ArrayAxiomKind::WriteDoesNotOverwrite,
+                    )
+            })
+            .unwrap();
+
+        assert!(rule.search_with_limit(&egraph, usize::MAX).is_empty());
     }
 
     #[test]
@@ -1518,7 +1524,7 @@ mod test {
     }
 
     #[test]
-    fn saturation_ranks_complete_violations_across_rewrite_matches() {
+    fn saturation_ranks_complete_violations_across_rule_matches() {
         let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
         let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
         let expected: ArrayExpr =
@@ -1675,37 +1681,4 @@ mod test {
         assert!(compact.abstract_instantiations.is_empty());
         assert!(!recorded.abstract_instantiations.is_empty());
     }
-
-    // #[test]
-    // fn test_conditional_axioms0_with_scheduluer() {
-    //     init();
-    //     let expr: RecExpr<ArrayLanguage> =
-    //         "(Read_Int_Int (Write_Int_Int A 0 0) 1)".parse().unwrap();
-
-    //     let scheduler = ConflictScheduler::new(BackoffScheduler::default());
-    //     let instantiations = scheduler.instantiations();
-    //     let const_instantiations = scheduler.instantiations_w_constants();
-    //     let _runner = Runner::default()
-    //         .with_expr(&expr)
-    //         .with_scheduler(scheduler)
-    //         .run(&array_axioms::<()>());
-
-    //     assert!(instantiations.borrow().len() == 0 && const_instantiations.borrow().len() == 1);
-    // }
-
-    // #[test]
-    // fn test_conditional_axioms1_with_scheduler() {
-    //     init();
-    //     let expr: RecExpr<ArrayLanguage> =
-    //         "(Read_Int_Int (Write_Int_Int A 0 0) 0)".parse().unwrap();
-    //     let scheduler = ConflictScheduler::new(BackoffScheduler::default());
-    //     let instantiations = scheduler.instantiations_w_constants();
-    //     let const_instantiations = scheduler.instantiations_w_constants();
-    //     let _runner = Runner::default()
-    //         .with_expr(&expr)
-    //         .with_scheduler(scheduler)
-    //         .run(&array_axioms::<()>());
-
-    //     assert!(instantiations.borrow().len() == 0 && const_instantiations.borrow().len() == 0);
-    // }
 }

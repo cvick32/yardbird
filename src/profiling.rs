@@ -479,9 +479,11 @@ impl ArrayProfilingCollector {
         result
     }
 
-    pub fn record_search_rewrite(
+    /// Record direct e-graph matching while retaining the existing serialized
+    /// scheduler fields for compatibility with previously captured profiles.
+    pub fn record_rule_search(
         &mut self,
-        rewrite_name: &str,
+        rule_name: &str,
         matches: usize,
         substitutions: usize,
         duration: Duration,
@@ -493,7 +495,7 @@ impl ArrayProfilingCollector {
 
         let by_rewrite = scheduler
             .by_rewrite
-            .entry(rewrite_name.to_string())
+            .entry(rule_name.to_string())
             .or_default();
         by_rewrite.search_calls += 1;
         by_rewrite.search_secs += duration.as_secs_f64();
@@ -501,9 +503,9 @@ impl ArrayProfilingCollector {
         by_rewrite.substitutions_total += substitutions as u64;
     }
 
-    pub fn record_apply_rewrite(
+    pub fn record_rule_instantiation(
         &mut self,
-        rewrite_name: &str,
+        rule_name: &str,
         substitutions_explored: usize,
         skipped: bool,
         duration: Duration,
@@ -517,7 +519,7 @@ impl ArrayProfilingCollector {
 
         let by_rewrite = scheduler
             .by_rewrite
-            .entry(rewrite_name.to_string())
+            .entry(rule_name.to_string())
             .or_default();
         by_rewrite.apply_calls += 1;
         by_rewrite.apply_secs += duration.as_secs_f64();

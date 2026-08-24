@@ -99,9 +99,8 @@ fn german_depth_two_characterizes_current_array_refinement() {
     );
 }
 
-/// Regression boundary for replacing egg rewrites with direct searchers: the
-/// matching implementation may change, but all three rules must emit the same
-/// ground SMT formulas.
+/// Regression boundary for the direct-searcher implementation: all three
+/// quantified rules must continue to emit the same ground SMT formulas.
 #[test]
 fn array_saturation_characterizes_all_three_ground_rules() {
     assert_eq!(
