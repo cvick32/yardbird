@@ -1,30 +1,23 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(& path)
+expression: run_benchmark (& path)
 ---
 BenchmarkResult {
     example_name: "examples/array/array_init_increm_twice.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 0 868) 0) 868)",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1)) i+0) (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) (+ (Read_Int_Int a+0 i+0) 1))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+0) 0)",
-        "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) 0) (Read_Int_Int a+0 0)))",
-        "(=> (not (= 1 0)) (= (Read_Int_Int (Write_Int_Int a+0 0 0) 1) (Read_Int_Int a+0 1)))",
-        "(=> (not (= 1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1)) 1) (Read_Int_Int a+0 1)))",
-        "(=> (not (= 1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) 1) (Read_Int_Int a+0 1)))",
-        "(=> (not (= 2 0)) (= (Read_Int_Int (Write_Int_Int a+0 0 0) 2) (Read_Int_Int a+0 2)))",
-        "(=> (not (= 2 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1)) 2) (Read_Int_Int a+0 2)))",
-        "(=> (not (= 2 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) 2) (Read_Int_Int a+0 2)))",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) N) (Read_Int_Int a+0 N)))",
-        "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) N) (Read_Int_Int a+0 N)))",
-        "(=> (not (= Z 0)) (= (Read_Int_Int (Write_Int_Int a+0 0 0) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z 0)) (= (Read_Int_Int (Write_Int_Int a+0 0 29534) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1)) Z) (Read_Int_Int a+0 Z)))",
-        "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) Z) (Read_Int_Int a+0 Z)))",
-        "(=> (not (= i+0 i+1)) (= (Read_Int_Int (Write_Int_Int a+1 i+1 (+ (Read_Int_Int (Write_Int_Int a+1 i+1 (+ (Read_Int_Int a+1 i+1) 1)) i+1) 1)) i+0) (Read_Int_Int a+1 i+0)))",
+        "(=> (not (= i+0 i+1)) (= (Read_Int_Int (Write_Int_Int a+1 i+1 0) i+0) (Read_Int_Int a+1 i+0)))",
         "(=> (not (= i+1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1)) i+1) (Read_Int_Int a+0 i+1)))",
         "(=> (not (= i+2 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) 1)) i+0) 1)) i+2) (Read_Int_Int a+0 i+2)))",
+        "(=> (not (= i+4 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+4) (Read_Int_Int a+0 i+4)))",
+        "(=> (not (= i+5 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 0) i+5) (Read_Int_Int a+0 i+5)))",
     ],
 }

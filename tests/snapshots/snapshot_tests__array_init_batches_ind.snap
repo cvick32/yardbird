@@ -1,6 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(& path)
+expression: run_benchmark (& path)
 ---
 BenchmarkResult {
     example_name: "examples/array/array_init_batches_ind.vmt",
@@ -12,6 +12,7 @@ BenchmarkResult {
         "(= (Read_Int_Int (Write_Int_Int (Write_Int_Int a+0 i+0 0) (+ i+0 1) 0) (+ i+0 1)) 0)",
         "(= (Read_Int_Int (Write_Int_Int (Write_Int_Int a+1 2 0) (+ i+1 1) i+0) (+ i+1 1)) i+0)",
         "(= (Read_Int_Int (Write_Int_Int (Write_Int_Int a+1 Z 0) Z i+0) Z) i+0)",
+        "(= (Read_Int_Int (Write_Int_Int (Write_Int_Int a+2 (+ Z Z) 0) Z i+0) Z) i+0)",
         "(= (Read_Int_Int (Write_Int_Int a+0 Z 0) Z) 0)",
         "(=> (not (= 1 (+ i+1 1))) (= (Read_Int_Int (Write_Int_Int (Write_Int_Int a+1 2 0) (+ i+1 1) i+0) 1) (Read_Int_Int (Write_Int_Int a+1 2 0) 1)))",
         "(=> (not (= 1 2)) (= (Read_Int_Int (Write_Int_Int a+0 2 0) 1) (Read_Int_Int a+0 1)))",

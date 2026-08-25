@@ -1,22 +1,24 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(& path)
+expression: run_benchmark (& path)
 ---
 BenchmarkResult {
     example_name: "examples/array/array_init_reverse_mult.vmt",
     status: Good,
     used_instantiations: [
+        "(= (Read_Int_Int (Write_Int_Int a+0 N Z) N) Z)",
         "(= (Read_Int_Int (Write_Int_Int a+0 Z Z) Z) Z)",
+        "(= (Read_Int_Int (Write_Int_Int a+0 Z i+3) Z) i+3)",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 1)) i+0) (- (Read_Int_Int a+0 i+0) 1))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 1) i+0) 1)",
+        "(=> (not (= 0 N)) (= (Read_Int_Int (Write_Int_Int a+0 N Z) 0) (Read_Int_Int a+0 0)))",
         "(=> (not (= 0 Z)) (= (Read_Int_Int (Write_Int_Int a+0 Z i+3) 0) (Read_Int_Int a+0 0)))",
         "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 1)) 0) (Read_Int_Int a+0 0)))",
         "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 1) 0) (Read_Int_Int a+0 0)))",
-        "(=> (not (= N Z)) (= (Read_Int_Int (Write_Int_Int a+0 Z (- 35739)) N) (Read_Int_Int a+0 N)))",
+        "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 1)) N) (Read_Int_Int a+0 N)))",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 1) N) (Read_Int_Int a+0 N)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 1)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 1) Z) (Read_Int_Int a+0 Z)))",
-        "(=> (not (= i+0 Z)) (= (Read_Int_Int (Write_Int_Int a+2 Z (- 35739)) i+0) (Read_Int_Int a+2 i+0)))",
-        "(=> (not (= i+1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 1) i+1) (Read_Int_Int a+0 i+1)))",
+        "(=> (not (= i+1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 i+0) 1)) i+1) (Read_Int_Int a+0 i+1)))",
     ],
 }

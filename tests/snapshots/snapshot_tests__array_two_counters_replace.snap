@@ -1,6 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
-expression: run_benchmark(& path)
+expression: run_benchmark (& path)
 ---
 BenchmarkResult {
     example_name: "examples/array/array_two_counters_replace.vmt",
@@ -8,7 +8,6 @@ BenchmarkResult {
     used_instantiations: [
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 5) i+0) 5)",
         "(= (Read_Int_Int (Write_Int_Int a1+0 j+0 3) j+0) 3)",
-        "(=> (not (= 0 j+0)) (= (Read_Int_Int (Write_Int_Int a1+0 j+0 3) 0) (Read_Int_Int a1+0 0)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 5) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z j+0)) (= (Read_Int_Int (Write_Int_Int a1+0 j+0 3) Z) (Read_Int_Int a1+0 Z)))",
     ],
