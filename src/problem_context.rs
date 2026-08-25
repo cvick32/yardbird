@@ -108,6 +108,12 @@ pub trait ProblemContext {
     /// Get discovered array types (index_sort, value_sort) pairs
     fn get_array_types(&self) -> Vec<(String, String)>;
 
+    /// Materialize a source-level transition formula at one concrete BMC
+    /// frame. Stateless SMT-LIB problems have no transition frames.
+    fn frame_transition_formula(&self, _term: Term, _frame: u16) -> Option<Term> {
+        None
+    }
+
     fn install_auxiliary_specs(&mut self, _specs: Vec<AuxiliarySpec>) -> anyhow::Result<()> {
         Ok(())
     }

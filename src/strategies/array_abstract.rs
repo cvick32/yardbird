@@ -26,6 +26,11 @@ use crate::{
         array_egraph_builder::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
         },
+        array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
+        transition_guard_instantiator::{
+            rank_violated_transition_guard_instances, supports_transition_guard,
+            TransitionGuardInstance,
+        },
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -220,6 +225,7 @@ pub struct ArrayRefinementState {
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
     pub instantiations: Vec<ArrayAxiomInstantiation>,
     pub const_instantiations: Vec<ArrayAxiomInstantiation>,
+    pub transition_guard_instantiations: Vec<TransitionGuardInstance>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
@@ -239,15 +245,26 @@ where
         }
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
-        self.transition_guard_rules = abstracted_model
+        let supported_rules = abstracted_model
             .get_transition_guards()
             .into_iter()
             .enumerate()
             .map(|(ordinal, guard)| TransitionGuardRule::from_parsed(guard, ordinal))
+            .filter(supports_transition_guard)
+            .collect::<Vec<_>>();
+        let selected_guards = supported_rules
+            .iter()
+            .map(|rule| rule.parsed().clone())
+            .collect::<Vec<_>>();
+        let (abstracted_model, removed_guards) =
+            abstracted_model.abstract_transition_guards(&selected_guards);
+        self.transition_guard_rules = supported_rules
+            .into_iter()
+            .filter(|rule| removed_guards.contains(rule.parsed()))
             .collect();
         if !self.transition_guard_rules.is_empty() {
             info!(
-                "Discovered {} quantified transition guard(s)",
+                "Abstracted {} quantified transition guard(s) for Yardbird instantiation",
                 self.transition_guard_rules.len()
             );
         }
@@ -290,6 +307,7 @@ where
             egraph,
             instantiations: vec![],
             const_instantiations: vec![],
+            transition_guard_instantiations: vec![],
             array_types,
             egraph_builder,
         })
@@ -390,12 +408,55 @@ where
                     .record_timing("cost_factory", cost_factory_start.elapsed());
             }
 
-            let saturation_start = Instant::now();
             let mut known_instantiations = smt
                 .get_instantiations()
                 .into_iter()
                 .map(|term| canonical_instantiation_key(&term))
                 .collect::<HashSet<_>>();
+            let mut transition_guard_instantiations = 0;
+            if !self.transition_guard_rules.is_empty() && state.depth > 0 {
+                // Searchers observe canonical e-classes. Keep this explicit even
+                // though the current builders rebuild after adding model terms.
+                state.egraph.rebuild();
+                let guard_extractor = ArrayTermExtractor::new(
+                    &state.egraph,
+                    cost_fn.clone(),
+                    ArrayTermExtractorOptions {
+                        candidate_catalog: candidate_catalog.clone(),
+                        candidate_scope: expansion.candidate_scope,
+                        refinement_step,
+                        selection_counts: self.term_selection_counts.clone(),
+                        depth: state.depth,
+                        profiling: None,
+                    },
+                );
+                for rule in &self.transition_guard_rules {
+                    let mut candidates = rank_violated_transition_guard_instances(
+                        rule,
+                        &state.egraph,
+                        &guard_extractor,
+                        cost_fn.clone(),
+                        state.depth,
+                        smt,
+                    );
+                    retain_novel_by(&mut candidates, &mut known_instantiations, |candidate| {
+                        self.installable_expression(smt, &candidate.expression)
+                    });
+                    if let Some(instance) = candidates.into_iter().next() {
+                        trace!(
+                            "[yardbird::guard-inst] rule={} cost={} candidate={} formula={}",
+                            rule.metadata().name(),
+                            instance.cost,
+                            instance.candidate,
+                            instance.formula
+                        );
+                        state.transition_guard_instantiations.push(instance);
+                        transition_guard_instantiations += 1;
+                    }
+                }
+            }
+
+            let saturation_start = Instant::now();
             let mut excluded_instantiations = HashSet::new();
             let require_model_violation = expansion.candidate_scope.requires_model_violation();
             let retry_rejected_candidates =
@@ -433,12 +494,12 @@ where
                 let rejected_regular = retain_novel_by(
                     &mut saturation.instantiations,
                     &mut known_instantiations,
-                    |expr| self.installable_instance(smt, expr),
+                    |candidate| self.installable_expression(smt, &candidate.expression),
                 );
                 let rejected_const = retain_novel_by(
                     &mut saturation.const_instantiations,
                     &mut known_instantiations,
-                    |expr| self.installable_instance(smt, expr),
+                    |candidate| self.installable_expression(smt, &candidate.expression),
                 );
                 let installable_candidate_ids = saturation
                     .instantiations
@@ -503,18 +564,23 @@ where
 
             if trace_conflicts_enabled() {
                 trace!(
-                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced regular_insts={} const_insts={} conflicts={} total_regular={} total_const={}",
+                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced guard_insts={} regular_insts={} const_insts={} conflicts={} total_guard={} total_regular={} total_const={}",
                     state.depth,
                     refinement_step,
                     expansion.stage.as_str(),
+                    transition_guard_instantiations,
                     summary.regular_instantiations,
                     summary.const_instantiations,
                     summary.conflicts,
+                    state.transition_guard_instantiations.len(),
                     state.instantiations.len(),
                     state.const_instantiations.len()
                 );
             }
-            if summary.regular_instantiations > 0 || summary.const_instantiations > 0 {
+            if transition_guard_instantiations > 0
+                || summary.regular_instantiations > 0
+                || summary.const_instantiations > 0
+            {
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
             }
@@ -533,19 +599,25 @@ where
             info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
             smt.install_auxiliary_specs(specs)?;
         }
-        for (kind, candidate) in state
-            .const_instantiations
+        for (kind, expression, provenance) in state
+            .transition_guard_instantiations
             .into_iter()
-            .map(|candidate| ("const", candidate))
+            .map(|candidate| ("guard", candidate.expression, candidate.provenance))
+            .chain(
+                state
+                    .const_instantiations
+                    .into_iter()
+                    .map(|candidate| ("const", candidate.expression, candidate.provenance)),
+            )
             .chain(
                 state
                     .instantiations
                     .into_iter()
-                    .map(|candidate| ("regular", candidate)),
+                    .map(|candidate| ("regular", candidate.expression, candidate.provenance)),
             )
         {
-            let term_hash = crate::training::canonical_term_hash(&candidate.expression);
-            let term = expr_to_term(candidate.expression.clone());
+            let term_hash = crate::training::canonical_term_hash(&expression);
+            let term = expr_to_term(expression);
             if self.aux_covered_term_hashes.contains(&term_hash) {
                 info!("AUX-SYNTH skipped aux-covered {kind} instantiation");
                 continue;
@@ -555,20 +627,18 @@ where
                 continue;
             }
 
-            let abstract_id = candidate.provenance.abstract_instantiation_id().to_string();
+            let abstract_id = provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
                 trace!(
                     "[yardbird::inst-trace] {kind} abstract-hash={term_hash} abstract-id={abstract_id} abstract-term={term} substitution={:?}",
-                    candidate.provenance.relative_substitution(),
+                    provenance.relative_substitution(),
                 );
             }
             if kind == "const" {
                 self.const_instantiations.push(term.clone());
             }
 
-            let Some(request) =
-                smt.make_provenanced_unquantified_instance(term, candidate.provenance)
-            else {
+            let Some(request) = smt.make_provenanced_unquantified_instance(term, provenance) else {
                 if trace_instantiations {
                     trace!("[yardbird::inst-trace] {kind} rewrite-none abstract-id={abstract_id}");
                 }
@@ -731,13 +801,13 @@ where
         record.helper_assertions_deduplicated += result.helper_assertions_deduplicated;
     }
 
-    fn installable_instance(
+    fn installable_expression(
         &self,
         smt: &dyn crate::problem_context::ProblemContext,
-        instantiation: &ArrayAxiomInstantiation,
+        expression: &ArrayExpr,
     ) -> Option<Term> {
-        let term_hash = crate::training::canonical_term_hash(&instantiation.expression);
-        let term = expr_to_term(instantiation.expression.clone());
+        let term_hash = crate::training::canonical_term_hash(expression);
+        let term = expr_to_term(expression.clone());
         if self.aux_covered_term_hashes.contains(&term_hash)
             || term_contains_auxiliary_symbol(&term)
         {

@@ -15,6 +15,7 @@ use yardbird::theories::array::{
     },
     array_conflict_scheduler::ArrayArtifactCapture,
     candidate_scope::CandidateScope,
+    transition_guard_instantiator::supports_transition_guard,
 };
 use yardbird::{
     model_from_options, Driver, ProofLoopResult, SolverBackend, Strategy, YardbirdOptions,
@@ -58,7 +59,7 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
         .collect()
 }
 
-fn run_abstract_german_depth_two() -> ProofLoopResult {
+fn run_abstract_german(depth: u16) -> ProofLoopResult {
     let mut config = z3::Config::new();
     config.set_model_generation(true);
 
@@ -66,7 +67,7 @@ fn run_abstract_german_depth_two() -> ProofLoopResult {
         let mut options = YardbirdOptions::from_filename(
             "examples/distributed_protocols/german/german.vmt".to_string(),
         );
-        options.depth = 2;
+        options.depth = depth;
         options.strategy = Strategy::Abstract;
         options.solver = SolverBackend::Z3;
 
@@ -76,7 +77,7 @@ fn run_abstract_german_depth_two() -> ProofLoopResult {
 
         driver
             .check_strategy(options.depth, options.build_array_strategy())
-            .expect("German should be bounded-safe through depth 1")
+            .expect("German should be bounded-safe through the requested depth")
     })
 }
 
@@ -112,8 +113,34 @@ fn german_catalogs_only_its_quantified_transition_guard() {
 }
 
 #[test]
+fn german_abstraction_removes_its_supported_transition_guard() {
+    let model = VMTModel::from_path("examples/distributed_protocols/german/german.vmt").unwrap();
+    let (abstracted_model, _) = model.abstract_array_theory();
+    let rules = abstracted_model
+        .get_transition_guards()
+        .into_iter()
+        .enumerate()
+        .map(|(ordinal, guard)| TransitionGuardRule::from_parsed(guard, ordinal))
+        .filter(supports_transition_guard)
+        .collect::<Vec<_>>();
+    let selected = rules
+        .iter()
+        .map(|rule| rule.parsed().clone())
+        .collect::<Vec<_>>();
+
+    let (abstracted_model, removed) = abstracted_model.abstract_transition_guards(&selected);
+
+    assert_eq!(removed, selected);
+    assert!(abstracted_model.get_transition_guards().is_empty());
+    assert!(!abstracted_model
+        .get_trans_condition_for_yardbird()
+        .to_string()
+        .contains("I:client"));
+}
+
+#[test]
 fn german_depth_two_characterizes_current_array_refinement() {
-    let result = run_abstract_german_depth_two();
+    let result = run_abstract_german(2);
     let used_instances = result
         .used_instances
         .iter()
@@ -132,6 +159,22 @@ fn german_depth_two_characterizes_current_array_refinement() {
             "(= (Read_client_Bool (ConstArr_client_Bool grantExclusiveRule+0) homeCurrentclient+0) grantExclusiveRule+0)",
         ]
     );
+}
+
+#[test]
+fn german_depth_five_instantiates_the_abstracted_transition_guard() {
+    let result = run_abstract_german(5);
+    let guard_instances = result
+        .used_instances
+        .iter()
+        .map(ToString::to_string)
+        .filter(|instance| instance.starts_with("(=> grantExclusiveRule+"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(guard_instances.len(), 1);
+    assert!(guard_instances[0].contains("(not (Read_client_Bool homeSharerList+"));
+    assert!(!guard_instances[0].contains("forall"));
+    assert!(!result.counterexample);
 }
 
 /// Regression boundary for the direct-searcher implementation: all three

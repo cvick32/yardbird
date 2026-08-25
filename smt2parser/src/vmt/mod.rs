@@ -558,6 +558,20 @@ impl VMTModel {
         transition_quantifier::discover_transition_guards(&self.get_trans_condition_for_yardbird())
     }
 
+    /// Remove only transition guards explicitly selected by a consumer. The
+    /// returned catalog contains the guards that were actually found and
+    /// replaced, allowing the consumer to instantiate exactly what was
+    /// abstracted.
+    pub fn abstract_transition_guards(
+        mut self,
+        selected: &[TransitionGuard],
+    ) -> (Self, Vec<TransitionGuard>) {
+        let (transition, removed) =
+            transition_quantifier::abstract_transition_guards(self.transition_condition, selected);
+        self.transition_condition = transition;
+        (self, removed)
+    }
+
     pub fn get_property_for_yardbird(&self) -> Term {
         self.unwrap_attributes(&self.property_condition)
     }

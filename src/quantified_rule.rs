@@ -1,7 +1,11 @@
 //! Identity and provenance shared by quantified rules, independent of how a
 //! particular rule is matched or instantiated.
 
-use smt2parser::{concrete::Term, vmt::TransitionGuard};
+use smt2parser::{
+    concrete::{QualIdentifier, Sort, Symbol, Term},
+    let_extract::LetExtract,
+    vmt::TransitionGuard,
+};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum QuantifiedRuleCategory {
@@ -113,9 +117,8 @@ impl QuantifiedRule {
 
 /// A positive universal guard found in the consequent of one transition action.
 ///
-/// This first representation deliberately retains the original quantifier. A
-/// later phase will compile it to an egg searcher and remove it from the
-/// transition relation.
+/// The parser retains this source formula after removing it from the transition
+/// relation so Yardbird can compile and instantiate the corresponding rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransitionGuardRule {
     metadata: QuantifiedRule,
@@ -136,5 +139,41 @@ impl TransitionGuardRule {
 
     pub fn quantified_formula(&self) -> &Term {
         self.parsed.quantified_formula()
+    }
+
+    pub fn action(&self) -> &str {
+        self.parsed.action()
+    }
+
+    pub fn bound_variables(&self) -> &[(Symbol, Sort)] {
+        self.parsed.bound_variables()
+    }
+
+    pub fn body(&self) -> &Term {
+        self.parsed.body()
+    }
+
+    pub fn parsed(&self) -> &TransitionGuard {
+        &self.parsed
+    }
+
+    /// Ground the currently supported single-binder transition guard while
+    /// retaining its action condition. Solver-specific BMC framing happens
+    /// after this syntax-level substitution.
+    pub fn ground_formula(&self, candidate: Term) -> Option<Term> {
+        let [(binder, _)] = self.bound_variables() else {
+            return None;
+        };
+        let body = LetExtract::substitute(Term::Let {
+            var_bindings: vec![(binder.clone(), candidate)],
+            term: Box::new(self.body().clone()),
+        });
+        Some(Term::Application {
+            qual_identifier: QualIdentifier::simple("=>"),
+            arguments: vec![
+                Term::QualIdentifier(QualIdentifier::simple(self.action())),
+                body,
+            ],
+        })
     }
 }

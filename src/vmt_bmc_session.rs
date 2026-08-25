@@ -1044,6 +1044,12 @@ impl ProblemContext for VmtBmcSession {
         vec![]
     }
 
+    fn frame_transition_formula(&self, term: Term, frame: u16) -> Option<Term> {
+        let mut builder = self.bmc_builder.clone();
+        builder.set_depth(frame);
+        Some(builder.index_single_step_term(term))
+    }
+
     fn install_auxiliary_specs(&mut self, specs: Vec<AuxiliarySpec>) -> anyhow::Result<()> {
         self.install_auxiliary_specs(specs)
     }
