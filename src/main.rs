@@ -284,7 +284,6 @@ fn print_strategy_results(
             result.total_instantiations_added
         );
         info!("Used instances: {}", result.used_instances.len());
-        info!("Const instances: {}", result.const_instances.len());
         info!("Found proof: {}", result.found_proof);
         info!("Found counterexample: {}", result.counterexample);
         log::debug!("Solver statistics: {:#?}", result.solver_statistics);

@@ -52,9 +52,7 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
     );
 
     result
-        .instantiations
-        .into_iter()
-        .chain(result.const_instantiations)
+        .into_selected()
         .map(|instance| expr_to_term(instance.expression).to_string())
         .collect()
 }

@@ -776,7 +776,6 @@ impl SmtlibRefinementRunner {
         let mut result = ProofLoopResult {
             model: None, // No VMT model in SMTLIB mode
             used_instances: smt_problem.get_instantiations(),
-            const_instances: vec![], // TODO: track const instances separately if needed
             total_instantiations_added: smt_problem.get_number_instantiations_added(),
             total_refinement_steps,
             solver_statistics: smt_problem.get_solver_statistics(),

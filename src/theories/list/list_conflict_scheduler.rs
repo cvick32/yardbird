@@ -25,7 +25,6 @@ where
     /// in order to be able to get data out of the scheduler after a saturation run, we
     /// need to use interior mutability.
     instantiations: Rc<RefCell<Vec<ListExpr>>>,
-    instantiations_w_constants: Rc<RefCell<Vec<ListExpr>>>,
     pub cost_fn: CF,
     extractor: ListTermExtractor<CF>,
 }
@@ -38,7 +37,6 @@ where
         Self {
             inner: scheduler,
             instantiations: Rc::new(RefCell::new(vec![])),
-            instantiations_w_constants: Rc::new(RefCell::new(vec![])),
             cost_fn,
             extractor,
         }
@@ -46,10 +44,6 @@ where
 
     pub fn instantiations(&self) -> Rc<RefCell<Vec<ListExpr>>> {
         Rc::clone(&self.instantiations)
-    }
-
-    pub fn instantiations_w_constants(&self) -> Rc<RefCell<Vec<ListExpr>>> {
-        Rc::clone(&self.instantiations_w_constants)
     }
 }
 
@@ -124,15 +118,8 @@ where
                                 instantiation.pretty(80)
                             );
 
-                            if cost >= 100 {
-                                info!("Adding to constants (high cost)");
-                                self.instantiations_w_constants
-                                    .borrow_mut()
-                                    .push(instantiation);
-                            } else {
-                                info!("Adding to regular instantiations (low cost)");
-                                self.instantiations.borrow_mut().push(instantiation);
-                            }
+                            info!("Adding to regular instantiations (low cost)");
+                            self.instantiations.borrow_mut().push(instantiation);
                         } else {
                             info!("No conflict - eclasses match");
                         }

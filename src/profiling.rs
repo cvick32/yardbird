@@ -381,9 +381,8 @@ pub struct SchedulerProfile {
     pub matches_total: u64,
     pub substitutions_total: u64,
     pub substitutions_explored: u64,
-    pub conflicts_total: u64,
-    pub regular_instantiations: u64,
-    pub const_or_high_cost_instantiations: u64,
+    pub candidates_generated: u64,
+    pub candidates_selected: u64,
     pub by_rewrite: BTreeMap<String, RewriteSchedulerProfile>,
 }
 
@@ -397,9 +396,8 @@ pub struct RewriteSchedulerProfile {
     pub matches_total: u64,
     pub substitutions_total: u64,
     pub substitutions_explored: u64,
-    pub conflicts_total: u64,
-    pub regular_instantiations: u64,
-    pub const_or_high_cost_instantiations: u64,
+    pub candidates_generated: u64,
+    pub candidates_selected: u64,
 }
 
 pub struct ArrayProfilingCollector {
@@ -529,25 +527,17 @@ impl ArrayProfilingCollector {
         }
     }
 
-    pub fn record_conflict(&mut self, rewrite_name: &str, const_or_high_cost: bool) {
+    pub fn record_rule_candidates(&mut self, rule_name: &str, generated: usize, selected: usize) {
         let scheduler = &mut self.record.scheduler;
-        scheduler.conflicts_total += 1;
-        if const_or_high_cost {
-            scheduler.const_or_high_cost_instantiations += 1;
-        } else {
-            scheduler.regular_instantiations += 1;
-        }
+        scheduler.candidates_generated += generated as u64;
+        scheduler.candidates_selected += selected as u64;
 
         let by_rewrite = scheduler
             .by_rewrite
-            .entry(rewrite_name.to_string())
+            .entry(rule_name.to_string())
             .or_default();
-        by_rewrite.conflicts_total += 1;
-        if const_or_high_cost {
-            by_rewrite.const_or_high_cost_instantiations += 1;
-        } else {
-            by_rewrite.regular_instantiations += 1;
-        }
+        by_rewrite.candidates_generated += generated as u64;
+        by_rewrite.candidates_selected += selected as u64;
     }
 
     pub fn finish(self) -> ProfilingRecord {

@@ -465,67 +465,58 @@ where
                     );
                     let abstract_instantiation_id =
                         abstract_instantiation.abstract_instantiation_id.clone();
-                    let candidate = ArrayAxiomInstantiation {
-                        expression: instantiation.clone(),
-                        provenance: InstantiationProvenance::new(
-                            abstract_instantiation_id.clone(),
-                            substitution,
-                        ),
+                    let cost_expression = if rank_complete_instantiations {
+                        &instantiation
+                    } else {
+                        &new_rhs
                     };
-                    self.instantiation_decision_keys
-                        .push((abstract_instantiation_id.clone(), selection_decision_keys));
-                    if self.artifact_capture.instantiation_provenance {
-                        self.abstract_instantiations.push(abstract_instantiation);
-                    }
-                    let classification_cost = if let Some(profiling) = &self.profiling {
+                    let cost_site = if rank_complete_instantiations {
+                        "complete_instantiation_ranking"
+                    } else {
+                        "consequence_ranking"
+                    };
+                    let cost = if let Some(profiling) = &self.profiling {
                         let mut cost_fn = self.cost_fn.clone();
                         profiling.borrow_mut().record_cost(
-                            "conflict_classification",
-                            new_rhs.as_ref().len(),
-                            || cost_fn.cost_rec(&new_rhs),
+                            cost_site,
+                            cost_expression.as_ref().len(),
+                            || cost_fn.cost_rec(cost_expression),
                         )
                     } else {
-                        self.cost_fn.cost_rec(&new_rhs)
+                        self.cost_fn.cost_rec(cost_expression)
                     };
-                    let cost = if explore_all_matches {
-                        if let Some(profiling) = &self.profiling {
-                            let mut cost_fn = self.cost_fn.clone();
-                            profiling.borrow_mut().record_cost(
-                                "complete_instantiation_ranking",
-                                instantiation.as_ref().len(),
-                                || cost_fn.cost_rec(&instantiation),
-                            )
-                        } else {
-                            self.cost_fn.cost_rec(&instantiation)
-                        }
-                    } else {
-                        classification_cost
-                    };
-                    let classification = if classification_cost >= 100 {
-                        ConflictClassification::ConstOrHighCost
-                    } else {
-                        ConflictClassification::Regular
-                    };
-                    if let Some(profiling) = &self.profiling {
-                        profiling
-                            .borrow_mut()
-                            .record_conflict(rule.name(), classification_cost >= 100);
-                    }
-                    if self.artifact_capture.conflicts {
-                        let conflict_record = ArrayConflictRecord::new(
+
+                    let conflict = self.artifact_capture.conflicts.then(|| {
+                        ArrayConflictRecord::new(
                             ordinal,
-                            abstract_instantiation_id,
+                            abstract_instantiation_id.clone(),
                             rule.name(),
                             instantiation.clone(),
                             expr_to_term(instantiation.clone()),
                             self.depth,
                             self.refinement_step,
                             cost,
-                            classification,
                             decision_keys,
-                        );
-                        self.conflicts.push(conflict_record);
-                    }
+                        )
+                    });
+                    let abstract_instantiation = self
+                        .artifact_capture
+                        .instantiation_provenance
+                        .then_some(abstract_instantiation);
+                    let candidate = InstantiationCandidate {
+                        rule: rule.clone(),
+                        expression: instantiation.clone(),
+                        cost,
+                        provenance: InstantiationProvenance::new(
+                            abstract_instantiation_id,
+                            substitution,
+                        ),
+                        selected: false,
+                        decisions,
+                        selection_history,
+                        abstract_instantiation,
+                        conflict,
+                    };
                     if tracing {
                         trace_conflicts(format!(
                             "    subst[{subst_ix}] conflict cost={} instantiation={}",
@@ -537,28 +528,44 @@ where
                         cost,
                         instantiation.pretty(80)
                     );
-                    if classification_cost >= 100 {
-                        debug!("rejecting because of cost");
-                        if tracing {
-                            trace_conflicts("    classified as const/high-cost instantiation");
-                        }
-                        self.instantiations_w_constants.push(candidate);
-                    } else {
-                        if tracing {
-                            trace_conflicts("    accepted as regular instantiation");
-                        }
-                        self.instantiations.push(candidate);
-                        if !explore_all_matches {
-                            break 'matches;
+
+                    if tracing {
+                        trace_conflicts("    accepted instantiation candidate");
+                    }
+                    let candidate_index = self.candidates.len();
+                    self.candidates.push(candidate);
+                    if !rank_complete_instantiations {
+                        let selected_index = selected_by_matched_eclass
+                            .entry(egraph.find(m.eclass))
+                            .or_insert(candidate_index);
+                        let candidate_precedes_selected = self.candidates[candidate_index]
+                            .cost
+                            .cmp(&self.candidates[*selected_index].cost)
+                            .then_with(|| {
+                                self.candidates[candidate_index]
+                                    .expression
+                                    .to_string()
+                                    .cmp(&self.candidates[*selected_index].expression.to_string())
+                            })
+                            .then_with(|| candidate_index.cmp(selected_index))
+                            .is_lt();
+                        if candidate_precedes_selected {
+                            *selected_index = candidate_index;
                         }
                     }
-                } else if tracing {
-                    trace_conflicts(format!(
-                        "    subst[{subst_ix}] no conflict because rhs already maps to eclass {}",
-                        m.eclass
-                    ));
+                } else {
+                    self.record_selection_history(&selection_history);
+                    if tracing {
+                        trace_conflicts(format!(
+                            "    subst[{subst_ix}] no conflict because rhs already maps to eclass {}",
+                            m.eclass
+                        ));
+                    }
                 }
             }
+        }
+        for selected_index in selected_by_matched_eclass.into_values() {
+            self.candidates[selected_index].selected = true;
         }
         debug!("<======");
         if let Some(profiling) = &self.profiling {

@@ -2,9 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::auxiliary_synthesis::{
-    ArrayConflictRecord, AuxSynthesisConfig, ConflictClassification, SynthesisTrigger,
-};
+use crate::auxiliary_synthesis::{ArrayConflictRecord, AuxSynthesisConfig, SynthesisTrigger};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TriggerDecision {
@@ -126,9 +124,7 @@ impl AuxTriggerState {
 fn select_non_local_conflict(conflicts: &[ArrayConflictRecord]) -> Option<&ArrayConflictRecord> {
     conflicts
         .iter()
-        .find(|conflict| {
-            conflict.is_non_local && conflict.classification == ConflictClassification::Regular
-        })
+        .find(|conflict| conflict.is_non_local)
         .or_else(|| conflicts.iter().find(|conflict| conflict.is_non_local))
 }
 

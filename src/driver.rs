@@ -41,7 +41,6 @@ pub struct CoreInstantiation {
 pub struct ProofLoopResult {
     pub model: Option<VMTModel>,
     pub used_instances: Vec<Term>,
-    pub const_instances: Vec<Term>,
     pub solver_statistics: SolverStatistics,
     pub total_instantiations_added: u64,
     pub total_refinement_steps: u32,
@@ -187,14 +186,6 @@ impl Serialize for ProofLoopResult {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>(),
         )?;
-        state.serialize_field(
-            "const_instances",
-            &self
-                .const_instances
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-        )?;
         state.serialize_field("solver_statistics", &self.solver_statistics)?;
         state.serialize_field(
             "total_instantiations_added",
@@ -225,7 +216,6 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
         #[serde(field_identifier, rename_all = "snake_case")]
         enum Field {
             UsedInstances,
-            ConstInstances,
             SolverStatistics,
             TotalInstantiationsAdded,
             TotalRefinementSteps,
@@ -254,7 +244,6 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                 V: MapAccess<'de>,
             {
                 let mut used_instances: Option<Vec<String>> = None;
-                let mut const_instances: Option<Vec<String>> = None;
                 let mut solver_statistics = None;
                 let mut total_instantiations_added = None;
                 let mut total_refinement_steps = None;
@@ -272,9 +261,6 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     match key {
                         Field::UsedInstances => {
                             used_instances = Some(map.next_value()?);
-                        }
-                        Field::ConstInstances => {
-                            const_instances = Some(map.next_value()?);
                         }
                         Field::SolverStatistics => {
                             solver_statistics = Some(map.next_value()?);
@@ -322,16 +308,9 @@ impl<'de> Deserialize<'de> for ProofLoopResult {
                     .map(|s| get_term_from_term_string(&s))
                     .collect();
 
-                let const_instances_terms = const_instances
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|s| get_term_from_term_string(&s))
-                    .collect();
-
                 Ok(ProofLoopResult {
                     model: None,
                     used_instances: used_instances_terms,
-                    const_instances: const_instances_terms,
                     solver_statistics: solver_statistics
                         .ok_or_else(|| serde::de::Error::missing_field("solver_statistics"))?,
                     total_instantiations_added: total_instantiations_added.ok_or_else(|| {

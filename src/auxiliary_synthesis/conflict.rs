@@ -3,13 +3,6 @@ use smt2parser::concrete::Term;
 
 use crate::{auxiliary_synthesis::FrameSpan, theories::array::array_axioms::ArrayExpr};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ConflictClassification {
-    Regular,
-    ConstOrHighCost,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArrayConflictRecord {
     pub conflict_id: String,
@@ -25,7 +18,6 @@ pub struct ArrayConflictRecord {
     pub frame_span: FrameSpan,
     pub is_non_local: bool,
     pub cost: u32,
-    pub classification: ConflictClassification,
     pub decision_keys: Vec<String>,
 }
 
@@ -40,7 +32,6 @@ impl ArrayConflictRecord {
         depth: u16,
         refinement_step: u32,
         cost: u32,
-        classification: ConflictClassification,
         decision_keys: Vec<String>,
     ) -> Self {
         let axiom_name = axiom_name.into();
@@ -59,7 +50,6 @@ impl ArrayConflictRecord {
             frame_span,
             is_non_local,
             cost,
-            classification,
             decision_keys,
         }
     }

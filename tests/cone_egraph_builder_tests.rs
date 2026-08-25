@@ -80,7 +80,6 @@ fn source_grounded_cone_preserves_complete_write_sites() {
     let instantiations = result
         .used_instances
         .iter()
-        .chain(&result.const_instances)
         .map(ToString::to_string)
         .collect::<Vec<_>>();
 

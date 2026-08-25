@@ -535,7 +535,6 @@ mod tests {
             2,
             3,
             1,
-            crate::auxiliary_synthesis::ConflictClassification::Regular,
             vec![],
         );
         let spec = AuxiliarySpec::from_conflict(

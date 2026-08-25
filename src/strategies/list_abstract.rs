@@ -9,7 +9,7 @@ use crate::{
     egg_utils::Saturate,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     problem_context::ProblemContext,
-    theories::list::list_axioms::{expr_to_term, translate_term, ListExpr, ListLanguage},
+    theories::list::list_axioms::{translate_term, ListExpr, ListLanguage},
     theory_support::{ListTheorySupport, TheorySupport},
     ProofLoopResult,
 };
@@ -21,7 +21,6 @@ pub struct ListAbstract<F>
 where
     F: YardbirdCostFunction<ListLanguage>,
 {
-    const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
     cost_fn_factory: fn(&dyn ProblemContext, u32) -> F,
@@ -39,7 +38,6 @@ where
         Self {
             _bmc_depth,
             run_ic3ia,
-            const_instantiations: vec![],
             cost_fn_factory,
         }
     }
@@ -49,7 +47,6 @@ pub struct ListRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ListLanguage, ()>,
     pub instantiations: Vec<ListExpr>,
-    pub const_instantiations: Vec<ListExpr>,
 }
 
 impl ListRefinementState {
@@ -91,7 +88,6 @@ where
             depth,
             egraph,
             instantiations: vec![],
-            const_instantiations: vec![],
         })
     }
 
@@ -116,9 +112,8 @@ where
         info!("{}", smt.model_to_string()?);
         state.update_with_subterms(smt)?;
         let cost_fn = (self.cost_fn_factory)(smt, state.depth as u32);
-        let (insts, const_insts) = state.egraph.saturate(cost_fn, refinement_step);
+        let insts = state.egraph.saturate(cost_fn, refinement_step);
         state.instantiations.extend_from_slice(&insts);
-        state.const_instantiations.extend_from_slice(&const_insts);
         Ok(ProofAction::Continue)
     }
 
@@ -128,9 +123,6 @@ where
         state: ListRefinementState,
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
-        self.const_instantiations
-            .extend(state.const_instantiations.into_iter().map(expr_to_term));
-
         let terms: Vec<Term> = state
             .instantiations
             .into_iter()
@@ -175,7 +167,6 @@ where
         ProofLoopResult {
             model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),
-            const_instances: mem::take(&mut self.const_instantiations),
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,

@@ -5,7 +5,7 @@ pub mod spec;
 pub mod trigger;
 
 pub use config::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
-pub use conflict::{ArrayConflictRecord, ConflictClassification};
+pub use conflict::ArrayConflictRecord;
 pub use locality::FrameSpan;
 pub use spec::{
     term_contains_auxiliary_symbol, AuxiliaryRecord, AuxiliarySpec, HistorySpec,

@@ -128,7 +128,7 @@ where
     N: Analysis<ListLanguage> + Default + 'static,
     CF: YardbirdCostFunction<ListLanguage> + 'static,
 {
-    type Ret = (Vec<ListExpr>, Vec<ListExpr>);
+    type Ret = Vec<ListExpr>;
 
     fn saturate(&mut self, cost_fn: CF, refinement_step: u32) -> Self::Ret {
         let egraph = std::mem::take(self);
@@ -138,7 +138,6 @@ where
             ListTermExtractor::new(&egraph, cost_fn, refinement_step),
         );
         let instantiations = scheduler.instantiations();
-        let const_instantiations = scheduler.instantiations_w_constants();
         let mut runner = Runner::default()
             .with_egraph(egraph)
             .with_scheduler(scheduler)
@@ -146,10 +145,7 @@ where
 
         *self = std::mem::take(&mut runner.egraph);
         drop(runner);
-        (
-            Rc::into_inner(instantiations).unwrap().into_inner(),
-            Rc::into_inner(const_instantiations).unwrap().into_inner(),
-        )
+        Rc::into_inner(instantiations).unwrap().into_inner()
     }
 }
 

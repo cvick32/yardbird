@@ -52,7 +52,6 @@ pub struct Abstract<F>
 where
     F: ArrayCostFactory,
 {
-    const_instantiations: Vec<Term>,
     _bmc_depth: u16,
     run_ic3ia: bool,
     cost_config: F::Config,
@@ -92,7 +91,6 @@ where
             _bmc_depth: bmc_depth,
             run_ic3ia,
             aux_config,
-            const_instantiations: vec![],
             cost_config,
             discovered_array_types: vec![],
             transition_guard_rules: vec![],
@@ -214,8 +212,7 @@ where
 
 #[derive(Clone, Copy, Debug)]
 struct SaturationSummary {
-    regular_instantiations: usize,
-    const_instantiations: usize,
+    candidate_instantiations: usize,
     conflicts: usize,
 }
 
@@ -223,9 +220,7 @@ struct SaturationSummary {
 pub struct ArrayRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
-    pub instantiations: Vec<ArrayAxiomInstantiation>,
-    pub const_instantiations: Vec<ArrayAxiomInstantiation>,
-    pub transition_guard_instantiations: Vec<TransitionGuardInstance>,
+    pub candidates: Vec<InstantiationCandidate>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
@@ -305,9 +300,7 @@ where
         Ok(ArrayRefinementState {
             depth,
             egraph,
-            instantiations: vec![],
-            const_instantiations: vec![],
-            transition_guard_instantiations: vec![],
+            candidates: vec![],
             array_types,
             egraph_builder,
         })
@@ -444,13 +437,13 @@ where
                     });
                     if let Some(instance) = candidates.into_iter().next() {
                         trace!(
-                            "[yardbird::guard-inst] rule={} cost={} candidate={} formula={}",
+                            "[yardbird::guard-inst] rule={} cost={} substitution={:?} formula={}",
                             rule.metadata().name(),
                             instance.cost,
-                            instance.candidate,
-                            instance.formula
+                            instance.provenance.relative_substitution(),
+                            expr_to_term(instance.expression.clone())
                         );
-                        state.transition_guard_instantiations.push(instance);
+                        state.candidates.push(instance);
                         transition_guard_instantiations += 1;
                     }
                 }
@@ -548,8 +541,7 @@ where
                 }
 
                 let summary = self.absorb_saturation(state, smt, saturation, refinement_step);
-                if summary.regular_instantiations > 0
-                    || summary.const_instantiations > 0
+                if summary.candidate_instantiations > 0
                     || rejected_count == 0
                     || !retry_rejected_candidates
                 {
@@ -564,23 +556,18 @@ where
 
             if trace_conflicts_enabled() {
                 trace!(
-                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced guard_insts={} regular_insts={} const_insts={} conflicts={} total_guard={} total_regular={} total_const={}",
+                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced guard_insts={} regular_insts={} conflicts={} total_guard={} total_regular={} ",
                     state.depth,
                     refinement_step,
                     expansion.stage.as_str(),
                     transition_guard_instantiations,
-                    summary.regular_instantiations,
-                    summary.const_instantiations,
+                    summary.candidate_instantiations,
                     summary.conflicts,
-                    state.transition_guard_instantiations.len(),
-                    state.instantiations.len(),
-                    state.const_instantiations.len()
+                    total_guards,
+                    total_candidates,
                 );
             }
-            if transition_guard_instantiations > 0
-                || summary.regular_instantiations > 0
-                || summary.const_instantiations > 0
-            {
+            if transition_guard_instantiations > 0 || summary.candidate_instantiations > 0 {
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
             }
@@ -599,48 +586,34 @@ where
             info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
             smt.install_auxiliary_specs(specs)?;
         }
-        for (kind, expression, provenance) in state
-            .transition_guard_instantiations
-            .into_iter()
-            .map(|candidate| ("guard", candidate.expression, candidate.provenance))
-            .chain(
-                state
-                    .const_instantiations
-                    .into_iter()
-                    .map(|candidate| ("const", candidate.expression, candidate.provenance)),
-            )
-            .chain(
-                state
-                    .instantiations
-                    .into_iter()
-                    .map(|candidate| ("regular", candidate.expression, candidate.provenance)),
-            )
-        {
+        for candidate in state.candidates {
+            let expression = candidate.expression;
+            let provenance = candidate.provenance;
             let term_hash = crate::training::canonical_term_hash(&expression);
             let term = expr_to_term(expression);
+            let quantifier_kind = candidate.rule.category();
             if self.aux_covered_term_hashes.contains(&term_hash) {
-                info!("AUX-SYNTH skipped aux-covered {kind} instantiation");
+                info!("AUX-SYNTH skipped aux-covered {quantifier_kind:#?} instantiation");
                 continue;
             }
             if term_contains_auxiliary_symbol(&term) {
-                info!("AUX-SYNTH skipped {kind} instantiation containing auxiliary symbols");
+                info!("AUX-SYNTH skipped {quantifier_kind:#?} instantiation containing auxiliary symbols");
                 continue;
             }
 
             let abstract_id = provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
                 trace!(
-                    "[yardbird::inst-trace] {kind} abstract-hash={term_hash} abstract-id={abstract_id} abstract-term={term} substitution={:?}",
+                    "[yardbird::inst-trace] {quantifier_kind:#?} abstract-hash={term_hash} abstract-id={abstract_id} abstract-term={term} substitution={:?}",
                     provenance.relative_substitution(),
                 );
-            }
-            if kind == "const" {
-                self.const_instantiations.push(term.clone());
             }
 
             let Some(request) = smt.make_provenanced_unquantified_instance(term, provenance) else {
                 if trace_instantiations {
-                    trace!("[yardbird::inst-trace] {kind} rewrite-none abstract-id={abstract_id}");
+                    trace!(
+                        "[yardbird::inst-trace] {quantifier_kind:#?} rewrite-none abstract-id={abstract_id}"
+                    );
                 }
                 continue;
             };
@@ -648,7 +621,7 @@ where
             self.record_installation_outcome(&abstract_id, result);
             if trace_instantiations {
                 trace!(
-                    "[yardbird::inst-trace] {kind} add-result abstract-id={abstract_id} abstract-added={} solver-assertions-added={} indexed-deduplicated={} helper-deduplicated={}",
+                    "[yardbird::inst-trace] {quantifier_kind:#?} add-result abstract-id={abstract_id} abstract-added={} solver-assertions-added={} indexed-deduplicated={} helper-deduplicated={}",
                     result.abstract_instance_added,
                     result.solver_assertions_added(),
                     result.indexed_assertions_deduplicated,
@@ -938,13 +911,12 @@ where
                 .find(|conflict| conflict.conflict_id == *conflict_id)
             {
                 info!(
-                    "AUX-SYNTH detected conflict={} axiom={} span={} frames={:?} cost={} class={:?} term={}",
+                    "AUX-SYNTH detected conflict={} axiom={} span={} frames={:?} cost={} term={}",
                     conflict.conflict_id,
                     conflict.axiom_name,
                     conflict.frame_span.span,
                     conflict.frame_span.frames,
                     conflict.cost,
-                    conflict.classification,
                     conflict.term
                 );
             }
