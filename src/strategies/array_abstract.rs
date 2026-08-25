@@ -14,12 +14,11 @@ use crate::{
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
-    quantified_rule::TransitionGuardRule,
+    quantified_rule::{QuantifiedRuleCategory, TransitionGuardRule},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types, ArrayAxiomInstantiation, ArrayExpr,
-            ArrayLanguage, ArraySaturationInstrumentation, ArraySaturationOptions,
-            ArraySaturationResult,
+            expr_to_term, saturate_with_array_types, ArrayExpr, ArrayLanguage,
+            ArraySaturationInstrumentation, ArraySaturationOptions,
         },
         array_conflict_scheduler::ArrayArtifactCapture,
         array_dataflow::{build_property_cone, PropertyCone},
@@ -27,9 +26,9 @@ use crate::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
         },
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
+        instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
         transition_guard_instantiator::{
             rank_violated_transition_guard_instances, supports_transition_guard,
-            TransitionGuardInstance,
         },
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
@@ -472,62 +471,20 @@ where
                         },
                     },
                 );
-                let (rejected_model_regular, rejected_model_const) = if require_model_violation {
-                    (
-                        retain_model_violations(&mut saturation.instantiations, |term| {
-                            smt.eval_to_string(term)
-                        })?,
-                        retain_model_violations(&mut saturation.const_instantiations, |term| {
-                            smt.eval_to_string(term)
-                        })?,
-                    )
+                let rejected_model = if require_model_violation {
+                    reject_model_satisfied(&mut saturation, |term| smt.eval_to_string(term))?
                 } else {
-                    (Vec::new(), Vec::new())
+                    Vec::new()
                 };
-                let rejected_regular = retain_novel_by(
-                    &mut saturation.instantiations,
+                let rejected_known = reject_known_candidates(
+                    &mut saturation,
                     &mut known_instantiations,
                     |candidate| self.installable_expression(smt, &candidate.expression),
                 );
-                let rejected_const = retain_novel_by(
-                    &mut saturation.const_instantiations,
-                    &mut known_instantiations,
-                    |candidate| self.installable_expression(smt, &candidate.expression),
-                );
-                let installable_candidate_ids = saturation
-                    .instantiations
-                    .iter()
-                    .chain(&saturation.const_instantiations)
-                    .map(|candidate| candidate.provenance.abstract_instantiation_id())
-                    .collect::<HashSet<_>>();
-                for record in &mut saturation.abstract_instantiations {
-                    record.was_selected = installable_candidate_ids
-                        .contains(record.abstract_instantiation_id.as_str());
-                }
-                let rejected_model_count =
-                    rejected_model_regular.len() + rejected_model_const.len();
-                let rejected_count =
-                    rejected_model_count + rejected_regular.len() + rejected_const.len();
-                excluded_instantiations.extend(
-                    rejected_model_regular
-                        .into_iter()
-                        .map(|candidate| candidate.expression),
-                );
-                excluded_instantiations.extend(
-                    rejected_model_const
-                        .into_iter()
-                        .map(|candidate| candidate.expression),
-                );
-                excluded_instantiations.extend(
-                    rejected_regular
-                        .into_iter()
-                        .map(|candidate| candidate.expression),
-                );
-                excluded_instantiations.extend(
-                    rejected_const
-                        .into_iter()
-                        .map(|candidate| candidate.expression),
-                );
+                let rejected_model_count = rejected_model.len();
+                let rejected_count = rejected_model_count + rejected_known.len();
+                excluded_instantiations.extend(rejected_model);
+                excluded_instantiations.extend(rejected_known);
                 if let Some(profiling) = &profiling {
                     let mut profiling = profiling.borrow_mut();
                     profiling.add_counter(
@@ -555,6 +512,14 @@ where
             }
 
             if trace_conflicts_enabled() {
+                let total_guards = state
+                    .candidates
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.rule.category() == QuantifiedRuleCategory::TransitionGuard
+                    })
+                    .count();
+                let total_candidates = state.candidates.len();
                 trace!(
                     "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced guard_insts={} regular_insts={} conflicts={} total_guard={} total_regular={} ",
                     state.depth,
@@ -668,7 +633,6 @@ where
         ProofLoopResult {
             model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),
-            const_instances: mem::take(&mut self.const_instantiations),
             total_instantiations_added: smt.get_number_instantiations_added(),
             total_refinement_steps: 0,
             solver_statistics: smt.get_solver_statistics(),
@@ -705,22 +669,75 @@ where
     rejected
 }
 
+fn reject_known_candidates<K>(
+    batch: &mut InstantiationBatch,
+    known: &mut HashSet<K>,
+    mut normalize: impl FnMut(&InstantiationCandidate) -> Option<K>,
+) -> Vec<ArrayExpr>
+where
+    K: Eq + Hash,
+{
+    let mut rejected = Vec::new();
+    for candidate in batch.selected_mut() {
+        let keep = normalize(candidate).is_some_and(|normalized| known.insert(normalized));
+        if keep {
+            continue;
+        }
+        candidate.selected = false;
+        rejected.push(candidate.expression.clone());
+    }
+
+    rejected
+}
+
+fn reject_model_satisfied(
+    batch: &mut InstantiationBatch,
+    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+) -> anyhow::Result<Vec<ArrayExpr>> {
+    let mut rejected = Vec::new();
+    let mut evaluation_error = None;
+
+    for candidate in batch.selected_mut() {
+        let term = expr_to_term(candidate.expression.clone());
+        match evaluate(&term) {
+            Ok(value) if value.trim() == "false" => {}
+            Ok(_) => {
+                candidate.selected = false;
+                rejected.push(candidate.expression.clone());
+            }
+            Err(error) => {
+                candidate.selected = false;
+                evaluation_error = Some(error);
+            }
+        }
+    }
+    if let Some(error) = evaluation_error {
+        return Err(error);
+    }
+
+    Ok(rejected)
+}
+
+#[cfg(test)]
 trait HasArrayExpression {
     fn array_expression(&self) -> &ArrayExpr;
 }
 
+#[cfg(test)]
 impl HasArrayExpression for ArrayExpr {
     fn array_expression(&self) -> &ArrayExpr {
         self
     }
 }
 
-impl HasArrayExpression for ArrayAxiomInstantiation {
+#[cfg(test)]
+impl HasArrayExpression for InstantiationCandidate {
     fn array_expression(&self) -> &ArrayExpr {
         &self.expression
     }
 }
 
+#[cfg(test)]
 fn retain_model_violations<T>(
     instantiations: &mut Vec<T>,
     mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
@@ -794,58 +811,75 @@ where
         &mut self,
         state: &mut ArrayRefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
-        saturation: ArraySaturationResult,
+        saturation: InstantiationBatch,
         refinement_step: u32,
     ) -> SaturationSummary {
+        let candidates = saturation.selected().count();
+        let conflicts_count = saturation
+            .selected()
+            .filter(|candidate| candidate.conflict.is_some())
+            .count();
         let summary = SaturationSummary {
-            regular_instantiations: saturation.instantiations.len(),
-            const_instantiations: saturation.const_instantiations.len(),
-            conflicts: saturation.conflicts.len(),
+            candidate_instantiations: candidates,
+            conflicts: conflicts_count,
         };
-        state.instantiations.extend(saturation.instantiations);
-        state
-            .const_instantiations
-            .extend(saturation.const_instantiations);
-        for decision in saturation.decisions {
-            if !self
-                .decision_data
-                .iter()
-                .any(|known| known.decision_key == decision.decision_key)
-            {
-                self.decision_data.push(decision);
+        let selection_history = saturation
+            .candidates
+            .iter()
+            .flat_map(|candidate| candidate.selection_history.iter())
+            .cloned()
+            .collect::<Vec<_>>();
+        for selection in &selection_history {
+            self.term_selection_decisions.insert(
+                selection.decision_key.clone(),
+                selection.chosen_term_hash.clone(),
+            );
+        }
+        for selection in selection_history {
+            if let Some(term_hash) = self.term_selection_decisions.get(&selection.decision_key) {
+                *self
+                    .term_selection_counts
+                    .entry(term_hash.clone())
+                    .or_default() += 1;
             }
         }
-        for record in saturation.abstract_instantiations {
-            if let Some(known) = self
-                .abstract_instantiations
-                .iter_mut()
-                .find(|known| known.abstract_instantiation_id == record.abstract_instantiation_id)
-            {
-                known.was_selected |= record.was_selected;
-                for decision_key in record.decision_keys {
-                    if !known.decision_keys.contains(&decision_key) {
-                        known.decision_keys.push(decision_key);
+        let mut conflicts = Vec::with_capacity(conflicts_count);
+        for mut candidate in saturation.candidates {
+            for decision in mem::take(&mut candidate.decisions) {
+                if !self
+                    .decision_data
+                    .iter()
+                    .any(|known| known.decision_key == decision.decision_key)
+                {
+                    self.decision_data.push(decision);
+                }
+            }
+            if let Some(mut record) = candidate.abstract_instantiation.take() {
+                record.was_selected = candidate.selected;
+                if let Some(known) = self.abstract_instantiations.iter_mut().find(|known| {
+                    known.abstract_instantiation_id == record.abstract_instantiation_id
+                }) {
+                    known.was_selected |= record.was_selected;
+                    for decision_key in record.decision_keys {
+                        if !known.decision_keys.contains(&decision_key) {
+                            known.decision_keys.push(decision_key);
+                        }
                     }
-                }
-            } else {
-                self.abstract_instantiations.push(record);
-            }
-        }
-        for (decision_key, term_hash) in saturation.selection_history_decisions {
-            self.term_selection_decisions
-                .insert(decision_key, term_hash);
-        }
-        for decision_keys in saturation.instantiation_decision_keys {
-            for decision_key in decision_keys {
-                if let Some(term_hash) = self.term_selection_decisions.get(&decision_key) {
-                    *self
-                        .term_selection_counts
-                        .entry(term_hash.clone())
-                        .or_default() += 1;
+                } else {
+                    self.abstract_instantiations.push(record);
                 }
             }
+
+            if !candidate.selected {
+                continue;
+            }
+            if let Some(conflict) = candidate.conflict.take() {
+                conflicts.push(conflict);
+            }
+
+            state.candidates.push(candidate);
         }
-        self.handle_aux_synthesis_detection(state, smt, &saturation.conflicts, refinement_step);
+        self.handle_aux_synthesis_detection(state, smt, &conflicts, refinement_step);
         summary
     }
 

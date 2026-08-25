@@ -154,7 +154,7 @@ fn german_depth_two_characterizes_current_array_refinement() {
         vec![
             "(= (Read_client_Bool (ConstArr_client_Bool homeCurrentReqExclusive+0) yardbird_herbrand_0+0) homeCurrentReqExclusive+0)",
             "(=> (not (= yardbird_herbrand_0+1 |fml:cl+0|)) (= (Read_client_Bool (Write_client_Bool cacheShared+1 |fml:cl+0| receiveExclusiveGrantRule+0) yardbird_herbrand_0+1) (Read_client_Bool cacheShared+1 yardbird_herbrand_0+1)))",
-            "(= (Read_client_Bool (ConstArr_client_Bool grantExclusiveRule+0) homeCurrentclient+0) grantExclusiveRule+0)",
+            "(= (Read_client_Bool (ConstArr_client_Bool grantExclusiveRule+0) |fml:cl+0|) grantExclusiveRule+0)",
         ]
     );
 }
