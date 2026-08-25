@@ -13,18 +13,9 @@ use crate::{
     theories::array::{
         array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
+        instantiation_candidate::InstantiationCandidate,
     },
 };
-
-/// One ranked ground transition-guard instance in the current model.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TransitionGuardInstance {
-    pub candidate: ArrayExpr,
-    pub formula: Term,
-    pub expression: ArrayExpr,
-    pub cost: u32,
-    pub provenance: InstantiationProvenance,
-}
 
 /// Finds ground terms occupying an array-index slot of the guard binder's
 /// sort. For German this turns the many `client`-indexed reads and writes into
@@ -131,7 +122,7 @@ pub fn rank_violated_transition_guard_instances<CF, N>(
     mut cost_function: CF,
     depth: u16,
     smt: &dyn ProblemContext,
-) -> Vec<TransitionGuardInstance>
+) -> Vec<InstantiationCandidate>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
     N: egg::Analysis<ArrayLanguage>,
@@ -195,20 +186,26 @@ where
                     continue;
                 }
             }
-            instances.push(TransitionGuardInstance {
-                candidate: candidate.clone(),
-                formula,
+            instances.push(InstantiationCandidate {
+                rule: rule.metadata().clone(),
                 expression,
                 cost,
                 provenance,
+                selected: true,
+                decisions: vec![],
+                selection_history: vec![],
+                abstract_instantiation: None,
+                conflict: None,
             });
         }
     }
 
     instances.sort_by(|left, right| {
-        left.cost
-            .cmp(&right.cost)
-            .then_with(|| left.formula.to_string().cmp(&right.formula.to_string()))
+        left.cost.cmp(&right.cost).then_with(|| {
+            left.expression
+                .to_string()
+                .cmp(&right.expression.to_string())
+        })
     });
     instances
 }

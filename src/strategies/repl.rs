@@ -11,20 +11,24 @@ impl ProofStrategyExt<ArrayRefinementState> for Repl {
         _model: &mut VMTModel,
         state: &mut ArrayRefinementState,
     ) -> anyhow::Result<()> {
-        if state.instantiations.is_empty() {
+        if state.candidates.is_empty() {
             return Ok(());
         }
 
+        let formulas = state
+            .candidates
+            .iter()
+            .map(|candidate| candidate.expression.to_string())
+            .collect::<Vec<_>>();
         let selection = MultiSelect::with_theme(&SimpleTheme)
             .with_prompt("Pick instantiations")
-            .items(&state.instantiations)
+            .items(&formulas)
             .interact()
             .unwrap();
 
-        // replace instantiations with instantiations from selection
-        state.instantiations = selection
+        state.candidates = selection
             .into_iter()
-            .map(|i| state.instantiations[i].clone())
+            .map(|index| state.candidates[index].clone())
             .collect();
 
         Ok(())

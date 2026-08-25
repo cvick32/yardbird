@@ -9,21 +9,23 @@ use egg::{Analysis, Language};
 use log::{debug, trace};
 
 use crate::{
-    auxiliary_synthesis::{ArrayConflictRecord, ConflictClassification},
+    auxiliary_synthesis::ArrayConflictRecord,
     cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
     instantiation_provenance::InstantiationProvenance,
     profiling::ArrayProfilingCollector,
     theories::array::{
-        array_axioms::{
-            expr_to_term, ArrayAxiomInstantiation, ArrayExpr, ArrayLanguage, ArrayQuantifiedRule,
-        },
+        array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage, ArrayQuantifiedRule},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
+        instantiation_candidate::{InstantiationCandidate, SelectionHistoryDecision},
     },
-    training::{canonical_term_hash, AbstractInstantiationRecord, DecisionRecord},
+    training::{canonical_term_hash, DecisionRecord},
 };
 
-const INITIAL_RULE_MATCH_LIMIT: usize = 500;
+// Preserve the initial limit used by egg's `BackoffScheduler`, which this
+// direct-search scheduler replaced. A smaller limit can truncate a conditional
+// search before rejected substitutions are filtered out.
+const INITIAL_RULE_MATCH_LIMIT: usize = 1_000;
 const MAX_RULE_SEARCH_ROUNDS: usize = 15;
 
 fn trace_conflicts_enabled() -> bool {
@@ -39,12 +41,6 @@ pub struct ArrayArtifactCapture {
     pub decisions: bool,
     pub instantiation_provenance: bool,
     pub conflicts: bool,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct SelectionHistoryDecision {
-    pub decision_key: String,
-    pub chosen_term_hash: String,
 }
 
 pub struct ArrayRuleInstantiatorOptions {
@@ -121,27 +117,12 @@ pub fn preprocess_array_expr(input: &str) -> String {
     result
 }
 
-pub(crate) struct ArrayRuleInstantiationCandidates {
-    pub instantiations: Vec<ArrayAxiomInstantiation>,
-    pub instantiations_w_constants: Vec<ArrayAxiomInstantiation>,
-    pub conflicts: Vec<ArrayConflictRecord>,
-    pub decisions: Vec<DecisionRecord>,
-    pub abstract_instantiations: Vec<AbstractInstantiationRecord>,
-    pub selection_history_decisions: Vec<SelectionHistoryDecision>,
-    pub instantiation_decision_keys: Vec<(String, Vec<String>)>,
-}
-
 pub struct ArrayRuleInstantiator<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    instantiations: Vec<ArrayAxiomInstantiation>,
-    instantiations_w_constants: Vec<ArrayAxiomInstantiation>,
-    conflicts: Vec<ArrayConflictRecord>,
-    decisions: Vec<DecisionRecord>,
-    abstract_instantiations: Vec<AbstractInstantiationRecord>,
-    selection_history_decisions: Vec<SelectionHistoryDecision>,
-    instantiation_decision_keys: Vec<(String, Vec<String>)>,
+    candidates: Vec<InstantiationCandidate>,
+    selection_history: Vec<SelectionHistoryDecision>,
     artifact_capture: ArrayArtifactCapture,
     next_instantiation_ordinal: usize,
     pub cost_fn: CF,
@@ -169,13 +150,8 @@ where
             profiling,
         } = options;
         Self {
-            instantiations: vec![],
-            instantiations_w_constants: vec![],
-            conflicts: vec![],
-            decisions: vec![],
-            abstract_instantiations: vec![],
-            selection_history_decisions: vec![],
-            instantiation_decision_keys: vec![],
+            candidates: vec![],
+            selection_history: vec![],
             artifact_capture,
             next_instantiation_ordinal: 0,
             cost_fn,
@@ -187,16 +163,24 @@ where
         }
     }
 
-    pub(crate) fn into_candidates(self) -> ArrayRuleInstantiationCandidates {
-        ArrayRuleInstantiationCandidates {
-            instantiations: self.instantiations,
-            instantiations_w_constants: self.instantiations_w_constants,
-            conflicts: self.conflicts,
-            decisions: self.decisions,
-            abstract_instantiations: self.abstract_instantiations,
-            selection_history_decisions: self.selection_history_decisions,
-            instantiation_decision_keys: self.instantiation_decision_keys,
+    pub(crate) fn into_candidates(mut self) -> Vec<InstantiationCandidate> {
+        let latest_selection = self
+            .selection_history
+            .into_iter()
+            .map(|decision| (decision.decision_key, decision.chosen_term_hash))
+            .collect::<HashMap<_, _>>();
+        for candidate in &mut self.candidates {
+            for decision in &mut candidate.selection_history {
+                if let Some(chosen_term_hash) = latest_selection.get(&decision.decision_key) {
+                    decision.chosen_term_hash = chosen_term_hash.clone();
+                }
+            }
         }
+        self.candidates
+    }
+
+    fn record_selection_history(&mut self, decisions: &[SelectionHistoryDecision]) {
+        self.selection_history.extend_from_slice(decisions);
     }
 }
 
@@ -254,7 +238,7 @@ where
                         substitutions,
                         threshold,
                         over_limit,
-                        self.instantiations.len()
+                        self.candidates.len()
                     ));
                     for (match_ix, search_match) in matches.iter().enumerate() {
                         trace_conflicts(format!(
@@ -296,31 +280,24 @@ where
             "instantiate_rule: {} with {} matches, inst_count={}",
             rule.name(),
             matches.len(),
-            self.instantiations.len()
+            self.candidates.len()
         );
         if tracing {
             trace_conflicts(format!(
                 "instantiate rule={} matches={} existing_insts={}",
                 rule.name(),
                 matches.len(),
-                self.instantiations.len()
+                self.candidates.len()
             ));
         }
-        let explore_all_matches = self.extractor.explores_all_matches();
-        if !explore_all_matches && !self.instantiations.is_empty() {
-            if let Some(profiling) = &self.profiling {
-                profiling.borrow_mut().record_rule_instantiation(
-                    rule.name(),
-                    substitutions_explored,
-                    true,
-                    apply_start.elapsed(),
-                );
-            }
-            return;
-        }
+        let rank_complete_instantiations = self.extractor.explores_all_matches();
         let searcher_ast = executable_rule.trigger();
         let consequence_ast = executable_rule.consequence();
-        'matches: for (match_ix, m) in matches.iter().enumerate() {
+
+        // Each SearchMatches root is one e-class matched by the full trigger
+        // pattern. Keep its cheapest grounding and batch distinct roots.
+        let mut selected_by_matched_eclass = HashMap::<egg::Id, usize>::default();
+        for (match_ix, m) in matches.iter().enumerate() {
             debug!("Number of subs: {}", m.substs.len());
             if tracing {
                 trace_conflicts(format!(
@@ -339,12 +316,12 @@ where
                 // from the substitution.
                 let mut memo = HashMap::default();
                 let mut slot_index = 0;
-                let decision_start = self.decisions.len();
-                let selection_start = self.selection_history_decisions.len();
+                let mut decisions = Vec::new();
+                let mut selection_history = Vec::new();
                 let mut used_derived_candidate = false;
                 let mut ctx = DecisionLogContext {
-                    decisions: &mut self.decisions,
-                    selection_history_decisions: &mut self.selection_history_decisions,
+                    decisions: &mut decisions,
+                    selection_history_decisions: &mut selection_history,
                     record_decisions: self.artifact_capture.decisions,
                     axiom_name: rule.name(),
                     rule_category: rule.category(),
@@ -374,8 +351,6 @@ where
                 if self.extractor.requires_source_grounded_candidates()
                     && *ctx.used_derived_candidate
                 {
-                    ctx.decisions.truncate(decision_start);
-                    ctx.selection_history_decisions.truncate(selection_start);
                     if tracing {
                         trace_conflicts(format!(
                                     "    subst[{subst_ix}] skipped because cone selection required a derived candidate"
@@ -409,8 +384,6 @@ where
                         &mut ctx,
                     ));
                     if self.excluded_instantiations.contains(&instantiation) {
-                        ctx.decisions.truncate(decision_start);
-                        ctx.selection_history_decisions.truncate(selection_start);
                         if tracing {
                             trace_conflicts(format!(
                                         "    subst[{subst_ix}] skipped because the complete instantiation was excluded"
@@ -418,21 +391,22 @@ where
                         }
                         continue;
                     }
+
                     let ordinal = self.next_instantiation_ordinal;
                     self.next_instantiation_ordinal += 1;
                     let instantiation_hash = canonical_term_hash(&instantiation);
-                    if explore_all_matches && self.artifact_capture.decisions {
-                        for decision in &mut ctx.decisions[decision_start..] {
+                    if rank_complete_instantiations && self.artifact_capture.decisions {
+                        for decision in &mut decisions {
                             decision.decision_key =
                                 format!("{}:candidate:{instantiation_hash}", decision.decision_key);
                         }
-                        for decision in &mut ctx.selection_history_decisions[selection_start..] {
+                        for decision in &mut selection_history {
                             decision.decision_key =
                                 format!("{}:candidate:{instantiation_hash}", decision.decision_key);
                         }
                     }
-                    let selection_decision_keys = ctx.selection_history_decisions
-                        [selection_start..]
+                    self.record_selection_history(&selection_history);
+                    let selection_decision_keys = selection_history
                         .iter()
                         .map(|decision| decision.decision_key.clone())
                         .collect::<Vec<_>>();
