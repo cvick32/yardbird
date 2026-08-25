@@ -347,6 +347,7 @@ where
                     selection_history_decisions: &mut self.selection_history_decisions,
                     record_decisions: self.artifact_capture.decisions,
                     axiom_name: rule.name(),
+                    rule_category: rule.category(),
                     slot_index: &mut slot_index,
                     used_derived_candidate: &mut used_derived_candidate,
                 };
@@ -576,6 +577,7 @@ struct DecisionLogContext<'a> {
     selection_history_decisions: &'a mut Vec<SelectionHistoryDecision>,
     record_decisions: bool,
     axiom_name: &'a str,
+    rule_category: crate::quantified_rule::QuantifiedRuleCategory,
     slot_index: &'a mut u32,
     used_derived_candidate: &'a mut bool,
 }
@@ -972,6 +974,7 @@ where
                 selection_history_decisions: &mut candidate_selection_history_decisions,
                 record_decisions: ctx.record_decisions,
                 axiom_name: ctx.axiom_name,
+                rule_category: ctx.rule_category,
                 slot_index: &mut candidate_slot_index,
                 used_derived_candidate: &mut candidate_used_derived,
             },
@@ -1244,7 +1247,13 @@ where
     N: egg::Analysis<ArrayLanguage>,
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    let expr = extractor.extract_for_decision(egraph, eclass.id, ctx.axiom_name, *ctx.slot_index);
+    let expr = extractor.extract_for_decision(
+        egraph,
+        eclass.id,
+        ctx.axiom_name,
+        ctx.rule_category,
+        *ctx.slot_index,
+    );
     if trace_conflicts_enabled() {
         trace_conflicts(format!(
             "      choice slot={} axiom={} eclass={} expr={}",

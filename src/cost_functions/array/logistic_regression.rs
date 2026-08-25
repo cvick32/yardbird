@@ -5,7 +5,7 @@ use smt2parser::vmt::ReadsAndWrites;
 use crate::{
     cost_functions::{
         array::{ArrayCostContext, ArrayCostFactory},
-        CandidateChoice, CandidateChoiceContext, YardbirdCostFunction,
+        CandidateSelectionContext, CandidateView, YardbirdCostFunction,
     },
     theories::array::array_axioms::ArrayLanguage,
     training::{
@@ -97,20 +97,20 @@ impl YardbirdCostFunction<ArrayLanguage> for LogisticRegression {
         self.reads_writes.clone()
     }
 
-    fn choose_candidate_with_ml(
+    fn select_candidate(
         &self,
-        context: &CandidateChoiceContext<'_>,
-        candidates: &[CandidateChoice<'_>],
+        context: &CandidateSelectionContext<'_>,
+        candidates: &[CandidateView<'_, ArrayLanguage>],
     ) -> Option<usize> {
         let mut best: Option<(usize, f64)> = None;
         for (index, candidate) in candidates.iter().enumerate() {
             let term_features = TermFeatures::extract(
-                candidate.term,
+                candidate.expression,
                 &self.property_term_set,
                 &self.transition_term_set,
             );
             let features = LogisticRegressionCandidateFeatures {
-                axiom_name: context.axiom_name,
+                axiom_name: context.rule_name,
                 slot_index: context.slot_index,
                 is_constant: term_features.is_constant,
                 is_variable: term_features.is_variable,
@@ -144,14 +144,25 @@ impl YardbirdCostFunction<ArrayLanguage> for LogisticRegression {
 }
 
 fn compare_candidate_tiebreak(
-    left: &CandidateChoice<'_>,
-    right: &CandidateChoice<'_>,
+    left: &CandidateView<'_, ArrayLanguage>,
+    right: &CandidateView<'_, ArrayLanguage>,
 ) -> std::cmp::Ordering {
     left.current_cost
         .saturating_add(left.prior_use_count)
         .cmp(&right.current_cost.saturating_add(right.prior_use_count))
         .then_with(|| left.cost_rank.cmp(&right.cost_rank))
-        .then_with(|| left.term.as_ref().len().cmp(&right.term.as_ref().len()))
-        .then_with(|| canonical_term_hash(left.term).cmp(&canonical_term_hash(right.term)))
-        .then_with(|| left.term.to_string().cmp(&right.term.to_string()))
+        .then_with(|| {
+            left.expression
+                .as_ref()
+                .len()
+                .cmp(&right.expression.as_ref().len())
+        })
+        .then_with(|| {
+            canonical_term_hash(left.expression).cmp(&canonical_term_hash(right.expression))
+        })
+        .then_with(|| {
+            left.expression
+                .to_string()
+                .cmp(&right.expression.to_string())
+        })
 }

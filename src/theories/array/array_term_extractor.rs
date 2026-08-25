@@ -5,9 +5,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
-    cost_functions::{CandidateChoice, CandidateChoiceContext, YardbirdCostFunction},
+    cost_functions::{CandidateSelectionContext, CandidateView, YardbirdCostFunction},
     problem_context::ArrayCandidateCatalog,
     profiling::ArrayProfilingCollector,
+    quantified_rule::QuantifiedRuleCategory,
     theories::array::{
         array_axioms::{translate_term, ArrayExpr, ArrayLanguage},
         array_conflict_scheduler::preprocess_array_expr,
@@ -551,10 +552,11 @@ where
         ranks
     }
 
-    fn choose_candidate_with_ml<'a>(
+    fn select_contextual_candidate<'a>(
         &self,
         valid_terms: &[&'a (ArrayExpr, u32)],
-        axiom_name: &str,
+        rule_name: &str,
+        rule_category: QuantifiedRuleCategory,
         slot_index: u32,
     ) -> Option<(&'a ArrayExpr, u32)> {
         let candidate_count = valid_terms.len();
@@ -571,8 +573,8 @@ where
                     .get(&canonical_term_hash(term))
                     .copied()
                     .unwrap_or((candidate_count, 1.0));
-                CandidateChoice {
-                    term,
+                CandidateView {
+                    expression: term,
                     current_cost: *cost,
                     cost_rank,
                     cost_rank_frac,
@@ -581,30 +583,30 @@ where
                 }
             })
             .collect::<Vec<_>>();
-        let context = CandidateChoiceContext {
-            axiom_name,
+        let context = CandidateSelectionContext {
+            rule_name,
+            rule_category,
             slot_index,
             bmc_depth: self.depth,
         };
-        let ml_start = Instant::now();
-        let chosen_index = self
-            .cost_function
-            .choose_candidate_with_ml(&context, &choices)?;
+        let selection_start = Instant::now();
+        let chosen_index = self.cost_function.select_candidate(&context, &choices)?;
         if let Some(profiling) = &self.profiling {
-            profiling
-                .borrow_mut()
-                .record_timing("ml_choice_total", ml_start.elapsed());
+            profiling.borrow_mut().record_timing(
+                "contextual_candidate_selection_total",
+                selection_start.elapsed(),
+            );
         }
         if chosen_index >= choices.len() {
             log::warn!(
-                "ML candidate chooser returned out-of-range index {} for {} candidates",
+                "Contextual candidate selector returned out-of-range index {} for {} candidates",
                 chosen_index,
                 choices.len()
             );
             return None;
         }
-        let chosen = choices[chosen_index];
-        Some((chosen.term, chosen.current_cost))
+        let chosen = &choices[chosen_index];
+        Some((chosen.expression, chosen.current_cost))
     }
 
     fn choose_with_history<'a, N>(
@@ -653,20 +655,21 @@ where
     where
         N: egg::Analysis<ArrayLanguage>,
     {
-        self.extract_for_decision(egraph, eclass, "unknown", 0)
+        self.extract_for_decision(egraph, eclass, "unknown", QuantifiedRuleCategory::Other, 0)
     }
 
     pub fn extract_for_decision<N>(
         &self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
         eclass: egg::Id,
-        axiom_name: &str,
+        rule_name: &str,
+        rule_category: QuantifiedRuleCategory,
         slot_index: u32,
     ) -> egg::RecExpr<ArrayLanguage>
     where
         N: egg::Analysis<ArrayLanguage>,
     {
-        self.extract_for_decision_with_origin(egraph, eclass, axiom_name, slot_index)
+        self.extract_for_decision_with_origin(egraph, eclass, rule_name, rule_category, slot_index)
             .0
     }
 
@@ -674,7 +677,8 @@ where
         &self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
         eclass: egg::Id,
-        axiom_name: &str,
+        rule_name: &str,
+        rule_category: QuantifiedRuleCategory,
         slot_index: u32,
     ) -> (egg::RecExpr<ArrayLanguage>, CandidateOrigin)
     where
@@ -693,11 +697,11 @@ where
                 .unwrap_or(0);
 
             if let Some((term, cost)) =
-                self.choose_candidate_with_ml(&valid_terms, axiom_name, slot_index)
+                self.select_contextual_candidate(&valid_terms, rule_name, rule_category, slot_index)
             {
                 let prior_uses = prior_use_count(&self.selection_counts, term);
                 log::debug!(
-                    "ml-chosen term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
+                    "contextually selected term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",
                     term,
                     cost,
                     prior_uses,
@@ -897,7 +901,10 @@ fn insert_candidate<C: Copy + Ord>(
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     use super::{
         compare_terms_with_cost, compare_terms_with_history, deindex_abstract_term,
@@ -905,8 +912,9 @@ mod tests {
     };
     use crate::theories::array::candidate_scope::CandidateScope;
     use crate::{
-        cost_functions::YardbirdCostFunction,
+        cost_functions::{CandidateSelectionContext, CandidateView, YardbirdCostFunction},
         problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
+        quantified_rule::QuantifiedRuleCategory,
         theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
         training::canonical_term_hash,
     };
@@ -921,6 +929,21 @@ mod tests {
     #[derive(Clone)]
     struct CountingCost {
         calls: Rc<Cell<u32>>,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ObservedSelection {
+        rule_name: String,
+        rule_category: QuantifiedRuleCategory,
+        slot_index: u32,
+        bmc_depth: u16,
+        candidate_count: usize,
+    }
+
+    #[derive(Clone)]
+    struct ContextualSelector {
+        terms: Vec<ArrayExpr>,
+        observed: Rc<RefCell<Option<ObservedSelection>>>,
     }
 
     fn options(
@@ -985,6 +1008,48 @@ mod tests {
         }
     }
 
+    impl egg::CostFunction<ArrayLanguage> for ContextualSelector {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            0
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for ContextualSelector {
+        fn get_string_terms(&self) -> Vec<String> {
+            self.terms.iter().map(ToString::to_string).collect()
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+
+        fn select_candidate(
+            &self,
+            context: &CandidateSelectionContext<'_>,
+            candidates: &[CandidateView<'_, ArrayLanguage>],
+        ) -> Option<usize> {
+            self.observed.replace(Some(ObservedSelection {
+                rule_name: context.rule_name.to_string(),
+                rule_category: context.rule_category,
+                slot_index: context.slot_index,
+                bmc_depth: context.bmc_depth,
+                candidate_count: candidates.len(),
+            }));
+            candidates
+                .iter()
+                .position(|candidate| candidate.expression.to_string() == "b")
+        }
+
+        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<ArrayLanguage>> {
+            self.terms.clone()
+        }
+    }
+
     #[test]
     fn deindex_abstract_term_removes_frame_suffixes() {
         let expr: ArrayExpr =
@@ -1033,6 +1098,50 @@ mod tests {
         );
 
         assert_eq!(extractor.extract(&egraph, b_id).to_string(), "a");
+    }
+
+    #[test]
+    fn contextual_selector_receives_rule_context_and_overrides_cost_fallback() {
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let a: ArrayExpr = "a".parse().unwrap();
+        let b: ArrayExpr = "b".parse().unwrap();
+        let a_id = egraph.add_expr(&a);
+        let b_id = egraph.add_expr(&b);
+        egraph.union(a_id, b_id);
+        egraph.rebuild();
+        let observed = Rc::new(RefCell::new(None));
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ContextualSelector {
+                terms: vec![a, b],
+                observed: observed.clone(),
+            },
+            options(
+                ArrayCandidateCatalog::default(),
+                CandidateScope::AllCandidates,
+                FxHashMap::default(),
+            ),
+        );
+
+        let selected = extractor.extract_for_decision(
+            &egraph,
+            a_id,
+            "transition-guard-test-0",
+            QuantifiedRuleCategory::TransitionGuard,
+            7,
+        );
+
+        assert_eq!(selected.to_string(), "b");
+        assert_eq!(
+            observed.borrow().as_ref(),
+            Some(&ObservedSelection {
+                rule_name: "transition-guard-test-0".to_string(),
+                rule_category: QuantifiedRuleCategory::TransitionGuard,
+                slot_index: 7,
+                bmc_depth: 0,
+                candidate_count: 2,
+            })
+        );
     }
 
     #[test]
@@ -1157,8 +1266,13 @@ mod tests {
             ),
         );
 
-        let (chosen, origin) =
-            extractor.extract_for_decision_with_origin(&egraph, source_id, "test", 0);
+        let (chosen, origin) = extractor.extract_for_decision_with_origin(
+            &egraph,
+            source_id,
+            "test",
+            QuantifiedRuleCategory::Other,
+            0,
+        );
         assert_eq!(chosen.to_string(), "z");
         assert_eq!(origin, CandidateOrigin::SourceGrounded);
     }
@@ -1180,7 +1294,13 @@ mod tests {
             ),
         );
 
-        let (_, origin) = extractor.extract_for_decision_with_origin(&egraph, value_id, "test", 0);
+        let (_, origin) = extractor.extract_for_decision_with_origin(
+            &egraph,
+            value_id,
+            "test",
+            QuantifiedRuleCategory::Other,
+            0,
+        );
         assert_eq!(origin, CandidateOrigin::Derived);
     }
 

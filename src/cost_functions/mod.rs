@@ -5,18 +5,22 @@ pub mod list;
 use egg::CostFunction;
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::theories::array::array_axioms::ArrayExpr;
+use crate::quantified_rule::QuantifiedRuleCategory;
 
 #[derive(Clone, Copy, Debug)]
-pub struct CandidateChoiceContext<'a> {
-    pub axiom_name: &'a str,
+pub struct CandidateSelectionContext<'a> {
+    pub rule_name: &'a str,
+    pub rule_category: QuantifiedRuleCategory,
     pub slot_index: u32,
     pub bmc_depth: u16,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct CandidateChoice<'a> {
-    pub term: &'a ArrayExpr,
+#[derive(Clone, Debug)]
+pub struct CandidateView<'a, L>
+where
+    L: egg::Language,
+{
+    pub expression: &'a egg::RecExpr<L>,
     pub current_cost: u32,
     pub cost_rank: usize,
     pub cost_rank_frac: f64,
@@ -37,10 +41,13 @@ where
     }
     fn get_reads_and_writes(&self) -> ReadsAndWrites;
 
-    fn choose_candidate_with_ml(
+    /// Optionally select one candidate using the complete quantified-rule
+    /// context. Returning `None` delegates to the caller's deterministic
+    /// cost-based fallback.
+    fn select_candidate(
         &self,
-        _context: &CandidateChoiceContext<'_>,
-        _candidates: &[CandidateChoice<'_>],
+        _context: &CandidateSelectionContext<'_>,
+        _candidates: &[CandidateView<'_, L>],
     ) -> Option<usize> {
         None
     }

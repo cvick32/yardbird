@@ -151,6 +151,7 @@ where
             egraph,
             candidate_eclass,
             rule.metadata().name(),
+            rule.metadata().category(),
             0,
         );
         if extractor.requires_source_grounded_candidates() && origin == CandidateOrigin::Derived {
