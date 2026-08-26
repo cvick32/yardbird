@@ -910,6 +910,17 @@ mod test {
 
     const LEGACY_HIGH_COST_THRESHOLD: u32 = 100;
 
+    fn prepare_violations(batch: &mut InstantiationBatch, scope: CandidateScope) {
+        batch
+            .prepare(
+                scope,
+                &HashSet::new(),
+                |term| Ok(term.to_string().starts_with("(not ").to_string()),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+    }
+
     impl egg::CostFunction<ArrayLanguage> for ZeroCost {
         type Cost = u32;
 
@@ -1174,7 +1185,7 @@ mod test {
         );
 
         assert_eq!(result.selected().count(), 0);
-        result.select(CandidateScope::AllCandidates, |_| true);
+        prepare_violations(&mut result, CandidateScope::AllCandidates);
         assert_eq!(result.selected().count(), 1);
         let instantiation = result.selected().next().unwrap();
         assert!(instantiation.expression.to_string().starts_with("(=> "));
@@ -1216,7 +1227,7 @@ mod test {
         );
 
         assert_eq!(result.selected().count(), 0);
-        result.select(CandidateScope::AllCandidates, |_| true);
+        prepare_violations(&mut result, CandidateScope::AllCandidates);
         let rule_names = result
             .selected()
             .map(|candidate| candidate.rule.name().to_string())
@@ -1329,7 +1340,7 @@ mod test {
         );
 
         assert_eq!(result.selected().count(), 0);
-        result.select(CandidateScope::SourceGroundedOnly, |_| true);
+        prepare_violations(&mut result, CandidateScope::SourceGroundedOnly);
         assert_eq!(
             result
                 .selected()
@@ -1369,7 +1380,7 @@ mod test {
             .candidates
             .iter()
             .any(|candidate| candidate.cost > LEGACY_HIGH_COST_THRESHOLD));
-        result.select(CandidateScope::SourceGroundedOnly, |_| true);
+        prepare_violations(&mut result, CandidateScope::SourceGroundedOnly);
         assert!(result
             .selected()
             .all(|candidate| candidate.cost <= LEGACY_HIGH_COST_THRESHOLD));
@@ -1377,7 +1388,7 @@ mod test {
         result
             .candidates
             .retain(|candidate| candidate.cost > LEGACY_HIGH_COST_THRESHOLD);
-        result.select(CandidateScope::SourceGroundedOnly, |_| true);
+        prepare_violations(&mut result, CandidateScope::SourceGroundedOnly);
         assert_eq!(result.selected().count(), 1);
     }
 
@@ -1412,7 +1423,7 @@ mod test {
             },
         );
 
-        result.select(CandidateScope::AllCandidates, |_| true);
+        prepare_violations(&mut result, CandidateScope::AllCandidates);
         assert_eq!(
             result
                 .selected()
@@ -1452,7 +1463,7 @@ mod test {
             },
         );
 
-        result.select(CandidateScope::AllCandidates, |_| true);
+        prepare_violations(&mut result, CandidateScope::AllCandidates);
         assert_eq!(
             result
                 .selected()
@@ -1493,7 +1504,7 @@ mod test {
         );
 
         assert!(result.selected().next().is_none());
-        result.select(CandidateScope::SourceGroundedOnly, |_| true);
+        prepare_violations(&mut result, CandidateScope::SourceGroundedOnly);
         let abstract_instantiations = result
             .candidates
             .iter()
@@ -1557,7 +1568,7 @@ mod test {
                     },
                 },
             );
-            result.select(CandidateScope::AllCandidates, |_| true);
+            prepare_violations(&mut result, CandidateScope::AllCandidates);
             result
         }
 

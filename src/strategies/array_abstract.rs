@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, hash::Hash, mem, rc::Rc, time::Instant};
+use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
@@ -14,7 +14,7 @@ use crate::{
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
-    quantified_rule::{QuantifiedRuleCategory, TransitionGuardRule},
+    quantified_rule::TransitionGuardRule,
     theories::array::{
         array_axioms::{
             expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
@@ -26,7 +26,6 @@ use crate::{
         },
         array_rule_instantiator::ArrayArtifactCapture,
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
-        candidate_scope::CandidateScope,
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
         transition_guard_instantiator::{generate_guard_candidates, supports_transition_guard},
     },
@@ -130,314 +129,11 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
-
-    use super::*;
-    use crate::{
-        instantiation_provenance::InstantiationProvenance,
-        quantified_rule::{ArrayAxiomKind, QuantifiedRule},
-        theories::array::instantiation_candidate::{CandidateGroup, SelectionHistoryDecision},
-    };
-
-    fn candidate(expression: ArrayExpr) -> InstantiationCandidate {
-        InstantiationCandidate {
-            rule: QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int"),
-            expression,
-            cost: 0,
-            provenance: InstantiationProvenance::new("test".to_string(), vec![]),
-            selected: false,
-            decisions: vec![],
-            selection_history: vec![],
-            abstract_instantiation: None,
-            conflict: None,
-            group: CandidateGroup::MatchRoot(egg::Id::from(0)),
-        }
-    }
-
-    fn normalized_key(candidate: &InstantiationCandidate) -> Option<Term> {
-        UnquantifiedInstantiator::rewrite_unquantified(
-            expr_to_term(candidate.expression.clone()),
-            vec![],
-        )
-        .map(|instance| canonical_instantiation_key(instance.get_term()))
-    }
-
-    #[test]
-    fn full_search_skips_known_group() {
-        let installed = candidate("(= (Read Int Int a@0 i@0) 0)".parse().unwrap());
-        let mut known_winner = candidate("(= (Read Int Int a@2 i@2) 0)".parse().unwrap());
-        known_winner
-            .selection_history
-            .push(SelectionHistoryDecision {
-                decision_key: "known-winner".to_string(),
-                chosen_term_hash: "winner-term".to_string(),
-            });
-        let mut alternative = candidate("(= (Read Int Int a@2 i@2) 1)".parse().unwrap());
-        alternative.cost = 1;
-        alternative
-            .selection_history
-            .push(SelectionHistoryDecision {
-                decision_key: "alternative".to_string(),
-                chosen_term_hash: "alternative-term".to_string(),
-            });
-        let mut independent = candidate("(= (Read Int Int b@2 j@2) 0)".parse().unwrap());
-        independent.group = CandidateGroup::MatchRoot(egg::Id::from(1));
-        let expected = independent.expression.clone();
-        let known = HashSet::from([normalized_key(&installed).unwrap()]);
-        let mut batch = InstantiationBatch {
-            candidates: vec![known_winner, alternative, independent],
-        };
-
-        let rejected = select_novel_candidates(
-            CandidateScope::AllCandidates,
-            &mut batch,
-            &known,
-            normalized_key,
-        );
-
-        assert_eq!(rejected, 1);
-        assert_eq!(
-            batch.selected().map(|c| &c.expression).collect::<Vec<_>>(),
-            vec![&expected],
-        );
-        assert_eq!(known.len(), 1);
-        assert_eq!(
-            batch
-                .candidates
-                .iter()
-                .flat_map(|c| &c.selection_history)
-                .map(|decision| decision.chosen_term_hash.as_str())
-                .collect::<Vec<_>>(),
-            vec!["winner-term"],
-        );
-    }
-
-    #[test]
-    fn full_losers_do_not_deduplicate() {
-        let winner = candidate("(= (Read Int Int a@2 i@2) 0)".parse().unwrap());
-        let mut loser = candidate("(= (Read Int Int b@2 j@2) 0)".parse().unwrap());
-        loser.cost = 1;
-        let mut independent = candidate("(= (Read Int Int b@4 j@4) 0)".parse().unwrap());
-        independent.group = CandidateGroup::MatchRoot(egg::Id::from(1));
-        let expected = vec![winner.expression.clone(), independent.expression.clone()];
-        let mut batch = InstantiationBatch {
-            candidates: vec![winner, loser, independent],
-        };
-
-        let rejected = select_novel_candidates(
-            CandidateScope::AllCandidates,
-            &mut batch,
-            &HashSet::new(),
-            normalized_key,
-        );
-
-        assert_eq!(rejected, 0);
-        assert_eq!(
-            batch
-                .selected()
-                .map(|c| c.expression.clone())
-                .collect::<Vec<_>>(),
-            expected,
-        );
-    }
-
-    #[test]
-    fn other_policies_skip_known() {
-        for (scope, rule) in [
-            (
-                CandidateScope::SourceGroundedOnly,
-                QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int"),
-            ),
-            (
-                CandidateScope::SourceGroundedOnly,
-                QuantifiedRule::transition_guard("guard", 0),
-            ),
-            (
-                CandidateScope::AllCandidates,
-                QuantifiedRule::transition_guard("guard", 0),
-            ),
-        ] {
-            let mut known_winner = candidate("(= (Read Int Int a@2 i@2) 0)".parse().unwrap());
-            if rule.category() == QuantifiedRuleCategory::TransitionGuard {
-                known_winner.group = CandidateGroup::Rule;
-            }
-            known_winner.rule = rule.clone();
-            let mut alternative = candidate("(= (Read Int Int a@2 i@2) 1)".parse().unwrap());
-            alternative.group = known_winner.group;
-            alternative.rule = rule;
-            alternative.cost = 1;
-            let expected = alternative.expression.clone();
-            let known = HashSet::from([normalized_key(&known_winner).unwrap()]);
-            let mut batch = InstantiationBatch {
-                candidates: vec![known_winner, alternative],
-            };
-
-            let rejected = select_novel_candidates(scope, &mut batch, &known, normalized_key);
-
-            assert_eq!(rejected, 1);
-            assert_eq!(
-                batch.selected().map(|c| &c.expression).collect::<Vec<_>>(),
-                vec![&expected],
-            );
-        }
-    }
-
-    #[test]
-    fn shifted_copies_of_an_instantiation_are_duplicate_after_normalization() {
-        let installed = "(=> (not (= i@12 i@11)) (= (Read Int Int a@11 i@12) 0))"
-            .parse::<ArrayExpr>()
-            .unwrap();
-        let expression = "(=> (not (= i@5 i@4)) (= (Read Int Int a@4 i@5) 0))"
-            .parse::<ArrayExpr>()
-            .unwrap();
-        let mut batch = InstantiationBatch {
-            candidates: vec![candidate(expression)],
-        };
-        let known = HashSet::from([UnquantifiedInstantiator::rewrite_unquantified(
-            expr_to_term(installed),
-            vec![],
-        )
-        .unwrap()
-        .get_term()
-        .clone()]);
-
-        let duplicates = select_novel_candidates(
-            CandidateScope::SourceGroundedOnly,
-            &mut batch,
-            &known,
-            |candidate| {
-                UnquantifiedInstantiator::rewrite_unquantified(
-                    expr_to_term(candidate.expression.clone()),
-                    vec![],
-                )
-                .map(|instance| instance.get_term().clone())
-            },
-        );
-
-        assert_eq!(duplicates, 1);
-        assert!(batch.candidates.is_empty());
-        assert_eq!(known.len(), 1);
-    }
-
-    #[test]
-    fn reversed_equalities_are_duplicate_before_whole_candidate_selection() {
-        let installed: ArrayExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
-        let reversed: ArrayExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
-        let mut batch = InstantiationBatch {
-            candidates: vec![candidate(reversed)],
-        };
-        let installed =
-            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(installed), vec![])
-                .unwrap();
-        let known = HashSet::from([canonical_instantiation_key(installed.get_term())]);
-
-        let duplicates = select_novel_candidates(
-            CandidateScope::SourceGroundedOnly,
-            &mut batch,
-            &known,
-            normalized_key,
-        );
-
-        assert_eq!(duplicates, 1);
-        assert!(batch.candidates.is_empty());
-    }
-
-    #[test]
-    fn only_axioms_false_in_the_current_model_remain_eligible() {
-        let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
-        let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
-        let mut batch = InstantiationBatch {
-            candidates: vec![candidate(satisfied), candidate(violated.clone())],
-        };
-
-        let rejected =
-            filter_model_candidates(CandidateScope::SourceGroundedOnly, &mut batch, |term| {
-                Ok(if term.to_string().contains("Read_Int_Int A") {
-                    "true".to_string()
-                } else {
-                    "false".to_string()
-                })
-            })
-            .unwrap();
-
-        assert_eq!(rejected, 1);
-        assert_eq!(batch.candidates.len(), 1);
-        assert_eq!(batch.candidates[0].expression, violated);
-    }
-
-    #[test]
-    fn full_search_keeps_egraph_conflicts_even_when_the_formula_is_model_satisfied() {
-        let expression: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
-        let mut guard = candidate("(=> guard body)".parse().unwrap());
-        guard.rule = QuantifiedRule::transition_guard("guard", 0);
-        guard.group = CandidateGroup::Rule;
-        let mut source_batch = InstantiationBatch {
-            candidates: vec![candidate(expression.clone())],
-        };
-        let mut full_batch = InstantiationBatch {
-            candidates: vec![candidate(expression.clone()), guard],
-        };
-
-        let source_rejected = filter_model_candidates(
-            CandidateScope::SourceGroundedOnly,
-            &mut source_batch,
-            |_| Ok("true".to_string()),
-        )
-        .unwrap();
-        let full_rejected =
-            filter_model_candidates(CandidateScope::AllCandidates, &mut full_batch, |_| {
-                Ok("true".to_string())
-            })
-            .unwrap();
-
-        assert_eq!(source_rejected, 1);
-        assert!(source_batch.candidates.is_empty());
-        assert_eq!(full_rejected, 1);
-        assert_eq!(full_batch.candidates.len(), 1);
-        assert_eq!(full_batch.candidates[0].expression, expression);
-    }
-
-    #[test]
-    fn model_filter_reuses_implication_guards() {
-        let first: ArrayExpr = "(=> guard (= x y))".parse().unwrap();
-        let second: ArrayExpr = "(=> guard (= a b))".parse().unwrap();
-        let violated: ArrayExpr = "(= x y)".parse().unwrap();
-        let mut batch = InstantiationBatch {
-            candidates: vec![
-                candidate(first),
-                candidate(second),
-                candidate(violated.clone()),
-            ],
-        };
-        let mut evaluated = Vec::new();
-
-        let rejected =
-            filter_model_candidates(CandidateScope::SourceGroundedOnly, &mut batch, |term| {
-                evaluated.push(term.to_string());
-                Ok("false".to_string())
-            })
-            .unwrap();
-
-        assert_eq!(rejected, 2);
-        assert_eq!(batch.candidates.len(), 1);
-        assert_eq!(batch.candidates[0].expression, violated);
-        assert_eq!(evaluated, vec!["guard", "(= x y)"]);
-    }
-}
-
 fn egraph_node_count<N>(egraph: &egg::EGraph<ArrayLanguage, N>) -> usize
 where
     N: egg::Analysis<ArrayLanguage>,
 {
     egraph.classes().map(|class| class.nodes.len()).sum()
-}
-
-#[derive(Clone, Copy, Debug)]
-struct CandidateSummary {
-    selected_candidates: usize,
-    conflicts: usize,
 }
 
 /// State for the inner refinement looop
@@ -570,6 +266,8 @@ where
                 egraph_node_count(&state.egraph),
             );
         }
+        // Loop required for egraph building, if no instantiations are found,
+        // in a semi-built egraph, we'll return here and follow the egraph expansion rules.
         loop {
             let build_start = Instant::now();
             let build_step = state.egraph_builder.expand(
@@ -676,33 +374,29 @@ where
                 },
             );
             candidate_batch.extend(array_candidates.candidates);
-            let generated_by_rule = count_candidates_by_rule(&candidate_batch);
-
-            let rejected_model =
-                filter_model_candidates(expansion.candidate_scope, &mut candidate_batch, |term| {
-                    smt.eval_to_string(term)
-                })?;
-            let rejected_known = select_novel_candidates(
+            let summary = candidate_batch.prepare(
                 expansion.candidate_scope,
-                &mut candidate_batch,
                 &known_instantiations,
+                |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
-            );
-            record_candidate_counts(&profiling, generated_by_rule, &candidate_batch);
+            )?;
 
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();
+                for (rule_name, counts) in &summary.by_rule {
+                    profiling.record_rule_candidates(rule_name, counts.generated, counts.selected);
+                }
                 profiling.add_counter(
                     "model_satisfied_instantiations_filtered",
-                    rejected_model as u64,
+                    summary.rejected_model as u64,
                 );
                 profiling.add_counter(
                     "duplicate_or_uninstallable_instantiations_filtered",
-                    rejected_known as u64,
+                    summary.rejected_known as u64,
                 );
             }
 
-            let summary = self.absorb_candidates(state, smt, candidate_batch, refinement_step);
+            self.absorb_candidates(state, smt, candidate_batch, refinement_step);
 
             if let Some(profiling) = &profiling {
                 profiling
@@ -711,25 +405,17 @@ where
             }
 
             if trace_conflicts_enabled() {
-                let selected_guards = state
-                    .candidates
-                    .iter()
-                    .filter(|candidate| {
-                        candidate.rule.category() == QuantifiedRuleCategory::TransitionGuard
-                    })
-                    .count();
-                let selected_arrays = state.candidates.len().saturating_sub(selected_guards);
                 trace!(
                     "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} selected_guards={} selected_arrays={} conflicts={}",
                     state.depth,
                     refinement_step,
                     expansion.stage.as_str(),
-                    selected_guards,
-                    selected_arrays,
+                    summary.selected_guards,
+                    summary.selected_arrays,
                     summary.conflicts,
                 );
             }
-            if summary.selected_candidates > 0 {
+            if summary.selected_count() > 0 {
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
             }
@@ -846,120 +532,6 @@ where
     }
 }
 
-fn count_candidates_by_rule(batch: &InstantiationBatch) -> FxHashMap<String, usize> {
-    let mut counts = FxHashMap::default();
-    for candidate in &batch.candidates {
-        *counts.entry(candidate.rule.name().to_string()).or_default() += 1;
-    }
-    counts
-}
-
-fn record_candidate_counts(
-    profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
-    generated_by_rule: FxHashMap<String, usize>,
-    batch: &InstantiationBatch,
-) {
-    let Some(profiling) = profiling else {
-        return;
-    };
-    let mut selected_by_rule = FxHashMap::<String, usize>::default();
-    for candidate in batch.selected() {
-        *selected_by_rule
-            .entry(candidate.rule.name().to_string())
-            .or_default() += 1;
-    }
-
-    let mut profiling = profiling.borrow_mut();
-    for (rule_name, generated) in generated_by_rule {
-        let selected = selected_by_rule
-            .get(&rule_name)
-            .copied()
-            .unwrap_or_default();
-        profiling.record_rule_candidates(&rule_name, generated, selected);
-    }
-}
-
-fn select_novel_candidates<K>(
-    scope: CandidateScope,
-    batch: &mut InstantiationBatch,
-    known: &HashSet<K>,
-    mut normalize: impl FnMut(&InstantiationCandidate) -> Option<K>,
-) -> usize
-where
-    K: Eq + Hash,
-{
-    let mut seen = HashSet::new();
-    batch.select(scope, |candidate| {
-        let Some(normalized) = normalize(candidate) else {
-            return false;
-        };
-        !known.contains(&normalized) && seen.insert(normalized)
-    })
-}
-
-fn filter_model_candidates(
-    scope: CandidateScope,
-    batch: &mut InstantiationBatch,
-    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
-) -> anyhow::Result<usize> {
-    let before = batch.candidates.len();
-    let mut eligible = Vec::with_capacity(before);
-    let mut evaluations = FxHashMap::<String, String>::default();
-    for candidate in mem::take(&mut batch.candidates) {
-        let requires_model_violation = candidate.rule.category()
-            == QuantifiedRuleCategory::TransitionGuard
-            || scope.requires_model_violation();
-        if !requires_model_violation {
-            eligible.push(candidate);
-            continue;
-        }
-        let term = expr_to_term(candidate.expression.clone());
-        if model_value(&term, &mut evaluate, &mut evaluations)?.trim() == "false" {
-            eligible.push(candidate);
-        }
-    }
-    let rejected = before - eligible.len();
-    batch.candidates = eligible;
-    Ok(rejected)
-}
-
-fn model_value(
-    term: &Term,
-    evaluate: &mut impl FnMut(&Term) -> anyhow::Result<String>,
-    cache: &mut FxHashMap<String, String>,
-) -> anyhow::Result<String> {
-    let Term::Application {
-        qual_identifier,
-        arguments,
-    } = term
-    else {
-        return cached_model_value(term, evaluate, cache);
-    };
-    if qual_identifier.get_name() != "=>" || arguments.len() != 2 {
-        return cached_model_value(term, evaluate, cache);
-    }
-
-    match cached_model_value(&arguments[0], evaluate, cache)?.trim() {
-        "false" => Ok("true".to_string()),
-        "true" => cached_model_value(&arguments[1], evaluate, cache),
-        _ => cached_model_value(term, evaluate, cache),
-    }
-}
-
-fn cached_model_value(
-    term: &Term,
-    evaluate: &mut impl FnMut(&Term) -> anyhow::Result<String>,
-    cache: &mut FxHashMap<String, String>,
-) -> anyhow::Result<String> {
-    let key = term.to_string();
-    if let Some(value) = cache.get(&key) {
-        return Ok(value.clone());
-    }
-    let value = evaluate(term)?;
-    cache.insert(key, value.clone());
-    Ok(value)
-}
-
 impl<F> Abstract<F>
 where
     F: ArrayCostFactory + 'static,
@@ -1006,16 +578,7 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         batch: InstantiationBatch,
         refinement_step: u32,
-    ) -> CandidateSummary {
-        let selected_candidates = batch.selected().count();
-        let conflicts_count = batch
-            .selected()
-            .filter(|candidate| candidate.conflict.is_some())
-            .count();
-        let summary = CandidateSummary {
-            selected_candidates,
-            conflicts: conflicts_count,
-        };
+    ) {
         let selection_history = batch
             .candidates
             .iter()
@@ -1036,7 +599,7 @@ where
                     .or_default() += 1;
             }
         }
-        let mut conflicts = Vec::with_capacity(conflicts_count);
+        let mut conflicts = Vec::new();
         for mut candidate in batch.candidates {
             for decision in mem::take(&mut candidate.decisions) {
                 if !self
@@ -1047,8 +610,7 @@ where
                     self.decision_data.push(decision);
                 }
             }
-            if let Some(mut record) = candidate.abstract_instantiation.take() {
-                record.was_selected = candidate.selected;
+            if let Some(record) = candidate.abstract_instantiation.take() {
                 if let Some(known) = self.abstract_instantiations.iter_mut().find(|known| {
                     known.abstract_instantiation_id == record.abstract_instantiation_id
                 }) {
@@ -1073,7 +635,6 @@ where
             state.candidates.push(candidate);
         }
         self.handle_aux_synthesis_detection(state, smt, &conflicts, refinement_step);
-        summary
     }
 
     fn finish_profiling_record(&mut self, profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>) {
