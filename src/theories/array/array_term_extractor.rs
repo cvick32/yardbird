@@ -11,7 +11,7 @@ use crate::{
     quantified_rule::QuantifiedRuleCategory,
     theories::array::{
         array_axioms::{translate_term, ArrayExpr, ArrayLanguage},
-        array_conflict_scheduler::preprocess_array_expr,
+        array_expr_parser::preprocess_array_expr,
         candidate_scope::CandidateScope,
     },
     training::{

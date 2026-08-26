@@ -288,7 +288,7 @@ pub struct ProfilingRecord {
     pub counters: BTreeMap<String, u64>,
     pub cost_rec: CostRecProfile,
     pub egraph: EGraphProfile,
-    pub scheduler: SchedulerProfile,
+    pub rule_instantiation: RuleInstantiationProfile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,33 +366,36 @@ pub struct EGraphProfile {
     pub nodes_before_update: Option<usize>,
     pub classes_after_update: Option<usize>,
     pub nodes_after_update: Option<usize>,
-    pub classes_before_saturation: Option<usize>,
-    pub nodes_before_saturation: Option<usize>,
-    pub classes_after_saturation: Option<usize>,
-    pub nodes_after_saturation: Option<usize>,
-    pub runner_iterations: Option<usize>,
+    pub classes_before_rule_search: Option<usize>,
+    pub nodes_before_rule_search: Option<usize>,
+    pub classes_after_rule_search: Option<usize>,
+    pub nodes_after_rule_search: Option<usize>,
+    pub rule_search_rounds: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SchedulerProfile {
-    pub search_rewrite_calls: u64,
-    pub apply_rewrite_calls: u64,
-    pub skipped_apply_calls: u64,
+pub struct RuleInstantiationProfile {
+    pub rule_search_calls: u64,
+    pub rule_instantiation_calls: u64,
+    pub skipped_instantiation_calls: u64,
     pub matches_total: u64,
     pub substitutions_total: u64,
     pub substitutions_explored: u64,
     pub candidates_generated: u64,
     pub candidates_selected: u64,
-    pub by_rewrite: BTreeMap<String, RewriteSchedulerProfile>,
+    pub by_rule: BTreeMap<String, RuleProfile>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct RewriteSchedulerProfile {
+pub struct RuleProfile {
     pub search_calls: u64,
     pub search_secs: f64,
-    pub apply_calls: u64,
-    pub apply_secs: f64,
-    pub skipped_apply_calls: u64,
+    #[serde(rename = "apply_calls")]
+    pub instantiation_calls: u64,
+    #[serde(rename = "apply_secs")]
+    pub instantiation_secs: f64,
+    #[serde(rename = "skipped_apply_calls")]
+    pub skipped_instantiation_calls: u64,
     pub matches_total: u64,
     pub substitutions_total: u64,
     pub substitutions_explored: u64,
@@ -421,7 +424,7 @@ impl ArrayProfilingCollector {
                 counters: BTreeMap::new(),
                 cost_rec: CostRecProfile::default(),
                 egraph: EGraphProfile::default(),
-                scheduler: SchedulerProfile::default(),
+                rule_instantiation: RuleInstantiationProfile::default(),
             },
         }
     }
@@ -448,20 +451,20 @@ impl ArrayProfilingCollector {
         self.record.egraph.nodes_after_update = Some(nodes);
     }
 
-    pub fn set_egraph_before_saturation(&mut self, classes: usize, nodes: usize) {
-        self.record.egraph.classes_before_saturation = Some(classes);
-        self.record.egraph.nodes_before_saturation = Some(nodes);
+    pub fn set_egraph_before_rule_search(&mut self, classes: usize, nodes: usize) {
+        self.record.egraph.classes_before_rule_search = Some(classes);
+        self.record.egraph.nodes_before_rule_search = Some(nodes);
     }
 
-    pub fn set_egraph_after_saturation(
+    pub fn set_egraph_after_rule_search(
         &mut self,
         classes: usize,
         nodes: usize,
-        runner_iterations: usize,
+        search_rounds: usize,
     ) {
-        self.record.egraph.classes_after_saturation = Some(classes);
-        self.record.egraph.nodes_after_saturation = Some(nodes);
-        self.record.egraph.runner_iterations = Some(runner_iterations);
+        self.record.egraph.classes_after_rule_search = Some(classes);
+        self.record.egraph.nodes_after_rule_search = Some(nodes);
+        self.record.egraph.rule_search_rounds = Some(search_rounds);
     }
 
     pub fn record_cost<T>(
@@ -477,8 +480,7 @@ impl ArrayProfilingCollector {
         result
     }
 
-    /// Record direct e-graph matching while retaining the existing serialized
-    /// scheduler fields for compatibility with previously captured profiles.
+    /// Record direct e-graph matching.
     pub fn record_rule_search(
         &mut self,
         rule_name: &str,
@@ -486,19 +488,16 @@ impl ArrayProfilingCollector {
         substitutions: usize,
         duration: Duration,
     ) {
-        let scheduler = &mut self.record.scheduler;
-        scheduler.search_rewrite_calls += 1;
-        scheduler.matches_total += matches as u64;
-        scheduler.substitutions_total += substitutions as u64;
+        let profile = &mut self.record.rule_instantiation;
+        profile.rule_search_calls += 1;
+        profile.matches_total += matches as u64;
+        profile.substitutions_total += substitutions as u64;
 
-        let by_rewrite = scheduler
-            .by_rewrite
-            .entry(rule_name.to_string())
-            .or_default();
-        by_rewrite.search_calls += 1;
-        by_rewrite.search_secs += duration.as_secs_f64();
-        by_rewrite.matches_total += matches as u64;
-        by_rewrite.substitutions_total += substitutions as u64;
+        let rule_profile = profile.by_rule.entry(rule_name.to_string()).or_default();
+        rule_profile.search_calls += 1;
+        rule_profile.search_secs += duration.as_secs_f64();
+        rule_profile.matches_total += matches as u64;
+        rule_profile.substitutions_total += substitutions as u64;
     }
 
     pub fn record_rule_instantiation(
@@ -508,36 +507,30 @@ impl ArrayProfilingCollector {
         skipped: bool,
         duration: Duration,
     ) {
-        let scheduler = &mut self.record.scheduler;
-        scheduler.apply_rewrite_calls += 1;
-        scheduler.substitutions_explored += substitutions_explored as u64;
+        let profile = &mut self.record.rule_instantiation;
+        profile.rule_instantiation_calls += 1;
+        profile.substitutions_explored += substitutions_explored as u64;
         if skipped {
-            scheduler.skipped_apply_calls += 1;
+            profile.skipped_instantiation_calls += 1;
         }
 
-        let by_rewrite = scheduler
-            .by_rewrite
-            .entry(rule_name.to_string())
-            .or_default();
-        by_rewrite.apply_calls += 1;
-        by_rewrite.apply_secs += duration.as_secs_f64();
-        by_rewrite.substitutions_explored += substitutions_explored as u64;
+        let rule_profile = profile.by_rule.entry(rule_name.to_string()).or_default();
+        rule_profile.instantiation_calls += 1;
+        rule_profile.instantiation_secs += duration.as_secs_f64();
+        rule_profile.substitutions_explored += substitutions_explored as u64;
         if skipped {
-            by_rewrite.skipped_apply_calls += 1;
+            rule_profile.skipped_instantiation_calls += 1;
         }
     }
 
     pub fn record_rule_candidates(&mut self, rule_name: &str, generated: usize, selected: usize) {
-        let scheduler = &mut self.record.scheduler;
-        scheduler.candidates_generated += generated as u64;
-        scheduler.candidates_selected += selected as u64;
+        let profile = &mut self.record.rule_instantiation;
+        profile.candidates_generated += generated as u64;
+        profile.candidates_selected += selected as u64;
 
-        let by_rewrite = scheduler
-            .by_rewrite
-            .entry(rule_name.to_string())
-            .or_default();
-        by_rewrite.candidates_generated += generated as u64;
-        by_rewrite.candidates_selected += selected as u64;
+        let rule_profile = profile.by_rule.entry(rule_name.to_string()).or_default();
+        rule_profile.candidates_generated += generated as u64;
+        rule_profile.candidates_selected += selected as u64;
     }
 
     pub fn finish(self) -> ProfilingRecord {

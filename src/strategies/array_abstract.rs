@@ -17,19 +17,18 @@ use crate::{
     quantified_rule::{QuantifiedRuleCategory, TransitionGuardRule},
     theories::array::{
         array_axioms::{
-            expr_to_term, saturate_with_array_types, ArrayExpr, ArrayLanguage,
-            ArraySaturationInstrumentation, ArraySaturationOptions,
+            expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
+            ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
         },
-        array_conflict_scheduler::ArrayArtifactCapture,
         array_dataflow::{build_property_cone, PropertyCone},
         array_egraph_builder::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
         },
+        array_rule_instantiator::ArrayArtifactCapture,
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
+        candidate_scope::CandidateScope,
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
-        transition_guard_instantiator::{
-            rank_violated_transition_guard_instances, supports_transition_guard,
-        },
+        transition_guard_instantiator::{generate_guard_candidates, supports_transition_guard},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -210,8 +209,8 @@ where
 }
 
 #[derive(Clone, Copy, Debug)]
-struct SaturationSummary {
-    candidate_instantiations: usize,
+struct CandidateSummary {
+    selected_candidates: usize,
     conflicts: usize,
 }
 

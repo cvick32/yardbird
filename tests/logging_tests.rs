@@ -19,7 +19,7 @@ use yardbird::{
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SmtlibRefinementRunner},
     strategies::{Abstract, ProofStrategy},
-    theories::array::array_conflict_scheduler::ArrayArtifactCapture,
+    theories::array::array_rule_instantiator::ArrayArtifactCapture,
     training::{
         reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
         IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,

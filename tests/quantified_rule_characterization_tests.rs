@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use rustc_hash::FxHashMap;
 use smt2parser::vmt::ReadsAndWrites;
 use smt2parser::vmt::VMTModel;
@@ -10,10 +8,10 @@ use yardbird::quantified_rule::{
 };
 use yardbird::theories::array::{
     array_axioms::{
-        expr_to_term, saturate_with_array_types, ArrayExpr, ArrayLanguage,
-        ArraySaturationInstrumentation, ArraySaturationOptions,
+        expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
+        ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
     },
-    array_conflict_scheduler::ArrayArtifactCapture,
+    array_rule_instantiator::ArrayArtifactCapture,
     candidate_scope::CandidateScope,
     transition_guard_instantiator::supports_transition_guard,
 };
@@ -33,18 +31,17 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
         property_terms: vec![],
         reads_writes: ReadsAndWrites::default(),
     };
-    let result = saturate_with_array_types(
-        &mut egraph,
+    let result = generate_array_instantiation_candidates(
+        &egraph,
         cost,
         &[("Int".to_string(), "Int".to_string())],
-        ArraySaturationOptions {
+        ArrayInstantiationOptions {
             candidate_catalog: ArrayCandidateCatalog::default(),
             candidate_scope: CandidateScope::AllCandidates,
-            excluded_instantiations: HashSet::new(),
             refinement_step: 0,
             selection_counts: FxHashMap::default(),
             depth: 0,
-            instrumentation: ArraySaturationInstrumentation {
+            instrumentation: ArrayInstantiationInstrumentation {
                 artifact_capture: ArrayArtifactCapture::default(),
                 profiling: None,
             },
@@ -52,7 +49,8 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
     );
 
     result
-        .into_selected()
+        .candidates
+        .into_iter()
         .map(|instance| expr_to_term(instance.expression).to_string())
         .collect()
 }
@@ -178,7 +176,7 @@ fn german_depth_five_instantiates_the_abstracted_transition_guard() {
 /// Regression boundary for the direct-searcher implementation: all three
 /// quantified rules must continue to emit the same ground SMT formulas.
 #[test]
-fn array_saturation_characterizes_all_three_ground_rules() {
+fn array_generation_characterizes_all_three_ground_rules() {
     assert_eq!(
         generated_array_instances("(Read Int Int (Write Int Int A i v) j)"),
         vec!["(=> (not (= j i)) (= (Read_Int_Int (Write_Int_Int A i v) j) (Read_Int_Int A j)))"]

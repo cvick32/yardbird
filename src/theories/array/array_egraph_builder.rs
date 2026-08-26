@@ -8,8 +8,8 @@ use crate::{
     problem_context::ProblemContext,
     theories::array::{
         array_axioms::{translate_term, ArrayLanguage},
-        array_conflict_scheduler::preprocess_array_expr,
         array_dataflow::PropertyCone,
+        array_expr_parser::preprocess_array_expr,
         candidate_scope::CandidateScope,
     },
 };
@@ -245,7 +245,6 @@ fn add_subterms(
         let interp_id = egraph.add_expr(&parsed_interp);
         egraph.union(term_id, interp_id);
     }
-    egraph.rebuild();
     Ok(newly_admitted)
 }
 

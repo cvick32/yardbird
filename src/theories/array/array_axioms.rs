@@ -10,7 +10,7 @@ use crate::{
     profiling::ArrayProfilingCollector,
     quantified_rule::{ArrayAxiomKind, QuantifiedRule},
     theories::array::{
-        array_conflict_scheduler::{
+        array_rule_instantiator::{
             ArrayArtifactCapture, ArrayRuleInstantiator, ArrayRuleInstantiatorOptions,
         },
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
@@ -52,12 +52,12 @@ define_language! {
 pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
 pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
 
-pub struct ArraySaturationInstrumentation {
+pub struct ArrayInstantiationInstrumentation {
     pub artifact_capture: ArrayArtifactCapture,
     pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
-pub struct ArraySaturationOptions {
+pub struct ArrayInstantiationOptions {
     pub candidate_catalog: ArrayCandidateCatalog,
     pub candidate_scope: CandidateScope,
     /// Complete abstract instances rejected by the caller for this e-graph
@@ -66,7 +66,7 @@ pub struct ArraySaturationOptions {
     pub refinement_step: u32,
     pub selection_counts: FxHashMap<String, u32>,
     pub depth: u16,
-    pub instrumentation: ArraySaturationInstrumentation,
+    pub instrumentation: ArrayInstantiationInstrumentation,
 }
 
 fn egraph_node_count<N>(egraph: &EGraph<ArrayLanguage, N>) -> usize
@@ -212,41 +212,37 @@ impl ArrayLanguage {
     }
 }
 
-pub fn saturate_with_array_types<CF, N>(
-    egraph: &mut EGraph<ArrayLanguage, N>,
+pub fn generate_array_instantiation_candidates<CF, N>(
+    egraph: &EGraph<ArrayLanguage, N>,
     cost_fn: CF,
     array_types: &[(String, String)],
-    options: ArraySaturationOptions,
+    options: ArrayInstantiationOptions,
 ) -> InstantiationBatch
 where
-    N: Analysis<ArrayLanguage> + Default + 'static,
+    N: Analysis<ArrayLanguage> + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
-    let ArraySaturationOptions {
+    let ArrayInstantiationOptions {
         candidate_catalog,
         candidate_scope,
-        excluded_instantiations,
         refinement_step,
         selection_counts,
         depth,
         instrumentation,
     } = options;
-    let ArraySaturationInstrumentation {
+    let ArrayInstantiationInstrumentation {
         artifact_capture,
         profiling,
     } = instrumentation;
-    let mut taken_egraph = std::mem::take(egraph);
-    taken_egraph.rebuild();
     if let Some(profiling) = &profiling {
-        profiling.borrow_mut().set_egraph_before_saturation(
-            taken_egraph.number_of_classes(),
-            egraph_node_count(&taken_egraph),
-        );
+        profiling
+            .borrow_mut()
+            .set_egraph_before_rule_search(egraph.number_of_classes(), egraph_node_count(egraph));
     }
     let instantiation_cost_fn = cost_fn.clone();
     let extractor_start = Instant::now();
     let extractor = ArrayTermExtractor::new(
-        &taken_egraph,
+        egraph,
         cost_fn,
         ArrayTermExtractorOptions {
             candidate_catalog,
@@ -274,90 +270,25 @@ where
             profiling: profiling.clone(),
         },
     );
-    #[cfg(debug_assertions)]
-    {
-        for class in taken_egraph.classes() {
-            for node in &class.nodes {
-                let node_str = format!("{:?}", node);
-                if node_str.contains("Read")
-                    || node_str.contains("Write")
-                    || node_str.contains("Symbol(\"Int\")")
-                {
-                    log::debug!("ClassID={:?}, Node: {:?}", class.id, node);
-                }
-            }
-        }
-    }
-
     let search_start = Instant::now();
-    let search_rounds = instantiator.search_rules(&taken_egraph, &rules);
+    let search_rounds = instantiator.search_rules(egraph, &rules);
     if let Some(profiling) = &profiling {
         profiling
             .borrow_mut()
             .record_timing("rule_search_total", search_start.elapsed());
-        profiling.borrow_mut().set_egraph_after_saturation(
-            taken_egraph.number_of_classes(),
-            egraph_node_count(&taken_egraph),
+        profiling.borrow_mut().set_egraph_after_rule_search(
+            egraph.number_of_classes(),
+            egraph_node_count(egraph),
             search_rounds,
         );
     }
 
-    *egraph = taken_egraph;
-    let mut candidates = instantiator.into_candidates();
-    if candidate_scope.selected_instantiation_limit().is_some() {
-        if let Some(selected_index) = candidates
-            .iter()
-            .enumerate()
-            .min_by(|left, right| {
-                left.1
-                    .cost
-                    .cmp(&right.1.cost)
-                    .then_with(|| {
-                        left.1
-                            .expression
-                            .to_string()
-                            .cmp(&right.1.expression.to_string())
-                    })
-                    .then_with(|| left.0.cmp(&right.0))
-            })
-            .map(|(index, _)| index)
-        {
-            candidates[selected_index].selected = true;
-        }
-    }
-
-    for candidate in &mut candidates {
-        if let Some(record) = &mut candidate.abstract_instantiation {
-            record.was_selected = candidate.selected;
-        }
-        if !candidate.selected {
-            candidate.selection_history.clear();
-        }
-    }
-
-    if let Some(profiling) = &profiling {
-        let mut counts_by_rule = FxHashMap::<String, (usize, usize)>::default();
-        for candidate in &candidates {
-            let counts = counts_by_rule
-                .entry(candidate.rule.name().to_string())
-                .or_default();
-            counts.0 += 1;
-            counts.1 += usize::from(candidate.selected);
-        }
-        let mut profiling = profiling.borrow_mut();
-        for (rule_name, (generated, selected)) in counts_by_rule {
-            profiling.record_rule_candidates(&rule_name, generated, selected);
-        }
-    }
+    let candidates = instantiator.into_candidates();
 
     #[cfg(debug_assertions)]
     {
         log::debug!("=== FINAL INSTANTIATIONS ===");
-        for (index, candidate) in candidates
-            .iter()
-            .filter(|candidate| candidate.selected)
-            .enumerate()
-        {
+        for (index, candidate) in candidates.iter().enumerate() {
             log::debug!("  [{}] {}", index, candidate.expression);
         }
         log::debug!("============================\n");

@@ -23,8 +23,8 @@ use crate::{
     },
     strategies::ListRefinementState,
     theories::array::{
-        array_conflict_scheduler::ArrayArtifactCapture,
         array_egraph_builder::{ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder},
+        array_rule_instantiator::ArrayArtifactCapture,
     },
     training::LogisticRegressionModel,
 };
@@ -132,7 +132,7 @@ pub struct YardbirdOptions {
     #[arg(long)]
     pub dump_unsat_core: Option<String>,
 
-    /// Enable very verbose conflict scheduler and instantiation tracing.
+    /// Enable very verbose rule-search and instantiation tracing.
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
 

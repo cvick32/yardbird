@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    rc::Rc,
-    time::Instant,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 use egg::{Analysis, Language};
 use log::{debug, trace};
@@ -17,7 +12,9 @@ use crate::{
     theories::array::{
         array_axioms::{expr_to_term, ArrayExpr, ArrayLanguage, ArrayQuantifiedRule},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
-        instantiation_candidate::{InstantiationCandidate, SelectionHistoryDecision},
+        instantiation_candidate::{
+            CandidateGroup, InstantiationCandidate, SelectionHistoryDecision,
+        },
     },
     training::{canonical_term_hash, DecisionRecord},
 };
@@ -44,77 +41,10 @@ pub struct ArrayArtifactCapture {
 }
 
 pub struct ArrayRuleInstantiatorOptions {
-    pub excluded_instantiations: HashSet<ArrayExpr>,
     pub refinement_step: u32,
     pub depth: u16,
     pub artifact_capture: ArrayArtifactCapture,
     pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
-}
-
-/// Preprocess array operation strings for egg parsing.
-/// Converts: "(Read_Int_Int a b)" -> "(Read Int Int a b)"
-/// Handles nested arrays: "(Read_Int_Array_Int_Int a b)" -> "(Read Int Array_Int_Int a b)"
-pub fn preprocess_array_expr(input: &str) -> String {
-    let mut result = String::with_capacity(input.len() + 10);
-    let mut chars = input.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '(' {
-            result.push(ch);
-
-            // Check if next tokens form an array operation
-            let mut op_name = String::new();
-
-            // Collect operator name (before first space or closing paren)
-            while let Some(&next_ch) = chars.peek() {
-                if next_ch.is_whitespace() || next_ch == ')' {
-                    break;
-                }
-                op_name.push(chars.next().unwrap());
-            }
-
-            // Check if it's a typed array operation
-            if let Some(rest) = op_name.strip_prefix("Read_") {
-                // Split on first two underscores: Read_IndexSort_ValueSort
-                let parts: Vec<&str> = rest.splitn(2, '_').collect();
-                if parts.len() == 2 {
-                    result.push_str("Read ");
-                    result.push_str(parts[0]);
-                    result.push(' ');
-                    result.push_str(parts[1]);
-                } else {
-                    result.push_str(&op_name);
-                }
-            } else if let Some(rest) = op_name.strip_prefix("Write_") {
-                let parts: Vec<&str> = rest.splitn(2, '_').collect();
-                if parts.len() == 2 {
-                    result.push_str("Write ");
-                    result.push_str(parts[0]);
-                    result.push(' ');
-                    result.push_str(parts[1]);
-                } else {
-                    result.push_str(&op_name);
-                }
-            } else if let Some(rest) = op_name.strip_prefix("ConstArr_") {
-                let parts: Vec<&str> = rest.splitn(2, '_').collect();
-                if parts.len() == 2 {
-                    result.push_str("ConstArr ");
-                    result.push_str(parts[0]);
-                    result.push(' ');
-                    result.push_str(parts[1]);
-                } else {
-                    result.push_str(&op_name);
-                }
-            } else {
-                // Not an array operation, keep as-is
-                result.push_str(&op_name);
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-
-    result
 }
 
 pub struct ArrayRuleInstantiator<CF>
@@ -127,7 +57,6 @@ where
     next_instantiation_ordinal: usize,
     pub cost_fn: CF,
     extractor: ArrayTermExtractor<CF>,
-    excluded_instantiations: HashSet<ArrayExpr>,
     refinement_step: u32,
     depth: u16,
     profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
@@ -143,7 +72,6 @@ where
         options: ArrayRuleInstantiatorOptions,
     ) -> Self {
         let ArrayRuleInstantiatorOptions {
-            excluded_instantiations,
             refinement_step,
             depth,
             artifact_capture,
@@ -156,7 +84,6 @@ where
             next_instantiation_ordinal: 0,
             cost_fn,
             extractor,
-            excluded_instantiations,
             refinement_step,
             depth,
             profiling,
@@ -294,9 +221,6 @@ where
         let searcher_ast = executable_rule.trigger();
         let consequence_ast = executable_rule.consequence();
 
-        // Each SearchMatches root is one e-class matched by the full trigger
-        // pattern. Keep its cheapest grounding and batch distinct roots.
-        let mut selected_by_matched_eclass = HashMap::<egg::Id, usize>::default();
         for (match_ix, m) in matches.iter().enumerate() {
             debug!("Number of subs: {}", m.substs.len());
             if tracing {
@@ -383,14 +307,6 @@ where
                         &mut memo,
                         &mut ctx,
                     ));
-                    if self.excluded_instantiations.contains(&instantiation) {
-                        if tracing {
-                            trace_conflicts(format!(
-                                        "    subst[{subst_ix}] skipped because the complete instantiation was excluded"
-                                    ));
-                        }
-                        continue;
-                    }
 
                     let ordinal = self.next_instantiation_ordinal;
                     self.next_instantiation_ordinal += 1;
@@ -490,6 +406,7 @@ where
                         selection_history,
                         abstract_instantiation,
                         conflict,
+                        group: CandidateGroup::MatchRoot(egraph.find(m.eclass)),
                     };
                     if tracing {
                         trace_conflicts(format!(
@@ -506,27 +423,7 @@ where
                     if tracing {
                         trace_conflicts("    accepted instantiation candidate");
                     }
-                    let candidate_index = self.candidates.len();
                     self.candidates.push(candidate);
-                    if !rank_complete_instantiations {
-                        let selected_index = selected_by_matched_eclass
-                            .entry(egraph.find(m.eclass))
-                            .or_insert(candidate_index);
-                        let candidate_precedes_selected = self.candidates[candidate_index]
-                            .cost
-                            .cmp(&self.candidates[*selected_index].cost)
-                            .then_with(|| {
-                                self.candidates[candidate_index]
-                                    .expression
-                                    .to_string()
-                                    .cmp(&self.candidates[*selected_index].expression.to_string())
-                            })
-                            .then_with(|| candidate_index.cmp(selected_index))
-                            .is_lt();
-                        if candidate_precedes_selected {
-                            *selected_index = candidate_index;
-                        }
-                    }
                 } else {
                     self.record_selection_history(&selection_history);
                     if tracing {
@@ -537,9 +434,6 @@ where
                     }
                 }
             }
-        }
-        for selected_index in selected_by_matched_eclass.into_values() {
-            self.candidates[selected_index].selected = true;
         }
         debug!("<======");
         if let Some(profiling) = &self.profiling {
