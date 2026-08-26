@@ -1,4 +1,4 @@
-//! E-graph candidate search and cost ranking for quantified transition guards.
+//! E-graph candidate search and frame grounding for quantified transition guards.
 
 use std::collections::HashSet;
 
@@ -13,7 +13,7 @@ use crate::{
     theories::array::{
         array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
-        instantiation_candidate::InstantiationCandidate,
+        instantiation_candidate::{CandidateGroup, InstantiationCandidate},
     },
 };
 
@@ -113,16 +113,11 @@ fn contains_symbol(expression: &ArrayExpr, symbol: &str) -> bool {
     )
 }
 
-/// Rank the currently visible ground instances that violate one supported
-/// transition guard in the current model.
-pub fn rank_violated_transition_guard_instances<CF, N>(
+fn search_guard_terms<CF, N>(
     rule: &TransitionGuardRule,
     egraph: &egg::EGraph<ArrayLanguage, N>,
     extractor: &ArrayTermExtractor<CF>,
-    mut cost_function: CF,
-    depth: u16,
-    smt: &dyn ProblemContext,
-) -> Vec<InstantiationCandidate>
+) -> Vec<ArrayExpr>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
     N: egg::Analysis<ArrayLanguage>,
@@ -134,8 +129,7 @@ where
         unreachable!("supported transition guards have one binder")
     };
     let binder_name = binder.0.as_str();
-    let mut seen_formulas = HashSet::new();
-    let mut instances = Vec::new();
+    let mut terms = Vec::new();
 
     for candidate_eclass in searcher.search(egraph) {
         let (candidate, origin) = extractor.extract_for_decision_with_origin(
@@ -151,15 +145,49 @@ where
         if contains_symbol(&candidate, binder_name) {
             continue;
         }
-        let Some(unframed_formula) = rule.ground_formula(expr_to_term(candidate.clone())) else {
-            continue;
-        };
+        terms.push(candidate);
+    }
 
-        for frame in 0..depth {
-            let Some(formula) = smt.frame_transition_formula(unframed_formula.clone(), frame)
-            else {
-                continue;
-            };
+    terms
+}
+
+fn ground_guard_frames(
+    rule: &TransitionGuardRule,
+    candidate: &ArrayExpr,
+    depth: u16,
+    smt: &dyn ProblemContext,
+) -> Vec<Term> {
+    let Some(unframed_formula) = rule.ground_formula(expr_to_term(candidate.clone())) else {
+        return vec![];
+    };
+
+    (0..depth)
+        .filter_map(|frame| smt.frame_transition_formula(unframed_formula.clone(), frame))
+        .collect()
+}
+
+/// Generate every currently visible ground instance of one supported guard.
+pub fn generate_guard_candidates<CF, N>(
+    rule: &TransitionGuardRule,
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    extractor: &ArrayTermExtractor<CF>,
+    mut cost_function: CF,
+    depth: u16,
+    smt: &dyn ProblemContext,
+) -> Vec<InstantiationCandidate>
+where
+    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<ArrayLanguage>,
+{
+    let [(binder, _)] = rule.bound_variables() else {
+        unreachable!("supported transition guards have one binder")
+    };
+    let binder_name = binder.0.as_str();
+    let mut seen_formulas = HashSet::new();
+    let mut instances = Vec::new();
+
+    for candidate in search_guard_terms(rule, egraph, extractor) {
+        for formula in ground_guard_frames(rule, &candidate, depth, smt) {
             if !seen_formulas.insert(formula.to_string()) {
                 continue;
             }
@@ -175,37 +203,20 @@ where
                 ),
                 vec![(binder_name.to_string(), expr_to_term(candidate.clone()))],
             );
-            match smt.eval_to_string(&formula) {
-                Ok(value) if value.trim() == "false" => {}
-                Ok(_) => continue,
-                Err(error) => {
-                    log::warn!(
-                        "Could not evaluate transition guard {}: {error:#}",
-                        rule.metadata().name()
-                    );
-                    continue;
-                }
-            }
             instances.push(InstantiationCandidate {
                 rule: rule.metadata().clone(),
                 expression,
                 cost,
                 provenance,
-                selected: true,
+                selected: false,
                 decisions: vec![],
                 selection_history: vec![],
                 abstract_instantiation: None,
                 conflict: None,
+                group: CandidateGroup::Rule,
             });
         }
     }
 
-    instances.sort_by(|left, right| {
-        left.cost.cmp(&right.cost).then_with(|| {
-            left.expression
-                .to_string()
-                .cmp(&right.expression.to_string())
-        })
-    });
     instances
 }
