@@ -135,16 +135,167 @@ mod tests {
     use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
 
     use super::*;
+    use crate::{
+        instantiation_provenance::InstantiationProvenance,
+        quantified_rule::{ArrayAxiomKind, QuantifiedRule},
+        theories::array::instantiation_candidate::{CandidateGroup, SelectionHistoryDecision},
+    };
+
+    fn candidate(expression: ArrayExpr) -> InstantiationCandidate {
+        InstantiationCandidate {
+            rule: QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int"),
+            expression,
+            cost: 0,
+            provenance: InstantiationProvenance::new("test".to_string(), vec![]),
+            selected: false,
+            decisions: vec![],
+            selection_history: vec![],
+            abstract_instantiation: None,
+            conflict: None,
+            group: CandidateGroup::MatchRoot(egg::Id::from(0)),
+        }
+    }
+
+    fn normalized_key(candidate: &InstantiationCandidate) -> Option<Term> {
+        UnquantifiedInstantiator::rewrite_unquantified(
+            expr_to_term(candidate.expression.clone()),
+            vec![],
+        )
+        .map(|instance| canonical_instantiation_key(instance.get_term()))
+    }
+
+    #[test]
+    fn full_search_skips_known_group() {
+        let installed = candidate("(= (Read Int Int a@0 i@0) 0)".parse().unwrap());
+        let mut known_winner = candidate("(= (Read Int Int a@2 i@2) 0)".parse().unwrap());
+        known_winner
+            .selection_history
+            .push(SelectionHistoryDecision {
+                decision_key: "known-winner".to_string(),
+                chosen_term_hash: "winner-term".to_string(),
+            });
+        let mut alternative = candidate("(= (Read Int Int a@2 i@2) 1)".parse().unwrap());
+        alternative.cost = 1;
+        alternative
+            .selection_history
+            .push(SelectionHistoryDecision {
+                decision_key: "alternative".to_string(),
+                chosen_term_hash: "alternative-term".to_string(),
+            });
+        let mut independent = candidate("(= (Read Int Int b@2 j@2) 0)".parse().unwrap());
+        independent.group = CandidateGroup::MatchRoot(egg::Id::from(1));
+        let expected = independent.expression.clone();
+        let known = HashSet::from([normalized_key(&installed).unwrap()]);
+        let mut batch = InstantiationBatch {
+            candidates: vec![known_winner, alternative, independent],
+        };
+
+        let rejected = select_novel_candidates(
+            CandidateScope::AllCandidates,
+            &mut batch,
+            &known,
+            normalized_key,
+        );
+
+        assert_eq!(rejected, 1);
+        assert_eq!(
+            batch.selected().map(|c| &c.expression).collect::<Vec<_>>(),
+            vec![&expected],
+        );
+        assert_eq!(known.len(), 1);
+        assert_eq!(
+            batch
+                .candidates
+                .iter()
+                .flat_map(|c| &c.selection_history)
+                .map(|decision| decision.chosen_term_hash.as_str())
+                .collect::<Vec<_>>(),
+            vec!["winner-term"],
+        );
+    }
+
+    #[test]
+    fn full_losers_do_not_deduplicate() {
+        let winner = candidate("(= (Read Int Int a@2 i@2) 0)".parse().unwrap());
+        let mut loser = candidate("(= (Read Int Int b@2 j@2) 0)".parse().unwrap());
+        loser.cost = 1;
+        let mut independent = candidate("(= (Read Int Int b@4 j@4) 0)".parse().unwrap());
+        independent.group = CandidateGroup::MatchRoot(egg::Id::from(1));
+        let expected = vec![winner.expression.clone(), independent.expression.clone()];
+        let mut batch = InstantiationBatch {
+            candidates: vec![winner, loser, independent],
+        };
+
+        let rejected = select_novel_candidates(
+            CandidateScope::AllCandidates,
+            &mut batch,
+            &HashSet::new(),
+            normalized_key,
+        );
+
+        assert_eq!(rejected, 0);
+        assert_eq!(
+            batch
+                .selected()
+                .map(|c| c.expression.clone())
+                .collect::<Vec<_>>(),
+            expected,
+        );
+    }
+
+    #[test]
+    fn other_policies_skip_known() {
+        for (scope, rule) in [
+            (
+                CandidateScope::SourceGroundedOnly,
+                QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int"),
+            ),
+            (
+                CandidateScope::SourceGroundedOnly,
+                QuantifiedRule::transition_guard("guard", 0),
+            ),
+            (
+                CandidateScope::AllCandidates,
+                QuantifiedRule::transition_guard("guard", 0),
+            ),
+        ] {
+            let mut known_winner = candidate("(= (Read Int Int a@2 i@2) 0)".parse().unwrap());
+            if rule.category() == QuantifiedRuleCategory::TransitionGuard {
+                known_winner.group = CandidateGroup::Rule;
+            }
+            known_winner.rule = rule.clone();
+            let mut alternative = candidate("(= (Read Int Int a@2 i@2) 1)".parse().unwrap());
+            alternative.group = known_winner.group;
+            alternative.rule = rule;
+            alternative.cost = 1;
+            let expected = alternative.expression.clone();
+            let known = HashSet::from([normalized_key(&known_winner).unwrap()]);
+            let mut batch = InstantiationBatch {
+                candidates: vec![known_winner, alternative],
+            };
+
+            let rejected = select_novel_candidates(scope, &mut batch, &known, normalized_key);
+
+            assert_eq!(rejected, 1);
+            assert_eq!(
+                batch.selected().map(|c| &c.expression).collect::<Vec<_>>(),
+                vec![&expected],
+            );
+        }
+    }
 
     #[test]
     fn shifted_copies_of_an_instantiation_are_duplicate_after_normalization() {
         let installed = "(=> (not (= i@12 i@11)) (= (Read Int Int a@11 i@12) 0))"
             .parse::<ArrayExpr>()
             .unwrap();
-        let mut instantiations = vec!["(=> (not (= i@5 i@4)) (= (Read Int Int a@4 i@5) 0))"
+        let expression = "(=> (not (= i@5 i@4)) (= (Read Int Int a@4 i@5) 0))"
             .parse::<ArrayExpr>()
-            .unwrap()];
-        let mut known = HashSet::from([UnquantifiedInstantiator::rewrite_unquantified(
+            .unwrap();
+        let mut batch = InstantiationBatch {
+            candidates: vec![candidate(expression)],
+        };
+        let known = HashSet::from([UnquantifiedInstantiator::rewrite_unquantified(
             expr_to_term(installed),
             vec![],
         )
@@ -152,13 +303,21 @@ mod tests {
         .get_term()
         .clone()]);
 
-        let duplicates = retain_novel_by(&mut instantiations, &mut known, |expr| {
-            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(expr.clone()), vec![])
+        let duplicates = select_novel_candidates(
+            CandidateScope::SourceGroundedOnly,
+            &mut batch,
+            &known,
+            |candidate| {
+                UnquantifiedInstantiator::rewrite_unquantified(
+                    expr_to_term(candidate.expression.clone()),
+                    vec![],
+                )
                 .map(|instance| instance.get_term().clone())
-        });
+            },
+        );
 
-        assert_eq!(duplicates.len(), 1);
-        assert!(instantiations.is_empty());
+        assert_eq!(duplicates, 1);
+        assert!(batch.candidates.is_empty());
         assert_eq!(known.len(), 1);
     }
 
@@ -166,38 +325,105 @@ mod tests {
     fn reversed_equalities_are_duplicate_before_whole_candidate_selection() {
         let installed: ArrayExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
         let reversed: ArrayExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
-        let mut candidates = vec![reversed];
+        let mut batch = InstantiationBatch {
+            candidates: vec![candidate(reversed)],
+        };
         let installed =
             UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(installed), vec![])
                 .unwrap();
-        let mut known = HashSet::from([canonical_instantiation_key(installed.get_term())]);
+        let known = HashSet::from([canonical_instantiation_key(installed.get_term())]);
 
-        let duplicates = retain_novel_by(&mut candidates, &mut known, |expression| {
-            UnquantifiedInstantiator::rewrite_unquantified(expr_to_term(expression.clone()), vec![])
-                .map(|instance| canonical_instantiation_key(instance.get_term()))
-        });
+        let duplicates = select_novel_candidates(
+            CandidateScope::SourceGroundedOnly,
+            &mut batch,
+            &known,
+            normalized_key,
+        );
 
-        assert_eq!(duplicates.len(), 1);
-        assert!(candidates.is_empty());
+        assert_eq!(duplicates, 1);
+        assert!(batch.candidates.is_empty());
     }
 
     #[test]
     fn only_axioms_false_in_the_current_model_remain_eligible() {
         let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
         let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
-        let mut candidates = vec![satisfied.clone(), violated.clone()];
+        let mut batch = InstantiationBatch {
+            candidates: vec![candidate(satisfied), candidate(violated.clone())],
+        };
 
-        let rejected = retain_model_violations(&mut candidates, |term| {
-            Ok(if term.to_string().contains("Read_Int_Int A") {
-                "true".to_string()
-            } else {
-                "false".to_string()
+        let rejected =
+            filter_model_candidates(CandidateScope::SourceGroundedOnly, &mut batch, |term| {
+                Ok(if term.to_string().contains("Read_Int_Int A") {
+                    "true".to_string()
+                } else {
+                    "false".to_string()
+                })
             })
-        })
-        .unwrap();
+            .unwrap();
 
-        assert_eq!(candidates, vec![violated]);
-        assert_eq!(rejected, vec![satisfied]);
+        assert_eq!(rejected, 1);
+        assert_eq!(batch.candidates.len(), 1);
+        assert_eq!(batch.candidates[0].expression, violated);
+    }
+
+    #[test]
+    fn full_search_keeps_egraph_conflicts_even_when_the_formula_is_model_satisfied() {
+        let expression: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
+        let mut guard = candidate("(=> guard body)".parse().unwrap());
+        guard.rule = QuantifiedRule::transition_guard("guard", 0);
+        guard.group = CandidateGroup::Rule;
+        let mut source_batch = InstantiationBatch {
+            candidates: vec![candidate(expression.clone())],
+        };
+        let mut full_batch = InstantiationBatch {
+            candidates: vec![candidate(expression.clone()), guard],
+        };
+
+        let source_rejected = filter_model_candidates(
+            CandidateScope::SourceGroundedOnly,
+            &mut source_batch,
+            |_| Ok("true".to_string()),
+        )
+        .unwrap();
+        let full_rejected =
+            filter_model_candidates(CandidateScope::AllCandidates, &mut full_batch, |_| {
+                Ok("true".to_string())
+            })
+            .unwrap();
+
+        assert_eq!(source_rejected, 1);
+        assert!(source_batch.candidates.is_empty());
+        assert_eq!(full_rejected, 1);
+        assert_eq!(full_batch.candidates.len(), 1);
+        assert_eq!(full_batch.candidates[0].expression, expression);
+    }
+
+    #[test]
+    fn model_filter_reuses_implication_guards() {
+        let first: ArrayExpr = "(=> guard (= x y))".parse().unwrap();
+        let second: ArrayExpr = "(=> guard (= a b))".parse().unwrap();
+        let violated: ArrayExpr = "(= x y)".parse().unwrap();
+        let mut batch = InstantiationBatch {
+            candidates: vec![
+                candidate(first),
+                candidate(second),
+                candidate(violated.clone()),
+            ],
+        };
+        let mut evaluated = Vec::new();
+
+        let rejected =
+            filter_model_candidates(CandidateScope::SourceGroundedOnly, &mut batch, |term| {
+                evaluated.push(term.to_string());
+                Ok("false".to_string())
+            })
+            .unwrap();
+
+        assert_eq!(rejected, 2);
+        assert_eq!(batch.candidates.len(), 1);
+        assert_eq!(batch.candidates[0].expression, violated);
+        assert_eq!(evaluated, vec!["guard", "(= x y)"]);
     }
 }
 

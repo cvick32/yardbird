@@ -892,6 +892,8 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::cost_functions::YardbirdCostFunction;
     use rustc_hash::FxHashMap;
@@ -902,6 +904,11 @@ mod test {
 
     #[derive(Clone)]
     struct PreferB;
+
+    #[derive(Clone)]
+    struct HighCostA;
+
+    const LEGACY_HIGH_COST_THRESHOLD: u32 = 100;
 
     impl egg::CostFunction<ArrayLanguage> for ZeroCost {
         type Cost = u32;
@@ -940,6 +947,33 @@ mod test {
     }
 
     impl YardbirdCostFunction<ArrayLanguage> for PreferB {
+        fn get_string_terms(&self) -> Vec<String> {
+            vec![]
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+    }
+
+    impl egg::CostFunction<ArrayLanguage> for HighCostA {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            let own = match enode {
+                ArrayLanguage::Symbol(symbol) if symbol.as_str() == "A" => {
+                    LEGACY_HIGH_COST_THRESHOLD + 1
+                }
+                _ => 0,
+            };
+            enode.fold(own, |sum, child| sum.saturating_add(costs(child)))
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for HighCostA {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1122,24 +1156,25 @@ mod test {
         egraph.add_expr(&expr);
         egraph.rebuild();
 
-        let result = saturate_with_array_types(
-            &mut egraph,
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture::default(),
                     profiling: None,
                 },
             },
         );
 
+        assert_eq!(result.selected().count(), 0);
+        result.select(CandidateScope::AllCandidates, |_| true);
         assert_eq!(result.selected().count(), 1);
         let instantiation = result.selected().next().unwrap();
         assert!(instantiation.expression.to_string().starts_with("(=> "));
@@ -1152,7 +1187,7 @@ mod test {
     }
 
     #[test]
-    fn saturation_keeps_a_candidate_from_each_violated_rule() {
+    fn full_selection_keeps_a_candidate_from_each_violated_rule() {
         let write_does_not_overwrite: ArrayExpr =
             "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
         let read_after_write: ArrayExpr = "(Read Int Int (Write Int Int B k w) k)".parse().unwrap();
@@ -1163,24 +1198,25 @@ mod test {
         egraph.add_expr(&constant_array);
         egraph.rebuild();
 
-        let result = saturate_with_array_types(
-            &mut egraph,
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture::default(),
                     profiling: None,
                 },
             },
         );
 
+        assert_eq!(result.selected().count(), 0);
+        result.select(CandidateScope::AllCandidates, |_| true);
         let rule_names = result
             .selected()
             .map(|candidate| candidate.rule.name().to_string())
@@ -1196,25 +1232,24 @@ mod test {
     }
 
     #[test]
-    fn saturation_preserves_the_egraph_for_staged_expansion() {
+    fn generation_borrows_the_egraph_for_staged_expansion() {
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
         let mut egraph = EGraph::<ArrayLanguage, ()>::default();
         egraph.add_expr(&expr);
         egraph.rebuild();
 
-        let _ = saturate_with_array_types(
-            &mut egraph,
+        let _ = generate_array_instantiation_candidates(
+            &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture::default(),
                     profiling: None,
                 },
@@ -1223,12 +1258,12 @@ mod test {
 
         assert!(
             egraph.lookup_expr(&expr).is_some(),
-            "saturation must return ownership of the e-graph so a later builder stage can widen it"
+            "generation must leave the e-graph available for a later builder stage"
         );
     }
 
     #[test]
-    fn source_only_saturation_does_not_emit_model_derived_join() {
+    fn source_only_generation_does_not_emit_model_derived_join() {
         init();
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A i 137) j)".parse().unwrap();
@@ -1237,18 +1272,17 @@ mod test {
             let mut egraph = EGraph::<ArrayLanguage, ()>::default();
             egraph.add_expr(&expr);
             egraph.rebuild();
-            saturate_with_array_types(
-                &mut egraph,
+            generate_array_instantiation_candidates(
+                &egraph,
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
-                ArraySaturationOptions {
+                ArrayInstantiationOptions {
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: scope,
-                    excluded_instantiations: HashSet::new(),
                     refinement_step: 0,
                     selection_counts: FxHashMap::default(),
                     depth: 0,
-                    instrumentation: ArraySaturationInstrumentation {
+                    instrumentation: ArrayInstantiationInstrumentation {
                         artifact_capture: ArrayArtifactCapture::default(),
                         profiling: None,
                     },
@@ -1259,56 +1293,13 @@ mod test {
         let cone = run(CandidateScope::SourceGroundedOnly);
         let full = run(CandidateScope::AllCandidates);
 
-        assert_eq!(cone.selected().count(), 0);
-        assert_eq!(full.selected().count(), 1);
+        assert_eq!(cone.candidates.len(), 0);
+        assert_eq!(full.candidates.len(), 1);
+        assert_eq!(full.selected().count(), 0);
     }
 
     #[test]
-    fn saturation_skips_an_excluded_candidate_and_selects_the_next_violation() {
-        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
-        let known: ArrayExpr =
-            "(=> (not (= j i)) (= (Read Int Int (Write Int Int A i v) j) (Read Int Int A j)))"
-                .parse()
-                .unwrap();
-        let expected: ArrayExpr =
-            "(=> (not (= q p)) (= (Read Int Int (Write Int Int B p w) q) (Read Int Int B q)))"
-                .parse()
-                .unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
-        egraph.add_expr(&first);
-        egraph.add_expr(&second);
-        egraph.rebuild();
-
-        let result = saturate_with_array_types(
-            &mut egraph,
-            ZeroCost,
-            &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
-                candidate_catalog: ArrayCandidateCatalog::default(),
-                candidate_scope: CandidateScope::AllCandidates,
-                excluded_instantiations: std::collections::HashSet::from([known]),
-                refinement_step: 0,
-                selection_counts: FxHashMap::default(),
-                depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
-                    profiling: None,
-                },
-            },
-        );
-
-        assert_eq!(
-            result
-                .selected()
-                .map(|candidate| candidate.expression.clone())
-                .collect::<Vec<_>>(),
-            vec![expected]
-        );
-    }
-
-    #[test]
-    fn saturation_ranks_complete_violations_across_rule_matches() {
+    fn source_selection_ranks_complete_violations_across_rule_matches() {
         let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
         let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
         let expected: ArrayExpr =
@@ -1320,24 +1311,25 @@ mod test {
         egraph.add_expr(&second);
         egraph.rebuild();
 
-        let result = saturate_with_array_types(
-            &mut egraph,
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
             PreferB,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture::default(),
                     profiling: None,
                 },
             },
         );
 
+        assert_eq!(result.selected().count(), 0);
+        result.select(CandidateScope::SourceGroundedOnly, |_| true);
         assert_eq!(
             result
                 .selected()
@@ -1348,7 +1340,49 @@ mod test {
     }
 
     #[test]
-    fn full_saturation_selects_one_candidate_per_matched_eclass() {
+    fn costs_over_100_compete_without_special_classification() {
+        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
+        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        egraph.add_expr(&first);
+        egraph.add_expr(&second);
+        egraph.rebuild();
+
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
+            HighCostA,
+            &[("Int".into(), "Int".into())],
+            ArrayInstantiationOptions {
+                candidate_catalog: two_write_candidate_catalog(),
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                instrumentation: ArrayInstantiationInstrumentation {
+                    artifact_capture: ArrayArtifactCapture::default(),
+                    profiling: None,
+                },
+            },
+        );
+
+        assert!(result
+            .candidates
+            .iter()
+            .any(|candidate| candidate.cost > LEGACY_HIGH_COST_THRESHOLD));
+        result.select(CandidateScope::SourceGroundedOnly, |_| true);
+        assert!(result
+            .selected()
+            .all(|candidate| candidate.cost <= LEGACY_HIGH_COST_THRESHOLD));
+
+        result
+            .candidates
+            .retain(|candidate| candidate.cost > LEGACY_HIGH_COST_THRESHOLD);
+        result.select(CandidateScope::SourceGroundedOnly, |_| true);
+        assert_eq!(result.selected().count(), 1);
+    }
+
+    #[test]
+    fn full_selection_chooses_one_candidate_per_matched_eclass() {
         let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
         let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
         let expected: ArrayExpr =
@@ -1361,24 +1395,24 @@ mod test {
         egraph.union(first_id, second_id);
         egraph.rebuild();
 
-        let result = saturate_with_array_types(
-            &mut egraph,
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
             PreferB,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture::default(),
                     profiling: None,
                 },
             },
         );
 
+        result.select(CandidateScope::AllCandidates, |_| true);
         assert_eq!(
             result
                 .selected()
@@ -1401,24 +1435,24 @@ mod test {
         egraph.union(first_id, second_id);
         egraph.rebuild();
 
-        let result = saturate_with_array_types(
-            &mut egraph,
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture::default(),
                     profiling: None,
                 },
             },
         );
 
+        result.select(CandidateScope::AllCandidates, |_| true);
         assert_eq!(
             result
                 .selected()
@@ -1437,18 +1471,17 @@ mod test {
         egraph.add_expr(&second);
         egraph.rebuild();
 
-        let result = saturate_with_array_types(
-            &mut egraph,
+        let mut result = generate_array_instantiation_candidates(
+            &egraph,
             PreferB,
             &[("Int".into(), "Int".into())],
-            ArraySaturationOptions {
+            ArrayInstantiationOptions {
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
-                excluded_instantiations: HashSet::new(),
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArraySaturationInstrumentation {
+                instrumentation: ArrayInstantiationInstrumentation {
                     artifact_capture: ArrayArtifactCapture {
                         decisions: true,
                         instantiation_provenance: true,
@@ -1459,6 +1492,8 @@ mod test {
             },
         );
 
+        assert!(result.selected().next().is_none());
+        result.select(CandidateScope::SourceGroundedOnly, |_| true);
         let abstract_instantiations = result
             .candidates
             .iter()
@@ -1498,7 +1533,7 @@ mod test {
     }
 
     #[test]
-    fn decision_capture_does_not_change_saturation_choices() {
+    fn decision_capture_does_not_change_selection() {
         fn run(artifact_capture: ArrayArtifactCapture) -> InstantiationBatch {
             let expr: RecExpr<ArrayLanguage> =
                 "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
@@ -1506,23 +1541,24 @@ mod test {
             egraph.add_expr(&expr);
             egraph.rebuild();
 
-            saturate_with_array_types(
-                &mut egraph,
+            let mut result = generate_array_instantiation_candidates(
+                &egraph,
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
-                ArraySaturationOptions {
+                ArrayInstantiationOptions {
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: CandidateScope::AllCandidates,
-                    excluded_instantiations: HashSet::new(),
                     refinement_step: 0,
                     selection_counts: FxHashMap::default(),
                     depth: 0,
-                    instrumentation: ArraySaturationInstrumentation {
+                    instrumentation: ArrayInstantiationInstrumentation {
                         artifact_capture,
                         profiling: None,
                     },
                 },
-            )
+            );
+            result.select(CandidateScope::AllCandidates, |_| true);
+            result
         }
 
         let compact = run(ArrayArtifactCapture::default());
