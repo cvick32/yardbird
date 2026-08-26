@@ -202,6 +202,7 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                 let total_subterms = subterms.len();
                 let newly_admitted_subterms =
                     add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
+                egraph.rebuild();
                 Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                     stage: ArrayEGraphBuildStage::Full,
                     candidate_scope: CandidateScope::AllCandidates,
