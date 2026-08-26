@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc, time::Instant};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use egg::*;
 use rustc_hash::FxHashMap;
@@ -60,9 +60,6 @@ pub struct ArrayInstantiationInstrumentation {
 pub struct ArrayInstantiationOptions {
     pub candidate_catalog: ArrayCandidateCatalog,
     pub candidate_scope: CandidateScope,
-    /// Complete abstract instances rejected by the caller for this e-graph
-    /// stage. Matching must continue past these candidates.
-    pub excluded_instantiations: HashSet<ArrayExpr>,
     pub refinement_step: u32,
     pub selection_counts: FxHashMap<String, u32>,
     pub depth: u16,
@@ -263,7 +260,6 @@ where
         instantiation_cost_fn,
         extractor,
         ArrayRuleInstantiatorOptions {
-            excluded_instantiations,
             refinement_step,
             depth,
             artifact_capture,

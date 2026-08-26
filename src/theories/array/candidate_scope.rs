@@ -33,15 +33,7 @@ impl CandidateScope {
         self == Self::SourceGroundedOnly
     }
 
-    pub fn retries_rejected_instantiations(self) -> bool {
-        self == Self::SourceGroundedOnly
-    }
-
     pub fn explores_all_matches(self) -> bool {
         self == Self::SourceGroundedOnly
-    }
-
-    pub fn selected_instantiation_limit(self) -> Option<usize> {
-        self.explores_all_matches().then_some(1)
     }
 }

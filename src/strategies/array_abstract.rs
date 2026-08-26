@@ -399,16 +399,15 @@ where
                     .record_timing("cost_factory", cost_factory_start.elapsed());
             }
 
-            let mut known_instantiations = smt
+            let known_instantiations = smt
                 .get_instantiations()
                 .into_iter()
                 .map(|term| canonical_instantiation_key(&term))
                 .collect::<HashSet<_>>();
-            let mut transition_guard_instantiations = 0;
+
+            let instantiation_start = Instant::now();
+            let mut candidate_batch = InstantiationBatch::default();
             if !self.transition_guard_rules.is_empty() && state.depth > 0 {
-                // Searchers observe canonical e-classes. Keep this explicit even
-                // though the current builders rebuild after adding model terms.
-                state.egraph.rebuild();
                 let guard_extractor = ArrayTermExtractor::new(
                     &state.egraph,
                     cost_fn.clone(),
@@ -421,117 +420,90 @@ where
                         profiling: None,
                     },
                 );
+
                 for rule in &self.transition_guard_rules {
-                    let mut candidates = rank_violated_transition_guard_instances(
+                    candidate_batch.extend(generate_guard_candidates(
                         rule,
                         &state.egraph,
                         &guard_extractor,
                         cost_fn.clone(),
                         state.depth,
                         smt,
-                    );
-                    retain_novel_by(&mut candidates, &mut known_instantiations, |candidate| {
-                        self.installable_expression(smt, &candidate.expression)
-                    });
-                    if let Some(instance) = candidates.into_iter().next() {
-                        trace!(
-                            "[yardbird::guard-inst] rule={} cost={} substitution={:?} formula={}",
-                            rule.metadata().name(),
-                            instance.cost,
-                            instance.provenance.relative_substitution(),
-                            expr_to_term(instance.expression.clone())
-                        );
-                        state.candidates.push(instance);
-                        transition_guard_instantiations += 1;
-                    }
+                    ));
                 }
             }
 
-            let saturation_start = Instant::now();
-            let mut excluded_instantiations = HashSet::new();
-            let require_model_violation = expansion.candidate_scope.requires_model_violation();
-            let retry_rejected_candidates =
-                expansion.candidate_scope.retries_rejected_instantiations();
-            let summary = loop {
-                let mut saturation = saturate_with_array_types(
-                    &mut state.egraph,
-                    cost_fn.clone(),
-                    &state.array_types,
-                    ArraySaturationOptions {
-                        candidate_catalog: candidate_catalog.clone(),
-                        candidate_scope: expansion.candidate_scope,
-                        excluded_instantiations: excluded_instantiations.clone(),
-                        refinement_step,
-                        selection_counts: self.term_selection_counts.clone(),
-                        depth: state.depth,
-                        instrumentation: ArraySaturationInstrumentation {
-                            artifact_capture: self.artifact_capture,
-                            profiling: profiling.clone(),
-                        },
+            let array_candidates = generate_array_instantiation_candidates(
+                &state.egraph,
+                cost_fn.clone(),
+                &state.array_types,
+                ArrayInstantiationOptions {
+                    candidate_catalog: candidate_catalog.clone(),
+                    candidate_scope: expansion.candidate_scope,
+                    refinement_step,
+                    selection_counts: self.term_selection_counts.clone(),
+                    depth: state.depth,
+                    instrumentation: ArrayInstantiationInstrumentation {
+                        artifact_capture: self.artifact_capture,
+                        profiling: profiling.clone(),
                     },
-                );
-                let rejected_model = if require_model_violation {
-                    reject_model_satisfied(&mut saturation, |term| smt.eval_to_string(term))?
-                } else {
-                    Vec::new()
-                };
-                let rejected_known = reject_known_candidates(
-                    &mut saturation,
-                    &mut known_instantiations,
-                    |candidate| self.installable_expression(smt, &candidate.expression),
-                );
-                let rejected_model_count = rejected_model.len();
-                let rejected_count = rejected_model_count + rejected_known.len();
-                excluded_instantiations.extend(rejected_model);
-                excluded_instantiations.extend(rejected_known);
-                if let Some(profiling) = &profiling {
-                    let mut profiling = profiling.borrow_mut();
-                    profiling.add_counter(
-                        "model_satisfied_instantiations_filtered",
-                        rejected_model_count as u64,
-                    );
-                    profiling.add_counter(
-                        "duplicate_or_uninstallable_instantiations_filtered",
-                        (rejected_count - rejected_model_count) as u64,
-                    );
-                }
+                },
+            );
+            candidate_batch.extend(array_candidates.candidates);
+            let generated_by_rule = count_candidates_by_rule(&candidate_batch);
 
-                let summary = self.absorb_saturation(state, smt, saturation, refinement_step);
-                if summary.candidate_instantiations > 0
-                    || rejected_count == 0
-                    || !retry_rejected_candidates
-                {
-                    break summary;
-                }
-            };
+            let rejected_model =
+                filter_model_candidates(expansion.candidate_scope, &mut candidate_batch, |term| {
+                    smt.eval_to_string(term)
+                })?;
+            let rejected_known = select_novel_candidates(
+                expansion.candidate_scope,
+                &mut candidate_batch,
+                &known_instantiations,
+                |candidate| self.installable_expression(smt, &candidate.expression),
+            );
+            record_candidate_counts(&profiling, generated_by_rule, &candidate_batch);
+
+            if let Some(profiling) = &profiling {
+                let mut profiling = profiling.borrow_mut();
+                profiling.add_counter(
+                    "model_satisfied_instantiations_filtered",
+                    rejected_model as u64,
+                );
+                profiling.add_counter(
+                    "duplicate_or_uninstallable_instantiations_filtered",
+                    rejected_known as u64,
+                );
+            }
+
+            let summary = self.absorb_candidates(state, smt, candidate_batch, refinement_step);
+
             if let Some(profiling) = &profiling {
                 profiling
                     .borrow_mut()
-                    .record_timing("saturation_total", saturation_start.elapsed());
+                    .record_timing("instantiation_total", instantiation_start.elapsed());
             }
 
             if trace_conflicts_enabled() {
-                let total_guards = state
+                let selected_guards = state
                     .candidates
                     .iter()
                     .filter(|candidate| {
                         candidate.rule.category() == QuantifiedRuleCategory::TransitionGuard
                     })
                     .count();
-                let total_candidates = state.candidates.len();
+                let selected_arrays = state.candidates.len().saturating_sub(selected_guards);
                 trace!(
-                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} produced guard_insts={} regular_insts={} conflicts={} total_guard={} total_regular={} ",
+                    "[yardbird::conflict-trace] sat depth={} refinement_step={} build_stage={} selected_guards={} selected_arrays={} conflicts={}",
                     state.depth,
                     refinement_step,
                     expansion.stage.as_str(),
-                    transition_guard_instantiations,
-                    summary.candidate_instantiations,
+                    selected_guards,
+                    selected_arrays,
                     summary.conflicts,
-                    total_guards,
-                    total_candidates,
                 );
             }
-            if transition_guard_instantiations > 0 || summary.candidate_instantiations > 0 {
+            if summary.selected_candidates > 0 {
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
             }
@@ -648,122 +620,118 @@ where
     }
 }
 
-fn retain_novel_by<T, K>(
-    instantiations: &mut Vec<T>,
-    known: &mut HashSet<K>,
-    mut normalize: impl FnMut(&T) -> Option<K>,
-) -> Vec<T>
-where
-    T: Clone,
-    K: Eq + Hash,
-{
-    let mut rejected = Vec::new();
-    instantiations.retain(|instantiation| {
-        let keep = normalize(instantiation).is_some_and(|normalized| known.insert(normalized));
-        if !keep {
-            rejected.push(instantiation.clone());
-        }
-        keep
-    });
-    rejected
+fn count_candidates_by_rule(batch: &InstantiationBatch) -> FxHashMap<String, usize> {
+    let mut counts = FxHashMap::default();
+    for candidate in &batch.candidates {
+        *counts.entry(candidate.rule.name().to_string()).or_default() += 1;
+    }
+    counts
 }
 
-fn reject_known_candidates<K>(
+fn record_candidate_counts(
+    profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
+    generated_by_rule: FxHashMap<String, usize>,
+    batch: &InstantiationBatch,
+) {
+    let Some(profiling) = profiling else {
+        return;
+    };
+    let mut selected_by_rule = FxHashMap::<String, usize>::default();
+    for candidate in batch.selected() {
+        *selected_by_rule
+            .entry(candidate.rule.name().to_string())
+            .or_default() += 1;
+    }
+
+    let mut profiling = profiling.borrow_mut();
+    for (rule_name, generated) in generated_by_rule {
+        let selected = selected_by_rule
+            .get(&rule_name)
+            .copied()
+            .unwrap_or_default();
+        profiling.record_rule_candidates(&rule_name, generated, selected);
+    }
+}
+
+fn select_novel_candidates<K>(
+    scope: CandidateScope,
     batch: &mut InstantiationBatch,
-    known: &mut HashSet<K>,
+    known: &HashSet<K>,
     mut normalize: impl FnMut(&InstantiationCandidate) -> Option<K>,
-) -> Vec<ArrayExpr>
+) -> usize
 where
     K: Eq + Hash,
 {
-    let mut rejected = Vec::new();
-    for candidate in batch.selected_mut() {
-        let keep = normalize(candidate).is_some_and(|normalized| known.insert(normalized));
-        if keep {
+    let mut seen = HashSet::new();
+    batch.select(scope, |candidate| {
+        let Some(normalized) = normalize(candidate) else {
+            return false;
+        };
+        !known.contains(&normalized) && seen.insert(normalized)
+    })
+}
+
+fn filter_model_candidates(
+    scope: CandidateScope,
+    batch: &mut InstantiationBatch,
+    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+) -> anyhow::Result<usize> {
+    let before = batch.candidates.len();
+    let mut eligible = Vec::with_capacity(before);
+    let mut evaluations = FxHashMap::<String, String>::default();
+    for candidate in mem::take(&mut batch.candidates) {
+        let requires_model_violation = candidate.rule.category()
+            == QuantifiedRuleCategory::TransitionGuard
+            || scope.requires_model_violation();
+        if !requires_model_violation {
+            eligible.push(candidate);
             continue;
         }
-        candidate.selected = false;
-        rejected.push(candidate.expression.clone());
-    }
-
-    rejected
-}
-
-fn reject_model_satisfied(
-    batch: &mut InstantiationBatch,
-    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
-) -> anyhow::Result<Vec<ArrayExpr>> {
-    let mut rejected = Vec::new();
-    let mut evaluation_error = None;
-
-    for candidate in batch.selected_mut() {
         let term = expr_to_term(candidate.expression.clone());
-        match evaluate(&term) {
-            Ok(value) if value.trim() == "false" => {}
-            Ok(_) => {
-                candidate.selected = false;
-                rejected.push(candidate.expression.clone());
-            }
-            Err(error) => {
-                candidate.selected = false;
-                evaluation_error = Some(error);
-            }
+        if model_value(&term, &mut evaluate, &mut evaluations)?.trim() == "false" {
+            eligible.push(candidate);
         }
     }
-    if let Some(error) = evaluation_error {
-        return Err(error);
-    }
-
+    let rejected = before - eligible.len();
+    batch.candidates = eligible;
     Ok(rejected)
 }
 
-#[cfg(test)]
-trait HasArrayExpression {
-    fn array_expression(&self) -> &ArrayExpr;
-}
+fn model_value(
+    term: &Term,
+    evaluate: &mut impl FnMut(&Term) -> anyhow::Result<String>,
+    cache: &mut FxHashMap<String, String>,
+) -> anyhow::Result<String> {
+    let Term::Application {
+        qual_identifier,
+        arguments,
+    } = term
+    else {
+        return cached_model_value(term, evaluate, cache);
+    };
+    if qual_identifier.get_name() != "=>" || arguments.len() != 2 {
+        return cached_model_value(term, evaluate, cache);
+    }
 
-#[cfg(test)]
-impl HasArrayExpression for ArrayExpr {
-    fn array_expression(&self) -> &ArrayExpr {
-        self
+    match cached_model_value(&arguments[0], evaluate, cache)?.trim() {
+        "false" => Ok("true".to_string()),
+        "true" => cached_model_value(&arguments[1], evaluate, cache),
+        _ => cached_model_value(term, evaluate, cache),
     }
 }
 
-#[cfg(test)]
-impl HasArrayExpression for InstantiationCandidate {
-    fn array_expression(&self) -> &ArrayExpr {
-        &self.expression
+fn cached_model_value(
+    term: &Term,
+    evaluate: &mut impl FnMut(&Term) -> anyhow::Result<String>,
+    cache: &mut FxHashMap<String, String>,
+) -> anyhow::Result<String> {
+    let key = term.to_string();
+    if let Some(value) = cache.get(&key) {
+        return Ok(value.clone());
     }
-}
-
-#[cfg(test)]
-fn retain_model_violations<T>(
-    instantiations: &mut Vec<T>,
-    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
-) -> anyhow::Result<Vec<T>>
-where
-    T: Clone + HasArrayExpression,
-{
-    let mut rejected = Vec::new();
-    let mut evaluation_error = None;
-    instantiations.retain(|instantiation| {
-        let term = expr_to_term(instantiation.array_expression().clone());
-        match evaluate(&term) {
-            Ok(value) if value.trim() == "false" => true,
-            Ok(_) => {
-                rejected.push(instantiation.clone());
-                false
-            }
-            Err(error) => {
-                evaluation_error = Some(error);
-                false
-            }
-        }
-    });
-    if let Some(error) = evaluation_error {
-        return Err(error);
-    }
-    Ok(rejected)
+    let value = evaluate(term)?;
+    cache.insert(key, value.clone());
+    Ok(value)
 }
 
 impl<F> Abstract<F>
@@ -806,23 +774,23 @@ where
             .map(|instance| canonical_instantiation_key(instance.get_term()))
     }
 
-    fn absorb_saturation(
+    fn absorb_candidates(
         &mut self,
         state: &mut ArrayRefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
-        saturation: InstantiationBatch,
+        batch: InstantiationBatch,
         refinement_step: u32,
-    ) -> SaturationSummary {
-        let candidates = saturation.selected().count();
-        let conflicts_count = saturation
+    ) -> CandidateSummary {
+        let selected_candidates = batch.selected().count();
+        let conflicts_count = batch
             .selected()
             .filter(|candidate| candidate.conflict.is_some())
             .count();
-        let summary = SaturationSummary {
-            candidate_instantiations: candidates,
+        let summary = CandidateSummary {
+            selected_candidates,
             conflicts: conflicts_count,
         };
-        let selection_history = saturation
+        let selection_history = batch
             .candidates
             .iter()
             .flat_map(|candidate| candidate.selection_history.iter())
@@ -843,7 +811,7 @@ where
             }
         }
         let mut conflicts = Vec::with_capacity(conflicts_count);
-        for mut candidate in saturation.candidates {
+        for mut candidate in batch.candidates {
             for decision in mem::take(&mut candidate.decisions) {
                 if !self
                     .decision_data
