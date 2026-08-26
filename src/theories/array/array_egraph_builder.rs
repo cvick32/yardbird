@@ -47,9 +47,8 @@ pub enum ArrayEGraphBuildStep {
 
 /// Controls which model equalities are admitted before array-axiom matching.
 ///
-/// Repeated calls expand the same e-graph. `Exhausted` means that the adapter
-/// has no broader construction stage and exhaustive matching may safely hand
-/// control to concrete validation.
+/// Repeated calls expand the same e-graph. `Exhausted` means that no broader construction
+/// stage remains and concrete validation may begin.
 pub trait ArrayEGraphBuilder: Debug + Send {
     fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder>;
 
@@ -97,6 +96,7 @@ impl ArrayEGraphBuilder for FullEGraphBuilder {
         let subterms = smt.get_all_subterms();
         let total_subterms = subterms.len();
         let newly_admitted_subterms = add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
+        egraph.rebuild();
         Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
             stage: ArrayEGraphBuildStage::Full,
             candidate_scope: CandidateScope::AllCandidates,
@@ -186,6 +186,7 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
                 self.stage = ConeThenFullStage::Full;
                 let newly_admitted_subterms =
                     add_subterms(egraph, smt, &cone_refs, &mut self.admitted)?;
+                egraph.rebuild();
                 Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
                     stage: ArrayEGraphBuildStage::Cone,
                     candidate_scope: CandidateScope::SourceGroundedOnly,
