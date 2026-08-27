@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use egg::Searcher;
+use rustc_hash::FxHashMap;
 use smt2parser::concrete::Term;
 
 use crate::{
@@ -13,7 +14,7 @@ use crate::{
     theories::array::{
         array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
-        instantiation_candidate::{CandidateGroup, InstantiationCandidate},
+        instantiation_candidate::{model_value, CandidateGroup, InstantiationCandidate},
     },
 };
 
@@ -166,15 +167,22 @@ fn ground_guard_frames(
         .collect()
 }
 
-/// Generate every currently visible ground instance of one supported guard.
-pub fn generate_guard_candidates<CF, N>(
+pub(crate) struct GuardCandidateGeneration {
+    pub(crate) candidates: Vec<InstantiationCandidate>,
+    pub(crate) rejected_by_model: usize,
+}
+
+/// Generate only the currently model-violated ground instances of one
+/// supported guard. Model-satisfied formulas are discarded before expression
+/// translation, costing, provenance hashing, and candidate allocation.
+pub(crate) fn generate_guard_candidates<CF, N>(
     rule: &TransitionGuardRule,
     egraph: &egg::EGraph<ArrayLanguage, N>,
     extractor: &ArrayTermExtractor<CF>,
     mut cost_function: CF,
     depth: u16,
     smt: &dyn ProblemContext,
-) -> Vec<InstantiationCandidate>
+) -> anyhow::Result<GuardCandidateGeneration>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
     N: egg::Analysis<ArrayLanguage>,
@@ -185,10 +193,23 @@ where
     let binder_name = binder.0.as_str();
     let mut seen_formulas = HashSet::new();
     let mut instances = Vec::new();
+    let mut rejected_model = 0;
+    let mut evaluations = FxHashMap::default();
 
     for candidate in search_guard_terms(rule, egraph, extractor) {
         for formula in ground_guard_frames(rule, &candidate, depth, smt) {
             if !seen_formulas.insert(formula.to_string()) {
+                continue;
+            }
+            if model_value(
+                &formula,
+                &mut |term| smt.eval_to_string(term),
+                &mut evaluations,
+            )?
+            .trim()
+                != "false"
+            {
+                rejected_model += 1;
                 continue;
             }
             let Some(expression) = translate_term(formula.clone()) else {
@@ -214,9 +235,13 @@ where
                 abstract_instantiation: None,
                 conflict: None,
                 group: CandidateGroup::Rule,
+                model_violation_verified: true,
             });
         }
     }
 
-    instances
+    Ok(GuardCandidateGeneration {
+        candidates: instances,
+        rejected_by_model: rejected_model,
+    })
 }

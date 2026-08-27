@@ -331,6 +331,7 @@ where
 
             let instantiation_start = Instant::now();
             let mut candidate_batch = InstantiationBatch::default();
+            let mut pruned_guards = Vec::new();
             if !self.transition_guard_rules.is_empty() && state.depth > 0 {
                 let guard_extractor = ArrayTermExtractor::new(
                     &state.egraph,
@@ -346,14 +347,19 @@ where
                 );
 
                 for rule in &self.transition_guard_rules {
-                    candidate_batch.extend(generate_guard_candidates(
+                    let generation = generate_guard_candidates(
                         rule,
                         &state.egraph,
                         &guard_extractor,
                         cost_fn.clone(),
                         state.depth,
                         smt,
+                    )?;
+                    pruned_guards.push((
+                        rule.metadata().name().to_string(),
+                        generation.rejected_by_model,
                     ));
+                    candidate_batch.extend(generation.candidates);
                 }
             }
 
@@ -374,12 +380,15 @@ where
                 },
             );
             candidate_batch.extend(array_candidates.candidates);
-            let summary = candidate_batch.prepare(
+            let mut summary = candidate_batch.prepare(
                 expansion.candidate_scope,
                 &known_instantiations,
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
+            for (rule_name, count) in pruned_guards {
+                summary.record_pruned_model_candidates(&rule_name, count);
+            }
 
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();

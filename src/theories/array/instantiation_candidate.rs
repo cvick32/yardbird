@@ -31,7 +31,7 @@ pub(crate) enum CandidateGroup {
     Rule,
 }
 
-/// One complete quantified-rule candidate and its correlated artifacts.
+/// One complete quantified-rule candidate and its metadata
 #[derive(Clone, Debug)]
 pub struct InstantiationCandidate {
     pub rule: QuantifiedRule,
@@ -44,6 +44,9 @@ pub struct InstantiationCandidate {
     pub abstract_instantiation: Option<AbstractInstantiationRecord>,
     pub conflict: Option<ArrayConflictRecord>,
     pub(crate) group: CandidateGroup,
+    /// The candidate was retained only after its formula evaluated to false in
+    /// the current model, so batch preparation must not evaluate it again.
+    pub(crate) model_violation_verified: bool,
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -67,6 +70,14 @@ pub(crate) struct BatchSummary {
 impl BatchSummary {
     pub(crate) fn selected_count(&self) -> usize {
         self.selected_arrays + self.selected_guards
+    }
+
+    pub(crate) fn record_pruned_model_candidates(&mut self, rule_name: &str, count: usize) {
+        self.rejected_model += count;
+        self.by_rule
+            .entry(rule_name.to_string())
+            .or_default()
+            .generated += count;
     }
 }
 
@@ -155,6 +166,10 @@ impl InstantiationBatch {
                 == QuantifiedRuleCategory::TransitionGuard
                 || scope.requires_model_violation();
             if !requires_model_violation {
+                eligible.push(candidate);
+                continue;
+            }
+            if candidate.model_violation_verified {
                 eligible.push(candidate);
                 continue;
             }
@@ -284,7 +299,7 @@ impl InstantiationBatch {
     }
 }
 
-fn model_value(
+pub(crate) fn model_value(
     term: &Term,
     evaluate: &mut impl FnMut(&Term) -> anyhow::Result<String>,
     cache: &mut FxHashMap<String, String>,
@@ -368,6 +383,7 @@ mod tests {
             abstract_instantiation: None,
             conflict: None,
             group: CandidateGroup::MatchRoot(egg::Id::from(0)),
+            model_violation_verified: false,
         }
     }
 
@@ -717,6 +733,29 @@ mod tests {
     }
 
     #[test]
+    fn verified_guard_violation_skips_model_re_evaluation() {
+        let mut guard = array_candidate("(= x y)".parse().unwrap());
+        guard.rule = QuantifiedRule::transition_guard("guard", 0);
+        guard.group = CandidateGroup::Rule;
+        guard.model_violation_verified = true;
+        let mut batch = InstantiationBatch {
+            candidates: vec![guard],
+        };
+
+        let summary = batch
+            .prepare(
+                CandidateScope::SourceGroundedOnly,
+                &HashSet::new(),
+                |_| panic!("a lazily materialized guard was already model-checked"),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+
+        assert_eq!(summary.rejected_model, 0);
+        assert_eq!(summary.selected_guards, 1);
+    }
+
+    #[test]
     fn preparation_reports_outcomes() {
         let array = QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int");
         let guard = QuantifiedRule::transition_guard("guard", 0);
@@ -872,6 +911,7 @@ mod tests {
             abstract_instantiation: None,
             conflict: None,
             group,
+            model_violation_verified: false,
         }
     }
 

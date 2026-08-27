@@ -387,6 +387,7 @@ where
                         abstract_instantiation,
                         conflict,
                         group: CandidateGroup::MatchRoot(egraph.find(m.eclass)),
+                        model_violation_verified: false,
                     };
                     if tracing {
                         trace_conflicts(format!(
