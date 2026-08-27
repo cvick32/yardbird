@@ -2,6 +2,11 @@
 
 This chicken lays `egg`s...
 
+# Running with Debug logs
+
+`RUST_LOG='yardbird=debug,smt2parser=debug' cargo run -- ...`
+
+
 # Artifact Evaluation
 
 ## Quick Start
