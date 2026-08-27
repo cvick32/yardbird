@@ -1001,4 +1001,144 @@ mod test {
             "b"
         );
     }
+
+    #[test]
+    fn expected_read_grounds_the_read_matching_the_egg_substitution() {
+        let pattern: ArrayPattern = "(Read Int Int ?array ?index)".parse().unwrap();
+        let array_var: egg::Var = "?array".parse().unwrap();
+        let index_var: egg::Var = "?index".parse().unwrap();
+
+        let first_read: ArrayExpr = "(Read Int Int A i)".parse().unwrap();
+        let matching_read: ArrayExpr = "(Read Int Int B j)".parse().unwrap();
+        let matching_array: ArrayExpr = "B".parse().unwrap();
+        let matching_index: ArrayExpr = "j".parse().unwrap();
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let first_read_eclass = egraph.add_expr(&first_read);
+        let matching_read_eclass = egraph.add_expr(&matching_read);
+        egraph.union(first_read_eclass, matching_read_eclass);
+        egraph.rebuild();
+
+        let mut subst = egg::Subst::default();
+        subst.insert(array_var, egraph.lookup_expr(&matching_array).unwrap());
+        subst.insert(index_var, egraph.lookup_expr(&matching_index).unwrap());
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCost,
+            ArrayTermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog::default(),
+                candidate_scope: CandidateScope::AllCandidates,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        );
+        let mut grounding = GroundSubstitution::default();
+
+        let grounded = ground_expected_read(
+            &pattern,
+            matching_read_eclass,
+            &subst,
+            &mut grounding,
+            &egraph,
+            &extractor,
+            GroundContext::new(
+                false,
+                "read-after-write",
+                crate::quantified_rule::QuantifiedRuleCategory::Other,
+            ),
+        )
+        .unwrap();
+
+        assert!(grounded);
+        assert_eq!(
+            instantiate_pattern(&pattern, &grounding)
+                .unwrap()
+                .to_string(),
+            "(Read Int Int B j)"
+        );
+    }
+
+    #[test]
+    fn expected_write_preserves_the_index_and_value_from_one_source_write() {
+        let pattern: ArrayPattern = "(Write Int Int ?array ?index ?value)".parse().unwrap();
+        let array_var: egg::Var = "?array".parse().unwrap();
+        let index_var: egg::Var = "?index".parse().unwrap();
+        let value_var: egg::Var = "?value".parse().unwrap();
+
+        let source_write: ArrayExpr = "(Write Int Int A i v)".parse().unwrap();
+        let array: ArrayExpr = "A".parse().unwrap();
+        let index: ArrayExpr = "i".parse().unwrap();
+        let index_alias: ArrayExpr = "index_alias".parse().unwrap();
+        let value: ArrayExpr = "v".parse().unwrap();
+        let value_alias: ArrayExpr = "value_alias".parse().unwrap();
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let expected_write_eclass = egraph.add_expr(&source_write);
+        let index_eclass = egraph.lookup_expr(&index).unwrap();
+        let index_alias_eclass = egraph.add_expr(&index_alias);
+        let value_eclass = egraph.lookup_expr(&value).unwrap();
+        let value_alias_eclass = egraph.add_expr(&value_alias);
+        egraph.union(index_eclass, index_alias_eclass);
+        egraph.union(value_eclass, value_alias_eclass);
+        egraph.rebuild();
+
+        let mut subst = egg::Subst::default();
+        subst.insert(array_var, egraph.lookup_expr(&array).unwrap());
+        subst.insert(index_var, egraph.find(index_eclass));
+        subst.insert(value_var, egraph.find(value_eclass));
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCost,
+            ArrayTermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog {
+                    source_grounded: ArrayCandidatePool {
+                        // Deliberately omit the scalar terms. The specialized write
+                        // grounding path must recover them as one coherent write site.
+                        terms: vec!["(Write_Int_Int A i v)".to_string()],
+                        reads_and_writes: ReadsAndWrites::from(
+                            std::collections::HashSet::new(),
+                            std::collections::HashSet::from([(
+                                "A".to_string(),
+                                "i".to_string(),
+                                "v".to_string(),
+                            )]),
+                        ),
+                    },
+                    derived: ArrayCandidatePool::default(),
+                },
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        );
+        let mut grounding = GroundSubstitution::default();
+
+        let grounded = ground_expected_write(
+            &pattern,
+            expected_write_eclass,
+            &subst,
+            &mut grounding,
+            &egraph,
+            &extractor,
+            GroundContext::new(
+                false,
+                "write-grounding",
+                crate::quantified_rule::QuantifiedRuleCategory::Other,
+            ),
+        )
+        .unwrap();
+
+        assert!(grounded);
+        assert_eq!(
+            instantiate_pattern(&pattern, &grounding)
+                .unwrap()
+                .to_string(),
+            "(Write Int Int A i v)"
+        );
+        assert!(!grounding.used_derived_candidate());
+    }
 }
