@@ -754,6 +754,49 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
     Some(expr)
 }
 
+fn is_simple_smt_symbol(symbol: &str) -> bool {
+    fn is_non_digit_symbol_byte(byte: u8) -> bool {
+        matches!(
+            byte,
+            b'a'..=b'z'
+                | b'A'..=b'Z'
+                | b'~'
+                | b'!'
+                | b'@'
+                | b'$'
+                | b'%'
+                | b'^'
+                | b'&'
+                | b'*'
+                | b'_'
+                | b'-'
+                | b'+'
+                | b'='
+                | b'<'
+                | b'>'
+                | b'.'
+                | b'?'
+                | b'/'
+        )
+    }
+
+    let mut bytes = symbol.bytes();
+    bytes.next().is_some_and(is_non_digit_symbol_byte)
+        && bytes.all(|byte| byte.is_ascii_digit() || is_non_digit_symbol_byte(byte))
+}
+
+fn fast_symbol_term(symbol: &str) -> Option<Term> {
+    if is_simple_smt_symbol(symbol) {
+        return Some(Term::QualIdentifier(QualIdentifier::simple(symbol)));
+    }
+
+    let quoted = symbol
+        .strip_prefix('|')
+        .and_then(|symbol| symbol.strip_suffix('|'))?;
+    (!quoted.bytes().any(|byte| matches!(byte, b'|' | b'\\')))
+        .then(|| Term::QualIdentifier(QualIdentifier::simple(quoted)))
+}
+
 pub fn expr_to_term(expr: ArrayExpr) -> Term {
     fn inner(expr: &ArrayExpr, id: egg::Id) -> Term {
         match &expr[id] {
@@ -878,11 +921,13 @@ pub fn expr_to_term(expr: ArrayExpr) -> Term {
                     inner(expr, *else_term),
                 ],
             },
-            ArrayLanguage::Symbol(sym) => sym.as_str().parse().unwrap_or_else(|_| {
-                SmtSymbol(sym.as_str().to_string())
-                    .to_string()
-                    .parse()
-                    .expect("symbol preserved by the array e-graph must remain valid SMT-LIB")
+            ArrayLanguage::Symbol(sym) => fast_symbol_term(sym.as_str()).unwrap_or_else(|| {
+                sym.as_str().parse().unwrap_or_else(|_| {
+                    SmtSymbol(sym.as_str().to_string())
+                        .to_string()
+                        .parse()
+                        .expect("symbol preserved by the array e-graph must remain valid SMT-LIB")
+                })
             }),
         }
     }
@@ -1107,6 +1152,26 @@ mod test {
 
         assert_eq!(egraph.find(translated_id), egraph.find(parsed_id));
         assert_eq!(expr_to_term(translated).to_string(), "(ite true x y)");
+    }
+
+    #[test]
+    fn expr_to_term_preserves_atomic_and_opaque_symbol_terms() {
+        for rendered in [
+            "simple@7",
+            "true",
+            "|fml:cl+0|",
+            "Array_Int_Int!val!8",
+            "#b1",
+            "123",
+            "(opaque x)",
+        ] {
+            let expr = ArrayExpr::from(vec![ArrayLanguage::Symbol(rendered.into())]);
+            let expected: Term = rendered
+                .parse()
+                .unwrap_or_else(|_| SmtSymbol(rendered.to_string()).to_string().parse().unwrap());
+
+            assert_eq!(expr_to_term(expr), expected, "symbol {rendered}");
+        }
     }
 
     #[test]
