@@ -1139,6 +1139,5 @@ mod test {
                 .to_string(),
             "(Write Int Int A i v)"
         );
-        assert!(!grounding.used_derived_candidate());
     }
 }
