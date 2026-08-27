@@ -243,7 +243,7 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             decision_key: "decision-key".to_string(),
             bmc_depth: 3,
             axiom_name: "read-after-write".to_string(),
-            slot_index: 1,
+            variable: "?idx".to_string(),
             candidates: vec![chosen_candidate],
         }],
         abstract_instantiations: vec![AbstractInstantiationRecord {

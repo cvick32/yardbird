@@ -62,10 +62,7 @@ function CandidateList({
           </thead>
           <tbody>
             {candidates.map((c) => (
-              <tr
-                key={c.id}
-                className={c.was_chosen ? "chosen-candidate" : ""}
-              >
+              <tr key={c.id} className={c.was_chosen ? "chosen-candidate" : ""}>
                 <td className="term-cell" title={c.term}>
                   {c.term}
                 </td>
@@ -104,7 +101,7 @@ export default function DecisionTable({
           <tr>
             <th>Depth</th>
             <th>Axiom</th>
-            <th>Slot</th>
+            <th>Variable</th>
             <th>Candidates</th>
             <th>Chosen</th>
             <th>Key</th>
@@ -114,14 +111,14 @@ export default function DecisionTable({
           {decisions.map((d) => (
             <Fragment key={d.id}>
               <tr
-                className={`clickable ${d.has_bad_decision_shape ? "bad-shape" : ""}`}
-                onClick={() =>
-                  setExpandedId(expandedId === d.id ? null : d.id)
-                }
+                className={`clickable ${
+                  d.has_bad_decision_shape ? "bad-shape" : ""
+                }`}
+                onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}
               >
                 <td>{d.bmc_depth}</td>
                 <td>{d.axiom_name}</td>
-                <td>{d.slot_index}</td>
+                <td>{d.variable}</td>
                 <td>{d.candidate_count}</td>
                 <td>{d.chosen_count}</td>
                 <td className="term-cell">{d.decision_key ?? ""}</td>

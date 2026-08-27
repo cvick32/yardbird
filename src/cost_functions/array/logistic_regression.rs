@@ -111,7 +111,7 @@ impl YardbirdCostFunction<ArrayLanguage> for LogisticRegression {
             );
             let features = LogisticRegressionCandidateFeatures {
                 axiom_name: context.rule_name,
-                slot_index: context.slot_index,
+                variable: context.variable,
                 is_constant: term_features.is_constant,
                 is_variable: term_features.is_variable,
                 in_property_vocab: term_features.in_property_vocab,

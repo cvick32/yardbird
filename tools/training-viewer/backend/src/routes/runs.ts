@@ -11,7 +11,7 @@ router.get("/:id/summary", async (req, res) => {
     const benchmarkRes = await queryForRequest(
       req,
       `SELECT * FROM benchmarks WHERE id = $1`,
-      [id],
+      [id]
     );
     if (benchmarkRes.rows.length === 0) {
       res.status(404).json({ error: "Run not found" });
@@ -30,7 +30,7 @@ router.get("/:id/summary", async (req, res) => {
         (SELECT COUNT(*)::int FROM indexed_instantiations WHERE benchmark_id = $1 AND in_unsat_core) AS indexed_core_count,
         (SELECT COUNT(*)::int FROM core_appearances WHERE benchmark_id = $1) AS core_appearance_count
       `,
-      [id],
+      [id]
     );
 
     res.json({
@@ -50,7 +50,7 @@ router.get("/:id/decisions", async (req, res) => {
       req,
       `
       SELECT
-        d.id, d.decision_key, d.bmc_depth, d.axiom_name, d.slot_index, d.created_at,
+        d.id, d.decision_key, d.bmc_depth, d.axiom_name, d.variable, d.created_at,
         COUNT(c.id)::int AS candidate_count,
         COUNT(c.id) FILTER (WHERE c.was_chosen)::int AS chosen_count,
         (COUNT(c.id) FILTER (WHERE c.was_chosen) != 1) AS has_bad_decision_shape
@@ -60,7 +60,7 @@ router.get("/:id/decisions", async (req, res) => {
       GROUP BY d.id
       ORDER BY d.bmc_depth, d.id
       `,
-      [req.params.id],
+      [req.params.id]
     );
     res.json(rows);
   } catch (err) {
@@ -79,7 +79,7 @@ router.get("/:id/decisions/:decisionId/candidates", async (req, res) => {
       WHERE decision_id = $1
       ORDER BY was_chosen DESC, current_cost ASC
       `,
-      [req.params.decisionId],
+      [req.params.decisionId]
     );
     res.json(rows);
   } catch (err) {
@@ -102,7 +102,7 @@ router.get("/:id/abstract-instantiations", async (req, res) => {
       WHERE ai.benchmark_id = $1
       ORDER BY ai.bmc_depth, ai.refinement_step
       `,
-      [req.params.id],
+      [req.params.id]
     );
     res.json(rows);
   } catch (err) {
@@ -124,7 +124,7 @@ router.get("/:id/indexed-instantiations", async (req, res) => {
       WHERE ii.benchmark_id = $1
       ORDER BY ii.depth, ii.unroll_index
       `,
-      [req.params.id],
+      [req.params.id]
     );
     res.json(rows);
   } catch (err) {
@@ -140,7 +140,7 @@ router.get("/:id/provenance", async (req, res) => {
       req,
       `
       SELECT
-        d.id AS decision_id, d.axiom_name, d.bmc_depth AS decision_depth, d.slot_index,
+        d.id AS decision_id, d.axiom_name, d.bmc_depth AS decision_depth, d.variable,
         ai.id AS abstract_id, ai.term AS abstract_term, ai.in_unsat_core AS abstract_in_core,
         ai.axiom_name AS abstract_axiom, ai.bmc_depth AS abstract_depth, ai.refinement_step,
         ii.id AS indexed_id, ii.term AS indexed_term, ii.in_unsat_core AS indexed_in_core,
@@ -152,7 +152,7 @@ router.get("/:id/provenance", async (req, res) => {
       WHERE d.benchmark_id = $1
       ORDER BY d.bmc_depth, d.id, ai.id, ii.depth
       `,
-      [req.params.id],
+      [req.params.id]
     );
     res.json(rows);
   } catch (err) {

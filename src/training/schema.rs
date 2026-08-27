@@ -37,8 +37,8 @@ pub struct DecisionRecord {
     pub bmc_depth: u16,
     /// Name of the axiom being instantiated (e.g., "write-does-not-overwrite-Int-Int")
     pub axiom_name: String,
-    /// Index of the variable slot being instantiated (0-indexed position in pattern)
-    pub slot_index: u32,
+    /// Name of the variable being instantiated
+    pub variable: String,
     /// Candidates considered for this decision
     pub candidates: Vec<CandidateRecord>,
 }

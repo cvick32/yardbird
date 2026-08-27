@@ -46,7 +46,7 @@ export interface Decision {
   decision_key: string | null;
   bmc_depth: number;
   axiom_name: string;
-  slot_index: number;
+  variable: string;
   created_at: string;
   candidate_count: number;
   chosen_count: number;
@@ -99,7 +99,7 @@ export interface ProvenanceRow {
   decision_id: number;
   axiom_name: string;
   decision_depth: number;
-  slot_index: number;
+  variable: string;
   abstract_id: number;
   abstract_term: string;
   abstract_in_core: boolean;

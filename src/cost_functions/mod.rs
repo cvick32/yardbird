@@ -11,7 +11,7 @@ use crate::quantified_rule::QuantifiedRuleCategory;
 pub struct CandidateSelectionContext<'a> {
     pub rule_name: &'a str,
     pub rule_category: QuantifiedRuleCategory,
-    pub slot_index: u32,
+    pub variable: &'a str,
     pub bmc_depth: u16,
 }
 

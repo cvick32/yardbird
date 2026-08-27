@@ -59,21 +59,21 @@ def build_query(training_run: str | None, include_unsuccessful: bool) -> str:
 
     return f"""
 COPY (
-WITH chosen_slots AS (
+WITH chosen_bindings AS (
     SELECT
         aid.abstract_instantiation_id,
-        COUNT(*) AS slot_count,
-        SUM(c.ast_size) AS chosen_slot_ast_size_sum,
-        MAX(c.ast_size) AS chosen_slot_ast_size_max,
-        SUM(c.current_cost) AS chosen_slot_cost_sum,
-        MAX(c.current_cost) AS chosen_slot_cost_max,
-        COUNT(*) FILTER (WHERE c.is_constant) AS chosen_constant_slots,
-        COUNT(*) FILTER (WHERE c.is_variable) AS chosen_variable_slots,
-        COUNT(*) FILTER (WHERE c.in_property_vocab) AS chosen_property_slots,
-        COUNT(*) FILTER (WHERE c.in_transition_vocab) AS chosen_transition_slots,
+        COUNT(*) AS binding_count,
+        SUM(c.ast_size) AS chosen_binding_ast_size_sum,
+        MAX(c.ast_size) AS chosen_binding_ast_size_max,
+        SUM(c.current_cost) AS chosen_binding_cost_sum,
+        MAX(c.current_cost) AS chosen_binding_cost_max,
+        COUNT(*) FILTER (WHERE c.is_constant) AS chosen_constant_bindings,
+        COUNT(*) FILTER (WHERE c.is_variable) AS chosen_variable_bindings,
+        COUNT(*) FILTER (WHERE c.in_property_vocab) AS chosen_property_bindings,
+        COUNT(*) FILTER (WHERE c.in_transition_vocab) AS chosen_transition_bindings,
         MIN(c.frame_index) AS chosen_min_frame,
         MAX(c.frame_index) AS chosen_max_frame,
-        STRING_AGG(c.term, ' || ' ORDER BY d.slot_index, d.id) AS chosen_slot_terms
+        STRING_AGG(d.variable || '=' || c.term, ' || ' ORDER BY d.variable, d.id) AS chosen_binding_terms
     FROM abstract_instantiation_decisions aid
     JOIN decisions d ON d.id = aid.decision_id
     JOIN candidates c ON c.decision_id = d.id AND c.was_chosen
@@ -106,18 +106,18 @@ candidate_rows AS (
         COUNT(*) OVER (
             PARTITION BY ai.benchmark_id, ai.bmc_depth, ai.refinement_step
         ) AS complete_candidate_pool_size,
-        COALESCE(cs.slot_count, 0) AS slot_count,
-        COALESCE(cs.chosen_slot_ast_size_sum, 0) AS chosen_slot_ast_size_sum,
-        COALESCE(cs.chosen_slot_ast_size_max, 0) AS chosen_slot_ast_size_max,
-        COALESCE(cs.chosen_slot_cost_sum, 0) AS chosen_slot_cost_sum,
-        COALESCE(cs.chosen_slot_cost_max, 0) AS chosen_slot_cost_max,
-        COALESCE(cs.chosen_constant_slots, 0) AS chosen_constant_slots,
-        COALESCE(cs.chosen_variable_slots, 0) AS chosen_variable_slots,
-        COALESCE(cs.chosen_property_slots, 0) AS chosen_property_slots,
-        COALESCE(cs.chosen_transition_slots, 0) AS chosen_transition_slots,
-        cs.chosen_min_frame,
-        cs.chosen_max_frame,
-        cs.chosen_slot_terms,
+        COALESCE(cb.binding_count, 0) AS binding_count,
+        COALESCE(cb.chosen_binding_ast_size_sum, 0) AS chosen_binding_ast_size_sum,
+        COALESCE(cb.chosen_binding_ast_size_max, 0) AS chosen_binding_ast_size_max,
+        COALESCE(cb.chosen_binding_cost_sum, 0) AS chosen_binding_cost_sum,
+        COALESCE(cb.chosen_binding_cost_max, 0) AS chosen_binding_cost_max,
+        COALESCE(cb.chosen_constant_bindings, 0) AS chosen_constant_bindings,
+        COALESCE(cb.chosen_variable_bindings, 0) AS chosen_variable_bindings,
+        COALESCE(cb.chosen_property_bindings, 0) AS chosen_property_bindings,
+        COALESCE(cb.chosen_transition_bindings, 0) AS chosen_transition_bindings,
+        cb.chosen_min_frame,
+        cb.chosen_max_frame,
+        cb.chosen_binding_terms,
         ue.event_index AS target_unsat_event_index,
         ue.core_size AS target_core_size,
         {snapshot_columns},
@@ -125,7 +125,7 @@ candidate_rows AS (
     FROM abstract_instantiations ai
     JOIN benchmarks b ON b.id = ai.benchmark_id
     LEFT JOIN training_runs tr ON tr.id = b.training_run_id
-    LEFT JOIN chosen_slots cs ON cs.abstract_instantiation_id = ai.id
+    LEFT JOIN chosen_bindings cb ON cb.abstract_instantiation_id = ai.id
     LEFT JOIN LATERAL (
         SELECT event_index, core_size, solver_stats_snapshot, solver_stats_delta
         FROM unsat_events
@@ -160,7 +160,9 @@ def main() -> int:
         )
     )
     parser.add_argument("--database-url")
-    parser.add_argument("--training-run", help="Optional training_runs.run_version filter")
+    parser.add_argument(
+        "--training-run", help="Optional training_runs.run_version filter"
+    )
     parser.add_argument("--include-unsuccessful", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

@@ -95,7 +95,7 @@ impl DbConnection {
         // Insert the decision
         let row = sqlx::query(
             r#"
-            INSERT INTO decisions (benchmark_id, decision_key, bmc_depth, axiom_name, slot_index)
+            INSERT INTO decisions (benchmark_id, decision_key, bmc_depth, axiom_name, variable)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id
             "#,
@@ -104,7 +104,7 @@ impl DbConnection {
         .bind(&decision.decision_key)
         .bind(decision.bmc_depth as i32)
         .bind(&decision.axiom_name)
-        .bind(decision.slot_index as i32)
+        .bind(&decision.variable)
         .fetch_one(&mut *tx)
         .await?;
 

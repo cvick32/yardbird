@@ -20,7 +20,6 @@ const EXPECTED_NUMERIC_FEATURES: &[&str] = &[
     "current_cost",
     "log_current_cost",
     "bmc_depth",
-    "slot_index",
     "cost_rank",
     "cost_rank_frac",
     "candidate_count",
@@ -58,7 +57,7 @@ struct FeatureSpec {
 #[derive(Clone, Debug)]
 pub struct LogisticRegressionCandidateFeatures<'a> {
     pub axiom_name: &'a str,
-    pub slot_index: u32,
+    pub variable: &'a str,
     pub is_constant: bool,
     pub is_variable: bool,
     pub in_property_vocab: bool,
@@ -161,7 +160,7 @@ impl LogisticRegressionModel {
         score
     }
 
-    fn numeric_values(&self, features: &LogisticRegressionCandidateFeatures<'_>) -> [f64; 16] {
+    fn numeric_values(&self, features: &LogisticRegressionCandidateFeatures<'_>) -> [f64; 15] {
         let frame_index = features.frame_index.unwrap_or(FRAME_SENTINEL);
         let frame_clipped = if frame_index == FRAME_SENTINEL {
             0
@@ -183,7 +182,6 @@ impl LogisticRegressionModel {
             f64::from(features.current_cost),
             f64::from(current_cost).ln_1p(),
             f64::from(features.bmc_depth),
-            f64::from(features.slot_index),
             features.cost_rank as f64,
             features.cost_rank_frac,
             candidate_count as f64,
@@ -197,8 +195,11 @@ impl LogisticRegressionModel {
     ) -> [String; 3] {
         [
             format!("axiom={}", features.axiom_name),
-            format!("slot={}", features.slot_index),
-            format!("axiom_slot={}:{}", features.axiom_name, features.slot_index),
+            format!("variable={}", features.variable),
+            format!(
+                "axiom_variable={}:{}",
+                features.axiom_name, features.variable
+            ),
         ]
     }
 }
@@ -231,14 +232,14 @@ mod tests {
                 hashed_categorical_features: vec![],
                 categorical_feature_templates: vec![
                     "axiom".to_string(),
-                    "slot".to_string(),
-                    "axiom_slot".to_string(),
+                    "variable".to_string(),
+                    "axiom_variable".to_string(),
                     "cost_fn".to_string(),
                 ],
                 categorical_vocab: vec![
                     "axiom=read-after-write-Int-Int".to_string(),
-                    "slot=0".to_string(),
-                    "axiom_slot=read-after-write-Int-Int:0".to_string(),
+                    "variable=a".to_string(),
+                    "axiom_variable=read-after-write-Int-Int:a".to_string(),
                     "cost_fn=bmc-cost".to_string(),
                 ],
                 unknown_categorical_policy: Some("zero".to_string()),
@@ -248,7 +249,7 @@ mod tests {
         model.validate().unwrap();
         let features = LogisticRegressionCandidateFeatures {
             axiom_name: "read-after-write-Int-Int",
-            slot_index: 0,
+            variable: "a",
             is_constant: true,
             is_variable: false,
             in_property_vocab: false,
@@ -268,8 +269,8 @@ mod tests {
     fn one_hot_categorical_weights_contribute_by_vocab_entry() {
         let categorical_vocab = vec![
             "axiom=read-after-write-Int-Int".to_string(),
-            "slot=0".to_string(),
-            "axiom_slot=read-after-write-Int-Int:0".to_string(),
+            "variable=a".to_string(),
+            "axiom_variable=read-after-write-Int-Int:a".to_string(),
             "cost_fn=bmc-cost".to_string(),
         ];
         let mut weights = vec![0.0; 1 + EXPECTED_NUMERIC_FEATURES.len() + categorical_vocab.len()];
@@ -297,7 +298,7 @@ mod tests {
         };
         let features = LogisticRegressionCandidateFeatures {
             axiom_name: "read-after-write-Int-Int",
-            slot_index: 0,
+            variable: "a",
             is_constant: false,
             is_variable: false,
             in_property_vocab: false,

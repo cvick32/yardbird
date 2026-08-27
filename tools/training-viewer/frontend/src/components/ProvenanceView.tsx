@@ -4,7 +4,13 @@ export default function ProvenanceView({ rows }: { rows: ProvenanceRow[] }) {
   // Group by decision
   const grouped = new Map<
     number,
-    { decision: ProvenanceRow; abstracts: Map<number, { abstract: ProvenanceRow; indexed: ProvenanceRow[] }> }
+    {
+      decision: ProvenanceRow;
+      abstracts: Map<
+        number,
+        { abstract: ProvenanceRow; indexed: ProvenanceRow[] }
+      >;
+    }
   >();
 
   for (const row of rows) {
@@ -30,13 +36,15 @@ export default function ProvenanceView({ rows }: { rows: ProvenanceRow[] }) {
         <div key={decId} className="provenance-group">
           <div className="provenance-decision">
             <strong>Decision {decId}</strong>: {decision.axiom_name} @ depth{" "}
-            {decision.decision_depth}, slot {decision.slot_index}
+            {decision.decision_depth}, variable {decision.variable}
           </div>
           {[...abstracts.entries()].map(
             ([absId, { abstract: abs, indexed }]) => (
               <div key={absId} className="provenance-abstract">
                 <div
-                  className={`provenance-abstract-header ${abs.abstract_in_core ? "in-core" : ""}`}
+                  className={`provenance-abstract-header ${
+                    abs.abstract_in_core ? "in-core" : ""
+                  }`}
                 >
                   Abstract {absId}: {abs.abstract_axiom} @ depth{" "}
                   {abs.abstract_depth}, refine {abs.refinement_step}
@@ -52,7 +60,9 @@ export default function ProvenanceView({ rows }: { rows: ProvenanceRow[] }) {
                     {indexed.map((ix) => (
                       <div
                         key={ix.indexed_id}
-                        className={`provenance-indexed ${ix.indexed_in_core ? "in-core" : ""}`}
+                        className={`provenance-indexed ${
+                          ix.indexed_in_core ? "in-core" : ""
+                        }`}
                       >
                         <span className="indexed-label">
                           {ix.indexed_label}
@@ -67,7 +77,7 @@ export default function ProvenanceView({ rows }: { rows: ProvenanceRow[] }) {
                   </div>
                 )}
               </div>
-            ),
+            )
           )}
         </div>
       ))}

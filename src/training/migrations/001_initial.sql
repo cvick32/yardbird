@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     benchmark_id BIGINT NOT NULL REFERENCES benchmarks(id) ON DELETE CASCADE,
     bmc_depth INTEGER NOT NULL,
     axiom_name TEXT NOT NULL,
-    slot_index INTEGER NOT NULL,
+    variable TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

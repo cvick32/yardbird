@@ -207,7 +207,7 @@ SELECT
     d.decision_key,
     d.bmc_depth,
     d.axiom_name,
-    d.slot_index,
+    d.variable,
     c.id AS candidate_id,
     c.term,
     c.term_hash,
@@ -296,7 +296,7 @@ def normalize_rows(raw_rows: list[dict[str, str]]) -> list[dict[str, object]]:
             "decision_key": raw["decision_key"],
             "bmc_depth": int(raw["bmc_depth"]),
             "axiom_name": raw["axiom_name"],
-            "slot_index": int(raw["slot_index"]),
+            "variable": int(raw["variable"]),
             "candidate_id": int(raw["candidate_id"]),
             "term": raw["term"],
             "term_hash": raw["term_hash"],
@@ -329,7 +329,7 @@ NUMERIC_FEATURES = [
     "current_cost",
     "log_current_cost",
     "bmc_depth",
-    "slot_index",
+    "variable",
     "cost_rank",
     "cost_rank_frac",
     "candidate_count",
@@ -357,7 +357,7 @@ def numeric_values(row: dict[str, object]) -> list[float]:
         float(current_cost),
         math.log1p(max(0, current_cost)),
         float(row["bmc_depth"]),
-        float(row["slot_index"]),
+        float(row["variable"]),
         float(row["cost_rank"]),
         float(row["cost_rank_frac"]),
         float(candidate_count),
@@ -370,8 +370,8 @@ def categorical_features(row: dict[str, object]) -> list[str]:
     # not a memorized lookup table over the manifest.
     return [
         f"axiom={row['axiom_name']}",
-        f"slot={row['slot_index']}",
-        f"axiom_slot={row['axiom_name']}:{row['slot_index']}",
+        f"variable={row['variable']}",
+        f"axiom_variable={row['axiom_name']}:{row['variable']}",
     ]
 
 
@@ -780,8 +780,8 @@ def main() -> int:
             "numeric_std": spec.numeric_std,
             "categorical_feature_templates": [
                 "axiom",
-                "slot",
-                "axiom_slot",
+                "variable",
+                "axiom_variable",
             ],
             "categorical_vocab": spec.categorical_vocab,
             "unknown_categorical_policy": "zero",

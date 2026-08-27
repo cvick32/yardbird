@@ -407,7 +407,7 @@ where
         egraph: &egg::EGraph<ArrayLanguage, N>,
         eclass: egg::Id,
         axiom_name: &str,
-        slot_index: u32,
+        variable: egg::Var,
         chosen_term: &ArrayExpr,
         decision_key: String,
     ) -> DecisionRecord
@@ -460,15 +460,15 @@ where
             decision_key,
             bmc_depth: self.depth,
             axiom_name: axiom_name.to_string(),
-            slot_index,
+            variable: variable.to_string(),
             candidates,
         }
     }
 
-    pub fn decision_key(&self, axiom_name: &str, slot_index: u32, eclass: egg::Id) -> String {
+    pub fn decision_key(&self, axiom_name: &str, variable: egg::Var, eclass: egg::Id) -> String {
         format!(
             "{}:{}:{}:{}:{}",
-            axiom_name, self.depth, self.refinement_step, slot_index, eclass
+            axiom_name, self.depth, self.refinement_step, variable, eclass
         )
     }
 
@@ -557,7 +557,7 @@ where
         valid_terms: &[&'a (ArrayExpr, u32)],
         rule_name: &str,
         rule_category: QuantifiedRuleCategory,
-        slot_index: u32,
+        variable: egg::Var,
     ) -> Option<(&'a ArrayExpr, u32)> {
         let candidate_count = valid_terms.len();
         if candidate_count == 0 {
@@ -583,10 +583,12 @@ where
                 }
             })
             .collect::<Vec<_>>();
+
+        let variable_name = variable.to_string();
         let context = CandidateSelectionContext {
             rule_name,
             rule_category,
-            slot_index,
+            variable: &variable_name,
             bmc_depth: self.depth,
         };
         let selection_start = Instant::now();
@@ -647,29 +649,18 @@ where
             .map(|(term, cost)| (term, *cost))
     }
 
-    pub fn extract<N>(
-        &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        eclass: egg::Id,
-    ) -> egg::RecExpr<ArrayLanguage>
-    where
-        N: egg::Analysis<ArrayLanguage>,
-    {
-        self.extract_for_decision(egraph, eclass, "unknown", QuantifiedRuleCategory::Other, 0)
-    }
-
     pub fn extract_for_decision<N>(
         &self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
         eclass: egg::Id,
         rule_name: &str,
         rule_category: QuantifiedRuleCategory,
-        slot_index: u32,
+        variable: egg::Var,
     ) -> egg::RecExpr<ArrayLanguage>
     where
         N: egg::Analysis<ArrayLanguage>,
     {
-        self.extract_for_decision_with_origin(egraph, eclass, rule_name, rule_category, slot_index)
+        self.extract_for_decision_with_origin(egraph, eclass, rule_name, rule_category, variable)
             .0
     }
 
@@ -679,7 +670,7 @@ where
         eclass: egg::Id,
         rule_name: &str,
         rule_category: QuantifiedRuleCategory,
-        slot_index: u32,
+        variable: egg::Var,
     ) -> (egg::RecExpr<ArrayLanguage>, CandidateOrigin)
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -697,7 +688,7 @@ where
                 .unwrap_or(0);
 
             if let Some((term, cost)) =
-                self.select_contextual_candidate(&valid_terms, rule_name, rule_category, slot_index)
+                self.select_contextual_candidate(&valid_terms, rule_name, rule_category, variable)
             {
                 let prior_uses = prior_use_count(&self.selection_counts, term);
                 log::debug!(
@@ -935,7 +926,6 @@ mod tests {
     struct ObservedSelection {
         rule_name: String,
         rule_category: QuantifiedRuleCategory,
-        slot_index: u32,
         bmc_depth: u16,
         candidate_count: usize,
     }
@@ -959,6 +949,26 @@ mod tests {
             depth: 0,
             profiling: None,
         }
+    }
+
+    fn extract_for_test<CF, N>(
+        extractor: &ArrayTermExtractor<CF>,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+    ) -> ArrayExpr
+    where
+        CF: YardbirdCostFunction<ArrayLanguage>,
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        let variable = "?test_variable".parse().unwrap();
+
+        extractor.extract_for_decision(
+            egraph,
+            eclass,
+            "test-rule",
+            QuantifiedRuleCategory::Other,
+            variable,
+        )
     }
 
     impl egg::CostFunction<ArrayLanguage> for ZeroCostTerms {
@@ -1036,7 +1046,6 @@ mod tests {
             self.observed.replace(Some(ObservedSelection {
                 rule_name: context.rule_name.to_string(),
                 rule_category: context.rule_category,
-                slot_index: context.slot_index,
                 bmc_depth: context.bmc_depth,
                 candidate_count: candidates.len(),
             }));
@@ -1097,7 +1106,7 @@ mod tests {
             ),
         );
 
-        assert_eq!(extractor.extract(&egraph, b_id).to_string(), "a");
+        assert_eq!(extract_for_test(&extractor, &egraph, b_id).to_string(), "a");
     }
 
     #[test]
@@ -1123,12 +1132,14 @@ mod tests {
             ),
         );
 
+        let variable: egg::Var = "?guard_index".parse().unwrap();
+
         let selected = extractor.extract_for_decision(
             &egraph,
             a_id,
             "transition-guard-test-0",
             QuantifiedRuleCategory::TransitionGuard,
-            7,
+            variable,
         );
 
         assert_eq!(selected.to_string(), "b");
@@ -1137,7 +1148,6 @@ mod tests {
             Some(&ObservedSelection {
                 rule_name: "transition-guard-test-0".to_string(),
                 rule_category: QuantifiedRuleCategory::TransitionGuard,
-                slot_index: 7,
                 bmc_depth: 0,
                 candidate_count: 2,
             })
@@ -1189,10 +1199,10 @@ mod tests {
             ),
         );
 
-        assert_eq!(extractor.extract(&egraph, eclass), expression);
+        assert_eq!(extract_for_test(&extractor, &egraph, eclass), expression);
         let calls_after_first_extraction = calls.get();
         assert!(calls_after_first_extraction > 0);
-        assert_eq!(extractor.extract(&egraph, eclass), expression);
+        assert_eq!(extract_for_test(&extractor, &egraph, eclass), expression);
         assert_eq!(calls.get(), calls_after_first_extraction);
     }
 
@@ -1234,7 +1244,7 @@ mod tests {
             ),
         );
 
-        assert_eq!(extractor.extract(&egraph, a_id).to_string(), "b");
+        assert_eq!(extract_for_test(&extractor, &egraph, a_id).to_string(), "b");
     }
 
     #[test]
@@ -1265,13 +1275,14 @@ mod tests {
                 FxHashMap::default(),
             ),
         );
+        let variable: egg::Var = "?guard_index".parse().unwrap();
 
         let (chosen, origin) = extractor.extract_for_decision_with_origin(
             &egraph,
             source_id,
             "test",
             QuantifiedRuleCategory::Other,
-            0,
+            variable,
         );
         assert_eq!(chosen.to_string(), "z");
         assert_eq!(origin, CandidateOrigin::SourceGrounded);
@@ -1294,12 +1305,14 @@ mod tests {
             ),
         );
 
+        let variable: egg::Var = "?guard_index".parse().unwrap();
+
         let (_, origin) = extractor.extract_for_decision_with_origin(
             &egraph,
             value_id,
             "test",
             QuantifiedRuleCategory::Other,
-            0,
+            variable,
         );
         assert_eq!(origin, CandidateOrigin::Derived);
     }
@@ -1324,7 +1337,10 @@ mod tests {
             ),
         );
 
-        assert_eq!(extractor.extract(&egraph, model_id).to_string(), "a");
+        assert_eq!(
+            extract_for_test(&extractor, &egraph, model_id).to_string(),
+            "a"
+        );
     }
 
     #[test]
