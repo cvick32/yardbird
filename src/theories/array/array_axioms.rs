@@ -1344,9 +1344,9 @@ mod test {
         assert_eq!(
             result
                 .selected()
-                .map(|candidate| candidate.expression.clone())
+                .map(|candidate| candidate.expression.to_string())
                 .collect::<Vec<_>>(),
-            vec![expected]
+            vec![expected.to_string()]
         );
     }
 
@@ -1427,9 +1427,9 @@ mod test {
         assert_eq!(
             result
                 .selected()
-                .map(|candidate| candidate.expression.clone())
+                .map(|candidate| candidate.expression.to_string())
                 .collect::<Vec<_>>(),
-            vec![expected]
+            vec![expected.to_string()]
         );
     }
 
@@ -1467,9 +1467,9 @@ mod test {
         assert_eq!(
             result
                 .selected()
-                .map(|candidate| candidate.expression.clone())
+                .map(|candidate| candidate.expression.to_string())
                 .collect::<Vec<_>>(),
-            vec![expected]
+            vec![expected.to_string()]
         );
     }
 

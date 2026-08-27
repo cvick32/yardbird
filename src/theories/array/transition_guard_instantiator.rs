@@ -137,7 +137,7 @@ where
             candidate_eclass,
             rule.metadata().name(),
             rule.metadata().category(),
-            0,
+            searcher.candidate_var,
         );
         if extractor.requires_source_grounded_candidates() && origin == CandidateOrigin::Derived {
             continue;
