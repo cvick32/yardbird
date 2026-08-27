@@ -5,7 +5,8 @@ use smt2parser::vmt::ReadsAndWrites;
 use crate::{
     cost_functions::{
         array::{ArrayCostContext, ArrayCostFactory},
-        CandidateSelectionContext, CandidateView, YardbirdCostFunction,
+        CandidateSelectionContext, CandidateView, ContextualCandidateSelector,
+        YardbirdCostFunction,
     },
     theories::array::array_axioms::ArrayLanguage,
     training::{
@@ -97,6 +98,12 @@ impl YardbirdCostFunction<ArrayLanguage> for LogisticRegression {
         self.reads_writes.clone()
     }
 
+    fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<ArrayLanguage>> {
+        Some(self)
+    }
+}
+
+impl ContextualCandidateSelector<ArrayLanguage> for LogisticRegression {
     fn select_candidate(
         &self,
         context: &CandidateSelectionContext<'_>,

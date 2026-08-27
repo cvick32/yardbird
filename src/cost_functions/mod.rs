@@ -28,6 +28,17 @@ where
     pub prior_use_count: u32,
 }
 
+pub trait ContextualCandidateSelector<L>
+where
+    L: egg::Language,
+{
+    fn select_candidate(
+        &self,
+        context: &CandidateSelectionContext<'_>,
+        candidates: &[CandidateView<'_, L>],
+    ) -> Option<usize>;
+}
+
 pub trait YardbirdCostFunction<L>: CostFunction<L, Cost = u32> + Clone
 where
     L: egg::Language + egg::FromOp,
@@ -41,14 +52,9 @@ where
     }
     fn get_reads_and_writes(&self) -> ReadsAndWrites;
 
-    /// Optionally select one candidate using the complete quantified-rule
-    /// context. Returning `None` delegates to the caller's deterministic
-    /// cost-based fallback.
-    fn select_candidate(
-        &self,
-        _context: &CandidateSelectionContext<'_>,
-        _candidates: &[CandidateView<'_, L>],
-    ) -> Option<usize> {
+    /// Expose an optional learned/contextual selector. Callers can skip
+    /// candidate metadata construction entirely when this returns `None`.
+    fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<L>> {
         None
     }
 

@@ -564,6 +564,9 @@ where
             return None;
         }
 
+        let cost_function = self.cost_function.borrow();
+        let selector = cost_function.contextual_selector()?;
+        let selection_start = Instant::now();
         let ranks = self.candidate_ranks(valid_terms);
         let choices = valid_terms
             .iter()
@@ -591,17 +594,14 @@ where
             variable: &variable_name,
             bmc_depth: self.depth,
         };
-        let selection_start = Instant::now();
-        let chosen_index = self
-            .cost_function
-            .borrow()
-            .select_candidate(&context, &choices)?;
+        let chosen_index = selector.select_candidate(&context, &choices);
         if let Some(profiling) = &self.profiling {
             profiling.borrow_mut().record_timing(
                 "contextual_candidate_selection_total",
                 selection_start.elapsed(),
             );
         }
+        let chosen_index = chosen_index?;
         if chosen_index >= choices.len() {
             log::warn!(
                 "Contextual candidate selector returned out-of-range index {} for {} candidates",
@@ -906,7 +906,10 @@ mod tests {
     };
     use crate::theories::array::candidate_scope::CandidateScope;
     use crate::{
-        cost_functions::{CandidateSelectionContext, CandidateView, YardbirdCostFunction},
+        cost_functions::{
+            CandidateSelectionContext, CandidateView, ContextualCandidateSelector,
+            YardbirdCostFunction,
+        },
         problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
         quantified_rule::QuantifiedRuleCategory,
         theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
@@ -1078,6 +1081,16 @@ mod tests {
             ReadsAndWrites::default()
         }
 
+        fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<ArrayLanguage>> {
+            Some(self)
+        }
+
+        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<ArrayLanguage>> {
+            self.terms.clone()
+        }
+    }
+
+    impl ContextualCandidateSelector<ArrayLanguage> for ContextualSelector {
         fn select_candidate(
             &self,
             context: &CandidateSelectionContext<'_>,
@@ -1092,10 +1105,6 @@ mod tests {
             candidates
                 .iter()
                 .position(|candidate| candidate.expression.to_string() == "b")
-        }
-
-        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<ArrayLanguage>> {
-            self.terms.clone()
         }
     }
 
@@ -1192,6 +1201,18 @@ mod tests {
                 candidate_count: 2,
             })
         );
+    }
+
+    #[test]
+    fn contextual_selection_is_explicitly_opt_in() {
+        let ordinary_cost = ZeroCostTerms { terms: vec![] };
+        let contextual_cost = ContextualSelector {
+            terms: vec![],
+            observed: Rc::new(RefCell::new(None)),
+        };
+
+        assert!(ordinary_cost.contextual_selector().is_none());
+        assert!(contextual_cost.contextual_selector().is_some());
     }
 
     #[test]
