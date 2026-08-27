@@ -8,13 +8,15 @@ BenchmarkResult {
     used_instantiations: [
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
         "(= (Read_Int_Int (Write_Int_Int b+0 (- N (+ i+0 1)) i+0) (- N (+ i+0 1))) i+0)",
-        "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 0) (Read_Int_Int a+0 0)))",
+        "(= (Read_Int_Int (Write_Int_Int b+0 i+4 i+5) i+4) i+5)",
+        "(=> (not (= (- N (+ i+4 1)) (- N (+ i+0 1)))) (= (Read_Int_Int (Write_Int_Int b+0 (- N (+ i+0 1)) i+0) (- N (+ i+4 1))) (Read_Int_Int b+0 (- N (+ i+4 1)))))",
         "(=> (not (= 1 (- N (+ i+0 1)))) (= (Read_Int_Int (Write_Int_Int b+0 (- N (+ i+0 1)) i+0) 1) (Read_Int_Int b+0 1)))",
         "(=> (not (= 1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) 1) (Read_Int_Int a+0 1)))",
         "(=> (not (= N (- N (+ i+1 1)))) (= (Read_Int_Int (Write_Int_Int b+0 (- N (+ i+1 1)) N) N) (Read_Int_Int b+0 N)))",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) N) (Read_Int_Int a+0 N)))",
         "(=> (not (= N sum+7)) (= (Read_Int_Int (Write_Int_Int b+0 sum+7 0) N) (Read_Int_Int b+0 N)))",
-        "(=> (not (= i+6 1)) (= (Read_Int_Int (Write_Int_Int b+0 1 0) i+6) (Read_Int_Int b+0 i+6)))",
+        "(=> (not (= i+6 1)) (= (Read_Int_Int (Write_Int_Int b+0 1 i+4) i+6) (Read_Int_Int b+0 i+6)))",
         "(=> (not (= sum+4 (- N (+ i+0 1)))) (= (Read_Int_Int (Write_Int_Int b+0 (- N (+ i+0 1)) i+0) sum+4) (Read_Int_Int b+0 sum+4)))",
+        "(=> (not (= sum+5 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) sum+5) (Read_Int_Int a+0 sum+5)))",
     ],
 }
