@@ -346,12 +346,11 @@ where
                     } else {
                         "consequence_ranking"
                     };
-                    let cost = if let Some(profiling) = &self.profiling {
-                        let mut cost_fn = self.cost_fn.clone();
+                    let cost = if let Some(profiling) = self.profiling.clone() {
                         profiling.borrow_mut().record_cost(
                             cost_site,
                             cost_expression.as_ref().len(),
-                            || cost_fn.cost_rec(cost_expression),
+                            || self.cost_fn.cost_rec(cost_expression),
                         )
                     } else {
                         self.cost_fn.cost_rec(cost_expression)

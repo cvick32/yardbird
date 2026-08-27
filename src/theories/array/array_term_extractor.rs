@@ -117,7 +117,7 @@ where
     source_term_map: HashMap<egg::Id, Vec<RankedTerm>>,
     all_term_map: HashMap<egg::Id, Vec<RankedTerm>>,
     source_write_terms: FxHashSet<String>,
-    cost_function: CF,
+    cost_function: RefCell<CF>,
     refinement_step: u32,
     source_write_candidates: WriteCandidateIndex,
     all_write_candidates: WriteCandidateIndex,
@@ -251,7 +251,7 @@ where
             source_term_map,
             all_term_map,
             source_write_terms,
-            cost_function,
+            cost_function: RefCell::new(cost_function),
             refinement_step,
             source_write_candidates,
             all_write_candidates,
@@ -392,13 +392,13 @@ where
     }
 
     pub fn cost_of_at(&self, site: &'static str, expr: &ArrayExpr) -> u32 {
-        let mut cost_fn = self.cost_function.clone();
+        let mut cost_function = self.cost_function.borrow_mut();
         if let Some(profiling) = &self.profiling {
             profiling
                 .borrow_mut()
-                .record_cost(site, expr.as_ref().len(), || cost_fn.cost_rec(expr))
+                .record_cost(site, expr.as_ref().len(), || cost_function.cost_rec(expr))
         } else {
-            cost_fn.cost_rec(expr)
+            cost_function.cost_rec(expr)
         }
     }
 
@@ -592,7 +592,10 @@ where
             bmc_depth: self.depth,
         };
         let selection_start = Instant::now();
-        let chosen_index = self.cost_function.select_candidate(&context, &choices)?;
+        let chosen_index = self
+            .cost_function
+            .borrow()
+            .select_candidate(&context, &choices)?;
         if let Some(profiling) = &self.profiling {
             profiling.borrow_mut().record_timing(
                 "contextual_candidate_selection_total",
@@ -922,6 +925,21 @@ mod tests {
         calls: Rc<Cell<u32>>,
     }
 
+    struct CloneCountingCost {
+        calls: Rc<Cell<u32>>,
+        clones: Rc<Cell<u32>>,
+    }
+
+    impl Clone for CloneCountingCost {
+        fn clone(&self) -> Self {
+            self.clones.set(self.clones.get() + 1);
+            Self {
+                calls: self.calls.clone(),
+                clones: self.clones.clone(),
+            }
+        }
+    }
+
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct ObservedSelection {
         rule_name: String,
@@ -1009,6 +1027,28 @@ mod tests {
     }
 
     impl YardbirdCostFunction<ArrayLanguage> for CountingCost {
+        fn get_string_terms(&self) -> Vec<String> {
+            vec![]
+        }
+
+        fn get_reads_and_writes(&self) -> ReadsAndWrites {
+            ReadsAndWrites::default()
+        }
+    }
+
+    impl egg::CostFunction<ArrayLanguage> for CloneCountingCost {
+        type Cost = u32;
+
+        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        where
+            C: FnMut(egg::Id) -> Self::Cost,
+        {
+            self.calls.set(self.calls.get() + 1);
+            0
+        }
+    }
+
+    impl YardbirdCostFunction<ArrayLanguage> for CloneCountingCost {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1204,6 +1244,32 @@ mod tests {
         assert!(calls_after_first_extraction > 0);
         assert_eq!(extract_for_test(&extractor, &egraph, eclass), expression);
         assert_eq!(calls.get(), calls_after_first_extraction);
+    }
+
+    #[test]
+    fn repeated_cost_evaluation_reuses_the_extractors_cost_function() {
+        let egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let expression: ArrayExpr = "(+ a b)".parse().unwrap();
+        let calls = Rc::new(Cell::new(0));
+        let clones = Rc::new(Cell::new(0));
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            CloneCountingCost {
+                calls: calls.clone(),
+                clones: clones.clone(),
+            },
+            options(
+                ArrayCandidateCatalog::default(),
+                CandidateScope::AllCandidates,
+                FxHashMap::default(),
+            ),
+        );
+
+        extractor.cost_of(&expression);
+        extractor.cost_of(&expression);
+
+        assert!(calls.get() > 0);
+        assert_eq!(clones.get(), 0);
     }
 
     #[test]
