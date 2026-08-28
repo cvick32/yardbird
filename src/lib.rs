@@ -100,6 +100,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub preprocess_exact_read_after_write: bool,
 
+    /// Number of ranked array candidates selected from each refinement group.
+    #[arg(long, default_value_t = 1)]
+    pub candidate_winners_per_group: usize,
+
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
     pub ranker_model: Option<String>,
@@ -199,6 +203,7 @@ impl Default for YardbirdOptions {
             cost_function: CostFunction::BmcCost,
             egraph_builder: EGraphBuilderStrategy::Full,
             preprocess_exact_read_after_write: false,
+            candidate_winners_per_group: 1,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -415,6 +420,7 @@ impl YardbirdOptions {
         .with_artifact_capture(self.build_array_artifact_capture())
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
+        .with_candidate_winners_per_group(self.candidate_winners_per_group)
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -438,6 +444,7 @@ impl YardbirdOptions {
         .with_artifact_capture(self.build_array_artifact_capture())
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
+        .with_candidate_winners_per_group(self.candidate_winners_per_group)
     }
 
     fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {

@@ -70,6 +70,7 @@ where
     cone_attempted_depths: HashSet<u16>,
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
+    candidate_winners_per_group: usize,
 }
 
 impl<F> Abstract<F>
@@ -109,6 +110,7 @@ where
             cone_attempted_depths: HashSet::new(),
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
+            candidate_winners_per_group: 1,
         }
     }
 
@@ -125,6 +127,12 @@ where
 
     pub fn with_exact_read_after_write_preprocessing(mut self, enabled: bool) -> Self {
         self.preprocess_exact_read_after_write = enabled;
+        self
+    }
+
+    pub fn with_candidate_winners_per_group(mut self, winners_per_group: usize) -> Self {
+        assert!(winners_per_group > 0, "candidate groups need a winner");
+        self.candidate_winners_per_group = winners_per_group;
         self
     }
 }
@@ -383,6 +391,7 @@ where
             let mut summary = candidate_batch.prepare(
                 expansion.candidate_scope,
                 &known_instantiations,
+                self.candidate_winners_per_group,
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;

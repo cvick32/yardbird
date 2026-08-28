@@ -960,6 +960,7 @@ mod test {
             .prepare(
                 scope,
                 &HashSet::new(),
+                1,
                 |term| Ok(term.to_string().starts_with("(not ").to_string()),
                 |candidate| Some(candidate.expression.clone()),
             )

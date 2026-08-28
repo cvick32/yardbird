@@ -532,6 +532,7 @@ fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
                                 egraph_builder: options.egraph_builder,
                                 preprocess_exact_read_after_write: options
                                     .preprocess_exact_read_after_write,
+                                candidate_winners_per_group: 1,
                                 solver: options.solver,
                                 theory: yardbird::Theory::Array,
                                 json_output: false,
@@ -771,6 +772,7 @@ fn run_config_benchmark(
             cost_function: run.cost_function,
             egraph_builder: run.egraph_builder,
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
+            candidate_winners_per_group: 1,
             solver: run.solver,
             theory: yardbird::Theory::Array,
             json_output: false,

@@ -111,12 +111,14 @@ impl InstantiationBatch {
         &mut self,
         scope: CandidateScope,
         known: &HashSet<K>,
+        winners_per_group: usize,
         evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
         mut normalize: impl FnMut(&InstantiationCandidate) -> Option<K>,
     ) -> anyhow::Result<BatchSummary>
     where
         K: Eq + Hash,
     {
+        assert!(winners_per_group > 0, "candidate groups need a winner");
         let mut summary = BatchSummary::default();
         for candidate in &self.candidates {
             summary
@@ -128,7 +130,7 @@ impl InstantiationBatch {
 
         summary.rejected_model = self.filter_model(scope, evaluate)?;
         let mut seen = HashSet::new();
-        summary.rejected_known = self.select(scope, |candidate| {
+        summary.rejected_known = self.select(scope, winners_per_group, |candidate| {
             let Some(normalized) = normalize(candidate) else {
                 return false;
             };
@@ -187,6 +189,7 @@ impl InstantiationBatch {
     fn select(
         &mut self,
         scope: CandidateScope,
+        winners_per_group: usize,
         mut eligible: impl FnMut(&InstantiationCandidate) -> bool,
     ) -> usize {
         for candidate in &mut self.candidates {
@@ -196,7 +199,7 @@ impl InstantiationBatch {
         // Full search spends its per-e-class budget before novelty checks:
         // rejecting a winner must not promote another match from that group.
         if scope == CandidateScope::AllCandidates {
-            self.select_full_axioms();
+            self.select_full_axioms(winners_per_group);
         }
         let mut rejected = 0;
         self.candidates.retain_mut(|candidate| {
@@ -220,7 +223,7 @@ impl InstantiationBatch {
         // Guards and source-grounded axioms choose from eligible candidates.
         self.select_guards();
         if scope == CandidateScope::SourceGroundedOnly {
-            self.select_source_axiom();
+            self.select_source_axioms(winners_per_group);
         }
 
         for candidate in &mut self.candidates {
@@ -258,8 +261,8 @@ impl InstantiationBatch {
         }
     }
 
-    fn select_source_axiom(&mut self) {
-        let winner = self
+    fn select_source_axioms(&mut self, winners_per_group: usize) {
+        let mut winners = self
             .candidates
             .iter()
             .enumerate()
@@ -267,15 +270,16 @@ impl InstantiationBatch {
                 candidate.rule.category() == QuantifiedRuleCategory::ArrayAxiom
             })
             .map(|(index, _)| index)
-            .min_by(|left, right| compare_candidates(&self.candidates, *left, *right));
+            .collect::<Vec<_>>();
+        winners.sort_by(|left, right| compare_candidates(&self.candidates, *left, *right));
 
-        if let Some(winner) = winner {
+        for winner in winners.into_iter().take(winners_per_group) {
             self.candidates[winner].selected = true;
         }
     }
 
-    fn select_full_axioms(&mut self) {
-        let mut winners = HashMap::<(String, egg::Id), usize>::new();
+    fn select_full_axioms(&mut self, winners_per_group: usize) {
+        let mut groups = HashMap::<(String, egg::Id), Vec<usize>>::new();
         for candidate_index in 0..self.candidates.len() {
             let candidate = &self.candidates[candidate_index];
             if candidate.rule.category() != QuantifiedRuleCategory::ArrayAxiom {
@@ -285,16 +289,17 @@ impl InstantiationBatch {
                 continue;
             };
 
-            let winner = winners
+            groups
                 .entry((candidate.rule.name().to_string(), root))
-                .or_insert(candidate_index);
-            if candidate_precedes(&self.candidates, candidate_index, *winner) {
-                *winner = candidate_index;
-            }
+                .or_default()
+                .push(candidate_index);
         }
 
-        for winner in winners.into_values() {
-            self.candidates[winner].selected = true;
+        for mut group in groups.into_values() {
+            group.sort_by(|left, right| compare_candidates(&self.candidates, *left, *right));
+            for winner in group.into_iter().take(winners_per_group) {
+                self.candidates[winner].selected = true;
+            }
         }
     }
 }
@@ -425,6 +430,7 @@ mod tests {
             .prepare(
                 CandidateScope::AllCandidates,
                 &known,
+                1,
                 |_| Ok("false".to_string()),
                 normalized_key,
             )
@@ -463,6 +469,7 @@ mod tests {
             .prepare(
                 CandidateScope::AllCandidates,
                 &HashSet::new(),
+                1,
                 |_| Ok("false".to_string()),
                 normalized_key,
             )
@@ -510,7 +517,13 @@ mod tests {
             };
 
             let summary = batch
-                .prepare(scope, &known, |_| Ok("false".to_string()), normalized_key)
+                .prepare(
+                    scope,
+                    &known,
+                    1,
+                    |_| Ok("false".to_string()),
+                    normalized_key,
+                )
                 .unwrap();
 
             assert_eq!(summary.rejected_known, 1);
@@ -544,6 +557,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &known,
+                1,
                 |term| Ok(term.to_string().starts_with("(not ").to_string()),
                 |candidate| {
                     UnquantifiedInstantiator::rewrite_unquantified(
@@ -576,6 +590,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &known,
+                1,
                 |_| Ok("false".to_string()),
                 normalized_key,
             )
@@ -600,6 +615,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &HashSet::new(),
+                1,
                 |term| {
                     Ok(if term.to_string().contains("Read_Int_Int A") {
                         "true".to_string()
@@ -633,6 +649,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &HashSet::new(),
+                1,
                 |_| Ok("true".to_string()),
                 |candidate| Some(candidate.expression.clone()),
             )
@@ -641,6 +658,7 @@ mod tests {
             .prepare(
                 CandidateScope::AllCandidates,
                 &HashSet::new(),
+                1,
                 |_| Ok("true".to_string()),
                 |candidate| Some(candidate.expression.clone()),
             )
@@ -671,6 +689,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &HashSet::new(),
+                1,
                 |term| {
                     evaluated.push(term.to_string());
                     Ok("false".to_string())
@@ -704,6 +723,7 @@ mod tests {
                 .prepare(
                     scope,
                     &HashSet::<String>::new(),
+                    1,
                     |_| Err(anyhow::anyhow!("model evaluation failed")),
                     |_| panic!("eligibility must not run after an evaluation error"),
                 )
@@ -723,6 +743,7 @@ mod tests {
             .prepare(
                 CandidateScope::AllCandidates,
                 &HashSet::new(),
+                1,
                 |_| panic!("full-search array violations are checked in the e-graph"),
                 |candidate| Some(candidate.expression.clone()),
             )
@@ -746,6 +767,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &HashSet::new(),
+                1,
                 |_| panic!("a lazily materialized guard was already model-checked"),
                 |candidate| Some(candidate.expression.clone()),
             )
@@ -825,6 +847,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &known,
+                1,
                 |term| Ok(matches!(term.to_string().as_str(), "(= a a)" | "(= s s)").to_string()),
                 |candidate| {
                     let expression = candidate.expression.to_string();
@@ -943,6 +966,7 @@ mod tests {
             .prepare(
                 CandidateScope::SourceGroundedOnly,
                 &HashSet::new(),
+                1,
                 |_| Ok("false".to_string()),
                 |candidate| Some(candidate.expression.clone()),
             )
@@ -953,5 +977,112 @@ mod tests {
             .map(|candidate| candidate.expression.to_string())
             .collect::<Vec<_>>();
         assert_eq!(selected, vec!["first_cheap", "second", "array"]);
+    }
+
+    #[test]
+    fn source_selection_keeps_the_configured_number_of_array_winners() {
+        let array_rule = QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
+        let mut batch = InstantiationBatch {
+            candidates: vec![
+                candidate(
+                    array_rule.clone(),
+                    "expensive",
+                    10,
+                    CandidateGroup::MatchRoot(egg::Id::from(0)),
+                ),
+                candidate(
+                    array_rule.clone(),
+                    "cheapest",
+                    1,
+                    CandidateGroup::MatchRoot(egg::Id::from(1)),
+                ),
+                candidate(
+                    array_rule,
+                    "middle",
+                    5,
+                    CandidateGroup::MatchRoot(egg::Id::from(2)),
+                ),
+            ],
+        };
+
+        batch
+            .prepare(
+                CandidateScope::SourceGroundedOnly,
+                &HashSet::new(),
+                2,
+                |_| Ok("false".to_string()),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+
+        assert_eq!(
+            batch
+                .selected()
+                .map(|candidate| candidate.expression.to_string())
+                .collect::<Vec<_>>(),
+            vec!["cheapest", "middle"]
+        );
+    }
+
+    #[test]
+    fn full_selection_keeps_the_configured_number_of_winners_per_rule_and_root() {
+        let array_rule = QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
+        let mut batch = InstantiationBatch {
+            candidates: vec![
+                candidate(
+                    array_rule.clone(),
+                    "root_zero_expensive",
+                    10,
+                    CandidateGroup::MatchRoot(egg::Id::from(0)),
+                ),
+                candidate(
+                    array_rule.clone(),
+                    "root_zero_cheapest",
+                    1,
+                    CandidateGroup::MatchRoot(egg::Id::from(0)),
+                ),
+                candidate(
+                    array_rule.clone(),
+                    "root_zero_middle",
+                    5,
+                    CandidateGroup::MatchRoot(egg::Id::from(0)),
+                ),
+                candidate(
+                    array_rule.clone(),
+                    "root_one_expensive",
+                    8,
+                    CandidateGroup::MatchRoot(egg::Id::from(1)),
+                ),
+                candidate(
+                    array_rule,
+                    "root_one_cheapest",
+                    2,
+                    CandidateGroup::MatchRoot(egg::Id::from(1)),
+                ),
+            ],
+        };
+
+        batch
+            .prepare(
+                CandidateScope::AllCandidates,
+                &HashSet::new(),
+                2,
+                |_| panic!("full-search array conflicts do not require model evaluation"),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+
+        assert_eq!(
+            batch
+                .selected()
+                .map(|candidate| candidate.expression.to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                "root_zero_cheapest",
+                "root_zero_middle",
+                "root_one_expensive",
+                "root_one_cheapest",
+            ]
+        );
     }
 }
