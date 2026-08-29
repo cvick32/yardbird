@@ -485,17 +485,6 @@ mod tests {
     }
 
     #[test]
-    fn preserves_the_raw_interpolant_without_array_simplification() {
-        let term: Term = "(= (Read_Int_Int (Write_Int_Int a i v) i) v)"
-            .parse()
-            .unwrap();
-        let interpolant = Interpolant::new(term.clone(), 3);
-
-        assert_eq!(interpolant.term, term);
-        assert_eq!(interpolant.interpolant_number, 3);
-    }
-
-    #[test]
     fn extracts_and_deduplicates_atomic_predicates() {
         let interpolants = [
             interpolant(

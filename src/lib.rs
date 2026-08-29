@@ -286,6 +286,9 @@ impl YardbirdOptions {
             InstantiationStrategyType::NoUnrollOnLoop => {
                 Box::new(instantiation_strategy::no_unroll_on_loop::NoUnrollOnLoop::new())
             }
+            InstantiationStrategyType::SchemaBatch => {
+                Box::new(instantiation_strategy::schema_batch::SchemaBatchStrategy::new())
+            }
         }
     }
 
@@ -720,6 +723,7 @@ impl Display for SolverBackend {
 pub enum InstantiationStrategyType {
     FullUnroll,
     NoUnrollOnLoop,
+    SchemaBatch,
 }
 
 impl Display for InstantiationStrategyType {
@@ -727,6 +731,7 @@ impl Display for InstantiationStrategyType {
         match self {
             InstantiationStrategyType::FullUnroll => write!(f, "full-unroll"),
             InstantiationStrategyType::NoUnrollOnLoop => write!(f, "no-unroll-on-loop"),
+            InstantiationStrategyType::SchemaBatch => write!(f, "schema-batch"),
         }
     }
 }
