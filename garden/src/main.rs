@@ -84,6 +84,9 @@ struct GardenOptions {
     #[arg(long, value_enum, default_value_t = yardbird::EGraphBuilderStrategy::Full)]
     pub egraph_builder: yardbird::EGraphBuilderStrategy,
 
+    #[arg(long, value_enum, default_value_t = yardbird::InstantiationRankerStrategy::PreferSource)]
+    pub instantiation_ranker: yardbird::InstantiationRankerStrategy,
+
     #[arg(long, default_value_t = false)]
     pub preprocess_exact_read_after_write: bool,
 
@@ -167,6 +170,7 @@ struct StrategyResult {
     strategy: yardbird::Strategy,
     cost_function: yardbird::CostFunction,
     egraph_builder: yardbird::EGraphBuilderStrategy,
+    instantiation_ranker: yardbird::InstantiationRankerStrategy,
     preprocess_exact_read_after_write: bool,
     result: BenchmarkResult,
     run_time: u128,
@@ -244,6 +248,8 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .arg(options.cost_function.to_string())
         .arg("--egraph-builder")
         .arg(options.egraph_builder.to_string())
+        .arg("--instantiation-ranker")
+        .arg(options.instantiation_ranker.to_string())
         .arg("--solver")
         .arg(options.solver.to_string())
         .arg("--synthesis-trigger")
@@ -441,6 +447,7 @@ fn run_single(
             result,
             cost_function: options.cost_function,
             egraph_builder: options.egraph_builder,
+            instantiation_ranker: options.instantiation_ranker,
             preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
             run_time: run_time.as_millis(),
             depth: options.depth,
@@ -773,6 +780,7 @@ fn run_config_benchmark(
             egraph_builder: run.egraph_builder,
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
             candidate_winners_per_group: 1,
+            instantiation_ranker: run.instantiation_ranker,
             solver: run.solver,
             theory: yardbird::Theory::Array,
             json_output: false,

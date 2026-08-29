@@ -14,7 +14,9 @@ use crate::{
     theories::array::{
         array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
         array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
-        instantiation_candidate::{model_value, CandidateGroup, InstantiationCandidate},
+        instantiation_candidate::{
+            model_value, CandidateGroup, InstantiationCandidate, InstantiationGrounding,
+        },
     },
 };
 
@@ -118,7 +120,7 @@ fn search_guard_terms<CF, N>(
     rule: &TransitionGuardRule,
     egraph: &egg::EGraph<ArrayLanguage, N>,
     extractor: &ArrayTermExtractor<CF>,
-) -> Vec<ArrayExpr>
+) -> Vec<(ArrayExpr, CandidateOrigin)>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
     N: egg::Analysis<ArrayLanguage>,
@@ -140,13 +142,10 @@ where
             rule.metadata().category(),
             searcher.candidate_var,
         );
-        if extractor.requires_source_grounded_candidates() && origin == CandidateOrigin::Derived {
-            continue;
-        }
         if contains_symbol(&candidate, binder_name) {
             continue;
         }
-        terms.push(candidate);
+        terms.push((candidate, origin));
     }
 
     terms
@@ -196,7 +195,7 @@ where
     let mut rejected_model = 0;
     let mut evaluations = FxHashMap::default();
 
-    for candidate in search_guard_terms(rule, egraph, extractor) {
+    for (candidate, origin) in search_guard_terms(rule, egraph, extractor) {
         for formula in ground_guard_frames(rule, &candidate, depth, smt) {
             if !seen_formulas.insert(formula.to_string()) {
                 continue;
@@ -228,6 +227,10 @@ where
                 rule: rule.metadata().clone(),
                 expression,
                 cost,
+                grounding: match origin {
+                    CandidateOrigin::SourceGrounded => InstantiationGrounding::SourceGrounded,
+                    CandidateOrigin::Derived => InstantiationGrounding::Derived,
+                },
                 provenance,
                 selected: false,
                 decisions: vec![],

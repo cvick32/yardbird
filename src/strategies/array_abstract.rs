@@ -27,6 +27,7 @@ use crate::{
         array_rule_instantiator::ArrayArtifactCapture,
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
+        instantiation_ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
         transition_guard_instantiator::{generate_guard_candidates, supports_transition_guard},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
@@ -71,6 +72,7 @@ where
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
     candidate_winners_per_group: usize,
+    instantiation_ranker: Box<dyn InstantiationRanker>,
 }
 
 impl<F> Abstract<F>
@@ -111,6 +113,7 @@ where
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
+            instantiation_ranker: Box::new(PreferSourceInstantiationRanker),
         }
     }
 
@@ -133,6 +136,14 @@ where
     pub fn with_candidate_winners_per_group(mut self, winners_per_group: usize) -> Self {
         assert!(winners_per_group > 0, "candidate groups need a winner");
         self.candidate_winners_per_group = winners_per_group;
+        self
+    }
+
+    pub fn with_instantiation_ranker(
+        mut self,
+        instantiation_ranker: Box<dyn InstantiationRanker>,
+    ) -> Self {
+        self.instantiation_ranker = instantiation_ranker;
         self
     }
 }
@@ -388,10 +399,11 @@ where
                 },
             );
             candidate_batch.extend(array_candidates.candidates);
-            let mut summary = candidate_batch.prepare(
+            let mut summary = candidate_batch.prepare_with_ranker(
                 expansion.candidate_scope,
                 &known_instantiations,
                 self.candidate_winners_per_group,
+                self.instantiation_ranker.as_ref(),
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
@@ -411,6 +423,10 @@ where
                 profiling.add_counter(
                     "duplicate_or_uninstallable_instantiations_filtered",
                     summary.rejected_known as u64,
+                );
+                profiling.add_counter(
+                    "instantiation_ranker_candidates_filtered",
+                    summary.rejected_ranker as u64,
                 );
             }
 

@@ -25,6 +25,9 @@ use crate::{
     theories::array::{
         array_egraph_builder::{ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder},
         array_rule_instantiator::ArrayArtifactCapture,
+        instantiation_ranker::{
+            InstantiationRanker, PreferSourceInstantiationRanker, TermCostInstantiationRanker,
+        },
     },
     training::LogisticRegressionModel,
 };
@@ -103,6 +106,10 @@ pub struct YardbirdOptions {
     /// Number of ranked array candidates selected from each refinement group.
     #[arg(long, default_value_t = 1)]
     pub candidate_winners_per_group: usize,
+
+    /// Rank complete instantiations independently of the term cost function.
+    #[arg(long, value_enum, default_value_t = InstantiationRankerStrategy::PreferSource)]
+    pub instantiation_ranker: InstantiationRankerStrategy,
 
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
@@ -204,6 +211,7 @@ impl Default for YardbirdOptions {
             egraph_builder: EGraphBuilderStrategy::Full,
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
+            instantiation_ranker: InstantiationRankerStrategy::PreferSource,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -421,6 +429,7 @@ impl YardbirdOptions {
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
+        .with_instantiation_ranker(self.build_instantiation_ranker())
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -445,12 +454,27 @@ impl YardbirdOptions {
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
+        .with_instantiation_ranker(self.build_instantiation_ranker())
+    }
+
+    pub fn build_instantiation_ranker(&self) -> Box<dyn InstantiationRanker> {
+        match self.instantiation_ranker {
+            InstantiationRankerStrategy::TermCost => Box::new(TermCostInstantiationRanker),
+            InstantiationRankerStrategy::PreferSource => Box::new(PreferSourceInstantiationRanker),
+        }
     }
 
     fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {
-        match self.egraph_builder {
-            EGraphBuilderStrategy::Full => Box::<FullEGraphBuilder>::default(),
-            EGraphBuilderStrategy::ConeThenFull => Box::<ConeThenFullEGraphBuilder>::default(),
+        let prefer_source = self.instantiation_ranker == InstantiationRankerStrategy::PreferSource;
+        match (self.egraph_builder, prefer_source) {
+            (EGraphBuilderStrategy::Full, true) => Box::<FullEGraphBuilder>::default(),
+            (EGraphBuilderStrategy::Full, false) => Box::new(FullEGraphBuilder::all_candidates()),
+            (EGraphBuilderStrategy::ConeThenFull, true) => {
+                Box::<ConeThenFullEGraphBuilder>::default()
+            }
+            (EGraphBuilderStrategy::ConeThenFull, false) => {
+                Box::new(ConeThenFullEGraphBuilder::all_candidates())
+            }
         }
     }
 
@@ -632,6 +656,24 @@ pub enum CostFunction {
 pub enum EGraphBuilderStrategy {
     Full,
     ConeThenFull,
+}
+
+/// Policy for ranking complete grounded formulas after term extraction.
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, Eq, PartialEq)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum InstantiationRankerStrategy {
+    TermCost,
+    PreferSource,
+}
+
+impl Display for InstantiationRankerStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TermCost => write!(f, "term-cost"),
+            Self::PreferSource => write!(f, "prefer-source"),
+        }
+    }
 }
 
 impl Display for EGraphBuilderStrategy {

@@ -940,7 +940,10 @@ mod test {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::cost_functions::YardbirdCostFunction;
+    use crate::{
+        cost_functions::YardbirdCostFunction,
+        theories::array::instantiation_ranker::PreferSourceInstantiationRanker,
+    };
     use rustc_hash::FxHashMap;
     use smt2parser::vmt::ReadsAndWrites;
 
@@ -1340,7 +1343,7 @@ mod test {
     }
 
     #[test]
-    fn source_only_generation_does_not_emit_model_derived_join() {
+    fn source_ranker_defers_a_model_derived_join_until_full_search() {
         init();
         let expr: RecExpr<ArrayLanguage> =
             "(Read Int Int (Write Int Int A i 137) j)".parse().unwrap();
@@ -1367,10 +1370,26 @@ mod test {
             )
         };
 
-        let cone = run(CandidateScope::SourceGroundedOnly);
+        let mut cone = run(CandidateScope::SourceGroundedOnly);
         let full = run(CandidateScope::AllCandidates);
 
-        assert_eq!(cone.candidates.len(), 0);
+        assert_eq!(cone.candidates.len(), 1);
+        assert_eq!(
+            cone.candidates[0].grounding,
+            crate::theories::array::instantiation_candidate::InstantiationGrounding::Derived
+        );
+        let summary = cone
+            .prepare_with_ranker(
+                CandidateScope::SourceGroundedOnly,
+                &HashSet::new(),
+                1,
+                &PreferSourceInstantiationRanker,
+                |term| Ok(term.to_string().starts_with("(not ").to_string()),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+        assert_eq!(summary.rejected_ranker, 1);
+        assert_eq!(cone.selected().count(), 0);
         assert_eq!(full.candidates.len(), 1);
         assert_eq!(full.selected().count(), 0);
     }
