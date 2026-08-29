@@ -37,7 +37,7 @@ mod egg_utils;
 pub mod ic3ia;
 pub mod instantiation_provenance;
 pub mod instantiation_strategy;
-mod interpolant;
+pub mod interpolant;
 pub mod logger;
 pub mod problem_context;
 pub mod profiling;

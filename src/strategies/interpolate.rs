@@ -26,12 +26,9 @@ impl ProofStrategyExt<ArrayRefinementState> for Interpolating {
                     info!(
                         "Interpolant {} length: {}",
                         interp.interpolant_number,
-                        interp.simplified_term.to_string().len()
+                        interp.term.to_string().len()
                     );
-                    debug!(
-                        "Interpolant {}: {}",
-                        interp.interpolant_number, interp.simplified_term
-                    );
+                    debug!("Interpolant {}: {}", interp.interpolant_number, interp.term);
                 }
             }
             Err(err) => warn!("Error when computing interpolants: {err}"),
@@ -58,12 +55,9 @@ impl ProofStrategyExt<ListRefinementState> for Interpolating {
                     info!(
                         "Interpolant {} length: {}",
                         interp.interpolant_number,
-                        interp.simplified_term.to_string().len()
+                        interp.term.to_string().len()
                     );
-                    debug!(
-                        "Interpolant {}: {}",
-                        interp.interpolant_number, interp.simplified_term
-                    );
+                    debug!("Interpolant {}: {}", interp.interpolant_number, interp.term);
                 }
             }
             Err(err) => warn!("Error when computing interpolants: {err}"),
