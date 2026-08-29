@@ -216,6 +216,10 @@ where
         self.preprocess_exact_read_after_write
     }
 
+    fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
+        !state.candidates.is_empty() || !self.pending_aux_specs.is_empty()
+    }
+
     fn setup(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
@@ -285,8 +289,9 @@ where
                 egraph_node_count(&state.egraph),
             );
         }
-        // Loop required for egraph building, if no instantiations are found,
-        // in a semi-built egraph, we'll return here and follow the egraph expansion rules.
+        // The driver may call `sat` again with this same state after concrete
+        // validation rejects the current abstract counterexample.
+        #[allow(clippy::never_loop)]
         loop {
             let build_start = Instant::now();
             let build_step = state.egraph_builder.expand(
@@ -299,7 +304,7 @@ where
                 ArrayEGraphBuildStep::Expanded(expansion) => expansion,
                 ArrayEGraphBuildStep::Exhausted => {
                     self.finish_profiling_record(profiling);
-                    return Ok(ProofAction::ValidateConcreteCounterexample);
+                    return Err(driver::Error::AbstractionExhausted { depth: state.depth });
                 }
             };
             if let Some(profiling) = &profiling {
@@ -453,6 +458,9 @@ where
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
             }
+
+            self.finish_profiling_record(profiling);
+            return Ok(ProofAction::Continue);
         }
     }
 

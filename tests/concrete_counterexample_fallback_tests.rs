@@ -68,16 +68,15 @@ fn no_refinements_trigger_a_concrete_counterexample_check() {
 }
 
 #[test]
-fn concrete_unsat_stall_advances_to_the_next_depth() {
+fn concrete_unsat_stall_is_reported_as_abstraction_exhaustion() {
     // The abstract Write function may return a different array, but native
     // array semantics prove that storing the value already at an index is a no-op.
     let model = parse_vmt("(= (store a 0 (select a 0)) a)");
 
-    let result = check_abstract_model(model, 1).unwrap();
-
-    assert!(!result.counterexample);
-    assert_eq!(result.total_refinement_steps, 1);
-    assert_eq!(result.total_instantiations_added, 0);
+    assert!(matches!(
+        check_abstract_model(model, 1),
+        Err(Error::AbstractionExhausted { depth: 0 })
+    ));
 }
 
 #[test]

@@ -584,7 +584,7 @@ impl SmtlibRefinementRunner {
         let mut last_unsat_instantiation_count = 0;
         let mut last_unsat_stats: Option<SolverStatistics> = None;
 
-        for refinement_step in 0..max_refinements {
+        'refinement: for refinement_step in 0..max_refinements {
             info!("Refinement iteration {}", refinement_step + 1);
             total_refinement_steps += 1;
 
@@ -609,7 +609,7 @@ impl SmtlibRefinementRunner {
                 );
             }
 
-            let action = match check_result {
+            let mut action = match check_result {
                 SolverCheckResult::Unsat => {
                     info!("  Result: UNSAT");
                     unsat_events.push(Self::build_unsat_event(
@@ -639,6 +639,50 @@ impl SmtlibRefinementRunner {
                 }
             };
 
+            while matches!(action, ProofAction::Continue)
+                && !strategy.has_pending_refinement(&state)
+            {
+                info!("  Yardbird found no refinement; checking the concrete array theory");
+                let concrete_strategy: Box<
+                    dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
+                > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+                let (_, concrete_array_types) = problem.abstract_array_theory();
+                let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(
+                    problem,
+                    &concrete_strategy,
+                    SolverBackend::Z3,
+                    false,
+                    concrete_array_types,
+                    None,
+                )?;
+                let concrete_result = concrete_problem.check_current_query();
+                concrete_validation_checks += 1;
+                accumulate_solver_statistics(
+                    &mut concrete_validation_statistics,
+                    &concrete_problem.get_solver_statistics(),
+                );
+
+                match concrete_result {
+                    SolverCheckResult::Sat => {
+                        info!("  Concrete validation: SAT");
+                        counterexample = true;
+                        break 'refinement;
+                    }
+                    SolverCheckResult::Unsat => {
+                        info!("  Concrete validation: UNSAT; expanding Yardbird's e-graph");
+                        action = strategy.sat(&mut state, &smt_problem, refinement_step)?;
+                    }
+                    SolverCheckResult::Unknown => {
+                        return Err(anyhow::anyhow!(
+                            "concrete validation returned unknown: {}",
+                            concrete_problem
+                                .get_reason_unknown()
+                                .unwrap_or_else(|| "no reason given".to_string())
+                        ));
+                    }
+                }
+            }
+
             match action {
                 ProofAction::Continue => {
                     info!("  Action: Continue refinement");
@@ -656,47 +700,6 @@ impl SmtlibRefinementRunner {
                         anyhow::bail!(
                             "refinement requested another SMTLIB solve without installing a new instantiation"
                         );
-                    }
-                }
-                ProofAction::ValidateConcreteCounterexample => {
-                    info!("  Action: Abstract e-graph exhausted; validating concretely");
-                    let concrete_strategy: Box<
-                        dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
-                    > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
-                    let (_, concrete_array_types) = problem.abstract_array_theory();
-                    let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(
-                        problem,
-                        &concrete_strategy,
-                        solver_backend,
-                        false,
-                        concrete_array_types,
-                        None,
-                    )?;
-                    let concrete_result = concrete_problem.check_current_query();
-                    concrete_validation_checks += 1;
-                    accumulate_solver_statistics(
-                        &mut concrete_validation_statistics,
-                        &concrete_problem.get_solver_statistics(),
-                    );
-                    match concrete_result {
-                        SolverCheckResult::Sat => {
-                            info!("  Concrete validation: SAT");
-                            counterexample = true;
-                            break;
-                        }
-                        SolverCheckResult::Unsat => {
-                            info!("  Concrete validation: UNSAT");
-                            found_proof = true;
-                            break;
-                        }
-                        SolverCheckResult::Unknown => {
-                            return Err(anyhow::anyhow!(
-                                "concrete validation returned unknown: {}",
-                                concrete_problem
-                                    .get_reason_unknown()
-                                    .unwrap_or_else(|| "no reason given".to_string())
-                            ));
-                        }
                     }
                 }
                 ProofAction::FoundProof => {

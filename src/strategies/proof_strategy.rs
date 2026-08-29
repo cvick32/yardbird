@@ -11,7 +11,6 @@ use crate::{
 
 pub enum ProofAction {
     Continue,
-    ValidateConcreteCounterexample,
     NextDepth,
     FoundCounterexample,
     FoundProof,
@@ -34,6 +33,11 @@ pub trait ProofStrategy<'ctx, S> {
     /// array operations are abstracted into uninterpreted functions.
     fn preprocess_exact_read_after_write(&self) -> bool {
         false
+    }
+
+    /// Whether `Continue` has an actual refinement ready to install.
+    fn has_pending_refinement(&self, _state: &S) -> bool {
+        true
     }
 
     fn n_refines(&mut self) -> u32 {

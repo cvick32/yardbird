@@ -385,6 +385,9 @@ pub enum Error {
         instantiations: Vec<Term>,
     },
 
+    #[error("Abstract refinement exhausted without proving or refuting depth {depth}")]
+    AbstractionExhausted { depth: u16 },
+
     #[error("Hit refinement limit of {n_refines} at depth {depth}")]
     TooManyRefinements { n_refines: u32, depth: u16 },
 
@@ -603,7 +606,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                         measurement,
                     );
                 }
-                let action = match check_result {
+                let mut action = match check_result {
                     SolverCheckResult::Unsat => {
                         info!("  check completed");
                         let unsat_start = Instant::now();
@@ -658,6 +661,44 @@ impl<'ctx, S> Driver<'ctx, S> {
                     }
                 };
 
+                while matches!(action, ProofAction::Continue)
+                    && !strat.has_pending_refinement(&state)
+                {
+                    info!(
+                        "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
+                    );
+                    let concrete_start = Instant::now();
+                    let (concrete_result, concrete_problem) =
+                        self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
+                    concrete_validation_checks += 1;
+                    accumulate_solver_statistics(
+                        &mut concrete_validation_statistics,
+                        &concrete_problem.get_solver_statistics(),
+                    );
+                    if let Some(record) = &mut driver_record {
+                        record.record_timing("concrete_validation", concrete_start.elapsed());
+                    }
+
+                    match concrete_result {
+                        SolverCheckResult::Sat => {
+                            info!("Concrete counterexample found at depth {depth}");
+                            info!("Counterexample:\n{}", concrete_problem.model_to_string()?);
+                            return Err(Error::Counterexample);
+                        }
+                        SolverCheckResult::Unsat => {
+                            info!(
+                                "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
+                            );
+                            action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                        }
+                        SolverCheckResult::Unknown => {
+                            return Err(Error::SolverUnknown(
+                                concrete_problem.get_reason_unknown(),
+                            ));
+                        }
+                    }
+                }
+
                 match action {
                     ProofAction::Continue => {
                         let finish_start = Instant::now();
@@ -690,55 +731,6 @@ impl<'ctx, S> Driver<'ctx, S> {
                                     "continue",
                                     smt_problem.get_instantiations().len(),
                                     smt_problem.get_number_instantiations_added(),
-                                ));
-                            }
-                        }
-                    }
-                    ProofAction::ValidateConcreteCounterexample => {
-                        info!(
-                            "Abstract e-graph search exhausted at depth {depth}; checking the concrete array theory"
-                        );
-                        let concrete_start = Instant::now();
-                        let (concrete_result, concrete_problem) =
-                            self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
-                        concrete_validation_checks += 1;
-                        accumulate_solver_statistics(
-                            &mut concrete_validation_statistics,
-                            &concrete_problem.get_solver_statistics(),
-                        );
-
-                        if let Some(mut record) = driver_record {
-                            record.record_timing("concrete_validation", concrete_start.elapsed());
-                            record.record_timing("driver_step_total", step_start.elapsed());
-                            if let Some(profiler) = &mut profiler {
-                                let action = match concrete_result {
-                                    SolverCheckResult::Sat => "concrete_counterexample",
-                                    SolverCheckResult::Unsat => "concrete_next_depth",
-                                    SolverCheckResult::Unknown => "concrete_unknown",
-                                };
-                                profiler.add_driver_record(record.finish(
-                                    action,
-                                    smt_problem.get_instantiations().len(),
-                                    smt_problem.get_number_instantiations_added(),
-                                ));
-                            }
-                        }
-
-                        match concrete_result {
-                            SolverCheckResult::Sat => {
-                                info!("Concrete counterexample found at depth {depth}");
-                                info!("Counterexample:\n{}", concrete_problem.model_to_string()?);
-                                return Err(Error::Counterexample);
-                            }
-                            SolverCheckResult::Unsat => {
-                                info!(
-                                    "Concrete array theory ruled out counterexamples at depth {depth}"
-                                );
-                                continue 'bmc;
-                            }
-                            SolverCheckResult::Unknown => {
-                                return Err(Error::SolverUnknown(
-                                    concrete_problem.get_reason_unknown(),
                                 ));
                             }
                         }
