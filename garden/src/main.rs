@@ -474,135 +474,6 @@ fn get_git_commit() -> Option<String> {
         })
 }
 
-fn run_legacy_mode(options: GardenOptions) -> anyhow::Result<()> {
-    if options.solver_capture_root.is_some() {
-        return Err(anyhow!(
-            "--solver-capture-root requires --config so capture paths can be assigned to matrix results"
-        ));
-    }
-    let examples = options
-        .clone()
-        .examples
-        .unwrap_or_else(|| PathBuf::from("examples"));
-    let depth = options.depth.unwrap_or(10);
-    let timeout = options.timeout.unwrap_or(30);
-    let retry = options.retry.unwrap_or(2);
-    let cost_function = options
-        .cost_function
-        .unwrap_or(yardbird::CostFunction::BmcCost);
-    let training_run_version = effective_training_run_version(&options);
-
-    let include: Vec<_> = options
-        .include
-        .iter()
-        .map(|skip| Pattern::new(skip))
-        .collect::<Result<_, _>>()?;
-
-    let exclude: Vec<_> = options
-        .skip
-        .iter()
-        .map(|skip| Pattern::new(skip))
-        .collect::<Result<_, _>>()?;
-
-    let benchmarks = discover_benchmarks(
-        &examples,
-        &include,
-        &exclude,
-        options.limit,
-        options.sample_seed.unwrap_or(0),
-        options.require_array_reads_and_writes,
-    )?;
-
-    let results: Vec<_> = benchmarks
-        .iter()
-        .enumerate()
-        .map(|(idx, filename)| {
-            println!("[{}/{}] {filename}", idx + 1, benchmarks.len());
-            Ok(Benchmark {
-                example: filename.clone(),
-                result: options
-                    .strategy
-                    .iter()
-                    .map(|strat| {
-                        println!("  using strat: {strat:?}");
-                        run_single(
-                            YardbirdOptions {
-                                command: None,
-                                filename: Some(filename.clone()),
-                                depth,
-                                print_file: false,
-                                interpolate: false,
-                                repl: false,
-                                strategy: *strat,
-                                run_ic3ia: options.run_ic3ia,
-                                cost_function,
-                                egraph_builder: options.egraph_builder,
-                                preprocess_exact_read_after_write: options
-                                    .preprocess_exact_read_after_write,
-                                candidate_winners_per_group: 1,
-                                solver: options.solver,
-                                theory: yardbird::Theory::Array,
-                                json_output: false,
-                                dump_solver: None,
-                                track_instantiations: options.track_instantiations,
-                                dump_unsat_core: None,
-                                instantiation_strategy:
-                                    yardbird::InstantiationStrategyType::FullUnroll,
-                                train: options.train,
-                                train_reset: false,
-                                database_url: options.database_url.clone(),
-                                training_run_version: training_run_version.clone(),
-                                verbose: false,
-                                profile: options.profile,
-                                solver_capture_dir: None,
-                                record_decisions: options.record_decisions,
-                                synthesis_trigger: options.synthesis_trigger,
-                                synthesis_guard_policy: options.synthesis_guard_policy,
-                                synthesis_after: options.synthesis_after,
-                                synthesis_refinement_limit_window: options
-                                    .synthesis_refinement_limit_window,
-                                synthesis_repeated_pattern_threshold: options
-                                    .synthesis_repeated_pattern_threshold,
-                                ranker_model: options.ranker_model.clone(),
-                            },
-                            retry,
-                            timeout,
-                        )
-                    })
-                    .collect::<anyhow::Result<_>>()?,
-            })
-        })
-        .collect::<anyhow::Result<_>>()?;
-
-    let suite = BenchmarkSuite {
-        metadata: SuiteMetadata {
-            timestamp: Utc::now(),
-            git_commit: get_git_commit(),
-            config_name: None,
-            total_benchmarks: results.len(),
-            yardbird_version: env!("CARGO_PKG_VERSION").to_string(),
-        },
-        benchmarks: results,
-    };
-
-    if let Some(output) = options.output {
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(output)?;
-        if options.pretty {
-            serde_json::to_writer_pretty(file, &suite)?;
-        } else {
-            serde_json::to_writer(file, &suite)?;
-        }
-    } else {
-        println!("{}", serde_json::to_string_pretty(&suite)?);
-    }
-
-    Ok(())
-}
-
 fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
     let runs = config.generate_benchmark_runs(options.matrix.as_deref())?;
     let training_run_version = effective_training_run_version(&options);
@@ -976,7 +847,7 @@ fn main() -> anyhow::Result<()> {
         let config = BenchmarkConfig::from_file(config_path)?;
         run_config_based(options, config)
     } else {
-        run_legacy_mode(options)
+        panic!("Benchmark configuration file required.")
     }
 }
 
