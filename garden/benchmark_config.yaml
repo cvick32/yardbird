@@ -66,6 +66,13 @@ parameter_matrices:
     cost_functions: ["bmc-cost"]
     timeout_seconds: 120
 
+  deep-abstract-instantiation-rankers:
+    depths: [50]
+    strategies: ["abstract"]
+    cost_functions: ["bmc-cost"]
+    instantiation_rankers: ["term-cost", "prefer-source"]
+    timeout_seconds: 120
+
   deep-abstract-cone-then-full:
     depths: [50]
     strategies: ["abstract"]
