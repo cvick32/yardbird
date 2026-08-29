@@ -104,6 +104,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = 1)]
     pub candidate_winners_per_group: usize,
 
+    /// How array VMT property checks are presented to the incremental solver.
+    #[arg(long, value_enum, default_value_t = crate::solver::PropertyCheckMode::Scoped)]
+    pub property_check_mode: crate::solver::PropertyCheckMode,
+
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
     pub ranker_model: Option<String>,
@@ -204,6 +208,7 @@ impl Default for YardbirdOptions {
             egraph_builder: EGraphBuilderStrategy::Full,
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
+            property_check_mode: crate::solver::PropertyCheckMode::Scoped,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -421,6 +426,7 @@ impl YardbirdOptions {
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
+        .with_property_check_mode(self.property_check_mode)
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -445,6 +451,7 @@ impl YardbirdOptions {
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
+        .with_property_check_mode(self.property_check_mode)
     }
 
     fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {
@@ -497,9 +504,13 @@ impl YardbirdOptions {
                 AbstractArrayWithQuantifiers::new(self.run_ic3ia)
                     .with_exact_read_after_write_preprocessing(
                         self.preprocess_exact_read_after_write,
-                    ),
+                    )
+                    .with_property_check_mode(self.property_check_mode),
             ),
-            Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
+            Strategy::Concrete => Box::new(
+                ConcreteArrayZ3::new(self.run_ic3ia)
+                    .with_property_check_mode(self.property_check_mode),
+            ),
         }
     }
 
@@ -542,9 +553,13 @@ impl YardbirdOptions {
                 AbstractArrayWithQuantifiers::new(self.run_ic3ia)
                     .with_exact_read_after_write_preprocessing(
                         self.preprocess_exact_read_after_write,
-                    ),
+                    )
+                    .with_property_check_mode(self.property_check_mode),
             ),
-            Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
+            Strategy::Concrete => Box::new(
+                ConcreteArrayZ3::new(self.run_ic3ia)
+                    .with_property_check_mode(self.property_check_mode),
+            ),
         }
     }
 

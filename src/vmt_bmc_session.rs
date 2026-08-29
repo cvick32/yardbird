@@ -6,7 +6,7 @@ use std::{
 
 use log::debug;
 use smt2parser::{
-    concrete::{Command, Term},
+    concrete::{Command, QualIdentifier, Symbol, Term},
     vmt::{
         bmc::BMCBuilder,
         definition_graph::DefinitionFrameInfo,
@@ -32,7 +32,7 @@ use crate::{
     profiling::{SolverCheckMeasurement, SolverProfileMetadata},
     solver::{
         check::{run_solver_check, SolverCheckRequest},
-        new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
+        new_solver_backend, PropertyCheckMode, SolverCapture, SolverCheckResult, YardbirdSolver,
     },
     strategies::ProofStrategy,
     subterm_handler::SubtermHandler,
@@ -69,6 +69,9 @@ pub struct VmtBmcSession {
     init_assertion: Term,
     trans_assertion: Term,
     property_assertion: Term,
+    property_check_mode: PropertyCheckMode,
+    property_activation_assertions: Vec<Term>,
+    current_property_assumption: Option<Term>,
     init_and_transition_assertions: Vec<NamedAssertion>,
     model_axioms: Vec<Term>,
     model_axiom_assertions: Vec<Term>,
@@ -168,6 +171,7 @@ impl VmtBmcSession {
         let init_assertion = vmt_model.get_initial_condition_for_yardbird();
         let trans_assertion = vmt_model.get_trans_condition_for_yardbird();
         let property_assertion = vmt_model.get_property_for_yardbird();
+        let property_check_mode = strategy.property_check_mode();
         let model_axioms = vmt_model.get_axioms();
         let theory = strategy.get_theory_support();
         let mut logic_terms = vec![&init_assertion, &trans_assertion, &property_assertion];
@@ -189,6 +193,9 @@ impl VmtBmcSession {
             init_assertion,
             trans_assertion,
             property_assertion,
+            property_check_mode,
+            property_activation_assertions: vec![],
+            current_property_assumption: None,
             init_and_transition_assertions: vec![],
             model_axioms,
             model_axiom_assertions: vec![],
@@ -363,6 +370,38 @@ impl VmtBmcSession {
         self.subterm_handler
             .register_property_support(&materialized.support);
         self.install_materialized_support(&materialized);
+        self.current_property_assumption = None;
+
+        if self.property_check_mode == PropertyCheckMode::Assumptions {
+            let property = self.subterm_handler.get_property_assert();
+            self.install_property_activation(&property);
+        }
+    }
+
+    fn install_property_activation(&mut self, property: &Term) {
+        debug_assert!(self.current_property_assumption.is_none());
+        let activation_name = format!("yardbird_property_depth_{}", self.depth);
+        self.solver
+            .accept_command(&Command::DeclareFun {
+                symbol: Symbol(activation_name.clone()),
+                parameters: vec![],
+                sort: crate::theory_support::bool_sort(),
+            })
+            .expect("solver should declare the property activation literal");
+        let activation = Term::QualIdentifier(QualIdentifier::simple(activation_name));
+        let negated_property = Term::Application {
+            qual_identifier: QualIdentifier::simple("not"),
+            arguments: vec![property.clone()],
+        };
+        let guarded_property = Term::Application {
+            qual_identifier: QualIdentifier::simple("=>"),
+            arguments: vec![activation.clone(), negated_property],
+        };
+        self.solver
+            .assert_term(&guarded_property)
+            .expect("solver should assert the guarded negated property");
+        self.property_activation_assertions.push(guarded_property);
+        self.current_property_assumption = Some(activation);
     }
 
     fn materialize(&mut self, term: Term) -> MaterializedTerm {
@@ -426,6 +465,7 @@ impl VmtBmcSession {
         }
         result
     }
+
     pub(crate) fn to_smtinterpol(&self) -> String {
         let sort_names = unique_command_lines(&self.sorts);
         let function_definitions = unique_command_lines(&self.function_definitions);
@@ -782,21 +822,30 @@ impl VmtBmcSession {
 }
 
 impl VmtBmcSession {
-    /// Checks the satisfiability of BMC `self.bmc_builder.depth`. Handles pushing and popping the property
-    /// off of the solver. Keeping the invariant of the property never being on the solver until check
-    /// time allows us to not worry about when to add instances and other facts to the solver.
+    /// Checks the satisfiability of BMC `self.bmc_builder.depth` under the
+    /// negated property. Scoped checks push the property temporarily;
+    /// assumption checks enable a permanently guarded property literal.
     ///
     /// NOTE: We have to get the model here and set it because once we pop the solver, that model will
     /// be lost.
     pub(crate) fn check_property(&mut self) -> SolverCheckResult {
         self.last_check_profile.clear();
         self.last_solver_check_profile = None;
+        let using_assumptions = self.current_property_assumption.is_some();
+        let property_assertion_count =
+            self.property_activation_assertions.len() + usize::from(!using_assumptions);
         let assertion_count = (self.model_axiom_assertions.len()
             + self.theory_axiom_assertions.len()
             + self.init_and_transition_assertions.len()
             + self.asserted_instantiation_terms.len()
-            + 1) as u64;
+            + property_assertion_count) as u64;
         let property = self.subterm_handler.get_property_assert();
+        let assumptions = self
+            .current_property_assumption
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let temporary_negated_property = (!using_assumptions).then_some(&property);
         let model_terms = self
             .subterm_handler
             .get_all_subterms()
@@ -808,7 +857,8 @@ impl VmtBmcSession {
             SolverCheckRequest {
                 profiling_enabled: self.collect_check_profiles,
                 assertion_count,
-                temporary_negated_property: Some(&property),
+                temporary_negated_property,
+                assumptions: &assumptions,
                 model_terms: Some(&model_terms),
                 capture_unsat_core: self.track_instantiations,
             },
@@ -841,6 +891,13 @@ impl VmtBmcSession {
                 nanos_to_secs(timing.total_check_handling),
             );
             self.last_solver_check_profile = Some(measurement);
+        }
+
+        if outcome.result == SolverCheckResult::Sat
+            && self.property_check_mode == PropertyCheckMode::RefinementAssumptions
+            && self.current_property_assumption.is_none()
+        {
+            self.install_property_activation(&property);
         }
 
         self.solver.complete_check();
@@ -1073,7 +1130,9 @@ mod tests {
             NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
         },
         cost_functions::array::ArrayBMCCost,
-        instantiation_strategy::full_unroll::FullUnrollStrategy,
+        instantiation_strategy::{
+            full_unroll::FullUnrollStrategy, schema_batch::SchemaBatchStrategy,
+        },
         strategies::{Abstract, ArrayRefinementState, ConcreteArrayZ3, ProofStrategy},
     };
 
@@ -1105,6 +1164,75 @@ mod tests {
 
         assert!(output.contains("(assert (! (= i@0 0) :named yardbird_init_0))"));
         assert!(output.contains("(assert (! (= i@1 (+ i@0 1)) :named yardbird_trans_0_to_1))"));
+    }
+
+    #[test]
+    fn schema_batch_piggybacks_stored_placements_on_normal_generation() {
+        let input = br#"
+            (declare-fun x () Int)
+            (declare-fun x_next () Int)
+            (define-fun .x () Int (! x :next x_next))
+            (declare-fun a () (Array Int Int))
+            (declare-fun a_next () (Array Int Int))
+            (define-fun .a () (Array Int Int) (! a :next a_next))
+            (define-fun init () Bool (!
+                (and (= x 0) (= a ((as const (Array Int Int)) 0)))
+                :init true))
+            (define-fun transition () Bool (!
+                (and (= x_next (+ x 1)) (= a_next a))
+                :trans true))
+            (define-fun property () Bool (! false :invar-property 0))
+        "#;
+        let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut concrete_strategy = ConcreteArrayZ3::new(false);
+        let model = concrete_strategy.configure_model(model);
+        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(concrete_strategy);
+        let mut smt = VmtBmcSession::new(
+            &model,
+            &strategy,
+            SolverBackend::Z3,
+            false,
+            Box::new(SchemaBatchStrategy::new()),
+            false,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+        for term in ["(<= x@0 0)", "(= x@0 0)"] {
+            let instance =
+                ProblemContext::make_unquantified_instance(&smt, term.parse::<Term>().unwrap())
+                    .unwrap();
+            let result = smt.add_instantiation(InstantiationRequest::untracked(instance));
+            assert!(result.abstract_instance_added);
+            assert_eq!(result.indexed_assertions_added, 0);
+        }
+
+        smt.unroll(1);
+        assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+        let trigger =
+            ProblemContext::make_unquantified_instance(&smt, "(>= x@0 0)".parse::<Term>().unwrap())
+                .unwrap();
+        let result = smt.add_instantiation(InstantiationRequest::untracked(trigger));
+
+        assert!(result.abstract_instance_added);
+        assert_eq!(result.indexed_assertions_added, 0);
+        assert_eq!(smt.get_number_instantiations_added(), 2);
+        assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+        assert_eq!(
+            smt.get_solver_statistics()
+                .get_f64("yardbird.schema placement violations"),
+            Some(2.0)
+        );
+        assert_eq!(
+            smt.get_solver_statistics()
+                .get_f64("yardbird.schema batch passes"),
+            Some(2.0)
+        );
     }
 
     #[test]

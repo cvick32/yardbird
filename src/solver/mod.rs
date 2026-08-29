@@ -12,7 +12,7 @@ use crate::SolverBackend;
 #[cfg(feature = "cvc5-backend")]
 use self::cvc5::Cvc5SolverBackend;
 use self::z3::Z3SolverBackend;
-pub use api::{SolverCheckResult, YardbirdSolver};
+pub use api::{PropertyCheckMode, SolverCheckResult, YardbirdSolver};
 pub use capture::{
     CaptureArtifacts, SolverCapture, SolverSessionCheckIndex, SolverSessionIndex,
     SolverSessionManifest,

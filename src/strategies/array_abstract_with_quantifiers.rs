@@ -4,6 +4,7 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     driver::{self},
     ic3ia::{self, ic3ia_output_contains_proof},
+    solver::PropertyCheckMode,
     strategies::ArrayRefinementState,
     theory_support::{ArrayWithQuantifiersTheorySupport, TheorySupport},
     ProofLoopResult,
@@ -15,6 +16,7 @@ pub struct AbstractArrayWithQuantifiers {
     run_ic3ia: bool,
     discovered_array_types: Vec<(String, String)>,
     preprocess_exact_read_after_write: bool,
+    property_check_mode: PropertyCheckMode,
 }
 
 impl AbstractArrayWithQuantifiers {
@@ -23,6 +25,7 @@ impl AbstractArrayWithQuantifiers {
             run_ic3ia,
             discovered_array_types: vec![],
             preprocess_exact_read_after_write: false,
+            property_check_mode: PropertyCheckMode::Scoped,
         }
     }
 
@@ -30,9 +33,18 @@ impl AbstractArrayWithQuantifiers {
         self.preprocess_exact_read_after_write = enabled;
         self
     }
+
+    pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
+        self.property_check_mode = mode;
+        self
+    }
 }
 
 impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
+    fn property_check_mode(&self) -> PropertyCheckMode {
+        self.property_check_mode
+    }
+
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ArrayWithQuantifiersTheorySupport::new(
             self.discovered_array_types.clone(),

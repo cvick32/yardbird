@@ -15,6 +15,7 @@ use crate::{
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     quantified_rule::TransitionGuardRule,
+    solver::PropertyCheckMode,
     theories::array::{
         array_axioms::{
             expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
@@ -71,6 +72,7 @@ where
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
     candidate_winners_per_group: usize,
+    property_check_mode: PropertyCheckMode,
 }
 
 impl<F> Abstract<F>
@@ -111,6 +113,7 @@ where
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
+            property_check_mode: PropertyCheckMode::Scoped,
         }
     }
 
@@ -133,6 +136,11 @@ where
     pub fn with_candidate_winners_per_group(mut self, winners_per_group: usize) -> Self {
         assert!(winners_per_group > 0, "candidate groups need a winner");
         self.candidate_winners_per_group = winners_per_group;
+        self
+    }
+
+    pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
+        self.property_check_mode = mode;
         self
     }
 }
@@ -159,6 +167,10 @@ where
 {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ArrayTheorySupport::new(self.discovered_array_types.clone()))
+    }
+
+    fn property_check_mode(&self) -> PropertyCheckMode {
+        self.property_check_mode
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {

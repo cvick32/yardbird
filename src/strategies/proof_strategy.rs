@@ -4,6 +4,7 @@ use crate::{
     driver::{self, Error},
     problem_context::ProblemContext,
     profiling::ProfilingRecord,
+    solver::PropertyCheckMode,
     theory_support::TheorySupport,
     training::{AbstractInstantiationRecord, DecisionRecord},
     ProofLoopResult,
@@ -34,6 +35,11 @@ pub trait ProofStrategy<'ctx, S> {
     /// array operations are abstracted into uninterpreted functions.
     fn preprocess_exact_read_after_write(&self) -> bool {
         false
+    }
+
+    /// Select how VMT property queries are presented to the incremental solver.
+    fn property_check_mode(&self) -> PropertyCheckMode {
+        PropertyCheckMode::Scoped
     }
 
     fn n_refines(&mut self) -> u32 {

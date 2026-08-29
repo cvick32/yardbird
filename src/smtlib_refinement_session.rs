@@ -438,6 +438,7 @@ impl SmtlibRefinementSession {
                 profiling_enabled: self.collect_check_profiles,
                 assertion_count,
                 temporary_negated_property: None,
+                assumptions: &[],
                 model_terms: Some(&self.assertions),
                 capture_unsat_core: self.track_instantiations,
             },
