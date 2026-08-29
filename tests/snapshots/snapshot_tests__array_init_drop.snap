@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 753
 expression: run_benchmark (& path)
 ---
 BenchmarkResult {
@@ -9,9 +10,7 @@ BenchmarkResult {
         "(= (Read_Int_Int (Write_Int_Int a+0 0 0) 0) 0)",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 (- i+0 1)) 1)) i+0) (- (Read_Int_Int a+0 (- i+0 1)) 1))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) i+0) i+0)",
-        "(=> (not (= Z 1)) (= (Read_Int_Int (Write_Int_Int a+0 1 (- i+0 1)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 (- i+0 1)) 1)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 i+0) Z) (Read_Int_Int a+0 Z)))",
-        "(=> (not (= i+1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (- (Read_Int_Int a+0 (- i+0 1)) 1)) i+1) (Read_Int_Int a+0 i+1)))",
     ],
 }

@@ -1,5 +1,6 @@
 ---
 source: tests/snapshot_tests.rs
+assertion_line: 753
 expression: run_benchmark (& path)
 ---
 BenchmarkResult {
@@ -8,16 +9,10 @@ BenchmarkResult {
     used_instantiations: [
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) i+0) (+ (Read_Int_Int a+0 i+0) j+0))",
         "(= (Read_Int_Int (Write_Int_Int a+0 i+0 j+0) i+0) j+0)",
-        "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) 0) (Read_Int_Int a+0 0)))",
+        "(=> (not (= 0 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 j+0) 0) (Read_Int_Int a+0 0)))",
         "(=> (not (= N i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 j+0) N) (Read_Int_Int a+0 N)))",
-        "(=> (not (= Z 0)) (= (Read_Int_Int (Write_Int_Int a+0 0 13255) Z) (Read_Int_Int a+0 Z)))",
-        "(=> (not (= Z 0)) (= (Read_Int_Int (Write_Int_Int a+0 0 3133) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 j+0) Z) (Read_Int_Int a+0 Z)))",
-        "(=> (not (= i+0 i+1)) (= (Read_Int_Int (Write_Int_Int a+1 i+1 j+1) i+0) (Read_Int_Int a+1 i+0)))",
-        "(=> (not (= i+1 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) i+1) (Read_Int_Int a+0 i+1)))",
-        "(=> (not (= i+2 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) i+2) (Read_Int_Int a+0 i+2)))",
         "(=> (not (= i+4 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) i+4) (Read_Int_Int a+0 i+4)))",
-        "(=> (not (= i+5 i+0)) (= (Read_Int_Int (Write_Int_Int a+0 i+0 (+ (Read_Int_Int a+0 i+0) j+0)) i+5) (Read_Int_Int a+0 i+5)))",
     ],
 }
