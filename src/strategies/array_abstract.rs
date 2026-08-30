@@ -150,7 +150,7 @@ where
         self.instantiation_ranker = instantiation_ranker;
         self
     }
-  
+
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
         self.property_check_mode = mode;
         self

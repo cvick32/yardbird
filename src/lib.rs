@@ -113,7 +113,7 @@ pub struct YardbirdOptions {
     /// Rank complete instantiations independently of the term cost function.
     #[arg(long, value_enum, default_value_t = InstantiationRankerStrategy::PreferSource)]
     pub instantiation_ranker: InstantiationRankerStrategy,
-  
+
     /// How array VMT property checks are presented to the incremental solver.
     #[arg(long, value_enum, default_value_t = crate::solver::PropertyCheckMode::Scoped)]
     pub property_check_mode: crate::solver::PropertyCheckMode,

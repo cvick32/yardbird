@@ -40,7 +40,7 @@ pub trait ProofStrategy<'ctx, S> {
     fn has_pending_refinement(&self, _state: &S) -> bool {
         true
     }
-  
+
     /// Select how VMT property queries are presented to the incremental solver.
     fn property_check_mode(&self) -> PropertyCheckMode {
         PropertyCheckMode::Scoped

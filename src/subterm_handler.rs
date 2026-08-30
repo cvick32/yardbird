@@ -220,8 +220,7 @@ impl SubtermHandler {
     }
 
     pub(crate) fn get_property_assert(&self) -> Term {
-        self
-            .prop_assert
+        self.prop_assert
             .clone()
             .expect("property assertion should be generated before solver checks")
     }
@@ -294,10 +293,9 @@ mod tests {
     fn property_assert_preserves_lambda_terms_without_reparsing() {
         let init: Term = "true".parse().unwrap();
         let trans: Term = "true".parse().unwrap();
-        let prop: Term =
-            "(= (select responses N) (lambda ((|P:response| response)) false))"
-                .parse()
-                .unwrap();
+        let prop: Term = "(= (select responses N) (lambda ((|P:response| response)) false))"
+            .parse()
+            .unwrap();
         let mut handler = SubtermHandler::new(init, trans, prop.clone());
         let mut builder = BMCBuilder::new(vec![], HashMap::new());
 
