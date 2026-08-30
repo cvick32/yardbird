@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use yardbird::{CostFunction, EGraphBuilderStrategy, SolverBackend, Strategy};
+use yardbird::{
+    CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, SolverBackend, Strategy,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
@@ -55,6 +57,8 @@ pub struct ParameterMatrix {
     pub cost_functions: Vec<CostFunction>,
     #[serde(default = "default_egraph_builders")]
     pub egraph_builders: Vec<EGraphBuilderStrategy>,
+    #[serde(default = "default_instantiation_rankers")]
+    pub instantiation_rankers: Vec<InstantiationRankerStrategy>,
     #[serde(default)]
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
@@ -70,11 +74,19 @@ fn default_solvers() -> Vec<SolverBackend> {
 }
 
 fn default_egraph_builder() -> EGraphBuilderStrategy {
-    EGraphBuilderStrategy::Full
+    EGraphBuilderStrategy::SourceThenFull
 }
 
 fn default_egraph_builders() -> Vec<EGraphBuilderStrategy> {
     vec![default_egraph_builder()]
+}
+
+fn default_instantiation_ranker() -> InstantiationRankerStrategy {
+    InstantiationRankerStrategy::PreferSource
+}
+
+fn default_instantiation_rankers() -> Vec<InstantiationRankerStrategy> {
+    vec![default_instantiation_ranker()]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +99,8 @@ pub struct IndividualConfig {
     pub cost_function: CostFunction,
     #[serde(default = "default_egraph_builder")]
     pub egraph_builder: EGraphBuilderStrategy,
+    #[serde(default = "default_instantiation_ranker")]
+    pub instantiation_ranker: InstantiationRankerStrategy,
     #[serde(default)]
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
@@ -151,6 +165,7 @@ pub struct BenchmarkRun {
     pub strategy: Strategy,
     pub cost_function: CostFunction,
     pub egraph_builder: EGraphBuilderStrategy,
+    pub instantiation_ranker: InstantiationRankerStrategy,
     pub preprocess_exact_read_after_write: bool,
     pub timeout_seconds: u64,
 }
@@ -161,16 +176,23 @@ fn matrix_run_name(
     solver: SolverBackend,
     strategy: Strategy,
     cost_function: CostFunction,
-    egraph_builder: EGraphBuilderStrategy,
+    selection: (EGraphBuilderStrategy, InstantiationRankerStrategy),
     preprocess_exact_read_after_write: bool,
 ) -> String {
+    let (egraph_builder, instantiation_ranker) = selection;
     let base = format!(
         "{}_d{}_solver{:?}_s{:?}_c{:?}",
         matrix_name, depth, solver, strategy, cost_function
     );
     let name = match egraph_builder {
         EGraphBuilderStrategy::Full => base,
-        EGraphBuilderStrategy::ConeThenFull => format!("{base}_e{egraph_builder:?}"),
+        EGraphBuilderStrategy::SourceThenFull | EGraphBuilderStrategy::ConeThenFull => {
+            format!("{base}_e{egraph_builder:?}")
+        }
+    };
+    let name = match instantiation_ranker {
+        InstantiationRankerStrategy::PreferSource => name,
+        InstantiationRankerStrategy::TermCost => format!("{name}_r{instantiation_ranker:?}"),
     };
     if preprocess_exact_read_after_write {
         format!("{name}_preprocessExactReadAfterWrite")
@@ -206,6 +228,7 @@ impl BenchmarkConfig {
                     strategy: config.strategy,
                     cost_function: config.cost_function,
                     egraph_builder: config.egraph_builder,
+                    instantiation_ranker: config.instantiation_ranker,
                     preprocess_exact_read_after_write: config.preprocess_exact_read_after_write,
                     timeout_seconds: config
                         .timeout_seconds
@@ -232,27 +255,30 @@ impl BenchmarkConfig {
                 for &strategy in &matrix.strategies {
                     for &cost_function in &matrix.cost_functions {
                         for &egraph_builder in &matrix.egraph_builders {
-                            runs.push(BenchmarkRun {
-                                name: matrix_run_name(
-                                    matrix_name,
+                            for &instantiation_ranker in &matrix.instantiation_rankers {
+                                runs.push(BenchmarkRun {
+                                    name: matrix_run_name(
+                                        matrix_name,
+                                        depth,
+                                        solver,
+                                        strategy,
+                                        cost_function,
+                                        (egraph_builder, instantiation_ranker),
+                                        matrix.preprocess_exact_read_after_write,
+                                    ),
                                     depth,
                                     solver,
                                     strategy,
                                     cost_function,
                                     egraph_builder,
-                                    matrix.preprocess_exact_read_after_write,
-                                ),
-                                depth,
-                                solver,
-                                strategy,
-                                cost_function,
-                                egraph_builder,
-                                preprocess_exact_read_after_write: matrix
-                                    .preprocess_exact_read_after_write,
-                                timeout_seconds: matrix
-                                    .timeout_seconds
-                                    .unwrap_or(self.global.timeout_seconds),
-                            });
+                                    instantiation_ranker,
+                                    preprocess_exact_read_after_write: matrix
+                                        .preprocess_exact_read_after_write,
+                                    timeout_seconds: matrix
+                                        .timeout_seconds
+                                        .unwrap_or(self.global.timeout_seconds),
+                                });
+                            }
                         }
                     }
                 }
@@ -267,7 +293,9 @@ mod tests {
     use std::path::PathBuf;
 
     use super::{matrix_run_name, BenchmarkConfig};
-    use yardbird::{CostFunction, EGraphBuilderStrategy, SolverBackend, Strategy};
+    use yardbird::{
+        CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, SolverBackend, Strategy,
+    };
 
     #[test]
     fn older_global_configs_receive_sampling_defaults() {
@@ -298,7 +326,10 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            EGraphBuilderStrategy::Full,
+            (
+                EGraphBuilderStrategy::Full,
+                InstantiationRankerStrategy::PreferSource,
+            ),
             false,
         );
         let cone = matrix_run_name(
@@ -307,11 +338,30 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            EGraphBuilderStrategy::ConeThenFull,
+            (
+                EGraphBuilderStrategy::ConeThenFull,
+                InstantiationRankerStrategy::PreferSource,
+            ),
+            false,
+        );
+        let source = matrix_run_name(
+            "deep",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            (
+                EGraphBuilderStrategy::SourceThenFull,
+                InstantiationRankerStrategy::PreferSource,
+            ),
             false,
         );
 
         assert_eq!(full, "deep_d50_solverZ3_sAbstract_cBmcCost");
+        assert_eq!(
+            source,
+            "deep_d50_solverZ3_sAbstract_cBmcCost_eSourceThenFull"
+        );
         assert_eq!(cone, "deep_d50_solverZ3_sAbstract_cBmcCost_eConeThenFull");
     }
 
@@ -323,7 +373,10 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            EGraphBuilderStrategy::ConeThenFull,
+            (
+                EGraphBuilderStrategy::ConeThenFull,
+                InstantiationRankerStrategy::PreferSource,
+            ),
             true,
         );
 

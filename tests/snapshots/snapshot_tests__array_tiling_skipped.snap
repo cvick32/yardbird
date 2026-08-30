@@ -8,10 +8,8 @@ BenchmarkResult {
     used_instantiations: [
         "(= (Read_Int_Int (Write_Int_Int a+0 (* 2 i+0) (* 2 i+0)) (* 2 i+0)) (* 2 i+0))",
         "(= (Read_Int_Int (Write_Int_Int a1+0 (+ (* 2 i+0) 1) (+ (* 2 i+0) 1)) (+ (* 2 i+0) 1)) (+ (* 2 i+0) 1))",
-        "(=> (not (= (+ (* 2 i+0) 1) (* 2 i+0))) (= (Read_Int_Int (Write_Int_Int a+0 (* 2 i+0) (* 2 i+0)) (+ (* 2 i+0) 1)) (Read_Int_Int a+0 (+ (* 2 i+0) 1))))",
-        "(=> (not (= (+ (* 2 i+1) 1) (* 2 i+0))) (= (Read_Int_Int (Write_Int_Int a+0 (* 2 i+0) (* 2 i+0)) (+ (* 2 i+1) 1)) (Read_Int_Int a+0 (+ (* 2 i+1) 1))))",
+        "(=> (not (= 1 (* 2 i+0))) (= (Read_Int_Int (Write_Int_Int a+0 (* 2 i+0) (* 2 i+0)) 1) (Read_Int_Int a+0 1)))",
         "(=> (not (= S (* 2 i+0))) (= (Read_Int_Int (Write_Int_Int a+0 (* 2 i+0) (* 2 i+0)) S) (Read_Int_Int a+0 S)))",
-        "(=> (not (= S (+ (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (+ (* 2 i+0) 1) (+ (* 2 i+0) 1)) S) (Read_Int_Int a1+0 S)))",
         "(=> (not (= Z (* 2 i+0))) (= (Read_Int_Int (Write_Int_Int a+0 (* 2 i+0) (* 2 i+0)) Z) (Read_Int_Int a+0 Z)))",
         "(=> (not (= Z (+ (* 2 i+0) 1))) (= (Read_Int_Int (Write_Int_Int a1+0 (+ (* 2 i+0) 1) (+ (* 2 i+0) 1)) Z) (Read_Int_Int a1+0 Z)))",
     ],

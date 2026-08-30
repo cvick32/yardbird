@@ -12,7 +12,8 @@ use crate::{
         array_grounding::{ground_pattern, instantiate_pattern, GroundContext, GroundSubstitution},
         array_term_extractor::ArrayTermExtractor,
         instantiation_candidate::{
-            CandidateGroup, InstantiationCandidate, SelectionHistoryDecision,
+            CandidateGroup, InstantiationCandidate, InstantiationGrounding,
+            SelectionHistoryDecision,
         },
     },
     training::canonical_term_hash,
@@ -216,7 +217,6 @@ where
                 self.candidates.len()
             ));
         }
-        let rank_complete_instantiations = self.extractor.explores_all_matches();
         let searcher_ast = executable_rule.trigger();
         let consequence_ast = executable_rule.consequence();
 
@@ -264,15 +264,6 @@ where
                 let mut selection_history = grounding.selection_history().to_vec();
                 let used_derived_candidate = grounding.used_derived_candidate();
 
-                if self.extractor.requires_source_grounded_candidates() && used_derived_candidate {
-                    if tracing {
-                        trace_conflicts(format!(
-                                    "    subst[{subst_ix}] skipped because cone selection required a derived candidate"
-                                ));
-                    }
-                    continue;
-                }
-
                 let rhs_eclass = egraph.lookup_expr(&new_rhs);
                 if tracing {
                     trace_conflicts(format!(
@@ -294,15 +285,13 @@ where
                     let ordinal = self.next_instantiation_ordinal;
                     self.next_instantiation_ordinal += 1;
                     let instantiation_hash = canonical_term_hash(&instantiation);
-                    if rank_complete_instantiations && self.artifact_capture.decisions {
-                        for decision in &mut decisions {
-                            decision.decision_key =
-                                format!("{}:candidate:{instantiation_hash}", decision.decision_key);
-                        }
-                        for decision in &mut selection_history {
-                            decision.decision_key =
-                                format!("{}:candidate:{instantiation_hash}", decision.decision_key);
-                        }
+                    for decision in &mut decisions {
+                        decision.decision_key =
+                            format!("{}:candidate:{instantiation_hash}", decision.decision_key);
+                    }
+                    for decision in &mut selection_history {
+                        decision.decision_key =
+                            format!("{}:candidate:{instantiation_hash}", decision.decision_key);
                     }
                     self.record_selection_history(&selection_history);
                     let selection_decision_keys = selection_history
@@ -336,16 +325,8 @@ where
                     );
                     let abstract_instantiation_id =
                         abstract_instantiation.abstract_instantiation_id.clone();
-                    let cost_expression = if rank_complete_instantiations {
-                        &instantiation
-                    } else {
-                        &new_rhs
-                    };
-                    let cost_site = if rank_complete_instantiations {
-                        "complete_instantiation_ranking"
-                    } else {
-                        "consequence_ranking"
-                    };
+                    let cost_expression = &instantiation;
+                    let cost_site = "complete_instantiation_ranking";
                     let cost = if let Some(profiling) = self.profiling.clone() {
                         profiling.borrow_mut().record_cost(
                             cost_site,
@@ -377,6 +358,11 @@ where
                         rule: rule.clone(),
                         expression: instantiation.clone(),
                         cost,
+                        grounding: if used_derived_candidate {
+                            InstantiationGrounding::Derived
+                        } else {
+                            InstantiationGrounding::SourceGrounded
+                        },
                         provenance: InstantiationProvenance::new(
                             abstract_instantiation_id,
                             substitution,

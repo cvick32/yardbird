@@ -1,13 +1,14 @@
-//! Staged construction of the model-equivalence e-graph used for array refinement.
+//! Construction policies for the model-equivalence e-graph used for array refinement.
 
 use std::{collections::HashSet, fmt::Debug};
 
+use egg::Language;
 use smt2parser::{concrete::Term, vmt::split_framed_symbol};
 
 use crate::{
-    problem_context::ProblemContext,
+    problem_context::{ArrayCandidateCatalog, ProblemContext},
     theories::array::{
-        array_axioms::{translate_term, ArrayLanguage},
+        array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
         array_dataflow::PropertyCone,
         array_expr_parser::preprocess_array_expr,
         candidate_scope::CandidateScope,
@@ -16,6 +17,7 @@ use crate::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArrayEGraphBuildStage {
+    Source,
     Cone,
     Full,
 }
@@ -23,6 +25,7 @@ pub enum ArrayEGraphBuildStage {
 impl ArrayEGraphBuildStage {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Source => "source",
             Self::Cone => "cone",
             Self::Full => "full",
         }
@@ -48,7 +51,7 @@ pub enum ArrayEGraphBuildStep {
 /// Controls which model equalities are admitted before array-axiom matching.
 ///
 /// Repeated calls expand the same e-graph. `Exhausted` means that no broader construction
-/// stage remains and concrete validation may begin.
+/// stage remains, so the abstract strategy must report abstraction exhaustion.
 pub trait ArrayEGraphBuilder: Debug + Send {
     fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder>;
 
@@ -106,6 +109,162 @@ impl ArrayEGraphBuilder for FullEGraphBuilder {
             demand_frontier_sites: 0,
         }))
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+enum SourceThenFullStage {
+    #[default]
+    Source,
+    Full,
+    Exhausted,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SourceThenFullEGraphBuilder {
+    admitted: HashSet<Term>,
+    stage: SourceThenFullStage,
+}
+
+impl ArrayEGraphBuilder for SourceThenFullEGraphBuilder {
+    fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder> {
+        Box::new(self.clone())
+    }
+
+    fn expand(
+        &mut self,
+        egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+        smt: &dyn ProblemContext,
+        _property_cone: &PropertyCone,
+        _depth: u16,
+    ) -> anyhow::Result<ArrayEGraphBuildStep> {
+        match self.stage {
+            SourceThenFullStage::Source => {
+                let subterms = smt.get_all_subterms();
+                let source_subterms = smt.get_source_subterms();
+                let total_subterms = subterms.len();
+                if source_subterms.is_empty()
+                    || (!smt.separates_source_subterms() && source_subterms.len() == total_subterms)
+                {
+                    self.stage = SourceThenFullStage::Exhausted;
+                    let newly_admitted_subterms =
+                        add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
+                    egraph.rebuild();
+                    return Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                        stage: ArrayEGraphBuildStage::Full,
+                        candidate_scope: CandidateScope::AllCandidates,
+                        total_subterms,
+                        admitted_subterms: self.admitted.len(),
+                        newly_admitted_subterms,
+                        demand_frontier_sites: 0,
+                    }));
+                }
+
+                self.stage = SourceThenFullStage::Full;
+                let mut newly_admitted_subterms =
+                    add_subterms(egraph, smt, &source_subterms, &mut self.admitted)?;
+                let source_triggers = source_array_axiom_triggers(
+                    &smt.get_array_candidate_catalog(),
+                    &smt.get_property_subterms(),
+                );
+                let source_trigger_refs = source_triggers.iter().collect::<Vec<_>>();
+                newly_admitted_subterms +=
+                    add_subterms(egraph, smt, &source_trigger_refs, &mut self.admitted)?;
+                egraph.rebuild();
+                Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                    stage: ArrayEGraphBuildStage::Source,
+                    candidate_scope: CandidateScope::SourceGroundedOnly,
+                    total_subterms,
+                    admitted_subterms: self.admitted.len(),
+                    newly_admitted_subterms,
+                    demand_frontier_sites: 0,
+                }))
+            }
+            SourceThenFullStage::Full => {
+                self.stage = SourceThenFullStage::Exhausted;
+                let subterms = smt.get_all_subterms();
+                let total_subterms = subterms.len();
+                let newly_admitted_subterms =
+                    add_subterms(egraph, smt, &subterms, &mut self.admitted)?;
+                egraph.rebuild();
+                Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                    stage: ArrayEGraphBuildStage::Full,
+                    candidate_scope: CandidateScope::AllCandidates,
+                    total_subterms,
+                    admitted_subterms: self.admitted.len(),
+                    newly_admitted_subterms,
+                    demand_frontier_sites: 0,
+                }))
+            }
+            SourceThenFullStage::Exhausted => Ok(ArrayEGraphBuildStep::Exhausted),
+        }
+    }
+}
+
+fn source_array_axiom_triggers(
+    catalog: &ArrayCandidateCatalog,
+    property_terms: &[String],
+) -> Vec<Term> {
+    let property_indices = property_terms
+        .iter()
+        .filter_map(|raw_term| raw_term.parse().ok().and_then(translate_term))
+        .filter_map(|expression| {
+            let Some(ArrayLanguage::ReadTyped([index_sort, value_sort, _, index])) =
+                expression.as_ref().last()
+            else {
+                return None;
+            };
+            let (ArrayLanguage::Symbol(index_sort), ArrayLanguage::Symbol(value_sort)) =
+                (&expression[*index_sort], &expression[*value_sort])
+            else {
+                return None;
+            };
+            Some((
+                index_sort.as_str().to_string(),
+                value_sort.as_str().to_string(),
+                expression_at(&expression, *index),
+            ))
+        })
+        .collect::<HashSet<_>>();
+    let mut triggers = HashSet::new();
+    for raw_term in &catalog.source_grounded.terms {
+        let Some(expression) = raw_term.parse().ok().and_then(translate_term) else {
+            continue;
+        };
+        let Some(ArrayLanguage::WriteTyped([index_sort, value_sort, _, index, _])) =
+            expression.as_ref().last()
+        else {
+            continue;
+        };
+        let (ArrayLanguage::Symbol(index_sort), ArrayLanguage::Symbol(value_sort)) =
+            (&expression[*index_sort], &expression[*value_sort])
+        else {
+            continue;
+        };
+        let index_sort = index_sort.as_str();
+        let value_sort = value_sort.as_str();
+        let write_index = expression_at(&expression, *index);
+        let mut indices = vec![write_index];
+        indices.extend(
+            property_indices
+                .iter()
+                .filter(|(candidate_index_sort, candidate_value_sort, _)| {
+                    candidate_index_sort == index_sort && candidate_value_sort == value_sort
+                })
+                .map(|(_, _, index)| index.clone()),
+        );
+        for index in indices {
+            let trigger =
+                ArrayLanguage::read_typed(index_sort, value_sort, expression.clone(), index);
+            triggers.insert(expr_to_term(trigger));
+        }
+    }
+    let mut triggers = triggers.into_iter().collect::<Vec<_>>();
+    triggers.sort_by_key(ToString::to_string);
+    triggers
+}
+
+fn expression_at(expression: &ArrayExpr, root: egg::Id) -> ArrayExpr {
+    expression[root].build_recexpr(|id| expression[id].clone())
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -343,10 +502,12 @@ mod tests {
     use super::*;
     use smt2parser::vmt::{variable::Variable, ReadsAndWrites};
 
+    use crate::problem_context::ArrayCandidatePool;
     use crate::utils::SolverStatistics;
 
     struct FakeContext {
         terms: Vec<Term>,
+        source_term_count: usize,
     }
 
     impl ProblemContext for FakeContext {
@@ -368,6 +529,10 @@ mod tests {
 
         fn get_all_subterms(&self) -> Vec<&Term> {
             self.terms.iter().collect()
+        }
+
+        fn get_source_subterms(&self) -> Vec<&Term> {
+            self.terms.iter().take(self.source_term_count).collect()
         }
 
         fn get_solver_statistics(&self) -> SolverStatistics {
@@ -450,6 +615,7 @@ mod tests {
                 "(Read_Int_Int a@3 i@3)".parse().unwrap(),
                 "(Read_Int_Int b@3 j@3)".parse().unwrap(),
             ],
+            source_term_count: 2,
         };
         let cone = PropertyCone {
             array_states: HashSet::from(["a".to_string()]),
@@ -481,5 +647,106 @@ mod tests {
         ));
         assert_eq!(third, ArrayEGraphBuildStep::Exhausted);
         assert!(classes_after_full > classes_after_cone);
+    }
+
+    #[test]
+    fn full_builder_admits_every_term_in_one_expansion() {
+        let context = FakeContext {
+            terms: vec![
+                "(Read_Int_Int a@3 i@3)".parse().unwrap(),
+                "(Read_Int_Int b@3 j@3)".parse().unwrap(),
+            ],
+            source_term_count: 1,
+        };
+        let mut builder = FullEGraphBuilder::default();
+        let mut egraph = egg::EGraph::new(());
+
+        let first = builder
+            .expand(&mut egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+        let classes_after_full = egraph.number_of_classes();
+        let second = builder
+            .expand(&mut egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+
+        assert!(matches!(
+            first,
+            ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                candidate_scope: CandidateScope::AllCandidates,
+                newly_admitted_subterms: 2,
+                ..
+            })
+        ));
+        assert_eq!(second, ArrayEGraphBuildStep::Exhausted);
+        assert!(classes_after_full > 0);
+    }
+
+    #[test]
+    fn source_then_full_builder_widens_the_same_egraph() {
+        let context = FakeContext {
+            terms: vec![
+                "(Read_Int_Int a@3 i@3)".parse().unwrap(),
+                "(Read_Int_Int b@3 j@3)".parse().unwrap(),
+            ],
+            source_term_count: 1,
+        };
+        let mut builder = SourceThenFullEGraphBuilder::default();
+        let mut egraph = egg::EGraph::new(());
+
+        let first = builder
+            .expand(&mut egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+        let classes_after_source = egraph.number_of_classes();
+        let second = builder
+            .expand(&mut egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+        let classes_after_full = egraph.number_of_classes();
+        let third = builder
+            .expand(&mut egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+
+        assert!(matches!(
+            first,
+            ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                stage: ArrayEGraphBuildStage::Source,
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                newly_admitted_subterms: 1,
+                ..
+            })
+        ));
+        assert!(matches!(
+            second,
+            ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                stage: ArrayEGraphBuildStage::Full,
+                candidate_scope: CandidateScope::AllCandidates,
+                newly_admitted_subterms: 1,
+                ..
+            })
+        ));
+        assert_eq!(third, ArrayEGraphBuildStep::Exhausted);
+        assert!(classes_after_full > classes_after_source);
+    }
+
+    #[test]
+    fn source_writes_seed_read_after_write_and_property_index_triggers() {
+        let catalog = ArrayCandidateCatalog {
+            source_grounded: ArrayCandidatePool {
+                terms: vec!["(Write_Int_Int A i v)".to_string()],
+                reads_and_writes: ReadsAndWrites::default(),
+            },
+            derived: ArrayCandidatePool::default(),
+        };
+
+        assert_eq!(
+            source_array_axiom_triggers(&catalog, &["(Read_Int_Int A p)".to_string()]),
+            vec![
+                "(Read_Int_Int (Write_Int_Int A i v) i)"
+                    .parse::<Term>()
+                    .unwrap(),
+                "(Read_Int_Int (Write_Int_Int A i v) p)"
+                    .parse::<Term>()
+                    .unwrap(),
+            ]
+        );
     }
 }

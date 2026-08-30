@@ -5,6 +5,7 @@ use crate::{
     theories::array::{
         array_axioms::{expr_to_term, ArrayExpr},
         candidate_scope::CandidateScope,
+        instantiation_ranker::InstantiationRanker,
     },
     training::{AbstractInstantiationRecord, DecisionRecord},
 };
@@ -31,12 +32,21 @@ pub(crate) enum CandidateGroup {
     Rule,
 }
 
+/// Whether every binding in a complete instantiation came from source syntax
+/// or at least one binding came from a solver/model-derived representative.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstantiationGrounding {
+    SourceGrounded,
+    Derived,
+}
+
 /// One complete quantified-rule candidate and its metadata
 #[derive(Clone, Debug)]
 pub struct InstantiationCandidate {
     pub rule: QuantifiedRule,
     pub expression: ArrayExpr,
     pub cost: u32,
+    pub grounding: InstantiationGrounding,
     pub provenance: InstantiationProvenance,
     pub selected: bool,
     pub decisions: Vec<DecisionRecord>,
@@ -62,6 +72,9 @@ pub(crate) struct BatchSummary {
     pub(crate) rejected_model: usize,
     /// Known, duplicate, or uninstallable candidates.
     pub(crate) rejected_known: usize,
+    /// Candidates retained for diagnostics but rejected by the configured
+    /// whole-instantiation ranker in this search phase.
+    pub(crate) rejected_ranker: usize,
     pub(crate) selected_arrays: usize,
     pub(crate) selected_guards: usize,
     pub(crate) conflicts: usize,
@@ -104,14 +117,38 @@ impl InstantiationBatch {
         self.candidates.extend(candidates);
     }
 
-    /// Filter, deduplicate, and select using the supplied problem operations.
-    /// `normalize` supplies installable keys; `None` rejects the candidate.
-    /// Evaluation errors abort preparation; installed keys are never mutated.
+    /// Filter, deduplicate, and select with the baseline term-cost ranker.
+    #[cfg(test)]
     pub(crate) fn prepare<K>(
         &mut self,
         scope: CandidateScope,
         known: &HashSet<K>,
         winners_per_group: usize,
+        evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+        normalize: impl FnMut(&InstantiationCandidate) -> Option<K>,
+    ) -> anyhow::Result<BatchSummary>
+    where
+        K: Eq + Hash,
+    {
+        self.prepare_with_ranker(
+            scope,
+            known,
+            winners_per_group,
+            &crate::theories::array::instantiation_ranker::TermCostInstantiationRanker,
+            evaluate,
+            normalize,
+        )
+    }
+
+    /// Filter, deduplicate, and select using the supplied problem operations.
+    /// `normalize` supplies installable keys; `None` rejects the candidate.
+    /// Evaluation errors abort preparation; installed keys are never mutated.
+    pub(crate) fn prepare_with_ranker<K>(
+        &mut self,
+        scope: CandidateScope,
+        known: &HashSet<K>,
+        winners_per_group: usize,
+        ranker: &dyn InstantiationRanker,
         evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
         mut normalize: impl FnMut(&InstantiationCandidate) -> Option<K>,
     ) -> anyhow::Result<BatchSummary>
@@ -130,12 +167,13 @@ impl InstantiationBatch {
 
         summary.rejected_model = self.filter_model(scope, evaluate)?;
         let mut seen = HashSet::new();
-        summary.rejected_known = self.select(scope, winners_per_group, |candidate| {
-            let Some(normalized) = normalize(candidate) else {
-                return false;
-            };
-            !known.contains(&normalized) && seen.insert(normalized)
-        });
+        (summary.rejected_known, summary.rejected_ranker) =
+            self.select(scope, winners_per_group, ranker, |candidate| {
+                let Some(normalized) = normalize(candidate) else {
+                    return false;
+                };
+                !known.contains(&normalized) && seen.insert(normalized)
+            });
 
         for candidate in self.selected() {
             summary
@@ -190,8 +228,9 @@ impl InstantiationBatch {
         &mut self,
         scope: CandidateScope,
         winners_per_group: usize,
+        ranker: &dyn InstantiationRanker,
         mut eligible: impl FnMut(&InstantiationCandidate) -> bool,
-    ) -> usize {
+    ) -> (usize, usize) {
         for candidate in &mut self.candidates {
             candidate.selected = false;
         }
@@ -199,13 +238,20 @@ impl InstantiationBatch {
         // Full search spends its per-e-class budget before novelty checks:
         // rejecting a winner must not promote another match from that group.
         if scope == CandidateScope::AllCandidates {
-            self.select_full_axioms(winners_per_group);
+            self.select_full_axioms(winners_per_group, ranker);
         }
         let mut rejected = 0;
+        let mut rejected_ranker = 0;
         self.candidates.retain_mut(|candidate| {
             let full_search_array = scope == CandidateScope::AllCandidates
                 && candidate.rule.category() == QuantifiedRuleCategory::ArrayAxiom;
             if full_search_array && !candidate.selected {
+                candidate.selection_history.clear();
+                return true;
+            }
+            if !ranker.is_eligible(candidate, scope) {
+                rejected_ranker += 1;
+                candidate.selected = false;
                 candidate.selection_history.clear();
                 return true;
             }
@@ -221,9 +267,9 @@ impl InstantiationBatch {
         });
 
         // Guards and source-grounded axioms choose from eligible candidates.
-        self.select_guards();
+        self.select_guards(scope, ranker);
         if scope == CandidateScope::SourceGroundedOnly {
-            self.select_source_axioms(winners_per_group);
+            self.select_source_axioms(winners_per_group, ranker);
         }
 
         for candidate in &mut self.candidates {
@@ -237,21 +283,24 @@ impl InstantiationBatch {
                 candidate.selection_history.clear();
             }
         }
-        rejected
+        (rejected, rejected_ranker)
     }
 
-    fn select_guards(&mut self) {
+    fn select_guards(&mut self, scope: CandidateScope, ranker: &dyn InstantiationRanker) {
         let mut winners = HashMap::<String, usize>::new();
         for candidate_index in 0..self.candidates.len() {
             let candidate = &self.candidates[candidate_index];
             if candidate.rule.category() != QuantifiedRuleCategory::TransitionGuard {
                 continue;
             }
+            if !ranker.is_eligible(candidate, scope) {
+                continue;
+            }
 
             let winner = winners
                 .entry(candidate.rule.name().to_string())
                 .or_insert(candidate_index);
-            if candidate_precedes(&self.candidates, candidate_index, *winner) {
+            if candidate_precedes(ranker, &self.candidates, candidate_index, *winner) {
                 *winner = candidate_index;
             }
         }
@@ -261,24 +310,25 @@ impl InstantiationBatch {
         }
     }
 
-    fn select_source_axioms(&mut self, winners_per_group: usize) {
+    fn select_source_axioms(&mut self, winners_per_group: usize, ranker: &dyn InstantiationRanker) {
         let mut winners = self
             .candidates
             .iter()
             .enumerate()
             .filter(|(_, candidate)| {
                 candidate.rule.category() == QuantifiedRuleCategory::ArrayAxiom
+                    && ranker.is_eligible(candidate, CandidateScope::SourceGroundedOnly)
             })
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
-        winners.sort_by(|left, right| compare_candidates(&self.candidates, *left, *right));
+        winners.sort_by(|left, right| compare_candidates(ranker, &self.candidates, *left, *right));
 
         for winner in winners.into_iter().take(winners_per_group) {
             self.candidates[winner].selected = true;
         }
     }
 
-    fn select_full_axioms(&mut self, winners_per_group: usize) {
+    fn select_full_axioms(&mut self, winners_per_group: usize, ranker: &dyn InstantiationRanker) {
         let mut groups = HashMap::<(String, egg::Id), Vec<usize>>::new();
         for candidate_index in 0..self.candidates.len() {
             let candidate = &self.candidates[candidate_index];
@@ -296,7 +346,8 @@ impl InstantiationBatch {
         }
 
         for mut group in groups.into_values() {
-            group.sort_by(|left, right| compare_candidates(&self.candidates, *left, *right));
+            group
+                .sort_by(|left, right| compare_candidates(ranker, &self.candidates, *left, *right));
             for winner in group.into_iter().take(winners_per_group) {
                 self.candidates[winner].selected = true;
             }
@@ -342,27 +393,22 @@ fn cached_model_value(
 }
 
 fn candidate_precedes(
+    ranker: &dyn InstantiationRanker,
     candidates: &[InstantiationCandidate],
     candidate: usize,
     winner: usize,
 ) -> bool {
-    compare_candidates(candidates, candidate, winner).is_lt()
+    compare_candidates(ranker, candidates, candidate, winner).is_lt()
 }
 
 fn compare_candidates(
+    ranker: &dyn InstantiationRanker,
     candidates: &[InstantiationCandidate],
     left: usize,
     right: usize,
 ) -> std::cmp::Ordering {
-    candidates[left]
-        .cost
-        .cmp(&candidates[right].cost)
-        .then_with(|| {
-            candidates[left]
-                .expression
-                .to_string()
-                .cmp(&candidates[right].expression.to_string())
-        })
+    ranker
+        .compare(&candidates[left], &candidates[right])
         .then_with(|| left.cmp(&right))
 }
 
@@ -373,6 +419,7 @@ mod tests {
         instantiation_provenance::InstantiationProvenance,
         instantiation_strategy::assertion_tracker::canonical_instantiation_key,
         quantified_rule::{ArrayAxiomKind, QuantifiedRule},
+        theories::array::instantiation_ranker::PreferSourceInstantiationRanker,
     };
     use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
 
@@ -381,6 +428,7 @@ mod tests {
             rule: QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int"),
             expression,
             cost: 0,
+            grounding: InstantiationGrounding::SourceGrounded,
             provenance: InstantiationProvenance::new("test".to_string(), vec![]),
             selected: false,
             decisions: vec![],
@@ -398,6 +446,38 @@ mod tests {
             vec![],
         )
         .map(|instance| canonical_instantiation_key(instance.get_term()))
+    }
+
+    #[test]
+    fn batch_selection_uses_the_configured_whole_instantiation_ranker() {
+        let mut source = array_candidate("(= source 0)".parse().unwrap());
+        source.cost = 10;
+        let mut derived = array_candidate("(= derived 0)".parse().unwrap());
+        derived.cost = 1;
+        derived.grounding = InstantiationGrounding::Derived;
+        let expected = source.expression.clone();
+        let mut batch = InstantiationBatch {
+            candidates: vec![derived, source],
+        };
+
+        batch
+            .prepare_with_ranker(
+                CandidateScope::AllCandidates,
+                &HashSet::<Term>::new(),
+                1,
+                &PreferSourceInstantiationRanker,
+                |_| Ok("false".to_string()),
+                |candidate| Some(expr_to_term(candidate.expression.clone())),
+            )
+            .unwrap();
+
+        assert_eq!(
+            batch
+                .selected()
+                .map(|candidate| &candidate.expression)
+                .collect::<Vec<_>>(),
+            vec![&expected]
+        );
     }
 
     #[test]
@@ -927,6 +1007,7 @@ mod tests {
             rule,
             expression: expression.parse().unwrap(),
             cost,
+            grounding: InstantiationGrounding::SourceGrounded,
             provenance: InstantiationProvenance::new(expression.to_string(), vec![]),
             selected: false,
             decisions: vec![],

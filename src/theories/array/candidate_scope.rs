@@ -23,17 +23,7 @@ impl CandidateScope {
         self == Self::SourceGroundedOnly
     }
 
-    /// Source provenance is a deterministic tie-breaker, never a substitute
-    /// for the configured term cost.
-    pub fn prefers_source_on_cost_tie(self) -> bool {
-        self == Self::SourceGroundedOnly
-    }
-
     pub fn requires_model_violation(self) -> bool {
-        self == Self::SourceGroundedOnly
-    }
-
-    pub fn explores_all_matches(self) -> bool {
         self == Self::SourceGroundedOnly
     }
 }

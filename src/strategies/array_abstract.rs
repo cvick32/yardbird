@@ -24,10 +24,12 @@ use crate::{
         array_dataflow::{build_property_cone, PropertyCone},
         array_egraph_builder::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
+            SourceThenFullEGraphBuilder,
         },
         array_rule_instantiator::ArrayArtifactCapture,
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
+        instantiation_ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
         transition_guard_instantiator::{generate_guard_candidates, supports_transition_guard},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
@@ -72,6 +74,7 @@ where
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
     candidate_winners_per_group: usize,
+    instantiation_ranker: Box<dyn InstantiationRanker>,
     property_check_mode: PropertyCheckMode,
 }
 
@@ -108,11 +111,12 @@ where
             aux_covered_term_hashes: HashSet::new(),
             profile,
             profiling_records: vec![],
-            egraph_builder: Box::<FullEGraphBuilder>::default(),
+            egraph_builder: Box::<SourceThenFullEGraphBuilder>::default(),
             cone_attempted_depths: HashSet::new(),
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
+            instantiation_ranker: Box::new(PreferSourceInstantiationRanker),
             property_check_mode: PropertyCheckMode::Scoped,
         }
     }
@@ -139,6 +143,14 @@ where
         self
     }
 
+    pub fn with_instantiation_ranker(
+        mut self,
+        instantiation_ranker: Box<dyn InstantiationRanker>,
+    ) -> Self {
+        self.instantiation_ranker = instantiation_ranker;
+        self
+    }
+  
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
         self.property_check_mode = mode;
         self
@@ -217,6 +229,10 @@ where
         self.preprocess_exact_read_after_write
     }
 
+    fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
+        !state.candidates.is_empty() || !self.pending_aux_specs.is_empty()
+    }
+
     fn setup(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
@@ -286,8 +302,9 @@ where
                 egraph_node_count(&state.egraph),
             );
         }
-        // Loop required for egraph building, if no instantiations are found,
-        // in a semi-built egraph, we'll return here and follow the egraph expansion rules.
+        // The driver may call `sat` again with this same state after concrete
+        // validation rejects the current abstract counterexample.
+        #[allow(clippy::never_loop)]
         loop {
             let build_start = Instant::now();
             let build_step = state.egraph_builder.expand(
@@ -300,7 +317,7 @@ where
                 ArrayEGraphBuildStep::Expanded(expansion) => expansion,
                 ArrayEGraphBuildStep::Exhausted => {
                     self.finish_profiling_record(profiling);
-                    return Ok(ProofAction::ValidateConcreteCounterexample);
+                    return Err(driver::Error::AbstractionExhausted { depth: state.depth });
                 }
             };
             if let Some(profiling) = &profiling {
@@ -309,6 +326,7 @@ where
                 profiling.add_counter("egraph_build_stages", 1);
                 profiling.add_counter(
                     match expansion.stage {
+                        ArrayEGraphBuildStage::Source => "egraph_build_source_stages",
                         ArrayEGraphBuildStage::Cone => "egraph_build_cone_stages",
                         ArrayEGraphBuildStage::Full => "egraph_build_full_stages",
                     },
@@ -329,7 +347,9 @@ where
             }
 
             let cost_factory_start = Instant::now();
-            let candidate_catalog = if expansion.candidate_scope.tracks_provenance() {
+            let candidate_catalog = if expansion.candidate_scope.tracks_provenance()
+                || self.instantiation_ranker.requires_source_provenance()
+            {
                 smt.get_array_candidate_catalog()
             } else {
                 crate::problem_context::ArrayCandidateCatalog::default()
@@ -400,10 +420,11 @@ where
                 },
             );
             candidate_batch.extend(array_candidates.candidates);
-            let mut summary = candidate_batch.prepare(
+            let mut summary = candidate_batch.prepare_with_ranker(
                 expansion.candidate_scope,
                 &known_instantiations,
                 self.candidate_winners_per_group,
+                self.instantiation_ranker.as_ref(),
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
@@ -423,6 +444,10 @@ where
                 profiling.add_counter(
                     "duplicate_or_uninstallable_instantiations_filtered",
                     summary.rejected_known as u64,
+                );
+                profiling.add_counter(
+                    "instantiation_ranker_candidates_filtered",
+                    summary.rejected_ranker as u64,
                 );
             }
 
@@ -449,6 +474,9 @@ where
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
             }
+
+            self.finish_profiling_record(profiling);
+            return Ok(ProofAction::Continue);
         }
     }
 

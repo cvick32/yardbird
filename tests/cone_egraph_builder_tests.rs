@@ -103,7 +103,7 @@ fn source_grounded_cone_preserves_complete_write_sites() {
 }
 
 #[test]
-fn exhaustive_full_stage_uses_derived_candidates_before_concrete_validation() {
+fn exhaustive_full_stage_uses_derived_candidates_without_concrete_checks() {
     let result = run_cone_then_full("examples/array/array_init_and_copy_inverse.vmt", 6, true);
     let concrete_depths = result
         .profiling
@@ -115,6 +115,6 @@ fn exhaustive_full_stage_uses_derived_candidates_before_concrete_validation() {
 
     assert!(
         concrete_depths.is_empty(),
-        "full e-graph search is not exhaustive while derived candidates remain hidden; concrete validation ran at depths {concrete_depths:?}"
+        "abstract refinement must not dispatch concrete checks; observed them at depths {concrete_depths:?}"
     );
 }

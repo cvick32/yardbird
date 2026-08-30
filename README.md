@@ -354,14 +354,28 @@ cargo build --release -p garden
 # Run Z3 MBQI
 ./target/release/garden \
   --config garden/benchmark_config.yaml \
-  --matrix  deep-abstract-with-quantifiers \
+  --matrix deep-abstract-with-quantifiers \
   --output paper_results_mbqi.json
+
 ```
 
 Each of these runs will take 1.5 to 2 hours on an AWS EC2 instance. Times may vary locally and by hardware.
 
 These 4 runs will reproduce the main results from the paper. The additional cost functions can be run
 in a similar way: `deep-abstract-prefer-write`, `deep-abstract-prefer-constants`, `deep-abstract-prefer-read`.
+
+For the direct abstract strategy, term extraction and whole-instantiation
+ranking are independent runtime choices. `--cost-function` ranks candidate
+terms inside e-classes; `--instantiation-ranker prefer-source` (the default)
+ranks a complete source-grounded formula ahead of formulas containing derived
+model representatives. Use `--instantiation-ranker term-cost` for the baseline
+that orders complete formulas only by the active term cost. Garden exposes the
+same `instantiation_rankers` matrix dimension; see
+`deep-abstract-instantiation-rankers` in `garden/benchmark_config.yaml`.
+
+These controls apply only to Yardbird's direct abstract strategy. The
+`abstract-with-quantifiers` strategy intentionally sends the three global
+array axioms to Z3 unchanged so it remains an MBQI comparison point.
 
 ### Functional Badge Criteria
 

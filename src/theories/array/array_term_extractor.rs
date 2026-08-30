@@ -175,31 +175,29 @@ where
         let mut source_terms = FxHashSet::default();
         let mut source_write_terms = FxHashSet::default();
 
-        if candidate_scope.tracks_provenance() {
-            // The context catalog, not the cost function, is authoritative for
-            // whether a term came from the original problem.
-            for raw_term in &candidate_catalog.source_grounded.terms {
-                let Some(term) = raw_term.parse().ok().and_then(translate_term) else {
-                    continue;
-                };
-                if contains_z3_model_value(&term) {
-                    continue;
-                }
-                source_terms.insert(term.to_string());
-                if matches!(term.as_ref().last(), Some(ArrayLanguage::WriteTyped(_))) {
-                    source_write_terms.insert(term.to_string());
-                }
-                let Some(expr) = egraph.lookup_expr(&term) else {
-                    continue;
-                };
-                let cost = self_cost(
-                    &mut cost_function,
-                    &profiling,
-                    "precompute_source_term_map",
-                    &term,
-                );
-                insert_candidate(&mut source_term_map, expr, term, cost);
+        // The context catalog, not the candidate scope or cost function, is
+        // authoritative for whether a term came from the original problem.
+        for raw_term in &candidate_catalog.source_grounded.terms {
+            let Some(term) = raw_term.parse().ok().and_then(translate_term) else {
+                continue;
+            };
+            if contains_z3_model_value(&term) {
+                continue;
             }
+            source_terms.insert(term.to_string());
+            if matches!(term.as_ref().last(), Some(ArrayLanguage::WriteTyped(_))) {
+                source_write_terms.insert(term.to_string());
+            }
+            let Some(expr) = egraph.lookup_expr(&term) else {
+                continue;
+            };
+            let cost = self_cost(
+                &mut cost_function,
+                &profiling,
+                "precompute_source_term_map",
+                &term,
+            );
+            insert_candidate(&mut source_term_map, expr, term, cost);
         }
 
         // Cost functions can cheaply supply parsed and synthesized terms. Preserve
@@ -314,6 +312,41 @@ where
             .unwrap_or_default()
     }
 
+    pub(crate) fn source_candidates_for_eclass<N>(
+        &self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        eclass: egg::Id,
+    ) -> Vec<ArrayExpr>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        let eclass = egraph.find(eclass);
+        let mut expressions: Vec<ArrayExpr> = self
+            .source_term_map
+            .get(&egraph.find(eclass))
+            .map(|candidates| {
+                candidates
+                    .iter()
+                    .map(|(expression, _)| expression.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for raw_array in self.source_write_candidates.keys() {
+            let Ok(array) = raw_array.parse::<ArrayExpr>() else {
+                continue;
+            };
+            if egraph
+                .lookup_expr(&array)
+                .is_some_and(|candidate| egraph.find(candidate) == eclass)
+            {
+                expressions.push(array);
+            }
+        }
+        expressions.sort_by_key(ToString::to_string);
+        expressions.dedup();
+        expressions
+    }
+
     pub(crate) fn all_write_candidates(&self, array: &ArrayExpr) -> &[(ArrayExpr, ArrayExpr)] {
         self.all_write_candidates
             .get(&array.to_string())
@@ -373,18 +406,10 @@ where
         self.candidate_scope.requires_source_grounded()
     }
 
-    pub fn prefers_source_on_cost_tie(&self) -> bool {
-        self.candidate_scope.prefers_source_on_cost_tie()
-    }
-
     /// A source-only instantiation may choose model-equivalent representatives
     /// for scalar slots, but its array update must remain one exact source site.
     pub fn is_source_write(&self, expr: &ArrayExpr) -> bool {
         self.source_write_terms.contains(&expr.to_string())
-    }
-
-    pub fn explores_all_matches(&self) -> bool {
-        self.candidate_scope.explores_all_matches()
     }
 
     pub fn cost_of(&self, expr: &ArrayExpr) -> u32 {
@@ -614,16 +639,11 @@ where
         Some((chosen.expression, chosen.current_cost))
     }
 
-    fn choose_with_history<'a, N>(
+    fn choose_with_history<'a>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        eclass: egg::Id,
         valid_terms: Vec<&'a (ArrayExpr, u32)>,
         baseline_use_count: u32,
-    ) -> Option<(&'a ArrayExpr, u32)>
-    where
-        N: egg::Analysis<ArrayLanguage>,
-    {
+    ) -> Option<(&'a ArrayExpr, u32)> {
         valid_terms
             .into_iter()
             .min_by(|(left_term, left_cost), (right_term, right_cost)| {
@@ -634,17 +654,6 @@ where
                 left_cost
                     .saturating_add(left_penalty)
                     .cmp(&right_cost.saturating_add(right_penalty))
-                    .then_with(|| {
-                        if self.prefers_source_on_cost_tie() {
-                            let left_derived = self.candidate_origin(egraph, eclass, left_term)
-                                == CandidateOrigin::Derived;
-                            let right_derived = self.candidate_origin(egraph, eclass, right_term)
-                                == CandidateOrigin::Derived;
-                            left_derived.cmp(&right_derived)
-                        } else {
-                            std::cmp::Ordering::Equal
-                        }
-                    })
                     .then_with(|| {
                         compare_terms_with_cost((left_term, *left_cost), (right_term, *right_cost))
                     })
@@ -705,9 +714,7 @@ where
                 return (term.clone(), origin);
             }
 
-            if let Some((term, cost)) =
-                self.choose_with_history(egraph, eclass, valid_terms, baseline_use_count)
-            {
+            if let Some((term, cost)) = self.choose_with_history(valid_terms, baseline_use_count) {
                 let prior_uses = prior_use_count(&self.selection_counts, term);
                 log::debug!(
                     "history-aware term: {eclass} -> {} base_cost={} prior_uses={} penalty={}",

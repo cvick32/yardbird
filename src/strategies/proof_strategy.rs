@@ -12,7 +12,6 @@ use crate::{
 
 pub enum ProofAction {
     Continue,
-    ValidateConcreteCounterexample,
     NextDepth,
     FoundCounterexample,
     FoundProof,
@@ -37,6 +36,11 @@ pub trait ProofStrategy<'ctx, S> {
         false
     }
 
+    /// Whether `Continue` has an actual refinement ready to install.
+    fn has_pending_refinement(&self, _state: &S) -> bool {
+        true
+    }
+  
     /// Select how VMT property queries are presented to the incremental solver.
     fn property_check_mode(&self) -> PropertyCheckMode {
         PropertyCheckMode::Scoped

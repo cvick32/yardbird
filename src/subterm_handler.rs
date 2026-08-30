@@ -62,6 +62,17 @@ impl SubtermHandler {
             .collect()
     }
 
+    pub(crate) fn get_source_subterms(&self) -> Vec<&Term> {
+        self.initial_subterm_order
+            .iter()
+            .chain(
+                self.trans_subterm_order
+                    .iter()
+                    .chain(self.prop_subterm_order.iter()),
+            )
+            .collect()
+    }
+
     pub(crate) fn register_initial_support(&mut self, support: &[Term]) {
         collect_terms(
             support.iter(),
