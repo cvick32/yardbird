@@ -15,6 +15,7 @@ use crate::{
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     quantified_rule::TransitionGuardRule,
+    solver::PropertyCheckMode,
     theories::array::{
         array_axioms::{
             expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
@@ -74,6 +75,7 @@ where
     preprocess_exact_read_after_write: bool,
     candidate_winners_per_group: usize,
     instantiation_ranker: Box<dyn InstantiationRanker>,
+    property_check_mode: PropertyCheckMode,
 }
 
 impl<F> Abstract<F>
@@ -115,6 +117,7 @@ where
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: Box::new(PreferSourceInstantiationRanker),
+            property_check_mode: PropertyCheckMode::Scoped,
         }
     }
 
@@ -147,6 +150,11 @@ where
         self.instantiation_ranker = instantiation_ranker;
         self
     }
+  
+    pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
+        self.property_check_mode = mode;
+        self
+    }
 }
 
 fn egraph_node_count<N>(egraph: &egg::EGraph<ArrayLanguage, N>) -> usize
@@ -171,6 +179,10 @@ where
 {
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ArrayTheorySupport::new(self.discovered_array_types.clone()))
+    }
+
+    fn property_check_mode(&self) -> PropertyCheckMode {
+        self.property_check_mode
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {

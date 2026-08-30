@@ -7,6 +7,30 @@ use smt2parser::concrete::{Command, Sort, Symbol, Term};
 
 use crate::{utils::SolverStatistics, SolverBackend};
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Eq,
+    PartialEq,
+    clap::ValueEnum,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[clap(rename_all = "kebab_case")]
+#[serde(rename_all = "kebab-case")]
+pub enum PropertyCheckMode {
+    /// Temporarily push and assert the negated property around each check.
+    #[default]
+    Scoped,
+    /// Permanently guard each negated property and enable it as an assumption.
+    Assumptions,
+    /// Start each depth with a scoped check, then use an assumption after SAT
+    /// indicates that refinement will re-query the same depth.
+    RefinementAssumptions,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SolverCheckResult {
@@ -54,6 +78,10 @@ pub trait YardbirdSolver {
 
     /// Run the solver without acquiring a model.
     fn check_sat(&mut self) -> SolverCheckResult;
+
+    /// Run the solver under temporary Boolean assumptions without changing its
+    /// assertion stack.
+    fn check_sat_assuming(&mut self, assumptions: &[Term]) -> SolverCheckResult;
 
     /// Mark the end of all solver-side work associated with the most recent
     /// check. Capture decorators use this to separate post-check operations

@@ -20,6 +20,10 @@ pub struct InstantiationAssertionMetrics {
     pub helper_equality_duplicates: u64,
     pub unique_assertions: u64,
     pub all_eligible_frame_placements: u64,
+    pub schema_batch_passes: u64,
+    pub schema_placement_evaluations: u64,
+    pub schema_placement_violations: u64,
+    pub schema_placement_eager_fallbacks: u64,
 }
 
 impl InstantiationAssertionMetrics {
@@ -58,6 +62,19 @@ impl InstantiationAssertionMetrics {
                 "yardbird.all-eligible-frame placements",
                 self.all_eligible_frame_placements,
             ),
+            ("yardbird.schema batch passes", self.schema_batch_passes),
+            (
+                "yardbird.schema placement evaluations",
+                self.schema_placement_evaluations,
+            ),
+            (
+                "yardbird.schema placement violations",
+                self.schema_placement_violations,
+            ),
+            (
+                "yardbird.schema placement eager fallbacks",
+                self.schema_placement_eager_fallbacks,
+            ),
         ] {
             statistics.add_count(key, value);
         }
@@ -80,6 +97,22 @@ impl InstantiationAssertionTracker {
 
     pub fn record_all_eligible_frame_placement(&mut self) {
         self.metrics.all_eligible_frame_placements += 1;
+    }
+
+    pub fn record_schema_batch_pass(&mut self) {
+        self.metrics.schema_batch_passes += 1;
+    }
+
+    pub fn record_schema_placement_evaluation(&mut self) {
+        self.metrics.schema_placement_evaluations += 1;
+    }
+
+    pub fn record_schema_placement_violation(&mut self) {
+        self.metrics.schema_placement_violations += 1;
+    }
+
+    pub fn record_schema_placement_eager_fallback(&mut self) {
+        self.metrics.schema_placement_eager_fallbacks += 1;
     }
 
     pub fn accept(&mut self, term: &Term, kind: AssertionKind) -> bool {

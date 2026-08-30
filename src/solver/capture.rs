@@ -215,7 +215,7 @@ impl SolverCapture {
         self.state.borrow_mut().append_command(command.as_ref());
     }
 
-    fn begin_check(&self) -> (u64, u64, u64, u64, u64) {
+    fn begin_check(&self, check_command: &str) -> (u64, u64, u64, u64, u64) {
         let mut state = self.state.borrow_mut();
         let check_id = state.checks.len() as u64;
         let setup_byte_start = state
@@ -233,7 +233,7 @@ impl SolverCapture {
         state.append_comment(&format!("yardbird check {check_id} begin"));
         let check_byte_start = state.transcript.len() as u64;
         let command_ordinal = state.command_ordinal;
-        state.append_command("(check-sat)");
+        state.append_command(check_command);
         let check_byte_end = state.transcript.len() as u64;
         (
             check_id,
@@ -476,8 +476,31 @@ impl YardbirdSolver for CapturingSolver {
 
     fn check_sat(&mut self) -> SolverCheckResult {
         let (check_id, setup_byte_start, check_byte_start, check_byte_end, command_ordinal) =
-            self.capture.begin_check();
+            self.capture.begin_check("(check-sat)");
         let result = self.inner.check_sat();
+        self.capture.end_check(
+            check_id,
+            setup_byte_start,
+            check_byte_start,
+            check_byte_end,
+            command_ordinal,
+            result,
+        );
+        result
+    }
+
+    fn check_sat_assuming(&mut self, assumptions: &[Term]) -> SolverCheckResult {
+        let command = format!(
+            "(check-sat-assuming ({}))",
+            assumptions
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        let (check_id, setup_byte_start, check_byte_start, check_byte_end, command_ordinal) =
+            self.capture.begin_check(&command);
+        let result = self.inner.check_sat_assuming(assumptions);
         self.capture.end_check(
             check_id,
             setup_byte_start,

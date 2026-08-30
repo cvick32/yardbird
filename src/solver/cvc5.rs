@@ -720,6 +720,27 @@ impl YardbirdSolver for Cvc5SolverBackend {
         check_result
     }
 
+    fn check_sat_assuming(&mut self, assumptions: &[SmtTerm]) -> SolverCheckResult {
+        let mut cvc5_assumptions = self
+            .tracked_labels
+            .iter()
+            .map(|(_, term)| term.clone())
+            .collect::<Vec<_>>();
+        cvc5_assumptions.extend(assumptions.iter().map(|term| {
+            self.convert_assertion_term(term)
+                .expect("CVC5 check assumption must be boolean")
+        }));
+        let result = self.solver.check_sat_assuming(&cvc5_assumptions);
+        let check_result = SolverCheckResult::from_cvc5(&result);
+        self.unsat_core_cache.clear();
+        self.last_result = Some(check_result);
+        self.model_captured = false;
+        if check_result != SolverCheckResult::Sat {
+            self.model_value_cache.clear();
+        }
+        check_result
+    }
+
     fn capture_model(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
         if self.last_result != Some(SolverCheckResult::Sat) {
             anyhow::bail!("a CVC5 model can only be captured after SAT");

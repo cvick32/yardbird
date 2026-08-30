@@ -146,12 +146,21 @@ impl YardbirdSolver for Z3SolverBackend {
 
     fn check_sat(&mut self) -> SolverCheckResult {
         let result = SolverCheckResult::from(self.solver.check());
-        self.last_result = Some(result);
-        self.model_captured = false;
-        if result != SolverCheckResult::Sat {
-            self.newest_model = None;
-        }
-        result
+        self.record_check_result(result)
+    }
+
+    fn check_sat_assuming(&mut self, assumptions: &[Term]) -> SolverCheckResult {
+        let assumptions = assumptions
+            .iter()
+            .map(|term| {
+                self.z3_var_context
+                    .rewrite_term(term)
+                    .as_bool()
+                    .expect("[Z3] check assumption must be boolean")
+            })
+            .collect::<Vec<_>>();
+        let result = SolverCheckResult::from(self.solver.check_assumptions(&assumptions));
+        self.record_check_result(result)
     }
 
     fn capture_model(&mut self, _terms: &[Term]) -> anyhow::Result<()> {
@@ -236,6 +245,17 @@ impl YardbirdSolver for Z3SolverBackend {
     }
 }
 
+impl Z3SolverBackend {
+    fn record_check_result(&mut self, result: SolverCheckResult) -> SolverCheckResult {
+        self.last_result = Some(result);
+        self.model_captured = false;
+        if result != SolverCheckResult::Sat {
+            self.newest_model = None;
+        }
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,5 +330,28 @@ mod tests {
         assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
         assert!(solver.capture_model(&[]).is_err());
         assert!(!solver.has_model());
+    }
+
+    #[test]
+    fn assumptions_are_temporary_and_do_not_require_a_solver_scope() {
+        let mut solver = Z3SolverBackend::new("QF_UF").unwrap();
+        solver
+            .accept_command(&Command::DeclareFun {
+                symbol: Symbol("property_active".to_string()),
+                parameters: vec![],
+                sort: crate::theory_support::bool_sort(),
+            })
+            .unwrap();
+        solver
+            .assert_term(&"(=> property_active false)".parse::<Term>().unwrap())
+            .unwrap();
+        let activation = "property_active".parse::<Term>().unwrap();
+
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        assert_eq!(
+            solver.check_sat_assuming(&[activation]),
+            SolverCheckResult::Unsat
+        );
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
     }
 }

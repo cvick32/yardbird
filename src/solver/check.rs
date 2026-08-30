@@ -13,6 +13,7 @@ pub(crate) struct SolverCheckRequest<'a> {
     pub profiling_enabled: bool,
     pub assertion_count: u64,
     pub temporary_negated_property: Option<&'a Term>,
+    pub assumptions: &'a [Term],
     pub model_terms: Option<&'a [Term]>,
     pub capture_unsat_core: bool,
 }
@@ -31,6 +32,10 @@ pub(crate) fn run_solver_check(
     solver: &mut dyn YardbirdSolver,
     request: SolverCheckRequest<'_>,
 ) -> SolverCheckOutcome {
+    assert!(
+        request.temporary_negated_property.is_none() || request.assumptions.is_empty(),
+        "a solver check cannot use both a scoped property and assumptions"
+    );
     let mut timer =
         SolverCheckTimer::new(request.profiling_enabled, || solver.get_solver_statistics());
 
@@ -43,7 +48,13 @@ pub(crate) fn run_solver_check(
         });
     }
 
-    let (result, raw_check_elapsed) = timer.measure_raw(|| solver.check_sat());
+    let (result, raw_check_elapsed) = timer.measure_raw(|| {
+        if request.assumptions.is_empty() {
+            solver.check_sat()
+        } else {
+            solver.check_sat_assuming(request.assumptions)
+        }
+    });
 
     if result == SolverCheckResult::Sat {
         if let Some(model_terms) = request.model_terms {

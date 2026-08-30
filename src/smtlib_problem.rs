@@ -368,6 +368,7 @@ impl SmtlibCommandExecutor {
                 profiling_enabled: self.profiler.is_some(),
                 assertion_count: self.active_assertion_count,
                 temporary_negated_property: None,
+                assumptions: &[],
                 model_terms: None,
                 capture_unsat_core: false,
             },

@@ -7,7 +7,7 @@ use yardbird::{
     model_from_options,
     profiling::ProfilingRunRecord,
     smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    solver::{SolverCheckResult, SolverSessionIndex, SolverSessionManifest},
+    solver::{PropertyCheckMode, SolverCheckResult, SolverSessionIndex, SolverSessionManifest},
     strategies::{Abstract, ProofStrategy},
     Driver, SolverBackend, Strategy, YardbirdOptions,
 };
@@ -268,6 +268,114 @@ fn incremental_capture_preserves_every_check_and_ordered_result() {
 }
 
 #[test]
+fn property_assumption_capture_is_replayable_without_property_scopes() {
+    let temp = TempDir::new().unwrap();
+    let capture_dir = temp.path().join("capture");
+    let mut options = YardbirdOptions::from_filename(
+        "examples/distributed_protocols/german/german.vmt".to_string(),
+    );
+    options.depth = 2;
+    options.property_check_mode = PropertyCheckMode::Assumptions;
+    options.solver_capture_dir = Some(capture_dir);
+
+    let capture = options.build_solver_capture().unwrap();
+    let model = model_from_options(&options);
+    let mut driver = Driver::new(
+        model,
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_solver_capture(Some(capture.clone()));
+    let result = driver
+        .check_strategy(options.depth, options.build_array_strategy())
+        .unwrap();
+    let artifacts = capture.finish(&result.profiling).unwrap();
+    let transcript = fs::read_to_string(&artifacts.transcript).unwrap();
+    let index: SolverSessionIndex =
+        serde_json::from_slice(&fs::read(&artifacts.index).unwrap()).unwrap();
+
+    assert!(transcript.contains("(declare-fun yardbird_property_depth_0 () Bool)"));
+    assert!(transcript.contains("(declare-fun yardbird_property_depth_1 () Bool)"));
+    assert!(transcript.contains("(assert (=> yardbird_property_depth_0 (not"));
+    assert!(transcript.contains("(check-sat-assuming (yardbird_property_depth_0))"));
+    assert!(!transcript.contains("(push 1)"));
+    assert!(!transcript.contains("(pop 1)"));
+    assert_valid_check_boundaries(&transcript, &index);
+    for check in &index.checks {
+        assert_eq!(
+            &transcript[check.check_byte_start as usize..check.check_byte_end as usize],
+            format!(
+                "(check-sat-assuming (yardbird_property_depth_{}))\n",
+                check.depth
+            )
+        );
+    }
+    assert_eq!(
+        replay_with_yardbird(&artifacts.transcript),
+        index
+            .checks
+            .iter()
+            .map(|check| check.expected_result)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn refinement_assumptions_switch_after_the_first_sat_check_at_each_depth() {
+    let temp = TempDir::new().unwrap();
+    let capture_dir = temp.path().join("capture");
+    let mut options = YardbirdOptions::from_filename(
+        "examples/distributed_protocols/german/german.vmt".to_string(),
+    );
+    options.depth = 2;
+    options.property_check_mode = PropertyCheckMode::RefinementAssumptions;
+    options.solver_capture_dir = Some(capture_dir);
+
+    let capture = options.build_solver_capture().unwrap();
+    let mut driver = Driver::new(
+        model_from_options(&options),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_solver_capture(Some(capture.clone()));
+    let result = driver
+        .check_strategy(options.depth, options.build_array_strategy())
+        .unwrap();
+    let artifacts = capture.finish(&result.profiling).unwrap();
+    let transcript = fs::read_to_string(&artifacts.transcript).unwrap();
+    let index: SolverSessionIndex =
+        serde_json::from_slice(&fs::read(&artifacts.index).unwrap()).unwrap();
+
+    assert!(transcript.contains("(declare-fun yardbird_property_depth_0 () Bool)"));
+    assert!(transcript.contains("(declare-fun yardbird_property_depth_1 () Bool)"));
+    assert_valid_check_boundaries(&transcript, &index);
+    for check in &index.checks {
+        let captured = &transcript[check.check_byte_start as usize..check.check_byte_end as usize];
+        if check.refinement_step == 0 {
+            assert_eq!(captured, "(check-sat)\n");
+        } else {
+            assert_eq!(
+                captured,
+                format!(
+                    "(check-sat-assuming (yardbird_property_depth_{}))\n",
+                    check.depth
+                )
+            );
+        }
+    }
+    assert_eq!(
+        replay_with_yardbird(&artifacts.transcript),
+        index
+            .checks
+            .iter()
+            .map(|check| check.expected_result)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn multi_depth_capture_correlates_each_bmc_check() {
     let temp = TempDir::new().unwrap();
     let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
@@ -398,9 +506,13 @@ fn assert_valid_check_boundaries(transcript: &str, index: &SolverSessionIndex) {
         assert!(check.check_byte_start < check.check_byte_end);
         assert!(check.check_byte_end <= check.post_check_byte_end);
         assert!(check.post_check_byte_end <= transcript.len() as u64);
-        assert_eq!(
-            &transcript[check.check_byte_start as usize..check.check_byte_end as usize],
-            "(check-sat)\n"
+        let check_command =
+            &transcript[check.check_byte_start as usize..check.check_byte_end as usize];
+        assert!(
+            check_command == "(check-sat)\n"
+                || check_command.starts_with("(check-sat-assuming (")
+                    && check_command.ends_with("))\n"),
+            "unexpected captured check command: {check_command:?}"
         );
         assert!(
             transcript[check.check_byte_end as usize..check.post_check_byte_end as usize].contains(

@@ -4,6 +4,7 @@ use smt2parser::vmt::VMTModel;
 use crate::{
     driver,
     ic3ia::{self, ic3ia_output_contains_proof},
+    solver::PropertyCheckMode,
     theory_support::{ConcreteArrayTheory, TheorySupport},
     ProofLoopResult,
 };
@@ -14,17 +15,28 @@ use super::{ArrayRefinementState, ProofAction, ProofStrategy};
 pub struct ConcreteArrayZ3 {
     run_ic3ia: bool,
     discovered_array_types: Vec<(String, String)>,
+    property_check_mode: PropertyCheckMode,
 }
 impl ConcreteArrayZ3 {
     pub fn new(run_ic3ia: bool) -> Self {
         Self {
             run_ic3ia,
             discovered_array_types: vec![],
+            property_check_mode: PropertyCheckMode::Scoped,
         }
+    }
+
+    pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
+        self.property_check_mode = mode;
+        self
     }
 }
 
 impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
+    fn property_check_mode(&self) -> PropertyCheckMode {
+        self.property_check_mode
+    }
+
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         let (_, discovered_array_types) = model.abstract_array_theory();
         self.discovered_array_types = discovered_array_types;

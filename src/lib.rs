@@ -43,7 +43,7 @@ mod egg_utils;
 pub mod ic3ia;
 pub mod instantiation_provenance;
 pub mod instantiation_strategy;
-mod interpolant;
+pub mod interpolant;
 pub mod logger;
 pub mod problem_context;
 pub mod profiling;
@@ -113,6 +113,10 @@ pub struct YardbirdOptions {
     /// Rank complete instantiations independently of the term cost function.
     #[arg(long, value_enum, default_value_t = InstantiationRankerStrategy::PreferSource)]
     pub instantiation_ranker: InstantiationRankerStrategy,
+  
+    /// How array VMT property checks are presented to the incremental solver.
+    #[arg(long, value_enum, default_value_t = crate::solver::PropertyCheckMode::Scoped)]
+    pub property_check_mode: crate::solver::PropertyCheckMode,
 
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
     #[arg(long)]
@@ -215,6 +219,7 @@ impl Default for YardbirdOptions {
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
+            property_check_mode: crate::solver::PropertyCheckMode::Scoped,
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -291,6 +296,9 @@ impl YardbirdOptions {
             }
             InstantiationStrategyType::NoUnrollOnLoop => {
                 Box::new(instantiation_strategy::no_unroll_on_loop::NoUnrollOnLoop::new())
+            }
+            InstantiationStrategyType::SchemaBatch => {
+                Box::new(instantiation_strategy::schema_batch::SchemaBatchStrategy::new())
             }
         }
     }
@@ -433,6 +441,7 @@ impl YardbirdOptions {
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
         .with_instantiation_ranker(self.build_instantiation_ranker())
+        .with_property_check_mode(self.property_check_mode)
     }
 
     pub fn build_logistic_regression_array_strategy(
@@ -458,6 +467,7 @@ impl YardbirdOptions {
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
         .with_instantiation_ranker(self.build_instantiation_ranker())
+        .with_property_check_mode(self.property_check_mode)
     }
 
     pub fn build_instantiation_ranker(&self) -> Box<dyn InstantiationRanker> {
@@ -518,9 +528,13 @@ impl YardbirdOptions {
                 AbstractArrayWithQuantifiers::new(self.run_ic3ia)
                     .with_exact_read_after_write_preprocessing(
                         self.preprocess_exact_read_after_write,
-                    ),
+                    )
+                    .with_property_check_mode(self.property_check_mode),
             ),
-            Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
+            Strategy::Concrete => Box::new(
+                ConcreteArrayZ3::new(self.run_ic3ia)
+                    .with_property_check_mode(self.property_check_mode),
+            ),
         }
     }
 
@@ -563,9 +577,13 @@ impl YardbirdOptions {
                 AbstractArrayWithQuantifiers::new(self.run_ic3ia)
                     .with_exact_read_after_write_preprocessing(
                         self.preprocess_exact_read_after_write,
-                    ),
+                    )
+                    .with_property_check_mode(self.property_check_mode),
             ),
-            Strategy::Concrete => Box::new(ConcreteArrayZ3::new(self.run_ic3ia)),
+            Strategy::Concrete => Box::new(
+                ConcreteArrayZ3::new(self.run_ic3ia)
+                    .with_property_check_mode(self.property_check_mode),
+            ),
         }
     }
 
@@ -746,6 +764,7 @@ impl Display for SolverBackend {
 pub enum InstantiationStrategyType {
     FullUnroll,
     NoUnrollOnLoop,
+    SchemaBatch,
 }
 
 impl Display for InstantiationStrategyType {
@@ -753,6 +772,7 @@ impl Display for InstantiationStrategyType {
         match self {
             InstantiationStrategyType::FullUnroll => write!(f, "full-unroll"),
             InstantiationStrategyType::NoUnrollOnLoop => write!(f, "no-unroll-on-loop"),
+            InstantiationStrategyType::SchemaBatch => write!(f, "schema-batch"),
         }
     }
 }

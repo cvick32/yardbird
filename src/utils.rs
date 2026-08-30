@@ -1,7 +1,7 @@
 use crate::{interpolant::Interpolant, vmt_bmc_session::VmtBmcSession};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
-use smt2parser::{get_term_from_term_string, let_extract::LetExtract};
+use smt2parser::get_term_from_term_string;
 use std::collections::BTreeMap;
 use std::io::{Error, ErrorKind, Write};
 use std::{fmt::Display, process::Command};
@@ -75,8 +75,7 @@ fn parse_smtinterpol_output(interp_out: &str) -> Result<Vec<Interpolant>, Error>
     // Have to add `and` to the interpolant to make it valid smt2
     interpolants.insert_str(1, "and ");
     // Format it to `assert` call so smt2parser can handle it.
-    let term = get_term_from_term_string(&interpolants);
-    let sequent_interpolant = LetExtract::substitute(term.clone());
+    let sequent_interpolant = get_term_from_term_string(&interpolants);
     // Interpolants will now be the arguments to the `and` term created above.
     log::debug!("----------------------------------------");
     let interpolants = match sequent_interpolant {
@@ -84,9 +83,9 @@ fn parse_smtinterpol_output(interp_out: &str) -> Result<Vec<Interpolant>, Error>
             qual_identifier: _,
             arguments,
         } => arguments
-            .iter()
+            .into_iter()
             .enumerate()
-            .map(|(interpolant_number, term)| Interpolant::from(term, interpolant_number))
+            .map(|(interpolant_number, term)| Interpolant::new(term, interpolant_number))
             .collect(),
         _ => panic!("Sequent interpolant is not `and` application."),
     };
