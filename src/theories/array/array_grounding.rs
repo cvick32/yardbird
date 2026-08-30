@@ -148,6 +148,59 @@ impl GroundSubstitution {
         }
 
         let origin = extractor.candidate_origin(egraph, eclass, &expression);
+        self.bind_recorded_choice(variable, expression, egraph, extractor, context, origin)
+    }
+
+    fn bind_source_choice<N, CF>(
+        &mut self,
+        variable: egg::Var,
+        expression: ArrayExpr,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        extractor: &ArrayTermExtractor<CF>,
+        context: GroundContext<'_>,
+    ) -> anyhow::Result<()>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+        CF: YardbirdCostFunction<ArrayLanguage>,
+    {
+        let eclass = egraph
+            .lookup_expr(&expression)
+            .map(|eclass| egraph.find(eclass))
+            .ok_or_else(|| anyhow::anyhow!("Source write choice is absent from the e-graph"))?;
+        if let Some(existing) = self.get_binding(variable) {
+            anyhow::ensure!(
+                egraph.find(existing.eclass) == eclass,
+                "Variable {variable} matched incompatible eclasses"
+            );
+            return Ok(());
+        }
+        self.bind_recorded_choice(
+            variable,
+            expression,
+            egraph,
+            extractor,
+            context,
+            CandidateOrigin::SourceGrounded,
+        )
+    }
+
+    fn bind_recorded_choice<N, CF>(
+        &mut self,
+        variable: egg::Var,
+        expression: ArrayExpr,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        extractor: &ArrayTermExtractor<CF>,
+        context: GroundContext<'_>,
+        origin: CandidateOrigin,
+    ) -> anyhow::Result<()>
+    where
+        N: egg::Analysis<ArrayLanguage>,
+        CF: YardbirdCostFunction<ArrayLanguage>,
+    {
+        let eclass = egraph
+            .lookup_expr(&expression)
+            .map(|eclass| egraph.find(eclass))
+            .ok_or_else(|| anyhow::anyhow!("Ground choice is absent from the e-graph"))?;
 
         let chosen_term_hash = canonical_term_hash(&expression);
         let decision_key = extractor.decision_key(context.rule_name, variable, eclass);
@@ -246,31 +299,22 @@ where
     I: IntoIterator<Item = C>,
     F: FnMut(C, &mut GroundSubstitution) -> anyhow::Result<ArrayExpr>,
 {
-    let mut best: Option<(u32, bool, String, GroundSubstitution)> = None;
+    let mut best: Option<(u32, String, GroundSubstitution)> = None;
 
     for candidate in candidates {
         let mut candidate_grounding = grounding.clone();
         let expression = build_expression(candidate, &mut candidate_grounding)?;
         let cost = extractor.cost_of(&expression);
         let rendered = expression.to_string();
-        let candidate_is_derived = candidate_grounding.used_derived_candidate;
-
-        let should_replace =
-            best.as_ref()
-                .is_none_or(|(best_cost, best_is_derived, best_rendered, _)| {
-                    if extractor.prefers_source_on_cost_tie() {
-                        (cost, candidate_is_derived, rendered.as_str())
-                            < (*best_cost, *best_is_derived, best_rendered.as_str())
-                    } else {
-                        (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
-                    }
-                });
+        let should_replace = best.as_ref().is_none_or(|(best_cost, best_rendered, _)| {
+            (cost, rendered.as_str()) < (*best_cost, best_rendered.as_str())
+        });
 
         if should_replace {
-            best = Some((cost, candidate_is_derived, rendered, candidate_grounding));
+            best = Some((cost, rendered, candidate_grounding));
         }
     }
-    let Some((_, _, _, chosen_grounding)) = best else {
+    let Some((_, _, chosen_grounding)) = best else {
         return Ok(false);
     };
 
@@ -357,56 +401,112 @@ where
     let value_pattern = subpattern(pattern, value);
     let expected_eclass = egraph.find(expected_eclass);
 
-    let candidates = egraph[expected_eclass].nodes.iter().filter_map(|node| {
+    let mut candidates = Vec::new();
+    for node in &egraph[expected_eclass].nodes {
         let ArrayLanguage::WriteTyped([_, _, array_eclass, index_eclass, value_eclass]) = node
         else {
-            return None;
+            continue;
         };
-
-        child_patterns_compatible(
+        if !child_patterns_compatible(
             egraph,
             subst,
             [&array_pattern, &index_pattern, &value_pattern],
             [*array_eclass, *index_eclass, *value_eclass],
-        )
-        .then_some((*array_eclass, *index_eclass, *value_eclass))
-    });
+        ) {
+            continue;
+        }
+
+        if extractor.requires_source_grounded_candidates() {
+            candidates.extend(
+                matching_source_write_sites(
+                    egraph,
+                    extractor,
+                    *array_eclass,
+                    *index_eclass,
+                    *value_eclass,
+                )
+                .into_iter()
+                .map(|site| (*array_eclass, *index_eclass, *value_eclass, Some(site))),
+            );
+        } else {
+            candidates.push((*array_eclass, *index_eclass, *value_eclass, None));
+        }
+    }
 
     choose_best_grounding(
         extractor,
         grounding,
         candidates,
-        |(array_eclass, index_eclass, value_eclass), candidate_grounding| {
-            ground_pattern(
-                &array_pattern,
-                Some(array_eclass),
-                subst,
-                candidate_grounding,
-                egraph,
-                extractor,
-                context,
-            )?;
-            let array_expression = instantiate_pattern(&array_pattern, candidate_grounding)?;
-            let exact_children = best_matching_write_children(
-                egraph,
-                extractor,
-                &array_expression,
-                &index_sort,
-                &value_sort,
-                index_eclass,
-                value_eclass,
-            );
+        |(array_eclass, index_eclass, value_eclass, exact_source_site), candidate_grounding| {
+            let uses_exact_source_site = exact_source_site.is_some();
+            let exact_children =
+                if let Some((array_expression, index_expression, value_expression)) =
+                    exact_source_site
+                {
+                    if !bind_exact_source_variable(
+                        &array_pattern,
+                        &array_expression,
+                        candidate_grounding,
+                        egraph,
+                        extractor,
+                        context,
+                    )? {
+                        ground_pattern(
+                            &array_pattern,
+                            Some(array_eclass),
+                            subst,
+                            candidate_grounding,
+                            egraph,
+                            extractor,
+                            context,
+                        )?;
+                    }
+                    Some((index_expression, value_expression))
+                } else {
+                    ground_pattern(
+                        &array_pattern,
+                        Some(array_eclass),
+                        subst,
+                        candidate_grounding,
+                        egraph,
+                        extractor,
+                        context,
+                    )?;
+                    let array_expression =
+                        instantiate_pattern(&array_pattern, candidate_grounding)?;
+                    best_matching_write_children(
+                        egraph,
+                        extractor,
+                        &array_expression,
+                        &index_sort,
+                        &value_sort,
+                        index_eclass,
+                        value_eclass,
+                    )
+                };
 
             if let Some((index_expression, value_expression)) = exact_children.as_ref() {
-                if !bind_exact_variable(
-                    &index_pattern,
-                    index_eclass,
-                    index_expression,
-                    candidate_grounding,
-                    egraph,
-                    extractor,
-                    context,
-                )? {
+                let index_bound = if uses_exact_source_site {
+                    bind_exact_source_variable(
+                        &index_pattern,
+                        index_expression,
+                        candidate_grounding,
+                        egraph,
+                        extractor,
+                        context,
+                    )?
+                } else {
+                    bind_exact_variable(
+                        &index_pattern,
+                        index_eclass,
+                        index_expression,
+                        candidate_grounding,
+                        egraph,
+                        extractor,
+                        context,
+                    )?
+                };
+                if !index_bound {
                     ground_pattern(
                         &index_pattern,
                         Some(index_eclass),
@@ -417,15 +517,27 @@ where
                         context,
                     )?;
                 }
-                if !bind_exact_variable(
-                    &value_pattern,
-                    value_eclass,
-                    value_expression,
-                    candidate_grounding,
-                    egraph,
-                    extractor,
-                    context,
-                )? {
+                let value_bound = if uses_exact_source_site {
+                    bind_exact_source_variable(
+                        &value_pattern,
+                        value_expression,
+                        candidate_grounding,
+                        egraph,
+                        extractor,
+                        context,
+                    )?
+                } else {
+                    bind_exact_variable(
+                        &value_pattern,
+                        value_eclass,
+                        value_expression,
+                        candidate_grounding,
+                        egraph,
+                        extractor,
+                        context,
+                    )?
+                };
+                if !value_bound {
                     ground_pattern(
                         &value_pattern,
                         Some(value_eclass),
@@ -579,6 +691,27 @@ where
     Ok(true)
 }
 
+fn bind_exact_source_variable<N, CF>(
+    pattern: &ArrayPattern,
+    expression: &ArrayExpr,
+    grounding: &mut GroundSubstitution,
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    extractor: &ArrayTermExtractor<CF>,
+    context: GroundContext<'_>,
+) -> anyhow::Result<bool>
+where
+    N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
+{
+    let [egg::ENodeOrVar::Var(variable)] = pattern.as_ref() else {
+        return Ok(false);
+    };
+
+    grounding.bind_source_choice(*variable, expression.clone(), egraph, extractor, context)?;
+
+    Ok(true)
+}
+
 // Have to remap the IDs out the output expr to account for the IDs of the input expr.
 fn append_expr(output: &mut ArrayExpr, input: &ArrayExpr) -> anyhow::Result<egg::Id> {
     let mut roots = Vec::<egg::Id>::with_capacity(input.as_ref().len());
@@ -696,7 +829,7 @@ where
         best
     };
 
-    let best = if extractor.prefers_source_on_cost_tie() {
+    let best = if extractor.requires_source_grounded_candidates() {
         best_in_pool(extractor.source_write_candidates(array_expr))
     } else {
         best_in_pool(extractor.all_write_candidates(array_expr))
@@ -711,6 +844,32 @@ where
         result.clone(),
     );
     result
+}
+
+fn matching_source_write_sites<N, CF>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    extractor: &ArrayTermExtractor<CF>,
+    array_eclass: egg::Id,
+    index_eclass: egg::Id,
+    value_eclass: egg::Id,
+) -> Vec<(ArrayExpr, ArrayExpr, ArrayExpr)>
+where
+    N: egg::Analysis<ArrayLanguage>,
+    CF: YardbirdCostFunction<ArrayLanguage>,
+{
+    let mut sites = Vec::new();
+    for array in extractor.source_candidates_for_eclass(egraph, array_eclass) {
+        for (index, value) in extractor.source_write_candidates(&array) {
+            if egraph_contains_at(egraph, index, index_eclass)
+                && egraph_contains_at(egraph, value, value_eclass)
+            {
+                sites.push((array.clone(), index.clone(), value.clone()));
+            }
+        }
+    }
+    sites.sort_by_cached_key(|(array, index, value)| format!("{array}\u{0}{index}\u{0}{value}"));
+    sites.dedup();
+    sites
 }
 
 fn egraph_contains_at<N>(
@@ -1138,6 +1297,88 @@ mod test {
                 .unwrap()
                 .to_string(),
             "(Write Int Int A i v)"
+        );
+    }
+
+    #[test]
+    fn expected_write_keeps_an_intact_source_site_when_the_base_has_a_cheaper_alias() {
+        let pattern: ArrayPattern = "(Write Int Int ?array ?index ?value)".parse().unwrap();
+        let array_var: egg::Var = "?array".parse().unwrap();
+        let index_var: egg::Var = "?index".parse().unwrap();
+        let value_var: egg::Var = "?value".parse().unwrap();
+
+        let source_write: ArrayExpr = "(Write Int Int source_array i v)".parse().unwrap();
+        let source_array: ArrayExpr = "source_array".parse().unwrap();
+        let cheaper_alias: ArrayExpr = "alias".parse().unwrap();
+        let index: ArrayExpr = "i".parse().unwrap();
+        let value: ArrayExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let expected_write_eclass = egraph.add_expr(&source_write);
+        let source_array_eclass = egraph.lookup_expr(&source_array).unwrap();
+        let alias_eclass = egraph.add_expr(&cheaper_alias);
+        egraph.union(source_array_eclass, alias_eclass);
+        egraph.rebuild();
+
+        let mut subst = egg::Subst::default();
+        subst.insert(array_var, egraph.find(source_array_eclass));
+        subst.insert(index_var, egraph.lookup_expr(&index).unwrap());
+        subst.insert(value_var, egraph.lookup_expr(&value).unwrap());
+
+        let extractor = ArrayTermExtractor::new(
+            &egraph,
+            ZeroCost,
+            ArrayTermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog {
+                    source_grounded: ArrayCandidatePool {
+                        terms: vec![
+                            "alias".to_string(),
+                            "source_array".to_string(),
+                            "i".to_string(),
+                            "v".to_string(),
+                            "(Write_Int_Int source_array i v)".to_string(),
+                        ],
+                        reads_and_writes: ReadsAndWrites::from(
+                            std::collections::HashSet::new(),
+                            std::collections::HashSet::from([(
+                                "source_array".to_string(),
+                                "i".to_string(),
+                                "v".to_string(),
+                            )]),
+                        ),
+                    },
+                    derived: ArrayCandidatePool::default(),
+                },
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        );
+        let mut grounding = GroundSubstitution::default();
+
+        let grounded = ground_expected_write(
+            &pattern,
+            expected_write_eclass,
+            &subst,
+            &mut grounding,
+            &egraph,
+            &extractor,
+            GroundContext::new(
+                false,
+                "write-grounding",
+                crate::quantified_rule::QuantifiedRuleCategory::Other,
+            ),
+        )
+        .unwrap();
+
+        assert!(grounded);
+        assert!(!grounding.used_derived_candidate());
+        assert_eq!(
+            instantiate_pattern(&pattern, &grounding)
+                .unwrap()
+                .to_string(),
+            "(Write Int Int source_array i v)"
         );
     }
 }

@@ -23,6 +23,7 @@ use crate::{
         array_dataflow::{build_property_cone, PropertyCone},
         array_egraph_builder::{
             ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
+            SourceThenFullEGraphBuilder,
         },
         array_rule_instantiator::ArrayArtifactCapture,
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
@@ -108,7 +109,7 @@ where
             aux_covered_term_hashes: HashSet::new(),
             profile,
             profiling_records: vec![],
-            egraph_builder: Box::<FullEGraphBuilder>::default(),
+            egraph_builder: Box::<SourceThenFullEGraphBuilder>::default(),
             cone_attempted_depths: HashSet::new(),
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
@@ -313,6 +314,7 @@ where
                 profiling.add_counter("egraph_build_stages", 1);
                 profiling.add_counter(
                     match expansion.stage {
+                        ArrayEGraphBuildStage::Source => "egraph_build_source_stages",
                         ArrayEGraphBuildStage::Cone => "egraph_build_cone_stages",
                         ArrayEGraphBuildStage::Full => "egraph_build_full_stages",
                     },
@@ -333,7 +335,9 @@ where
             }
 
             let cost_factory_start = Instant::now();
-            let candidate_catalog = if expansion.candidate_scope.tracks_provenance() {
+            let candidate_catalog = if expansion.candidate_scope.tracks_provenance()
+                || self.instantiation_ranker.requires_source_provenance()
+            {
                 smt.get_array_candidate_catalog()
             } else {
                 crate::problem_context::ArrayCandidateCatalog::default()

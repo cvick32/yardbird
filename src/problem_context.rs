@@ -43,6 +43,15 @@ pub trait ProblemContext {
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn model_to_string(&self) -> anyhow::Result<String>;
     fn get_all_subterms(&self) -> Vec<&Term>;
+    /// Get only problem-authored subterms, excluding formulas introduced by
+    /// refinement. Backends without separate provenance use all subterms.
+    fn get_source_subterms(&self) -> Vec<&Term> {
+        self.get_all_subterms()
+    }
+    /// Whether source and refinement-authored subterms have distinct provenance.
+    fn separates_source_subterms(&self) -> bool {
+        false
+    }
     fn get_solver_statistics(&self) -> SolverStatistics;
     fn get_reason_unknown(&self) -> Option<String>;
 

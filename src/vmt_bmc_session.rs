@@ -937,6 +937,14 @@ impl ProblemContext for VmtBmcSession {
         self.subterm_handler.get_all_subterms()
     }
 
+    fn get_source_subterms(&self) -> Vec<&Term> {
+        self.subterm_handler.get_source_subterms()
+    }
+
+    fn separates_source_subterms(&self) -> bool {
+        true
+    }
+
     fn get_solver_statistics(&self) -> SolverStatistics {
         let mut statistics = self.solver.get_solver_statistics();
         self.assertion_tracker

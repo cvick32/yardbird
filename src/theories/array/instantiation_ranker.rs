@@ -16,6 +16,10 @@ pub trait InstantiationRanker: Debug + Send {
 
     fn compare(&self, left: &InstantiationCandidate, right: &InstantiationCandidate) -> Ordering;
 
+    fn requires_source_provenance(&self) -> bool {
+        false
+    }
+
     fn is_eligible(&self, _candidate: &InstantiationCandidate, _scope: CandidateScope) -> bool {
         true
     }
@@ -66,6 +70,10 @@ impl InstantiationRanker for PreferSourceInstantiationRanker {
         left_is_derived
             .cmp(&right_is_derived)
             .then_with(|| compare_by_term_cost(left, right))
+    }
+
+    fn requires_source_provenance(&self) -> bool {
+        true
     }
 
     fn is_eligible(&self, candidate: &InstantiationCandidate, scope: CandidateScope) -> bool {
