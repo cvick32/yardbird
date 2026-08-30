@@ -652,6 +652,7 @@ fn run_config_benchmark(
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
             candidate_winners_per_group: 1,
             instantiation_ranker: run.instantiation_ranker,
+            property_check_mode: yardbird::solver::PropertyCheckMode::Scoped,
             solver: run.solver,
             theory: yardbird::Theory::Array,
             json_output: false,

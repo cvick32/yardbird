@@ -23,7 +23,7 @@ pub struct SubtermHandler {
     prop_reads_and_writes: ReadsAndWrites,
     instantiation_reads_and_writes: ReadsAndWrites,
     init_and_trans_asserts: Vec<String>,
-    prop_assert: String,
+    prop_assert: Option<Term>,
 }
 
 impl SubtermHandler {
@@ -45,7 +45,7 @@ impl SubtermHandler {
             prop_reads_and_writes: ReadsAndWrites::default(),
             instantiation_reads_and_writes: ReadsAndWrites::default(),
             init_and_trans_asserts: vec![],
-            prop_assert: "".into(),
+            prop_assert: None,
         }
     }
 
@@ -152,7 +152,7 @@ impl SubtermHandler {
         let mut prop_subterms = NonBooleanSubterms::default();
         self.prop_reads_and_writes = ReadsAndWrites::default();
         let indexed_prop_term = self.prop_term.clone().accept(bmc_builder).unwrap();
-        self.prop_assert = indexed_prop_term.clone().to_string();
+        self.prop_assert = Some(indexed_prop_term.clone());
         let _ = indexed_prop_term
             .clone()
             .accept_term_visitor(&mut prop_subterms);
@@ -220,7 +220,10 @@ impl SubtermHandler {
     }
 
     pub(crate) fn get_property_assert(&self) -> Term {
-        self.prop_assert.parse().unwrap()
+        self
+            .prop_assert
+            .clone()
+            .expect("property assertion should be generated before solver checks")
     }
 }
 
@@ -252,6 +255,10 @@ fn extend_unique(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use smt2parser::vmt::bmc::BMCBuilder;
+
     use super::*;
 
     #[test]
@@ -281,5 +288,21 @@ mod tests {
             derived.write_array("derived_array").collect::<Vec<_>>(),
             ["derived_index"]
         );
+    }
+
+    #[test]
+    fn property_assert_preserves_lambda_terms_without_reparsing() {
+        let init: Term = "true".parse().unwrap();
+        let trans: Term = "true".parse().unwrap();
+        let prop: Term =
+            "(= (select responses N) (lambda ((|P:response| response)) false))"
+                .parse()
+                .unwrap();
+        let mut handler = SubtermHandler::new(init, trans, prop.clone());
+        let mut builder = BMCBuilder::new(vec![], HashMap::new());
+
+        handler.generate_subterms(&mut builder);
+
+        assert_eq!(handler.get_property_assert(), prop);
     }
 }
