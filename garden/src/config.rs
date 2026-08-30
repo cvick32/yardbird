@@ -74,7 +74,7 @@ fn default_solvers() -> Vec<SolverBackend> {
 }
 
 fn default_egraph_builder() -> EGraphBuilderStrategy {
-    EGraphBuilderStrategy::Full
+    EGraphBuilderStrategy::SourceThenFull
 }
 
 fn default_egraph_builders() -> Vec<EGraphBuilderStrategy> {
@@ -186,7 +186,9 @@ fn matrix_run_name(
     );
     let name = match egraph_builder {
         EGraphBuilderStrategy::Full => base,
-        EGraphBuilderStrategy::ConeThenFull => format!("{base}_e{egraph_builder:?}"),
+        EGraphBuilderStrategy::SourceThenFull | EGraphBuilderStrategy::ConeThenFull => {
+            format!("{base}_e{egraph_builder:?}")
+        }
     };
     let name = match instantiation_ranker {
         InstantiationRankerStrategy::PreferSource => name,
@@ -342,8 +344,24 @@ global:
             ),
             false,
         );
+        let source = matrix_run_name(
+            "deep",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            (
+                EGraphBuilderStrategy::SourceThenFull,
+                InstantiationRankerStrategy::PreferSource,
+            ),
+            false,
+        );
 
         assert_eq!(full, "deep_d50_solverZ3_sAbstract_cBmcCost");
+        assert_eq!(
+            source,
+            "deep_d50_solverZ3_sAbstract_cBmcCost_eSourceThenFull"
+        );
         assert_eq!(cone, "deep_d50_solverZ3_sAbstract_cBmcCost_eConeThenFull");
     }
 

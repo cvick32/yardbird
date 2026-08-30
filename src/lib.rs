@@ -23,7 +23,10 @@ use crate::{
     },
     strategies::ListRefinementState,
     theories::array::{
-        array_egraph_builder::{ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder},
+        array_egraph_builder::{
+            ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder,
+            SourceThenFullEGraphBuilder,
+        },
         array_rule_instantiator::ArrayArtifactCapture,
         instantiation_ranker::{
             InstantiationRanker, PreferSourceInstantiationRanker, TermCostInstantiationRanker,
@@ -96,7 +99,7 @@ pub struct YardbirdOptions {
     pub cost_function: CostFunction,
 
     /// Choose how model equalities are admitted to the array refinement e-graph.
-    #[arg(long, value_enum, default_value_t = EGraphBuilderStrategy::Full)]
+    #[arg(long, value_enum, default_value_t = EGraphBuilderStrategy::SourceThenFull)]
     pub egraph_builder: EGraphBuilderStrategy,
 
     /// Simplify exact select(store(A, i, v), i) terms before array abstraction.
@@ -208,7 +211,7 @@ impl Default for YardbirdOptions {
             repl: false,
             run_ic3ia: false,
             cost_function: CostFunction::BmcCost,
-            egraph_builder: EGraphBuilderStrategy::Full,
+            egraph_builder: EGraphBuilderStrategy::SourceThenFull,
             preprocess_exact_read_after_write: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
@@ -465,16 +468,10 @@ impl YardbirdOptions {
     }
 
     fn build_array_egraph_builder(&self) -> Box<dyn ArrayEGraphBuilder> {
-        let prefer_source = self.instantiation_ranker == InstantiationRankerStrategy::PreferSource;
-        match (self.egraph_builder, prefer_source) {
-            (EGraphBuilderStrategy::Full, true) => Box::<FullEGraphBuilder>::default(),
-            (EGraphBuilderStrategy::Full, false) => Box::new(FullEGraphBuilder::all_candidates()),
-            (EGraphBuilderStrategy::ConeThenFull, true) => {
-                Box::<ConeThenFullEGraphBuilder>::default()
-            }
-            (EGraphBuilderStrategy::ConeThenFull, false) => {
-                Box::new(ConeThenFullEGraphBuilder::all_candidates())
-            }
+        match self.egraph_builder {
+            EGraphBuilderStrategy::Full => Box::<FullEGraphBuilder>::default(),
+            EGraphBuilderStrategy::SourceThenFull => Box::<SourceThenFullEGraphBuilder>::default(),
+            EGraphBuilderStrategy::ConeThenFull => Box::<ConeThenFullEGraphBuilder>::default(),
         }
     }
 
@@ -655,6 +652,7 @@ pub enum CostFunction {
 #[serde(rename_all = "kebab-case")]
 pub enum EGraphBuilderStrategy {
     Full,
+    SourceThenFull,
     ConeThenFull,
 }
 
@@ -680,6 +678,7 @@ impl Display for EGraphBuilderStrategy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Full => write!(f, "full"),
+            Self::SourceThenFull => write!(f, "source-then-full"),
             Self::ConeThenFull => write!(f, "cone-then-full"),
         }
     }
@@ -786,5 +785,34 @@ mod option_tests {
         assert!(options
             .build_array_strategy()
             .preprocess_exact_read_after_write());
+    }
+
+    #[test]
+    fn egraph_builder_strategy_is_an_explicit_cli_dimension() {
+        let default_options = YardbirdOptions::from_filename("input.vmt".to_string());
+        assert_eq!(
+            default_options.egraph_builder,
+            EGraphBuilderStrategy::SourceThenFull
+        );
+
+        let staged_options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--filename",
+            "input.vmt",
+            "--egraph-builder",
+            "source-then-full",
+            "--instantiation-ranker",
+            "term-cost",
+        ])
+        .unwrap();
+
+        assert_eq!(
+            staged_options.egraph_builder,
+            EGraphBuilderStrategy::SourceThenFull
+        );
+        assert_eq!(
+            staged_options.instantiation_ranker,
+            InstantiationRankerStrategy::TermCost
+        );
     }
 }
