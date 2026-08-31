@@ -1,0 +1,74 @@
+# Depth-50 AWS evaluation over the complete examples/array corpus.
+#
+# Each parameter matrix contains exactly one configuration so main_eval.py can
+# launch it on an independent AWS worker. The two ranker matrices isolate the
+# historical term-cost -> prefer-source change. The best matrix is the
+# highest-coverage, lowest-runtime configuration among the N=4/16/48 tie in
+# the 2026-08-31 local ablation.
+global:
+  examples_dir: examples/array
+  timeout_seconds: 120
+  retry_count: 1
+  jobs: 1
+  benchmark_limit:
+  sample_seed: 20260831
+  require_array_reads_and_writes: false
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+
+parameter_matrices:
+  # Historical baseline before whole-instantiation source ranking.
+  array-legacy-term-cost-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [scoped]
+    instantiation_strategies: [full-unroll]
+
+  # Controlled ranker ablation: only term-cost -> prefer-source changes.
+  array-prefer-source-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [1]
+    property_check_modes: [scoped]
+    instantiation_strategies: [full-unroll]
+
+  # Best point from the local depth-50 ablation: 174/181 solved.
+  array-best-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  array-concrete-z3-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+
+  array-quantified-z3-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract-with-quantifiers]
+    cost_functions: [bmc-cost]
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: false
+  timestamp_format: "%Y%m%d_%H%M%S"
