@@ -28,7 +28,7 @@ use config::BenchmarkConfig;
 #[command(version, about, long_about = None)]
 struct GardenOptions {
     #[arg(short, long)]
-    pub config: Option<PathBuf>,
+    pub config: PathBuf,
 
     #[arg(short, long)]
     pub matrix: Option<String>,
@@ -171,6 +171,9 @@ struct StrategyResult {
     cost_function: yardbird::CostFunction,
     egraph_builder: yardbird::EGraphBuilderStrategy,
     instantiation_ranker: yardbird::InstantiationRankerStrategy,
+    candidate_winners_per_group: usize,
+    property_check_mode: yardbird::solver::PropertyCheckMode,
+    instantiation_strategy: yardbird::InstantiationStrategyType,
     preprocess_exact_read_after_write: bool,
     result: BenchmarkResult,
     run_time: u128,
@@ -219,6 +222,16 @@ fn collect_reader(reader: &mut Option<thread::JoinHandle<String>>) -> String {
         .unwrap_or_default()
 }
 
+fn append_refinement_policy_args(command: &mut Command, options: &YardbirdOptions) {
+    command
+        .arg("--candidate-winners-per-group")
+        .arg(options.candidate_winners_per_group.to_string())
+        .arg("--property-check-mode")
+        .arg(options.property_check_mode.to_string())
+        .arg("--instantiation-strategy")
+        .arg(options.instantiation_strategy.to_string());
+}
+
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
     // Get the path to the yardbird binary (in target/release/)
     let yardbird_bin = std::env::current_exe()
@@ -249,7 +262,9 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
         .arg("--egraph-builder")
         .arg(options.egraph_builder.to_string())
         .arg("--instantiation-ranker")
-        .arg(options.instantiation_ranker.to_string())
+        .arg(options.instantiation_ranker.to_string());
+    append_refinement_policy_args(&mut command, options);
+    command
         .arg("--solver")
         .arg(options.solver.to_string())
         .arg("--synthesis-trigger")
@@ -448,6 +463,9 @@ fn run_single(
             cost_function: options.cost_function,
             egraph_builder: options.egraph_builder,
             instantiation_ranker: options.instantiation_ranker,
+            candidate_winners_per_group: options.candidate_winners_per_group,
+            property_check_mode: options.property_check_mode,
+            instantiation_strategy: options.instantiation_strategy,
             preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
             run_time: run_time.as_millis(),
             depth: options.depth,
@@ -650,16 +668,16 @@ fn run_config_benchmark(
             cost_function: run.cost_function,
             egraph_builder: run.egraph_builder,
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
-            candidate_winners_per_group: 1,
+            candidate_winners_per_group: run.candidate_winners_per_group,
             instantiation_ranker: run.instantiation_ranker,
-            property_check_mode: yardbird::solver::PropertyCheckMode::Scoped,
+            property_check_mode: run.property_check_mode,
             solver: run.solver,
             theory: yardbird::Theory::Array,
             json_output: false,
             dump_solver: None,
             track_instantiations: options.track_instantiations,
             dump_unsat_core: None,
-            instantiation_strategy: yardbird::InstantiationStrategyType::FullUnroll,
+            instantiation_strategy: run.instantiation_strategy,
             train: options.train,
             train_reset: false,
             database_url: options.database_url.clone(),
@@ -843,19 +861,44 @@ fn stable_sample_rank(path: &Path, sample_seed: u64) -> u64 {
 
 fn main() -> anyhow::Result<()> {
     let options = GardenOptions::parse();
-
-    if let Some(config_path) = &options.config {
-        let config = BenchmarkConfig::from_file(config_path)?;
-        run_config_based(options, config)
-    } else {
-        panic!("Benchmark configuration file required.")
-    }
+    let config = BenchmarkConfig::from_file(&options.config)?;
+    run_config_based(options, config)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{array_operation_presence, discover_benchmarks, Pattern};
+    use super::{
+        append_refinement_policy_args, array_operation_presence, discover_benchmarks, Pattern,
+    };
     use std::fs;
+    use yardbird::{solver::PropertyCheckMode, InstantiationStrategyType, YardbirdOptions};
+
+    #[test]
+    fn refinement_policy_options_are_forwarded_to_yardbird() {
+        let mut options = YardbirdOptions::from_filename("input.vmt".to_string());
+        options.candidate_winners_per_group = 48;
+        options.property_check_mode = PropertyCheckMode::Assumptions;
+        options.instantiation_strategy = InstantiationStrategyType::SchemaBatch;
+        let mut command = std::process::Command::new("yardbird");
+
+        append_refinement_policy_args(&mut command, &options);
+
+        let arguments = command
+            .get_args()
+            .map(|argument| argument.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            arguments,
+            [
+                "--candidate-winners-per-group",
+                "48",
+                "--property-check-mode",
+                "assumptions",
+                "--instantiation-strategy",
+                "schema-batch",
+            ]
+        );
+    }
 
     #[test]
     fn benchmark_discovery_is_recursive_sorted_and_vmt_only() {

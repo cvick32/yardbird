@@ -2,7 +2,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use yardbird::{
-    CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, SolverBackend, Strategy,
+    solver::PropertyCheckMode, CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy,
+    InstantiationStrategyType, SolverBackend, Strategy,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +60,12 @@ pub struct ParameterMatrix {
     pub egraph_builders: Vec<EGraphBuilderStrategy>,
     #[serde(default = "default_instantiation_rankers")]
     pub instantiation_rankers: Vec<InstantiationRankerStrategy>,
+    #[serde(default = "default_candidate_winners_per_group_values")]
+    pub candidate_winners_per_group: Vec<usize>,
+    #[serde(default = "default_property_check_modes")]
+    pub property_check_modes: Vec<PropertyCheckMode>,
+    #[serde(default = "default_instantiation_strategies")]
+    pub instantiation_strategies: Vec<InstantiationStrategyType>,
     #[serde(default)]
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
@@ -89,6 +96,30 @@ fn default_instantiation_rankers() -> Vec<InstantiationRankerStrategy> {
     vec![default_instantiation_ranker()]
 }
 
+fn default_candidate_winners_per_group() -> usize {
+    1
+}
+
+fn default_candidate_winners_per_group_values() -> Vec<usize> {
+    vec![default_candidate_winners_per_group()]
+}
+
+fn default_property_check_mode() -> PropertyCheckMode {
+    PropertyCheckMode::Scoped
+}
+
+fn default_property_check_modes() -> Vec<PropertyCheckMode> {
+    vec![default_property_check_mode()]
+}
+
+fn default_instantiation_strategy() -> InstantiationStrategyType {
+    InstantiationStrategyType::FullUnroll
+}
+
+fn default_instantiation_strategies() -> Vec<InstantiationStrategyType> {
+    vec![default_instantiation_strategy()]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
     pub name: String,
@@ -101,6 +132,12 @@ pub struct IndividualConfig {
     pub egraph_builder: EGraphBuilderStrategy,
     #[serde(default = "default_instantiation_ranker")]
     pub instantiation_ranker: InstantiationRankerStrategy,
+    #[serde(default = "default_candidate_winners_per_group")]
+    pub candidate_winners_per_group: usize,
+    #[serde(default = "default_property_check_mode")]
+    pub property_check_mode: PropertyCheckMode,
+    #[serde(default = "default_instantiation_strategy")]
+    pub instantiation_strategy: InstantiationStrategyType,
     #[serde(default)]
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
@@ -166,8 +203,21 @@ pub struct BenchmarkRun {
     pub cost_function: CostFunction,
     pub egraph_builder: EGraphBuilderStrategy,
     pub instantiation_ranker: InstantiationRankerStrategy,
+    pub candidate_winners_per_group: usize,
+    pub property_check_mode: PropertyCheckMode,
+    pub instantiation_strategy: InstantiationStrategyType,
     pub preprocess_exact_read_after_write: bool,
     pub timeout_seconds: u64,
+}
+
+#[derive(Copy, Clone)]
+struct RefinementSelection {
+    egraph_builder: EGraphBuilderStrategy,
+    instantiation_ranker: InstantiationRankerStrategy,
+    candidate_winners_per_group: usize,
+    property_check_mode: PropertyCheckMode,
+    instantiation_strategy: InstantiationStrategyType,
+    preprocess_exact_read_after_write: bool,
 }
 
 fn matrix_run_name(
@@ -176,25 +226,39 @@ fn matrix_run_name(
     solver: SolverBackend,
     strategy: Strategy,
     cost_function: CostFunction,
-    selection: (EGraphBuilderStrategy, InstantiationRankerStrategy),
-    preprocess_exact_read_after_write: bool,
+    selection: RefinementSelection,
 ) -> String {
-    let (egraph_builder, instantiation_ranker) = selection;
     let base = format!(
         "{}_d{}_solver{:?}_s{:?}_c{:?}",
         matrix_name, depth, solver, strategy, cost_function
     );
-    let name = match egraph_builder {
+    let name = match selection.egraph_builder {
         EGraphBuilderStrategy::Full => base,
         EGraphBuilderStrategy::SourceThenFull | EGraphBuilderStrategy::ConeThenFull => {
-            format!("{base}_e{egraph_builder:?}")
+            format!("{base}_e{:?}", selection.egraph_builder)
         }
     };
-    let name = match instantiation_ranker {
+    let name = match selection.instantiation_ranker {
         InstantiationRankerStrategy::PreferSource => name,
-        InstantiationRankerStrategy::TermCost => format!("{name}_r{instantiation_ranker:?}"),
+        InstantiationRankerStrategy::TermCost => {
+            format!("{name}_r{:?}", selection.instantiation_ranker)
+        }
     };
-    if preprocess_exact_read_after_write {
+    let name = if selection.candidate_winners_per_group == default_candidate_winners_per_group() {
+        name
+    } else {
+        format!("{name}_w{}", selection.candidate_winners_per_group)
+    };
+    let name = if selection.property_check_mode == default_property_check_mode() {
+        name
+    } else {
+        format!("{name}_p{:?}", selection.property_check_mode)
+    };
+    let name = match selection.instantiation_strategy {
+        InstantiationStrategyType::FullUnroll => name,
+        strategy => format!("{name}_i{strategy:?}"),
+    };
+    if selection.preprocess_exact_read_after_write {
         format!("{name}_preprocessExactReadAfterWrite")
     } else {
         name
@@ -229,6 +293,9 @@ impl BenchmarkConfig {
                     cost_function: config.cost_function,
                     egraph_builder: config.egraph_builder,
                     instantiation_ranker: config.instantiation_ranker,
+                    candidate_winners_per_group: config.candidate_winners_per_group,
+                    property_check_mode: config.property_check_mode,
+                    instantiation_strategy: config.instantiation_strategy,
                     preprocess_exact_read_after_write: config.preprocess_exact_read_after_write,
                     timeout_seconds: config
                         .timeout_seconds
@@ -256,28 +323,49 @@ impl BenchmarkConfig {
                     for &cost_function in &matrix.cost_functions {
                         for &egraph_builder in &matrix.egraph_builders {
                             for &instantiation_ranker in &matrix.instantiation_rankers {
-                                runs.push(BenchmarkRun {
-                                    name: matrix_run_name(
-                                        matrix_name,
-                                        depth,
-                                        solver,
-                                        strategy,
-                                        cost_function,
-                                        (egraph_builder, instantiation_ranker),
-                                        matrix.preprocess_exact_read_after_write,
-                                    ),
-                                    depth,
-                                    solver,
-                                    strategy,
-                                    cost_function,
-                                    egraph_builder,
-                                    instantiation_ranker,
-                                    preprocess_exact_read_after_write: matrix
-                                        .preprocess_exact_read_after_write,
-                                    timeout_seconds: matrix
-                                        .timeout_seconds
-                                        .unwrap_or(self.global.timeout_seconds),
-                                });
+                                for &candidate_winners_per_group in
+                                    &matrix.candidate_winners_per_group
+                                {
+                                    for &property_check_mode in &matrix.property_check_modes {
+                                        for &instantiation_strategy in
+                                            &matrix.instantiation_strategies
+                                        {
+                                            let selection = RefinementSelection {
+                                                egraph_builder,
+                                                instantiation_ranker,
+                                                candidate_winners_per_group,
+                                                property_check_mode,
+                                                instantiation_strategy,
+                                                preprocess_exact_read_after_write: matrix
+                                                    .preprocess_exact_read_after_write,
+                                            };
+                                            runs.push(BenchmarkRun {
+                                                name: matrix_run_name(
+                                                    matrix_name,
+                                                    depth,
+                                                    solver,
+                                                    strategy,
+                                                    cost_function,
+                                                    selection,
+                                                ),
+                                                depth,
+                                                solver,
+                                                strategy,
+                                                cost_function,
+                                                egraph_builder,
+                                                instantiation_ranker,
+                                                candidate_winners_per_group,
+                                                property_check_mode,
+                                                instantiation_strategy,
+                                                preprocess_exact_read_after_write: matrix
+                                                    .preprocess_exact_read_after_write,
+                                                timeout_seconds: matrix
+                                                    .timeout_seconds
+                                                    .unwrap_or(self.global.timeout_seconds),
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -292,10 +380,26 @@ impl BenchmarkConfig {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{matrix_run_name, BenchmarkConfig};
+    use super::{matrix_run_name, BenchmarkConfig, RefinementSelection};
     use yardbird::{
-        CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, SolverBackend, Strategy,
+        solver::PropertyCheckMode, CostFunction, EGraphBuilderStrategy,
+        InstantiationRankerStrategy, InstantiationStrategyType, SolverBackend, Strategy,
     };
+
+    fn selection(
+        egraph_builder: EGraphBuilderStrategy,
+        instantiation_ranker: InstantiationRankerStrategy,
+        preprocess_exact_read_after_write: bool,
+    ) -> RefinementSelection {
+        RefinementSelection {
+            egraph_builder,
+            instantiation_ranker,
+            candidate_winners_per_group: 1,
+            property_check_mode: PropertyCheckMode::Scoped,
+            instantiation_strategy: InstantiationStrategyType::FullUnroll,
+            preprocess_exact_read_after_write,
+        }
+    }
 
     #[test]
     fn older_global_configs_receive_sampling_defaults() {
@@ -326,11 +430,11 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            (
+            selection(
                 EGraphBuilderStrategy::Full,
                 InstantiationRankerStrategy::PreferSource,
+                false,
             ),
-            false,
         );
         let cone = matrix_run_name(
             "deep",
@@ -338,11 +442,11 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            (
+            selection(
                 EGraphBuilderStrategy::ConeThenFull,
                 InstantiationRankerStrategy::PreferSource,
+                false,
             ),
-            false,
         );
         let source = matrix_run_name(
             "deep",
@@ -350,11 +454,11 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            (
+            selection(
                 EGraphBuilderStrategy::SourceThenFull,
                 InstantiationRankerStrategy::PreferSource,
+                false,
             ),
-            false,
         );
 
         assert_eq!(full, "deep_d50_solverZ3_sAbstract_cBmcCost");
@@ -373,14 +477,107 @@ global:
             SolverBackend::Z3,
             Strategy::Abstract,
             CostFunction::BmcCost,
-            (
+            selection(
                 EGraphBuilderStrategy::ConeThenFull,
                 InstantiationRankerStrategy::PreferSource,
+                true,
             ),
-            true,
         );
 
         assert!(name.ends_with("_preprocessExactReadAfterWrite"));
+    }
+
+    #[test]
+    fn refinement_dimensions_are_explicit_in_run_names() {
+        let name = matrix_run_name(
+            "german",
+            7,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::PreferConstants,
+            RefinementSelection {
+                egraph_builder: EGraphBuilderStrategy::SourceThenFull,
+                instantiation_ranker: InstantiationRankerStrategy::PreferSource,
+                candidate_winners_per_group: 48,
+                property_check_mode: PropertyCheckMode::Assumptions,
+                instantiation_strategy: InstantiationStrategyType::SchemaBatch,
+                preprocess_exact_read_after_write: false,
+            },
+        );
+
+        assert!(name.contains("_w48"));
+        assert!(name.contains("_pAssumptions"));
+        assert!(name.contains("_iSchemaBatch"));
+    }
+
+    #[test]
+    fn german_smoke_config_covers_each_policy_value() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("german_smoke_config.yaml");
+        let config = BenchmarkConfig::from_file(&path).unwrap();
+        let runs = config.generate_benchmark_runs(None).unwrap();
+
+        assert_eq!(runs.len(), 10);
+        for builder in [
+            EGraphBuilderStrategy::Full,
+            EGraphBuilderStrategy::SourceThenFull,
+            EGraphBuilderStrategy::ConeThenFull,
+        ] {
+            assert!(runs.iter().any(|run| run.egraph_builder == builder));
+        }
+        for ranker in [
+            InstantiationRankerStrategy::TermCost,
+            InstantiationRankerStrategy::PreferSource,
+        ] {
+            assert!(runs.iter().any(|run| run.instantiation_ranker == ranker));
+        }
+        for winners in [1, 48] {
+            assert!(runs
+                .iter()
+                .any(|run| run.candidate_winners_per_group == winners));
+        }
+        for mode in [
+            PropertyCheckMode::Scoped,
+            PropertyCheckMode::Assumptions,
+            PropertyCheckMode::RefinementAssumptions,
+        ] {
+            assert!(runs.iter().any(|run| run.property_check_mode == mode));
+        }
+        assert!(runs.iter().any(|run| matches!(
+            run.instantiation_strategy,
+            InstantiationStrategyType::FullUnroll
+        )));
+        assert!(runs.iter().any(|run| matches!(
+            run.instantiation_strategy,
+            InstantiationStrategyType::SchemaBatch
+        )));
+        assert!(runs.iter().any(|run| matches!(
+            run.instantiation_strategy,
+            InstantiationStrategyType::NoUnrollOnLoop
+        )));
+        assert!(runs.iter().any(|run| run.preprocess_exact_read_after_write));
+    }
+
+    #[test]
+    fn matrix_expands_the_new_refinement_dimensions() {
+        let config: BenchmarkConfig = serde_yaml::from_str(
+            r#"
+parameter_matrices:
+  policies:
+    depths: [1]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [1, 2]
+    property_check_modes: [scoped, assumptions]
+    instantiation_strategies: [full-unroll, schema-batch]
+"#,
+        )
+        .unwrap();
+
+        let runs = config.generate_benchmark_runs(Some("policies")).unwrap();
+        assert_eq!(runs.len(), 8);
     }
 
     #[test]
