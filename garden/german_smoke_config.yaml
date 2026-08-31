@@ -1,0 +1,122 @@
+# Focused runtime smoke test for Yardbird's array-refinement policy seams.
+# Each run changes one setting from the baseline so failures remain attributable.
+global:
+  examples_dir: examples/distributed_protocols/german/german.vmt
+  timeout_seconds: 60
+  retry_count: 1
+  jobs: 1
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+
+individual_configs:
+  - name: german_baseline
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: full-unroll
+
+  - name: german_builder_full
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: full-unroll
+
+  - name: german_builder_cone_then_full
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: cone-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: full-unroll
+
+  - name: german_ranker_term_cost
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: term-cost
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: full-unroll
+
+  - name: german_one_winner
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 1
+    property_check_mode: assumptions
+    instantiation_strategy: full-unroll
+
+  - name: german_property_scoped
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: scoped
+    instantiation_strategy: full-unroll
+
+  - name: german_property_refinement_assumptions
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: refinement-assumptions
+    instantiation_strategy: full-unroll
+
+  - name: german_instantiation_schema_batch
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: schema-batch
+
+  - name: german_instantiation_no_unroll_on_loop
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: no-unroll-on-loop
+
+  - name: german_preprocess_exact_read_after_write
+    depth: 7
+    solver: z3
+    strategy: abstract
+    cost_function: prefer-constants
+    egraph_builder: source-then-full
+    instantiation_ranker: prefer-source
+    candidate_winners_per_group: 48
+    property_check_mode: assumptions
+    instantiation_strategy: full-unroll
+    preprocess_exact_read_after_write: true
