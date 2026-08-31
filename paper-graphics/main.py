@@ -2,11 +2,12 @@ from pathlib import Path
 import argparse
 from datetime import datetime
 
-from src.benchmark_parsing import BenchmarkParser
+from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
 from src.unique_solves import unique_solves
 from src.data_generators import (
     RuntimeScatterPlotGenerator,
     CactusPlotGenerator,
+    SolverCheckCactusPlotGenerator,
     SolverRuntimeCactusPlotGenerator,
     InstantiationScatterPlotGenerator,
     InstCactusPlotGenerator,
@@ -47,6 +48,19 @@ def choose_baseline_strategy(strategy_keys):
     for strategy_key in preferred_baselines:
         if strategy_key in strategy_keys:
             return strategy_key
+    legacy_policy = [
+        strategy_key
+        for strategy_key in strategy_keys
+        if strategy_key.startswith("abstract_bmc-cost__")
+        and "__egraph-full" in strategy_key
+        and "__ranker-term-cost" in strategy_key
+        and "__winners-1" in strategy_key
+        and "__property-scoped" in strategy_key
+        and "__instantiation-full-unroll" in strategy_key
+        and "__preprocess-off" in strategy_key
+    ]
+    if legacy_policy:
+        return sorted(legacy_policy)[0]
     return sorted(strategy_keys)[0] if strategy_keys else None
 
 
@@ -57,7 +71,14 @@ def display_name_for_strategy(grouped, strategy_key):
     return strategy_key
 
 
-def generate_figures(grouped, strategy_keys, all_results, output_dir):
+def generate_figures(
+    grouped,
+    strategy_keys,
+    all_results,
+    output_dir,
+    *,
+    include_pairwise=True,
+):
     """Generate all figures and save to output directory
 
     Args:
@@ -124,6 +145,18 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
     non_baseline_strategies = sorted(
         [s for s in strategy_keys if s != baseline_strategy]
     )
+    if not include_pairwise:
+        print(
+            "Skipping per-configuration pairwise plots; "
+            "the all-configuration plots and analysis remain enabled"
+        )
+        non_baseline_strategies = []
+
+    series_styles = {}
+    for result in all_results:
+        style = result.get_plot_style()
+        if style:
+            series_styles.setdefault(result.get_display_name(), style)
 
     # Initialize generators
     runtime_gen = RuntimeScatterPlotGenerator(grouped)
@@ -297,6 +330,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             ylabel="Runtime (s)",
             caption="Cactus plot comparing runtime performance across all strategies (lower lines are better).",
             use_log_scale=True,
+            series_styles=series_styles,
         )
 
         output_file = output_dir / "runtime_cactus_plot.tex"
@@ -324,9 +358,37 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             ),
             use_log_scale=True,
             label="fig:cactus_z3_runtime",
+            series_styles=series_styles,
         )
 
         output_file = output_dir / "solver_runtime_cactus_plot.tex"
+        output_file.write_text(tikz_code)
+        print(f"  Saved: {output_file}")
+
+    # Generate Z3 check-count cactus plot
+    print(f"\n{'=' * 60}")
+    print("Generating Z3 check-count cactus plot")
+    print(f"{'=' * 60}")
+
+    solver_check_gen = SolverCheckCactusPlotGenerator(all_results)
+    solver_check_data = solver_check_gen.generate_data()
+
+    if solver_check_data:
+        tikz_code = InstCactusPlotTikzGenerator.generate(
+            solver_check_data,
+            title="Z3 Check Count Comparison",
+            xlabel="Number of Solved Instances",
+            ylabel="Z3 Checks",
+            caption=(
+                "Cactus plot of cumulative check-sat calls for successful runs. "
+                "Lower curves indicate fewer solver queries."
+            ),
+            use_log_scale=True,
+            label="fig:cactus_z3_checks",
+            series_styles=series_styles,
+        )
+
+        output_file = output_dir / "solver_check_cactus_plot.tex"
         output_file.write_text(tikz_code)
         print(f"  Saved: {output_file}")
 
@@ -346,6 +408,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
             ylabel="Instantiations",
             caption="Cactus plot comparing instantiation counts across all strategies (lower lines are better).",
             use_log_scale=True,
+            series_styles=series_styles,
         )
 
         output_file = output_dir / "instantiation_cactus_plot.tex"
@@ -372,6 +435,7 @@ def generate_figures(grouped, strategy_keys, all_results, output_dir):
                 "paired conflict-reduction panel for shared-solve comparisons."
             ),
             use_log_scale=True,
+            series_styles=series_styles,
         )
 
         output_file = output_dir / "conflict_cactus_plot.tex"
@@ -479,15 +543,7 @@ def main():
     benchmark_parser = BenchmarkParser(json_files)
 
     # Default: show unique solves analysis
-    grouped = {}
-    strategy_keys: set[str] = set()
-    for result in benchmark_parser.all_results:
-        if result.example_name not in grouped:
-            grouped[result.example_name] = {}
-
-        strategy_key = result.get_strategy_id()
-        strategy_keys.add(strategy_key)
-        grouped[result.example_name][strategy_key] = result
+    grouped, strategy_keys = group_benchmark_results(benchmark_parser.all_results)
 
     if args.figures:
         # Generate all figures

@@ -4,7 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from report.build_report import figure_tex_paths, table_tex_paths
+from report.build_report import (
+    figure_tex_paths,
+    standalone_manifest,
+    table_tex_paths,
+)
 
 
 class ReportFragmentDiscoveryTests(unittest.TestCase):
@@ -20,6 +24,17 @@ class ReportFragmentDiscoveryTests(unittest.TestCase):
 
             self.assertEqual(figure_tex_paths(tex_dir), [figure])
             self.assertEqual(table_tex_paths(tex_dir), [table])
+
+    def test_standalone_result_manifest_is_reportable(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            result = root / "result.json"
+            result.write_text("{}")
+            manifest = standalone_manifest([result], root / "ablation", "Ablation")
+
+        self.assertEqual(manifest["name"], "Ablation")
+        self.assertEqual(manifest["status"], "COMPLETED")
+        self.assertEqual(manifest["subruns"][0]["result_path"], str(result.resolve()))
 
 
 if __name__ == "__main__":

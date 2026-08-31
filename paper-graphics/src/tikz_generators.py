@@ -157,6 +157,7 @@ class CactusPlotTikzGenerator:
         caption: str = None,
         use_log_scale: bool = True,
         label: str = "fig:cactus_runtime",
+        series_styles: Optional[Dict[str, str]] = None,
     ) -> str:
         """Generate a cactus plot comparing strategies
 
@@ -199,8 +200,6 @@ class CactusPlotTikzGenerator:
             "Z3 Array Theory": "softRed",
             "BMC Cost": "softBlue",
             "AST Size": "softGreen",
-            "Adaptive Cost": "softPurple",
-            "Split Cost": "softOrange",
             "Prefer Read": "softPurple",
             "Prefer Write": "softOrange",
             "Prefer Constants": "softYellow",
@@ -211,6 +210,12 @@ class CactusPlotTikzGenerator:
             "Index-Aware Cost": "softPurple",
         }
 
+        legend_options = (
+            "legend columns=2,\n"
+            "    legend style={font=\\tiny, at={(0.5,-0.2)}, anchor=north},"
+            if len(strategy_data) > 8
+            else "legend style={font=\\scriptsize},\n    legend pos=south east,"
+        )
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
@@ -223,16 +228,17 @@ class CactusPlotTikzGenerator:
     grid=major,
     width=\\columnwidth,
     height=8cm,
-    legend style={{font=\\scriptsize}},
-    legend pos=south east,
+    {legend_options}
 ]
 
 """
 
         # Plot each strategy
         for strategy_name, sorted_times in sorted(strategy_data.items()):
-            color = strategy_colors.get(strategy_name, "black")
-            tikz_code += f"\\addplot[thick, color={color}] coordinates {{\n"
+            style = (series_styles or {}).get(strategy_name)
+            if style is None:
+                style = f"color={strategy_colors.get(strategy_name, 'black')}"
+            tikz_code += f"\\addplot[thick, {style}] coordinates {{\n"
             for i, runtime in enumerate(sorted_times, start=1):
                 tikz_code += f"    ({i}, {runtime:.6f})\n"
             tikz_code += f"}};\n\\addlegendentry{{{strategy_name}}}\n\n"
@@ -261,6 +267,7 @@ class InstCactusPlotTikzGenerator:
         caption: str = None,
         use_log_scale: bool = True,
         label: str = "fig:cactus_inst",
+        series_styles: Optional[Dict[str, str]] = None,
     ) -> str:
         """Generate an instantiation cactus plot comparing strategies
 
@@ -316,6 +323,12 @@ class InstCactusPlotTikzGenerator:
             "Z3 MBQI": "softBrown",
         }
 
+        legend_options = (
+            "legend columns=2,\n"
+            "    legend style={font=\\tiny, at={(0.5,-0.2)}, anchor=north},"
+            if len(strategy_data) > 8
+            else "legend style={font=\\scriptsize},\n    legend pos=south east,"
+        )
         tikz_code = f"""\\begin{{figure}}[htbp]
 \\centering
 \\begin{{tikzpicture}}
@@ -328,16 +341,17 @@ class InstCactusPlotTikzGenerator:
     grid=major,
     width=\\columnwidth,
     height=8cm,
-    legend style={{font=\\scriptsize}},
-    legend pos=south east,
+    {legend_options}
 ]
 
 """
 
         # Plot each strategy
         for strategy_name, inst_counts in sorted(strategy_data.items()):
-            color = strategy_colors.get(strategy_name, "black")
-            tikz_code += f"\\addplot[thick, color={color}] coordinates {{\n"
+            style = (series_styles or {}).get(strategy_name)
+            if style is None:
+                style = f"color={strategy_colors.get(strategy_name, 'black')}"
+            tikz_code += f"\\addplot[thick, {style}] coordinates {{\n"
             for i, inst in enumerate(inst_counts, start=1):
                 # Pin None (failed) values to the top of the graph
                 if inst is not None:
@@ -370,6 +384,7 @@ class ConflictCactusPlotTikzGenerator:
         ylabel: str = "Total Solver Conflicts",
         caption: str = None,
         use_log_scale: bool = True,
+        series_styles: Optional[Dict[str, str]] = None,
     ) -> str:
         return InstCactusPlotTikzGenerator.generate(
             strategy_data,
@@ -379,6 +394,7 @@ class ConflictCactusPlotTikzGenerator:
             caption=caption,
             use_log_scale=use_log_scale,
             label="fig:cactus_conflicts",
+            series_styles=series_styles,
         )
 
 

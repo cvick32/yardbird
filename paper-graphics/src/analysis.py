@@ -11,9 +11,10 @@ from typing import Any
 from .benchmark_parsing import BenchmarkResult
 
 
-ANALYSIS_SCHEMA_VERSION = "yardbird-analysis-v2"
+ANALYSIS_SCHEMA_VERSION = "yardbird-analysis-v3"
 DEFAULT_RUNTIME_TIE_TOLERANCE = 0.05
 SOLVER_DIAGNOSTIC_METRICS = (
+    ("num checks", "Z3 checks", "solver_num_checks"),
     ("conflicts", "Conflicts", "solver_conflicts"),
     ("decisions", "Decisions", "solver_decisions"),
     ("propagations", "Propagations", "solver_propagations"),
@@ -124,6 +125,8 @@ def _spearman(xs: list[float], ys: list[float]) -> float | None:
 
 
 def _solver_stat_value(result: BenchmarkResult, stat_key: str) -> float | None:
+    if stat_key == "num checks":
+        return float(result.num_checks)
     if stat_key == "conflicts":
         if result.total_conflicts is not None:
             return result.total_conflicts
@@ -172,8 +175,7 @@ def _build_solver_diagnostics(
             positive = [
                 (candidate, baseline, candidate_value, baseline_value)
                 for candidate, baseline, candidate_value, baseline_value in observed
-                if candidate_value > 0
-                and baseline_value > 0
+                if candidate_value > 0 and baseline_value > 0
             ]
             correlation_pairs = [
                 item
@@ -237,7 +239,9 @@ def _build_solver_diagnostics(
                     ),
                     "runtime_win_candidate_lower_count": runtime_win_relations["lower"],
                     "runtime_win_equal_count": runtime_win_relations["equal"],
-                    "runtime_win_candidate_higher_count": runtime_win_relations["higher"],
+                    "runtime_win_candidate_higher_count": runtime_win_relations[
+                        "higher"
+                    ],
                     "paired_log_ratio_solver_time_spearman": _round(
                         _spearman(stat_log_ratios, solver_time_log_ratios)
                     ),
@@ -263,8 +267,14 @@ def _benchmark_row(result: BenchmarkResult, strategy_id: str) -> dict[str, Any]:
         "strategy_id": strategy_id,
         "strategy": result.strategy,
         "strategy_display_name": result.get_display_name(),
+        "solver": result.solver,
         "cost_function": result.cost_function,
         "egraph_builder": result.egraph_builder,
+        "instantiation_ranker": result.instantiation_ranker,
+        "candidate_winners_per_group": result.candidate_winners_per_group,
+        "property_check_mode": result.property_check_mode,
+        "instantiation_strategy": result.instantiation_strategy,
+        "preprocess_exact_read_after_write": (result.preprocess_exact_read_after_write),
         "depth": result.depth,
         "result_type": result.result_type,
         "success": result.success,
@@ -292,6 +302,9 @@ def _comparison_row(
 ) -> dict[str, Any]:
     category = "missing_result"
     speedup = None
+    solver_time_speedup = None
+    check_reduction = None
+    instantiation_reduction = None
 
     if candidate is not None and baseline is not None:
         if candidate.success and not baseline.success:
@@ -308,6 +321,14 @@ def _comparison_row(
                     category = "runtime_win"
                 elif speedup < 1.0 / (1.0 + runtime_tie_tolerance):
                     category = "runtime_loss"
+            if candidate.solver_time_s > 0 and baseline.solver_time_s > 0:
+                solver_time_speedup = baseline.solver_time_s / candidate.solver_time_s
+            if candidate.num_checks > 0 and baseline.num_checks > 0:
+                check_reduction = baseline.num_checks / candidate.num_checks
+            if candidate.used_instantiations > 0 and baseline.used_instantiations > 0:
+                instantiation_reduction = (
+                    baseline.used_instantiations / candidate.used_instantiations
+                )
 
     return {
         "benchmark": benchmark,
@@ -321,6 +342,15 @@ def _comparison_row(
         "candidate_runtime_ms": candidate.runtime_ms if candidate else None,
         "baseline_runtime_ms": baseline.runtime_ms if baseline else None,
         "runtime_speedup": _round(speedup),
+        "solver_time_speedup": _round(solver_time_speedup),
+        "check_reduction": _round(check_reduction),
+        "instantiation_reduction": _round(instantiation_reduction),
+        "candidate_num_checks": (
+            candidate.num_checks if candidate and candidate.success else None
+        ),
+        "baseline_num_checks": (
+            baseline.num_checks if baseline and baseline.success else None
+        ),
         "candidate_instantiations": (
             candidate.used_instantiations if candidate and candidate.success else None
         ),
@@ -390,6 +420,10 @@ def build_analysis(
             for result in successes
             if result.used_instantiations is not None
         ]
+        checks = [float(result.num_checks) for result in successes]
+        solver_times = [
+            result.solver_time_s for result in successes if result.solver_time_s > 0
+        ]
         solved_examples = {result.example_name for result in successes}
         exclusive_solves = [
             benchmark
@@ -406,6 +440,7 @@ def build_analysis(
             {
                 "strategy_id": strategy_id,
                 "display_name": display_names[strategy_id],
+                "configuration": (results[0].get_configuration() if results else {}),
                 "expected_benchmarks": len(benchmarks),
                 "result_count": len(results),
                 "missing_results": len(benchmarks) - len(results),
@@ -427,6 +462,10 @@ def build_analysis(
                 "mean_solved_runtime_s": _round(_mean(runtimes)),
                 "median_instantiations": _round(_median(instantiations), 1),
                 "mean_instantiations": _round(_mean(instantiations), 1),
+                "median_num_checks": _round(_median(checks), 1),
+                "mean_num_checks": _round(_mean(checks), 1),
+                "median_solver_time_s": _round(_median(solver_times)),
+                "mean_solver_time_s": _round(_mean(solver_times)),
                 "fastest_solve_count": fastest_counts[strategy_id],
                 "exclusive_solve_count": len(exclusive_solves),
                 "exclusive_solves": exclusive_solves,
@@ -454,6 +493,19 @@ def build_analysis(
         counts = Counter(row["category"] for row in rows)
         shared_speedups = [
             row["runtime_speedup"] for row in rows if row["runtime_speedup"] is not None
+        ]
+        shared_solver_speedups = [
+            row["solver_time_speedup"]
+            for row in rows
+            if row["solver_time_speedup"] is not None
+        ]
+        shared_check_reductions = [
+            row["check_reduction"] for row in rows if row["check_reduction"] is not None
+        ]
+        shared_instantiation_reductions = [
+            row["instantiation_reduction"]
+            for row in rows
+            if row["instantiation_reduction"] is not None
         ]
         coverage_wins = sorted(
             (row for row in rows if row["category"] == "coverage_win"),
@@ -489,6 +541,14 @@ def build_analysis(
             {
                 "candidate_strategy_id": candidate_id,
                 "candidate_display_name": display_names[candidate_id],
+                "candidate_configuration": next(
+                    (
+                        grouped_results[benchmark][candidate_id].get_configuration()
+                        for benchmark in benchmarks
+                        if candidate_id in grouped_results[benchmark]
+                    ),
+                    {},
+                ),
                 "baseline_strategy_id": baseline_strategy,
                 "baseline_display_name": display_names[baseline_strategy],
                 "candidate_solved": candidate_solved,
@@ -508,6 +568,15 @@ def build_analysis(
                 "runtime_tie_count": counts["runtime_tie"],
                 "geomean_runtime_speedup": _round(_geometric_mean(shared_speedups)),
                 "median_runtime_speedup": _round(_median(shared_speedups)),
+                "geomean_solver_time_speedup": _round(
+                    _geometric_mean(shared_solver_speedups)
+                ),
+                "geomean_check_reduction": _round(
+                    _geometric_mean(shared_check_reductions)
+                ),
+                "geomean_instantiation_reduction": _round(
+                    _geometric_mean(shared_instantiation_reductions)
+                ),
                 "candidate_only_solves": coverage_wins,
                 "baseline_only_solves": coverage_losses,
                 "top_runtime_wins": runtime_wins[:10],
@@ -596,8 +665,8 @@ def analysis_markdown(analysis: dict[str, Any]) -> str:
         "",
         "## Strategy summary",
         "",
-        "| Strategy | Solved | Unsolved | Missing | Solve rate | Median runtime | Fastest | Exclusive |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Strategy | Solved | Unsolved | Missing | Solve rate | Median runtime | Median checks | Fastest | Exclusive |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for summary in analysis["strategy_summaries"]:
         median = summary["median_solved_runtime_s"]
@@ -607,7 +676,7 @@ def analysis_markdown(analysis: dict[str, Any]) -> str:
         lines.append(
             f"| {summary['display_name']} | {summary['solved']} | "
             f"{summary['unsolved']} | {summary['missing_results']} | "
-            f"{solve_rate_text} | {median_text} | "
+            f"{solve_rate_text} | {median_text} | {summary['median_num_checks'] or 0:g} | "
             f"{summary['fastest_solve_count']} | {summary['exclusive_solve_count']} |"
         )
 
@@ -629,9 +698,7 @@ def analysis_markdown(analysis: dict[str, Any]) -> str:
             ratio = metric["paired_median_ratio"]
             ratio_text = f"{ratio:.3f}x" if ratio is not None else "-"
             correlation = metric["paired_log_ratio_solver_time_spearman"]
-            correlation_text = (
-                f"{correlation:.3f}" if correlation is not None else "-"
-            )
+            correlation_text = f"{correlation:.3f}" if correlation is not None else "-"
             lines.append(
                 f"| {metric['label']} | {metric['candidate_median'] or 0:g} | "
                 f"{metric['baseline_median'] or 0:g} | {ratio_text} | "
@@ -651,6 +718,14 @@ def analysis_markdown(analysis: dict[str, Any]) -> str:
         candidate_name = comparison["candidate_display_name"]
         geomean = comparison["geomean_runtime_speedup"]
         geomean_text = f"{geomean:.3f}x" if geomean is not None else "n/a"
+        solver_speedup = comparison["geomean_solver_time_speedup"]
+        solver_speedup_text = (
+            f"{solver_speedup:.3f}x" if solver_speedup is not None else "n/a"
+        )
+        check_reduction = comparison["geomean_check_reduction"]
+        check_reduction_text = (
+            f"{check_reduction:.3f}x" if check_reduction is not None else "n/a"
+        )
         lines.extend(
             [
                 "",
@@ -664,6 +739,8 @@ def analysis_markdown(analysis: dict[str, Any]) -> str:
                 f"- Runtime wins / ties / losses: {comparison['runtime_win_count']} / "
                 f"{comparison['runtime_tie_count']} / {comparison['runtime_loss_count']}",
                 f"- Geometric-mean runtime speedup: {geomean_text}",
+                f"- Geometric-mean Z3-time speedup: {solver_speedup_text}",
+                f"- Geometric-mean Z3-check reduction: {check_reduction_text}",
             ]
         )
 
@@ -733,6 +810,7 @@ def write_analysis_exports(
         [
             "strategy_id",
             "display_name",
+            "configuration",
             "expected_benchmarks",
             "result_count",
             "missing_results",
@@ -748,6 +826,10 @@ def write_analysis_exports(
             "mean_solved_runtime_s",
             "median_instantiations",
             "mean_instantiations",
+            "median_num_checks",
+            "mean_num_checks",
+            "median_solver_time_s",
+            "mean_solver_time_s",
             "fastest_solve_count",
             "exclusive_solve_count",
         ],
@@ -758,6 +840,7 @@ def write_analysis_exports(
         [
             "candidate_strategy_id",
             "candidate_display_name",
+            "candidate_configuration",
             "baseline_strategy_id",
             "baseline_display_name",
             "candidate_solved",
@@ -774,6 +857,9 @@ def write_analysis_exports(
             "runtime_loss_count",
             "geomean_runtime_speedup",
             "median_runtime_speedup",
+            "geomean_solver_time_speedup",
+            "geomean_check_reduction",
+            "geomean_instantiation_reduction",
         ],
     )
     _write_csv(
@@ -784,8 +870,14 @@ def write_analysis_exports(
             "strategy_id",
             "strategy",
             "strategy_display_name",
+            "solver",
             "cost_function",
             "egraph_builder",
+            "instantiation_ranker",
+            "candidate_winners_per_group",
+            "property_check_mode",
+            "instantiation_strategy",
+            "preprocess_exact_read_after_write",
             "depth",
             "result_type",
             "success",
@@ -813,6 +905,11 @@ def write_analysis_exports(
             "candidate_runtime_ms",
             "baseline_runtime_ms",
             "runtime_speedup",
+            "solver_time_speedup",
+            "check_reduction",
+            "instantiation_reduction",
+            "candidate_num_checks",
+            "baseline_num_checks",
             "candidate_instantiations",
             "baseline_instantiations",
         ],

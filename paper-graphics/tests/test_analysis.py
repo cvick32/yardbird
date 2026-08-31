@@ -110,14 +110,16 @@ class AnalysisTests(unittest.TestCase):
             analysis_json = Path(metadata["analysis_json"])
             self.assertEqual(
                 json.loads(analysis_json.read_text())["schema_version"],
-                "yardbird-analysis-v2",
+                "yardbird-analysis-v3",
             )
             benchmark_csv = Path(temp_dir) / "data" / "benchmark_results.csv"
             with benchmark_csv.open(newline="") as input_file:
                 rows = list(csv.DictReader(input_file))
             self.assertEqual(len(rows), 10)
             self.assertEqual(rows[0]["total_conflicts"], "20")
-            self.assertTrue((Path(temp_dir) / "data" / "solver_diagnostics.csv").is_file())
+            self.assertTrue(
+                (Path(temp_dir) / "data" / "solver_diagnostics.csv").is_file()
+            )
 
     def test_solver_diagnostics_are_paired_and_track_runtime_wins(self) -> None:
         self.grouped["examples/array/a.vmt"]["concrete"].solver_stats = {
@@ -137,6 +139,23 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(decisions["paired_count"], 1)
         self.assertEqual(decisions["paired_median_ratio"], 0.25)
         self.assertEqual(decisions["runtime_win_candidate_lower_count"], 1)
+
+    def test_comparison_summarizes_solver_time_and_check_reduction(self) -> None:
+        baseline = self.grouped["examples/array/a.vmt"]["concrete"]
+        candidate = self.grouped["examples/array/a.vmt"]["abstract_bmc-cost"]
+        baseline.num_checks = 20
+        candidate.num_checks = 5
+        baseline.solver_time_s = 2.0
+        candidate.solver_time_s = 0.5
+
+        analysis = build_analysis(
+            {"examples/array/a.vmt": self.grouped["examples/array/a.vmt"]},
+            {"concrete", "abstract_bmc-cost"},
+            "concrete",
+        )
+        comparison = analysis["baseline_comparisons"][0]
+        self.assertEqual(comparison["geomean_check_reduction"], 4.0)
+        self.assertEqual(comparison["geomean_solver_time_speedup"], 4.0)
 
 
 if __name__ == "__main__":

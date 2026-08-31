@@ -18,7 +18,10 @@ sys.path.insert(0, str(PAPER_GRAPHICS_ROOT))
 
 from main import choose_baseline_strategy, generate_figures  # noqa: E402
 from src.analysis import build_analysis, write_analysis_exports  # noqa: E402
-from src.benchmark_parsing import BenchmarkParser  # noqa: E402
+from src.benchmark_parsing import (  # noqa: E402
+    BenchmarkParser,
+    group_benchmark_results,
+)
 from report.instrumentation import build_instrumentation_report  # noqa: E402
 from report.typst import typst_table  # noqa: E402
 
@@ -30,6 +33,7 @@ FIGURE_PREFIXES = (
     "instantiation_cactus_plot",
     "conflict_cactus_plot",
     "solver_runtime_cactus_plot",
+    "solver_check_cactus_plot",
     "solver_stat_",
     "solver_boundary_",
 )
@@ -41,6 +45,7 @@ GENERATED_TEX_PATTERNS = (
     "instantiation_*.tex",
     "conflict_*.tex",
     "solver_runtime_*.tex",
+    "solver_check_*.tex",
     "solver_stat_*.tex",
     "solver_boundary_*.tex",
     "unique_solves_*.tex",
@@ -51,12 +56,14 @@ GENERATED_ASSET_PATTERNS = (
     "instantiation_*.pdf",
     "conflict_*.pdf",
     "solver_runtime_*.pdf",
+    "solver_check_*.pdf",
     "solver_stat_*.pdf",
     "solver_boundary_*.pdf",
     "runtime_*.png",
     "instantiation_*.png",
     "conflict_*.png",
     "solver_runtime_*.png",
+    "solver_check_*.png",
     "solver_stat_*.png",
     "solver_boundary_*.png",
 )
@@ -88,13 +95,7 @@ def run_command(
 
 def benchmark_groupings(json_files: list[Path]) -> tuple[dict, set[str], list]:
     parser = BenchmarkParser(json_files)
-    grouped: dict[str, dict[str, object]] = {}
-    strategy_keys: set[str] = set()
-    for result in parser.all_results:
-        grouped.setdefault(result.example_name, {})
-        strategy_key = result.get_strategy_id()
-        strategy_keys.add(strategy_key)
-        grouped[result.example_name][strategy_key] = result
+    grouped, strategy_keys = group_benchmark_results(parser.all_results)
     return grouped, strategy_keys, parser.all_results
 
 
@@ -119,9 +120,7 @@ def figure_tex_paths(tex_dir: Path) -> list[Path]:
 
 def table_tex_paths(tex_dir: Path) -> list[Path]:
     return [
-        path
-        for path in sorted(tex_dir.glob("*.tex"))
-        if not is_figure_tex_path(path)
+        path for path in sorted(tex_dir.glob("*.tex")) if not is_figure_tex_path(path)
     ]
 
 
@@ -214,6 +213,8 @@ def figure_title(fragment: Path) -> str:
         return "Z3 vs End-to-End Speedup"
     if title == "solver runtime cactus plot":
         return "Z3 Runtime Across Strategies"
+    if title == "solver check cactus plot":
+        return "Z3 Checks Across Strategies"
     if title.startswith("solver stat "):
         metric = title.removeprefix("solver stat ").split(" abstract", 1)[0]
         return f"Paired Z3: {metric.title()}"
@@ -277,6 +278,7 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                 summary["missing_results"],
                 solve_rate_text,
                 median_text,
+                diagnostic_number(summary["median_num_checks"]),
                 summary["fastest_solve_count"],
                 summary["exclusive_solve_count"],
             ]
@@ -293,11 +295,12 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                     "Missing",
                     "Rate",
                     "Median",
+                    "Checks",
                     "Fastest",
                     "Exclusive",
                 ],
                 strategy_rows,
-                columns="(1.6fr, .6fr, .7fr, .65fr, .65fr, .8fr, .65fr, .7fr)",
+                columns="(1.6fr, .55fr, .65fr, .6fr, .6fr, .7fr, .65fr, .6fr, .65fr)",
             ),
             "",
             "_Fastest_ counts the lowest observed runtime among successful strategies for each "
@@ -310,18 +313,26 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
     for comparison in analysis["baseline_comparisons"]:
         speedup = comparison["geomean_runtime_speedup"]
         speedup_text = f"{speedup:.3f}x" if speedup is not None else "-"
+        solver_speedup = comparison["geomean_solver_time_speedup"]
+        solver_speedup_text = (
+            f"{solver_speedup:.3f}x" if solver_speedup is not None else "-"
+        )
+        check_reduction = comparison["geomean_check_reduction"]
+        check_reduction_text = (
+            f"{check_reduction:.3f}x" if check_reduction is not None else "-"
+        )
         comparison_rows.append(
             [
                 comparison["candidate_display_name"],
                 comparison["candidate_solved"],
                 f"{comparison['solve_coverage_delta']:+d}",
-                f"{comparison['candidate_only_solved_count']} / "
-                f"{comparison['baseline_only_solved_count']}",
                 comparison["both_solved_count"],
                 f"{comparison['runtime_win_count']} / "
                 f"{comparison['runtime_tie_count']} / "
                 f"{comparison['runtime_loss_count']}",
                 speedup_text,
+                solver_speedup_text,
+                check_reduction_text,
             ]
         )
     if comparison_rows:
@@ -334,13 +345,14 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                         "Candidate",
                         "Solved",
                         "Delta",
-                        "Exclusive C/B",
                         "Shared",
                         "Win/Tie/Loss",
-                        "Geo speedup",
+                        "Runtime",
+                        "Z3 time",
+                        "Checks",
                     ],
                     comparison_rows,
-                    columns="(1.6fr, .55fr, .55fr, .9fr, .6fr, 1fr, .85fr)",
+                    columns="(1.6fr, .55fr, .55fr, .55fr, .9fr, .7fr, .7fr, .7fr)",
                 ),
                 "",
                 f"Runtime wins and losses use a "
@@ -419,6 +431,14 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
         candidate_name = comparison["candidate_display_name"]
         speedup = comparison["geomean_runtime_speedup"]
         speedup_text = f"{speedup:.3f}x" if speedup is not None else "n/a"
+        solver_speedup = comparison["geomean_solver_time_speedup"]
+        solver_speedup_text = (
+            f"{solver_speedup:.3f}x" if solver_speedup is not None else "n/a"
+        )
+        check_reduction = comparison["geomean_check_reduction"]
+        check_reduction_text = (
+            f"{check_reduction:.3f}x" if check_reduction is not None else "n/a"
+        )
         lines.extend(
             [
                 "#pagebreak()",
@@ -436,6 +456,10 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                 f"{comparison['runtime_loss_count']} losses across "
                 f"{comparison['both_solved_count']} shared solves. Geometric-mean speedup: "
                 f"*{speedup_text}*.",
+                "",
+                f"*Solver-query effect:* geometric-mean Z3-time speedup is "
+                f"*{solver_speedup_text}* and geometric-mean check-count reduction is "
+                f"*{check_reduction_text}*. Values above 1x favor the candidate.",
                 "",
             ]
         )
@@ -609,8 +633,12 @@ def workbook_body(
     return "\n".join(lines)
 
 
-def build_report(manifest_path: Path, run_dir: Path) -> dict:
-    manifest = load_json(manifest_path)
+def build_report_from_manifest(
+    manifest: dict,
+    run_dir: Path,
+    *,
+    pairwise_figures: str = "auto",
+) -> dict:
     report_dir = run_dir / "report"
     tex_dir = report_dir / "tex"
     assets_dir = report_dir / "assets"
@@ -629,7 +657,16 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
     analysis = build_analysis(grouped, strategy_keys, baseline_strategy)
     data_exports = write_analysis_exports(report_dir, analysis)
     instrumentation_report = build_instrumentation_report(manifest, report_dir)
-    generate_figures(grouped, strategy_keys, all_results, tex_dir)
+    include_pairwise = pairwise_figures == "all" or (
+        pairwise_figures == "auto" and len(strategy_keys) <= 8
+    )
+    generate_figures(
+        grouped,
+        strategy_keys,
+        all_results,
+        tex_dir,
+        include_pairwise=include_pairwise,
+    )
 
     figure_sources = figure_tex_paths(tex_dir)
     table_sources = table_tex_paths(tex_dir)
@@ -661,6 +698,7 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
         "figure_tex": [str(path) for path in figure_sources],
         "figure_assets": [str(path) for path in compiled_assets],
         "table_tex": [str(path) for path in table_sources],
+        "pairwise_figures": include_pairwise,
         **instrumentation_report.exports,
         **data_exports,
     }
@@ -668,22 +706,83 @@ def build_report(manifest_path: Path, run_dir: Path) -> dict:
     return report_metadata
 
 
+def build_report(
+    manifest_path: Path,
+    run_dir: Path,
+    *,
+    pairwise_figures: str = "auto",
+) -> dict:
+    return build_report_from_manifest(
+        load_json(manifest_path),
+        run_dir,
+        pairwise_figures=pairwise_figures,
+    )
+
+
+def standalone_manifest(
+    result_paths: list[Path], run_dir: Path, name: str | None
+) -> dict:
+    timestamp = datetime.now().astimezone().isoformat()
+    run_id = run_dir.name
+    return {
+        "run_id": run_id,
+        "name": name or run_id,
+        "env": "local",
+        "status": "COMPLETED",
+        "started_at": timestamp,
+        "completed_at": timestamp,
+        "benchmark_types": ["garden-results"],
+        "subruns": [
+            {
+                "benchmark_type": path.stem,
+                "status": "COMPLETED",
+                "result_path": str(path.resolve()),
+            }
+            for path in result_paths
+        ],
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build a Typst workbook from benchmark results"
     )
-    parser.add_argument(
-        "--manifest", required=True, type=Path, help="Path to run manifest JSON"
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--manifest", type=Path, help="Path to run manifest JSON")
+    source.add_argument(
+        "--results",
+        nargs="+",
+        type=Path,
+        help="Raw Garden result JSON file(s)",
     )
     parser.add_argument(
         "--run-dir", required=True, type=Path, help="Path to the run directory"
+    )
+    parser.add_argument("--name", help="Display name for a standalone result report")
+    parser.add_argument(
+        "--pairwise-figures",
+        choices=("auto", "all", "none"),
+        default="auto",
+        help="Generate per-candidate figures; auto skips them above eight configurations",
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    build_report(args.manifest, args.run_dir)
+    if args.results:
+        manifest = standalone_manifest(args.results, args.run_dir, args.name)
+        build_report_from_manifest(
+            manifest,
+            args.run_dir,
+            pairwise_figures=args.pairwise_figures,
+        )
+    else:
+        build_report(
+            args.manifest,
+            args.run_dir,
+            pairwise_figures=args.pairwise_figures,
+        )
     return 0
 
 

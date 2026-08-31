@@ -178,6 +178,28 @@ class SolverRuntimeCactusPlotGenerator:
         return strategy_solver_times
 
 
+class SolverCheckCactusPlotGenerator:
+    """Generate cactus data for the number of solver checks per run."""
+
+    def __init__(self, all_results: List[BenchmarkResult]):
+        self.all_results = all_results
+
+    def generate_data(self) -> Dict[str, List[Optional[int]]]:
+        strategy_checks: Dict[str, List[Optional[int]]] = {}
+        for result in self.all_results:
+            checks = result.num_checks if result.success else None
+            strategy_checks.setdefault(result.get_display_name(), []).append(checks)
+
+        for checks in strategy_checks.values():
+            checks.sort(
+                key=lambda value: (
+                    value is None,
+                    value if value is not None else 0,
+                )
+            )
+        return strategy_checks
+
+
 class InstantiationScatterPlotGenerator:
     """Generates axiom instantiation comparison scatter plots"""
 

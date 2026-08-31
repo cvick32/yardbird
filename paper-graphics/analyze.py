@@ -7,18 +7,12 @@ from pathlib import Path
 
 from main import choose_baseline_strategy
 from src.analysis import build_analysis, write_analysis_exports
-from src.benchmark_parsing import BenchmarkParser
+from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
 
 
 def group_results(json_files: list[Path]):
     parser = BenchmarkParser(json_files)
-    grouped = {}
-    strategy_keys = set()
-    for result in parser.all_results:
-        strategy_id = result.get_strategy_id()
-        grouped.setdefault(result.example_name, {})[strategy_id] = result
-        strategy_keys.add(strategy_id)
-    return grouped, strategy_keys
+    return group_benchmark_results(parser.all_results)
 
 
 def main() -> int:

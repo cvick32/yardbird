@@ -8,7 +8,10 @@ from pathlib import Path
 
 from main import generate_figures
 from src.benchmark_parsing import BenchmarkResult
-from src.data_generators import SolverRuntimeCactusPlotGenerator
+from src.data_generators import (
+    SolverCheckCactusPlotGenerator,
+    SolverRuntimeCactusPlotGenerator,
+)
 from src.tikz_generators import CactusPlotTikzGenerator
 
 
@@ -74,6 +77,16 @@ class SolverRuntimeCactusTests(unittest.TestCase):
 
         self.assertIn(r"\addplot[thick, color=black]", tikz)
 
+    def test_solver_checks_are_sorted_by_strategy(self) -> None:
+        first = result("b.vmt", 0.8)
+        second = result("a.vmt", 0.2)
+        first.num_checks = 8
+        second.num_checks = 2
+
+        data = SolverCheckCactusPlotGenerator([first, second]).generate_data()
+
+        self.assertEqual(data["Z3 Array Theory"], [2, 8])
+
     def test_figure_pipeline_writes_solver_runtime_cactus_plot(self) -> None:
         benchmark = result("examples/array/a.vmt", 0.3)
         grouped = {benchmark.example_name: {"concrete": benchmark}}
@@ -86,15 +99,14 @@ class SolverRuntimeCactusTests(unittest.TestCase):
                     [benchmark],
                     Path(temp_dir),
                 )
-            solver_runtime_plot = (
-                Path(temp_dir) / "solver_runtime_cactus_plot.tex"
-            )
+            solver_runtime_plot = Path(temp_dir) / "solver_runtime_cactus_plot.tex"
 
             self.assertTrue(solver_runtime_plot.exists())
             self.assertIn(
                 r"\label{fig:cactus_z3_runtime}",
                 solver_runtime_plot.read_text(),
             )
+            self.assertTrue((Path(temp_dir) / "solver_check_cactus_plot.tex").exists())
 
 
 if __name__ == "__main__":

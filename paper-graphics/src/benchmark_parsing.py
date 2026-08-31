@@ -1,11 +1,17 @@
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+import re
 from typing import Optional
 
 CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
 ABSTRACT_WITH_QUANTIFIERS = ["quant instantiations"]
 SOLVED_RESULT_TYPES = {"Success", "_FoundProof"}
+JSON_READ_CHUNK_SIZE = 1024 * 1024
+
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
 @dataclass
@@ -22,13 +28,67 @@ class BenchmarkResult:
     used_instantiations: int
     num_checks: int
     egraph_builder: Optional[str] = None
+    solver: Optional[str] = None
+    instantiation_ranker: Optional[str] = None
+    candidate_winners_per_group: Optional[int] = None
+    property_check_mode: Optional[str] = None
+    instantiation_strategy: Optional[str] = None
+    preprocess_exact_read_after_write: Optional[bool] = None
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
     total_conflicts: Optional[float] = None
     solver_stats: dict[str, float] = field(default_factory=dict)
 
+    def has_extended_configuration(self) -> bool:
+        return any(
+            value is not None
+            for value in (
+                self.instantiation_ranker,
+                self.candidate_winners_per_group,
+                self.property_check_mode,
+                self.instantiation_strategy,
+                self.preprocess_exact_read_after_write,
+            )
+        )
+
+    def get_configuration(self) -> dict[str, object]:
+        return {
+            "solver": self.solver,
+            "strategy": self.strategy,
+            "cost_function": self.cost_function,
+            "depth": self.depth,
+            "egraph_builder": self.egraph_builder,
+            "instantiation_ranker": self.instantiation_ranker,
+            "candidate_winners_per_group": self.candidate_winners_per_group,
+            "property_check_mode": self.property_check_mode,
+            "instantiation_strategy": self.instantiation_strategy,
+            "preprocess_exact_read_after_write": (
+                self.preprocess_exact_read_after_write
+            ),
+        }
+
     def get_strategy_id(self) -> str:
         if self.strategy == "abstract" and self.cost_function:
             strategy_id = f"{self.strategy}_{self.cost_function}"
+            if self.has_extended_configuration():
+                components: list[tuple[str, object | None]] = [
+                    ("solver", self.solver),
+                    ("depth", self.depth),
+                    ("egraph", self.egraph_builder),
+                    ("ranker", self.instantiation_ranker),
+                    ("winners", self.candidate_winners_per_group),
+                    ("property", self.property_check_mode),
+                    ("instantiation", self.instantiation_strategy),
+                    (
+                        "preprocess",
+                        ("on" if self.preprocess_exact_read_after_write else "off"),
+                    ),
+                ]
+                suffix = "__".join(
+                    f"{name}-{_slug(str(value))}"
+                    for name, value in components
+                    if value is not None
+                )
+                return f"{strategy_id}__{suffix}"
             if self.egraph_builder and self.egraph_builder != "full":
                 strategy_id = f"{strategy_id}_{self.egraph_builder}"
             return strategy_id
@@ -59,11 +119,155 @@ class BenchmarkResult:
                 if self.cost_function
                 else "Abstract",
             )
+            if self.has_extended_configuration():
+                if self.depth:
+                    name = f"{name} d{self.depth}"
+                details = []
+                if self.solver and self.solver != "z3":
+                    details.append(self.solver.upper())
+                egraph_names = {
+                    "full": "full",
+                    "source-then-full": "source/full",
+                    "cone-then-full": "cone/full",
+                }
+                if self.egraph_builder:
+                    details.append(
+                        egraph_names.get(
+                            self.egraph_builder,
+                            self.egraph_builder.replace("-", " "),
+                        )
+                    )
+                ranker_names = {
+                    "prefer-source": "source rank",
+                    "term-cost": "term rank",
+                }
+                if self.instantiation_ranker:
+                    details.append(
+                        ranker_names.get(
+                            self.instantiation_ranker,
+                            self.instantiation_ranker.replace("-", " "),
+                        )
+                    )
+                if self.candidate_winners_per_group is not None:
+                    details.append(f"N={self.candidate_winners_per_group}")
+                property_names = {
+                    "scoped": "scoped",
+                    "assumptions": "assuming",
+                }
+                if self.property_check_mode:
+                    details.append(
+                        property_names.get(
+                            self.property_check_mode,
+                            self.property_check_mode.replace("-", " "),
+                        )
+                    )
+                if (
+                    self.instantiation_strategy
+                    and self.instantiation_strategy != "full-unroll"
+                ):
+                    details.append(self.instantiation_strategy.replace("-", " "))
+                if self.preprocess_exact_read_after_write:
+                    details.append("exact R/W")
+                if details:
+                    name = f"{name} [{', '.join(details)}]"
+                return name
             if self.egraph_builder and self.egraph_builder != "full":
                 name = f"{name} + {self.egraph_builder.replace('-', ' ').title()}"
             return name
         else:
             return self.strategy.replace("-", " ").title()
+
+    def get_plot_style(self) -> Optional[str]:
+        """Return a semantic PGFPlots style for an ablation configuration."""
+        if self.strategy != "abstract" or not self.has_extended_configuration():
+            return None
+        if self.instantiation_ranker == "term-cost":
+            return "color=black, very thick, solid, mark=none"
+
+        winner_colors = {
+            1: "softBlue",
+            4: "softGreen",
+            16: "softOrange",
+            48: "softPurple",
+        }
+        color = winner_colors.get(self.candidate_winners_per_group, "softTeal")
+        line = (
+            "densely dashed"
+            if self.egraph_builder in {"source-then-full", "cone-then-full"}
+            else "solid"
+        )
+        marker = (
+            "mark=*, mark repeat=12, mark size=1.1pt"
+            if self.property_check_mode == "assumptions"
+            else "mark=none"
+        )
+        return f"color={color}, {line}, {marker}"
+
+
+def iter_benchmark_entries(json_path: Path):
+    """Yield Garden benchmark entries without retaining the complete JSON file."""
+    decoder = json.JSONDecoder()
+    marker = re.compile(r'"benchmarks"\s*:\s*\[')
+
+    with json_path.open(encoding="utf-8") as input_file:
+        buffer = ""
+        while True:
+            match = marker.search(buffer)
+            if match is not None:
+                buffer = buffer[match.end() :]
+                break
+            chunk = input_file.read(JSON_READ_CHUNK_SIZE)
+            if not chunk:
+                raise ValueError(f"No benchmarks array found in {json_path}")
+            buffer += chunk
+            if len(buffer) > JSON_READ_CHUNK_SIZE * 2:
+                buffer = buffer[-JSON_READ_CHUNK_SIZE * 2 :]
+
+        reached_eof = False
+        while True:
+            buffer = buffer.lstrip()
+            if buffer.startswith("]"):
+                return
+            if buffer.startswith(","):
+                buffer = buffer[1:].lstrip()
+
+            try:
+                entry, end = decoder.raw_decode(buffer)
+            except json.JSONDecodeError as error:
+                if reached_eof:
+                    raise ValueError(
+                        f"Invalid or truncated benchmarks array in {json_path}"
+                    ) from error
+                chunk = input_file.read(JSON_READ_CHUNK_SIZE)
+                if chunk:
+                    buffer += chunk
+                else:
+                    reached_eof = True
+                continue
+
+            if not isinstance(entry, dict):
+                raise ValueError(f"Invalid benchmark entry in {json_path}")
+            yield entry
+            buffer = buffer[end:]
+
+
+def group_benchmark_results(
+    results: list[BenchmarkResult],
+) -> tuple[dict[str, dict[str, BenchmarkResult]], set[str]]:
+    """Group results while rejecting configuration-identity collisions."""
+    grouped: dict[str, dict[str, BenchmarkResult]] = {}
+    strategy_keys: set[str] = set()
+    for result in results:
+        strategy_id = result.get_strategy_id()
+        strategies = grouped.setdefault(result.example_name, {})
+        if strategy_id in strategies:
+            raise ValueError(
+                "Duplicate benchmark/configuration pair: "
+                f"{result.example_name} / {strategy_id}"
+            )
+        strategies[strategy_id] = result
+        strategy_keys.add(strategy_id)
+    return grouped, strategy_keys
 
 
 def successful_payload(full_entry: dict, success: bool) -> dict:
@@ -176,11 +380,7 @@ class BenchmarkParser:
         self.all_results = []
 
         for json_path in json_paths:
-            with open(json_path) as f:
-                data = json.load(f)
-
-            # Parse all benchmarks from this file
-            for benchmark in data.get("benchmarks", []):
+            for benchmark in iter_benchmark_entries(json_path):
                 example_full = benchmark["example"]
                 example_name = self._extract_clean_example_name(example_full)
 
@@ -202,6 +402,16 @@ class BenchmarkParser:
         strategy = result_entry.get("strategy", "unknown")
         cost_function = result_entry.get("cost_function")
         egraph_builder = result_entry.get("egraph_builder")
+        solver = result_entry.get("solver")
+        instantiation_ranker = result_entry.get("instantiation_ranker")
+        candidate_winners_per_group = result_entry.get("candidate_winners_per_group")
+        property_check_mode = result_entry.get("property_check_mode")
+        instantiation_strategy = result_entry.get("instantiation_strategy")
+        preprocess_exact_read_after_write = (
+            result_entry.get("preprocess_exact_read_after_write")
+            if "preprocess_exact_read_after_write" in result_entry
+            else None
+        )
         runtime_ms = result_entry.get("run_time", 0)
         depth = result_entry.get("depth", 0)
 
@@ -222,6 +432,12 @@ class BenchmarkParser:
             strategy=strategy,
             cost_function=cost_function,
             egraph_builder=egraph_builder,
+            solver=solver,
+            instantiation_ranker=instantiation_ranker,
+            candidate_winners_per_group=candidate_winners_per_group,
+            property_check_mode=property_check_mode,
+            instantiation_strategy=instantiation_strategy,
+            preprocess_exact_read_after_write=preprocess_exact_read_after_write,
             runtime_ms=runtime_ms,
             depth=depth,
             result_type=result_type,
