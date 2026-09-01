@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use itertools::Itertools;
-use log::{info, warn};
+use log::{debug, info, warn};
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
@@ -15,7 +15,7 @@ use crate::{
     solver::{SolverCapture, SolverCheckResult},
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
-    utils::SolverStatistics,
+    utils::{run_sequence_smtinterpol, SolverStatistics},
     SolverBackend,
 };
 
@@ -885,11 +885,36 @@ impl<'ctx, S> Driver<'ctx, S> {
         &self,
         candidate: &AuxiliarySynthesisCandidate,
         _abstract_problem: &crate::vmt_bmc_session::VmtBmcSession,
-        _concrete_problem: &crate::vmt_bmc_session::VmtBmcSession,
+        concrete_problem: &crate::vmt_bmc_session::VmtBmcSession,
     ) -> anyhow::Result<Option<AuxiliarySpec>> {
         match candidate.guard_policy {
             GuardPolicy::True => AuxiliarySpec::from_candidate(candidate).map(Some),
-            GuardPolicy::Interpolant | GuardPolicy::AxiomLocal | GuardPolicy::Llm => Ok(None),
+            GuardPolicy::Interpolant => {
+                let sequence = run_sequence_smtinterpol(concrete_problem)?;
+                info!(
+                    "AUX-SYNTH generated {} sequence interpolants with {} predicate candidates at depth {} using {}",
+                    sequence.partitions.len(),
+                    sequence.predicates.candidates().len(),
+                    sequence.depth,
+                    sequence.logic,
+                );
+                for partition in &sequence.partitions {
+                    debug!(
+                        "AUX-SYNTH interpolant frame={} number={} term={}",
+                        partition.frame,
+                        partition.interpolant.interpolant_number,
+                        partition.interpolant.term,
+                    );
+                }
+                for (index, predicate) in sequence.predicates.candidates().iter().enumerate() {
+                    debug!(
+                        "AUX-SYNTH predicate candidate={} interpolants={:?} variables={:?} term={}",
+                        index, predicate.interpolant_numbers, predicate.variables, predicate.term,
+                    );
+                }
+                Ok(None)
+            }
+            GuardPolicy::AxiomLocal | GuardPolicy::Llm => Ok(None),
         }
     }
 

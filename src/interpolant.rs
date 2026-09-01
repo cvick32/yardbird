@@ -38,6 +38,48 @@ impl Debug for Interpolant {
     }
 }
 
+/// A serialized SMTInterpol sequence query and the BMC frame associated with
+/// each interpolant boundary expected in the response.
+#[derive(Clone, Debug)]
+pub(crate) struct SequenceInterpolationQuery {
+    pub smt2: String,
+    pub depth: u16,
+    pub logic: String,
+    pub interpolant_frames: Vec<u16>,
+}
+
+/// One sequence interpolant at the boundary immediately after `frame`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SequenceInterpolantPartition {
+    pub frame: u16,
+    pub interpolant: Interpolant,
+}
+
+/// Frame-aware sequence interpolants and their structurally mined predicates.
+#[derive(Clone, Debug)]
+pub struct SequenceInterpolants {
+    pub depth: u16,
+    pub logic: String,
+    pub partitions: Vec<SequenceInterpolantPartition>,
+    pub predicates: PredicateCatalog,
+}
+
+impl SequenceInterpolants {
+    pub fn new(depth: u16, logic: String, partitions: Vec<SequenceInterpolantPartition>) -> Self {
+        let interpolants = partitions
+            .iter()
+            .map(|partition| partition.interpolant.clone())
+            .collect::<Vec<_>>();
+        let predicates = PredicateCatalog::from_interpolants(&interpolants);
+        Self {
+            depth,
+            logic,
+            partitions,
+            predicates,
+        }
+    }
+}
+
 /// A state-variable occurrence found in a predicate.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PredicateVariable {

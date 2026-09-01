@@ -5,6 +5,12 @@ use crate::{concrete::Term, vmt::canonicalize_boolean::CanonicalizeBooleanFuncti
 
 pub static SMT_INTERPOL_OPTIONS: &str = "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic QF_UFLIA)";
 
+pub fn options_for_logic(logic: &str) -> String {
+    format!(
+        "(set-option :print-success false)\n(set-option :produce-interpolants true)\n(set-logic {logic})"
+    )
+}
+
 static INTERPOLANT_NAMES: [&str; 26] = [
     "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S",
     "T", "U", "V", "W", "X", "Y", "Z",
@@ -74,5 +80,13 @@ mod tests {
         assert_eq!(get_interpolant_name(26), "AA");
         assert_eq!(get_interpolant_name(27), "AB");
         assert_eq!(get_interpolant_name(52), "AAA");
+    }
+
+    #[test]
+    fn interpolation_options_use_the_problem_logic() {
+        let options = options_for_logic("QF_AUFLIA");
+
+        assert!(options.contains("(set-option :produce-interpolants true)"));
+        assert!(options.contains("(set-logic QF_AUFLIA)"));
     }
 }

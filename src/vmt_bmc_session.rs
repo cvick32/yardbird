@@ -19,7 +19,7 @@ use smt2parser::{
 };
 
 use crate::{
-    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
+    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec, FrameSpan},
     instantiation_provenance::{
         InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
         StoredInstantiation,
@@ -28,6 +28,7 @@ use crate::{
         assertion_tracker::InstantiationAssertionTracker, InstantiationContext,
         InstantiationStrategy,
     },
+    interpolant::SequenceInterpolationQuery,
     problem_context::ProblemContext,
     profiling::{SolverCheckMeasurement, SolverProfileMetadata},
     solver::{
@@ -47,13 +48,15 @@ const DUMP_PROPERTY_LABEL: &str = "yardbird_negated_property";
 struct NamedAssertion {
     label: String,
     term: Term,
+    frame: u16,
 }
 
 impl NamedAssertion {
-    fn new(label: impl Into<String>, term: Term) -> Self {
+    fn new(label: impl Into<String>, term: Term, frame: u16) -> Self {
         Self {
             label: label.into(),
             term,
+            frame,
         }
     }
 }
@@ -153,6 +156,14 @@ fn format_named_assertions(assertions: &[NamedAssertion]) -> String {
         .map(|assertion| format!("(assert (! {} :named {}))", assertion.term, assertion.label))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn interpolation_assertion_frame(term: &Term, depth: u16) -> u16 {
+    FrameSpan::from_term(term)
+        .max_frame
+        .and_then(|frame| u16::try_from(frame).ok())
+        .map(|frame| frame.min(depth))
+        .unwrap_or(0)
 }
 
 #[allow(clippy::borrowed_box)]
@@ -333,7 +344,7 @@ impl VmtBmcSession {
             .assert_term(&materialized.root)
             .expect("solver should assert the initial condition");
         self.init_and_transition_assertions
-            .push(NamedAssertion::new("yardbird_init_0", materialized.root));
+            .push(NamedAssertion::new("yardbird_init_0", materialized.root, 0));
     }
 
     fn add_transition_assertion(&mut self) {
@@ -351,6 +362,7 @@ impl VmtBmcSession {
             .push(NamedAssertion::new(
                 format!("yardbird_trans_{}_to_{}", self.depth - 1, self.depth),
                 materialized.root,
+                self.depth,
             ));
 
         let auxiliary_transitions = self.auxiliary_transition_assertions.clone();
@@ -364,6 +376,7 @@ impl VmtBmcSession {
                     self.depth,
                     index
                 ),
+                self.depth,
             );
         }
     }
@@ -512,56 +525,69 @@ impl VmtBmcSession {
         result
     }
 
-    pub(crate) fn to_smtinterpol(&self) -> String {
+    pub(crate) fn to_sequence_smtinterpol(&self) -> SequenceInterpolationQuery {
         let sort_names = unique_command_lines(&self.sorts);
         let function_definitions = unique_command_lines(&self.function_definitions);
         let variable_definitions = unique_command_lines(&self.variable_definitions);
         let helper_declarations =
             unique_command_lines(&self.definition_materializer.declarations());
 
-        let mut assertion_index = 0;
-        let helper_definition_asserts = self
-            .definition_materializer
-            .definitions()
-            .iter()
-            .map(|assertion| {
-                let named = smtinterpol_utils::assert_term_interpolant(assertion_index, assertion);
-                assertion_index += 1;
-                named
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-        let init_and_trans_asserts = self
-            .init_and_transition_assertions
-            .iter()
-            .map(|assertion| {
-                let named =
-                    smtinterpol_utils::assert_term_interpolant(assertion_index, &assertion.term);
-                assertion_index += 1;
-                named
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-        let instantiation_asserts = self
-            .asserted_instantiation_terms
-            .iter()
-            .map(|assertion| {
-                let named = smtinterpol_utils::assert_term_interpolant(assertion_index, assertion);
-                assertion_index += 1;
-                named
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-        let property_assert = smtinterpol_utils::assert_negation_interpolant(
-            assertion_index,
-            &self.subterm_handler.get_property_assert(),
-        );
-        let interpolant_command = smtinterpol_utils::get_interpolant_command(assertion_index);
+        let mut partitions = (0..=self.depth)
+            .map(|frame| (frame, Vec::<Term>::new()))
+            .collect::<BTreeMap<_, _>>();
+        let mut add_inferred = |term: &Term| {
+            let frame = interpolation_assertion_frame(term, self.depth);
+            partitions.entry(frame).or_default().push(term.clone());
+        };
+        for assertion in &self.theory_axiom_assertions {
+            add_inferred(assertion);
+        }
+        for assertion in &self.model_axiom_assertions {
+            add_inferred(assertion);
+        }
+        for assertion in self.definition_materializer.definitions() {
+            add_inferred(&assertion);
+        }
+        for assertion in &self.asserted_instantiation_terms {
+            add_inferred(assertion);
+        }
+        for assertion in &self.init_and_transition_assertions {
+            partitions
+                .entry(assertion.frame)
+                .or_default()
+                .push(assertion.term.clone());
+        }
+        partitions
+            .entry(self.depth)
+            .or_default()
+            .push(Term::Application {
+                qual_identifier: QualIdentifier::simple("not"),
+                arguments: vec![self.subterm_handler.get_property_assert()],
+            });
 
-        format!(
-            "{options}\n{sort_names}\n{function_definitions}\n{variable_definitions}\n{helper_declarations}\n{helper_definition_asserts}\n{init_and_trans_asserts}\n{instantiation_asserts}\n{property_assert}\n{interpolant_command}",
-            options = smtinterpol_utils::SMT_INTERPOL_OPTIONS
-        )
+        let partition_asserts = partitions
+            .into_iter()
+            .enumerate()
+            .map(|(partition_index, (_frame, assertions))| {
+                let conjunction = Term::Application {
+                    qual_identifier: QualIdentifier::simple("and"),
+                    arguments: assertions,
+                };
+                smtinterpol_utils::assert_term_interpolant(partition_index, &conjunction)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let interpolant_command = smtinterpol_utils::get_interpolant_command(self.depth as usize);
+        let options = smtinterpol_utils::options_for_logic(&self.logic);
+        let smt2 = format!(
+            "{options}\n{sort_names}\n{function_definitions}\n{variable_definitions}\n{helper_declarations}\n{partition_asserts}\n{interpolant_command}"
+        );
+        SequenceInterpolationQuery {
+            smt2,
+            depth: self.depth,
+            logic: self.logic.clone(),
+            interpolant_frames: (0..self.depth).collect(),
+        }
     }
 
     pub(crate) fn get_number_instantiations_added(&self) -> u64 {
@@ -820,7 +846,7 @@ impl VmtBmcSession {
             depth,
             self.init_and_transition_assertions.len()
         );
-        self.assert_auxiliary_term(indexed_transition, label);
+        self.assert_auxiliary_term(indexed_transition, label, depth);
         self.bmc_builder.set_depth(current_depth);
     }
 
@@ -832,11 +858,11 @@ impl VmtBmcSession {
             "yardbird_aux_init_0_{}",
             self.init_and_transition_assertions.len()
         );
-        self.assert_auxiliary_term(indexed_init, label);
+        self.assert_auxiliary_term(indexed_init, label, 0);
         self.bmc_builder.set_depth(current_depth);
     }
 
-    fn assert_auxiliary_term(&mut self, term: Term, label: impl Into<String>) {
+    fn assert_auxiliary_term(&mut self, term: Term, label: impl Into<String>, frame: u16) {
         let materialized = self.materialize(term);
         self.install_materialized_support(&materialized);
         self.solver
@@ -849,7 +875,7 @@ impl VmtBmcSession {
                 .register_instantiation_term(support.clone());
         }
         self.init_and_transition_assertions
-            .push(NamedAssertion::new(label, materialized.root));
+            .push(NamedAssertion::new(label, materialized.root, frame));
     }
 }
 
@@ -1198,16 +1224,69 @@ mod tests {
     #[test]
     fn named_assertion_formatter_names_transition_system_formulas() {
         let assertions = vec![
-            NamedAssertion::new("yardbird_init_0", "(= i@0 0)".parse::<Term>().unwrap()),
+            NamedAssertion::new("yardbird_init_0", "(= i@0 0)".parse::<Term>().unwrap(), 0),
             NamedAssertion::new(
                 "yardbird_trans_0_to_1",
                 "(= i@1 (+ i@0 1))".parse::<Term>().unwrap(),
+                1,
             ),
         ];
         let output = format_named_assertions(&assertions);
 
         assert!(output.contains("(assert (! (= i@0 0) :named yardbird_init_0))"));
         assert!(output.contains("(assert (! (= i@1 (+ i@0 1)) :named yardbird_trans_0_to_1))"));
+    }
+
+    #[test]
+    fn sequence_interpolation_groups_native_array_bmc_assertions_by_frame() {
+        let input = br#"
+            (declare-fun x () Int)
+            (declare-fun x_next () Int)
+            (define-fun .x () Int (! x :next x_next))
+            (declare-fun a () (Array Int Int))
+            (declare-fun a_next () (Array Int Int))
+            (define-fun .a () (Array Int Int) (! a :next a_next))
+            (define-fun init () Bool (!
+                (and (= x 0) (= a ((as const (Array Int Int)) 0)))
+                :init true))
+            (define-fun transition () Bool (!
+                (and (= x_next (+ x 1)) (= a_next (store a x x)))
+                :trans true))
+            (define-fun property () Bool (! (>= x 0) :invar-property 0))
+        "#;
+        let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(ConcreteArrayZ3::new(false));
+        let model = strategy.configure_model(model);
+        let mut smt = VmtBmcSession::new(
+            &model,
+            &strategy,
+            SolverBackend::Z3,
+            false,
+            Box::new(FullUnrollStrategy::new()),
+            false,
+            None,
+        )
+        .unwrap();
+        smt.unroll(1);
+        smt.unroll(2);
+
+        let query = smt.to_sequence_smtinterpol();
+
+        assert_eq!(query.depth, 2);
+        assert_eq!(query.logic, "QF_AUFLIA");
+        assert_eq!(query.interpolant_frames, [0, 1]);
+        assert!(query.smt2.contains("(set-logic QF_AUFLIA)"));
+        assert!(query.smt2.contains(":named A"));
+        assert!(query.smt2.contains(":named B"));
+        assert!(query.smt2.contains(":named C"));
+        assert!(query.smt2.contains("(= x@1 (+ x@0 1))"));
+        assert!(query.smt2.contains("(= x@2 (+ x@1 1))"));
+        assert!(query.smt2.contains("(not (>= x@2 0))"));
+        assert!(query.smt2.contains("(store a@1 x@1 x@1)"));
     }
 
     #[test]
@@ -1566,7 +1645,7 @@ mod tests {
                 .to_string(),
             "yardbird_property_depth_2_1"
         );
-        let interpolant_problem = smt.to_smtinterpol();
+        let interpolant_problem = smt.to_sequence_smtinterpol().smt2;
         assert!(interpolant_problem.contains("yb_hist_test@2"));
         assert!(interpolant_problem.contains("yb_prop_test@0"));
         assert!(interpolant_problem.contains("(=> (= yb_prop_test@2 yb_hist_test@2)"));
@@ -1583,7 +1662,7 @@ mod tests {
                 .to_string(),
             "yardbird_property_depth_3"
         );
-        let interpolant_problem = smt.to_smtinterpol();
+        let interpolant_problem = smt.to_sequence_smtinterpol().smt2;
         assert!(interpolant_problem.contains("yb_hist_test@3"));
         assert!(interpolant_problem.contains("yb_prop_test@3"));
         assert!(interpolant_problem

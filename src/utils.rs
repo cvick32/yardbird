@@ -1,4 +1,9 @@
-use crate::{interpolant::Interpolant, vmt_bmc_session::VmtBmcSession};
+use crate::{
+    interpolant::{
+        Interpolant, SequenceInterpolantPartition, SequenceInterpolants, SequenceInterpolationQuery,
+    },
+    vmt_bmc_session::VmtBmcSession,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use smt2parser::get_term_from_term_string;
@@ -22,14 +27,68 @@ pub fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
 }
 
 pub fn run_smtinterpol(smt_problem: &VmtBmcSession) -> Result<Vec<Interpolant>, Error> {
-    let interpolant_problem = smt_problem.to_smtinterpol();
+    Ok(run_sequence_smtinterpol(smt_problem)?
+        .partitions
+        .into_iter()
+        .map(|partition| partition.interpolant)
+        .collect())
+}
+
+pub fn run_sequence_smtinterpol(
+    smt_problem: &VmtBmcSession,
+) -> Result<SequenceInterpolants, Error> {
+    let query = smt_problem.to_sequence_smtinterpol();
+    validate_smtinterpol_logic(&query.logic)?;
+    let interp_out = run_smtinterpol_query(&query)?;
+    parse_sequence_smtinterpol_output(query, &interp_out)
+}
+
+fn parse_sequence_smtinterpol_output(
+    query: SequenceInterpolationQuery,
+    interp_out: &str,
+) -> Result<SequenceInterpolants, Error> {
+    let interpolants = parse_smtinterpol_output(interp_out)?;
+    if interpolants.len() != query.interpolant_frames.len() {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "SMTInterpol returned {} interpolants for {} frame boundaries",
+                interpolants.len(),
+                query.interpolant_frames.len()
+            ),
+        ));
+    }
+    let partitions = query
+        .interpolant_frames
+        .into_iter()
+        .zip(interpolants)
+        .map(|(frame, interpolant)| SequenceInterpolantPartition { frame, interpolant })
+        .collect();
+    Ok(SequenceInterpolants::new(
+        query.depth,
+        query.logic,
+        partitions,
+    ))
+}
+
+fn validate_smtinterpol_logic(logic: &str) -> Result<(), Error> {
+    if logic == "ALL" || logic.contains("BV") {
+        return Err(Error::new(
+            ErrorKind::Unsupported,
+            format!("SMTInterpol does not support Yardbird interpolation logic {logic}"),
+        ));
+    }
+    Ok(())
+}
+
+fn run_smtinterpol_query(query: &SequenceInterpolationQuery) -> Result<String, Error> {
     let mut temp_file = tempfile::NamedTempFile::new()?;
-    writeln!(temp_file, "{interpolant_problem}")?;
+    writeln!(temp_file, "{}", query.smt2)?;
     let temp_path = temp_file
         .path()
         .to_str()
         .ok_or_else(|| Error::new(ErrorKind::InvalidInput, "non-UTF8 SMTInterpol temp path"))?;
-    let interp_out = match run_command(
+    match run_command(
         "java",
         &[
             "-jar",
@@ -38,11 +97,9 @@ pub fn run_smtinterpol(smt_problem: &VmtBmcSession) -> Result<Vec<Interpolant>, 
             temp_path,
         ],
     ) {
-        Ok(out) => out,
-        Err(err) => return Err(Error::other(err)),
-    };
-
-    parse_smtinterpol_output(&interp_out)
+        Ok(out) => Ok(out),
+        Err(err) => Err(Error::other(err)),
+    }
 }
 
 fn parse_smtinterpol_output(interp_out: &str) -> Result<Vec<Interpolant>, Error> {
@@ -194,6 +251,54 @@ impl SolverStatistics {
             .collect();
 
         SolverStatistics { stats }
+    }
+}
+
+#[cfg(test)]
+mod interpolation_tests {
+    use super::*;
+
+    fn query(frames: Vec<u16>) -> SequenceInterpolationQuery {
+        SequenceInterpolationQuery {
+            smt2: String::new(),
+            depth: 5,
+            logic: "QF_AUFLIA".to_string(),
+            interpolant_frames: frames,
+        }
+    }
+
+    #[test]
+    fn sequence_output_retains_the_explicit_partition_frame_mapping() {
+        let sequence =
+            parse_sequence_smtinterpol_output(query(vec![2, 4]), "unsat\n((<= i@2 0)\n (= i@4 1))")
+                .unwrap();
+
+        assert_eq!(sequence.depth, 5);
+        assert_eq!(sequence.logic, "QF_AUFLIA");
+        assert_eq!(
+            sequence
+                .partitions
+                .iter()
+                .map(|partition| partition.frame)
+                .collect::<Vec<_>>(),
+            [2, 4]
+        );
+        assert_eq!(sequence.predicates.candidates().len(), 2);
+    }
+
+    #[test]
+    fn sequence_output_rejects_an_unexpected_interpolant_count() {
+        let error = parse_sequence_smtinterpol_output(query(vec![0, 1]), "unsat\n((<= i@0 0))")
+            .unwrap_err();
+
+        assert!(error.to_string().contains("2 frame boundaries"));
+    }
+
+    #[test]
+    fn interpolation_rejects_unsupported_bitvector_and_mixed_logics() {
+        assert!(validate_smtinterpol_logic("QF_AUFBV").is_err());
+        assert!(validate_smtinterpol_logic("ALL").is_err());
+        assert!(validate_smtinterpol_logic("QF_AUFLIA").is_ok());
     }
 }
 
