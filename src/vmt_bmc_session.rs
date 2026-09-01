@@ -71,7 +71,9 @@ pub struct VmtBmcSession {
     property_assertion: Term,
     property_check_mode: PropertyCheckMode,
     property_activation_assertions: Vec<Term>,
+    property_activation_revisions: BTreeMap<u16, u32>,
     current_property_assumption: Option<Term>,
+    current_property_assumption_depth: Option<u16>,
     init_and_transition_assertions: Vec<NamedAssertion>,
     model_axioms: Vec<Term>,
     model_axiom_assertions: Vec<Term>,
@@ -80,6 +82,7 @@ pub struct VmtBmcSession {
     auxiliary_specs: Vec<AuxiliarySpec>,
     auxiliary_records: Vec<AuxiliaryRecord>,
     auxiliary_transition_assertions: Vec<Term>,
+    auxiliary_property_constraints: Vec<Term>,
     depth: u16,
     instantiations: Vec<StoredInstantiation>,
     subterm_handler: SubtermHandler,
@@ -195,7 +198,9 @@ impl VmtBmcSession {
             property_assertion,
             property_check_mode,
             property_activation_assertions: vec![],
+            property_activation_revisions: BTreeMap::new(),
             current_property_assumption: None,
+            current_property_assumption_depth: None,
             init_and_transition_assertions: vec![],
             model_axioms,
             model_axiom_assertions: vec![],
@@ -204,6 +209,7 @@ impl VmtBmcSession {
             auxiliary_specs: vec![],
             auxiliary_records: vec![],
             auxiliary_transition_assertions: vec![],
+            auxiliary_property_constraints: vec![],
             instantiations: vec![],
             depth: 0,
             bmc_builder: BMCBuilder::with_definition_frames(
@@ -363,24 +369,63 @@ impl VmtBmcSession {
     }
 
     fn update_property(&mut self) {
-        let property = self
-            .bmc_builder
-            .index_single_step_term(self.property_assertion.clone());
+        let retain_refinement_assumption = self.current_property_assumption.is_some()
+            && self.current_property_assumption_depth == Some(self.depth)
+            && self.property_check_mode == PropertyCheckMode::RefinementAssumptions;
+        let property = if self.auxiliary_property_constraints.is_empty() {
+            self.bmc_builder
+                .index_single_step_term(self.property_assertion.clone())
+        } else {
+            let property = self.effective_property_assertion();
+            self.subterm_handler
+                .replace_property_term(property, &mut self.bmc_builder);
+            self.subterm_handler.get_property_assert()
+        };
         let materialized = self.materialize(property);
         self.subterm_handler
             .register_property_support(&materialized.support);
         self.install_materialized_support(&materialized);
         self.current_property_assumption = None;
+        self.current_property_assumption_depth = None;
 
-        if self.property_check_mode == PropertyCheckMode::Assumptions {
+        if self.property_check_mode == PropertyCheckMode::Assumptions
+            || retain_refinement_assumption
+        {
             let property = self.subterm_handler.get_property_assert();
             self.install_property_activation(&property);
         }
     }
 
+    fn effective_property_assertion(&self) -> Term {
+        if self.auxiliary_property_constraints.is_empty() {
+            return self.property_assertion.clone();
+        }
+        let antecedent = if self.auxiliary_property_constraints.len() == 1 {
+            self.auxiliary_property_constraints[0].clone()
+        } else {
+            Term::Application {
+                qual_identifier: QualIdentifier::simple("and"),
+                arguments: self.auxiliary_property_constraints.clone(),
+            }
+        };
+        Term::Application {
+            qual_identifier: QualIdentifier::simple("=>"),
+            arguments: vec![antecedent, self.property_assertion.clone()],
+        }
+    }
+
     fn install_property_activation(&mut self, property: &Term) {
         debug_assert!(self.current_property_assumption.is_none());
-        let activation_name = format!("yardbird_property_depth_{}", self.depth);
+        let revision = self
+            .property_activation_revisions
+            .entry(self.depth)
+            .or_default();
+        let activation_name = if *revision == 0 {
+            format!("yardbird_property_depth_{}", self.depth)
+        } else {
+            format!("yardbird_property_depth_{}_{}", self.depth, revision)
+        };
+        *revision += 1;
         self.solver
             .accept_command(&Command::DeclareFun {
                 symbol: Symbol(activation_name.clone()),
@@ -402,6 +447,7 @@ impl VmtBmcSession {
             .expect("solver should assert the guarded negated property");
         self.property_activation_assertions.push(guarded_property);
         self.current_property_assumption = Some(activation);
+        self.current_property_assumption_depth = Some(self.depth);
     }
 
     fn materialize(&mut self, term: Term) -> MaterializedTerm {
@@ -547,6 +593,7 @@ impl VmtBmcSession {
         &mut self,
         specs: Vec<AuxiliarySpec>,
     ) -> anyhow::Result<()> {
+        let mut property_changed = false;
         for spec in specs {
             if self
                 .auxiliary_specs
@@ -572,18 +619,27 @@ impl VmtBmcSession {
                 }
             }
 
-            if let Some(localized_axiom) = &spec.localized_axiom {
-                self.assert_auxiliary_localized_axiom(&spec, localized_axiom.clone());
+            if let Some(property_constraint) = &spec.property_constraint {
+                self.auxiliary_property_constraints
+                    .push(property_constraint.clone());
+                property_changed = true;
             }
 
             self.auxiliary_records.push(spec.record(self.depth));
             self.auxiliary_specs.push(spec);
+        }
+        if property_changed {
+            self.update_property();
         }
         Ok(())
     }
 
     pub(crate) fn get_auxiliary_records(&self) -> &[AuxiliaryRecord] {
         &self.auxiliary_records
+    }
+
+    pub(crate) fn get_auxiliary_specs(&self) -> &[AuxiliarySpec] {
+        &self.auxiliary_specs
     }
 
     /// Dump the solver state to an SMT2 file that can be replayed from the
@@ -794,30 +850,6 @@ impl VmtBmcSession {
         }
         self.init_and_transition_assertions
             .push(NamedAssertion::new(label, materialized.root));
-    }
-
-    fn assert_auxiliary_localized_axiom(&mut self, spec: &AuxiliarySpec, localized_axiom: Term) {
-        let current_depth = self.bmc_builder.depth;
-        let target_depth = spec
-            .non_monotonicity_check
-            .source_frame_span
-            .max_frame
-            .and_then(|frame| u16::try_from(frame).ok())
-            .filter(|frame| *frame <= self.depth)
-            .unwrap_or(self.depth);
-        self.bmc_builder.set_depth(target_depth);
-        let indexed_axiom = self.bmc_builder.index_single_step_term(localized_axiom);
-        let label = format!(
-            "yardbird_aux_localized_{}_{}",
-            self.auxiliary_records.len(),
-            target_depth
-        );
-        self.assert_auxiliary_term(indexed_axiom, label);
-        self.bmc_builder.set_depth(current_depth);
-        log::info!(
-            "AUX-SYNTH localized axiom aux_id={} asserted_at_depth={target_depth}",
-            spec.aux_id
-        );
     }
 }
 
@@ -1122,6 +1154,10 @@ impl ProblemContext for VmtBmcSession {
     fn get_auxiliary_records(&self) -> Vec<AuxiliaryRecord> {
         self.get_auxiliary_records().to_vec()
     }
+
+    fn get_auxiliary_specs(&self) -> Vec<AuxiliarySpec> {
+        self.get_auxiliary_specs().to_vec()
+    }
 }
 
 #[cfg(test)]
@@ -1134,8 +1170,8 @@ mod tests {
 
     use crate::{
         auxiliary_synthesis::{
-            AuxiliarySpec, FrameSpan, GuardPolicy, HistorySpec, NonMonotonicityCheckRecord,
-            NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
+            AuxiliarySpec, FrameSpan, GuardPolicy, HistoryCaptureMode, HistorySpec,
+            NonMonotonicityCheckRecord, NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
         },
         cost_functions::array::ArrayBMCCost,
         instantiation_strategy::{
@@ -1450,7 +1486,8 @@ mod tests {
             (),
             crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
             false,
-        );
+        )
+        .with_property_check_mode(PropertyCheckMode::Assumptions);
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
@@ -1467,6 +1504,13 @@ mod tests {
 
         smt.unroll(1);
         smt.unroll(2);
+        assert_eq!(
+            smt.current_property_assumption
+                .as_ref()
+                .unwrap()
+                .to_string(),
+            "yardbird_property_depth_2"
+        );
         let int_sort = Sort::Simple {
             identifier: smt2parser::concrete::Identifier::Simple {
                 symbol: smt2parser::concrete::Symbol("Int".to_string()),
@@ -1482,8 +1526,9 @@ mod tests {
                 name: "yb_hist_test".to_string(),
                 next_name: "yb_hist_test_next".to_string(),
                 sort: int_sort.clone(),
-                capture_term: Term::QualIdentifier(QualIdentifier::simple("i")),
+                capture_term: Term::QualIdentifier(QualIdentifier::simple("i_next")),
                 capture_guard: Term::QualIdentifier(QualIdentifier::simple("true")),
+                capture_mode: HistoryCaptureMode::LastOccurrence,
                 initial_value: None,
             },
             prophecy: Some(ProphecySpec {
@@ -1493,20 +1538,20 @@ mod tests {
                 initial_value: None,
             }),
             localized_axiom: Some(
-                "(= (Read_Int_Int (Write_Int_Int a@0 i@0 i@0) yb_prop_test) (Read_Int_Int a@0 yb_prop_test))"
+                "(= (Read_Int_Int (Write_Int_Int a i i) yb_prop_test) (Read_Int_Int a yb_prop_test))"
                     .parse()
                     .unwrap(),
             ),
-            property_constraint: None,
+            property_constraint: Some("(= yb_prop_test yb_hist_test)".parse().unwrap()),
             guard_policy: GuardPolicy::True,
             trigger: SynthesisTrigger::NonLocal,
             non_monotonicity_check: NonMonotonicityCheckRecord {
                 status: NonMonotonicityStatus::Pending,
                 source_term: "(= i@0 i@2)".to_string(),
-                localized_term: Some("(= i@0 yb_prop_test)".to_string()),
+                localized_term: Some("(= i yb_prop_test)".to_string()),
                 source_frame_span: FrameSpan::from_term(&"(= i@0 i@2)".parse().unwrap()),
                 localized_frame_span: Some(FrameSpan::from_term(
-                    &"(= i@0 yb_prop_test)".parse().unwrap(),
+                    &"(= i yb_prop_test)".parse().unwrap(),
                 )),
                 note: "test".to_string(),
             },
@@ -1514,12 +1559,34 @@ mod tests {
 
         smt.install_auxiliary_specs(vec![spec]).unwrap();
         assert_eq!(smt.get_auxiliary_records().len(), 1);
-        assert!(smt.to_smtinterpol().contains("yb_hist_test@2"));
-        assert!(smt.to_smtinterpol().contains("yb_prop_test@0"));
+        assert_eq!(
+            smt.current_property_assumption
+                .as_ref()
+                .unwrap()
+                .to_string(),
+            "yardbird_property_depth_2_1"
+        );
+        let interpolant_problem = smt.to_smtinterpol();
+        assert!(interpolant_problem.contains("yb_hist_test@2"));
+        assert!(interpolant_problem.contains("yb_prop_test@0"));
+        assert!(interpolant_problem.contains("(=> (= yb_prop_test@2 yb_hist_test@2)"));
+        assert!(interpolant_problem
+            .contains("(Read_Int_Int (Write_Int_Int a@0 i@0 i@0) yb_prop_test@0)"));
+        assert!(interpolant_problem
+            .contains("(Read_Int_Int (Write_Int_Int a@1 i@1 i@1) yb_prop_test@1)"));
 
         smt.unroll(3);
+        assert_eq!(
+            smt.current_property_assumption
+                .as_ref()
+                .unwrap()
+                .to_string(),
+            "yardbird_property_depth_3"
+        );
         let interpolant_problem = smt.to_smtinterpol();
         assert!(interpolant_problem.contains("yb_hist_test@3"));
         assert!(interpolant_problem.contains("yb_prop_test@3"));
+        assert!(interpolant_problem
+            .contains("(Read_Int_Int (Write_Int_Int a@2 i@2 i@2) yb_prop_test@2)"));
     }
 }

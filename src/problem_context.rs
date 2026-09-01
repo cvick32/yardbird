@@ -130,4 +130,8 @@ pub trait ProblemContext {
     fn get_auxiliary_records(&self) -> Vec<AuxiliaryRecord> {
         vec![]
     }
+
+    fn get_auxiliary_specs(&self) -> Vec<AuxiliarySpec> {
+        vec![]
+    }
 }

@@ -148,7 +148,20 @@ impl SubtermHandler {
                 .accept_term_visitor(&mut self.trans_reads_and_writes);
         }
 
-        // Fully replace prop subterms every iteration.
+        self.generate_property_subterms(bmc_builder);
+    }
+
+    pub(crate) fn replace_property_term(
+        &mut self,
+        property_term: Term,
+        bmc_builder: &mut BMCBuilder,
+    ) {
+        self.prop_term = property_term;
+        self.generate_property_subterms(bmc_builder);
+    }
+
+    fn generate_property_subterms(&mut self, bmc_builder: &mut BMCBuilder) {
+        // Fully replace property subterms whenever the depth or property changes.
         let mut prop_subterms = NonBooleanSubterms::default();
         self.prop_reads_and_writes = ReadsAndWrites::default();
         let indexed_prop_term = self.prop_term.clone().accept(bmc_builder).unwrap();

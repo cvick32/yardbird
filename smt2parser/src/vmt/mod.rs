@@ -781,10 +781,43 @@ impl VMTModel {
     pub fn add_instantiation(&mut self, term: &Term) -> bool {
         debug!("ADDED INSTANCE TO VMTModel: {}", term);
         self.initial_condition =
-            self.add_instantiation_to_condition(term.clone(), self.initial_condition.clone());
+            Self::add_constraint_to_condition(term.clone(), self.initial_condition.clone());
         self.transition_condition =
-            self.add_instantiation_to_condition(term.clone(), self.transition_condition.clone());
+            Self::add_constraint_to_condition(term.clone(), self.transition_condition.clone());
         true
+    }
+
+    pub fn add_state_variable(&mut self, variable: Variable) {
+        if self.state_variables.iter().any(|existing| {
+            existing.get_current_variable_name() == variable.get_current_variable_name()
+        }) {
+            return;
+        }
+        self.state_variables.push(variable);
+    }
+
+    pub fn add_initial_constraint(&mut self, term: Term) {
+        self.initial_condition =
+            Self::add_constraint_to_condition(term, self.initial_condition.clone());
+    }
+
+    pub fn add_transition_constraint(&mut self, term: Term) {
+        self.transition_condition =
+            Self::add_constraint_to_condition(term, self.transition_condition.clone());
+    }
+
+    pub fn guard_property(&mut self, guard: Term) {
+        let (property, attributes) = match self.property_condition.clone() {
+            Term::Attributes { term, attributes } => (term, attributes),
+            condition => panic!("Condition is not an Attributes: {}", condition),
+        };
+        self.property_condition = Term::Attributes {
+            term: Box::new(Term::Application {
+                qual_identifier: QualIdentifier::simple("=>"),
+                arguments: vec![guard, *property],
+            }),
+            attributes,
+        };
     }
 
     pub fn get_parametric_sort_names(&self) -> Vec<String> {
@@ -812,7 +845,7 @@ impl VMTModel {
             .collect()
     }
 
-    fn add_instantiation_to_condition(&self, instantiation: Term, condition: Term) -> Term {
+    fn add_constraint_to_condition(instantiation: Term, condition: Term) -> Term {
         let (term, attributes) = match condition {
             Term::Attributes { term, attributes } => (term, attributes),
             _ => panic!("Condition is not an Attributes: {}", condition),
