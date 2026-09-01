@@ -40,6 +40,32 @@ SOLVER_STAT_PLOTS = (
 
 def choose_baseline_strategy(strategy_keys):
     """Pick the most useful available baseline for generated comparisons."""
+    concrete_assumptions = sorted(
+        strategy_key
+        for strategy_key in strategy_keys
+        if strategy_key.startswith("concrete__")
+        and "__property-assumptions" in strategy_key
+    )
+    if concrete_assumptions:
+        return concrete_assumptions[0]
+
+    concrete_scoped = sorted(
+        strategy_key
+        for strategy_key in strategy_keys
+        if strategy_key.startswith("concrete__")
+        and "__property-scoped" in strategy_key
+    )
+    if concrete_scoped:
+        return concrete_scoped[0]
+
+    concrete_configurations = sorted(
+        strategy_key
+        for strategy_key in strategy_keys
+        if strategy_key.startswith("concrete__")
+    )
+    if concrete_configurations:
+        return concrete_configurations[0]
+
     preferred_baselines = [
         "concrete",
         "abstract_bmc-cost",

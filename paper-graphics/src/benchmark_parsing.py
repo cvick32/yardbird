@@ -92,11 +92,44 @@ class BenchmarkResult:
             if self.egraph_builder and self.egraph_builder != "full":
                 strategy_id = f"{strategy_id}_{self.egraph_builder}"
             return strategy_id
+        if self.strategy == "concrete":
+            components: list[tuple[str, object | None]] = [
+                ("solver", self.solver),
+                ("depth", self.depth),
+                ("property", self.property_check_mode),
+            ]
+            suffix = "__".join(
+                f"{name}-{_slug(str(value))}"
+                for name, value in components
+                if value is not None
+            )
+            return f"{self.strategy}__{suffix}" if suffix else self.strategy
         return self.strategy
 
     def get_display_name(self) -> str:
         if self.strategy == "concrete":
-            return "Z3 Array Theory"
+            name = "Z3 Array Theory"
+            if not self.property_check_mode and self.solver in {None, "z3"}:
+                return name
+            if self.depth:
+                name = f"{name} d{self.depth}"
+            details = []
+            if self.solver and self.solver != "z3":
+                details.append(self.solver.upper())
+            property_names = {
+                "scoped": "scoped",
+                "assumptions": "assuming",
+            }
+            if self.property_check_mode:
+                details.append(
+                    property_names.get(
+                        self.property_check_mode,
+                        self.property_check_mode.replace("-", " "),
+                    )
+                )
+            if details:
+                name = f"{name} [{', '.join(details)}]"
+            return name
         elif self.strategy == "abstract-with-quantifiers":
             return "Z3 MBQI"
         elif self.strategy == "abstract":
