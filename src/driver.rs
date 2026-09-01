@@ -1,12 +1,14 @@
 use std::time::Instant;
 
 use itertools::Itertools;
-use log::info;
+use log::{info, warn};
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
 use crate::{
-    auxiliary_synthesis::AuxiliaryRecord,
+    auxiliary_synthesis::{
+        AuxiliaryRecord, AuxiliarySpec, AuxiliarySynthesisCandidate, GuardPolicy,
+    },
     instantiation_strategy::InstantiationStrategy,
     problem_context::ProblemContext,
     profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext},
@@ -661,12 +663,21 @@ impl<'ctx, S> Driver<'ctx, S> {
                     }
                 };
 
-                while matches!(action, ProofAction::Continue)
-                    && !strat.has_pending_refinement(&state)
-                {
-                    info!(
-                        "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
-                    );
+                while matches!(action, ProofAction::Continue) {
+                    let auxiliary_candidate = strat.take_auxiliary_synthesis_candidate();
+                    if auxiliary_candidate.is_none() && strat.has_pending_refinement(&state) {
+                        break;
+                    }
+                    if let Some(candidate) = &auxiliary_candidate {
+                        info!(
+                            "AUX-SYNTH validating candidate from conflict={} against the concrete array theory at depth {depth}",
+                            candidate.source_conflict_id()
+                        );
+                    } else {
+                        info!(
+                            "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
+                        );
+                    }
                     let concrete_start = Instant::now();
                     let (concrete_result, concrete_problem) =
                         self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
@@ -686,10 +697,28 @@ impl<'ctx, S> Driver<'ctx, S> {
                             return Err(Error::Counterexample);
                         }
                         SolverCheckResult::Unsat => {
-                            info!(
-                                "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
-                            );
-                            action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                            if let Some(candidate) = auxiliary_candidate {
+                                let source_conflict_id = candidate.source_conflict_id().to_string();
+                                let guard_policy = candidate.guard_policy;
+                                match self.synthesize_auxiliary_candidate(
+                                    &candidate,
+                                    &smt_problem,
+                                    &concrete_problem,
+                                ) {
+                                    Ok(Some(spec)) => strat.queue_auxiliary_spec(spec)?,
+                                    Ok(None) => info!(
+                                        "AUX-SYNTH conflict={source_conflict_id} produced no {guard_policy} guard candidate; keeping ordinary refinement"
+                                    ),
+                                    Err(error) => warn!(
+                                        "AUX-SYNTH failed for conflict={source_conflict_id}: {error}; keeping ordinary refinement"
+                                    ),
+                                }
+                            } else {
+                                info!(
+                                    "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
+                                );
+                                action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                            }
                         }
                         SolverCheckResult::Unknown => {
                             return Err(Error::SolverUnknown(
@@ -850,6 +879,18 @@ impl<'ctx, S> Driver<'ctx, S> {
         }
         let result = concrete_problem.check_property();
         Ok((result, concrete_problem))
+    }
+
+    fn synthesize_auxiliary_candidate(
+        &self,
+        candidate: &AuxiliarySynthesisCandidate,
+        _abstract_problem: &crate::vmt_bmc_session::VmtBmcSession,
+        _concrete_problem: &crate::vmt_bmc_session::VmtBmcSession,
+    ) -> anyhow::Result<Option<AuxiliarySpec>> {
+        match candidate.guard_policy {
+            GuardPolicy::True => AuxiliarySpec::from_candidate(candidate).map(Some),
+            GuardPolicy::Interpolant | GuardPolicy::AxiomLocal | GuardPolicy::Llm => Ok(None),
+        }
     }
 
     /// Build UnsatCoreInfo from the SMT problem if tracking is enabled

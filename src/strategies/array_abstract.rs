@@ -7,7 +7,7 @@ use smt2parser::{concrete::Term, vmt::VMTModel};
 use crate::{
     auxiliary_synthesis::{
         term_contains_auxiliary_symbol, ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState,
-        AuxiliarySpec, SynthesisTrigger,
+        AuxiliarySpec, AuxiliarySynthesisCandidate, SynthesisTrigger,
     },
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
@@ -64,9 +64,9 @@ where
     artifact_capture: ArrayArtifactCapture,
     aux_config: AuxSynthesisConfig,
     aux_trigger_state: AuxTriggerState,
+    pending_aux_candidate: Option<AuxiliarySynthesisCandidate>,
     pending_aux_specs: Vec<AuxiliarySpec>,
     installed_aux_conflicts: HashSet<String>,
-    aux_covered_term_hashes: HashSet<String>,
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
     egraph_builder: Box<dyn ArrayEGraphBuilder>,
@@ -106,9 +106,9 @@ where
                 ..ArrayArtifactCapture::default()
             },
             aux_trigger_state: AuxTriggerState::default(),
+            pending_aux_candidate: None,
             pending_aux_specs: vec![],
             installed_aux_conflicts: HashSet::new(),
-            aux_covered_term_hashes: HashSet::new(),
             profile,
             profiling_records: vec![],
             egraph_builder: Box::<SourceThenFullEGraphBuilder>::default(),
@@ -231,6 +231,24 @@ where
 
     fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
         !state.candidates.is_empty() || !self.pending_aux_specs.is_empty()
+    }
+
+    fn take_auxiliary_synthesis_candidate(&mut self) -> Option<AuxiliarySynthesisCandidate> {
+        self.pending_aux_candidate.take()
+    }
+
+    fn queue_auxiliary_spec(&mut self, spec: AuxiliarySpec) -> driver::Result<()> {
+        info!(
+            "AUX-SYNTH synthesized aux_id={} source_conflict={} history={} prophecy={:?}",
+            spec.aux_id,
+            spec.source_conflict_id,
+            spec.history.name,
+            spec.prophecy.as_ref().map(|prophecy| prophecy.name.clone())
+        );
+        self.installed_aux_conflicts
+            .insert(spec.source_conflict_id.clone());
+        self.pending_aux_specs.push(spec);
+        Ok(())
     }
 
     fn setup(
@@ -498,10 +516,6 @@ where
             let term_hash = crate::training::canonical_term_hash(&expression);
             let term = expr_to_term(expression);
             let quantifier_kind = candidate.rule.category();
-            if self.aux_covered_term_hashes.contains(&term_hash) {
-                info!("AUX-SYNTH skipped aux-covered {quantifier_kind:#?} instantiation");
-                continue;
-            }
             if term_contains_auxiliary_symbol(&term) {
                 info!("AUX-SYNTH skipped {quantifier_kind:#?} instantiation containing auxiliary symbols");
                 continue;
@@ -557,6 +571,9 @@ where
         vmt_model: &mut VMTModel,
         smt: &dyn crate::problem_context::ProblemContext,
     ) -> ProofLoopResult {
+        for auxiliary_spec in smt.get_auxiliary_specs() {
+            auxiliary_spec.apply_to_model(vmt_model);
+        }
         for instantiation_term in &smt.get_instantiations() {
             vmt_model.add_instantiation(instantiation_term);
         }
@@ -619,11 +636,8 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         expression: &ArrayExpr,
     ) -> Option<Term> {
-        let term_hash = crate::training::canonical_term_hash(expression);
         let term = expr_to_term(expression.clone());
-        if self.aux_covered_term_hashes.contains(&term_hash)
-            || term_contains_auxiliary_symbol(&term)
-        {
+        if term_contains_auxiliary_symbol(&term) {
             return None;
         }
         smt.make_unquantified_instance(term)
@@ -783,33 +797,26 @@ where
             warn!("AUX-SYNTH selected conflict {selected_conflict_id} was not found");
             return;
         };
-        if self.aux_config.guard_policy != crate::auxiliary_synthesis::GuardPolicy::True {
-            warn!(
-                "AUX-SYNTH guard policy {} is not implemented for installation yet; using true",
-                self.aux_config.guard_policy
-            );
+        if self.pending_aux_candidate.is_some() {
+            return;
         }
-        match AuxiliarySpec::from_conflict(
+        match AuxiliarySynthesisCandidate::from_conflict(
             conflict,
             smt.get_variables(),
             self.aux_config.trigger,
             self.aux_config.guard_policy,
         ) {
-            Ok(spec) => {
+            Ok(candidate) => {
                 info!(
-                    "AUX-SYNTH queued aux_id={} source_conflict={} history={} prophecy={:?}",
-                    spec.aux_id,
-                    spec.source_conflict_id,
-                    spec.history.name,
-                    spec.prophecy.as_ref().map(|prophecy| prophecy.name.clone())
+                    "AUX-SYNTH selected candidate aux_id={} source_conflict={} guard={}",
+                    candidate.aux_id,
+                    candidate.source_conflict_id(),
+                    candidate.guard_policy,
                 );
-                self.installed_aux_conflicts.insert(selected_conflict_id);
-                self.aux_covered_term_hashes
-                    .insert(spec.source_term_hash.clone());
-                self.pending_aux_specs.push(spec);
+                self.pending_aux_candidate = Some(candidate);
             }
             Err(err) => warn!(
-                "AUX-SYNTH could not build auxiliary spec for conflict {}: {err}",
+                "AUX-SYNTH could not build auxiliary candidate for conflict {}: {err}",
                 conflict.conflict_id
             ),
         }

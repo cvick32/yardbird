@@ -1,9 +1,11 @@
+pub mod candidate;
 pub mod config;
 pub mod conflict;
 pub mod locality;
 pub mod spec;
 pub mod trigger;
 
+pub use candidate::{AuxiliaryCaptureTarget, AuxiliarySynthesisCandidate};
 pub use config::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 pub use conflict::ArrayConflictRecord;
 pub use locality::FrameSpan;

@@ -1,6 +1,7 @@
 use smt2parser::vmt::VMTModel;
 
 use crate::{
+    auxiliary_synthesis::{AuxiliarySpec, AuxiliarySynthesisCandidate},
     driver::{self, Error},
     problem_context::ProblemContext,
     profiling::ProfilingRecord,
@@ -39,6 +40,17 @@ pub trait ProofStrategy<'ctx, S> {
     /// Whether `Continue` has an actual refinement ready to install.
     fn has_pending_refinement(&self, _state: &S) -> bool {
         true
+    }
+
+    /// Take a candidate selected for synchronous auxiliary synthesis against
+    /// the matching concrete validation epoch.
+    fn take_auxiliary_synthesis_candidate(&mut self) -> Option<AuxiliarySynthesisCandidate> {
+        None
+    }
+
+    /// Queue a successfully synthesized spec with the originating strategy.
+    fn queue_auxiliary_spec(&mut self, _spec: AuxiliarySpec) -> driver::Result<()> {
+        Err(anyhow::anyhow!("strategy does not accept auxiliary specs").into())
     }
 
     /// Select how VMT property queries are presented to the incremental solver.

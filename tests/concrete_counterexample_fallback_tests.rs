@@ -1,6 +1,6 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
 use yardbird::{
-    auxiliary_synthesis::AuxSynthesisConfig,
+    auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger},
     cost_functions::array::ArrayBMCCost,
     instantiation_strategy::full_unroll::FullUnrollStrategy,
     strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
@@ -29,6 +29,14 @@ fn check_abstract_model(
     model: VMTModel,
     depth: u16,
 ) -> yardbird::Result<yardbird::ProofLoopResult> {
+    check_abstract_model_with_aux(model, depth, AuxSynthesisConfig::default())
+}
+
+fn check_abstract_model_with_aux(
+    model: VMTModel,
+    depth: u16,
+    aux_config: AuxSynthesisConfig,
+) -> yardbird::Result<yardbird::ProofLoopResult> {
     let mut driver = Driver::new(
         model,
         Box::new(FullUnrollStrategy::new()),
@@ -38,7 +46,7 @@ fn check_abstract_model(
         depth,
         false,
         (),
-        AuxSynthesisConfig::default(),
+        aux_config,
         false,
     ));
     driver.check_strategy(depth, strategy)
@@ -121,4 +129,58 @@ fn abstract_herbrandization_keeps_array_sorted_witnesses_abstract() {
     let result = check_abstract_model(model, 1).unwrap();
 
     assert!(!result.counterexample);
+}
+
+#[test]
+fn true_guard_auxiliary_candidate_is_synthesized_after_concrete_validation() {
+    let model = VMTModel::from_path("examples/array/array_init_increm_two_arrs_const.vmt").unwrap();
+    let result = check_abstract_model_with_aux(
+        model,
+        6,
+        AuxSynthesisConfig {
+            trigger: SynthesisTrigger::NonLocal,
+            guard_policy: GuardPolicy::True,
+            ..AuxSynthesisConfig::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks"),
+        Some(1.0)
+    );
+    assert_eq!(result.auxiliary_records.len(), 1);
+    assert!(result.used_instances.iter().any(|term| {
+        let term = term.to_string();
+        term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0 x+0)")
+    }));
+}
+
+#[test]
+fn unavailable_interpolant_guard_keeps_the_ground_refinement() {
+    let model = VMTModel::from_path("examples/array/array_init_increm_two_arrs_const.vmt").unwrap();
+    let result = check_abstract_model_with_aux(
+        model,
+        6,
+        AuxSynthesisConfig {
+            trigger: SynthesisTrigger::NonLocal,
+            guard_policy: GuardPolicy::Interpolant,
+            ..AuxSynthesisConfig::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks"),
+        Some(1.0)
+    );
+    assert!(result.auxiliary_records.is_empty());
+    assert!(result.used_instances.iter().any(|term| {
+        let term = term.to_string();
+        term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0 x+0)")
+    }));
 }

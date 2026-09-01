@@ -9,7 +9,10 @@ use smt2parser::vmt::{
     split_framed_symbol, variable::var_is_immutable, variable::Variable, VMTModel,
 };
 
-use crate::auxiliary_synthesis::{ArrayConflictRecord, FrameSpan, GuardPolicy, SynthesisTrigger};
+use crate::auxiliary_synthesis::{
+    ArrayConflictRecord, AuxiliaryCaptureTarget, AuxiliarySynthesisCandidate, FrameSpan,
+    GuardPolicy, SynthesisTrigger,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HistorySpec {
@@ -100,6 +103,35 @@ pub enum NonMonotonicityStatus {
     Skipped,
 }
 
+impl AuxiliarySynthesisCandidate {
+    pub fn from_conflict(
+        conflict: &ArrayConflictRecord,
+        variables: &[Variable],
+        trigger: SynthesisTrigger,
+        guard_policy: GuardPolicy,
+    ) -> anyhow::Result<Self> {
+        let capture_target = select_capture_target(conflict, variables)
+            .with_context(|| format!("no capture variable found for {}", conflict.conflict_id))?;
+        let safe_id = sanitize_symbol_fragment(&conflict.conflict_id);
+        let aux_id = format!("aux_{safe_id}");
+        let history_name = format!("yb_hist_{safe_id}");
+        let prophecy_name = format!("yb_prop_{safe_id}");
+        let localized_axiom =
+            localize_conflict_term(&conflict.term, &capture_target, &prophecy_name, variables)?;
+
+        Ok(Self {
+            aux_id,
+            conflict: conflict.clone(),
+            capture_target,
+            history_name,
+            prophecy_name,
+            localized_axiom,
+            trigger,
+            guard_policy,
+        })
+    }
+}
+
 impl AuxiliarySpec {
     pub fn from_conflict(
         conflict: &ArrayConflictRecord,
@@ -112,58 +144,73 @@ impl AuxiliarySpec {
                 "guard policy {guard_policy} requires a synthesized and validated guard"
             ));
         }
-        let capture = select_capture_variable(conflict, variables)
-            .with_context(|| format!("no capture variable found for {}", conflict.conflict_id))?;
-        let safe_id = sanitize_symbol_fragment(&conflict.conflict_id);
-        let aux_id = format!("aux_{safe_id}");
-        let history_name = format!("yb_hist_{safe_id}");
-        let prophecy_name = format!("yb_prop_{safe_id}");
-        // The highest-framed value is observed in the post-state of the
-        // transition that reaches it, so capture the declared next symbol.
-        let capture_term = symbol_term(&capture.next_name);
-        let capture_guard = true_term();
-        let localized_axiom =
-            localize_conflict_term(&conflict.term, &capture, &prophecy_name, variables)?;
-        let localized_frame_span = FrameSpan::from_term(&localized_axiom);
+        let candidate =
+            AuxiliarySynthesisCandidate::from_conflict(conflict, variables, trigger, guard_policy)?;
+        Self::from_candidate(&candidate)
+    }
+
+    pub fn from_candidate(candidate: &AuxiliarySynthesisCandidate) -> anyhow::Result<Self> {
+        if candidate.guard_policy != GuardPolicy::True {
+            return Err(anyhow!(
+                "guard policy {} requires a synthesized and validated guard",
+                candidate.guard_policy
+            ));
+        }
+        Ok(Self::from_candidate_with_guard(
+            candidate,
+            true_term(),
+            HistoryCaptureMode::LastOccurrence,
+        ))
+    }
+
+    /// Complete a validated request with a synthesized guard. This is the
+    /// construction seam used by interpolant-based synthesis.
+    pub fn from_candidate_with_guard(
+        candidate: &AuxiliarySynthesisCandidate,
+        capture_guard: Term,
+        capture_mode: HistoryCaptureMode,
+    ) -> Self {
+        let conflict = &candidate.conflict;
+        let localized_frame_span = FrameSpan::from_term(&candidate.localized_axiom);
         let non_monotonicity_check = NonMonotonicityCheckRecord {
             status: NonMonotonicityStatus::Pending,
             source_term: conflict.term.to_string(),
-            localized_term: Some(localized_axiom.to_string()),
+            localized_term: Some(candidate.localized_axiom.to_string()),
             source_frame_span: conflict.frame_span.clone(),
             localized_frame_span: Some(localized_frame_span),
             note: "localized axiom replaces a framed term with a stuttering prophecy variable; semantic monotonicity not checked yet".to_string(),
         };
 
-        Ok(Self {
-            aux_id,
+        Self {
+            aux_id: candidate.aux_id.clone(),
             source_conflict_id: conflict.conflict_id.clone(),
             source_term_hash: conflict.term_hash.clone(),
             depth_created: conflict.depth,
             refinement_step_created: conflict.refinement_step,
             history: HistorySpec {
-                name: history_name.clone(),
-                next_name: format!("{history_name}_next"),
-                sort: capture.sort.clone(),
-                capture_term,
+                name: candidate.history_name.clone(),
+                next_name: format!("{}_next", candidate.history_name),
+                sort: candidate.capture_target.sort.clone(),
+                capture_term: symbol_term(&candidate.capture_target.next_name),
                 capture_guard,
-                capture_mode: HistoryCaptureMode::LastOccurrence,
+                capture_mode,
                 initial_value: None,
             },
             prophecy: Some(ProphecySpec {
-                name: prophecy_name.clone(),
-                next_name: format!("{prophecy_name}_next"),
-                sort: capture.sort,
+                name: candidate.prophecy_name.clone(),
+                next_name: format!("{}_next", candidate.prophecy_name),
+                sort: candidate.capture_target.sort.clone(),
                 initial_value: None,
             }),
-            localized_axiom: Some(localized_axiom),
+            localized_axiom: Some(candidate.localized_axiom.clone()),
             property_constraint: Some(eq_term(
-                symbol_term(&prophecy_name),
-                symbol_term(&history_name),
+                symbol_term(&candidate.prophecy_name),
+                symbol_term(&candidate.history_name),
             )),
-            guard_policy,
-            trigger,
+            guard_policy: candidate.guard_policy,
+            trigger: candidate.trigger,
             non_monotonicity_check,
-        })
+        }
     }
 
     pub fn variables(&self) -> Vec<Variable> {
@@ -223,7 +270,6 @@ impl AuxiliarySpec {
         }
         terms
     }
-
     pub fn init_terms(&self) -> Vec<Term> {
         let mut terms = vec![];
         if let Some(initial_value) = &self.history.initial_value {
@@ -322,18 +368,10 @@ fn auxiliary_variable(name: &str, next_name: &str, sort: &Sort) -> Variable {
     }
 }
 
-#[derive(Clone, Debug)]
-struct CaptureVariable {
-    base_name: String,
-    next_name: String,
-    frame: i64,
-    sort: Sort,
-}
-
-fn select_capture_variable(
+fn select_capture_target(
     conflict: &ArrayConflictRecord,
     variables: &[Variable],
-) -> anyhow::Result<CaptureVariable> {
+) -> anyhow::Result<AuxiliaryCaptureTarget> {
     let variable_declarations = variables
         .iter()
         .filter_map(|variable| match &variable.current {
@@ -364,8 +402,8 @@ fn select_capture_variable(
             variable_declarations
                 .get(&base_name)
                 .and_then(|(next_name, sort)| {
-                    (!sort_is_array(sort)).then(|| CaptureVariable {
-                        base_name,
+                    (!sort_is_array(sort)).then(|| AuxiliaryCaptureTarget {
+                        current_name: base_name,
                         next_name: next_name.clone(),
                         frame: target_frame,
                         sort: sort.clone(),
@@ -393,7 +431,7 @@ fn identifier_name(identifier: &Identifier) -> &str {
 
 fn localize_conflict_term(
     term: &Term,
-    capture: &CaptureVariable,
+    capture: &AuxiliaryCaptureTarget,
     prophecy_name: &str,
     variables: &[Variable],
 ) -> anyhow::Result<Term> {
@@ -410,7 +448,7 @@ fn localize_conflict_term(
     collect_framed_symbols(term, &mut symbols);
     let remaining_frames = symbols
         .iter()
-        .filter(|(base, frame)| !(base == &capture.base_name && *frame == capture.frame))
+        .filter(|(base, frame)| !(base == &capture.current_name && *frame == capture.frame))
         .filter(|(base, _)| !var_is_immutable(base))
         .map(|(_, frame)| *frame)
         .collect::<BTreeSet<_>>();
@@ -443,7 +481,7 @@ enum LocalFrame {
 
 fn rewrite_localized_term(
     term: &Term,
-    capture: &CaptureVariable,
+    capture: &AuxiliaryCaptureTarget,
     prophecy_name: &str,
     declarations: &BTreeMap<String, String>,
     frame_roles: &BTreeMap<i64, LocalFrame>,
@@ -574,7 +612,7 @@ fn rewrite_localized_term(
 
 fn localize_qual_identifier(
     qi: &QualIdentifier,
-    capture: &CaptureVariable,
+    capture: &AuxiliaryCaptureTarget,
     prophecy_name: &str,
     declarations: &BTreeMap<String, String>,
     frame_roles: &BTreeMap<i64, LocalFrame>,
@@ -583,7 +621,7 @@ fn localize_qual_identifier(
     let Some((base, frame)) = split_framed_symbol(&name) else {
         return Ok(qi.clone());
     };
-    if base == capture.base_name && frame == capture.frame {
+    if base == capture.current_name && frame == capture.frame {
         return Ok(QualIdentifier::simple(prophecy_name));
     }
     if var_is_immutable(&base) {
@@ -803,6 +841,74 @@ mod tests {
         assert_eq!(
             spec.non_monotonicity_check.status,
             NonMonotonicityStatus::Pending
+        );
+    }
+
+    #[test]
+    fn synthesis_candidate_carries_the_conflict_and_capture_target_for_any_guard_policy() {
+        let term = get_term_from_term_string("(= x@0 y@2)");
+        let conflict = ArrayConflictRecord::new(
+            0,
+            "abstract-instantiation-0",
+            "test",
+            "(= x@0 y@2)".parse().unwrap(),
+            term,
+            2,
+            3,
+            1,
+            vec![],
+        );
+
+        let candidate = AuxiliarySynthesisCandidate::from_conflict(
+            &conflict,
+            &[variable("x"), variable("y")],
+            SynthesisTrigger::NonLocal,
+            GuardPolicy::Interpolant,
+        )
+        .unwrap();
+
+        assert_eq!(candidate.source_conflict_id(), conflict.conflict_id);
+        assert_eq!(candidate.guard_policy, GuardPolicy::Interpolant);
+        assert_eq!(candidate.capture_target.current_name, "y");
+        assert_eq!(candidate.capture_target.next_name, "y_next");
+        assert_eq!(candidate.capture_target.frame, 2);
+        assert_eq!(
+            candidate.localized_axiom.to_string(),
+            "(= x yb_prop_conflict_2_3_0)"
+        );
+        assert!(AuxiliarySpec::from_candidate(&candidate).is_err());
+    }
+
+    #[test]
+    fn true_guard_candidate_becomes_an_installable_spec_when_synthesized() {
+        let term = get_term_from_term_string("(= x@0 y@2)");
+        let conflict = ArrayConflictRecord::new(
+            0,
+            "abstract-instantiation-0",
+            "test",
+            "(= x@0 y@2)".parse().unwrap(),
+            term,
+            2,
+            3,
+            1,
+            vec![],
+        );
+        let candidate = AuxiliarySynthesisCandidate::from_conflict(
+            &conflict,
+            &[variable("x"), variable("y")],
+            SynthesisTrigger::NonLocal,
+            GuardPolicy::True,
+        )
+        .unwrap();
+
+        let spec = AuxiliarySpec::from_candidate(&candidate).unwrap();
+
+        assert_eq!(spec.source_conflict_id, candidate.source_conflict_id());
+        assert_eq!(spec.history.capture_guard.to_string(), "true");
+        assert_eq!(spec.history.capture_term.to_string(), "y_next");
+        assert_eq!(
+            spec.history.capture_mode,
+            HistoryCaptureMode::LastOccurrence
         );
     }
 
