@@ -181,14 +181,19 @@ impl PredicateCatalog {
             return;
         }
 
-        if let Some(candidate_index) = index.get(&term).copied() {
+        let variables = free_variables(&term);
+        if variables.is_empty() || is_reflexive_relation(&term) {
+            return;
+        }
+
+        let normalized_key = normalized_predicate_key(&term);
+        if let Some(candidate_index) = index.get(&normalized_key).copied() {
             self.candidates[candidate_index]
                 .interpolant_numbers
                 .insert(interpolant_number);
             return;
         }
 
-        let variables = free_variables(&term);
         let candidate_index = self.candidates.len();
         let base_variables = variables
             .iter()
@@ -199,7 +204,7 @@ impl PredicateCatalog {
             interpolant_numbers: BTreeSet::from([interpolant_number]),
             variables,
         });
-        index.insert(term, candidate_index);
+        index.insert(normalized_key, candidate_index);
         for variable in base_variables {
             self.by_variable
                 .entry(variable)
@@ -503,6 +508,72 @@ fn is_boolean_constant(term: &Term) -> bool {
     )
 }
 
+fn is_reflexive_relation(term: &Term) -> bool {
+    let Term::Application {
+        qual_identifier,
+        arguments,
+    } = term
+    else {
+        return false;
+    };
+    matches!(
+        qual_identifier.get_name().as_str(),
+        "=" | "distinct" | "<" | "<=" | ">" | ">="
+    ) && arguments.len() >= 2
+        && arguments.windows(2).all(|pair| pair[0] == pair[1])
+}
+
+/// Build a semantics-preserving key for candidate deduplication while keeping
+/// the first predicate's original spelling in the catalog.
+fn normalized_predicate_key(term: &Term) -> Term {
+    let Term::Application {
+        qual_identifier,
+        arguments,
+    } = term
+    else {
+        return term.clone();
+    };
+
+    let mut arguments = arguments
+        .iter()
+        .map(normalized_predicate_key)
+        .collect::<Vec<_>>();
+    let name = qual_identifier.get_name();
+    let qual_identifier = match (name.as_str(), arguments.as_mut_slice()) {
+        (">", [left, right]) => {
+            std::mem::swap(left, right);
+            QualIdentifier::simple("<")
+        }
+        (">=", [left, right]) => {
+            std::mem::swap(left, right);
+            QualIdentifier::simple("<=")
+        }
+        _ => qual_identifier.clone(),
+    };
+
+    if matches!(
+        qual_identifier.get_name().as_str(),
+        "=" | "distinct"
+            | "+"
+            | "*"
+            | "and"
+            | "or"
+            | "xor"
+            | "bvadd"
+            | "bvmul"
+            | "bvand"
+            | "bvor"
+            | "bvxor"
+    ) {
+        arguments.sort_by_cached_key(ToString::to_string);
+    }
+
+    Term::Application {
+        qual_identifier,
+        arguments,
+    }
+}
+
 fn unquote_symbol(symbol: &str) -> &str {
     symbol
         .strip_prefix('|')
@@ -602,5 +673,35 @@ mod tests {
         .predicates();
 
         assert_eq!(candidate_terms(&catalog), ["(< x@0 4)"]);
+    }
+
+    #[test]
+    fn filters_ground_and_reflexive_predicates() {
+        let catalog = interpolant(
+            0,
+            "(and (= 1 1) (< 0 0) (= i@0 i@0) (<= (+ i@0 1) (+ i@0 1)) (< i@0 n@0))",
+        )
+        .predicates();
+
+        assert_eq!(candidate_terms(&catalog), ["(< i@0 n@0)"]);
+    }
+
+    #[test]
+    fn deduplicates_symmetric_and_reoriented_predicates() {
+        let interpolants = [
+            interpolant(0, "(and (= i@0 n@0) (< i@0 n@0) (= (+ i@0 n@0) x@0))"),
+            interpolant(1, "(and (= n@0 i@0) (> n@0 i@0) (= x@0 (+ n@0 i@0)))"),
+        ];
+
+        let catalog = PredicateCatalog::from_interpolants(&interpolants);
+
+        assert_eq!(
+            candidate_terms(&catalog),
+            ["(= i@0 n@0)", "(< i@0 n@0)", "(= (+ i@0 n@0) x@0)"]
+        );
+        assert!(catalog
+            .candidates()
+            .iter()
+            .all(|candidate| candidate.interpolant_numbers == BTreeSet::from([0, 1])));
     }
 }
