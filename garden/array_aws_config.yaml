@@ -2,9 +2,10 @@
 #
 # Each parameter matrix contains exactly one configuration so main_eval.py can
 # launch it on an independent AWS worker. The two ranker matrices isolate the
-# historical term-cost -> prefer-source change. The best matrix is the
-# highest-coverage, lowest-runtime configuration among the N=4/16/48 tie in
-# the 2026-08-31 local ablation.
+# historical term-cost -> prefer-source change. The two concrete matrices
+# isolate scoped property checks from check-sat-assuming. The best matrix is
+# the highest-coverage, lowest-runtime configuration among the N=4/16/48 tie
+# in the 2026-08-31 local ablation.
 global:
   examples_dir: examples/array
   timeout_seconds: 120
@@ -59,12 +60,21 @@ parameter_matrices:
     solvers: [z3]
     strategies: [concrete]
     cost_functions: [bmc-cost]
+    property_check_modes: [scoped]
+
+  array-concrete-z3-assuming-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+    property_check_modes: [assumptions]
 
   array-quantified-z3-depth50:
     depths: [50]
     solvers: [z3]
     strategies: [abstract-with-quantifiers]
     cost_functions: [bmc-cost]
+    property_check_modes: [scoped]
 
 individual_configs: []
 
