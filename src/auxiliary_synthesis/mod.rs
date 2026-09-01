@@ -8,7 +8,7 @@ pub use config::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
 pub use conflict::ArrayConflictRecord;
 pub use locality::FrameSpan;
 pub use spec::{
-    term_contains_auxiliary_symbol, AuxiliaryRecord, AuxiliarySpec, HistorySpec,
-    NonMonotonicityCheckRecord, NonMonotonicityStatus, ProphecySpec,
+    term_contains_auxiliary_symbol, AuxiliaryRecord, AuxiliarySpec, HistoryCaptureMode,
+    HistorySpec, NonMonotonicityCheckRecord, NonMonotonicityStatus, ProphecySpec,
 };
 pub use trigger::{AuxTriggerState, TriggerDecision};
