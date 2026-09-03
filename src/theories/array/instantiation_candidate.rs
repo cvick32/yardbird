@@ -1,7 +1,7 @@
 use crate::{
     auxiliary_synthesis::ArrayConflictRecord,
     instantiation_provenance::InstantiationProvenance,
-    quantified_rule::{QuantifiedRule, QuantifiedRuleCategory},
+    quantified_rule::{QuantifiedRule, QuantifiedRuleCategory, QuantifiedRuleKind},
     theories::array::{
         array_axioms::{expr_to_term, ArrayExpr},
         candidate_scope::CandidateScope,
@@ -270,6 +270,7 @@ impl InstantiationBatch {
         self.select_guards(scope, ranker);
         if scope == CandidateScope::SourceGroundedOnly {
             self.select_source_axioms(winners_per_group, ranker);
+            self.order_source_installations(ranker);
         }
 
         for candidate in &mut self.candidates {
@@ -323,8 +324,46 @@ impl InstantiationBatch {
             .collect::<Vec<_>>();
         winners.sort_by(|left, right| compare_candidates(ranker, &self.candidates, *left, *right));
 
-        for winner in winners.into_iter().take(winners_per_group) {
+        let mut selected = 0;
+        let mut selected_by_rule = HashMap::<QuantifiedRuleKind, usize>::new();
+        for winner in winners {
+            if selected == winners_per_group {
+                break;
+            }
+            let rule_kind = self.candidates[winner].rule.kind();
+            let rule_limit = ranker.source_batch_limit(rule_kind, winners_per_group);
+            let selected_for_rule = selected_by_rule.entry(rule_kind).or_default();
+            if *selected_for_rule >= rule_limit {
+                continue;
+            }
+
             self.candidates[winner].selected = true;
+            selected += 1;
+            *selected_for_rule += 1;
+        }
+    }
+
+    /// Make the configured whole-instantiation ranker control array assertion
+    /// order, not just which source-grounded candidates survive the batch
+    /// budget. Other rule categories retain generation order.
+    fn order_source_installations(&mut self, ranker: &dyn InstantiationRanker) {
+        let positions = self
+            .candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, candidate)| {
+                candidate.selected
+                    && candidate.rule.category() == QuantifiedRuleCategory::ArrayAxiom
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let mut ordered = positions
+            .iter()
+            .map(|index| self.candidates[*index].clone())
+            .collect::<Vec<_>>();
+        ordered.sort_by(|left, right| ranker.compare(left, right));
+        for (index, candidate) in positions.into_iter().zip(ordered) {
+            self.candidates[index] = candidate;
         }
     }
 
@@ -419,7 +458,9 @@ mod tests {
         instantiation_provenance::InstantiationProvenance,
         instantiation_strategy::assertion_tracker::canonical_instantiation_key,
         quantified_rule::{ArrayAxiomKind, QuantifiedRule},
-        theories::array::instantiation_ranker::PreferSourceInstantiationRanker,
+        theories::array::instantiation_ranker::{
+            PreferSourceInstantiationRanker, TermCostInstantiationRanker,
+        },
     };
     use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
 
@@ -1103,6 +1144,100 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["cheapest", "middle"]
         );
+    }
+
+    #[test]
+    fn source_selection_rechecks_after_each_conditional_array_winner() {
+        let unconditional =
+            QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
+        let conditional =
+            QuantifiedRule::array_axiom(ArrayAxiomKind::WriteDoesNotOverwrite, "Int", "Int");
+        let mut batch = InstantiationBatch {
+            candidates: vec![
+                candidate(
+                    unconditional.clone(),
+                    "unconditional_one",
+                    1,
+                    CandidateGroup::MatchRoot(egg::Id::from(0)),
+                ),
+                candidate(
+                    unconditional,
+                    "unconditional_two",
+                    2,
+                    CandidateGroup::MatchRoot(egg::Id::from(1)),
+                ),
+                candidate(
+                    conditional.clone(),
+                    "conditional_first",
+                    3,
+                    CandidateGroup::MatchRoot(egg::Id::from(2)),
+                ),
+                candidate(
+                    conditional,
+                    "conditional_second",
+                    3,
+                    CandidateGroup::MatchRoot(egg::Id::from(3)),
+                ),
+            ],
+        };
+
+        batch
+            .prepare_with_ranker(
+                CandidateScope::SourceGroundedOnly,
+                &HashSet::new(),
+                16,
+                &PreferSourceInstantiationRanker,
+                |_| Ok("false".to_string()),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+
+        assert_eq!(
+            batch
+                .selected()
+                .map(|candidate| candidate.expression.to_string())
+                .collect::<Vec<_>>(),
+            vec![
+                "unconditional_one",
+                "unconditional_two",
+                "conditional_second",
+            ]
+        );
+    }
+
+    #[test]
+    fn term_cost_ranker_keeps_configured_conditional_batch_size() {
+        let conditional =
+            QuantifiedRule::array_axiom(ArrayAxiomKind::WriteDoesNotOverwrite, "Int", "Int");
+        let mut batch = InstantiationBatch {
+            candidates: vec![
+                candidate(
+                    conditional.clone(),
+                    "conditional_first",
+                    1,
+                    CandidateGroup::MatchRoot(egg::Id::from(0)),
+                ),
+                candidate(
+                    conditional,
+                    "conditional_second",
+                    2,
+                    CandidateGroup::MatchRoot(egg::Id::from(1)),
+                ),
+            ],
+        };
+
+        batch
+            .prepare_with_ranker(
+                CandidateScope::SourceGroundedOnly,
+                &HashSet::new(),
+                2,
+                &TermCostInstantiationRanker,
+                |_| Ok("false".to_string()),
+                |candidate| Some(candidate.expression.clone()),
+            )
+            .unwrap();
+
+        assert_eq!(batch.selected().count(), 2);
     }
 
     #[test]

@@ -6,6 +6,8 @@
 
 use std::{cmp::Ordering, fmt::Debug};
 
+use crate::quantified_rule::{ArrayAxiomKind, QuantifiedRuleKind};
+
 use super::{
     candidate_scope::CandidateScope,
     instantiation_candidate::{InstantiationCandidate, InstantiationGrounding},
@@ -22,6 +24,13 @@ pub trait InstantiationRanker: Debug + Send {
 
     fn is_eligible(&self, _candidate: &InstantiationCandidate, _scope: CandidateScope) -> bool {
         true
+    }
+
+    /// Pace candidates of one rule kind within a source-grounded batch. The
+    /// configured winner budget remains the default for rankers that do not
+    /// need a fresh model between particular refinements.
+    fn source_batch_limit(&self, _rule_kind: QuantifiedRuleKind, configured_limit: usize) -> usize {
+        configured_limit
     }
 }
 
@@ -69,7 +78,13 @@ impl InstantiationRanker for PreferSourceInstantiationRanker {
         let right_is_derived = right.grounding == InstantiationGrounding::Derived;
         left_is_derived
             .cmp(&right_is_derived)
-            .then_with(|| compare_by_term_cost(left, right))
+            .then_with(|| left.cost.cmp(&right.cost))
+            .then_with(|| {
+                right
+                    .expression
+                    .to_string()
+                    .cmp(&left.expression.to_string())
+            })
     }
 
     fn requires_source_provenance(&self) -> bool {
@@ -79,6 +94,17 @@ impl InstantiationRanker for PreferSourceInstantiationRanker {
     fn is_eligible(&self, candidate: &InstantiationCandidate, scope: CandidateScope) -> bool {
         scope != CandidateScope::SourceGroundedOnly
             || candidate.grounding == InstantiationGrounding::SourceGrounded
+    }
+
+    fn source_batch_limit(&self, rule_kind: QuantifiedRuleKind, configured_limit: usize) -> usize {
+        if matches!(
+            rule_kind,
+            QuantifiedRuleKind::ArrayAxiom(ArrayAxiomKind::WriteDoesNotOverwrite)
+        ) {
+            configured_limit.min(1)
+        } else {
+            configured_limit
+        }
     }
 }
 
@@ -129,6 +155,24 @@ mod tests {
 
         assert!(PreferSourceInstantiationRanker
             .compare(&source, &derived)
+            .is_lt());
+    }
+
+    #[test]
+    fn source_ranker_reverses_equal_cost_canonical_ties() {
+        let first = candidate(
+            "conditional_first",
+            3,
+            InstantiationGrounding::SourceGrounded,
+        );
+        let second = candidate(
+            "conditional_second",
+            3,
+            InstantiationGrounding::SourceGrounded,
+        );
+
+        assert!(PreferSourceInstantiationRanker
+            .compare(&second, &first)
             .is_lt());
     }
 }
