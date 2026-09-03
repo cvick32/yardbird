@@ -59,6 +59,15 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(replay.results, capture.expected_results)
         self.assertEqual(len(replay.timings_ns), 2)
 
+    def test_capture_accepts_check_sat_assuming_boundaries(self) -> None:
+        capture = self._capture(
+            ["unsat"], check_command="(check-sat-assuming (property_depth_0))"
+        )
+
+        loaded = LoadedCapture.load(capture)
+
+        self.assertEqual(loaded.expected_results, ("unsat",))
+
     def test_mismatch_identifies_the_solver_and_check(self) -> None:
         capture = self._capture(["sat", "unsat"])
         stock = self._solver("persistent", "stock-z3")
@@ -174,7 +183,12 @@ class ReplayTests(unittest.TestCase):
             }
         }
 
-    def _capture(self, results: list[str], name: str = "capture") -> Path:
+    def _capture(
+        self,
+        results: list[str],
+        name: str = "capture",
+        check_command: str = "(check-sat)",
+    ) -> Path:
         capture = self.root / name
         capture.mkdir()
         transcript = bytearray()
@@ -188,7 +202,7 @@ class ReplayTests(unittest.TestCase):
                 transcript.extend(f"(assert marker_{check_id})\n".encode())
             transcript.extend(f"; yardbird check {check_id} begin\n".encode())
             check_start = len(transcript)
-            transcript.extend(b"(check-sat)\n")
+            transcript.extend(f"{check_command}\n".encode())
             check_end = len(transcript)
             transcript.extend(f"; yardbird check {check_id} result {result}\n".encode())
             post_end = len(transcript)

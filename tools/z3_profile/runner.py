@@ -401,7 +401,11 @@ def _validate_boundaries(transcript: bytes, checks: tuple[IndexedCheck, ...]) ->
         if not valid:
             raise ReplayError(f"check {check.check_id} has invalid byte boundaries")
         command = transcript[check.check_byte_start : check.check_byte_end]
-        if command != b"(check-sat)\n":
+        is_check_sat = command == b"(check-sat)\n"
+        is_check_sat_assuming = command.startswith(b"(check-sat-assuming ") and command.endswith(
+            b")\n"
+        )
+        if not (is_check_sat or is_check_sat_assuming):
             raise ReplayError(
                 f"check {check.check_id} boundary does not contain check-sat"
             )
