@@ -1,21 +1,19 @@
 use std::time::Instant;
 
 use itertools::Itertools;
-use log::{debug, info, warn};
+use log::info;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
 use crate::{
-    auxiliary_synthesis::{
-        AuxiliaryRecord, AuxiliarySpec, AuxiliarySynthesisCandidate, GuardPolicy,
-    },
+    auxiliary_synthesis::AuxiliaryRecord,
     instantiation_strategy::InstantiationStrategy,
     problem_context::ProblemContext,
     profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext},
     solver::{SolverCapture, SolverCheckResult},
     strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
     training::UnsatEventRecord,
-    utils::{run_sequence_smtinterpol, SolverStatistics},
+    utils::SolverStatistics,
     SolverBackend,
 };
 
@@ -405,6 +403,58 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Mutable proof-loop resources available to extensions after a strategy has
+/// selected the refinement it intends to install.
+pub struct RefinementContext<'a> {
+    abstract_problem: &'a mut crate::vmt_bmc_session::VmtBmcSession,
+    concrete_vmt_model: &'a VMTModel,
+    solver_backend: SolverBackend,
+    instantiation_strategy: &'a dyn InstantiationStrategy,
+    concrete_validation_checks: &'a mut u64,
+    concrete_validation_statistics: &'a mut SolverStatistics,
+}
+
+impl RefinementContext<'_> {
+    pub fn problem(&self) -> &dyn ProblemContext {
+        self.abstract_problem
+    }
+
+    pub fn problem_mut(&mut self) -> &mut dyn ProblemContext {
+        self.abstract_problem
+    }
+
+    /// Confirm that the current abstract counterexample is spurious and return
+    /// the matching concrete UNSAT problem for interpolation. Real
+    /// counterexamples and solver unknowns terminate the proof loop directly.
+    pub fn validate_spurious_counterexample(
+        &mut self,
+        depth: u16,
+    ) -> Result<crate::vmt_bmc_session::VmtBmcSession> {
+        let (result, concrete_problem) = run_concrete_counterexample_check(
+            self.concrete_vmt_model,
+            depth,
+            self.solver_backend,
+            self.instantiation_strategy,
+        )?;
+        *self.concrete_validation_checks += 1;
+        accumulate_solver_statistics(
+            self.concrete_validation_statistics,
+            &concrete_problem.get_solver_statistics(),
+        );
+        match result {
+            SolverCheckResult::Sat => {
+                info!("Concrete counterexample found at depth {depth}");
+                info!("Counterexample:\n{}", concrete_problem.model_to_string()?);
+                Err(Error::Counterexample)
+            }
+            SolverCheckResult::Unsat => Ok(concrete_problem),
+            SolverCheckResult::Unknown => {
+                Err(Error::SolverUnknown(concrete_problem.get_reason_unknown()))
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct UnsatEventTracker {
     events: Vec<UnsatEventRecord>,
@@ -506,6 +556,11 @@ impl<'ctx, S> Driver<'ctx, S> {
 
     pub fn add_extension(&mut self, ext: impl ProofStrategyExt<S> + 'ctx) -> &mut Self {
         self.extensions.add_extension(ext);
+        self
+    }
+
+    pub fn add_boxed_extension(&mut self, ext: Box<dyn ProofStrategyExt<S> + 'ctx>) -> &mut Self {
+        self.extensions.add_boxed_extension(ext);
         self
     }
 
@@ -663,21 +718,12 @@ impl<'ctx, S> Driver<'ctx, S> {
                     }
                 };
 
-                while matches!(action, ProofAction::Continue) {
-                    let auxiliary_candidate = strat.take_auxiliary_synthesis_candidate();
-                    if auxiliary_candidate.is_none() && strat.has_pending_refinement(&state) {
-                        break;
-                    }
-                    if let Some(candidate) = &auxiliary_candidate {
-                        info!(
-                            "AUX-SYNTH validating candidate from conflict={} against the concrete array theory at depth {depth}",
-                            candidate.source_conflict_id()
-                        );
-                    } else {
-                        info!(
-                            "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
-                        );
-                    }
+                while matches!(action, ProofAction::Continue)
+                    && !strat.has_pending_refinement(&state)
+                {
+                    info!(
+                        "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
+                    );
                     let concrete_start = Instant::now();
                     let (concrete_result, concrete_problem) =
                         self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
@@ -697,28 +743,10 @@ impl<'ctx, S> Driver<'ctx, S> {
                             return Err(Error::Counterexample);
                         }
                         SolverCheckResult::Unsat => {
-                            if let Some(candidate) = auxiliary_candidate {
-                                let source_conflict_id = candidate.source_conflict_id().to_string();
-                                let guard_policy = candidate.guard_policy;
-                                match self.synthesize_auxiliary_candidate(
-                                    &candidate,
-                                    &smt_problem,
-                                    &concrete_problem,
-                                ) {
-                                    Ok(Some(spec)) => strat.queue_auxiliary_spec(spec)?,
-                                    Ok(None) => info!(
-                                        "AUX-SYNTH conflict={source_conflict_id} produced no {guard_policy} guard candidate; keeping ordinary refinement"
-                                    ),
-                                    Err(error) => warn!(
-                                        "AUX-SYNTH failed for conflict={source_conflict_id}: {error}; keeping ordinary refinement"
-                                    ),
-                                }
-                            } else {
-                                info!(
-                                    "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
-                                );
-                                action = strat.sat(&mut state, &smt_problem, refinement_step)?;
-                            }
+                            info!(
+                                "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
+                            );
+                            action = strat.sat(&mut state, &smt_problem, refinement_step)?;
                         }
                         SolverCheckResult::Unknown => {
                             return Err(Error::SolverUnknown(
@@ -734,7 +762,17 @@ impl<'ctx, S> Driver<'ctx, S> {
                         let solver_assertions_before =
                             smt_problem.get_number_instantiation_assertions_added();
                         let auxiliary_records_before = smt_problem.get_auxiliary_records().len();
-                        self.extensions.finish(&mut self.vmt_model, &mut state)?;
+                        {
+                            let mut context = RefinementContext {
+                                abstract_problem: &mut smt_problem,
+                                concrete_vmt_model: &concrete_vmt_model,
+                                solver_backend: self.solver_backend,
+                                instantiation_strategy: self.instantiation_strategy.as_ref(),
+                                concrete_validation_checks: &mut concrete_validation_checks,
+                                concrete_validation_statistics: &mut concrete_validation_statistics,
+                            };
+                            self.extensions.refine(&mut state, &mut context)?;
+                        }
                         strat.finish(state, &mut smt_problem)?;
                         let instantiations_after = smt_problem.get_instantiations();
                         let solver_assertions_after =
@@ -860,62 +898,12 @@ impl<'ctx, S> Driver<'ctx, S> {
         concrete_vmt_model: &VMTModel,
         depth: u16,
     ) -> Result<(SolverCheckResult, crate::vmt_bmc_session::VmtBmcSession)> {
-        let mut concrete_strategy: Box<
-            dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
-        > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
-        let concrete_vmt_model = concrete_strategy.configure_model(concrete_vmt_model.clone());
-        let mut concrete_problem = crate::vmt_bmc_session::VmtBmcSession::new(
-            &concrete_vmt_model,
-            &concrete_strategy,
+        run_concrete_counterexample_check(
+            concrete_vmt_model,
+            depth,
             self.solver_backend,
-            false,
-            self.instantiation_strategy.clone_box(),
-            false,
-            None,
-        )?;
-
-        for unroll_depth in 0..=depth {
-            concrete_problem.unroll(unroll_depth);
-        }
-        let result = concrete_problem.check_property();
-        Ok((result, concrete_problem))
-    }
-
-    fn synthesize_auxiliary_candidate(
-        &self,
-        candidate: &AuxiliarySynthesisCandidate,
-        _abstract_problem: &crate::vmt_bmc_session::VmtBmcSession,
-        concrete_problem: &crate::vmt_bmc_session::VmtBmcSession,
-    ) -> anyhow::Result<Option<AuxiliarySpec>> {
-        match candidate.guard_policy {
-            GuardPolicy::True => AuxiliarySpec::from_candidate(candidate).map(Some),
-            GuardPolicy::Interpolant => {
-                let sequence = run_sequence_smtinterpol(concrete_problem)?;
-                info!(
-                    "AUX-SYNTH generated {} sequence interpolants with {} predicate candidates at depth {} using {}",
-                    sequence.partitions.len(),
-                    sequence.predicates.candidates().len(),
-                    sequence.depth,
-                    sequence.logic,
-                );
-                for partition in &sequence.partitions {
-                    debug!(
-                        "AUX-SYNTH interpolant frame={} number={} term={}",
-                        partition.frame,
-                        partition.interpolant.interpolant_number,
-                        partition.interpolant.term,
-                    );
-                }
-                for (index, predicate) in sequence.predicates.candidates().iter().enumerate() {
-                    debug!(
-                        "AUX-SYNTH predicate candidate={} interpolants={:?} variables={:?} term={}",
-                        index, predicate.interpolant_numbers, predicate.variables, predicate.term,
-                    );
-                }
-                Ok(None)
-            }
-            GuardPolicy::AxiomLocal | GuardPolicy::Llm => Ok(None),
-        }
+            self.instantiation_strategy.as_ref(),
+        )
     }
 
     /// Build UnsatCoreInfo from the SMT problem if tracking is enabled
@@ -990,6 +978,32 @@ impl<'ctx, S> Driver<'ctx, S> {
     }
 }
 
+fn run_concrete_counterexample_check(
+    concrete_vmt_model: &VMTModel,
+    depth: u16,
+    solver_backend: SolverBackend,
+    instantiation_strategy: &dyn InstantiationStrategy,
+) -> Result<(SolverCheckResult, crate::vmt_bmc_session::VmtBmcSession)> {
+    let mut concrete_strategy: Box<dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>> =
+        Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+    let concrete_vmt_model = concrete_strategy.configure_model(concrete_vmt_model.clone());
+    let mut concrete_problem = crate::vmt_bmc_session::VmtBmcSession::new(
+        &concrete_vmt_model,
+        &concrete_strategy,
+        solver_backend,
+        false,
+        instantiation_strategy.clone_box(),
+        false,
+        None,
+    )?;
+
+    for unroll_depth in 0..=depth {
+        concrete_problem.unroll(unroll_depth);
+    }
+    let result = concrete_problem.check_property();
+    Ok((result, concrete_problem))
+}
+
 struct DriverExtensions<'ctx, S> {
     extensions: Vec<Box<dyn ProofStrategyExt<S> + 'ctx>>,
 }
@@ -1009,6 +1023,11 @@ impl<S> Default for DriverExtensions<'_, S> {
 impl<'ctx, S> DriverExtensions<'ctx, S> {
     pub fn add_extension(&mut self, ext: impl ProofStrategyExt<S> + 'ctx) -> &mut Self {
         self.extensions.push(Box::new(ext));
+        self
+    }
+
+    pub fn add_boxed_extension(&mut self, ext: Box<dyn ProofStrategyExt<S> + 'ctx>) -> &mut Self {
+        self.extensions.push(ext);
         self
     }
 }
@@ -1050,9 +1069,9 @@ impl<S> ProofStrategyExt<S> for DriverExtensions<'_, S> {
         Ok(())
     }
 
-    fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> anyhow::Result<()> {
+    fn refine(&mut self, state: &mut S, context: &mut RefinementContext<'_>) -> Result<()> {
         for ext in &mut self.extensions {
-            ext.finish(model, state)?;
+            ext.refine(state, context)?;
         }
         Ok(())
     }

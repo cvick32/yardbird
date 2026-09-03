@@ -2,7 +2,6 @@ use std::{fs, process::Command};
 
 use tempfile::TempDir;
 use yardbird::{
-    auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     model_from_options,
     profiling::ProfilingRunRecord,
@@ -433,13 +432,8 @@ fn multi_refinement_capture_preserves_added_instances_between_checks() {
     options.solver_capture_dir = Some(temp.path().join("capture"));
     let capture = options.build_solver_capture().unwrap();
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-        0,
-        false,
-        (),
-        AuxSynthesisConfig::default(),
-        false,
-    ));
+    let strategy: Box<dyn ProofStrategy<_>> =
+        Box::new(Abstract::<ArrayBMCCost>::new(0, false, (), false));
 
     let result = SmtlibRefinementRunner::execute(
         &problem,

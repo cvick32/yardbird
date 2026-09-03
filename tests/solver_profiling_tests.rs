@@ -1,5 +1,4 @@
 use yardbird::{
-    auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
@@ -90,13 +89,8 @@ fn strategy_smtlib_profiles_checks() {
         YardbirdOptions::from_filename("examples/smt2/array_bitvec_simple.smt2".to_string());
     options.profile = true;
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-        0,
-        false,
-        (),
-        AuxSynthesisConfig::default(),
-        false,
-    ));
+    let strategy: Box<dyn ProofStrategy<_>> =
+        Box::new(Abstract::<ArrayBMCCost>::new(0, false, (), false));
 
     let result = SmtlibRefinementRunner::execute(
         &problem,

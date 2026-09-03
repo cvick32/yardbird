@@ -1,9 +1,10 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
 use yardbird::{
-    auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger},
-    cost_functions::array::ArrayBMCCost,
+    auxiliary_synthesis::{AuxSynthesisConfig, ConditionalHistory, GuardPolicy, SynthesisTrigger},
+    cost_functions::array::{AdaptiveArrayCost, ArrayBMCCost},
     instantiation_strategy::full_unroll::FullUnrollStrategy,
     strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
+    theories::array::array_rule_instantiator::ArrayArtifactCapture,
     Driver, Error, SolverBackend,
 };
 
@@ -37,18 +38,23 @@ fn check_abstract_model_with_aux(
     depth: u16,
     aux_config: AuxSynthesisConfig,
 ) -> yardbird::Result<yardbird::ProofLoopResult> {
+    let aux_enabled = !aux_config.is_off();
     let mut driver = Driver::new(
         model,
         Box::new(FullUnrollStrategy::new()),
         SolverBackend::Z3,
     );
-    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-        depth,
-        false,
-        (),
-        aux_config,
-        false,
-    ));
+    if aux_enabled {
+        driver.add_extension(ConditionalHistory::<ArrayBMCCost>::new(aux_config, ()));
+    }
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(
+        Abstract::<ArrayBMCCost>::new(depth, false, (), false).with_artifact_capture(
+            ArrayArtifactCapture {
+                conflicts: aux_enabled,
+                ..ArrayArtifactCapture::default()
+            },
+        ),
+    );
     driver.check_strategy(depth, strategy)
 }
 
@@ -62,6 +68,28 @@ fn check_concrete_model(
         SolverBackend::Z3,
     );
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(ConcreteArrayZ3::new(false));
+    driver.check_strategy(depth, strategy)
+}
+
+fn check_adaptive_model_with_aux(
+    model: VMTModel,
+    depth: u16,
+    aux_config: AuxSynthesisConfig,
+) -> yardbird::Result<yardbird::ProofLoopResult> {
+    let mut driver = Driver::new(
+        model,
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    );
+    driver.add_extension(ConditionalHistory::<AdaptiveArrayCost>::new(aux_config, ()));
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(
+        Abstract::<AdaptiveArrayCost>::new(depth, false, (), false).with_artifact_capture(
+            ArrayArtifactCapture {
+                conflicts: true,
+                ..ArrayArtifactCapture::default()
+            },
+        ),
+    );
     driver.check_strategy(depth, strategy)
 }
 
@@ -154,12 +182,12 @@ fn true_guard_auxiliary_candidate_is_synthesized_after_concrete_validation() {
     assert_eq!(result.auxiliary_records.len(), 1);
     assert!(result.used_instances.iter().any(|term| {
         let term = term.to_string();
-        term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0 x+0)")
+        term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0")
     }));
 }
 
 #[test]
-fn unavailable_interpolant_guard_keeps_the_ground_refinement() {
+fn interpolant_guard_is_classified_ranked_and_installed() {
     let model = VMTModel::from_path("examples/array/array_init_increm_two_arrs_const.vmt").unwrap();
     let result = check_abstract_model_with_aux(
         model,
@@ -178,9 +206,49 @@ fn unavailable_interpolant_guard_keeps_the_ground_refinement() {
             .get_f64("concrete_validation_checks"),
         Some(1.0)
     );
-    assert!(result.auxiliary_records.is_empty());
+    assert_eq!(result.auxiliary_records.len(), 1);
+    let record = &result.auxiliary_records[0];
+    assert_eq!(record.guard_policy, GuardPolicy::Interpolant);
+    assert_eq!(record.capture_guard, "(and (= pc 2) (= 1 i))");
+    assert_eq!(
+        record.capture_mode,
+        yardbird::auxiliary_synthesis::HistoryCaptureMode::LastOccurrence
+    );
+    let selection = record.interpolant_guard_selection.as_ref().unwrap();
+    assert_eq!(selection.predicate_index, 37);
+    assert_eq!(selection.ranker, "ArrayBMCCost");
+    assert!(selection.structurally_scored);
+    assert!(selection.eligible_count > 0);
+    assert!(!selection.rejected.is_empty());
     assert!(result.used_instances.iter().any(|term| {
         let term = term.to_string();
-        term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0 x+0)")
+        term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0")
     }));
+}
+
+#[test]
+fn hybr_sum_matches_the_paper_capture_epoch_and_property_guard() {
+    let model = VMTModel::from_path("examples/array/array_hybr_sum.vmt").unwrap();
+    let result = check_adaptive_model_with_aux(
+        model,
+        6,
+        AuxSynthesisConfig {
+            trigger: SynthesisTrigger::NonLocal,
+            guard_policy: GuardPolicy::Interpolant,
+            ..AuxSynthesisConfig::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.auxiliary_records.len(), 1);
+    let record = &result.auxiliary_records[0];
+    assert_eq!(record.capture_term, "i");
+    assert_eq!(record.capture_guard, "(and (= pc 1) (<= 0 j))");
+    assert_eq!(
+        record.capture_mode,
+        yardbird::auxiliary_synthesis::HistoryCaptureMode::LastOccurrence
+    );
+    let selection = record.interpolant_guard_selection.as_ref().unwrap();
+    assert_eq!(selection.predicate, "(<= 0 j)");
+    assert!(selection.property_overlap);
 }

@@ -1376,13 +1376,7 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(
-            2,
-            false,
-            (),
-            crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
-            false,
-        );
+        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(2, false, (), false);
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
@@ -1559,14 +1553,8 @@ mod tests {
     #[test]
     fn installs_auxiliary_specs_for_existing_and_future_frames() {
         let model = VMTModel::from_path("./examples/array/array_copy.vmt").unwrap();
-        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(
-            4,
-            false,
-            (),
-            crate::auxiliary_synthesis::AuxSynthesisConfig::default(),
-            false,
-        )
-        .with_property_check_mode(PropertyCheckMode::Assumptions);
+        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(4, false, (), false)
+            .with_property_check_mode(PropertyCheckMode::Assumptions);
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
@@ -1624,6 +1612,7 @@ mod tests {
             property_constraint: Some("(= yb_prop_test yb_hist_test)".parse().unwrap()),
             guard_policy: GuardPolicy::True,
             trigger: SynthesisTrigger::NonLocal,
+            interpolant_guard_selection: None,
             non_monotonicity_check: NonMonotonicityCheckRecord {
                 status: NonMonotonicityStatus::Pending,
                 source_term: "(= i@0 i@2)".to_string(),

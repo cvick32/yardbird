@@ -9,7 +9,6 @@ use std::{
 };
 use yardbird::{
     self,
-    auxiliary_synthesis::AuxSynthesisConfig,
     cost_functions::array::ArrayBMCCost,
     model_from_options,
     smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
@@ -298,13 +297,8 @@ fn solve_vmt(filename: &Path, solver_backend: SolverBackend) -> Vec<String> {
     let vmt_model = model_from_options(&options);
     let instantiation_strategy = options.build_instantiation_strategy();
     let mut driver = Driver::new(vmt_model, instantiation_strategy, solver_backend);
-    let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-        10,
-        false,
-        (),
-        AuxSynthesisConfig::default(),
-        false,
-    ));
+    let strat: Box<dyn ProofStrategy<_>> =
+        Box::new(Abstract::<ArrayBMCCost>::new(10, false, (), false));
     let result = driver.check_strategy(options.depth, strat).unwrap();
     let mut used_instantiations = result
         .used_instances
@@ -377,13 +371,8 @@ fn solve_smt2_strategy(filename: &Path) -> Smt2StrategyOutcome {
 
     z3::with_z3_config(&config, move || {
         let problem = SMTLIBProblem::from_path(&path).unwrap();
-        let strat: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
-            0,
-            false,
-            (),
-            AuxSynthesisConfig::default(),
-            false,
-        ));
+        let strat: Box<dyn ProofStrategy<_>> =
+            Box::new(Abstract::<ArrayBMCCost>::new(0, false, (), false));
         let (result, _abstracted_problem) = SmtlibRefinementRunner::execute(
             &problem,
             strat,

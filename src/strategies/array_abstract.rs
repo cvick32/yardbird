@@ -230,25 +230,7 @@ where
     }
 
     fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
-        !state.candidates.is_empty() || !self.pending_aux_specs.is_empty()
-    }
-
-    fn take_auxiliary_synthesis_candidate(&mut self) -> Option<AuxiliarySynthesisCandidate> {
-        self.pending_aux_candidate.take()
-    }
-
-    fn queue_auxiliary_spec(&mut self, spec: AuxiliarySpec) -> driver::Result<()> {
-        info!(
-            "AUX-SYNTH synthesized aux_id={} source_conflict={} history={} prophecy={:?}",
-            spec.aux_id,
-            spec.source_conflict_id,
-            spec.history.name,
-            spec.prophecy.as_ref().map(|prophecy| prophecy.name.clone())
-        );
-        self.installed_aux_conflicts
-            .insert(spec.source_conflict_id.clone());
-        self.pending_aux_specs.push(spec);
-        Ok(())
+        !state.candidates.is_empty() || !state.guarded_read_updates.is_empty()
     }
 
     fn setup(
@@ -257,13 +239,9 @@ where
         depth: u16,
     ) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(());
-        let egraph_builder = if self.egraph_builder.requires_property_cone()
-            && !self.cone_attempted_depths.insert(depth)
-        {
-            Box::<FullEGraphBuilder>::default()
-        } else {
-            self.egraph_builder.clone()
-        };
+        let egraph_builder = self
+            .egraph_builder
+            .clone_for_refinement(&mut self.cone_attempted_depths, depth);
         // Use discovered_array_types if available (VMT mode via configure_model),
         // otherwise get from ProblemContext (SMTLIB mode)
         let array_types = if self.discovered_array_types.is_empty() {
@@ -450,6 +428,14 @@ where
                 summary.record_pruned_model_candidates(&rule_name, count);
             }
 
+            if expansion.stage == ArrayEGraphBuildStage::Source
+                && self
+                    .egraph_builder
+                    .should_widen_after_source(summary.selected_count())
+            {
+                self.cone_attempted_depths.insert(state.depth);
+            }
+
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();
                 for (rule_name, counts) in &summary.by_rule {
@@ -469,7 +455,7 @@ where
                 );
             }
 
-            self.absorb_candidates(state, smt, candidate_batch, refinement_step);
+            self.absorb_candidates(state, candidate_batch);
 
             if let Some(profiling) = &profiling {
                 profiling
@@ -505,10 +491,17 @@ where
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         let trace_instantiations = trace_instantiations_enabled();
-        if !self.pending_aux_specs.is_empty() {
-            let specs = mem::take(&mut self.pending_aux_specs);
-            info!("AUX-SYNTH installing {} auxiliary specs", specs.len());
-            smt.install_auxiliary_specs(specs)?;
+        for schema in state.guarded_read_updates {
+            let Some(frame_zero) = smt.frame_transition_formula(schema, 0) else {
+                continue;
+            };
+            let Some(instance) = smt.make_unquantified_instance(frame_zero) else {
+                continue;
+            };
+            let key = canonical_instantiation_key(instance.get_term());
+            let result = smt.add_instantiation(InstantiationRequest::untracked(instance));
+            self.array_encoding_plan
+                .record_guarded_installation(key, result.abstract_instance_added);
         }
         for candidate in state.candidates {
             let expression = candidate.expression;
@@ -588,12 +581,15 @@ where
         } else {
             false
         };
+        let mut solver_statistics = smt.get_solver_statistics();
+        self.array_encoding_plan
+            .add_statistics(&mut solver_statistics);
         ProofLoopResult {
             model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),
             total_instantiations_added: smt.get_number_instantiations_added(),
             total_refinement_steps: 0,
-            solver_statistics: smt.get_solver_statistics(),
+            solver_statistics,
             counterexample: false,
             found_proof,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
@@ -644,13 +640,7 @@ where
             .map(|instance| canonical_instantiation_key(instance.get_term()))
     }
 
-    fn absorb_candidates(
-        &mut self,
-        state: &mut ArrayRefinementState,
-        smt: &dyn crate::problem_context::ProblemContext,
-        batch: InstantiationBatch,
-        refinement_step: u32,
-    ) {
+    fn absorb_candidates(&mut self, state: &mut ArrayRefinementState, batch: InstantiationBatch) {
         let selection_history = batch
             .candidates
             .iter()
@@ -671,7 +661,6 @@ where
                     .or_default() += 1;
             }
         }
-        let mut conflicts = Vec::new();
         for mut candidate in batch.candidates {
             for decision in mem::take(&mut candidate.decisions) {
                 if !self
@@ -700,13 +689,8 @@ where
             if !candidate.selected {
                 continue;
             }
-            if let Some(conflict) = candidate.conflict.take() {
-                conflicts.push(conflict);
-            }
-
             state.candidates.push(candidate);
         }
-        self.handle_aux_synthesis_detection(state, smt, &conflicts, refinement_step);
     }
 
     fn finish_profiling_record(&mut self, profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>) {
@@ -716,109 +700,6 @@ where
             } else {
                 warn!("Unable to unwrap array profiling collector; profiling record dropped");
             }
-        }
-    }
-
-    fn handle_aux_synthesis_detection(
-        &mut self,
-        state: &ArrayRefinementState,
-        smt: &dyn crate::problem_context::ProblemContext,
-        conflicts: &[ArrayConflictRecord],
-        refinement_step: u32,
-    ) {
-        if self.aux_config.is_off() {
-            return;
-        }
-        let eligible_conflicts = conflicts
-            .iter()
-            .filter(|conflict| !term_contains_auxiliary_symbol(&conflict.term))
-            .cloned()
-            .collect::<Vec<_>>();
-        let ignored_aux_conflicts = conflicts.len().saturating_sub(eligible_conflicts.len());
-        if ignored_aux_conflicts > 0 {
-            info!(
-                "AUX-SYNTH ignored {ignored_aux_conflicts} conflicts containing auxiliary symbols"
-            );
-        }
-        let decision = self.aux_trigger_state.decide(
-            &self.aux_config,
-            &eligible_conflicts,
-            refinement_step,
-            250,
-        );
-        if decision.detected_conflicts.is_empty()
-            && self.aux_config.trigger == SynthesisTrigger::Detect
-        {
-            info!(
-                "AUX-SYNTH detect depth={} refinement_step={}: no non-local conflicts",
-                state.depth, refinement_step
-            );
-            return;
-        }
-        info!(
-            "AUX-SYNTH trigger={} guard={} depth={} refinement_step={} fired={} reason={} detected={}",
-            self.aux_config.trigger,
-            self.aux_config.guard_policy,
-            state.depth,
-            refinement_step,
-            decision.fired,
-            decision.reason,
-            decision.detected_conflicts.len()
-        );
-        for conflict_id in &decision.detected_conflicts {
-            if let Some(conflict) = eligible_conflicts
-                .iter()
-                .find(|conflict| conflict.conflict_id == *conflict_id)
-            {
-                info!(
-                    "AUX-SYNTH detected conflict={} axiom={} span={} frames={:?} cost={} term={}",
-                    conflict.conflict_id,
-                    conflict.axiom_name,
-                    conflict.frame_span.span,
-                    conflict.frame_span.frames,
-                    conflict.cost,
-                    conflict.term
-                );
-            }
-        }
-        if !decision.fired {
-            return;
-        }
-        let Some(selected_conflict_id) = decision.selected_conflict_id else {
-            return;
-        };
-        if self.installed_aux_conflicts.contains(&selected_conflict_id) {
-            return;
-        }
-        let Some(conflict) = eligible_conflicts
-            .iter()
-            .find(|conflict| conflict.conflict_id == selected_conflict_id)
-        else {
-            warn!("AUX-SYNTH selected conflict {selected_conflict_id} was not found");
-            return;
-        };
-        if self.pending_aux_candidate.is_some() {
-            return;
-        }
-        match AuxiliarySynthesisCandidate::from_conflict(
-            conflict,
-            smt.get_variables(),
-            self.aux_config.trigger,
-            self.aux_config.guard_policy,
-        ) {
-            Ok(candidate) => {
-                info!(
-                    "AUX-SYNTH selected candidate aux_id={} source_conflict={} guard={}",
-                    candidate.aux_id,
-                    candidate.source_conflict_id(),
-                    candidate.guard_policy,
-                );
-                self.pending_aux_candidate = Some(candidate);
-            }
-            Err(err) => warn!(
-                "AUX-SYNTH could not build auxiliary candidate for conflict {}: {err}",
-                conflict.conflict_id
-            ),
         }
     }
 }

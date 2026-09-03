@@ -1,16 +1,14 @@
-use dialoguer::{theme::SimpleTheme, MultiSelect};
-use smt2parser::vmt::VMTModel;
-
 use crate::strategies::{ArrayRefinementState, ListRefinementState, ProofStrategyExt};
+use dialoguer::{theme::SimpleTheme, MultiSelect};
 
 pub struct Repl;
 
 impl ProofStrategyExt<ArrayRefinementState> for Repl {
-    fn finish(
+    fn refine(
         &mut self,
-        _model: &mut VMTModel,
         state: &mut ArrayRefinementState,
-    ) -> anyhow::Result<()> {
+        _context: &mut crate::driver::RefinementContext<'_>,
+    ) -> crate::driver::Result<()> {
         if state.candidates.is_empty() {
             return Ok(());
         }
@@ -36,11 +34,11 @@ impl ProofStrategyExt<ArrayRefinementState> for Repl {
 }
 
 impl ProofStrategyExt<ListRefinementState> for Repl {
-    fn finish(
+    fn refine(
         &mut self,
-        _model: &mut VMTModel,
         state: &mut ListRefinementState,
-    ) -> anyhow::Result<()> {
+        _context: &mut crate::driver::RefinementContext<'_>,
+    ) -> crate::driver::Result<()> {
         if state.instantiations.is_empty() {
             return Ok(());
         }

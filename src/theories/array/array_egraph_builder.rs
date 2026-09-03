@@ -55,7 +55,28 @@ pub enum ArrayEGraphBuildStep {
 pub trait ArrayEGraphBuilder: Debug + Send {
     fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder>;
 
+    /// Create the builder for one refinement attempt at `depth`. Staged
+    /// builders use the shared attempt set to widen when strategy setup creates
+    /// a fresh state for another solver check at the same depth.
+    fn clone_for_refinement(
+        &self,
+        attempted_depths: &mut HashSet<u16>,
+        depth: u16,
+    ) -> Box<dyn ArrayEGraphBuilder> {
+        if self.requires_property_cone() && !attempted_depths.insert(depth) {
+            Box::<FullEGraphBuilder>::default()
+        } else {
+            self.clone_box()
+        }
+    }
+
     fn requires_property_cone(&self) -> bool {
+        false
+    }
+
+    /// Whether a source-stage batch is sparse enough that the next refinement
+    /// at this depth should widen to all model terms.
+    fn should_widen_after_source(&self, _selected_count: usize) -> bool {
         false
     }
 
@@ -128,6 +149,22 @@ pub struct SourceThenFullEGraphBuilder {
 impl ArrayEGraphBuilder for SourceThenFullEGraphBuilder {
     fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder> {
         Box::new(self.clone())
+    }
+
+    fn clone_for_refinement(
+        &self,
+        attempted_depths: &mut HashSet<u16>,
+        depth: u16,
+    ) -> Box<dyn ArrayEGraphBuilder> {
+        if attempted_depths.contains(&depth) {
+            Box::<FullEGraphBuilder>::default()
+        } else {
+            self.clone_box()
+        }
+    }
+
+    fn should_widen_after_source(&self, selected_count: usize) -> bool {
+        selected_count <= 1
     }
 
     fn expand(
@@ -725,6 +762,52 @@ mod tests {
         ));
         assert_eq!(third, ArrayEGraphBuildStep::Exhausted);
         assert!(classes_after_full > classes_after_source);
+    }
+
+    #[test]
+    fn source_then_full_builder_widens_across_setup_clones_at_one_depth() {
+        let context = FakeContext {
+            terms: vec![
+                "(Read_Int_Int a@3 i@3)".parse().unwrap(),
+                "(Read_Int_Int b@3 j@3)".parse().unwrap(),
+            ],
+            source_term_count: 1,
+        };
+        let template = SourceThenFullEGraphBuilder::default();
+        let mut attempted_depths = HashSet::new();
+
+        let mut source_builder = template.clone_for_refinement(&mut attempted_depths, 3);
+        let mut source_egraph = egg::EGraph::new(());
+        let source = source_builder
+            .expand(&mut source_egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+
+        assert!(!template.should_widen_after_source(2));
+        assert!(template.should_widen_after_source(1));
+        attempted_depths.insert(3);
+
+        let mut full_builder = template.clone_for_refinement(&mut attempted_depths, 3);
+        let mut full_egraph = egg::EGraph::new(());
+        let full = full_builder
+            .expand(&mut full_egraph, &context, &PropertyCone::default(), 3)
+            .unwrap();
+
+        assert!(matches!(
+            source,
+            ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                stage: ArrayEGraphBuildStage::Source,
+                candidate_scope: CandidateScope::SourceGroundedOnly,
+                ..
+            })
+        ));
+        assert!(matches!(
+            full,
+            ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                stage: ArrayEGraphBuildStage::Full,
+                candidate_scope: CandidateScope::AllCandidates,
+                ..
+            })
+        ));
     }
 
     #[test]

@@ -2,14 +2,16 @@
 
 use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
 
-use crate::auxiliary_synthesis::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
+use crate::auxiliary_synthesis::{
+    AuxSynthesisConfig, ConditionalHistory, GuardPolicy, SynthesisTrigger,
+};
 use clap::{Parser, Subcommand, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{
     Abstract, AbstractArrayWithQuantifiers, ArrayRefinementState, ConcreteArrayZ3, ListAbstract,
-    ProofStrategy,
+    ProofStrategy, ProofStrategyExt,
 };
 
 use crate::{
@@ -59,6 +61,14 @@ pub mod theory_support;
 pub mod training;
 mod utils;
 pub mod vmt_bmc_session;
+
+/// The array strategy and optional extensions constructed from one CLI
+/// configuration. Keeping them together ensures synthesis uses the same cost
+/// configuration as ordinary array refinement.
+pub struct ArrayProofPlan {
+    pub strategy: Box<dyn ProofStrategy<'static, ArrayRefinementState>>,
+    pub conditional_history: Option<Box<dyn ProofStrategyExt<ArrayRefinementState>>>,
+}
 
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None)]
@@ -333,7 +343,7 @@ impl YardbirdOptions {
         ArrayArtifactCapture {
             decisions,
             instantiation_provenance: decisions || self.track_instantiations,
-            conflicts: false,
+            conflicts: self.synthesis_trigger != SynthesisTrigger::Off,
         }
     }
 
@@ -421,19 +431,38 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_abstract_array_strategy<F>(
-        &self,
-        bmc_depth: u16,
-        aux_config: AuxSynthesisConfig,
-    ) -> Abstract<F>
+    pub fn build_abstract_array_strategy<F>(&self, bmc_depth: u16) -> Abstract<F>
     where
         F: ArrayCostFactory<Config = ()> + 'static,
+    {
+        self.build_configured_abstract_array_strategy(bmc_depth, ())
+    }
+
+    pub fn build_logistic_regression_array_strategy(
+        &self,
+        bmc_depth: u16,
+    ) -> Abstract<LogisticRegression> {
+        let model_path = self
+            .ranker_model
+            .as_deref()
+            .expect("--cost-function logistic-regression requires --ranker-model");
+        let model = LogisticRegressionModel::from_path(model_path)
+            .unwrap_or_else(|err| panic!("failed to configure logistic-regression model: {err}"));
+        self.build_configured_abstract_array_strategy(bmc_depth, model)
+    }
+
+    fn build_configured_abstract_array_strategy<F>(
+        &self,
+        bmc_depth: u16,
+        cost_config: F::Config,
+    ) -> Abstract<F>
+    where
+        F: ArrayCostFactory + 'static,
     {
         Abstract::new(
             bmc_depth,
             self.run_ic3ia,
-            (),
-            aux_config,
+            cost_config,
             self.profiling_enabled(),
         )
         .with_artifact_capture(self.build_array_artifact_capture())
@@ -444,30 +473,22 @@ impl YardbirdOptions {
         .with_property_check_mode(self.property_check_mode)
     }
 
-    pub fn build_logistic_regression_array_strategy(
-        &self,
-        bmc_depth: u16,
-        aux_config: AuxSynthesisConfig,
-    ) -> Abstract<LogisticRegression> {
-        let model_path = self
-            .ranker_model
-            .as_deref()
-            .expect("--cost-function logistic-regression requires --ranker-model");
-        let model = LogisticRegressionModel::from_path(model_path)
-            .unwrap_or_else(|err| panic!("failed to configure logistic-regression model: {err}"));
-        Abstract::new(
-            bmc_depth,
-            self.run_ic3ia,
-            model,
-            aux_config,
-            self.profiling_enabled(),
-        )
-        .with_artifact_capture(self.build_array_artifact_capture())
-        .with_egraph_builder(self.build_array_egraph_builder())
-        .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
-        .with_candidate_winners_per_group(self.candidate_winners_per_group)
-        .with_instantiation_ranker(self.build_instantiation_ranker())
-        .with_property_check_mode(self.property_check_mode)
+    fn build_abstract_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan
+    where
+        F: ArrayCostFactory + 'static,
+    {
+        let strategy = Box::new(
+            self.build_configured_abstract_array_strategy::<F>(self.depth, cost_config.clone()),
+        );
+        let config = self.build_aux_synthesis_config();
+        let conditional_history = (!config.is_off()).then(|| {
+            Box::new(ConditionalHistory::<F>::new(config, cost_config))
+                as Box<dyn ProofStrategyExt<ArrayRefinementState>>
+        });
+        ArrayProofPlan {
+            strategy,
+            conditional_history,
+        }
     }
 
     pub fn build_instantiation_ranker(&self) -> Box<dyn InstantiationRanker> {
@@ -485,61 +506,61 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
-        let aux_config = self.build_aux_synthesis_config();
+    pub fn build_array_proof_plan(&self) -> ArrayProofPlan {
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
-                CostFunction::LogisticRegression => {
-                    Box::new(self.build_logistic_regression_array_strategy(self.depth, aux_config))
+                CostFunction::LogisticRegression => self
+                    .build_abstract_array_plan::<LogisticRegression>(
+                        LogisticRegressionModel::from_path(
+                            self.ranker_model.as_deref().expect(
+                                "--cost-function logistic-regression requires --ranker-model",
+                            ),
+                        )
+                        .unwrap_or_else(|err| {
+                            panic!("failed to configure logistic-regression model: {err}")
+                        }),
+                    ),
+                CostFunction::BmcCost => self.build_abstract_array_plan::<ArrayBMCCost>(()),
+                CostFunction::AstSize => self.build_abstract_array_plan::<ArrayAstSize>(()),
+                CostFunction::AdaptiveCost => {
+                    self.build_abstract_array_plan::<AdaptiveArrayCost>(())
                 }
-                CostFunction::BmcCost => Box::new(
-                    self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth, aux_config),
-                ),
-                CostFunction::AstSize => Box::new(
-                    self.build_abstract_array_strategy::<ArrayAstSize>(self.depth, aux_config),
-                ),
-                CostFunction::AdaptiveCost => Box::new(
-                    self.build_abstract_array_strategy::<AdaptiveArrayCost>(self.depth, aux_config),
-                ),
-                CostFunction::SplitCost => Box::new(
-                    self.build_abstract_array_strategy::<SplitArrayCost>(self.depth, aux_config),
-                ),
-                CostFunction::PreferRead => Box::new(
-                    self.build_abstract_array_strategy::<ArrayPreferRead>(self.depth, aux_config),
-                ),
-                CostFunction::PreferWrite => Box::new(
-                    self.build_abstract_array_strategy::<ArrayPreferWrite>(self.depth, aux_config),
-                ),
+                CostFunction::SplitCost => self.build_abstract_array_plan::<SplitArrayCost>(()),
+                CostFunction::PreferRead => self.build_abstract_array_plan::<ArrayPreferRead>(()),
+                CostFunction::PreferWrite => self.build_abstract_array_plan::<ArrayPreferWrite>(()),
                 CostFunction::PreferConstants => {
-                    Box::new(self.build_abstract_array_strategy::<ArrayPreferConstants>(
-                        self.depth, aux_config,
-                    ))
+                    self.build_abstract_array_plan::<ArrayPreferConstants>(())
                 }
                 CostFunction::IndexAware => {
-                    Box::new(self.build_abstract_array_strategy::<IndexAwareArrayCost>(
-                        self.depth, aux_config,
-                    ))
+                    self.build_abstract_array_plan::<IndexAwareArrayCost>(())
                 }
-                CostFunction::Generated => Box::new(
-                    self.build_abstract_array_strategy::<ArrayGenerated>(self.depth, aux_config),
-                ),
+                CostFunction::Generated => self.build_abstract_array_plan::<ArrayGenerated>(()),
             },
-            Strategy::AbstractWithQuantifiers => Box::new(
-                AbstractArrayWithQuantifiers::new(self.run_ic3ia)
-                    .with_exact_read_after_write_preprocessing(
-                        self.preprocess_exact_read_after_write,
-                    )
-                    .with_property_check_mode(self.property_check_mode),
-            ),
-            Strategy::Concrete => Box::new(
-                ConcreteArrayZ3::new(self.run_ic3ia)
-                    .with_property_check_mode(self.property_check_mode),
-            ),
+            Strategy::AbstractWithQuantifiers => ArrayProofPlan {
+                strategy: Box::new(
+                    AbstractArrayWithQuantifiers::new(self.run_ic3ia)
+                        .with_exact_read_after_write_preprocessing(
+                            self.preprocess_exact_read_after_write,
+                        )
+                        .with_property_check_mode(self.property_check_mode),
+                ),
+                conditional_history: None,
+            },
+            Strategy::Concrete => ArrayProofPlan {
+                strategy: Box::new(
+                    ConcreteArrayZ3::new(self.run_ic3ia)
+                        .with_property_check_mode(self.property_check_mode),
+                ),
+                conditional_history: None,
+            },
         }
     }
 
+    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
+        self.build_array_proof_plan().strategy
+    }
+
     pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
-        let aux_config = self.build_aux_synthesis_config();
         // For now, use the same strategy structure as arrays
         // TODO: Create proper bit-vector list strategy
         match self.strategy {
@@ -547,29 +568,27 @@ impl YardbirdOptions {
                 CostFunction::LogisticRegression => {
                     todo!("logistic-regression is not implemented for bv-list theory")
                 }
-                CostFunction::BmcCost => Box::new(
-                    self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth, aux_config),
-                ),
-                CostFunction::AstSize => Box::new(
-                    self.build_abstract_array_strategy::<ArrayAstSize>(self.depth, aux_config),
-                ),
-                CostFunction::AdaptiveCost => Box::new(
-                    self.build_abstract_array_strategy::<AdaptiveArrayCost>(self.depth, aux_config),
-                ),
-                CostFunction::SplitCost => Box::new(
-                    self.build_abstract_array_strategy::<SplitArrayCost>(self.depth, aux_config),
-                ),
-                CostFunction::PreferRead => Box::new(
-                    self.build_abstract_array_strategy::<ArrayPreferRead>(self.depth, aux_config),
-                ),
-                CostFunction::PreferWrite => Box::new(
-                    self.build_abstract_array_strategy::<ArrayPreferWrite>(self.depth, aux_config),
-                ),
+                CostFunction::BmcCost => {
+                    Box::new(self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth))
+                }
+                CostFunction::AstSize => {
+                    Box::new(self.build_abstract_array_strategy::<ArrayAstSize>(self.depth))
+                }
+                CostFunction::AdaptiveCost => {
+                    Box::new(self.build_abstract_array_strategy::<AdaptiveArrayCost>(self.depth))
+                }
+                CostFunction::SplitCost => {
+                    Box::new(self.build_abstract_array_strategy::<SplitArrayCost>(self.depth))
+                }
+                CostFunction::PreferRead => {
+                    Box::new(self.build_abstract_array_strategy::<ArrayPreferRead>(self.depth))
+                }
+                CostFunction::PreferWrite => {
+                    Box::new(self.build_abstract_array_strategy::<ArrayPreferWrite>(self.depth))
+                }
                 CostFunction::PreferConstants => todo!(),
                 CostFunction::IndexAware => {
-                    Box::new(self.build_abstract_array_strategy::<IndexAwareArrayCost>(
-                        self.depth, aux_config,
-                    ))
+                    Box::new(self.build_abstract_array_strategy::<IndexAwareArrayCost>(self.depth))
                 }
                 CostFunction::Generated => todo!(),
             },

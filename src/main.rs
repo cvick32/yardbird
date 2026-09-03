@@ -223,41 +223,39 @@ fn build_smtlib_strategy(
     use yardbird::cost_functions::array::*;
     use yardbird::strategies::{AbstractArrayWithQuantifiers, ConcreteArrayZ3};
 
-    let aux_config = options.build_aux_synthesis_config();
     match options.strategy {
         Strategy::Abstract => match options.cost_function {
             CostFunction::LogisticRegression => {
-                Box::new(options.build_logistic_regression_array_strategy(0, aux_config))
+                Box::new(options.build_logistic_regression_array_strategy(0))
             }
             CostFunction::BmcCost => {
                 Box::new(options.build_abstract_array_strategy::<ArrayBMCCost>(
                     0, // depth=0 for SMTLIB (no temporal unrolling)
-                    aux_config,
                 ))
             }
             CostFunction::AstSize => {
-                Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0, aux_config))
+                Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0))
             }
             CostFunction::AdaptiveCost => {
-                Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0, aux_config))
+                Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0))
             }
             CostFunction::SplitCost => {
-                Box::new(options.build_abstract_array_strategy::<SplitArrayCost>(0, aux_config))
+                Box::new(options.build_abstract_array_strategy::<SplitArrayCost>(0))
             }
             CostFunction::PreferRead => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferRead>(0, aux_config))
+                Box::new(options.build_abstract_array_strategy::<ArrayPreferRead>(0))
             }
             CostFunction::PreferWrite => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferWrite>(0, aux_config))
+                Box::new(options.build_abstract_array_strategy::<ArrayPreferWrite>(0))
             }
-            CostFunction::PreferConstants => Box::new(
-                options.build_abstract_array_strategy::<ArrayPreferConstants>(0, aux_config),
-            ),
-            CostFunction::IndexAware => Box::new(
-                options.build_abstract_array_strategy::<IndexAwareArrayCost>(0, aux_config),
-            ),
+            CostFunction::PreferConstants => {
+                Box::new(options.build_abstract_array_strategy::<ArrayPreferConstants>(0))
+            }
+            CostFunction::IndexAware => {
+                Box::new(options.build_abstract_array_strategy::<IndexAwareArrayCost>(0))
+            }
             CostFunction::Generated => {
-                Box::new(options.build_abstract_array_strategy::<ArrayGenerated>(0, aux_config))
+                Box::new(options.build_abstract_array_strategy::<ArrayGenerated>(0))
             }
         },
         Strategy::AbstractWithQuantifiers => Box::new(
@@ -315,7 +313,11 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             if options.interpolate {
                 driver.add_extension(Interpolating);
             }
-            let res = match driver.check_strategy(options.depth, options.build_array_strategy()) {
+            let proof_plan = options.build_array_proof_plan();
+            if let Some(extension) = proof_plan.conditional_history {
+                driver.add_boxed_extension(extension);
+            }
+            let res = match driver.check_strategy(options.depth, proof_plan.strategy) {
                 Ok(res) => res,
                 Err(err) => {
                     if let Some(session) = training_session.as_mut() {

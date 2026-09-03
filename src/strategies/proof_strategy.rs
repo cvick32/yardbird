@@ -1,7 +1,6 @@
 use smt2parser::vmt::VMTModel;
 
 use crate::{
-    auxiliary_synthesis::{AuxiliarySpec, AuxiliarySynthesisCandidate},
     driver::{self, Error},
     problem_context::ProblemContext,
     profiling::ProfilingRecord,
@@ -40,17 +39,6 @@ pub trait ProofStrategy<'ctx, S> {
     /// Whether `Continue` has an actual refinement ready to install.
     fn has_pending_refinement(&self, _state: &S) -> bool {
         true
-    }
-
-    /// Take a candidate selected for synchronous auxiliary synthesis against
-    /// the matching concrete validation epoch.
-    fn take_auxiliary_synthesis_candidate(&mut self) -> Option<AuxiliarySynthesisCandidate> {
-        None
-    }
-
-    /// Queue a successfully synthesized spec with the originating strategy.
-    fn queue_auxiliary_spec(&mut self, _spec: AuxiliarySpec) -> driver::Result<()> {
-        Err(anyhow::anyhow!("strategy does not accept auxiliary specs").into())
     }
 
     /// Select how VMT property queries are presented to the incremental solver.
@@ -96,10 +84,9 @@ pub trait ProofStrategy<'ctx, S> {
     fn result(&mut self, model: &mut VMTModel, smt: &dyn ProblemContext) -> ProofLoopResult;
 }
 
-/// Allows easy modification of some other proof strategy. These methods corrrespond
-/// to methods on `ProofStrategy` and get run before the underlying method on
-/// `ProofStrategy`. Good for additional processing / adding some kind of interface
-/// to a proof strategy.
+/// Extends the proof loop without adding policy to the driver or strategy.
+/// Solver-result hooks run before their matching strategy hook; `refine` runs
+/// after the strategy selects a refinement and before it is installed.
 pub trait ProofStrategyExt<S> {
     #[allow(unused_variables)]
     fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> anyhow::Result<()> {
@@ -122,7 +109,11 @@ pub trait ProofStrategyExt<S> {
     }
 
     #[allow(unused_variables)]
-    fn finish(&mut self, model: &mut VMTModel, state: &mut S) -> anyhow::Result<()> {
+    fn refine(
+        &mut self,
+        state: &mut S,
+        context: &mut driver::RefinementContext<'_>,
+    ) -> driver::Result<()> {
         Ok(())
     }
 }

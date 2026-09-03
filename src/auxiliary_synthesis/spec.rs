@@ -11,7 +11,7 @@ use smt2parser::vmt::{
 
 use crate::auxiliary_synthesis::{
     ArrayConflictRecord, AuxiliaryCaptureTarget, AuxiliarySynthesisCandidate, FrameSpan,
-    GuardPolicy, SynthesisTrigger,
+    GuardPolicy, InterpolantGuardSelectionRecord, SynthesisTrigger,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -58,6 +58,8 @@ pub struct AuxiliarySpec {
     pub property_constraint: Option<Term>,
     pub guard_policy: GuardPolicy,
     pub trigger: SynthesisTrigger,
+    #[serde(default)]
+    pub interpolant_guard_selection: Option<InterpolantGuardSelectionRecord>,
     pub non_monotonicity_check: NonMonotonicityCheckRecord,
 }
 
@@ -83,6 +85,8 @@ pub struct AuxiliaryRecord {
     pub property_constraint: Option<String>,
     pub source_frame_span: FrameSpan,
     pub localized_frame_span: Option<FrameSpan>,
+    #[serde(default)]
+    pub interpolant_guard_selection: Option<InterpolantGuardSelectionRecord>,
     pub non_monotonicity_check: NonMonotonicityCheckRecord,
 }
 
@@ -191,7 +195,7 @@ impl AuxiliarySpec {
                 name: candidate.history_name.clone(),
                 next_name: format!("{}_next", candidate.history_name),
                 sort: candidate.capture_target.sort.clone(),
-                capture_term: symbol_term(&candidate.capture_target.next_name),
+                capture_term: symbol_term(&candidate.capture_target.current_name),
                 capture_guard,
                 capture_mode,
                 initial_value: None,
@@ -209,6 +213,7 @@ impl AuxiliarySpec {
             )),
             guard_policy: candidate.guard_policy,
             trigger: candidate.trigger,
+            interpolant_guard_selection: None,
             non_monotonicity_check,
         }
     }
@@ -309,6 +314,7 @@ impl AuxiliarySpec {
             property_constraint: self.property_constraint.as_ref().map(ToString::to_string),
             source_frame_span: self.non_monotonicity_check.source_frame_span.clone(),
             localized_frame_span: self.non_monotonicity_check.localized_frame_span.clone(),
+            interpolant_guard_selection: self.interpolant_guard_selection.clone(),
             non_monotonicity_check: self.non_monotonicity_check.clone(),
         }
     }
@@ -821,7 +827,7 @@ mod tests {
             GuardPolicy::True,
         )
         .unwrap();
-        assert_eq!(spec.history.capture_term.to_string(), "y_next");
+        assert_eq!(spec.history.capture_term.to_string(), "y");
         assert_eq!(
             spec.history.capture_mode,
             HistoryCaptureMode::LastOccurrence
@@ -905,7 +911,7 @@ mod tests {
 
         assert_eq!(spec.source_conflict_id, candidate.source_conflict_id());
         assert_eq!(spec.history.capture_guard.to_string(), "true");
-        assert_eq!(spec.history.capture_term.to_string(), "y_next");
+        assert_eq!(spec.history.capture_term.to_string(), "y");
         assert_eq!(
             spec.history.capture_mode,
             HistoryCaptureMode::LastOccurrence
@@ -938,6 +944,7 @@ mod tests {
             property_constraint: None,
             guard_policy: GuardPolicy::Interpolant,
             trigger: SynthesisTrigger::NonLocal,
+            interpolant_guard_selection: None,
             non_monotonicity_check: NonMonotonicityCheckRecord {
                 status: NonMonotonicityStatus::Pending,
                 source_term: "true".to_string(),
@@ -1071,6 +1078,7 @@ mod tests {
             property_constraint: Some("(= yb_prop_export yb_hist_export)".parse().unwrap()),
             guard_policy: GuardPolicy::Interpolant,
             trigger: SynthesisTrigger::NonLocal,
+            interpolant_guard_selection: None,
             non_monotonicity_check: NonMonotonicityCheckRecord {
                 status: NonMonotonicityStatus::Pending,
                 source_term: "true".to_string(),
