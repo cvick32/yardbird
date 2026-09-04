@@ -1,0 +1,46 @@
+# Paired cohort where the recurrent-product encoding is expected to apply.
+global:
+  examples_dir: examples/array
+  timeout_seconds: 30
+  retry_count: 1
+  jobs: 4
+  sample_seed: 20260903
+  require_array_reads_and_writes: false
+  output_format: json
+  include_patterns:
+    - examples/array/array_equiv_2.vmt
+    - examples/array/array_tiling_poly2.vmt
+    - examples/array/array_tiling_poly4.vmt
+    - examples/array/array_tiling_poly6.vmt
+  exclude_patterns: []
+
+parameter_matrices:
+  baseline:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  recurrent-products:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    abstract_recurrent_products: true
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: false
+  timestamp_format: "%Y%m%d_%H%M%S"

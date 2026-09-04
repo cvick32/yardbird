@@ -5,10 +5,7 @@ use rustc_hash::FxHashMap;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
-    auxiliary_synthesis::{
-        term_contains_auxiliary_symbol, ArrayConflictRecord, AuxSynthesisConfig, AuxTriggerState,
-        AuxiliarySpec, AuxiliarySynthesisCandidate, SynthesisTrigger,
-    },
+    auxiliary_synthesis::term_contains_auxiliary_symbol,
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
@@ -23,11 +20,12 @@ use crate::{
         },
         array_dataflow::{build_property_cone, PropertyCone},
         array_egraph_builder::{
-            ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder, FullEGraphBuilder,
+            ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder,
             SourceThenFullEGraphBuilder,
         },
         array_rule_instantiator::ArrayArtifactCapture,
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
+        encodings::{EncodingOptions, EncodingPlan},
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
         instantiation_ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
         transition_guard_instantiator::{generate_guard_candidates, supports_transition_guard},
@@ -62,17 +60,14 @@ where
     term_selection_counts: FxHashMap<String, u32>,
     term_selection_decisions: FxHashMap<String, String>,
     artifact_capture: ArrayArtifactCapture,
-    aux_config: AuxSynthesisConfig,
-    aux_trigger_state: AuxTriggerState,
-    pending_aux_candidate: Option<AuxiliarySynthesisCandidate>,
-    pending_aux_specs: Vec<AuxiliarySpec>,
-    installed_aux_conflicts: HashSet<String>,
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
     egraph_builder: Box<dyn ArrayEGraphBuilder>,
     cone_attempted_depths: HashSet<u16>,
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
+    encoding_options: EncodingOptions,
+    encoding_plan: EncodingPlan,
     candidate_winners_per_group: usize,
     instantiation_ranker: Box<dyn InstantiationRanker>,
     property_check_mode: PropertyCheckMode,
@@ -82,18 +77,10 @@ impl<F> Abstract<F>
 where
     F: ArrayCostFactory,
 {
-    pub fn new(
-        bmc_depth: u16,
-        run_ic3ia: bool,
-        cost_config: F::Config,
-        aux_config: AuxSynthesisConfig,
-        profile: bool,
-    ) -> Self {
-        let capture_conflicts = !aux_config.is_off();
+    pub fn new(bmc_depth: u16, run_ic3ia: bool, cost_config: F::Config, profile: bool) -> Self {
         Self {
             _bmc_depth: bmc_depth,
             run_ic3ia,
-            aux_config,
             cost_config,
             discovered_array_types: vec![],
             transition_guard_rules: vec![],
@@ -101,28 +88,22 @@ where
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
             term_selection_decisions: FxHashMap::default(),
-            artifact_capture: ArrayArtifactCapture {
-                conflicts: capture_conflicts,
-                ..ArrayArtifactCapture::default()
-            },
-            aux_trigger_state: AuxTriggerState::default(),
-            pending_aux_candidate: None,
-            pending_aux_specs: vec![],
-            installed_aux_conflicts: HashSet::new(),
+            artifact_capture: ArrayArtifactCapture::default(),
             profile,
             profiling_records: vec![],
             egraph_builder: Box::<SourceThenFullEGraphBuilder>::default(),
             cone_attempted_depths: HashSet::new(),
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
+            encoding_options: EncodingOptions::default(),
+            encoding_plan: EncodingPlan::default(),
             candidate_winners_per_group: 1,
             instantiation_ranker: Box::new(PreferSourceInstantiationRanker),
             property_check_mode: PropertyCheckMode::Scoped,
         }
     }
 
-    pub fn with_artifact_capture(mut self, mut artifact_capture: ArrayArtifactCapture) -> Self {
-        artifact_capture.conflicts |= !self.aux_config.is_off();
+    pub fn with_artifact_capture(mut self, artifact_capture: ArrayArtifactCapture) -> Self {
         self.artifact_capture = artifact_capture;
         self
     }
@@ -134,6 +115,11 @@ where
 
     pub fn with_exact_read_after_write_preprocessing(mut self, enabled: bool) -> Self {
         self.preprocess_exact_read_after_write = enabled;
+        self
+    }
+
+    pub fn with_recurrent_product_abstraction(mut self, enabled: bool) -> Self {
+        self.encoding_options.recurrent_products = enabled;
         self
     }
 
@@ -192,6 +178,9 @@ where
         }
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
+        let (abstracted_model, encoding_plan) =
+            EncodingPlan::apply(abstracted_model, &discovered_types, self.encoding_options);
+        self.encoding_plan = encoding_plan;
         let supported_rules = abstracted_model
             .get_transition_guards()
             .into_iter()
@@ -230,7 +219,7 @@ where
     }
 
     fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
-        !state.candidates.is_empty() || !state.guarded_read_updates.is_empty()
+        !state.candidates.is_empty()
     }
 
     fn setup(
@@ -491,18 +480,6 @@ where
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         let trace_instantiations = trace_instantiations_enabled();
-        for schema in state.guarded_read_updates {
-            let Some(frame_zero) = smt.frame_transition_formula(schema, 0) else {
-                continue;
-            };
-            let Some(instance) = smt.make_unquantified_instance(frame_zero) else {
-                continue;
-            };
-            let key = canonical_instantiation_key(instance.get_term());
-            let result = smt.add_instantiation(InstantiationRequest::untracked(instance));
-            self.array_encoding_plan
-                .record_guarded_installation(key, result.abstract_instance_added);
-        }
         for candidate in state.candidates {
             let expression = candidate.expression;
             let provenance = candidate.provenance;
@@ -582,8 +559,7 @@ where
             false
         };
         let mut solver_statistics = smt.get_solver_statistics();
-        self.array_encoding_plan
-            .add_statistics(&mut solver_statistics);
+        self.encoding_plan.add_statistics(&mut solver_statistics);
         ProofLoopResult {
             model: Some(vmt_model.clone()),
             used_instances: mem::take(&mut smt.get_instantiations()),

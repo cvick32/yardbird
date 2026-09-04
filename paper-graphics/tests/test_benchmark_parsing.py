@@ -127,6 +127,31 @@ class BenchmarkParserTests(unittest.TestCase):
         baseline_id = result.get_strategy_id()
         self.assertEqual(choose_baseline_strategy({baseline_id, "other"}), baseline_id)
 
+    def test_recurrent_product_flag_has_distinct_identity_and_label(self) -> None:
+        def entry(enabled: bool) -> dict:
+            return {
+                "strategy": "abstract",
+                "solver": "z3",
+                "cost_function": "bmc-cost",
+                "egraph_builder": "source-then-full",
+                "instantiation_ranker": "prefer-source",
+                "candidate_winners_per_group": 16,
+                "property_check_mode": "assumptions",
+                "instantiation_strategy": "full-unroll",
+                "preprocess_exact_read_after_write": False,
+                "abstract_recurrent_products": enabled,
+                "run_time": 100,
+                "depth": 50,
+                "result": {"Timeout": {}},
+            }
+
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        enabled = parser._parse_single_result("examples/array/a.vmt", entry(True))
+        disabled = parser._parse_single_result("examples/array/a.vmt", entry(False))
+
+        self.assertNotEqual(enabled.get_strategy_id(), disabled.get_strategy_id())
+        self.assertIn("recurrent products", enabled.get_display_name())
+
 
 if __name__ == "__main__":
     unittest.main()

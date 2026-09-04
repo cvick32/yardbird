@@ -34,6 +34,7 @@ class BenchmarkResult:
     property_check_mode: Optional[str] = None
     instantiation_strategy: Optional[str] = None
     preprocess_exact_read_after_write: Optional[bool] = None
+    abstract_recurrent_products: Optional[bool] = None
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
     total_conflicts: Optional[float] = None
     solver_stats: dict[str, float] = field(default_factory=dict)
@@ -47,6 +48,7 @@ class BenchmarkResult:
                 self.property_check_mode,
                 self.instantiation_strategy,
                 self.preprocess_exact_read_after_write,
+                self.abstract_recurrent_products,
             )
         )
 
@@ -64,6 +66,7 @@ class BenchmarkResult:
             "preprocess_exact_read_after_write": (
                 self.preprocess_exact_read_after_write
             ),
+            "abstract_recurrent_products": self.abstract_recurrent_products,
         }
 
     def get_strategy_id(self) -> str:
@@ -81,6 +84,10 @@ class BenchmarkResult:
                     (
                         "preprocess",
                         ("on" if self.preprocess_exact_read_after_write else "off"),
+                    ),
+                    (
+                        "recurrent-products",
+                        "on" if self.abstract_recurrent_products else "off",
                     ),
                 ]
                 suffix = "__".join(
@@ -201,6 +208,8 @@ class BenchmarkResult:
                     details.append(self.instantiation_strategy.replace("-", " "))
                 if self.preprocess_exact_read_after_write:
                     details.append("exact R/W")
+                if self.abstract_recurrent_products:
+                    details.append("recurrent products")
                 if details:
                     name = f"{name} [{', '.join(details)}]"
                 return name
@@ -224,11 +233,10 @@ class BenchmarkResult:
             48: "softPurple",
         }
         color = winner_colors.get(self.candidate_winners_per_group, "softTeal")
-        line = (
-            "densely dashed"
-            if self.egraph_builder in {"source-then-full", "cone-then-full"}
-            else "solid"
-        )
+        if self.egraph_builder in {"source-then-full", "cone-then-full"}:
+            line = "densely dashed"
+        else:
+            line = "solid"
         marker = (
             "mark=*, mark repeat=12, mark size=1.1pt"
             if self.property_check_mode == "assumptions"
@@ -445,6 +453,11 @@ class BenchmarkParser:
             if "preprocess_exact_read_after_write" in result_entry
             else None
         )
+        abstract_recurrent_products = (
+            result_entry.get("abstract_recurrent_products")
+            if "abstract_recurrent_products" in result_entry
+            else None
+        )
         runtime_ms = result_entry.get("run_time", 0)
         depth = result_entry.get("depth", 0)
 
@@ -471,6 +484,7 @@ class BenchmarkParser:
             property_check_mode=property_check_mode,
             instantiation_strategy=instantiation_strategy,
             preprocess_exact_read_after_write=preprocess_exact_read_after_write,
+            abstract_recurrent_products=abstract_recurrent_products,
             runtime_ms=runtime_ms,
             depth=depth,
             result_type=result_type,

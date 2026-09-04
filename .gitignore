@@ -28,3 +28,4 @@ examples/bitwuzla/
 tools/training-viewer/backend/dist
 .scratch/
 docs/
+condhist/

@@ -1,12 +1,51 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
+use std::cmp::Ordering;
 use yardbird::{
     auxiliary_synthesis::{AuxSynthesisConfig, ConditionalHistory, GuardPolicy, SynthesisTrigger},
     cost_functions::array::{AdaptiveArrayCost, ArrayBMCCost},
     instantiation_strategy::full_unroll::FullUnrollStrategy,
     strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
-    theories::array::array_rule_instantiator::ArrayArtifactCapture,
+    theories::array::{
+        array_rule_instantiator::ArrayArtifactCapture,
+        candidate_scope::CandidateScope,
+        instantiation_candidate::{InstantiationCandidate, InstantiationGrounding},
+        instantiation_ranker::InstantiationRanker,
+    },
     Driver, Error, SolverBackend,
 };
+
+/// Freeze the pre-ablation ordering so these tests exercise synthesis rather
+/// than whichever ordinary refinement the default ranker currently prefers.
+#[derive(Clone, Copy, Debug)]
+struct AuxiliaryFixtureRanker;
+
+impl InstantiationRanker for AuxiliaryFixtureRanker {
+    fn clone_box(&self) -> Box<dyn InstantiationRanker> {
+        Box::new(*self)
+    }
+
+    fn compare(&self, left: &InstantiationCandidate, right: &InstantiationCandidate) -> Ordering {
+        let left_is_derived = left.grounding == InstantiationGrounding::Derived;
+        let right_is_derived = right.grounding == InstantiationGrounding::Derived;
+        left_is_derived
+            .cmp(&right_is_derived)
+            .then_with(|| left.cost.cmp(&right.cost))
+            .then_with(|| {
+                left.expression
+                    .to_string()
+                    .cmp(&right.expression.to_string())
+            })
+    }
+
+    fn requires_source_provenance(&self) -> bool {
+        true
+    }
+
+    fn is_eligible(&self, candidate: &InstantiationCandidate, scope: CandidateScope) -> bool {
+        scope != CandidateScope::SourceGroundedOnly
+            || candidate.grounding == InstantiationGrounding::SourceGrounded
+    }
+}
 
 fn parse_vmt(property: &str) -> VMTModel {
     let input = format!(
@@ -47,14 +86,18 @@ fn check_abstract_model_with_aux(
     if aux_enabled {
         driver.add_extension(ConditionalHistory::<ArrayBMCCost>::new(aux_config, ()));
     }
-    let strategy: Box<dyn ProofStrategy<_>> = Box::new(
-        Abstract::<ArrayBMCCost>::new(depth, false, (), false).with_artifact_capture(
-            ArrayArtifactCapture {
-                conflicts: aux_enabled,
-                ..ArrayArtifactCapture::default()
-            },
-        ),
+    let strategy = Abstract::<ArrayBMCCost>::new(depth, false, (), false).with_artifact_capture(
+        ArrayArtifactCapture {
+            conflicts: aux_enabled,
+            ..ArrayArtifactCapture::default()
+        },
     );
+    let strategy = if aux_enabled {
+        strategy.with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker))
+    } else {
+        strategy
+    };
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(strategy);
     driver.check_strategy(depth, strategy)
 }
 
@@ -83,12 +126,12 @@ fn check_adaptive_model_with_aux(
     );
     driver.add_extension(ConditionalHistory::<AdaptiveArrayCost>::new(aux_config, ()));
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(
-        Abstract::<AdaptiveArrayCost>::new(depth, false, (), false).with_artifact_capture(
-            ArrayArtifactCapture {
+        Abstract::<AdaptiveArrayCost>::new(depth, false, (), false)
+            .with_artifact_capture(ArrayArtifactCapture {
                 conflicts: true,
                 ..ArrayArtifactCapture::default()
-            },
-        ),
+            })
+            .with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker)),
     );
     driver.check_strategy(depth, strategy)
 }
@@ -187,7 +230,7 @@ fn true_guard_auxiliary_candidate_is_synthesized_after_concrete_validation() {
 }
 
 #[test]
-fn interpolant_guard_is_classified_ranked_and_installed() {
+fn interpolant_guard_rejects_a_property_frame_capture() {
     let model = VMTModel::from_path("examples/array/array_init_increm_two_arrs_const.vmt").unwrap();
     let result = check_abstract_model_with_aux(
         model,
@@ -206,20 +249,7 @@ fn interpolant_guard_is_classified_ranked_and_installed() {
             .get_f64("concrete_validation_checks"),
         Some(1.0)
     );
-    assert_eq!(result.auxiliary_records.len(), 1);
-    let record = &result.auxiliary_records[0];
-    assert_eq!(record.guard_policy, GuardPolicy::Interpolant);
-    assert_eq!(record.capture_guard, "(and (= pc 2) (= 1 i))");
-    assert_eq!(
-        record.capture_mode,
-        yardbird::auxiliary_synthesis::HistoryCaptureMode::LastOccurrence
-    );
-    let selection = record.interpolant_guard_selection.as_ref().unwrap();
-    assert_eq!(selection.predicate_index, 37);
-    assert_eq!(selection.ranker, "ArrayBMCCost");
-    assert!(selection.structurally_scored);
-    assert!(selection.eligible_count > 0);
-    assert!(!selection.rejected.is_empty());
+    assert!(result.auxiliary_records.is_empty());
     assert!(result.used_instances.iter().any(|term| {
         let term = term.to_string();
         term.contains("(not (= i+4 i+0))") && term.contains("(Write_Int_Int b+0 i+0")

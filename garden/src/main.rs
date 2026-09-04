@@ -175,6 +175,7 @@ struct StrategyResult {
     property_check_mode: yardbird::solver::PropertyCheckMode,
     instantiation_strategy: yardbird::InstantiationStrategyType,
     preprocess_exact_read_after_write: bool,
+    abstract_recurrent_products: bool,
     result: BenchmarkResult,
     run_time: u128,
     depth: u16,
@@ -275,6 +276,9 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
 
     if options.preprocess_exact_read_after_write {
         command.arg("--preprocess-exact-read-after-write");
+    }
+    if options.abstract_recurrent_products {
+        command.arg("--abstract-recurrent-products");
     }
 
     if options.run_ic3ia {
@@ -467,6 +471,7 @@ fn run_single(
             property_check_mode: options.property_check_mode,
             instantiation_strategy: options.instantiation_strategy,
             preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
+            abstract_recurrent_products: options.abstract_recurrent_products,
             run_time: run_time.as_millis(),
             depth: options.depth,
             record_decisions: options.record_decisions || options.train,
@@ -668,6 +673,7 @@ fn run_config_benchmark(
             cost_function: run.cost_function,
             egraph_builder: run.egraph_builder,
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
+            abstract_recurrent_products: run.abstract_recurrent_products,
             candidate_winners_per_group: run.candidate_winners_per_group,
             instantiation_ranker: run.instantiation_ranker,
             property_check_mode: run.property_check_mode,

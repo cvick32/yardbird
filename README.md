@@ -452,6 +452,7 @@ array axioms to Z3 unchanged so it remains an MBQI comparison point.
 
    Exact `select(store(A, i, v), i)` preprocessing is disabled by default. Enable
    it explicitly with `--preprocess-exact-read-after-write`.
+   Recurrent-product abstraction is opt-in via `--abstract-recurrent-products`.
 2. **Benchmark Suite**: `garden --config <yaml> --matrix <name>`
 
 All benchmarks are accessible VMT files in `examples/`. Results are output as:

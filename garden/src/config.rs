@@ -69,6 +69,8 @@ pub struct ParameterMatrix {
     #[serde(default)]
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
+    pub abstract_recurrent_products: bool,
+    #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
 
@@ -141,6 +143,8 @@ pub struct IndividualConfig {
     #[serde(default)]
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
+    pub abstract_recurrent_products: bool,
+    #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
 
@@ -207,6 +211,7 @@ pub struct BenchmarkRun {
     pub property_check_mode: PropertyCheckMode,
     pub instantiation_strategy: InstantiationStrategyType,
     pub preprocess_exact_read_after_write: bool,
+    pub abstract_recurrent_products: bool,
     pub timeout_seconds: u64,
 }
 
@@ -218,6 +223,7 @@ struct RefinementSelection {
     property_check_mode: PropertyCheckMode,
     instantiation_strategy: InstantiationStrategyType,
     preprocess_exact_read_after_write: bool,
+    abstract_recurrent_products: bool,
 }
 
 fn matrix_run_name(
@@ -258,8 +264,13 @@ fn matrix_run_name(
         InstantiationStrategyType::FullUnroll => name,
         strategy => format!("{name}_i{strategy:?}"),
     };
-    if selection.preprocess_exact_read_after_write {
+    let name = if selection.preprocess_exact_read_after_write {
         format!("{name}_preprocessExactReadAfterWrite")
+    } else {
+        name
+    };
+    if selection.abstract_recurrent_products {
+        format!("{name}_recurrentProducts")
     } else {
         name
     }
@@ -297,6 +308,7 @@ impl BenchmarkConfig {
                     property_check_mode: config.property_check_mode,
                     instantiation_strategy: config.instantiation_strategy,
                     preprocess_exact_read_after_write: config.preprocess_exact_read_after_write,
+                    abstract_recurrent_products: config.abstract_recurrent_products,
                     timeout_seconds: config
                         .timeout_seconds
                         .unwrap_or(self.global.timeout_seconds),
@@ -338,6 +350,8 @@ impl BenchmarkConfig {
                                                 instantiation_strategy,
                                                 preprocess_exact_read_after_write: matrix
                                                     .preprocess_exact_read_after_write,
+                                                abstract_recurrent_products: matrix
+                                                    .abstract_recurrent_products,
                                             };
                                             runs.push(BenchmarkRun {
                                                 name: matrix_run_name(
@@ -359,6 +373,8 @@ impl BenchmarkConfig {
                                                 instantiation_strategy,
                                                 preprocess_exact_read_after_write: matrix
                                                     .preprocess_exact_read_after_write,
+                                                abstract_recurrent_products: matrix
+                                                    .abstract_recurrent_products,
                                                 timeout_seconds: matrix
                                                     .timeout_seconds
                                                     .unwrap_or(self.global.timeout_seconds),
@@ -398,6 +414,7 @@ mod tests {
             property_check_mode: PropertyCheckMode::Scoped,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
             preprocess_exact_read_after_write,
+            abstract_recurrent_products: false,
         }
     }
 
@@ -485,6 +502,27 @@ global:
         );
 
         assert!(name.ends_with("_preprocessExactReadAfterWrite"));
+    }
+
+    #[test]
+    fn recurrent_product_encoding_is_explicit_in_run_names() {
+        let mut encoding = selection(
+            EGraphBuilderStrategy::SourceThenFull,
+            InstantiationRankerStrategy::PreferSource,
+            false,
+        );
+        encoding.abstract_recurrent_products = true;
+
+        let name = matrix_run_name(
+            "encoding",
+            50,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            encoding,
+        );
+
+        assert!(name.ends_with("_recurrentProducts"));
     }
 
     #[test]

@@ -806,6 +806,19 @@ impl VMTModel {
             Self::add_constraint_to_condition(term, self.transition_condition.clone());
     }
 
+    /// Replace the body of the transition condition while preserving its VMT
+    /// attributes. Theory-specific abstraction passes use this before BMC.
+    pub fn replace_transition_condition_for_yardbird(&mut self, term: Term) {
+        let attributes = match &self.transition_condition {
+            Term::Attributes { attributes, .. } => attributes.clone(),
+            condition => panic!("Ill-formatted VMT transition condition: {}", condition),
+        };
+        self.transition_condition = Term::Attributes {
+            term: Box::new(term),
+            attributes,
+        };
+    }
+
     pub fn guard_property(&mut self, guard: Term) {
         let (property, attributes) = match self.property_condition.clone() {
             Term::Attributes { term, attributes } => (term, attributes),

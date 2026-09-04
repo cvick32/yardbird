@@ -136,6 +136,7 @@ Key options:
   --json-output              JSON output for garden integration
   --run-ic3ia                Run IC3IA after BMC
   --interpolate              Use SMTInterpol
+  --abstract-recurrent-products       Abstract eligible nonlinear products
   --repl                     Interactive mode
   --dump-solver <PATH>       Dump Z3 state on unsat
   --track-instantiations     Enable unsat core tracking
@@ -150,7 +151,7 @@ main()
   │   ├─ Simple mode (Concrete + BmcCost) -> SmtlibCommandExecutor::execute()
   │   └─ Strategy mode -> SmtlibRefinementRunner::execute()
   └─ .vmt extension -> run_vmt_mode()
-      ├─ Theory::Array  -> Driver::check_strategy(build_array_strategy())
+      ├─ Theory::Array  -> build_array_proof_plan(); check plan.strategy
       ├─ Theory::List   -> Driver::check_strategy(build_list_strategy())
       └─ Theory::BvList -> todo!()
 ```
@@ -170,7 +171,7 @@ check_strategy(target_depth, strategy):
         Sat     -> strategy.sat()     -> Continue (refine) or FoundCounterexample
         Unknown -> strategy.unknown() -> error
       match action:
-        Continue            -> strategy.finish(state, smt)  // add instantiations
+        Continue            -> extensions.refine(...), then strategy.finish(...)
         NextDepth           -> continue to next depth
         FoundCounterexample -> return error
         FoundProof          -> return result
