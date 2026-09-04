@@ -23,7 +23,7 @@ log_status "INFO" "Starting Yardbird benchmark setup"
 # Install dependencies
 log_status "INFO" "Installing system dependencies"
 apt-get update
-if ! apt-get install -y git curl cmake build-essential python3 awscli pkg-config libssl-dev libclang-dev software-properties-common; then
+if ! apt-get install -y git curl cmake build-essential python3 awscli pkg-config libssl-dev libclang-dev software-properties-common openjdk-17-jre-headless; then
     log_status "ERROR" "Failed to install system dependencies"
     exit 1
 fi
@@ -123,7 +123,7 @@ echo "$(cat "$benchmark_config_path")"
 log_status "INFO" "Running benchmarks with garden"
 capture_root="benchmark_captures_${unique_benchmark_name}"
 capture_args=()
-benchmark_filter_args=(${garden_filter_args})
+garden_args=(${garden_args})
 if [ "${capture_solver_journals}" = "true" ]; then
     capture_args=(--profile --solver-capture-root "$capture_root")
     log_status "INFO" "Solver journal capture is enabled"
@@ -134,7 +134,7 @@ if ! ./target/release/garden \
     --config "$benchmark_config_path" \
     --matrix ${matrix_name} \
     --output benchmark_results_${unique_benchmark_name}.json \
-    "${benchmark_filter_args[@]}" \
+    "${garden_args[@]}" \
     "${capture_args[@]}"; then
     log_status "ERROR" "Benchmark execution failed"
     exit 1

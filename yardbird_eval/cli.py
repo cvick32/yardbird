@@ -100,6 +100,40 @@ def legacy_parser() -> argparse.ArgumentParser:
         help="Include Yardbird profiling data in benchmark JSON",
     )
     parser.add_argument(
+        "--synthesis-trigger",
+        choices=[
+            "off",
+            "detect",
+            "non-local",
+            "manual-after-n",
+            "refinement-limit",
+            "repeated-pattern",
+        ],
+        default="off",
+        help="Auxiliary-variable synthesis trigger (default: off)",
+    )
+    parser.add_argument(
+        "--synthesis-guard-policy",
+        choices=["true", "axiom-local", "interpolant", "llm"],
+        default="true",
+        help="Guard policy for synthesized auxiliary variables (default: true)",
+    )
+    parser.add_argument(
+        "--synthesis-after",
+        type=int,
+        help="Refinement step for the manual-after-n synthesis trigger",
+    )
+    parser.add_argument(
+        "--synthesis-refinement-limit-window",
+        type=int,
+        help="Remaining-refinement window for the refinement-limit trigger",
+    )
+    parser.add_argument(
+        "--synthesis-repeated-pattern-threshold",
+        type=int,
+        help="Conflict repetition count for the repeated-pattern trigger",
+    )
+    parser.add_argument(
         "--difficult-benchmarks",
         nargs="?",
         const="auto",

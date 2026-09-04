@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .benchmark_selection import garden_filter_args
+from .benchmark_selection import auxiliary_synthesis_config, garden_run_args
 from .common import (
     GARDEN_BIN,
     ROOT,
@@ -30,6 +30,7 @@ def launch_local_run(args: Any) -> dict[str, Any]:
         run_id, "local", args.benchmark_type, Path(args.config), args.name
     )
     manifest["benchmark_selection"] = args.benchmark_selection
+    manifest["auxiliary_synthesis"] = auxiliary_synthesis_config(args)
     run_dir = Path(manifest["run_dir"])
     ensure_garden_binary()
 
@@ -63,7 +64,7 @@ def launch_local_run(args: Any) -> dict[str, Any]:
                 command.extend(["--ranker-model", args.ranker_model])
             if args.profile:
                 command.append("--profile")
-            command.extend(garden_filter_args(args))
+            command.extend(garden_run_args(args))
 
             run_command(
                 command,

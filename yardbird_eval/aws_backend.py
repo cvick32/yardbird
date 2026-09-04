@@ -6,7 +6,7 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from .benchmark_selection import garden_filter_args
+from .benchmark_selection import auxiliary_synthesis_config, garden_run_args
 from .common import (
     ROOT,
     STATUS_COMPLETED,
@@ -77,7 +77,7 @@ def read_user_data(
         "true" if capture_solver_journals else "false",
     )
     template = template.replace(
-        "${garden_filter_args}", shlex.join(garden_args or [])
+        "${garden_args}", shlex.join(garden_args or [])
     )
     return template
 
@@ -139,7 +139,8 @@ def launch_aws_run(args) -> dict[str, Any]:
     capture_solver_journals = bool(args.capture_solver_journals)
     manifest["capture_solver_journals"] = capture_solver_journals
     manifest["benchmark_selection"] = args.benchmark_selection
-    filter_args = garden_filter_args(args)
+    manifest["auxiliary_synthesis"] = auxiliary_synthesis_config(args)
+    garden_args = garden_run_args(args)
 
     for idx, matrix in enumerate(args.benchmark_type, start=1):
         remote_run_name = f"{matrix}-{now_local().strftime('%Y%m%d_%H%M%S')}-{idx:02d}"
@@ -149,7 +150,7 @@ def launch_aws_run(args) -> dict[str, Any]:
             bucket,
             benchmark_config_path=repository_config_path.as_posix(),
             capture_solver_journals=capture_solver_journals,
-            garden_args=filter_args,
+            garden_args=garden_args,
         )
         user_data_path = aws_dir / f"{slugify(matrix)}_user_data.sh"
         user_data_path.write_text(user_data)
