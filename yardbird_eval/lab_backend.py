@@ -8,7 +8,7 @@ from pathlib import Path
 from string import Template
 from typing import Any
 
-from .benchmark_selection import auxiliary_synthesis_config, garden_run_args
+from .benchmark_selection import garden_filter_args
 from .common import (
     ROOT,
     STATUS_COMPLETED,
@@ -255,8 +255,7 @@ def launch_lab_run(args: Any) -> dict[str, Any]:
     manifest["training_version"] = run_id if lab_database_url else None
     manifest["postgres_sidecar"] = None
     manifest["benchmark_selection"] = args.benchmark_selection
-    manifest["auxiliary_synthesis"] = auxiliary_synthesis_config(args)
-    garden_args = garden_run_args(args)
+    garden_args = garden_filter_args(args)
     manifest["lab"] = {
         "proxmox_api_url": proxmox["api_url"],
         "proxmox_node": proxmox["node"],

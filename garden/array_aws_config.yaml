@@ -55,6 +55,22 @@ parameter_matrices:
     property_check_modes: [assumptions]
     instantiation_strategies: [full-unroll]
 
+  # Best depth-50 configuration with non-local auxiliary synthesis and
+  # interpolant-mined history guards.
+  array-best-depth50-aux-interpolant:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: non-local
+      guard_policy: interpolant
+
   array-concrete-z3-depth50:
     depths: [50]
     solvers: [z3]

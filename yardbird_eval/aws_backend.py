@@ -6,7 +6,7 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from .benchmark_selection import auxiliary_synthesis_config, garden_run_args
+from .benchmark_selection import garden_filter_args
 from .common import (
     ROOT,
     STATUS_COMPLETED,
@@ -139,8 +139,7 @@ def launch_aws_run(args) -> dict[str, Any]:
     capture_solver_journals = bool(args.capture_solver_journals)
     manifest["capture_solver_journals"] = capture_solver_journals
     manifest["benchmark_selection"] = args.benchmark_selection
-    manifest["auxiliary_synthesis"] = auxiliary_synthesis_config(args)
-    garden_args = garden_run_args(args)
+    garden_args = garden_filter_args(args)
 
     for idx, matrix in enumerate(args.benchmark_type, start=1):
         remote_run_name = f"{matrix}-{now_local().strftime('%Y%m%d_%H%M%S')}-{idx:02d}"

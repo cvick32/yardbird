@@ -8,9 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from yardbird_eval.benchmark_selection import (
-    auxiliary_synthesis_config,
     garden_filter_args,
-    garden_run_args,
     select_difficult_benchmarks,
     select_formula_research_cohort,
 )
@@ -192,40 +190,6 @@ class DifficultBenchmarkSelectionTests(unittest.TestCase):
                 "1",
                 "--sample-seed",
                 "7",
-            ],
-        )
-
-    def test_garden_run_args_include_auxiliary_synthesis_settings(self) -> None:
-        args = Namespace(
-            benchmark_selection=None,
-            limit=None,
-            sample_seed=None,
-            synthesis_trigger="repeated-pattern",
-            synthesis_guard_policy="interpolant",
-            synthesis_after=None,
-            synthesis_refinement_limit_window=None,
-            synthesis_repeated_pattern_threshold=3,
-        )
-
-        self.assertEqual(
-            auxiliary_synthesis_config(args),
-            {
-                "trigger": "repeated-pattern",
-                "guard_policy": "interpolant",
-                "after": None,
-                "refinement_limit_window": None,
-                "repeated_pattern_threshold": 3,
-            },
-        )
-        self.assertEqual(
-            garden_run_args(args),
-            [
-                "--synthesis-trigger",
-                "repeated-pattern",
-                "--synthesis-guard-policy",
-                "interpolant",
-                "--synthesis-repeated-pattern-threshold",
-                "3",
             ],
         )
 

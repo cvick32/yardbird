@@ -247,38 +247,3 @@ def garden_filter_args(args: Any) -> list[str]:
     if getattr(args, "sample_seed", None) is not None:
         command_args.extend(["--sample-seed", str(args.sample_seed)])
     return command_args
-
-
-def auxiliary_synthesis_config(args: Any) -> dict[str, Any]:
-    return {
-        "trigger": getattr(args, "synthesis_trigger", "off"),
-        "guard_policy": getattr(args, "synthesis_guard_policy", "true"),
-        "after": getattr(args, "synthesis_after", None),
-        "refinement_limit_window": getattr(
-            args, "synthesis_refinement_limit_window", None
-        ),
-        "repeated_pattern_threshold": getattr(
-            args, "synthesis_repeated_pattern_threshold", None
-        ),
-    }
-
-
-def garden_run_args(args: Any) -> list[str]:
-    synthesis = auxiliary_synthesis_config(args)
-    command_args = garden_filter_args(args)
-    command_args.extend(
-        [
-            "--synthesis-trigger",
-            synthesis["trigger"],
-            "--synthesis-guard-policy",
-            synthesis["guard_policy"],
-        ]
-    )
-    for flag, key in (
-        ("--synthesis-after", "after"),
-        ("--synthesis-refinement-limit-window", "refinement_limit_window"),
-        ("--synthesis-repeated-pattern-threshold", "repeated_pattern_threshold"),
-    ):
-        if synthesis[key] is not None:
-            command_args.extend([flag, str(synthesis[key])])
-    return command_args
