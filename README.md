@@ -241,6 +241,15 @@ python3 main_eval.py \
   --benchmark-type deep-concrete \
   --name paper-aws
 
+# Run the depth-50 baseline and YAML-configured auxiliary/interpolant variant
+# on separate AWS workers without run-wide synthesis flags.
+python3 main_eval.py \
+  --env aws \
+  --config garden/array_aws_config.yaml \
+  --benchmark-type array-best-depth50 \
+  --benchmark-type array-best-depth50-aux-interpolant \
+  --name array-depth50-aux-comparison
+
 # A separate capture run for local solver replay. Capture is deliberately
 # opt-in because journal serialization and file I/O affect worker runtimes.
 python3 main_eval.py \
@@ -272,6 +281,18 @@ Passing `--difficult-benchmarks` without a run id selects the newest downloaded
 threshold defaults to 30 seconds and can be changed with
 `--difficult-threshold-seconds`. The resolved source, complete cohort, and
 selection reason for each benchmark are recorded in the new run manifest.
+
+Auxiliary-variable synthesis is configured per Garden parameter matrix:
+
+```yaml
+auxiliary_synthesis:
+  trigger: non-local
+  guard_policy: interpolant
+```
+
+Trigger-specific settings use `manual_after`, `refinement_limit_window`, and
+`repeated_pattern_threshold` inside the same block. Synthesis settings are not
+accepted as `main_eval.py` or Garden CLI overrides.
 
 `--formula-research-cohort` combines the checked-in hard-tail wins, known
 abstract Z3 regressions, and search-overhead cases with every benchmark where

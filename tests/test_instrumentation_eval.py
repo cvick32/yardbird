@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -102,27 +104,19 @@ class InstrumentationEvalTests(unittest.TestCase):
         self.assertFalse(ordinary.capture_solver_journals)
         self.assertTrue(captured.capture_solver_journals)
 
-    def test_auxiliary_synthesis_is_explicitly_opt_in(self) -> None:
-        ordinary = parse_args(
-            ["--env", "aws", "--benchmark-type", "array-best-depth50"]
-        )
-        auxiliary = parse_args(
-            [
-                "--env",
-                "aws",
-                "--benchmark-type",
-                "array-best-depth50",
-                "--synthesis-trigger",
-                "non-local",
-                "--synthesis-guard-policy",
-                "interpolant",
-            ]
-        )
-
-        self.assertEqual(ordinary.synthesis_trigger, "off")
-        self.assertEqual(ordinary.synthesis_guard_policy, "true")
-        self.assertEqual(auxiliary.synthesis_trigger, "non-local")
-        self.assertEqual(auxiliary.synthesis_guard_policy, "interpolant")
+    def test_auxiliary_synthesis_is_not_a_main_eval_override(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                parse_args(
+                    [
+                        "--env",
+                        "aws",
+                        "--benchmark-type",
+                        "array-best-depth50",
+                        "--synthesis-trigger",
+                        "non-local",
+                    ]
+                )
 
     def test_garden_result_becomes_a_flattened_comparison_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

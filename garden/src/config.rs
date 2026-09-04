@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use yardbird::{
-    solver::PropertyCheckMode, CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy,
-    InstantiationStrategyType, SolverBackend, Strategy,
+    auxiliary_synthesis::AuxSynthesisConfig, solver::PropertyCheckMode, CostFunction,
+    EGraphBuilderStrategy, InstantiationRankerStrategy, InstantiationStrategyType, SolverBackend,
+    Strategy,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +71,8 @@ pub struct ParameterMatrix {
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
     pub abstract_recurrent_products: bool,
+    #[serde(default)]
+    pub auxiliary_synthesis: AuxSynthesisConfig,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
@@ -145,6 +148,8 @@ pub struct IndividualConfig {
     #[serde(default)]
     pub abstract_recurrent_products: bool,
     #[serde(default)]
+    pub auxiliary_synthesis: AuxSynthesisConfig,
+    #[serde(default)]
     pub timeout_seconds: Option<u64>,
 }
 
@@ -212,6 +217,7 @@ pub struct BenchmarkRun {
     pub instantiation_strategy: InstantiationStrategyType,
     pub preprocess_exact_read_after_write: bool,
     pub abstract_recurrent_products: bool,
+    pub auxiliary_synthesis: AuxSynthesisConfig,
     pub timeout_seconds: u64,
 }
 
@@ -309,6 +315,7 @@ impl BenchmarkConfig {
                     instantiation_strategy: config.instantiation_strategy,
                     preprocess_exact_read_after_write: config.preprocess_exact_read_after_write,
                     abstract_recurrent_products: config.abstract_recurrent_products,
+                    auxiliary_synthesis: config.auxiliary_synthesis.clone(),
                     timeout_seconds: config
                         .timeout_seconds
                         .unwrap_or(self.global.timeout_seconds),
@@ -375,6 +382,9 @@ impl BenchmarkConfig {
                                                     .preprocess_exact_read_after_write,
                                                 abstract_recurrent_products: matrix
                                                     .abstract_recurrent_products,
+                                                auxiliary_synthesis: matrix
+                                                    .auxiliary_synthesis
+                                                    .clone(),
                                                 timeout_seconds: matrix
                                                     .timeout_seconds
                                                     .unwrap_or(self.global.timeout_seconds),
@@ -398,8 +408,10 @@ mod tests {
 
     use super::{matrix_run_name, BenchmarkConfig, RefinementSelection};
     use yardbird::{
-        solver::PropertyCheckMode, CostFunction, EGraphBuilderStrategy,
-        InstantiationRankerStrategy, InstantiationStrategyType, SolverBackend, Strategy,
+        auxiliary_synthesis::{GuardPolicy, SynthesisTrigger},
+        solver::PropertyCheckMode,
+        CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy,
+        InstantiationStrategyType, SolverBackend, Strategy,
     };
 
     fn selection(
@@ -523,6 +535,92 @@ global:
         );
 
         assert!(name.ends_with("_recurrentProducts"));
+    }
+
+    #[test]
+    fn auxiliary_synthesis_matrix_settings_flow_into_runs() {
+        let config: BenchmarkConfig = serde_yaml::from_str(
+            r#"
+global:
+  examples_dir: examples/array
+  timeout_seconds: 30
+  retry_count: 1
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+parameter_matrices:
+  auxiliary:
+    depths: [50]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    auxiliary_synthesis:
+      trigger: manual-after-n
+      guard_policy: interpolant
+      manual_after: 4
+      refinement_limit_window: 5
+      repeated_pattern_threshold: 6
+"#,
+        )
+        .expect("auxiliary synthesis matrix should parse");
+
+        let runs = config
+            .generate_benchmark_runs(Some("auxiliary"))
+            .expect("auxiliary synthesis matrix should generate a run");
+
+        assert_eq!(runs.len(), 1);
+        let synthesis = &runs[0].auxiliary_synthesis;
+        assert_eq!(synthesis.trigger, SynthesisTrigger::ManualAfterN);
+        assert_eq!(synthesis.guard_policy, GuardPolicy::Interpolant);
+        assert_eq!(synthesis.manual_after, Some(4));
+        assert_eq!(synthesis.refinement_limit_window, Some(5));
+        assert_eq!(synthesis.repeated_pattern_threshold, Some(6));
+    }
+
+    #[test]
+    fn matrices_default_to_synthesis_off_with_true_guards() {
+        let config: BenchmarkConfig = serde_yaml::from_str(
+            r#"
+global:
+  examples_dir: examples/array
+  timeout_seconds: 30
+  retry_count: 1
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+parameter_matrices:
+  legacy:
+    depths: [10]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+"#,
+        )
+        .expect("legacy matrix should parse");
+
+        let runs = config.generate_benchmark_runs(Some("legacy")).unwrap();
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].auxiliary_synthesis.trigger, SynthesisTrigger::Off);
+        assert_eq!(runs[0].auxiliary_synthesis.guard_policy, GuardPolicy::True);
+    }
+
+    #[test]
+    fn array_aws_config_includes_auxiliary_interpolant_run() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("array_aws_config.yaml");
+        let config = BenchmarkConfig::from_file(&path).unwrap();
+
+        let runs = config
+            .generate_benchmark_runs(Some("array-best-depth50-aux-interpolant"))
+            .unwrap();
+
+        assert_eq!(runs.len(), 1);
+        assert_eq!(
+            runs[0].auxiliary_synthesis.trigger,
+            SynthesisTrigger::NonLocal
+        );
+        assert_eq!(
+            runs[0].auxiliary_synthesis.guard_policy,
+            GuardPolicy::Interpolant
+        );
     }
 
     #[test]

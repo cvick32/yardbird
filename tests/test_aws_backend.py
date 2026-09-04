@@ -97,27 +97,6 @@ class CaptureArchiveTests(unittest.TestCase):
             rendered,
         )
 
-    def test_auxiliary_synthesis_arguments_are_rendered_for_the_worker(self) -> None:
-        rendered = read_user_data(
-            "array-best-depth50",
-            "auxiliary",
-            "bucket",
-            garden_args=[
-                "--synthesis-trigger",
-                "non-local",
-                "--synthesis-guard-policy",
-                "interpolant",
-            ],
-        )
-
-        self.assertIn(
-            "garden_args=(--synthesis-trigger non-local "
-            "--synthesis-guard-policy interpolant)",
-            rendered,
-        )
-        self.assertIn('"${garden_args[@]}"', rendered)
-        self.assertIn("openjdk-17-jre-headless", rendered)
-
     def test_worker_updates_main_and_uses_the_selected_repository_config(self) -> None:
         rendered = read_user_data(
             "protocols",

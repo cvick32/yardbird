@@ -35,6 +35,11 @@ class BenchmarkResult:
     instantiation_strategy: Optional[str] = None
     preprocess_exact_read_after_write: Optional[bool] = None
     abstract_recurrent_products: Optional[bool] = None
+    synthesis_trigger: Optional[str] = None
+    synthesis_guard_policy: Optional[str] = None
+    synthesis_after: Optional[int] = None
+    synthesis_refinement_limit_window: Optional[int] = None
+    synthesis_repeated_pattern_threshold: Optional[int] = None
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
     total_conflicts: Optional[float] = None
     solver_stats: dict[str, float] = field(default_factory=dict)
@@ -49,6 +54,14 @@ class BenchmarkResult:
                 self.instantiation_strategy,
                 self.preprocess_exact_read_after_write,
                 self.abstract_recurrent_products,
+                (
+                    self.synthesis_trigger
+                    if self.synthesis_trigger not in {None, "off"}
+                    else None
+                ),
+                self.synthesis_after,
+                self.synthesis_refinement_limit_window,
+                self.synthesis_repeated_pattern_threshold,
             )
         )
 
@@ -67,6 +80,15 @@ class BenchmarkResult:
                 self.preprocess_exact_read_after_write
             ),
             "abstract_recurrent_products": self.abstract_recurrent_products,
+            "synthesis_trigger": self.synthesis_trigger,
+            "synthesis_guard_policy": self.synthesis_guard_policy,
+            "synthesis_after": self.synthesis_after,
+            "synthesis_refinement_limit_window": (
+                self.synthesis_refinement_limit_window
+            ),
+            "synthesis_repeated_pattern_threshold": (
+                self.synthesis_repeated_pattern_threshold
+            ),
         }
 
     def get_strategy_id(self) -> str:
@@ -88,6 +110,27 @@ class BenchmarkResult:
                     (
                         "recurrent-products",
                         "on" if self.abstract_recurrent_products else "off",
+                    ),
+                    (
+                        "synthesis",
+                        self.synthesis_trigger
+                        if self.synthesis_trigger not in {None, "off"}
+                        else None,
+                    ),
+                    (
+                        "guard",
+                        self.synthesis_guard_policy
+                        if self.synthesis_trigger not in {None, "off"}
+                        else None,
+                    ),
+                    ("synthesis-after", self.synthesis_after),
+                    (
+                        "synthesis-limit-window",
+                        self.synthesis_refinement_limit_window,
+                    ),
+                    (
+                        "synthesis-repeat-threshold",
+                        self.synthesis_repeated_pattern_threshold,
                     ),
                 ]
                 suffix = "__".join(
@@ -210,6 +253,23 @@ class BenchmarkResult:
                     details.append("exact R/W")
                 if self.abstract_recurrent_products:
                     details.append("recurrent products")
+                if self.synthesis_trigger not in {None, "off"}:
+                    details.append(f"aux {self.synthesis_trigger.replace('-', ' ')}")
+                    if self.synthesis_guard_policy:
+                        details.append(
+                            f"{self.synthesis_guard_policy.replace('-', ' ')} guard"
+                        )
+                if self.synthesis_after is not None:
+                    details.append(f"aux after {self.synthesis_after}")
+                if self.synthesis_refinement_limit_window is not None:
+                    details.append(
+                        f"aux limit window {self.synthesis_refinement_limit_window}"
+                    )
+                if self.synthesis_repeated_pattern_threshold is not None:
+                    details.append(
+                        "aux repeat threshold "
+                        f"{self.synthesis_repeated_pattern_threshold}"
+                    )
                 if details:
                     name = f"{name} [{', '.join(details)}]"
                 return name
@@ -458,6 +518,16 @@ class BenchmarkParser:
             if "abstract_recurrent_products" in result_entry
             else None
         )
+        auxiliary_synthesis = result_entry.get("auxiliary_synthesis", {})
+        synthesis_trigger = auxiliary_synthesis.get("trigger")
+        synthesis_guard_policy = auxiliary_synthesis.get("guard_policy")
+        synthesis_after = auxiliary_synthesis.get("manual_after")
+        synthesis_refinement_limit_window = auxiliary_synthesis.get(
+            "refinement_limit_window"
+        )
+        synthesis_repeated_pattern_threshold = auxiliary_synthesis.get(
+            "repeated_pattern_threshold"
+        )
         runtime_ms = result_entry.get("run_time", 0)
         depth = result_entry.get("depth", 0)
 
@@ -485,6 +555,11 @@ class BenchmarkParser:
             instantiation_strategy=instantiation_strategy,
             preprocess_exact_read_after_write=preprocess_exact_read_after_write,
             abstract_recurrent_products=abstract_recurrent_products,
+            synthesis_trigger=synthesis_trigger,
+            synthesis_guard_policy=synthesis_guard_policy,
+            synthesis_after=synthesis_after,
+            synthesis_refinement_limit_window=synthesis_refinement_limit_window,
+            synthesis_repeated_pattern_threshold=(synthesis_repeated_pattern_threshold),
             runtime_ms=runtime_ms,
             depth=depth,
             result_type=result_type,

@@ -152,6 +152,43 @@ class BenchmarkParserTests(unittest.TestCase):
         self.assertNotEqual(enabled.get_strategy_id(), disabled.get_strategy_id())
         self.assertIn("recurrent products", enabled.get_display_name())
 
+    def test_auxiliary_synthesis_has_distinct_identity_and_label(self) -> None:
+        def entry(trigger: str, guard_policy: str) -> dict:
+            return {
+                "strategy": "abstract",
+                "solver": "z3",
+                "cost_function": "bmc-cost",
+                "egraph_builder": "source-then-full",
+                "instantiation_ranker": "prefer-source",
+                "candidate_winners_per_group": 16,
+                "property_check_mode": "assumptions",
+                "instantiation_strategy": "full-unroll",
+                "preprocess_exact_read_after_write": False,
+                "abstract_recurrent_products": False,
+                "auxiliary_synthesis": {
+                    "trigger": trigger,
+                    "guard_policy": guard_policy,
+                    "manual_after": None,
+                    "refinement_limit_window": None,
+                    "repeated_pattern_threshold": None,
+                },
+                "run_time": 100,
+                "depth": 50,
+                "result": {"Timeout": {}},
+            }
+
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        baseline = parser._parse_single_result(
+            "examples/array/a.vmt", entry("off", "true")
+        )
+        auxiliary = parser._parse_single_result(
+            "examples/array/a.vmt", entry("non-local", "interpolant")
+        )
+
+        self.assertNotEqual(baseline.get_strategy_id(), auxiliary.get_strategy_id())
+        self.assertIn("aux non local", auxiliary.get_display_name())
+        self.assertIn("interpolant guard", auxiliary.get_display_name())
+
 
 if __name__ == "__main__":
     unittest.main()

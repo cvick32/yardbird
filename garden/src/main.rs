@@ -16,10 +16,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use yardbird::{
-    auxiliary_synthesis::{GuardPolicy, SynthesisTrigger},
-    ProofLoopResult, YardbirdOptions,
-};
+use yardbird::{auxiliary_synthesis::AuxSynthesisConfig, ProofLoopResult, YardbirdOptions};
 
 mod config;
 use config::BenchmarkConfig;
@@ -117,21 +114,6 @@ struct GardenOptions {
 
     #[arg(long)]
     pub training_run_version: Option<String>,
-
-    #[arg(long, value_enum, default_value_t = SynthesisTrigger::Off)]
-    pub synthesis_trigger: SynthesisTrigger,
-
-    #[arg(long, value_enum, default_value_t = GuardPolicy::True)]
-    pub synthesis_guard_policy: GuardPolicy,
-
-    #[arg(long)]
-    pub synthesis_after: Option<u32>,
-
-    #[arg(long)]
-    pub synthesis_refinement_limit_window: Option<u32>,
-
-    #[arg(long)]
-    pub synthesis_repeated_pattern_threshold: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -176,6 +158,7 @@ struct StrategyResult {
     instantiation_strategy: yardbird::InstantiationStrategyType,
     preprocess_exact_read_after_write: bool,
     abstract_recurrent_products: bool,
+    auxiliary_synthesis: AuxSynthesisConfig,
     result: BenchmarkResult,
     run_time: u128,
     depth: u16,
@@ -417,6 +400,7 @@ fn run_single(
     timeout: u64,
 ) -> anyhow::Result<StrategyResult> {
     options.validate_ranker_options()?;
+    let auxiliary_synthesis = options.build_aux_synthesis_config();
 
     let mut status_code = None;
     let mut run_time = Duration::default();
@@ -472,6 +456,7 @@ fn run_single(
             instantiation_strategy: options.instantiation_strategy,
             preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
             abstract_recurrent_products: options.abstract_recurrent_products,
+            auxiliary_synthesis,
             run_time: run_time.as_millis(),
             depth: options.depth,
             record_decisions: options.record_decisions || options.train,
@@ -692,11 +677,13 @@ fn run_config_benchmark(
             profile: options.profile,
             solver_capture_dir,
             record_decisions: options.record_decisions,
-            synthesis_trigger: options.synthesis_trigger,
-            synthesis_guard_policy: options.synthesis_guard_policy,
-            synthesis_after: options.synthesis_after,
-            synthesis_refinement_limit_window: options.synthesis_refinement_limit_window,
-            synthesis_repeated_pattern_threshold: options.synthesis_repeated_pattern_threshold,
+            synthesis_trigger: run.auxiliary_synthesis.trigger,
+            synthesis_guard_policy: run.auxiliary_synthesis.guard_policy,
+            synthesis_after: run.auxiliary_synthesis.manual_after,
+            synthesis_refinement_limit_window: run.auxiliary_synthesis.refinement_limit_window,
+            synthesis_repeated_pattern_threshold: run
+                .auxiliary_synthesis
+                .repeated_pattern_threshold,
             ranker_model: options.ranker_model.clone(),
         },
         retry_count,
@@ -874,10 +861,25 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_refinement_policy_args, array_operation_presence, discover_benchmarks, Pattern,
+        append_refinement_policy_args, array_operation_presence, discover_benchmarks,
+        GardenOptions, Pattern,
     };
+    use clap::Parser;
     use std::fs;
     use yardbird::{solver::PropertyCheckMode, InstantiationStrategyType, YardbirdOptions};
+
+    #[test]
+    fn auxiliary_synthesis_is_not_a_garden_cli_override() {
+        let result = GardenOptions::try_parse_from([
+            "garden",
+            "--config",
+            "garden/array_aws_config.yaml",
+            "--synthesis-trigger",
+            "non-local",
+        ]);
+
+        assert!(result.is_err());
+    }
 
     #[test]
     fn refinement_policy_options_are_forwarded_to_yardbird() {
