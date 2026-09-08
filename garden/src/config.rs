@@ -408,7 +408,9 @@ mod tests {
 
     use super::{matrix_run_name, BenchmarkConfig, RefinementSelection};
     use yardbird::{
-        auxiliary_synthesis::{GuardPolicy, SynthesisTrigger},
+        auxiliary_synthesis::{
+            AuxRefinementRetention, GuardPolicy, PredicateRelevancePolicy, SynthesisTrigger,
+        },
         solver::PropertyCheckMode,
         CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy,
         InstantiationStrategyType, SolverBackend, Strategy,
@@ -556,6 +558,8 @@ parameter_matrices:
     auxiliary_synthesis:
       trigger: manual-after-n
       guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: capture-aligned
       manual_after: 4
       refinement_limit_window: 5
       repeated_pattern_threshold: 6
@@ -571,6 +575,14 @@ parameter_matrices:
         let synthesis = &runs[0].auxiliary_synthesis;
         assert_eq!(synthesis.trigger, SynthesisTrigger::ManualAfterN);
         assert_eq!(synthesis.guard_policy, GuardPolicy::Interpolant);
+        assert_eq!(
+            synthesis.refinement_retention,
+            AuxRefinementRetention::DropSource
+        );
+        assert_eq!(
+            synthesis.predicate_relevance,
+            PredicateRelevancePolicy::CaptureAligned
+        );
         assert_eq!(synthesis.manual_after, Some(4));
         assert_eq!(synthesis.refinement_limit_window, Some(5));
         assert_eq!(synthesis.repeated_pattern_threshold, Some(6));
@@ -601,6 +613,14 @@ parameter_matrices:
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].auxiliary_synthesis.trigger, SynthesisTrigger::Off);
         assert_eq!(runs[0].auxiliary_synthesis.guard_policy, GuardPolicy::True);
+        assert_eq!(
+            runs[0].auxiliary_synthesis.refinement_retention,
+            AuxRefinementRetention::KeepAll
+        );
+        assert_eq!(
+            runs[0].auxiliary_synthesis.predicate_relevance,
+            PredicateRelevancePolicy::ExactProperty
+        );
     }
 
     #[test]
@@ -620,6 +640,14 @@ parameter_matrices:
         assert_eq!(
             runs[0].auxiliary_synthesis.guard_policy,
             GuardPolicy::Interpolant
+        );
+        assert_eq!(
+            runs[0].auxiliary_synthesis.refinement_retention,
+            AuxRefinementRetention::DropSource
+        );
+        assert_eq!(
+            runs[0].auxiliary_synthesis.predicate_relevance,
+            PredicateRelevancePolicy::ExactProperty
         );
     }
 

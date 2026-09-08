@@ -213,7 +213,11 @@ fn append_refinement_policy_args(command: &mut Command, options: &YardbirdOption
         .arg("--property-check-mode")
         .arg(options.property_check_mode.to_string())
         .arg("--instantiation-strategy")
-        .arg(options.instantiation_strategy.to_string());
+        .arg(options.instantiation_strategy.to_string())
+        .arg("--synthesis-refinement-retention")
+        .arg(options.synthesis_refinement_retention.to_string())
+        .arg("--synthesis-predicate-relevance")
+        .arg(options.synthesis_predicate_relevance.to_string());
 }
 
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
@@ -679,6 +683,8 @@ fn run_config_benchmark(
             record_decisions: options.record_decisions,
             synthesis_trigger: run.auxiliary_synthesis.trigger,
             synthesis_guard_policy: run.auxiliary_synthesis.guard_policy,
+            synthesis_refinement_retention: run.auxiliary_synthesis.refinement_retention,
+            synthesis_predicate_relevance: run.auxiliary_synthesis.predicate_relevance,
             synthesis_after: run.auxiliary_synthesis.manual_after,
             synthesis_refinement_limit_window: run.auxiliary_synthesis.refinement_limit_window,
             synthesis_repeated_pattern_threshold: run
@@ -866,7 +872,11 @@ mod tests {
     };
     use clap::Parser;
     use std::fs;
-    use yardbird::{solver::PropertyCheckMode, InstantiationStrategyType, YardbirdOptions};
+    use yardbird::{
+        auxiliary_synthesis::{AuxRefinementRetention, PredicateRelevancePolicy},
+        solver::PropertyCheckMode,
+        InstantiationStrategyType, YardbirdOptions,
+    };
 
     #[test]
     fn auxiliary_synthesis_is_not_a_garden_cli_override() {
@@ -887,6 +897,8 @@ mod tests {
         options.candidate_winners_per_group = 48;
         options.property_check_mode = PropertyCheckMode::Assumptions;
         options.instantiation_strategy = InstantiationStrategyType::SchemaBatch;
+        options.synthesis_refinement_retention = AuxRefinementRetention::DropSource;
+        options.synthesis_predicate_relevance = PredicateRelevancePolicy::CaptureAligned;
         let mut command = std::process::Command::new("yardbird");
 
         append_refinement_policy_args(&mut command, &options);
@@ -904,6 +916,10 @@ mod tests {
                 "assumptions",
                 "--instantiation-strategy",
                 "schema-batch",
+                "--synthesis-refinement-retention",
+                "drop-source",
+                "--synthesis-predicate-relevance",
+                "capture-aligned",
             ]
         );
     }
