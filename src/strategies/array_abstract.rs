@@ -5,7 +5,6 @@ use rustc_hash::FxHashMap;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
-    auxiliary_synthesis::term_contains_auxiliary_symbol,
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
@@ -417,14 +416,6 @@ where
                 summary.record_pruned_model_candidates(&rule_name, count);
             }
 
-            if expansion.stage == ArrayEGraphBuildStage::Source
-                && self
-                    .egraph_builder
-                    .should_widen_after_source(summary.selected_count())
-            {
-                self.cone_attempted_depths.insert(state.depth);
-            }
-
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();
                 for (rule_name, counts) in &summary.by_rule {
@@ -486,10 +477,6 @@ where
             let term_hash = crate::training::canonical_term_hash(&expression);
             let term = expr_to_term(expression);
             let quantifier_kind = candidate.rule.category();
-            if term_contains_auxiliary_symbol(&term) {
-                info!("AUX-SYNTH skipped {quantifier_kind:#?} instantiation containing auxiliary symbols");
-                continue;
-            }
 
             let abstract_id = provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
@@ -609,9 +596,6 @@ where
         expression: &ArrayExpr,
     ) -> Option<Term> {
         let term = expr_to_term(expression.clone());
-        if term_contains_auxiliary_symbol(&term) {
-            return None;
-        }
         smt.make_unquantified_instance(term)
             .map(|instance| canonical_instantiation_key(instance.get_term()))
     }
