@@ -493,6 +493,15 @@ impl Z3VarContext {
                 let args = real_arguments(&argument_values, "/");
                 z3::ast::Real::div(&args[0], &args[1]).into()
             }
+        } else if function_name == "div" {
+            assert_eq!(argument_values.len(), 2, "div requires exactly 2 arguments");
+            let lhs = argument_values[0]
+                .as_int()
+                .expect("div argument 1 must be an integer");
+            let rhs = argument_values[1]
+                .as_int()
+                .expect("div argument 2 must be an integer");
+            z3::ast::Int::div(&lhs, &rhs).into()
         } else if function_name == "mod" {
             let args = argument_values
                 .iter()
@@ -1109,6 +1118,18 @@ mod tests {
             .rewrite_term(&term)
             .as_bool()
             .expect("the real-valued equality should be Boolean")
+            .simplify();
+
+        assert_eq!(rewritten.as_bool(), Some(true));
+    }
+
+    #[test]
+    fn rewrites_smtlib_integer_division_natively() {
+        let term = "(= (div 7 3) 2)".parse::<Term>().unwrap();
+        let rewritten = Z3VarContext::new()
+            .rewrite_term(&term)
+            .as_bool()
+            .expect("integer div equality should remain Boolean")
             .simplify();
 
         assert_eq!(rewritten.as_bool(), Some(true));
