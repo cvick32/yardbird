@@ -3,7 +3,8 @@
 use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
 
 use crate::auxiliary_synthesis::{
-    AuxSynthesisConfig, ConditionalHistory, GuardPolicy, SynthesisTrigger,
+    AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
+    PredicateRelevancePolicy, SynthesisTrigger,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
@@ -204,6 +205,14 @@ pub struct YardbirdOptions {
     #[arg(long, value_enum, default_value_t = GuardPolicy::True)]
     pub synthesis_guard_policy: GuardPolicy,
 
+    /// Whether to retain the ordinary refinement replaced by a synthesized auxiliary.
+    #[arg(long, value_enum, default_value_t = AuxRefinementRetention::KeepAll)]
+    pub synthesis_refinement_retention: AuxRefinementRetention,
+
+    /// How interpolant predicates qualify as relevant auxiliary capture guards.
+    #[arg(long, value_enum, default_value_t = PredicateRelevancePolicy::ExactProperty)]
+    pub synthesis_predicate_relevance: PredicateRelevancePolicy,
+
     /// Refinement step threshold for --synthesis-trigger manual-after-n.
     #[arg(long)]
     pub synthesis_after: Option<u32>,
@@ -253,6 +262,8 @@ impl Default for YardbirdOptions {
             training_run_version: None,
             synthesis_trigger: SynthesisTrigger::Off,
             synthesis_guard_policy: GuardPolicy::True,
+            synthesis_refinement_retention: AuxRefinementRetention::KeepAll,
+            synthesis_predicate_relevance: PredicateRelevancePolicy::ExactProperty,
             synthesis_after: None,
             synthesis_refinement_limit_window: None,
             synthesis_repeated_pattern_threshold: None,
@@ -322,6 +333,8 @@ impl YardbirdOptions {
         AuxSynthesisConfig {
             trigger: self.synthesis_trigger,
             guard_policy: self.synthesis_guard_policy,
+            refinement_retention: self.synthesis_refinement_retention,
+            predicate_relevance: self.synthesis_predicate_relevance,
             manual_after: self.synthesis_after,
             refinement_limit_window: self.synthesis_refinement_limit_window,
             repeated_pattern_threshold: self.synthesis_repeated_pattern_threshold,

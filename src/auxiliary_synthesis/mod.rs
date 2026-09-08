@@ -9,7 +9,10 @@ pub mod trigger;
 
 pub use candidate::{AuxiliaryCaptureTarget, AuxiliarySynthesisCandidate};
 pub use conditional_history::ConditionalHistory;
-pub use config::{AuxSynthesisConfig, GuardPolicy, SynthesisTrigger};
+pub use config::{
+    AuxRefinementRetention, AuxSynthesisConfig, GuardPolicy, PredicateRelevancePolicy,
+    SynthesisTrigger,
+};
 pub use conflict::ArrayConflictRecord;
 pub use locality::FrameSpan;
 pub use predicate_selector::InterpolantGuardSelectionRecord;

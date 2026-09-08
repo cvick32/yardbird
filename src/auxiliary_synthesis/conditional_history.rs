@@ -16,8 +16,9 @@ use crate::{
 
 use super::{
     predicate_ast_size, predicate_supports_structural_cost, select_interpolant_guard,
-    term_contains_auxiliary_symbol, AuxSynthesisConfig, AuxTriggerState, AuxiliarySpec,
-    AuxiliarySynthesisCandidate, GuardPolicy, HistoryCaptureMode, Occurrence, SynthesisTrigger,
+    term_contains_auxiliary_symbol, AuxRefinementRetention, AuxSynthesisConfig, AuxTriggerState,
+    AuxiliarySpec, AuxiliarySynthesisCandidate, GuardPolicy, HistoryCaptureMode, Occurrence,
+    SynthesisTrigger,
 };
 
 /// Conditional-history synthesis as a post-refinement driver extension.
@@ -225,6 +226,7 @@ where
                     &sequence,
                     abstract_problem,
                     ranker,
+                    self.config.predicate_relevance,
                     |guard| match predicate_supports_structural_cost(guard)
                         .then(|| translate_term(guard.clone()))
                         .flatten()
@@ -247,10 +249,11 @@ where
                     Occurrence::Last => HistoryCaptureMode::LastOccurrence,
                 };
                 info!(
-                    "AUX-SYNTH selected interpolant guard candidate={} derivation={} mode={} cost={} ranker={} structural={} property_overlap={} guard={}",
+                    "AUX-SYNTH selected interpolant guard candidate={} derivation={} mode={} relevance={} cost={} ranker={} structural={} property_overlap={} guard={}",
                     selected.record.predicate_index,
                     selected.record.derivation,
                     selected.record.capture_mode,
+                    selected.record.relevance,
                     selected.record.cost,
                     selected.record.ranker,
                     selected.record.structurally_scored,
@@ -279,6 +282,31 @@ where
         state: &mut ArrayRefinementState,
         context: &mut RefinementContext<'_>,
     ) -> driver::Result<()> {
-        self.handle_instantiations(&state.candidates, state.depth, context)
+        let auxiliary_records_before = context.problem().get_auxiliary_records().len();
+        self.handle_instantiations(&state.candidates, state.depth, context)?;
+
+        if self.config.refinement_retention == AuxRefinementRetention::DropSource {
+            let installed_source_conflicts = context
+                .problem()
+                .get_auxiliary_records()
+                .into_iter()
+                .skip(auxiliary_records_before)
+                .map(|record| record.source_conflict_id)
+                .collect::<HashSet<_>>();
+            if !installed_source_conflicts.is_empty() {
+                let candidates_before = state.candidates.len();
+                state.candidates.retain(|candidate| {
+                    candidate.conflict.as_ref().is_none_or(|conflict| {
+                        !installed_source_conflicts.contains(&conflict.conflict_id)
+                    })
+                });
+                info!(
+                    "AUX-SYNTH dropped {} source refinement(s) replaced by installed auxiliaries",
+                    candidates_before - state.candidates.len()
+                );
+            }
+        }
+
+        Ok(())
     }
 }
