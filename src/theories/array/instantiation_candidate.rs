@@ -84,14 +84,6 @@ impl BatchSummary {
     pub(crate) fn selected_count(&self) -> usize {
         self.selected_arrays + self.selected_guards
     }
-
-    pub(crate) fn record_pruned_model_candidates(&mut self, rule_name: &str, count: usize) {
-        self.rejected_model += count;
-        self.by_rule
-            .entry(rule_name.to_string())
-            .or_default()
-            .generated += count;
-    }
 }
 
 /// Candidates generated during one array/guard search pass.

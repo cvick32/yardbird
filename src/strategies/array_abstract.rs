@@ -11,7 +11,6 @@ use crate::{
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
-    quantified_rule::TransitionGuardRule,
     solver::PropertyCheckMode,
     theories::array::{
         array_axioms::{
@@ -24,11 +23,9 @@ use crate::{
             SourceThenFullEGraphBuilder,
         },
         array_rule_instantiator::ArrayArtifactCapture,
-        array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
         encodings::{EncodingOptions, EncodingPlan},
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
         instantiation_ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
-        transition_guard_instantiator::{generate_guard_candidates, supports_transition_guard},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -54,7 +51,9 @@ where
     run_ic3ia: bool,
     cost_config: F::Config,
     discovered_array_types: Vec<(String, String)>,
-    transition_guard_rules: Vec<TransitionGuardRule>,
+    quantifiers: crate::quantifier_abstraction::QuantifierPlan,
+    configuration_error: Option<String>,
+    owns_quantifiers: bool,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     term_selection_counts: FxHashMap<String, u32>,
@@ -83,7 +82,9 @@ where
             run_ic3ia,
             cost_config,
             discovered_array_types: vec![],
-            transition_guard_rules: vec![],
+            quantifiers: crate::quantifier_abstraction::QuantifierPlan::default(),
+            configuration_error: None,
+            owns_quantifiers: false,
             decision_data: vec![],
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
@@ -172,38 +173,45 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        self.configuration_error = None;
+        self.owns_quantifiers = model.as_commands().iter().any(|command| match command {
+            smt2parser::concrete::Command::DefineFun { term, .. }
+            | smt2parser::concrete::Command::Assert { term } => {
+                crate::quantifier_abstraction::contains_binders(term)
+            }
+            _ => false,
+        });
+        let model = match crate::quantifier_abstraction::scope_binders(model.clone()) {
+            Ok(model) => model,
+            Err(error) => {
+                self.configuration_error = Some(error.to_string());
+                return model;
+            }
+        };
         let (model, herbrand_witnesses) = model.herbrandize_universal_property();
         if herbrand_witnesses > 0 {
             info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
         }
+        let original = model.clone();
+        let model = match crate::quantifier_abstraction::lower_model(model) {
+            Ok((model, plan)) => {
+                info!(
+                    "Abstracted {} quantifier/lambda expressions for Yardbird instantiation",
+                    plan.rules.len()
+                );
+                self.quantifiers = plan;
+                model
+            }
+            Err(error) => {
+                self.configuration_error = Some(error.to_string());
+                return original;
+            }
+        };
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
         let (abstracted_model, encoding_plan) =
             EncodingPlan::apply(abstracted_model, &discovered_types, self.encoding_options);
         self.encoding_plan = encoding_plan;
-        let supported_rules = abstracted_model
-            .get_transition_guards()
-            .into_iter()
-            .enumerate()
-            .map(|(ordinal, guard)| TransitionGuardRule::from_parsed(guard, ordinal))
-            .filter(supports_transition_guard)
-            .collect::<Vec<_>>();
-        let selected_guards = supported_rules
-            .iter()
-            .map(|rule| rule.parsed().clone())
-            .collect::<Vec<_>>();
-        let (abstracted_model, removed_guards) =
-            abstracted_model.abstract_transition_guards(&selected_guards);
-        self.transition_guard_rules = supported_rules
-            .into_iter()
-            .filter(|rule| removed_guards.contains(rule.parsed()))
-            .collect();
-        if !self.transition_guard_rules.is_empty() {
-            info!(
-                "Abstracted {} quantified transition guard(s) for Yardbird instantiation",
-                self.transition_guard_rules.len()
-            );
-        }
         self.property_cone = if self.egraph_builder.requires_property_cone() {
             build_property_cone(&abstracted_model)
         } else {
@@ -220,6 +228,26 @@ where
 
     fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
         !state.candidates.is_empty()
+    }
+
+    fn allows_concrete_validation(&self) -> bool {
+        !self.owns_quantifiers
+    }
+
+    fn configuration_error(&self) -> Option<&str> {
+        self.configuration_error.as_deref()
+    }
+
+    fn refinement_logic_terms(&self) -> Vec<Term> {
+        self.quantifiers
+            .rules
+            .iter()
+            .map(|rule| rule.body.clone())
+            .collect()
+    }
+
+    fn supports_lambda_abstraction(&self) -> bool {
+        true
     }
 
     fn setup(
@@ -272,6 +300,12 @@ where
         }
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
+        }
+        state.candidates = self
+            .quantifiers
+            .candidates(smt, crate::quantifier_abstraction::SearchPhase::Witnesses)?;
+        if !state.candidates.is_empty() {
+            return Ok(ProofAction::Continue);
         }
         let profiling = self.profile.then(|| {
             Rc::new(RefCell::new(ArrayProfilingCollector::new(
@@ -356,38 +390,6 @@ where
 
             let instantiation_start = Instant::now();
             let mut candidate_batch = InstantiationBatch::default();
-            let mut pruned_guards = Vec::new();
-            if !self.transition_guard_rules.is_empty() && state.depth > 0 {
-                let guard_extractor = ArrayTermExtractor::new(
-                    &state.egraph,
-                    cost_fn.clone(),
-                    ArrayTermExtractorOptions {
-                        candidate_catalog: candidate_catalog.clone(),
-                        candidate_scope: expansion.candidate_scope,
-                        refinement_step,
-                        selection_counts: self.term_selection_counts.clone(),
-                        depth: state.depth,
-                        profiling: None,
-                    },
-                );
-
-                for rule in &self.transition_guard_rules {
-                    let generation = generate_guard_candidates(
-                        rule,
-                        &state.egraph,
-                        &guard_extractor,
-                        cost_fn.clone(),
-                        state.depth,
-                        smt,
-                    )?;
-                    pruned_guards.push((
-                        rule.metadata().name().to_string(),
-                        generation.rejected_by_model,
-                    ));
-                    candidate_batch.extend(generation.candidates);
-                }
-            }
-
             let array_candidates = generate_array_instantiation_candidates(
                 &state.egraph,
                 cost_fn.clone(),
@@ -405,7 +407,7 @@ where
                 },
             );
             candidate_batch.extend(array_candidates.candidates);
-            let mut summary = candidate_batch.prepare_with_ranker(
+            let summary = candidate_batch.prepare_with_ranker(
                 expansion.candidate_scope,
                 &known_instantiations,
                 self.candidate_winners_per_group,
@@ -413,9 +415,6 @@ where
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
-            for (rule_name, count) in pruned_guards {
-                summary.record_pruned_model_candidates(&rule_name, count);
-            }
 
             if expansion.stage == ArrayEGraphBuildStage::Source
                 && self
@@ -466,6 +465,15 @@ where
             if summary.selected_count() > 0 {
                 self.finish_profiling_record(profiling);
                 return Ok(ProofAction::Continue);
+            }
+
+            state.candidates = self
+                .quantifiers
+                .candidates(smt, crate::quantifier_abstraction::SearchPhase::Conflicts)?;
+            if state.candidates.is_empty() {
+                state.candidates = self
+                    .quantifiers
+                    .candidates(smt, crate::quantifier_abstraction::SearchPhase::Expand)?;
             }
 
             self.finish_profiling_record(profiling);

@@ -66,6 +66,7 @@ pub struct VmtBmcSession {
     definition_materializer: DefinitionMaterializer,
     sorts: Vec<Command>,
     function_definitions: Vec<Command>,
+    array_types: Vec<(String, String)>,
     variable_definitions: Vec<Command>,
     input_variables: Vec<Command>,
     action_variables: Vec<Command>,
@@ -188,14 +189,32 @@ impl VmtBmcSession {
         let property_check_mode = strategy.property_check_mode();
         let model_axioms = vmt_model.get_axioms();
         let theory = strategy.get_theory_support();
+        let array_types = theory
+            .get_uninterpreted_functions()
+            .into_iter()
+            .filter(|function| function.name.starts_with("Read_") && function.arg_sorts.len() == 2)
+            .map(|function| {
+                (
+                    crate::theories::array::array_axioms::ArrayLanguage::sort_to_name(
+                        &function.arg_sorts[1],
+                    ),
+                    crate::theories::array::array_axioms::ArrayLanguage::sort_to_name(
+                        &function.return_sort,
+                    ),
+                )
+            })
+            .collect();
         let mut logic_terms = vec![&init_assertion, &trans_assertion, &property_assertion];
         logic_terms.extend(model_axioms.iter());
+        let refinement_terms = strategy.refinement_logic_terms();
+        logic_terms.extend(&refinement_terms);
         let logic = theory.get_logic_string_for_problem(&logic_terms, &vmt_model.as_commands())?;
         let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
 
         let mut smt = VmtBmcSession {
             sorts: vmt_model.get_sorts(),
             function_definitions: vmt_model.get_function_definitions(),
+            array_types,
             variable_definitions: vec![],
             input_variables: vmt_model.get_input_variables(),
             action_variables: vmt_model.get_action_variables(),
@@ -328,6 +347,7 @@ impl VmtBmcSession {
             self.solver
                 .assert_term(&indexed)
                 .expect("solver should assert VMT model axioms");
+            self.subterm_handler.register_background_term(&indexed);
             self.model_axiom_assertions.push(indexed);
         }
     }
@@ -1127,6 +1147,7 @@ impl ProblemContext for VmtBmcSession {
     fn get_init_and_transition_subterms(&self) -> Vec<String> {
         let mut trans = self.subterm_handler.get_transition_system_subterms();
         trans.extend(self.subterm_handler.get_initial_subterms());
+        trans.extend(self.subterm_handler.get_background_subterms());
         trans.extend(self.subterm_handler.get_instantiation_subterms());
         trans
     }
@@ -1134,6 +1155,7 @@ impl ProblemContext for VmtBmcSession {
     fn get_source_init_and_transition_subterms(&self) -> Vec<String> {
         let mut trans = self.subterm_handler.get_transition_system_subterms();
         trans.extend(self.subterm_handler.get_initial_subterms());
+        trans.extend(self.subterm_handler.get_background_subterms());
         trans
     }
 
@@ -1149,6 +1171,7 @@ impl ProblemContext for VmtBmcSession {
         let mut source_terms = self.subterm_handler.get_transition_system_subterms();
         source_terms.extend(self.subterm_handler.get_initial_subterms());
         source_terms.extend(self.subterm_handler.get_property_subterms());
+        source_terms.extend(self.subterm_handler.get_background_subterms());
         crate::problem_context::ArrayCandidateCatalog {
             source_grounded: crate::problem_context::ArrayCandidatePool {
                 terms: source_terms,
@@ -1162,9 +1185,7 @@ impl ProblemContext for VmtBmcSession {
     }
 
     fn get_array_types(&self) -> Vec<(String, String)> {
-        // For VMT mode, array types are managed by the strategy's discovered_array_types
-        // This is a fallback that returns empty - VMT mode uses configure_model instead
-        vec![]
+        self.array_types.clone()
     }
 
     fn frame_transition_formula(&self, term: Term, frame: u16) -> Option<Term> {

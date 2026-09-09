@@ -13,14 +13,17 @@ pub struct SubtermHandler {
     initial_subterms: HashSet<Term>,
     trans_subterms: HashSet<Term>,
     prop_subterms: HashSet<Term>,
+    background_subterms: HashSet<Term>,
     instantiation_subterms: HashSet<Term>,
     initial_subterm_order: Vec<Term>,
     trans_subterm_order: Vec<Term>,
     prop_subterm_order: Vec<Term>,
+    background_subterm_order: Vec<Term>,
     instantiation_subterm_order: Vec<Term>,
     initial_reads_and_writes: ReadsAndWrites,
     trans_reads_and_writes: ReadsAndWrites,
     prop_reads_and_writes: ReadsAndWrites,
+    background_reads_and_writes: ReadsAndWrites,
     instantiation_reads_and_writes: ReadsAndWrites,
     init_and_trans_asserts: Vec<String>,
     prop_assert: Option<Term>,
@@ -35,14 +38,17 @@ impl SubtermHandler {
             initial_subterms: HashSet::new(),
             trans_subterms: HashSet::new(),
             prop_subterms: HashSet::new(),
+            background_subterms: HashSet::new(),
             instantiation_subterms: HashSet::new(),
             initial_subterm_order: vec![],
             trans_subterm_order: vec![],
             prop_subterm_order: vec![],
+            background_subterm_order: vec![],
             instantiation_subterm_order: vec![],
             initial_reads_and_writes: ReadsAndWrites::default(),
             trans_reads_and_writes: ReadsAndWrites::default(),
             prop_reads_and_writes: ReadsAndWrites::default(),
+            background_reads_and_writes: ReadsAndWrites::default(),
             instantiation_reads_and_writes: ReadsAndWrites::default(),
             init_and_trans_asserts: vec![],
             prop_assert: None,
@@ -59,6 +65,7 @@ impl SubtermHandler {
                         .chain(self.instantiation_subterm_order.iter()),
                 ),
             )
+            .chain(self.background_subterm_order.iter())
             .collect()
     }
 
@@ -70,7 +77,23 @@ impl SubtermHandler {
                     .iter()
                     .chain(self.prop_subterm_order.iter()),
             )
+            .chain(self.background_subterm_order.iter())
             .collect()
+    }
+
+    /// Keep indexed background axioms across initial/property term regeneration.
+    pub(crate) fn register_background_term(&mut self, term: &Term) {
+        // Concrete/quantified strategies may retain binders. Their bound
+        // variables must not enter the ground refinement term pools.
+        if crate::quantifier_abstraction::contains_binders(term) {
+            return;
+        }
+        collect_terms(
+            std::iter::once(term),
+            &mut self.background_subterms,
+            &mut self.background_subterm_order,
+            &mut self.background_reads_and_writes,
+        );
     }
 
     pub(crate) fn register_initial_support(&mut self, support: &[Term]) {
@@ -181,11 +204,13 @@ impl SubtermHandler {
         all_reads_from.extend(self.initial_reads_and_writes.reads_from.clone());
         all_reads_from.extend(self.trans_reads_and_writes.reads_from.clone());
         all_reads_from.extend(self.prop_reads_and_writes.reads_from.clone());
+        all_reads_from.extend(self.background_reads_and_writes.reads_from.clone());
 
         let mut all_writes_to = HashSet::new();
         all_writes_to.extend(self.initial_reads_and_writes.writes_to.clone());
         all_writes_to.extend(self.trans_reads_and_writes.writes_to.clone());
         all_writes_to.extend(self.prop_reads_and_writes.writes_to.clone());
+        all_writes_to.extend(self.background_reads_and_writes.writes_to.clone());
 
         ReadsAndWrites::from(all_reads_from, all_writes_to)
     }
@@ -208,6 +233,13 @@ impl SubtermHandler {
         self.initial_subterm_order
             .iter()
             .map(|ts| ts.to_string())
+            .collect()
+    }
+
+    pub(crate) fn get_background_subterms(&self) -> Vec<String> {
+        self.background_subterm_order
+            .iter()
+            .map(ToString::to_string)
             .collect()
     }
 
@@ -272,6 +304,50 @@ mod tests {
     use smt2parser::vmt::bmc::BMCBuilder;
 
     use super::*;
+
+    #[test]
+    fn background_terms_survive_regeneration_and_remain_source_sites() {
+        let seed: Term = "true".parse().unwrap();
+        let mut handler = SubtermHandler::new(seed.clone(), seed.clone(), seed);
+        let axiom: Term = "(q (Read_Int_Int a@0 i@0))".parse().unwrap();
+        handler.register_background_term(&axiom);
+        let mut builder = BMCBuilder::new(vec![], HashMap::new());
+        handler.generate_subterms(&mut builder);
+        handler.generate_subterms(&mut builder);
+        builder.set_depth(1);
+        handler.generate_subterms(&mut builder);
+        let next_axiom: Term = "(q (Read_Int_Int a@1 i@1))".parse().unwrap();
+        handler.register_background_term(&next_axiom);
+        handler.register_background_term(&next_axiom);
+        handler.replace_property_term("false".parse().unwrap(), &mut builder);
+
+        for term in [&axiom, &next_axiom] {
+            assert!(handler.get_all_subterms().contains(&term));
+            assert!(handler.get_source_subterms().contains(&term));
+            assert_eq!(
+                handler
+                    .get_background_subterms()
+                    .iter()
+                    .filter(|t| **t == term.to_string())
+                    .count(),
+                1
+            );
+        }
+        assert!(handler.get_instantiation_subterms().is_empty());
+        let reads = handler.get_source_reads_and_writes();
+        assert_eq!(reads.read_array("a@0").collect::<Vec<_>>(), ["i@0"]);
+        assert_eq!(reads.read_array("a@1").collect::<Vec<_>>(), ["i@1"]);
+        assert!(handler.get_derived_reads_and_writes().reads_from.is_empty());
+    }
+
+    #[test]
+    fn unabstracted_background_binders_do_not_register_bound_variables() {
+        let seed: Term = "true".parse().unwrap();
+        let mut handler = SubtermHandler::new(seed.clone(), seed.clone(), seed);
+        handler.register_background_term(&"(forall ((i Int)) (= (select a i) 0))".parse().unwrap());
+        assert!(handler.get_all_subterms().is_empty());
+        assert!(handler.get_source_reads_and_writes().reads_from.is_empty());
+    }
 
     #[test]
     fn refinement_terms_do_not_become_source_array_sites() {
