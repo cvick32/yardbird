@@ -114,6 +114,29 @@ fn every_distributed_protocol_checks_its_initial_state_without_solver_quantifier
 }
 
 #[test]
+fn lambda_free_companions_parse_and_match_the_original_inventory() {
+    // Pointwise array definitions add universal constraints. Some companions
+    // exhaust the bounded runtime even at depth zero, so parsing/equivalence
+    // coverage must not silently assert that all of them are quickly solvable.
+    for original in protocol_files() {
+        let encoded = original.with_extension("encoding.vmt");
+        let source = fs::read_to_string(&encoded).unwrap();
+        assert!(!source.contains("(lambda "), "{}", encoded.display());
+        smt2parser::vmt::VMTModel::from_path(&encoded)
+            .unwrap_or_else(|error| panic!("{}: {error:?}", encoded.display()));
+    }
+}
+
+#[test]
+fn lambda_free_database_companion_uses_only_ground_solver_assertions() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/distributed_protocols");
+    check_protocol(
+        &root.join("client_server_db_ae/client_server_db_ae.encoding.vmt"),
+        5,
+    );
+}
+
+#[test]
 fn alternating_properties_and_multivariable_guards_survive_a_transition() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/distributed_protocols");
     for protocol in [

@@ -1,7 +1,9 @@
 """Soundness-sensitive substitution and outcome-accounting regressions."""
 
 import unittest
+from pathlib import Path
 
+from scripts.compare_protocol_encodings import classify
 from scripts.encode_distributed_protocols import Encoder, contains_lambda, dump, encode, free_vars, parse_spans
 
 
@@ -61,6 +63,25 @@ class ProtocolEncodingTests(unittest.TestCase):
         result, _, changed = encode(source)
         self.assertEqual(result, source)
         self.assertEqual(changed, 0)
+
+    def test_all_companions_are_lambda_free_and_introduce_no_free_symbols(self):
+        paths = sorted(Path("examples/distributed_protocols").glob("*/*.encoding.vmt"))
+        originals = [p for p in Path("examples/distributed_protocols").glob("*/*.vmt")
+                     if not p.name.endswith(".encoding.vmt")]
+        self.assertEqual({p.with_suffix(".encoding.vmt") for p in originals}, set(paths))
+        for path in paths:
+            with self.subTest(path=path):
+                original = path.with_name(path.name.replace(".encoding.vmt", ".vmt"))
+                source_commands = [n for n, _, _ in parse_spans(original.read_text())]
+                encoded_commands = [n for n, _, _ in parse_spans(path.read_text())]
+                self.assertFalse(contains_lambda(encoded_commands))
+                self.assertEqual(len(source_commands), len(encoded_commands))
+                for before, after in zip(source_commands, encoded_commands):
+                    self.assertEqual(before[:1], after[:1])
+                    if before[0].startswith("declare"):
+                        self.assertEqual(before, after)
+                    self.assertFalse(any(s.startswith("encoding.index.")
+                                         for s in free_vars(after)), dump(after))
 
 
 if __name__ == "__main__":
