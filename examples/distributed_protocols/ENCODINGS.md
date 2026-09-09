@@ -94,3 +94,34 @@ Audit artifacts from this run are under
 records local proofs and `commands/verification.json` records complete-command
 checks. These are distinct from protocol safety results.
 
+## Comparing strategies
+
+The [2026-09-08 results](encoding-results.md) record 27 concrete completions
+and 14 abstract completions at depth 5, with no solver-unknown outcomes.
+Timeouts, exhausted refinement, and the original ghost-state counterexample
+remain separate from completed bounded checks.
+
+```sh
+python3 scripts/compare_protocol_encodings.py \
+  --depth 5 --timeout 60 --jobs 3 \
+  --output .scratch/protocol-encoding-comparison
+```
+
+Both strategies receive identical companion files. The runner only counts a
+bounded completion when the process succeeds, reports no counterexample, and
+records every requested UNSAT depth. Unknown, timeout, refinement exhaustion,
+partial/incomplete output, errors, and counterexamples are separate outcomes.
+The output directory must be new so prior results cannot be overwritten.
+
+These files remove the lambda encoding difference; the current strategies
+still differ in **both native versus abstract array reasoning and quantifier
+instantiation**. An experiment isolating only quantifier instantiation needs
+both strategies to share the same array reasoning. Pointwise definitions can
+also add substantial instantiation work: equivalent encodings are not expected
+to have identical performance, and some companions time out even at depth zero.
+
+The original snapshot inventory remains separate. Every companion is parsed
+by `lambda_free_companions_parse_and_match_the_original_inventory`, and the
+database companion has a depth-5 check that the abstract solver transcript
+contains only ground assertions. Original initial-state regressions continue
+to test the original files.

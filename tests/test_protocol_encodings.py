@@ -83,6 +83,14 @@ class ProtocolEncodingTests(unittest.TestCase):
                     self.assertFalse(any(s.startswith("encoding.index.")
                                          for s in free_vars(after)), dump(after))
 
+    def test_inconclusive_and_partial_runs_are_never_completed(self):
+        self.assertEqual(classify(1, {}, "Solver returned unknown: incomplete", 5), "unknown")
+        self.assertEqual(classify(0, {"results": [{"result": "Unknown"}]}, "", 5), "unknown")
+        self.assertEqual(classify(0, {"counterexample": False, "unsat_events": [0, 1]}, "", 5), "incomplete")
+        self.assertEqual(classify(None, {}, "", 5), "timeout")
+        self.assertEqual(classify(0, {"counterexample": True}, "", 5), "counterexample")
+        self.assertEqual(classify(0, {"counterexample": False, "unsat_events": list(range(5))}, "", 5), "completed")
+
 
 if __name__ == "__main__":
     unittest.main()
