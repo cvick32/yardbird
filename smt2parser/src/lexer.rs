@@ -83,6 +83,10 @@ const KEYWORDS: &[(&str, Token)] = {
     ]
 };
 
+pub(crate) fn is_reserved_symbol(symbol: &str) -> bool {
+    KEYWORDS.iter().any(|(keyword, _)| *keyword == symbol)
+}
+
 impl<R> Lexer<R>
 where
     R: std::io::BufRead,

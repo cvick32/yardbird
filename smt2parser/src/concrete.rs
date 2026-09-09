@@ -1212,6 +1212,7 @@ impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let c = self.0.as_bytes().first();
         if c.is_some()
+            && !lexer::is_reserved_symbol(&self.0)
             && lexer::is_non_digit_symbol_byte(*c.unwrap())
             && self.0.as_bytes().iter().all(|c| lexer::is_symbol_byte(*c))
         {
@@ -1550,4 +1551,13 @@ fn test_syntax_visitor() {
     };
     let command2 = command.clone().accept(&mut SyntaxBuilder).unwrap();
     assert_eq!(command, command2);
+}
+
+#[test]
+fn quoted_reserved_function_names_round_trip() {
+    for source in ["(|match| x y)", "(|forall| x)", "(|let| x)", "(|assert| x)"] {
+        let term: Term = source.parse().unwrap();
+        assert_eq!(term.to_string(), source);
+        assert_eq!(term.to_string().parse::<Term>().unwrap(), term);
+    }
 }
