@@ -1,0 +1,65 @@
+# Depth-20 AWS comparison over all 31 original distributed-protocol inputs.
+# Generated *.encoding.vmt companions are excluded to run each original once.
+# Each singleton matrix runs on its own main_eval AWS worker, with one
+# benchmark subprocess at a time and one attempt per benchmark.
+#
+# Launch from the repository root after pushing this config and the merge fixes
+# to main (AWS workers pull main):
+# python3 main_eval.py --env aws --config garden/protocols_aws_config.yaml \
+#   --benchmark-type protocols-source-depth20 \
+#   --benchmark-type protocols-full-depth20 \
+#   --benchmark-type protocols-concrete-depth20 \
+#   --name protocols-depth20-300s
+global:
+  examples_dir: examples/distributed_protocols
+  timeout_seconds: 300
+  retry_count: 1
+  jobs: 1
+  benchmark_limit:
+  sample_seed: 20260909
+  require_array_reads_and_writes: false
+  output_format: json
+  include_patterns: []
+  exclude_patterns:
+    - "**/*.encoding.vmt"
+
+parameter_matrices:
+  protocols-source-depth20:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  protocols-full-depth20:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  protocols-concrete-depth20:
+    depths: [20]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: false
+  timestamp_format: "%Y%m%d_%H%M%S"

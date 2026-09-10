@@ -127,6 +127,129 @@ parameter_matrices:
     cost_functions: ["bmc-cost"]
     timeout_seconds: 120
 
+  # Full-array auxiliary synthesis trigger sweep. Each singleton matrix is
+  # a separate main_eval AWS worker; global jobs=1 and retry_count=1 apply.
+  # Hold the existing array settings fixed: depth 50, BMC cost, source-then-full,
+  # prefer-source ranker, 16 winners, assumptions, full-unroll. Every matrix
+  # has a 300-second per-benchmark timeout and runs the entire array corpus.
+  # Guard/retention policies match array_aws_config.yaml. Only the synthesis
+  # trigger changes; thresholds below are explicit initial tuning points.
+  # All active triggers require a non-local conflict. Detect never synthesizes.
+
+  array-aux-off-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    timeout_seconds: 300
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
+
+  array-aux-detect-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    timeout_seconds: 300
+    auxiliary_synthesis:
+      trigger: detect
+      guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
+
+  array-aux-non-local-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    timeout_seconds: 300
+    auxiliary_synthesis:
+      trigger: non-local
+      guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
+
+  array-aux-manual-after-10-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    timeout_seconds: 300
+    auxiliary_synthesis:
+      trigger: manual-after-n
+      guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
+      manual_after: 10
+
+  array-aux-refinement-limit-25-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    timeout_seconds: 300
+    auxiliary_synthesis:
+      trigger: refinement-limit
+      guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
+      refinement_limit_window: 25
+
+  array-aux-repeated-pattern-3-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    timeout_seconds: 300
+    auxiliary_synthesis:
+      trigger: repeated-pattern
+      guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
+      repeated_pattern_threshold: 3
+
+  array-aux-concrete-depth50:
+    depths: [50]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    property_check_modes: [assumptions]
+    timeout_seconds: 300
+
 # Individual configurations (non-matrix)
 individual_configs:
   - name: "abstract_only_quick"
