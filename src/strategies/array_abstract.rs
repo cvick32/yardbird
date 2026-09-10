@@ -313,6 +313,12 @@ where
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
         }
+        state.candidates = self
+            .quantifiers
+            .candidates(smt, crate::quantifier_abstraction::SearchPhase::Witnesses)?;
+        if !state.candidates.is_empty() {
+            return Ok(ProofAction::Continue);
+        }
         state.guarded_read_updates = self.encoding_plan.violated_guarded_read_updates(
             smt,
             state.depth,
@@ -409,38 +415,6 @@ where
 
             let instantiation_start = Instant::now();
             let mut candidate_batch = InstantiationBatch::default();
-            let mut pruned_guards = Vec::new();
-            if !self.transition_guard_rules.is_empty() && state.depth > 0 {
-                let guard_extractor = ArrayTermExtractor::new(
-                    &state.egraph,
-                    cost_fn.clone(),
-                    ArrayTermExtractorOptions {
-                        candidate_catalog: candidate_catalog.clone(),
-                        candidate_scope: expansion.candidate_scope,
-                        refinement_step,
-                        selection_counts: self.term_selection_counts.clone(),
-                        depth: state.depth,
-                        profiling: None,
-                    },
-                );
-
-                for rule in &self.transition_guard_rules {
-                    let generation = generate_guard_candidates(
-                        rule,
-                        &state.egraph,
-                        &guard_extractor,
-                        cost_fn.clone(),
-                        state.depth,
-                        smt,
-                    )?;
-                    pruned_guards.push((
-                        rule.metadata().name().to_string(),
-                        generation.rejected_by_model,
-                    ));
-                    candidate_batch.extend(generation.candidates);
-                }
-            }
-
             let mut seen = HashSet::new();
             let mut accepted_by_rule = HashMap::new();
             let array_candidates = generate_array_instantiation_candidates_with_budget(
