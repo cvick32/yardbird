@@ -288,6 +288,122 @@ where
     Ok(())
 }
 
+/// The existing best grounding first, followed by intact source-write sites.
+/// Scalar representatives are still chosen by the existing extractor. Alternative
+/// bindings and their decision records are only constructed when requested.
+pub(super) fn groundings<'a, N, CF>(
+    pattern: &'a ArrayPattern,
+    expected_eclass: egg::Id,
+    subst: egg::Subst,
+    egraph: &'a egg::EGraph<ArrayLanguage, N>,
+    extractor: std::rc::Rc<ArrayTermExtractor<CF>>,
+    context: GroundContext<'a>,
+) -> impl Iterator<Item = GroundSubstitution> + 'a
+where
+    N: egg::Analysis<ArrayLanguage> + 'a,
+    CF: YardbirdCostFunction<ArrayLanguage> + 'a,
+{
+    let mut first = true;
+    let mut sites = None;
+    let mut seen = std::collections::HashSet::new();
+    std::iter::from_fn(move || {
+        if first {
+            first = false;
+            let mut grounding = GroundSubstitution::default();
+            ground_pattern(
+                pattern,
+                Some(expected_eclass),
+                &subst,
+                &mut grounding,
+                egraph,
+                &extractor,
+                context,
+            )
+            .expect("egg search must bind every trigger variable");
+            seen.insert(
+                instantiate_pattern(pattern, &grounding)
+                    .unwrap()
+                    .to_string(),
+            );
+            return Some(grounding);
+        }
+        if !extractor.requires_source_grounded_candidates() {
+            return None;
+        }
+        // The array axioms bind the three write children as variables. Keep
+        // more general patterns on the existing one-grounding path for now.
+        let (index_sort, value_sort, variables) = pattern.as_ref().iter().find_map(|node| {
+            let egg::ENodeOrVar::ENode(ArrayLanguage::WriteTyped([is, vs, a, i, v])) = node else {
+                return None;
+            };
+            let [egg::ENodeOrVar::Var(a), egg::ENodeOrVar::Var(i), egg::ENodeOrVar::Var(v)] =
+                [&pattern[*a], &pattern[*i], &pattern[*v]]
+            else {
+                return None;
+            };
+            Some((
+                pattern_sort_symbol(pattern, *is)?,
+                pattern_sort_symbol(pattern, *vs)?,
+                [*a, *i, *v],
+            ))
+        })?;
+        let sites = sites.get_or_insert_with(|| {
+            let mut ranked = matching_source_write_sites(
+                egraph,
+                &extractor,
+                subst[variables[0]],
+                subst[variables[1]],
+                subst[variables[2]],
+            )
+            .into_iter()
+            .map(|(a, i, v)| {
+                let write = ArrayLanguage::write_typed(
+                    &index_sort,
+                    &value_sort,
+                    a.clone(),
+                    i.clone(),
+                    v.clone(),
+                );
+                (extractor.cost_of(&write), write.to_string(), [a, i, v])
+            })
+            .collect::<Vec<_>>();
+            ranked.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+            ranked.into_iter()
+        });
+        for (_, _, expressions) in sites.by_ref() {
+            let mut grounding = GroundSubstitution::default();
+            let mut compatible = true;
+            for (variable, expression) in variables.into_iter().zip(expressions) {
+                if grounding
+                    .get_binding(variable)
+                    .is_some_and(|binding| binding.expression != expression)
+                {
+                    compatible = false;
+                    break;
+                }
+                grounding
+                    .bind_source_choice(variable, expression, egraph, &extractor, context)
+                    .expect("matching source sites must bind compatible eclasses");
+            }
+            if !compatible {
+                continue;
+            }
+            ground_pattern_variables(pattern, &subst, &mut grounding, egraph, &extractor, context)
+                .expect("egg search must bind every trigger variable");
+            let expression = instantiate_pattern(pattern, &grounding).unwrap();
+            if egraph.lookup_expr(&expression).map(|id| egraph.find(id))
+                != Some(egraph.find(expected_eclass))
+            {
+                continue;
+            }
+            if seen.insert(expression.to_string()) {
+                return Some(grounding);
+            }
+        }
+        None
+    })
+}
+
 fn choose_best_grounding<CF, C, I, F>(
     extractor: &ArrayTermExtractor<CF>,
     grounding: &mut GroundSubstitution,

@@ -1,7 +1,10 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
 use std::cmp::Ordering;
 use yardbird::{
-    auxiliary_synthesis::{AuxSynthesisConfig, ConditionalHistory, GuardPolicy, SynthesisTrigger},
+    auxiliary_synthesis::{
+        AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
+        PredicateRelevancePolicy, SynthesisTrigger,
+    },
     cost_functions::array::{AdaptiveArrayCost, ArrayBMCCost},
     instantiation_strategy::full_unroll::FullUnrollStrategy,
     strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
@@ -281,4 +284,52 @@ fn hybr_sum_matches_the_paper_capture_epoch_and_property_guard() {
     let selection = record.interpolant_guard_selection.as_ref().unwrap();
     assert_eq!(selection.predicate, "(<= 0 j)");
     assert!(selection.property_overlap);
+}
+
+#[test]
+fn synthesized_auxiliary_can_replace_its_source_refinement() {
+    let model = VMTModel::from_path("examples/array/array_hybr_sum.vmt").unwrap();
+    let result = check_adaptive_model_with_aux(
+        model,
+        6,
+        AuxSynthesisConfig {
+            trigger: SynthesisTrigger::NonLocal,
+            guard_policy: GuardPolicy::Interpolant,
+            refinement_retention: AuxRefinementRetention::DropSource,
+            ..AuxSynthesisConfig::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.auxiliary_records.len(), 1);
+    assert!(result.used_instances.iter().all(|term| {
+        let term = term.to_string();
+        !term.contains("(not (= i+2 i+0))")
+    }));
+}
+
+#[test]
+fn capture_aligned_predicate_policy_installs_a_scalar_phase_guard() {
+    let model = VMTModel::from_path("examples/array/array_two_counters_sum.vmt").unwrap();
+    let result = check_abstract_model_with_aux(
+        model,
+        6,
+        AuxSynthesisConfig {
+            trigger: SynthesisTrigger::NonLocal,
+            guard_policy: GuardPolicy::Interpolant,
+            predicate_relevance: PredicateRelevancePolicy::CaptureAligned,
+            ..AuxSynthesisConfig::default()
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.auxiliary_records.len(), 1);
+    let selection = result.auxiliary_records[0]
+        .interpolant_guard_selection
+        .as_ref()
+        .unwrap();
+    assert!(selection.predicate.contains('i'));
+    assert!(!selection.predicate.contains("Read_"));
+    assert_eq!(selection.relevance, "capture_scalar");
+    assert!(!selection.property_overlap);
 }

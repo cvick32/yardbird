@@ -11,7 +11,6 @@ use crate::{
     quantified_rule::QuantifiedRuleCategory,
     theories::array::{
         array_axioms::{translate_term, ArrayExpr, ArrayLanguage},
-        array_expr_parser::preprocess_array_expr,
         candidate_scope::CandidateScope,
     },
     training::{
@@ -43,13 +42,16 @@ type WriteCandidateIndex = FxHashMap<String, Vec<(ArrayExpr, ArrayExpr)>>;
 fn index_write_candidates(reads_and_writes: &ReadsAndWrites) -> WriteCandidateIndex {
     let mut index = WriteCandidateIndex::default();
     for (raw_array, raw_index, raw_value) in &reads_and_writes.writes_to {
-        let Ok(array) = preprocess_array_expr(raw_array).parse::<ArrayExpr>() else {
+        // These strings are printed SMT terms, not egg expressions. Use the
+        // source-term translation so quoted symbols have identical identities
+        // in the write-site index and the model-equivalence e-graph.
+        let Some(array) = raw_array.parse().ok().and_then(translate_term) else {
             continue;
         };
-        let Ok(write_index) = preprocess_array_expr(raw_index).parse::<ArrayExpr>() else {
+        let Some(write_index) = raw_index.parse().ok().and_then(translate_term) else {
             continue;
         };
-        let Ok(write_value) = preprocess_array_expr(raw_value).parse::<ArrayExpr>() else {
+        let Some(write_value) = raw_value.parse().ok().and_then(translate_term) else {
             continue;
         };
         index

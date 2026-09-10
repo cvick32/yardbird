@@ -9,7 +9,7 @@ use smt2parser::{
 };
 
 use crate::{
-    auxiliary_synthesis::AuxiliarySynthesisCandidate,
+    auxiliary_synthesis::{AuxiliarySynthesisCandidate, PredicateRelevancePolicy},
     interpolant::{PredicateCandidate, SequenceInterpolants},
     problem_context::ProblemContext,
 };
@@ -90,6 +90,8 @@ pub struct InterpolantGuardSelectionRecord {
     pub structurally_scored: bool,
     #[serde(default)]
     pub property_overlap: bool,
+    #[serde(default)]
+    pub relevance: String,
     pub eligible_count: usize,
     pub control_guard: Option<String>,
     pub rejected: Vec<String>,
@@ -107,6 +109,24 @@ struct GuardScore {
     cost: u32,
     structurally_scored: bool,
     property_overlap: bool,
+    relevance: GuardRelevance,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum GuardRelevance {
+    ExactProperty,
+    CaptureScalar,
+    CaptureIndexedArray,
+}
+
+impl GuardRelevance {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ExactProperty => "exact_property",
+            Self::CaptureScalar => "capture_scalar",
+            Self::CaptureIndexedArray => "capture_indexed_array",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -173,6 +193,14 @@ fn classify_interpolant_guards(
                     "predicate comes only from interpolation boundaries {source_frames:?} before the eligible suffix at frame {} for capture frame {capture_frame}",
                     capture_frame.saturating_sub(1),
                 ),
+            });
+            continue;
+        }
+        if contains_smtinterpol_array_diff(&predicate.term) {
+            report.rejected.push(Rejection {
+                predicate_index,
+                derivation: Derivation::Predicate,
+                reason: "predicate uses SMTInterpol-internal array witness @diff".to_string(),
             });
             continue;
         }
@@ -335,6 +363,7 @@ pub(crate) fn select_interpolant_guard(
     sequence: &SequenceInterpolants,
     abstract_problem: &dyn ProblemContext,
     ranker: &str,
+    relevance_policy: PredicateRelevancePolicy,
     mut score: impl FnMut(&Term) -> (u32, bool),
 ) -> anyhow::Result<Option<SelectedGuard>> {
     let report = classify_interpolant_guards(synthesis_candidate, sequence, abstract_problem)?;
@@ -352,7 +381,21 @@ pub(crate) fn select_interpolant_guard(
         debug!("AUX-SYNTH rejected interpolant guard {rejection}");
     }
     let property_terms = normalized_property_terms(abstract_problem);
-    let Some((guard, guard_score)) = rank_candidates(&report, &property_terms, &mut score) else {
+    let Some((guard, guard_score)) = rank_candidates(
+        &report,
+        &property_terms,
+        &synthesis_candidate.capture_target.current_name,
+        &synthesis_candidate.capture_target.next_name,
+        relevance_policy,
+        &mut score,
+    ) else {
+        if !report.eligible.is_empty() {
+            info!(
+                "AUX-SYNTH rejected all {} eligible interpolant guards under predicate relevance policy {}",
+                report.eligible.len(),
+                relevance_policy,
+            );
+        }
         return Ok(None);
     };
     let record = InterpolantGuardSelectionRecord {
@@ -368,6 +411,7 @@ pub(crate) fn select_interpolant_guard(
         cost: guard_score.cost,
         structurally_scored: guard_score.structurally_scored,
         property_overlap: guard_score.property_overlap,
+        relevance: guard_score.relevance.as_str().to_string(),
         eligible_count: report.eligible.len(),
         control_guard: report.control_guard.as_ref().map(ToString::to_string),
         rejected: report.rejected.iter().map(ToString::to_string).collect(),
@@ -463,39 +507,46 @@ fn canonicalize_order_relation(term: Term) -> Term {
 fn rank_candidates(
     report: &Classification,
     property_terms: &BTreeSet<String>,
+    capture_current: &str,
+    capture_next: &str,
+    relevance_policy: PredicateRelevancePolicy,
     score: &mut impl FnMut(&Term) -> (u32, bool),
 ) -> Option<(GuardCandidate, GuardScore)> {
     let mut ranked = report
         .eligible
         .iter()
         .cloned()
-        .map(|guard| {
-            let (cost, structurally_scored) = score(&guard.ranking_term);
+        .filter_map(|guard| {
             let property_overlap = normalized_property_term(&guard.ranking_term)
                 .is_some_and(|term| property_terms.contains(&term));
-            (
+            let relevance = guard_relevance(
+                &guard,
+                property_overlap,
+                capture_current,
+                capture_next,
+                relevance_policy,
+            )?;
+            let (cost, structurally_scored) = score(&guard.ranking_term);
+            Some((
                 guard,
                 GuardScore {
                     cost,
                     structurally_scored,
                     property_overlap,
+                    relevance,
                 },
-            )
+            ))
         })
         .collect::<Vec<_>>();
     ranked.sort_by(|(left_guard, left_score), (right_guard, right_score)| {
         left_score
-            .cost
-            .cmp(&right_score.cost)
+            .relevance
+            .cmp(&right_score.relevance)
+            .then_with(|| left_score.cost.cmp(&right_score.cost))
             .then_with(|| {
                 right_guard
                     .exact_capture_match
                     .cmp(&left_guard.exact_capture_match)
-            })
-            .then_with(|| {
-                right_score
-                    .property_overlap
-                    .cmp(&left_score.property_overlap)
             })
             .then_with(|| {
                 occurrence_rank(left_guard.occurrence).cmp(&occurrence_rank(right_guard.occurrence))
@@ -509,6 +560,139 @@ fn rank_candidates(
             })
     });
     ranked.into_iter().next()
+}
+
+fn guard_relevance(
+    guard: &GuardCandidate,
+    property_overlap: bool,
+    capture_current: &str,
+    capture_next: &str,
+    relevance_policy: PredicateRelevancePolicy,
+) -> Option<GuardRelevance> {
+    if property_overlap {
+        return Some(GuardRelevance::ExactProperty);
+    }
+    if relevance_policy == PredicateRelevancePolicy::ExactProperty {
+        return None;
+    }
+    if !guard.exact_capture_match {
+        return None;
+    }
+    if !contains_array_operation(&guard.ranking_term) {
+        return Some(GuardRelevance::CaptureScalar);
+    }
+    array_indices_align_with_capture(&guard.ranking_term, capture_current, capture_next)
+        .then_some(GuardRelevance::CaptureIndexedArray)
+}
+
+fn contains_array_operation(term: &Term) -> bool {
+    match term {
+        Term::Constant(_) | Term::QualIdentifier(_) => false,
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            let name = qual_identifier.get_name();
+            matches!(name.as_str(), "select" | "store")
+                || name.starts_with("Read_")
+                || name.starts_with("Write_")
+                || arguments.iter().any(contains_array_operation)
+        }
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| contains_array_operation(binding))
+                || contains_array_operation(term)
+        }
+        Term::Lambda { term, .. }
+        | Term::Forall { term, .. }
+        | Term::Exists { term, .. }
+        | Term::Attributes { term, .. } => contains_array_operation(term),
+        Term::Match { term, cases } => {
+            contains_array_operation(term)
+                || cases.iter().any(|(_, case)| contains_array_operation(case))
+        }
+    }
+}
+
+fn array_indices_align_with_capture(
+    term: &Term,
+    capture_current: &str,
+    capture_next: &str,
+) -> bool {
+    fn visit(term: &Term, capture_current: &str, capture_next: &str, saw: &mut bool) -> bool {
+        match term {
+            Term::Constant(_) | Term::QualIdentifier(_) => true,
+            Term::Application {
+                qual_identifier,
+                arguments,
+            } => {
+                let name = qual_identifier.get_name();
+                let is_array_access = matches!(name.as_str(), "select" | "store")
+                    || name.starts_with("Read_")
+                    || name.starts_with("Write_");
+                if is_array_access {
+                    *saw = true;
+                    let Some(index) = arguments.get(1) else {
+                        return false;
+                    };
+                    if !term_contains_symbol(index, capture_current)
+                        && !term_contains_symbol(index, capture_next)
+                    {
+                        return false;
+                    }
+                }
+                arguments
+                    .iter()
+                    .all(|argument| visit(argument, capture_current, capture_next, saw))
+            }
+            Term::Let { var_bindings, term } => {
+                var_bindings
+                    .iter()
+                    .all(|(_, binding)| visit(binding, capture_current, capture_next, saw))
+                    && visit(term, capture_current, capture_next, saw)
+            }
+            Term::Lambda { term, .. }
+            | Term::Forall { term, .. }
+            | Term::Exists { term, .. }
+            | Term::Attributes { term, .. } => visit(term, capture_current, capture_next, saw),
+            Term::Match { term, cases } => {
+                visit(term, capture_current, capture_next, saw)
+                    && cases
+                        .iter()
+                        .all(|(_, case)| visit(case, capture_current, capture_next, saw))
+            }
+        }
+    }
+
+    let mut saw_array_access = false;
+    visit(term, capture_current, capture_next, &mut saw_array_access) && saw_array_access
+}
+
+fn term_contains_symbol(term: &Term, expected: &str) -> bool {
+    match term {
+        Term::Constant(_) => false,
+        Term::QualIdentifier(identifier) => identifier.get_name() == expected,
+        Term::Application { arguments, .. } => arguments
+            .iter()
+            .any(|argument| term_contains_symbol(argument, expected)),
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| term_contains_symbol(binding, expected))
+                || term_contains_symbol(term, expected)
+        }
+        Term::Lambda { term, .. }
+        | Term::Forall { term, .. }
+        | Term::Exists { term, .. }
+        | Term::Attributes { term, .. } => term_contains_symbol(term, expected),
+        Term::Match { term, cases } => {
+            term_contains_symbol(term, expected)
+                || cases
+                    .iter()
+                    .any(|(_, case)| term_contains_symbol(case, expected))
+        }
+    }
 }
 
 fn occurrence_rank(mode: Occurrence) -> u8 {
@@ -702,6 +886,36 @@ fn abstract_native_arrays(term: Term) -> anyhow::Result<Term> {
     let mut abstractor = ArrayAbstractor::default();
     term.accept(&mut abstractor)
         .map_err(|error| anyhow!("{error:?}"))
+}
+
+fn contains_smtinterpol_array_diff(term: &Term) -> bool {
+    match term {
+        Term::Constant(_) => false,
+        Term::QualIdentifier(identifier) => identifier.get_name() == "@diff",
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            qual_identifier.get_name() == "@diff"
+                || arguments.iter().any(contains_smtinterpol_array_diff)
+        }
+        Term::Let { var_bindings, term } => {
+            var_bindings
+                .iter()
+                .any(|(_, binding)| contains_smtinterpol_array_diff(binding))
+                || contains_smtinterpol_array_diff(term)
+        }
+        Term::Lambda { term, .. }
+        | Term::Forall { term, .. }
+        | Term::Exists { term, .. }
+        | Term::Attributes { term, .. } => contains_smtinterpol_array_diff(term),
+        Term::Match { term, cases } => {
+            contains_smtinterpol_array_diff(term)
+                || cases
+                    .iter()
+                    .any(|(_, case)| contains_smtinterpol_array_diff(case))
+        }
+    }
 }
 
 fn symbol_term(name: &str) -> Term {
@@ -912,20 +1126,40 @@ mod tests {
             ],
             ..Classification::default()
         };
-        let selected = rank_candidates(&report, &BTreeSet::new(), &mut |term| {
-            let cost = if term.to_string() == "(< i 4)" { 1 } else { 2 };
-            (cost, true)
-        })
+        let property_terms = report
+            .eligible
+            .iter()
+            .filter_map(|guard| normalized_property_term(&guard.ranking_term))
+            .collect();
+        let selected = rank_candidates(
+            &report,
+            &property_terms,
+            "i",
+            "i_next",
+            PredicateRelevancePolicy::ExactProperty,
+            &mut |term| {
+                let cost = if term.to_string() == "(< i 4)" { 1 } else { 2 };
+                (cost, true)
+            },
+        )
         .unwrap();
         assert_eq!(selected.0.predicate_index, 0);
 
         report.eligible.remove(0);
-        let selected = rank_candidates(&report, &BTreeSet::new(), &mut |_| (2, true)).unwrap();
+        let selected = rank_candidates(
+            &report,
+            &property_terms,
+            "i",
+            "i_next",
+            PredicateRelevancePolicy::ExactProperty,
+            &mut |_| (2, true),
+        )
+        .unwrap();
         assert_eq!(selected.0.occurrence, Occurrence::Last);
     }
 
     #[test]
-    fn property_overlap_breaks_equal_cost_ties_before_predicate_order() {
+    fn selection_excludes_non_property_overlapping_candidates() {
         let guard = |predicate_index, term: &str| GuardCandidate {
             predicate_index,
             source_interpolants: vec![3],
@@ -943,10 +1177,148 @@ mod tests {
         let property_term: Term = "(>= j@5 0)".parse().unwrap();
         let property_terms = BTreeSet::from([normalized_property_term(&property_term).unwrap()]);
 
-        let selected = rank_candidates(&report, &property_terms, &mut |_| (102, true)).unwrap();
+        let selected = rank_candidates(
+            &report,
+            &property_terms,
+            "i",
+            "i_next",
+            PredicateRelevancePolicy::ExactProperty,
+            &mut |_| (102, true),
+        )
+        .unwrap();
 
         assert_eq!(selected.0.predicate_index, 1);
         assert!(selected.1.property_overlap);
+    }
+
+    #[test]
+    fn selection_admits_capture_scalar_without_property_overlap() {
+        let report = Classification {
+            eligible: vec![GuardCandidate {
+                predicate_index: 0,
+                source_interpolants: vec![3],
+                source_frames: vec![3],
+                ranking_term: "(= j 0)".parse().unwrap(),
+                capture_guard: "(= j 0)".parse().unwrap(),
+                occurrence: Occurrence::Last,
+                derivation: Derivation::Predicate,
+                exact_capture_match: true,
+            }],
+            ..Classification::default()
+        };
+        let property_term: Term = "(>= i@5 0)".parse().unwrap();
+        let property_terms = BTreeSet::from([normalized_property_term(&property_term).unwrap()]);
+
+        let selected = rank_candidates(
+            &report,
+            &property_terms,
+            "j",
+            "j_next",
+            PredicateRelevancePolicy::CaptureAligned,
+            &mut |_| (1, true),
+        )
+        .unwrap();
+
+        assert_eq!(selected.0.predicate_index, 0);
+        assert!(!selected.1.property_overlap);
+        assert_eq!(selected.1.relevance, GuardRelevance::CaptureScalar);
+    }
+
+    #[test]
+    fn selection_rejects_concrete_array_index_for_symbolic_capture() {
+        let report = Classification {
+            eligible: vec![GuardCandidate {
+                predicate_index: 0,
+                source_interpolants: vec![3],
+                source_frames: vec![3],
+                ranking_term: "(= (Read_Int_Int a 0) 1)".parse().unwrap(),
+                capture_guard: "(= (Read_Int_Int a 0) 1)".parse().unwrap(),
+                occurrence: Occurrence::Last,
+                derivation: Derivation::Predicate,
+                exact_capture_match: false,
+            }],
+            ..Classification::default()
+        };
+        let property_term: Term = "(= (Read_Int_Int a Z) 1)".parse().unwrap();
+        let property_terms = BTreeSet::from([normalized_property_term(&property_term).unwrap()]);
+
+        assert!(rank_candidates(
+            &report,
+            &property_terms,
+            "i",
+            "i_next",
+            PredicateRelevancePolicy::CaptureAligned,
+            &mut |_| (1, true),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn selection_admits_array_predicate_indexed_by_capture_target() {
+        let report = Classification {
+            eligible: vec![GuardCandidate {
+                predicate_index: 0,
+                source_interpolants: vec![3],
+                source_frames: vec![3],
+                ranking_term: "(= 0 (Read_Int_Int a i))".parse().unwrap(),
+                capture_guard: "(= 0 (Read_Int_Int a i))".parse().unwrap(),
+                occurrence: Occurrence::Last,
+                derivation: Derivation::Predicate,
+                exact_capture_match: true,
+            }],
+            ..Classification::default()
+        };
+        let property_term: Term = "(= (Read_Int_Int a Z) 1)".parse().unwrap();
+        let property_terms = BTreeSet::from([normalized_property_term(&property_term).unwrap()]);
+
+        let selected = rank_candidates(
+            &report,
+            &property_terms,
+            "i",
+            "i_next",
+            PredicateRelevancePolicy::CaptureAligned,
+            &mut |_| (1, true),
+        )
+        .unwrap();
+
+        assert_eq!(selected.1.relevance, GuardRelevance::CaptureIndexedArray);
+    }
+
+    #[test]
+    fn selection_prefers_capture_scalar_over_capture_indexed_array() {
+        let guard = |predicate_index, term: &str| GuardCandidate {
+            predicate_index,
+            source_interpolants: vec![3],
+            source_frames: vec![3],
+            ranking_term: term.parse().unwrap(),
+            capture_guard: term.parse().unwrap(),
+            occurrence: Occurrence::Last,
+            derivation: Derivation::Predicate,
+            exact_capture_match: true,
+        };
+        let report = Classification {
+            eligible: vec![guard(0, "(= 0 (Read_Int_Int a i))"), guard(1, "(= 1 i)")],
+            ..Classification::default()
+        };
+
+        let selected = rank_candidates(
+            &report,
+            &BTreeSet::new(),
+            "i",
+            "i_next",
+            PredicateRelevancePolicy::CaptureAligned,
+            &mut |term| {
+                if contains_array_operation(term) {
+                    (1, true)
+                } else {
+                    (100, true)
+                }
+            },
+        )
+        .unwrap();
+
+        assert_eq!(selected.0.predicate_index, 1);
+        assert_eq!(selected.1.relevance, GuardRelevance::CaptureScalar);
     }
 
     #[test]
@@ -959,6 +1331,16 @@ mod tests {
         ));
         assert!(!predicate_supports_structural_cost(
             &"(= i j k)".parse().unwrap()
+        ));
+    }
+
+    #[test]
+    fn identifies_smtinterpol_array_diff_witnesses() {
+        assert!(contains_smtinterpol_array_diff(
+            &"(= (@diff a b) i)".parse().unwrap()
+        ));
+        assert!(!contains_smtinterpol_array_diff(
+            &"(= (Read_Int_Int a i) value)".parse().unwrap()
         ));
     }
 }

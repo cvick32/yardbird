@@ -71,6 +71,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
             depth,
             egraph: egg::EGraph::default(),
             candidates: vec![],
+            guarded_read_updates: vec![],
             array_types: vec![],
             egraph_builder:
                 Box::<crate::theories::array::array_egraph_builder::FullEGraphBuilder>::default(),

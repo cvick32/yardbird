@@ -394,6 +394,24 @@ that orders complete formulas only by the active term cost. Garden exposes the
 same `instantiation_rankers` matrix dimension; see
 `deep-abstract-instantiation-rankers` in `garden/benchmark_config.yaml`.
 
+Use `--cost-function protocol-bmc` to try BMC scoring tuned for Boolean
+protocol state. It gives `true` and `false` cost 0 (instead of BMC's 100),
+and gives every other symbol a minimum cost of 1 so literals beat even
+property and current-frame variables with the same model value. All other
+scoring follows BMC. Garden configurations accept `protocol-bmc` in
+`cost_functions`.
+
+`--candidate-winners-per-group` also controls the source-stage array batch
+budget, including preservation (write-does-not-overwrite) lemmas. Set it to
+1 for one-at-a-time selection or increase it to allow multiple preservation
+lemmas in the same batch.
+
+If the first source-stage pass leaves that budget underfilled, Yardbird explores
+additional intact source-write groundings round-robin across the existing
+matches. Known, duplicate, and model-satisfied candidates do not consume the
+budget. Scalar extraction stays unchanged; the existing whole-instantiation
+ranker selects from the explored candidates.
+
 These controls apply only to Yardbird's direct abstract strategy. The
 `abstract-with-quantifiers` strategy intentionally sends the three global
 array axioms to Z3 unchanged so it remains an MBQI comparison point.
@@ -474,6 +492,25 @@ array axioms to Z3 unchanged so it remains an MBQI comparison point.
    Exact `select(store(A, i, v), i)` preprocessing is disabled by default. Enable
    it explicitly with `--preprocess-exact-read-after-write`.
    Recurrent-product abstraction is opt-in via `--abstract-recurrent-products`.
+   Guarded read consequences are opt-in via `--guarded-read-updates` (VMT abstract
+   strategy). For a guarded write `g => A' = store(A, i, v)`, this derives
+   `g => read(A', j) = ite(j = i, v, read(A, j))` at indices found in the
+   property and transitions, plus direct write-index equalities. It preserves
+   the action guard and adds only consequences of the transition and array theory.
+   Most schemas are added lazily when the current model violates them, in batches
+   bounded by `--candidate-winners-per-group`. The recovered conservative planner
+   skips nonlinear write values and eagerly installs a small subset of consequences
+   for expensive read/arithmetic values. With the flag absent, no guarded schemas
+   are planned or evaluated. Garden accepts `guarded_read_updates: true` on an
+   individual configuration or parameter matrix and records it in run names/results.
+   Unsupported input modes, theories, and strategies are rejected. Garden rejects
+   selected matrices that enable this option for concrete or quantified strategies
+   before launching benchmarks; put those baselines in separate configurations.
+
+   Example: `target/release/yardbird -f examples/distributed_protocols/german/german.vmt
+   -d 20 --candidate-winners-per-group 16 --property-check-mode assumptions
+   --guarded-read-updates`.
+
 2. **Benchmark Suite**: `garden --config <yaml> --matrix <name>`
 
 All benchmarks are accessible VMT files in `examples/`. Results are output as:

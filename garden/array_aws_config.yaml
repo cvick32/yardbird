@@ -70,6 +70,8 @@ parameter_matrices:
     auxiliary_synthesis:
       trigger: non-local
       guard_policy: interpolant
+      refinement_retention: drop-source
+      predicate_relevance: exact-property
 
   array-concrete-z3-depth50:
     depths: [50]

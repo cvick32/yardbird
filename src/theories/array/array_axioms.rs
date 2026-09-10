@@ -12,6 +12,7 @@ use crate::{
     theories::array::{
         array_rule_instantiator::{
             ArrayArtifactCapture, ArrayRuleInstantiator, ArrayRuleInstantiatorOptions,
+            CandidateDemand,
         },
         array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
         candidate_scope::CandidateScope,
@@ -219,6 +220,64 @@ where
     N: Analysis<ArrayLanguage> + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
+    generate_array_candidates(egraph, cost_fn, array_types, options, None)
+        .expect("unfiltered array generation cannot fail")
+}
+
+/// Refill an underfilled source batch by exploring source-write alternatives.
+/// `accept` must admit only novel, installable, model-violated candidates that
+/// satisfy the ranker's eligibility and rule limits. Full search stays unchanged.
+pub fn generate_array_instantiation_candidates_with_budget<CF, N>(
+    egraph: &EGraph<ArrayLanguage, N>,
+    cost_fn: CF,
+    array_types: &[(String, String)],
+    options: ArrayInstantiationOptions,
+    budget: usize,
+    mut accept: impl FnMut(
+        &super::instantiation_candidate::InstantiationCandidate,
+    ) -> anyhow::Result<bool>,
+) -> anyhow::Result<InstantiationBatch>
+where
+    N: Analysis<ArrayLanguage> + 'static,
+    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+{
+    assert!(budget > 0, "candidate groups need a winner");
+    if options.candidate_scope != CandidateScope::SourceGroundedOnly {
+        return Ok(generate_array_instantiation_candidates(
+            egraph,
+            cost_fn,
+            array_types,
+            options,
+        ));
+    }
+    let mut accept = |candidate: &mut super::instantiation_candidate::InstantiationCandidate| {
+        let accepted = accept(candidate)?;
+        candidate.model_violation_verified = accepted;
+        Ok(accepted)
+    };
+    generate_array_candidates(
+        egraph,
+        cost_fn,
+        array_types,
+        options,
+        Some(CandidateDemand {
+            budget,
+            accept: &mut accept,
+        }),
+    )
+}
+
+fn generate_array_candidates<CF, N>(
+    egraph: &EGraph<ArrayLanguage, N>,
+    cost_fn: CF,
+    array_types: &[(String, String)],
+    options: ArrayInstantiationOptions,
+    demand: Option<CandidateDemand<'_>>,
+) -> anyhow::Result<InstantiationBatch>
+where
+    N: Analysis<ArrayLanguage> + 'static,
+    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+{
     let ArrayInstantiationOptions {
         candidate_catalog,
         candidate_scope,
@@ -267,7 +326,7 @@ where
         },
     );
     let search_start = Instant::now();
-    let search_rounds = instantiator.search_rules(egraph, &rules);
+    let search_rounds = instantiator.search_rules(egraph, &rules, demand)?;
     if let Some(profiling) = &profiling {
         profiling
             .borrow_mut()
@@ -290,7 +349,7 @@ where
         log::debug!("============================\n");
     }
 
-    InstantiationBatch { candidates }
+    Ok(InstantiationBatch { candidates })
 }
 
 pub(crate) struct ArrayQuantifiedRule<N>

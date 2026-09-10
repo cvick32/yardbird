@@ -1,11 +1,16 @@
-use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    mem,
+    rc::Rc,
+    time::Instant,
+};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
-    auxiliary_synthesis::term_contains_auxiliary_symbol,
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
@@ -14,7 +19,7 @@ use crate::{
     solver::PropertyCheckMode,
     theories::array::{
         array_axioms::{
-            expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
+            expr_to_term, generate_array_instantiation_candidates_with_budget, ArrayExpr,
             ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
         },
         array_dataflow::{build_property_cone, PropertyCone},
@@ -124,6 +129,11 @@ where
         self
     }
 
+    pub fn with_guarded_read_updates(mut self, enabled: bool) -> Self {
+        self.encoding_options.guarded_read_updates = enabled;
+        self
+    }
+
     pub fn with_candidate_winners_per_group(mut self, winners_per_group: usize) -> Self {
         assert!(winners_per_group > 0, "candidate groups need a winner");
         self.candidate_winners_per_group = winners_per_group;
@@ -156,6 +166,7 @@ pub struct ArrayRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
     pub candidates: Vec<InstantiationCandidate>,
+    pub(crate) guarded_read_updates: Vec<Term>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
@@ -227,7 +238,7 @@ where
     }
 
     fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
-        !state.candidates.is_empty()
+        !state.candidates.is_empty() || !state.guarded_read_updates.is_empty()
     }
 
     fn allows_concrete_validation(&self) -> bool {
@@ -270,6 +281,7 @@ where
             depth,
             egraph,
             candidates: vec![],
+            guarded_read_updates: vec![],
             array_types,
             egraph_builder,
         })
@@ -301,10 +313,17 @@ where
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
         }
-        state.candidates = self
-            .quantifiers
-            .candidates(smt, crate::quantifier_abstraction::SearchPhase::Witnesses)?;
-        if !state.candidates.is_empty() {
+        state.guarded_read_updates = self.encoding_plan.violated_guarded_read_updates(
+            smt,
+            state.depth,
+            self.candidate_winners_per_group,
+        );
+        if !state.guarded_read_updates.is_empty() {
+            info!(
+                "Selected {} model-violated guarded read update(s) at depth {}",
+                state.guarded_read_updates.len(),
+                state.depth
+            );
             return Ok(ProofAction::Continue);
         }
         let profiling = self.profile.then(|| {
@@ -390,7 +409,41 @@ where
 
             let instantiation_start = Instant::now();
             let mut candidate_batch = InstantiationBatch::default();
-            let array_candidates = generate_array_instantiation_candidates(
+            let mut pruned_guards = Vec::new();
+            if !self.transition_guard_rules.is_empty() && state.depth > 0 {
+                let guard_extractor = ArrayTermExtractor::new(
+                    &state.egraph,
+                    cost_fn.clone(),
+                    ArrayTermExtractorOptions {
+                        candidate_catalog: candidate_catalog.clone(),
+                        candidate_scope: expansion.candidate_scope,
+                        refinement_step,
+                        selection_counts: self.term_selection_counts.clone(),
+                        depth: state.depth,
+                        profiling: None,
+                    },
+                );
+
+                for rule in &self.transition_guard_rules {
+                    let generation = generate_guard_candidates(
+                        rule,
+                        &state.egraph,
+                        &guard_extractor,
+                        cost_fn.clone(),
+                        state.depth,
+                        smt,
+                    )?;
+                    pruned_guards.push((
+                        rule.metadata().name().to_string(),
+                        generation.rejected_by_model,
+                    ));
+                    candidate_batch.extend(generation.candidates);
+                }
+            }
+
+            let mut seen = HashSet::new();
+            let mut accepted_by_rule = HashMap::new();
+            let array_candidates = generate_array_instantiation_candidates_with_budget(
                 &state.egraph,
                 cost_fn.clone(),
                 &state.array_types,
@@ -405,7 +458,41 @@ where
                         profiling: profiling.clone(),
                     },
                 },
-            );
+                self.candidate_winners_per_group,
+                |candidate| {
+                    if !self
+                        .instantiation_ranker
+                        .is_eligible(candidate, expansion.candidate_scope)
+                    {
+                        return Ok(false);
+                    }
+                    let rule_kind = candidate.rule.kind();
+                    let count = accepted_by_rule.entry(rule_kind).or_insert(0);
+                    if *count
+                        >= self
+                            .instantiation_ranker
+                            .source_batch_limit(rule_kind, self.candidate_winners_per_group)
+                    {
+                        return Ok(false);
+                    }
+                    let Some(key) = self.installable_expression(smt, &candidate.expression) else {
+                        return Ok(false);
+                    };
+                    if known_instantiations.contains(&key) || seen.contains(&key) {
+                        return Ok(false);
+                    }
+                    if smt
+                        .eval_to_string(&expr_to_term(candidate.expression.clone()))?
+                        .trim()
+                        != "false"
+                    {
+                        return Ok(false);
+                    }
+                    seen.insert(key);
+                    *count += 1;
+                    Ok(true)
+                },
+            )?;
             candidate_batch.extend(array_candidates.candidates);
             let summary = candidate_batch.prepare_with_ranker(
                 expansion.candidate_scope,
@@ -415,14 +502,6 @@ where
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
-
-            if expansion.stage == ArrayEGraphBuildStage::Source
-                && self
-                    .egraph_builder
-                    .should_widen_after_source(summary.selected_count())
-            {
-                self.cone_attempted_depths.insert(state.depth);
-            }
 
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();
@@ -487,6 +566,8 @@ where
         state: ArrayRefinementState,
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
+        self.encoding_plan
+            .install_guarded_read_updates(state.guarded_read_updates, smt);
         let trace_instantiations = trace_instantiations_enabled();
         for candidate in state.candidates {
             let expression = candidate.expression;
@@ -494,10 +575,6 @@ where
             let term_hash = crate::training::canonical_term_hash(&expression);
             let term = expr_to_term(expression);
             let quantifier_kind = candidate.rule.category();
-            if term_contains_auxiliary_symbol(&term) {
-                info!("AUX-SYNTH skipped {quantifier_kind:#?} instantiation containing auxiliary symbols");
-                continue;
-            }
 
             let abstract_id = provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
@@ -617,9 +694,6 @@ where
         expression: &ArrayExpr,
     ) -> Option<Term> {
         let term = expr_to_term(expression.clone());
-        if term_contains_auxiliary_symbol(&term) {
-            return None;
-        }
         smt.make_unquantified_instance(term)
             .map(|instance| canonical_instantiation_key(instance.get_term()))
     }

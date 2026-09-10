@@ -45,6 +45,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     options.validate_ranker_options()?;
+    options.validate_guarded_read_updates()?;
     options.validate_solver_backend_available()?;
 
     info!("Z3 version: {}", z3::full_version());
@@ -235,6 +236,9 @@ fn build_smtlib_strategy(
             }
             CostFunction::AstSize => {
                 Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0))
+            }
+            CostFunction::ProtocolBmc => {
+                Box::new(options.build_abstract_array_strategy::<ProtocolBmcCost>(0))
             }
             CostFunction::AdaptiveCost => {
                 Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0))

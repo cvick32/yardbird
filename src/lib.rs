@@ -1,9 +1,15 @@
 #![warn(clippy::print_stdout)]
 
-use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
+use std::{
+    fmt::Display,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use crate::auxiliary_synthesis::{
-    AuxSynthesisConfig, ConditionalHistory, GuardPolicy, SynthesisTrigger,
+    AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
+    PredicateRelevancePolicy, SynthesisTrigger,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 pub use driver::{Driver, Error, ProofLoopResult, Result};
@@ -19,7 +25,7 @@ use crate::{
         array::{
             AdaptiveArrayCost, ArrayAstSize, ArrayBMCCost, ArrayCostFactory, ArrayGenerated,
             ArrayPreferConstants, ArrayPreferRead, ArrayPreferWrite, IndexAwareArrayCost,
-            LogisticRegression, SplitArrayCost,
+            LogisticRegression, ProtocolBmcCost, SplitArrayCost,
         },
         list::list_ast_size_cost_factory,
     },
@@ -121,6 +127,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub abstract_recurrent_products: bool,
 
+    /// Add model-violated guarded read consequences of transition writes.
+    #[arg(long, default_value_t = false)]
+    pub guarded_read_updates: bool,
+
     /// Number of ranked array candidates selected from each refinement group.
     #[arg(long, default_value_t = 1)]
     pub candidate_winners_per_group: usize,
@@ -205,6 +215,14 @@ pub struct YardbirdOptions {
     #[arg(long, value_enum, default_value_t = GuardPolicy::True)]
     pub synthesis_guard_policy: GuardPolicy,
 
+    /// Whether to retain the ordinary refinement replaced by a synthesized auxiliary.
+    #[arg(long, value_enum, default_value_t = AuxRefinementRetention::KeepAll)]
+    pub synthesis_refinement_retention: AuxRefinementRetention,
+
+    /// How interpolant predicates qualify as relevant auxiliary capture guards.
+    #[arg(long, value_enum, default_value_t = PredicateRelevancePolicy::ExactProperty)]
+    pub synthesis_predicate_relevance: PredicateRelevancePolicy,
+
     /// Refinement step threshold for --synthesis-trigger manual-after-n.
     #[arg(long)]
     pub synthesis_after: Option<u32>,
@@ -233,6 +251,7 @@ impl Default for YardbirdOptions {
             egraph_builder: EGraphBuilderStrategy::SourceThenFull,
             preprocess_exact_read_after_write: false,
             abstract_recurrent_products: false,
+            guarded_read_updates: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
             property_check_mode: crate::solver::PropertyCheckMode::Scoped,
@@ -254,6 +273,8 @@ impl Default for YardbirdOptions {
             training_run_version: None,
             synthesis_trigger: SynthesisTrigger::Off,
             synthesis_guard_policy: GuardPolicy::True,
+            synthesis_refinement_retention: AuxRefinementRetention::KeepAll,
+            synthesis_predicate_relevance: PredicateRelevancePolicy::ExactProperty,
             synthesis_after: None,
             synthesis_refinement_limit_window: None,
             synthesis_repeated_pattern_threshold: None,
@@ -323,6 +344,8 @@ impl YardbirdOptions {
         AuxSynthesisConfig {
             trigger: self.synthesis_trigger,
             guard_policy: self.synthesis_guard_policy,
+            refinement_retention: self.synthesis_refinement_retention,
+            predicate_relevance: self.synthesis_predicate_relevance,
             manual_after: self.synthesis_after,
             refinement_limit_window: self.synthesis_refinement_limit_window,
             repeated_pattern_threshold: self.synthesis_repeated_pattern_threshold,
@@ -358,6 +381,26 @@ impl YardbirdOptions {
             anyhow::bail!(
                 "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
                 self.synthesis_trigger
+            );
+        }
+        Ok(())
+    }
+
+    /// Validate the guarded-update scope, checking the input format when known.
+    /// Garden validates strategy settings before it discovers individual files.
+    pub fn validate_guarded_read_updates(&self) -> anyhow::Result<()> {
+        if self.guarded_read_updates
+            && (!matches!(self.strategy, Strategy::Abstract)
+                || !matches!(self.theory, Theory::Array)
+                || self.filename.as_deref().is_some_and(|filename| {
+                    Path::new(filename)
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        != Some("vmt")
+                }))
+        {
+            anyhow::bail!(
+                "--guarded-read-updates requires VMT input, --theory array, and --strategy abstract"
             );
         }
         Ok(())
@@ -475,6 +518,7 @@ impl YardbirdOptions {
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_recurrent_product_abstraction(self.abstract_recurrent_products)
+        .with_guarded_read_updates(self.guarded_read_updates)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
         .with_instantiation_ranker(self.build_instantiation_ranker())
         .with_property_check_mode(self.property_check_mode)
@@ -528,6 +572,7 @@ impl YardbirdOptions {
                         }),
                     ),
                 CostFunction::BmcCost => self.build_abstract_array_plan::<ArrayBMCCost>(()),
+                CostFunction::ProtocolBmc => self.build_abstract_array_plan::<ProtocolBmcCost>(()),
                 CostFunction::AstSize => self.build_abstract_array_plan::<ArrayAstSize>(()),
                 CostFunction::AdaptiveCost => {
                     self.build_abstract_array_plan::<AdaptiveArrayCost>(())
@@ -578,6 +623,9 @@ impl YardbirdOptions {
                 CostFunction::BmcCost => {
                     Box::new(self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth))
                 }
+                CostFunction::ProtocolBmc => {
+                    Box::new(self.build_abstract_array_strategy::<ProtocolBmcCost>(self.depth))
+                }
                 CostFunction::AstSize => {
                     Box::new(self.build_abstract_array_strategy::<ArrayAstSize>(self.depth))
                 }
@@ -620,6 +668,9 @@ impl YardbirdOptions {
                     todo!("logistic-regression is not implemented for list theory")
                 }
                 CostFunction::BmcCost => todo!(),
+                CostFunction::ProtocolBmc => {
+                    todo!("protocol-bmc is not implemented for list theory")
+                }
                 CostFunction::AstSize => Box::new(ListAbstract::new(
                     self.depth,
                     self.run_ic3ia,
@@ -680,6 +731,7 @@ impl Display for Strategy {
 #[serde(rename_all = "kebab-case")]
 pub enum CostFunction {
     BmcCost,
+    ProtocolBmc,
     AstSize,
     AdaptiveCost,
     SplitCost,
@@ -732,6 +784,7 @@ impl Display for CostFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CostFunction::BmcCost => write!(f, "bmc-cost"),
+            CostFunction::ProtocolBmc => write!(f, "protocol-bmc"),
             CostFunction::AstSize => write!(f, "ast-size"),
             CostFunction::AdaptiveCost => write!(f, "adaptive-cost"),
             CostFunction::SplitCost => write!(f, "split-cost"),
@@ -831,6 +884,20 @@ mod option_tests {
         assert!(options
             .build_array_strategy()
             .preprocess_exact_read_after_write());
+    }
+
+    #[test]
+    fn guarded_read_updates_are_explicit_and_disabled_by_default() {
+        assert!(!YardbirdOptions::from_filename("input.vmt".into()).guarded_read_updates);
+        let options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--filename",
+            "input.vmt",
+            "--guarded-read-updates",
+        ])
+        .unwrap();
+        assert!(options.guarded_read_updates);
+        assert!(!options.abstract_recurrent_products);
     }
 
     #[test]
