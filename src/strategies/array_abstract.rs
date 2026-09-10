@@ -1,4 +1,10 @@
-use std::{cell::RefCell, collections::HashSet, mem, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    mem,
+    rc::Rc,
+    time::Instant,
+};
 
 use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
@@ -14,7 +20,7 @@ use crate::{
     solver::PropertyCheckMode,
     theories::array::{
         array_axioms::{
-            expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
+            expr_to_term, generate_array_instantiation_candidates_with_budget, ArrayExpr,
             ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
         },
         array_dataflow::{build_property_cone, PropertyCone},
@@ -387,7 +393,9 @@ where
                 }
             }
 
-            let array_candidates = generate_array_instantiation_candidates(
+            let mut seen = HashSet::new();
+            let mut accepted_by_rule = HashMap::new();
+            let array_candidates = generate_array_instantiation_candidates_with_budget(
                 &state.egraph,
                 cost_fn.clone(),
                 &state.array_types,
@@ -402,7 +410,41 @@ where
                         profiling: profiling.clone(),
                     },
                 },
-            );
+                self.candidate_winners_per_group,
+                |candidate| {
+                    if !self
+                        .instantiation_ranker
+                        .is_eligible(candidate, expansion.candidate_scope)
+                    {
+                        return Ok(false);
+                    }
+                    let rule_kind = candidate.rule.kind();
+                    let count = accepted_by_rule.entry(rule_kind).or_insert(0);
+                    if *count
+                        >= self
+                            .instantiation_ranker
+                            .source_batch_limit(rule_kind, self.candidate_winners_per_group)
+                    {
+                        return Ok(false);
+                    }
+                    let Some(key) = self.installable_expression(smt, &candidate.expression) else {
+                        return Ok(false);
+                    };
+                    if known_instantiations.contains(&key) || seen.contains(&key) {
+                        return Ok(false);
+                    }
+                    if smt
+                        .eval_to_string(&expr_to_term(candidate.expression.clone()))?
+                        .trim()
+                        != "false"
+                    {
+                        return Ok(false);
+                    }
+                    seen.insert(key);
+                    *count += 1;
+                    Ok(true)
+                },
+            )?;
             candidate_batch.extend(array_candidates.candidates);
             let mut summary = candidate_batch.prepare_with_ranker(
                 expansion.candidate_scope,
