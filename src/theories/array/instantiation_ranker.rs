@@ -6,7 +6,7 @@
 
 use std::{cmp::Ordering, fmt::Debug};
 
-use crate::quantified_rule::{ArrayAxiomKind, QuantifiedRuleKind};
+use crate::quantified_rule::QuantifiedRuleKind;
 
 use super::{
     candidate_scope::CandidateScope,
@@ -94,17 +94,6 @@ impl InstantiationRanker for PreferSourceInstantiationRanker {
     fn is_eligible(&self, candidate: &InstantiationCandidate, scope: CandidateScope) -> bool {
         scope != CandidateScope::SourceGroundedOnly
             || candidate.grounding == InstantiationGrounding::SourceGrounded
-    }
-
-    fn source_batch_limit(&self, rule_kind: QuantifiedRuleKind, configured_limit: usize) -> usize {
-        if matches!(
-            rule_kind,
-            QuantifiedRuleKind::ArrayAxiom(ArrayAxiomKind::WriteDoesNotOverwrite)
-        ) {
-            configured_limit.min(1)
-        } else {
-            configured_limit
-        }
     }
 }
 

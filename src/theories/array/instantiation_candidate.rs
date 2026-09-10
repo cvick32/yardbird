@@ -1147,7 +1147,7 @@ mod tests {
     }
 
     #[test]
-    fn source_selection_rechecks_after_each_conditional_array_winner() {
+    fn source_selection_honors_budget_for_conditional_array_winners() {
         let unconditional =
             QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
         let conditional =
@@ -1201,8 +1201,39 @@ mod tests {
                 "unconditional_one",
                 "unconditional_two",
                 "conditional_second",
+                "conditional_first",
             ]
         );
+    }
+
+    #[test]
+    fn source_preservation_batch_size_follows_configured_budget() {
+        let rule = QuantifiedRule::array_axiom(ArrayAxiomKind::WriteDoesNotOverwrite, "Int", "Int");
+        for budget in [1, 4, 16, 32] {
+            let mut batch = InstantiationBatch {
+                candidates: (0..20)
+                    .map(|index| {
+                        candidate(
+                            rule.clone(),
+                            &format!("preservation_{index}"),
+                            index as u32,
+                            CandidateGroup::MatchRoot(egg::Id::from(index)),
+                        )
+                    })
+                    .collect(),
+            };
+            batch
+                .prepare_with_ranker(
+                    CandidateScope::SourceGroundedOnly,
+                    &HashSet::new(),
+                    budget,
+                    &PreferSourceInstantiationRanker,
+                    |_| Ok("false".to_string()),
+                    |candidate| Some(candidate.expression.clone()),
+                )
+                .unwrap();
+            assert_eq!(batch.selected().count(), budget.min(20), "budget {budget}");
+        }
     }
 
     #[test]
