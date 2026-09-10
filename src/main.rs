@@ -236,6 +236,9 @@ fn build_smtlib_strategy(
             CostFunction::AstSize => {
                 Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0))
             }
+            CostFunction::ProtocolBmc => {
+                Box::new(options.build_abstract_array_strategy::<ProtocolBmcCost>(0))
+            }
             CostFunction::AdaptiveCost => {
                 Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0))
             }

@@ -20,7 +20,7 @@ use crate::{
         array::{
             AdaptiveArrayCost, ArrayAstSize, ArrayBMCCost, ArrayCostFactory, ArrayGenerated,
             ArrayPreferConstants, ArrayPreferRead, ArrayPreferWrite, IndexAwareArrayCost,
-            LogisticRegression, SplitArrayCost,
+            LogisticRegression, ProtocolBmcCost, SplitArrayCost,
         },
         list::list_ast_size_cost_factory,
     },
@@ -540,6 +540,7 @@ impl YardbirdOptions {
                         }),
                     ),
                 CostFunction::BmcCost => self.build_abstract_array_plan::<ArrayBMCCost>(()),
+                CostFunction::ProtocolBmc => self.build_abstract_array_plan::<ProtocolBmcCost>(()),
                 CostFunction::AstSize => self.build_abstract_array_plan::<ArrayAstSize>(()),
                 CostFunction::AdaptiveCost => {
                     self.build_abstract_array_plan::<AdaptiveArrayCost>(())
@@ -590,6 +591,9 @@ impl YardbirdOptions {
                 CostFunction::BmcCost => {
                     Box::new(self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth))
                 }
+                CostFunction::ProtocolBmc => {
+                    Box::new(self.build_abstract_array_strategy::<ProtocolBmcCost>(self.depth))
+                }
                 CostFunction::AstSize => {
                     Box::new(self.build_abstract_array_strategy::<ArrayAstSize>(self.depth))
                 }
@@ -632,6 +636,9 @@ impl YardbirdOptions {
                     todo!("logistic-regression is not implemented for list theory")
                 }
                 CostFunction::BmcCost => todo!(),
+                CostFunction::ProtocolBmc => {
+                    todo!("protocol-bmc is not implemented for list theory")
+                }
                 CostFunction::AstSize => Box::new(ListAbstract::new(
                     self.depth,
                     self.run_ic3ia,
@@ -692,6 +699,7 @@ impl Display for Strategy {
 #[serde(rename_all = "kebab-case")]
 pub enum CostFunction {
     BmcCost,
+    ProtocolBmc,
     AstSize,
     AdaptiveCost,
     SplitCost,
@@ -744,6 +752,7 @@ impl Display for CostFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CostFunction::BmcCost => write!(f, "bmc-cost"),
+            CostFunction::ProtocolBmc => write!(f, "protocol-bmc"),
             CostFunction::AstSize => write!(f, "ast-size"),
             CostFunction::AdaptiveCost => write!(f, "adaptive-cost"),
             CostFunction::SplitCost => write!(f, "split-cost"),
