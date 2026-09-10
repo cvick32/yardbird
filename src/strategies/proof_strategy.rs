@@ -30,6 +30,23 @@ pub trait ProofStrategy<'ctx, S> {
         model
     }
 
+    fn configuration_error(&self) -> Option<&str> {
+        None
+    }
+
+    /// Account for arithmetic hidden in rules that will be instantiated later.
+    fn refinement_logic_terms(&self) -> Vec<smt2parser::concrete::Term> {
+        vec![]
+    }
+
+    fn supports_lambda_abstraction(&self) -> bool {
+        false
+    }
+
+    fn allows_concrete_validation(&self) -> bool {
+        true
+    }
+
     /// Whether exact native read-after-write terms should be simplified before
     /// array operations are abstracted into uninterpreted functions.
     fn preprocess_exact_read_after_write(&self) -> bool {

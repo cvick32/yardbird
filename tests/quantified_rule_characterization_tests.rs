@@ -156,15 +156,20 @@ fn german_depth_two_characterizes_current_array_refinement() {
 }
 
 #[test]
-fn german_depth_five_does_not_force_an_unneeded_transition_guard() {
+fn german_depth_five_uses_only_yardbird_ground_refinement() {
     let result = run_abstract_german(5);
-    let guard_instances = result
-        .used_instances
-        .iter()
-        .map(ToString::to_string)
-        .filter(|instance| instance.starts_with("(=> grantExclusiveRule+"))
-        .collect::<Vec<_>>();
-    assert!(guard_instances.is_empty());
+    for instance in &result.used_instances {
+        let term = instance.to_string();
+        assert!(!["(forall ", "(exists ", "(lambda "]
+            .iter()
+            .any(|binder| term.contains(binder)));
+    }
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks"),
+        Some(0.0)
+    );
     assert!(!result.counterexample);
 }
 

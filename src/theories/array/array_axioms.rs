@@ -591,7 +591,19 @@ where
 /// Expermiental transformation from Term directly to egg::RecExpr,
 /// so that we can skip using strings as an intermediate representation
 pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
-    fn inner(term: Term, expr: &mut egg::RecExpr<ArrayLanguage>) -> Option<egg::Id> {
+    translate_term_with_array_types(term, &[])
+}
+
+/// Use declarations to disambiguate sort names containing underscores.
+pub fn translate_term_with_array_types(
+    term: Term,
+    array_types: &[(String, String)],
+) -> Option<egg::RecExpr<ArrayLanguage>> {
+    fn inner(
+        term: Term,
+        expr: &mut egg::RecExpr<ArrayLanguage>,
+        array_types: &[(String, String)],
+    ) -> Option<egg::Id> {
         match term {
             Term::Constant(c) => match c {
                 Constant::Numeral(value) => match value.clone().try_into() {
@@ -619,13 +631,19 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                 // Handle these before the match statement
                 if let Some(rest) = name.strip_prefix("ConstArr_") {
                     // Parse "IndexSort_ValueSort" from the suffix - supports nested like "Int_Array_Int_Int"
-                    let parts: Vec<&str> = rest.split('_').collect();
-                    if parts.len() >= 2 {
-                        let (index_sort, value_sort) = (parts[0], parts[1..].join("_"));
+                    let sorts = array_types
+                        .iter()
+                        .find(|(index, value)| rest == format!("{index}_{value}"))
+                        .cloned()
+                        .or_else(|| {
+                            rest.split_once('_')
+                                .map(|(index, value)| (index.to_string(), value.to_string()))
+                        });
+                    if let Some((index_sort, value_sort)) = sorts {
                         assert!(arguments.len() == 1);
                         let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
                         let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-                        let arg_id = inner(arguments.pop().unwrap(), expr)?;
+                        let arg_id = inner(arguments.pop().unwrap(), expr, array_types)?;
                         return Some(expr.add(ArrayLanguage::ConstArrTyped([
                             index_sort_id,
                             value_sort_id,
@@ -633,16 +651,22 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                         ])));
                     }
                 } else if let Some(rest) = name.strip_prefix("Write_") {
-                    let parts: Vec<&str> = rest.split('_').collect();
-                    if parts.len() >= 2 {
-                        let (index_sort, value_sort) = (parts[0], parts[1..].join("_"));
+                    let sorts = array_types
+                        .iter()
+                        .find(|(index, value)| rest == format!("{index}_{value}"))
+                        .cloned()
+                        .or_else(|| {
+                            rest.split_once('_')
+                                .map(|(index, value)| (index.to_string(), value.to_string()))
+                        });
+                    if let Some((index_sort, value_sort)) = sorts {
                         assert!(arguments.len() == 3);
                         let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
                         let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
                         // args popped in reverse order
-                        let val = inner(arguments.pop().unwrap(), expr)?;
-                        let idx = inner(arguments.pop().unwrap(), expr)?;
-                        let arr = inner(arguments.pop().unwrap(), expr)?;
+                        let val = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let idx = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let arr = inner(arguments.pop().unwrap(), expr, array_types)?;
                         return Some(expr.add(ArrayLanguage::WriteTyped([
                             index_sort_id,
                             value_sort_id,
@@ -652,15 +676,21 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                         ])));
                     }
                 } else if let Some(rest) = name.strip_prefix("Read_") {
-                    let parts: Vec<&str> = rest.split('_').collect();
-                    if parts.len() >= 2 {
-                        let (index_sort, value_sort) = (parts[0], parts[1..].join("_"));
+                    let sorts = array_types
+                        .iter()
+                        .find(|(index, value)| rest == format!("{index}_{value}"))
+                        .cloned()
+                        .or_else(|| {
+                            rest.split_once('_')
+                                .map(|(index, value)| (index.to_string(), value.to_string()))
+                        });
+                    if let Some((index_sort, value_sort)) = sorts {
                         assert!(arguments.len() == 2);
                         let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
                         let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
                         // args popped in reverse order
-                        let idx = inner(arguments.pop().unwrap(), expr)?;
-                        let arr = inner(arguments.pop().unwrap(), expr)?;
+                        let idx = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let arr = inner(arguments.pop().unwrap(), expr, array_types)?;
                         return Some(expr.add(ArrayLanguage::ReadTyped([
                             index_sort_id,
                             value_sort_id,
@@ -675,116 +705,116 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                     "and" => {
                         let arg_ids = arguments
                             .into_iter()
-                            .map(|arg| inner(arg, expr))
+                            .map(|arg| inner(arg, expr, array_types))
                             .collect::<Option<_>>()?;
                         Some(expr.add(ArrayLanguage::And(arg_ids)))
                     }
                     "not" => {
                         assert!(arguments.len() == 1);
-                        let arg_id = inner(arguments.pop().unwrap(), expr)?;
+                        let arg_id = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Not(arg_id)))
                     }
                     "or" => {
                         let arg_ids = arguments
                             .into_iter()
-                            .map(|arg| inner(arg, expr))
+                            .map(|arg| inner(arg, expr, array_types))
                             .collect::<Option<_>>()?;
                         Some(expr.add(ArrayLanguage::Or(arg_ids)))
                     }
                     "=>" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Implies([lhs, rhs])))
                     }
                     "=" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Eq([lhs, rhs])))
                     }
                     ">=" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Geq([lhs, rhs])))
                     }
                     ">" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Gt([lhs, rhs])))
                     }
                     "<=" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Leq([lhs, rhs])))
                     }
                     "<" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Lt([lhs, rhs])))
                     }
                     "mod" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Mod([lhs, rhs])))
                     }
                     "+" => {
                         let arg_ids = arguments
                             .into_iter()
-                            .map(|arg| inner(arg, expr))
+                            .map(|arg| inner(arg, expr, array_types))
                             .collect::<Option<_>>()?;
                         Some(expr.add(ArrayLanguage::Plus(arg_ids)))
                     }
                     "-" => {
                         let arg_ids = arguments
                             .into_iter()
-                            .map(|arg| inner(arg, expr))
+                            .map(|arg| inner(arg, expr, array_types))
                             .collect::<Option<_>>()?;
                         Some(expr.add(ArrayLanguage::Negate(arg_ids)))
                     }
                     "*" => {
                         let arg_ids = arguments
                             .into_iter()
-                            .map(|arg| inner(arg, expr))
+                            .map(|arg| inner(arg, expr, array_types))
                             .collect::<Option<_>>()?;
                         Some(expr.add(ArrayLanguage::Times(arg_ids)))
                     }
                     "/" => {
                         assert!(arguments.len() == 2);
                         // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
                     }
                     "to_real" => {
                         assert!(arguments.len() == 1);
-                        let argument = inner(arguments.pop().unwrap(), expr)?;
+                        let argument = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::ToReal(argument)))
                     }
                     "ite" => {
                         assert!(arguments.len() == 3);
                         // args popped in reverse order
-                        let else_term = inner(arguments.pop().unwrap(), expr)?;
-                        let then_term = inner(arguments.pop().unwrap(), expr)?;
-                        let condition = inner(arguments.pop().unwrap(), expr)?;
+                        let else_term = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let then_term = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let condition = inner(arguments.pop().unwrap(), expr, array_types)?;
                         Some(expr.add(ArrayLanguage::Ite([condition, then_term, else_term])))
                     }
                     "bvcomp" => {
                         assert!(arguments.len() == 2);
-                        let rhs = inner(arguments.pop().unwrap(), expr)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr)?;
+                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
+                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
                         let condition = expr.add(ArrayLanguage::Eq([lhs, rhs]));
                         let one = expr.add(ArrayLanguage::Symbol("#b1".into()));
                         let zero = expr.add(ArrayLanguage::Symbol("#b0".into()));
@@ -801,7 +831,7 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
                 }
             }
             Term::Lambda { .. } | Term::Forall { .. } => None,
-            Term::Attributes { term, .. } => inner(*term, expr),
+            Term::Attributes { term, .. } => inner(*term, expr, array_types),
             opaque @ (Term::Let { .. } | Term::Exists { .. } | Term::Match { .. }) => {
                 Some(expr.add(ArrayLanguage::Symbol(opaque.to_string().into())))
             }
@@ -809,7 +839,7 @@ pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
     }
 
     let mut expr = egg::RecExpr::default();
-    inner(term, &mut expr)?;
+    inner(term, &mut expr, array_types)?;
     Some(expr)
 }
 
@@ -999,6 +1029,27 @@ mod test {
     use std::collections::HashSet;
 
     use super::*;
+
+    #[test]
+    fn declared_array_sorts_disambiguate_underscores() {
+        let term: Term = "(Read_tag_t_Bool (ConstArr_tag_t_Bool false) i)"
+            .parse()
+            .unwrap();
+        let expression =
+            translate_term_with_array_types(term.clone(), &[("tag_t".into(), "Bool".into())])
+                .unwrap();
+        assert_eq!(
+            expression.to_string(),
+            "(Read tag_t Bool (ConstArr tag_t Bool false) i)"
+        );
+        assert_eq!(expr_to_term(expression), term);
+    }
+
+    #[test]
+    fn opaque_reserved_function_applications_round_trip() {
+        let term: Term = "(=> enabled (|match| request response))".parse().unwrap();
+        assert_eq!(expr_to_term(translate_term(term.clone()).unwrap()), term);
+    }
     use crate::{
         cost_functions::YardbirdCostFunction,
         theories::array::instantiation_ranker::PreferSourceInstantiationRanker,

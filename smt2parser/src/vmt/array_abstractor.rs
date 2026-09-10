@@ -235,6 +235,12 @@ impl ArrayAbstractor {
                 parameters,
             } => {
                 if identifier.to_string() == "Array" {
+                    // Nested array sorts need their own Read/Write/ConstArr
+                    // declarations even when operations occur only in a
+                    // separately retained quantifier or lambda body.
+                    for parameter in parameters {
+                        self.convert_sort_to_abstracted(parameter);
+                    }
                     let index_type = self.sort_to_string(&parameters[0]);
                     let value_type = self.sort_to_string(&parameters[1]);
                     self.array_types

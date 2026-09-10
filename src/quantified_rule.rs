@@ -58,6 +58,9 @@ pub enum QuantifiedRuleProvenance {
         action: String,
         ordinal: usize,
     },
+    InputBinder {
+        helper: String,
+    },
 }
 
 /// Stable rule metadata carried beside the rule's current executable form.
@@ -72,6 +75,14 @@ pub struct QuantifiedRule {
 }
 
 impl QuantifiedRule {
+    pub fn input_binder(helper: impl Into<String>) -> Self {
+        let helper = helper.into();
+        Self {
+            name: format!("input-binder-{helper}"),
+            kind: QuantifiedRuleKind::Other,
+            provenance: QuantifiedRuleProvenance::InputBinder { helper },
+        }
+    }
     pub fn array_axiom(
         kind: ArrayAxiomKind,
         index_sort: impl Into<String>,

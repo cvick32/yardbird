@@ -57,6 +57,7 @@ pub mod problem_context;
 pub mod profiling;
 mod proof_tree;
 pub mod quantified_rule;
+mod quantifier_abstraction;
 pub mod smtlib_problem;
 pub mod smtlib_refinement_session;
 pub mod solver;

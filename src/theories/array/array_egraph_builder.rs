@@ -8,7 +8,7 @@ use smt2parser::{concrete::Term, vmt::split_framed_symbol};
 use crate::{
     problem_context::{ArrayCandidateCatalog, ProblemContext},
     theories::array::{
-        array_axioms::{expr_to_term, translate_term, ArrayExpr, ArrayLanguage},
+        array_axioms::{expr_to_term, translate_term_with_array_types, ArrayExpr, ArrayLanguage},
         array_dataflow::PropertyCone,
         array_expr_parser::preprocess_array_expr,
         candidate_scope::CandidateScope,
@@ -180,6 +180,7 @@ impl ArrayEGraphBuilder for SourceThenFullEGraphBuilder {
                 let source_triggers = source_array_axiom_triggers(
                     &smt.get_array_candidate_catalog(),
                     &smt.get_property_subterms(),
+                    &smt.get_array_types(),
                 );
                 let source_trigger_refs = source_triggers.iter().collect::<Vec<_>>();
                 newly_admitted_subterms +=
@@ -218,10 +219,16 @@ impl ArrayEGraphBuilder for SourceThenFullEGraphBuilder {
 fn source_array_axiom_triggers(
     catalog: &ArrayCandidateCatalog,
     property_terms: &[String],
+    array_types: &[(String, String)],
 ) -> Vec<Term> {
     let property_indices = property_terms
         .iter()
-        .filter_map(|raw_term| raw_term.parse().ok().and_then(translate_term))
+        .filter_map(|raw_term| {
+            raw_term
+                .parse()
+                .ok()
+                .and_then(|term| translate_term_with_array_types(term, array_types))
+        })
         .filter_map(|expression| {
             let Some(ArrayLanguage::ReadTyped([index_sort, value_sort, _, index])) =
                 expression.as_ref().last()
@@ -242,7 +249,11 @@ fn source_array_axiom_triggers(
         .collect::<HashSet<_>>();
     let mut triggers = HashSet::new();
     for raw_term in &catalog.source_grounded.terms {
-        let Some(expression) = raw_term.parse().ok().and_then(translate_term) else {
+        let Some(expression) = raw_term
+            .parse()
+            .ok()
+            .and_then(|term| translate_term_with_array_types(term, array_types))
+        else {
             continue;
         };
         let Some(ArrayLanguage::WriteTyped([index_sort, value_sort, _, index, _])) =
@@ -413,8 +424,10 @@ fn add_subterms(
         }
         newly_admitted += 1;
         let interp_str = smt.eval_to_string(term)?;
-        let translated = translate_term((*term).clone())
-            .ok_or_else(|| anyhow::anyhow!("could not translate array refinement term: {term}"))?;
+        let translated = translate_term_with_array_types((*term).clone(), &smt.get_array_types())
+            .ok_or_else(|| {
+            anyhow::anyhow!("could not translate array refinement term: {term}")
+        })?;
         let preprocessed = preprocess_array_expr(&interp_str);
         let parsed_interp = preprocessed.parse()?;
         let term_id = egraph.add_expr(&translated);
@@ -802,7 +815,7 @@ mod tests {
         };
 
         assert_eq!(
-            source_array_axiom_triggers(&catalog, &["(Read_Int_Int A p)".to_string()]),
+            source_array_axiom_triggers(&catalog, &["(Read_Int_Int A p)".to_string()], &[]),
             vec![
                 "(Read_Int_Int (Write_Int_Int A i v) i)"
                     .parse::<Term>()

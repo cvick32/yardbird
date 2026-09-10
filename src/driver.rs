@@ -412,6 +412,7 @@ pub struct RefinementContext<'a> {
     instantiation_strategy: &'a dyn InstantiationStrategy,
     concrete_validation_checks: &'a mut u64,
     concrete_validation_statistics: &'a mut SolverStatistics,
+    allows_concrete_validation: bool,
 }
 
 impl RefinementContext<'_> {
@@ -430,6 +431,9 @@ impl RefinementContext<'_> {
         &mut self,
         depth: u16,
     ) -> Result<crate::vmt_bmc_session::VmtBmcSession> {
+        if !self.allows_concrete_validation {
+            return Err(anyhow::anyhow!("quantified inputs require Yardbird instantiation; concrete interpolation validation is unavailable").into());
+        }
         let (result, concrete_problem) = run_concrete_counterexample_check(
             self.concrete_vmt_model,
             depth,
@@ -578,7 +582,10 @@ impl<'ctx, S> Driver<'ctx, S> {
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
     ) -> Result<ProofLoopResult> {
         let concrete_vmt_model = self.vmt_model.clone();
-        if self.solver_backend == SolverBackend::Cvc5 && concrete_vmt_model.uses_lambda_terms() {
+        if self.solver_backend == SolverBackend::Cvc5
+            && concrete_vmt_model.uses_lambda_terms()
+            && !strat.supports_lambda_abstraction()
+        {
             return Err(anyhow::anyhow!(
                 "the CVC5 backend does not support SMT lambda array terms; use --solver z3"
             )
@@ -586,6 +593,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         }
         if strat.get_theory_support().requires_abstraction()
             && concrete_vmt_model.uses_lambda_terms()
+            && !strat.supports_lambda_abstraction()
         {
             return Err(anyhow::anyhow!(
                 "abstract strategies do not support SMT lambda array terms; rerun with --strategy concrete"
@@ -593,6 +601,9 @@ impl<'ctx, S> Driver<'ctx, S> {
             .into());
         }
         self.vmt_model = strat.configure_model(concrete_vmt_model.clone());
+        if let Some(error) = strat.configuration_error() {
+            return Err(anyhow::anyhow!("quantifier abstraction failed: {error}").into());
+        }
         let n_refines = strat.n_refines();
         let mut total_refinement_steps = 0;
         let mut concrete_validation_checks = 0_u64;
@@ -721,6 +732,12 @@ impl<'ctx, S> Driver<'ctx, S> {
                 while matches!(action, ProofAction::Continue)
                     && !strat.has_pending_refinement(&state)
                 {
+                    if !strat.allows_concrete_validation() {
+                        // Widen the abstract search without delegating any
+                        // quantified formula to the concrete solver.
+                        action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                        continue;
+                    }
                     info!(
                         "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
                     );
@@ -770,6 +787,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                                 instantiation_strategy: self.instantiation_strategy.as_ref(),
                                 concrete_validation_checks: &mut concrete_validation_checks,
                                 concrete_validation_statistics: &mut concrete_validation_statistics,
+                                allows_concrete_validation: strat.allows_concrete_validation(),
                             };
                             self.extensions.refine(&mut state, &mut context)?;
                         }
