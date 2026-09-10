@@ -1,6 +1,11 @@
 #![warn(clippy::print_stdout)]
 
-use std::{fmt::Display, fs::File, io::Write, path::PathBuf};
+use std::{
+    fmt::Display,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use crate::auxiliary_synthesis::{
     AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
@@ -120,6 +125,10 @@ pub struct YardbirdOptions {
     /// Replace eligible nonlinear products with recurrent lookup tables.
     #[arg(long, default_value_t = false)]
     pub abstract_recurrent_products: bool,
+
+    /// Add model-violated guarded read consequences of transition writes.
+    #[arg(long, default_value_t = false)]
+    pub guarded_read_updates: bool,
 
     /// Number of ranked array candidates selected from each refinement group.
     #[arg(long, default_value_t = 1)]
@@ -241,6 +250,7 @@ impl Default for YardbirdOptions {
             egraph_builder: EGraphBuilderStrategy::SourceThenFull,
             preprocess_exact_read_after_write: false,
             abstract_recurrent_products: false,
+            guarded_read_updates: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
             property_check_mode: crate::solver::PropertyCheckMode::Scoped,
@@ -375,6 +385,26 @@ impl YardbirdOptions {
         Ok(())
     }
 
+    /// Validate the guarded-update scope, checking the input format when known.
+    /// Garden validates strategy settings before it discovers individual files.
+    pub fn validate_guarded_read_updates(&self) -> anyhow::Result<()> {
+        if self.guarded_read_updates
+            && (!matches!(self.strategy, Strategy::Abstract)
+                || !matches!(self.theory, Theory::Array)
+                || self.filename.as_deref().is_some_and(|filename| {
+                    Path::new(filename)
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        != Some("vmt")
+                }))
+        {
+            anyhow::bail!(
+                "--guarded-read-updates requires VMT input, --theory array, and --strategy abstract"
+            );
+        }
+        Ok(())
+    }
+
     pub fn validate_solver_backend_available(&self) -> anyhow::Result<()> {
         match self.solver {
             SolverBackend::Z3 => Ok(()),
@@ -487,6 +517,7 @@ impl YardbirdOptions {
         .with_egraph_builder(self.build_array_egraph_builder())
         .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
         .with_recurrent_product_abstraction(self.abstract_recurrent_products)
+        .with_guarded_read_updates(self.guarded_read_updates)
         .with_candidate_winners_per_group(self.candidate_winners_per_group)
         .with_instantiation_ranker(self.build_instantiation_ranker())
         .with_property_check_mode(self.property_check_mode)
@@ -852,6 +883,20 @@ mod option_tests {
         assert!(options
             .build_array_strategy()
             .preprocess_exact_read_after_write());
+    }
+
+    #[test]
+    fn guarded_read_updates_are_explicit_and_disabled_by_default() {
+        assert!(!YardbirdOptions::from_filename("input.vmt".into()).guarded_read_updates);
+        let options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--filename",
+            "input.vmt",
+            "--guarded-read-updates",
+        ])
+        .unwrap();
+        assert!(options.guarded_read_updates);
+        assert!(!options.abstract_recurrent_products);
     }
 
     #[test]

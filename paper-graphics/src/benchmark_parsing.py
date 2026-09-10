@@ -35,6 +35,7 @@ class BenchmarkResult:
     instantiation_strategy: Optional[str] = None
     preprocess_exact_read_after_write: Optional[bool] = None
     abstract_recurrent_products: Optional[bool] = None
+    guarded_read_updates: Optional[bool] = None
     synthesis_trigger: Optional[str] = None
     synthesis_guard_policy: Optional[str] = None
     synthesis_after: Optional[int] = None
@@ -54,6 +55,7 @@ class BenchmarkResult:
                 self.instantiation_strategy,
                 self.preprocess_exact_read_after_write,
                 self.abstract_recurrent_products,
+                self.guarded_read_updates,
                 (
                     self.synthesis_trigger
                     if self.synthesis_trigger not in {None, "off"}
@@ -80,6 +82,7 @@ class BenchmarkResult:
                 self.preprocess_exact_read_after_write
             ),
             "abstract_recurrent_products": self.abstract_recurrent_products,
+            "guarded_read_updates": self.guarded_read_updates,
             "synthesis_trigger": self.synthesis_trigger,
             "synthesis_guard_policy": self.synthesis_guard_policy,
             "synthesis_after": self.synthesis_after,
@@ -111,6 +114,7 @@ class BenchmarkResult:
                         "recurrent-products",
                         "on" if self.abstract_recurrent_products else "off",
                     ),
+                    ("guarded-read-updates", "on" if self.guarded_read_updates else None),
                     (
                         "synthesis",
                         self.synthesis_trigger
@@ -251,6 +255,8 @@ class BenchmarkResult:
                     details.append(self.instantiation_strategy.replace("-", " "))
                 if self.preprocess_exact_read_after_write:
                     details.append("exact R/W")
+                if self.guarded_read_updates:
+                    details.append("guarded read updates")
                 if self.abstract_recurrent_products:
                     details.append("recurrent products")
                 if self.synthesis_trigger not in {None, "off"}:
@@ -555,6 +561,7 @@ class BenchmarkParser:
             instantiation_strategy=instantiation_strategy,
             preprocess_exact_read_after_write=preprocess_exact_read_after_write,
             abstract_recurrent_products=abstract_recurrent_products,
+            guarded_read_updates=result_entry.get("guarded_read_updates"),
             synthesis_trigger=synthesis_trigger,
             synthesis_guard_policy=synthesis_guard_policy,
             synthesis_after=synthesis_after,

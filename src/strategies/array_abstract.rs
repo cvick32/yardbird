@@ -128,6 +128,11 @@ where
         self
     }
 
+    pub fn with_guarded_read_updates(mut self, enabled: bool) -> Self {
+        self.encoding_options.guarded_read_updates = enabled;
+        self
+    }
+
     pub fn with_candidate_winners_per_group(mut self, winners_per_group: usize) -> Self {
         assert!(winners_per_group > 0, "candidate groups need a winner");
         self.candidate_winners_per_group = winners_per_group;
@@ -160,6 +165,7 @@ pub struct ArrayRefinementState {
     pub depth: u16,
     pub egraph: egg::EGraph<ArrayLanguage, ()>,
     pub candidates: Vec<InstantiationCandidate>,
+    pub(crate) guarded_read_updates: Vec<Term>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
 }
@@ -224,7 +230,7 @@ where
     }
 
     fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
-        !state.candidates.is_empty()
+        !state.candidates.is_empty() || !state.guarded_read_updates.is_empty()
     }
 
     fn setup(
@@ -247,6 +253,7 @@ where
             depth,
             egraph,
             candidates: vec![],
+            guarded_read_updates: vec![],
             array_types,
             egraph_builder,
         })
@@ -277,6 +284,19 @@ where
         }
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
+        }
+        state.guarded_read_updates = self.encoding_plan.violated_guarded_read_updates(
+            smt,
+            state.depth,
+            self.candidate_winners_per_group,
+        );
+        if !state.guarded_read_updates.is_empty() {
+            info!(
+                "Selected {} model-violated guarded read update(s) at depth {}",
+                state.guarded_read_updates.len(),
+                state.depth
+            );
+            return Ok(ProofAction::Continue);
         }
         let profiling = self.profile.then(|| {
             Rc::new(RefCell::new(ArrayProfilingCollector::new(
@@ -512,6 +532,8 @@ where
         state: ArrayRefinementState,
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
+        self.encoding_plan
+            .install_guarded_read_updates(state.guarded_read_updates, smt);
         let trace_instantiations = trace_instantiations_enabled();
         for candidate in state.candidates {
             let expression = candidate.expression;

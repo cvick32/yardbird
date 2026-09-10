@@ -503,6 +503,9 @@ array axioms to Z3 unchanged so it remains an MBQI comparison point.
    for expensive read/arithmetic values. With the flag absent, no guarded schemas
    are planned or evaluated. Garden accepts `guarded_read_updates: true` on an
    individual configuration or parameter matrix and records it in run names/results.
+   Unsupported input modes, theories, and strategies are rejected. Garden rejects
+   selected matrices that enable this option for concrete or quantified strategies
+   before launching benchmarks; put those baselines in separate configurations.
 
    Example: `target/release/yardbird -f examples/distributed_protocols/german/german.vmt
    -d 20 --candidate-winners-per-group 16 --property-check-mode assumptions

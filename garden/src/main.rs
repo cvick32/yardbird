@@ -158,6 +158,7 @@ struct StrategyResult {
     instantiation_strategy: yardbird::InstantiationStrategyType,
     preprocess_exact_read_after_write: bool,
     abstract_recurrent_products: bool,
+    guarded_read_updates: bool,
     auxiliary_synthesis: AuxSynthesisConfig,
     result: BenchmarkResult,
     run_time: u128,
@@ -263,6 +264,9 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
 
     if options.preprocess_exact_read_after_write {
         command.arg("--preprocess-exact-read-after-write");
+    }
+    if options.guarded_read_updates {
+        command.arg("--guarded-read-updates");
     }
     if options.abstract_recurrent_products {
         command.arg("--abstract-recurrent-products");
@@ -404,6 +408,7 @@ fn run_single(
     timeout: u64,
 ) -> anyhow::Result<StrategyResult> {
     options.validate_ranker_options()?;
+    options.validate_guarded_read_updates()?;
     let auxiliary_synthesis = options.build_aux_synthesis_config();
 
     let mut status_code = None;
@@ -460,6 +465,7 @@ fn run_single(
             instantiation_strategy: options.instantiation_strategy,
             preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
             abstract_recurrent_products: options.abstract_recurrent_products,
+            guarded_read_updates: options.guarded_read_updates,
             auxiliary_synthesis,
             run_time: run_time.as_millis(),
             depth: options.depth,
@@ -663,6 +669,7 @@ fn run_config_benchmark(
             egraph_builder: run.egraph_builder,
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
             abstract_recurrent_products: run.abstract_recurrent_products,
+            guarded_read_updates: run.guarded_read_updates,
             candidate_winners_per_group: run.candidate_winners_per_group,
             instantiation_ranker: run.instantiation_ranker,
             property_check_mode: run.property_check_mode,

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig, solver::PropertyCheckMode, CostFunction,
     EGraphBuilderStrategy, InstantiationRankerStrategy, InstantiationStrategyType, SolverBackend,
-    Strategy,
+    Strategy, YardbirdOptions,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +71,8 @@ pub struct ParameterMatrix {
     pub preprocess_exact_read_after_write: bool,
     #[serde(default)]
     pub abstract_recurrent_products: bool,
+    #[serde(default)]
+    pub guarded_read_updates: bool,
     #[serde(default)]
     pub auxiliary_synthesis: AuxSynthesisConfig,
     #[serde(default)]
@@ -148,6 +150,8 @@ pub struct IndividualConfig {
     #[serde(default)]
     pub abstract_recurrent_products: bool,
     #[serde(default)]
+    pub guarded_read_updates: bool,
+    #[serde(default)]
     pub auxiliary_synthesis: AuxSynthesisConfig,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
@@ -217,6 +221,7 @@ pub struct BenchmarkRun {
     pub instantiation_strategy: InstantiationStrategyType,
     pub preprocess_exact_read_after_write: bool,
     pub abstract_recurrent_products: bool,
+    pub guarded_read_updates: bool,
     pub auxiliary_synthesis: AuxSynthesisConfig,
     pub timeout_seconds: u64,
 }
@@ -230,6 +235,7 @@ struct RefinementSelection {
     instantiation_strategy: InstantiationStrategyType,
     preprocess_exact_read_after_write: bool,
     abstract_recurrent_products: bool,
+    guarded_read_updates: bool,
 }
 
 fn matrix_run_name(
@@ -275,8 +281,13 @@ fn matrix_run_name(
     } else {
         name
     };
-    if selection.abstract_recurrent_products {
+    let name = if selection.abstract_recurrent_products {
         format!("{name}_recurrentProducts")
+    } else {
+        name
+    };
+    if selection.guarded_read_updates {
+        format!("{name}_guardedReadUpdates")
     } else {
         name
     }
@@ -315,6 +326,7 @@ impl BenchmarkConfig {
                     instantiation_strategy: config.instantiation_strategy,
                     preprocess_exact_read_after_write: config.preprocess_exact_read_after_write,
                     abstract_recurrent_products: config.abstract_recurrent_products,
+                    guarded_read_updates: config.guarded_read_updates,
                     auxiliary_synthesis: config.auxiliary_synthesis.clone(),
                     timeout_seconds: config
                         .timeout_seconds
@@ -325,6 +337,16 @@ impl BenchmarkConfig {
             for (matrix_name, matrix) in &self.parameter_matrices {
                 runs.extend(self.generate_matrix_runs(matrix_name, matrix));
             }
+        }
+
+        for run in &runs {
+            YardbirdOptions {
+                strategy: run.strategy,
+                guarded_read_updates: run.guarded_read_updates,
+                ..YardbirdOptions::default()
+            }
+            .validate_guarded_read_updates()
+            .with_context(|| format!("Invalid benchmark configuration: {}", run.name))?;
         }
 
         Ok(runs)
@@ -359,6 +381,7 @@ impl BenchmarkConfig {
                                                     .preprocess_exact_read_after_write,
                                                 abstract_recurrent_products: matrix
                                                     .abstract_recurrent_products,
+                                                guarded_read_updates: matrix.guarded_read_updates,
                                             };
                                             runs.push(BenchmarkRun {
                                                 name: matrix_run_name(
@@ -382,6 +405,7 @@ impl BenchmarkConfig {
                                                     .preprocess_exact_read_after_write,
                                                 abstract_recurrent_products: matrix
                                                     .abstract_recurrent_products,
+                                                guarded_read_updates: matrix.guarded_read_updates,
                                                 auxiliary_synthesis: matrix
                                                     .auxiliary_synthesis
                                                     .clone(),
@@ -416,6 +440,84 @@ mod tests {
         InstantiationStrategyType, SolverBackend, Strategy,
     };
 
+    #[test]
+    fn guarded_updates_reject_unsupported_individual_and_matrix_runs() {
+        for strategy in ["concrete", "abstract-with-quantifiers"] {
+            for enabled in [false, true] {
+                let config: BenchmarkConfig = serde_yaml::from_str(&format!(
+                    r#"
+individual_configs:
+  - name: guarded-individual
+    depth: 1
+    strategy: {strategy}
+    cost_function: bmc-cost
+    guarded_read_updates: {enabled}
+"#
+                ))
+                .unwrap();
+                let result = config.generate_benchmark_runs(None);
+                assert_eq!(result.is_err(), enabled);
+                if let Err(error) = result {
+                    let error = format!("{error:#}");
+                    assert!(error.contains("guarded-individual"));
+                    assert!(error.contains("--guarded-read-updates requires"));
+                }
+
+                let config: BenchmarkConfig = serde_yaml::from_str(&format!(
+                    r#"
+parameter_matrices:
+  guarded-matrix:
+    depths: [1]
+    strategies: [abstract, {strategy}]
+    cost_functions: [bmc-cost]
+    guarded_read_updates: {enabled}
+"#
+                ))
+                .unwrap();
+                for selection in [None, Some("guarded-matrix")] {
+                    let result = config.generate_benchmark_runs(selection);
+                    assert_eq!(result.is_err(), enabled);
+                    if let Err(error) = result {
+                        let error = format!("{error:#}");
+                        assert!(error.contains("guarded-matrix"));
+                        assert!(error.contains("--guarded-read-updates requires"));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn guarded_updates_validate_only_the_selected_matrix() {
+        let config: BenchmarkConfig = serde_yaml::from_str(
+            r#"
+individual_configs:
+  - name: unsupported-individual
+    depth: 1
+    strategy: concrete
+    cost_function: bmc-cost
+    guarded_read_updates: true
+parameter_matrices:
+  supported:
+    depths: [1]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    guarded_read_updates: true
+  unsupported:
+    depths: [1]
+    strategies: [abstract-with-quantifiers]
+    cost_functions: [bmc-cost]
+    guarded_read_updates: true
+"#,
+        )
+        .unwrap();
+        let runs = config.generate_benchmark_runs(Some("supported")).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].guarded_read_updates);
+        assert!(config.generate_benchmark_runs(Some("unsupported")).is_err());
+        assert!(config.generate_benchmark_runs(None).is_err());
+    }
+
     fn selection(
         egraph_builder: EGraphBuilderStrategy,
         instantiation_ranker: InstantiationRankerStrategy,
@@ -429,6 +531,7 @@ mod tests {
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
             preprocess_exact_read_after_write,
             abstract_recurrent_products: false,
+            guarded_read_updates: false,
         }
     }
 
@@ -519,6 +622,33 @@ global:
     }
 
     #[test]
+    fn guarded_read_updates_are_explicit_in_run_names() {
+        let mut encoding = selection(
+            EGraphBuilderStrategy::SourceThenFull,
+            InstantiationRankerStrategy::PreferSource,
+            false,
+        );
+        let baseline = matrix_run_name(
+            "guarded",
+            20,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            encoding,
+        );
+        encoding.guarded_read_updates = true;
+        let enabled = matrix_run_name(
+            "guarded",
+            20,
+            SolverBackend::Z3,
+            Strategy::Abstract,
+            CostFunction::BmcCost,
+            encoding,
+        );
+        assert_eq!(enabled, format!("{baseline}_guardedReadUpdates"));
+    }
+
+    #[test]
     fn recurrent_product_encoding_is_explicit_in_run_names() {
         let mut encoding = selection(
             EGraphBuilderStrategy::SourceThenFull,
@@ -552,6 +682,7 @@ global:
   exclude_patterns: []
 parameter_matrices:
   auxiliary:
+    guarded_read_updates: true
     depths: [50]
     strategies: [abstract]
     cost_functions: [bmc-cost]
@@ -572,6 +703,7 @@ parameter_matrices:
             .expect("auxiliary synthesis matrix should generate a run");
 
         assert_eq!(runs.len(), 1);
+        assert!(runs[0].guarded_read_updates);
         let synthesis = &runs[0].auxiliary_synthesis;
         assert_eq!(synthesis.trigger, SynthesisTrigger::ManualAfterN);
         assert_eq!(synthesis.guard_policy, GuardPolicy::Interpolant);
