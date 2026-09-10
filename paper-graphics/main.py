@@ -1,5 +1,6 @@
 from pathlib import Path
 import argparse
+import hashlib
 from datetime import datetime
 
 from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
@@ -52,8 +53,7 @@ def choose_baseline_strategy(strategy_keys):
     concrete_scoped = sorted(
         strategy_key
         for strategy_key in strategy_keys
-        if strategy_key.startswith("concrete__")
-        and "__property-scoped" in strategy_key
+        if strategy_key.startswith("concrete__") and "__property-scoped" in strategy_key
     )
     if concrete_scoped:
         return concrete_scoped[0]
@@ -95,6 +95,18 @@ def display_name_for_strategy(grouped, strategy_key):
         if strategy_key in strategies:
             return strategies[strategy_key].get_display_name()
     return strategy_key
+
+
+def strategy_artifact_key(strategy_key: str) -> str:
+    """Bound filenames without changing configuration identities or plot labels."""
+    encoded = strategy_key.encode("utf-8")
+    # Leave room for figure prefixes, .cropped.pdf, and tempfile random suffixes
+    # within the common 255-byte filename-component limit.
+    if len(encoded) <= 128:
+        return strategy_key
+    digest = hashlib.sha256(encoded).hexdigest()[:16]
+    prefix = encoded[:111].decode("utf-8", errors="ignore")
+    return f"{prefix}-{digest}"
 
 
 def generate_figures(
@@ -192,6 +204,7 @@ def generate_figures(
 
     # Generate runtime and instantiation plots for each non-concrete strategy
     for strategy_key in non_baseline_strategies:
+        artifact_key = strategy_artifact_key(strategy_key)
         print(f"\n{'=' * 60}")
         print(f"Generating figures for {strategy_key} vs {baseline_strategy}")
         print(f"{'=' * 60}")
@@ -223,7 +236,7 @@ def generate_figures(
                 },
             )
 
-            output_file = output_dir / f"runtime_scatter_{strategy_key}.tex"
+            output_file = output_dir / f"runtime_scatter_{artifact_key}.tex"
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
 
@@ -233,7 +246,7 @@ def generate_figures(
                     success_points,
                     title=f"Runtime Results: {display_name} vs {baseline_display_name}",
                 )
-                table_file = output_dir / f"runtime_table_{strategy_key}.tex"
+                table_file = output_dir / f"runtime_table_{artifact_key}.tex"
                 table_file.write_text(table_code)
                 print(f"    Saved: {table_file}")
 
@@ -261,7 +274,7 @@ def generate_figures(
                 },
             )
 
-            output_file = output_dir / f"instantiation_scatter_{strategy_key}.tex"
+            output_file = output_dir / f"instantiation_scatter_{artifact_key}.tex"
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
 
@@ -296,7 +309,7 @@ def generate_figures(
                     EQUAL_COLOR: "Runtime tie",
                 },
             )
-            output_file = output_dir / f"solver_stat_{stat_slug}_{strategy_key}.tex"
+            output_file = output_dir / f"solver_stat_{stat_slug}_{artifact_key}.tex"
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
 
@@ -324,7 +337,7 @@ def generate_figures(
                     EQUAL_COLOR: "Runtime tie",
                 },
             )
-            output_file = output_dir / f"solver_boundary_{strategy_key}.tex"
+            output_file = output_dir / f"solver_boundary_{artifact_key}.tex"
             output_file.write_text(tikz_code)
             print(f"    Saved: {output_file}")
 
@@ -334,7 +347,7 @@ def generate_figures(
             grouped, strategy_key, baseline_strategy=baseline_strategy
         )
         if "No unique solves" not in unique_solves_table:
-            unique_file = output_dir / f"unique_solves_{strategy_key}.tex"
+            unique_file = output_dir / f"unique_solves_{artifact_key}.tex"
             unique_file.write_text(unique_solves_table)
             print(f"    Saved: {unique_file}")
         else:
