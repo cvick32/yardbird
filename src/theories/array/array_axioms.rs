@@ -47,6 +47,15 @@ define_language! {
         "to_real" = ToReal(Id),
         "ite" = Ite([Id; 3]),
         Symbol(Symbol),
+        // Keep existing node discriminants stable for deterministic array search.
+        // Keep uninterpreted applications transparent to matching/extraction.
+        // The first child is the (possibly qualified) function identifier.
+        "$apply" = Apply(Box<[Id]>),
+        // Internal typed domain membership used by input-binder searchers.
+        "$domain" = Domain([Id; 2]),
+        // Internal sort identity is disjoint from the SMT term namespace.
+        // These leaves are constructed directly, never parsed as source terms.
+        SortTag(Symbol),
     }
 }
 
@@ -821,12 +830,13 @@ pub fn translate_term_with_array_types(
                         Some(expr.add(ArrayLanguage::Ite([condition, one, zero])))
                     }
                     _ => {
-                        let opaque = Term::Application {
-                            qual_identifier,
-                            arguments,
+                        let head =
+                            expr.add(ArrayLanguage::Symbol(qual_identifier.to_string().into()));
+                        let mut children = vec![head];
+                        for argument in arguments {
+                            children.push(inner(argument, expr, array_types)?);
                         }
-                        .to_string();
-                        Some(expr.add(ArrayLanguage::Symbol(opaque.into())))
+                        Some(expr.add(ArrayLanguage::Apply(children.into_boxed_slice())))
                     }
                 }
             }
@@ -889,6 +899,18 @@ fn fast_symbol_term(symbol: &str) -> Option<Term> {
 pub fn expr_to_term(expr: ArrayExpr) -> Term {
     fn inner(expr: &ArrayExpr, id: egg::Id) -> Term {
         match &expr[id] {
+            ArrayLanguage::Apply(ids) => {
+                let Term::QualIdentifier(qual_identifier) = inner(expr, ids[0]) else {
+                    panic!("application head must be an SMT identifier");
+                };
+                Term::Application {
+                    qual_identifier,
+                    arguments: ids[1..].iter().map(|id| inner(expr, *id)).collect(),
+                }
+            }
+            ArrayLanguage::Domain(_) | ArrayLanguage::SortTag(_) => {
+                panic!("internal quantifier domain escaped grounding")
+            }
             ArrayLanguage::Num(num) => Term::Constant(Constant::Numeral((*num).into())),
             ArrayLanguage::ConstArrTyped([index_sort, value_sort, x]) => {
                 // Extract sort names from Symbol nodes
