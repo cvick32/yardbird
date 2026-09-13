@@ -847,6 +847,19 @@ pub(super) fn instantiate_pattern(
     pattern: &ArrayPattern,
     substitution: &GroundSubstitution,
 ) -> anyhow::Result<ArrayExpr> {
+    instantiate_with_bindings(pattern, |var| {
+        substitution
+            .get_binding(var)
+            .map(|binding| &binding.expression)
+            .ok_or_else(|| anyhow::anyhow!("Missing binding for {var}"))
+    })
+}
+
+/// Substitute a fixed rule formula without choosing or scoring representatives.
+pub(crate) fn instantiate_with_bindings<'a>(
+    pattern: &ArrayPattern,
+    mut binding: impl FnMut(egg::Var) -> anyhow::Result<&'a ArrayExpr>,
+) -> anyhow::Result<ArrayExpr> {
     let mut result_expression = ArrayExpr::default();
     let mut roots = Vec::<egg::Id>::with_capacity(pattern.as_ref().len());
 
@@ -856,12 +869,7 @@ pub(super) fn instantiate_pattern(
                 let node = node.clone().map_children(|child| roots[usize::from(child)]);
                 result_expression.add(node)
             }
-            egg::ENodeOrVar::Var(var) => {
-                let binding = substitution.get_binding(*var).ok_or_else(|| {
-                    anyhow::anyhow!("Missing binding for {} in {:#?}", var, substitution)
-                })?;
-                append_expr(&mut result_expression, &binding.expression)?
-            }
+            egg::ENodeOrVar::Var(var) => append_expr(&mut result_expression, binding(*var)?)?,
         };
         roots.push(root);
     }

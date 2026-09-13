@@ -130,6 +130,7 @@ where
     depth: u16,
     profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     fallback_term_map: RefCell<Option<FxHashMap<egg::Id, ArrayExpr>>>,
+    fallback_roots: Option<std::collections::HashSet<egg::Id>>,
     matching_write_cache: RefCell<FxHashMap<MatchingWriteCacheKey, Option<(ArrayExpr, ArrayExpr)>>>,
 }
 
@@ -158,8 +159,20 @@ where
 {
     pub fn new<N>(
         egraph: &egg::EGraph<ArrayLanguage, N>,
+        cost_function: CF,
+        options: ArrayTermExtractorOptions,
+    ) -> Self
+    where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        Self::for_eclasses(egraph, cost_function, options, None)
+    }
+
+    pub(crate) fn for_eclasses<N>(
+        egraph: &egg::EGraph<ArrayLanguage, N>,
         mut cost_function: CF,
         options: ArrayTermExtractorOptions,
+        needed_classes: Option<&std::collections::HashSet<egg::Id>>,
     ) -> Self
     where
         N: egg::Analysis<ArrayLanguage>,
@@ -193,6 +206,9 @@ where
             let Some(expr) = egraph.lookup_expr(&term) else {
                 continue;
             };
+            if needed_classes.is_some_and(|classes| !classes.contains(&egraph.find(expr))) {
+                continue;
+            }
             let cost = self_cost(
                 &mut cost_function,
                 &profiling,
@@ -212,6 +228,9 @@ where
             let Some(expr) = egraph.lookup_expr(&term) else {
                 continue;
             };
+            if needed_classes.is_some_and(|classes| !classes.contains(&egraph.find(expr))) {
+                continue;
+            }
             let cost = self_cost(
                 &mut cost_function,
                 &profiling,
@@ -262,7 +281,41 @@ where
             depth,
             profiling,
             fallback_term_map: RefCell::new(None),
+            fallback_roots: needed_classes.cloned(),
             matching_write_cache: RefCell::new(FxHashMap::default()),
+        }
+    }
+
+    /// Add explicitly admitted term representations to the same ranked pool.
+    /// Provenance continues to come from the source catalog.
+    pub(crate) fn admit_terms_for_eclasses<N>(
+        &mut self,
+        egraph: &egg::EGraph<ArrayLanguage, N>,
+        terms: &[ArrayExpr],
+        needed_classes: Option<&std::collections::HashSet<egg::Id>>,
+    ) where
+        N: egg::Analysis<ArrayLanguage>,
+    {
+        if !self.candidate_scope.allows_derived() {
+            return;
+        }
+        for term in terms {
+            if contains_z3_model_value(term) {
+                continue;
+            }
+            let Some(id) = egraph.lookup_expr(term) else {
+                continue;
+            };
+            if needed_classes.is_some_and(|classes| !classes.contains(&egraph.find(id))) {
+                continue;
+            }
+            let cost = self.cost_of_at("precompute_admitted_term_map", term);
+            insert_candidate(&mut self.all_term_map, id, term.clone(), cost);
+        }
+        for terms in self.all_term_map.values_mut() {
+            terms.sort_by(|(left, left_cost), (right, right_cost)| {
+                compare_terms_with_cost((left, *left_cost), (right, *right_cost))
+            });
         }
     }
 
@@ -801,6 +854,21 @@ where
     where
         N: egg::Analysis<ArrayLanguage>,
     {
+        // Preserve the normal best-representative fallback without costing
+        // disconnected classes belonging only to rejected binder matches.
+        let reachable = self.fallback_roots.as_ref().map(|roots| {
+            let mut reachable = std::collections::HashSet::new();
+            let mut pending = roots.iter().copied().collect::<Vec<_>>();
+            while let Some(id) = pending.pop() {
+                let id = egraph.find(id);
+                if reachable.insert(id) {
+                    for node in &egraph[id].nodes {
+                        pending.extend(node.children());
+                    }
+                }
+            }
+            reachable
+        });
         let mut best_by_eclass: FxHashMap<egg::Id, (u32, String, ArrayExpr)> = FxHashMap::default();
 
         loop {
@@ -808,6 +876,12 @@ where
 
             for class in egraph.classes() {
                 let class_id = egraph.find(class.id);
+                if reachable
+                    .as_ref()
+                    .is_some_and(|reachable| !reachable.contains(&class_id))
+                {
+                    continue;
+                }
                 let existing = best_by_eclass.get(&class_id).cloned();
                 let mut best = existing.clone();
 
@@ -996,7 +1070,7 @@ mod tests {
             egraph,
             eclass,
             "test-rule",
-            QuantifiedRuleCategory::Other,
+            QuantifiedRuleCategory::InputBinder,
             variable,
         )
     }
@@ -1377,7 +1451,7 @@ mod tests {
             &egraph,
             source_id,
             "test",
-            QuantifiedRuleCategory::Other,
+            QuantifiedRuleCategory::InputBinder,
             variable,
         );
         assert_eq!(chosen.to_string(), "z");
@@ -1407,7 +1481,7 @@ mod tests {
             &egraph,
             value_id,
             "test",
-            QuantifiedRuleCategory::Other,
+            QuantifiedRuleCategory::InputBinder,
             variable,
         );
         assert_eq!(origin, CandidateOrigin::Derived);

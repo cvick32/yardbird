@@ -421,6 +421,27 @@ budget, including preservation (write-does-not-overwrite) lemmas. Set it to
 1 for one-at-a-time selection or increase it to allow multiple preservation
 lemmas in the same batch.
 
+The same setting limits input-binder winners per helper rule, including witness
+and expansion batches. Previously those instances bypassed the ranker and this
+budget. A budget of 1 can therefore require more protocol refinements than it
+did before. Binder matching uses pages of 4,096 substitutions and continues past
+known or satisfied pages when no winner is available. Each rule's search pass is
+limited to a 65,536-substitution window; repeated prefix work is also bounded
+and counted per pass. Later array stages can reconsider matches with updated
+selection history while reusing model facts. Incomplete searches are reported
+in the candidate batch and profiling counters, and exhaustion never establishes
+satisfiability.
+Built-in array rules retain their previous backoff search range.
+
+Profiling separates raw egg matching (`rule_matching_total`) from grounding and
+complete-instance scoring (`rule_grounding_total`). These replace the ambiguous
+`rule_search_total` timer. `rule_search_continuations_available` counts rules
+with another searchable page, while `rule_search_budget_exhausted` counts rules
+whose search budget was exhausted with matches still remaining. Ordinary paging
+does not count as budget exhaustion; the old `rule_search_truncated` counter is
+retired. Search reports expose these states as `continuable_rules` and
+`budget_exhausted_rules`.
+
 If the first source-stage pass leaves that budget underfilled, Yardbird explores
 additional intact source-write groundings round-robin across the existing
 matches. Known, duplicate, and model-satisfied candidates do not consume the
