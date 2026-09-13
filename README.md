@@ -394,6 +394,21 @@ that orders complete formulas only by the active term cost. Garden exposes the
 same `instantiation_rankers` matrix dimension; see
 `deep-abstract-instantiation-rankers` in `garden/benchmark_config.yaml`.
 
+Input quantifiers (including protocol guards and array lambdas) use the same
+egg rule engine, term extractor, whole-instantiation ranker, and decision history
+as built-in array axioms. Closure-converted binders match helper applications
+and typed term domains in egg; equal model values from different SMT sorts do
+not share a binding pool. Witness obligations are scheduled first, followed by
+ordinary conflicts and, if needed, instances that introduce further terms.
+These phases all use the configured cost function and ranker.
+
+Binder conflict searches first evaluate the fixed rule obligation using cheap
+original representatives of typed model-equivalent classes. Only violated
+matches initialize the cost function, extract ranked representatives, and score
+complete instances. The typed graph and obligation results are reused across
+phases for one solver model and discarded before the next model. Expansion can
+still admit satisfied instances to expose nested binders, including witnesses.
+
 Use `--cost-function protocol-bmc` to try BMC scoring tuned for Boolean
 protocol state. It gives `true` and `false` cost 0 (instead of BMC's 100),
 and gives every other symbol a minimum cost of 1 so literals beat even

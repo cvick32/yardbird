@@ -169,6 +169,7 @@ pub struct ArrayRefinementState {
     pub(crate) guarded_read_updates: Vec<Term>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
+    pub(crate) binder_search: Option<crate::quantifier_abstraction::PreparedQuantifierSearch>,
 }
 
 impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
@@ -284,6 +285,7 @@ where
             guarded_read_updates: vec![],
             array_types,
             egraph_builder,
+            binder_search: None,
         })
     }
 
@@ -313,10 +315,24 @@ where
         if !smt.has_model() {
             return Err(anyhow::anyhow!("No solver model available for SAT instance").into());
         }
-        state.candidates = self
-            .quantifiers
-            .candidates(smt, crate::quantifier_abstraction::SearchPhase::Witnesses)?;
+        let profiling = self.profile.then(|| {
+            Rc::new(RefCell::new(ArrayProfilingCollector::new(
+                "array_refinement",
+                Some(state.depth),
+                Some(refinement_step),
+                state.array_types.clone(),
+            )))
+        });
+        let witnesses = self.binder_candidates(
+            smt,
+            state,
+            refinement_step,
+            crate::quantifier_abstraction::SearchPhase::Witnesses,
+            profiling.clone(),
+        )?;
+        self.absorb_candidates(state, witnesses);
         if !state.candidates.is_empty() {
+            self.finish_profiling_record(profiling);
             return Ok(ProofAction::Continue);
         }
         state.guarded_read_updates = self.encoding_plan.violated_guarded_read_updates(
@@ -330,16 +346,9 @@ where
                 state.guarded_read_updates.len(),
                 state.depth
             );
+            self.finish_profiling_record(profiling);
             return Ok(ProofAction::Continue);
         }
-        let profiling = self.profile.then(|| {
-            Rc::new(RefCell::new(ArrayProfilingCollector::new(
-                "array_refinement",
-                Some(state.depth),
-                Some(refinement_step),
-                state.array_types.clone(),
-            )))
-        });
         if let Some(profiling) = &profiling {
             profiling.borrow_mut().set_egraph_before_update(
                 state.egraph.number_of_classes(),
@@ -422,6 +431,7 @@ where
                 cost_fn.clone(),
                 &state.array_types,
                 ArrayInstantiationOptions {
+                    additional_terms: vec![],
                     candidate_catalog: candidate_catalog.clone(),
                     candidate_scope: expansion.candidate_scope,
                     refinement_step,
@@ -520,14 +530,32 @@ where
                 return Ok(ProofAction::Continue);
             }
 
-            state.candidates = self
-                .quantifiers
-                .candidates(smt, crate::quantifier_abstraction::SearchPhase::Conflicts)?;
-            if state.candidates.is_empty() {
-                state.candidates = self
-                    .quantifiers
-                    .candidates(smt, crate::quantifier_abstraction::SearchPhase::Expand)?;
+            let mut binders = self.binder_candidates(
+                smt,
+                state,
+                refinement_step,
+                crate::quantifier_abstraction::SearchPhase::TriggeredConflicts,
+                profiling.clone(),
+            )?;
+            if binders.selected().next().is_none() {
+                binders = self.binder_candidates(
+                    smt,
+                    state,
+                    refinement_step,
+                    crate::quantifier_abstraction::SearchPhase::Conflicts,
+                    profiling.clone(),
+                )?;
             }
+            if binders.selected().next().is_none() {
+                binders = self.binder_candidates(
+                    smt,
+                    state,
+                    refinement_step,
+                    crate::quantifier_abstraction::SearchPhase::Expand,
+                    profiling.clone(),
+                )?;
+            }
+            self.absorb_candidates(state, binders);
 
             self.finish_profiling_record(profiling);
             return Ok(ProofAction::Continue);
@@ -660,6 +688,94 @@ where
         record.helper_assertions_attempted += result.helper_assertions_attempted;
         record.helper_assertions_added += result.helper_assertions_added;
         record.helper_assertions_deduplicated += result.helper_assertions_deduplicated;
+    }
+
+    fn binder_candidates(
+        &self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        state: &mut ArrayRefinementState,
+        refinement_step: u32,
+        phase: crate::quantifier_abstraction::SearchPhase,
+        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
+    ) -> anyhow::Result<InstantiationBatch> {
+        if self.quantifiers.rules.is_empty() {
+            return Ok(InstantiationBatch::default());
+        }
+        let phase_start = Instant::now();
+        if state.binder_search.is_none() {
+            let start = Instant::now();
+            state.binder_search = Some(self.quantifiers.prepare(smt)?);
+            if let Some(profiling) = &profiling {
+                let mut profiling = profiling.borrow_mut();
+                profiling.record_timing("input_binder_prepare", start.elapsed());
+                profiling.add_counter("input_binder_model_preparations", 1);
+            }
+        }
+        let prepared = state.binder_search.as_mut().unwrap();
+        prepared.start_phase(phase);
+        // Derived terms remain available for witnesses and nested binders.
+        // Model-violation eligibility is independent of this vocabulary scope.
+        let scope = crate::theories::array::candidate_scope::CandidateScope::AllCandidates;
+        let known = smt
+            .get_instantiations()
+            .iter()
+            .map(canonical_instantiation_key)
+            .collect();
+        loop {
+            let mut batch = prepared.candidates(
+                |term| smt.eval_to_string(term),
+                phase,
+                |context| F::from_context(context, state.depth as u32, &self.cost_config),
+                ArrayInstantiationOptions {
+                    additional_terms: vec![],
+                    candidate_catalog: prepared.catalog.clone(),
+                    candidate_scope: scope,
+                    refinement_step,
+                    selection_counts: self.term_selection_counts.clone(),
+                    depth: state.depth,
+                    instrumentation: ArrayInstantiationInstrumentation {
+                        artifact_capture: self.artifact_capture,
+                        profiling: profiling.clone(),
+                    },
+                },
+            )?;
+            let summary = batch.prepare_with_ranker(
+                scope,
+                &known,
+                self.candidate_winners_per_group,
+                self.instantiation_ranker.as_ref(),
+                |term| smt.eval_to_string(term),
+                |candidate| self.installable_expression(smt, &candidate.expression),
+            )?;
+            if let Some(profiling) = &profiling {
+                let mut profiling = profiling.borrow_mut();
+                for (rule, counts) in summary.by_rule {
+                    profiling.record_rule_candidates(&rule, counts.generated, counts.selected);
+                }
+                profiling.add_counter(
+                    "duplicate_or_uninstallable_instantiations_filtered",
+                    summary.rejected_known as u64,
+                );
+                profiling.add_counter(
+                    "instantiation_ranker_candidates_filtered",
+                    summary.rejected_ranker as u64,
+                );
+                profiling.add_counter(
+                    "input_binder_instantiations_selected",
+                    summary.selected_binders as u64,
+                );
+            }
+            if batch.selected().next().is_some() || !prepared.can_continue(phase) {
+                if let Some(profiling) = &profiling {
+                    profiling
+                        .borrow_mut()
+                        .record_timing(phase.timing_key(), phase_start.elapsed());
+                }
+                return Ok(batch);
+            }
+            // Known/satisfied prefixes must not hide a later usable candidate.
+            // Continuations share this model's graph and explicit work bound.
+        }
     }
 
     fn installable_expression(
