@@ -131,7 +131,7 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub guarded_read_updates: bool,
 
-    /// Number of ranked array candidates selected from each refinement group.
+    /// Number of ranked quantified-rule candidates selected from each refinement group.
     #[arg(long, default_value_t = 1)]
     pub candidate_winners_per_group: usize,
 

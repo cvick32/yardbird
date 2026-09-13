@@ -1,4 +1,4 @@
-//! Ranking policies for complete array-theory instantiations.
+//! Ranking policies for complete quantified-rule instantiations.
 //!
 //! Term cost functions decide which representatives are attractive while a
 //! rule is grounded. This module is the separate seam for ordering the whole

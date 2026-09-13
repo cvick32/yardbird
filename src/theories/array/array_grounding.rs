@@ -1258,7 +1258,7 @@ mod test {
             GroundContext {
                 record_decisions: false,
                 rule_name: "test-rule",
-                rule_category: crate::quantified_rule::QuantifiedRuleCategory::Other,
+                rule_category: crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
             },
         )
         .unwrap();
@@ -1321,7 +1321,7 @@ mod test {
             GroundContext::new(
                 false,
                 "read-after-write",
-                crate::quantified_rule::QuantifiedRuleCategory::Other,
+                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
             ),
         )
         .unwrap();
@@ -1402,7 +1402,7 @@ mod test {
             GroundContext::new(
                 false,
                 "write-grounding",
-                crate::quantified_rule::QuantifiedRuleCategory::Other,
+                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
             ),
         )
         .unwrap();
@@ -1483,7 +1483,7 @@ mod test {
             GroundContext::new(
                 false,
                 "write-grounding",
-                crate::quantified_rule::QuantifiedRuleCategory::Other,
+                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
             ),
         )
         .unwrap();

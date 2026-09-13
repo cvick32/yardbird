@@ -69,6 +69,7 @@ pub struct ArrayInstantiationInstrumentation {
 
 pub struct ArrayInstantiationOptions {
     pub candidate_catalog: ArrayCandidateCatalog,
+    pub additional_terms: Vec<ArrayExpr>,
     pub candidate_scope: CandidateScope,
     pub refinement_step: u32,
     pub selection_counts: FxHashMap<String, u32>,
@@ -287,8 +288,52 @@ where
     N: Analysis<ArrayLanguage> + 'static,
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
+    generate_quantified_candidates(
+        egraph,
+        cost_fn,
+        &array_rules_with_types(array_types),
+        options,
+        demand,
+    )
+}
+
+/// Shared matching, representative extraction and complete-instance scoring.
+pub(crate) fn generate_quantified_candidates<CF, N>(
+    egraph: &EGraph<ArrayLanguage, N>,
+    cost_fn: CF,
+    rules: &[CompiledQuantifiedRule<N>],
+    options: ArrayInstantiationOptions,
+    demand: Option<CandidateDemand<'_>>,
+) -> anyhow::Result<InstantiationBatch>
+where
+    N: Analysis<ArrayLanguage> + 'static,
+    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+{
+    let matched = super::quantified_search::search_array_rules(
+        egraph,
+        rules,
+        &options.instrumentation.profiling,
+    );
+    instantiate_quantified_matches(egraph, || cost_fn, rules, options, matched, demand, None)
+}
+
+/// Ground only matches that passed the caller's semantic eligibility check.
+pub(crate) fn instantiate_quantified_matches<CF, N>(
+    egraph: &EGraph<ArrayLanguage, N>,
+    make_cost: impl FnOnce() -> CF,
+    rules: &[CompiledQuantifiedRule<N>],
+    options: ArrayInstantiationOptions,
+    matched: super::quantified_search::MatchedRules,
+    demand: Option<CandidateDemand<'_>>,
+    needed_classes: Option<&std::collections::HashSet<Id>>,
+) -> anyhow::Result<InstantiationBatch>
+where
+    N: Analysis<ArrayLanguage> + 'static,
+    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+{
     let ArrayInstantiationOptions {
         candidate_catalog,
+        additional_terms,
         candidate_scope,
         refinement_step,
         selection_counts,
@@ -304,9 +349,31 @@ where
             .borrow_mut()
             .set_egraph_before_rule_search(egraph.number_of_classes(), egraph_node_count(egraph));
     }
+    if let Some(profiling) = &profiling {
+        let mut profiling = profiling.borrow_mut();
+        profiling.add_counter(
+            "rule_search_substitutions_examined",
+            matched.report.examined_substitutions as u64,
+        );
+        profiling.add_counter(
+            "rule_search_continuations_available",
+            matched.report.continuable_rules.len() as u64,
+        );
+        profiling.add_counter(
+            "rule_search_budget_exhausted",
+            matched.report.budget_exhausted_rules.len() as u64,
+        );
+    }
+    if matched.matches.is_empty() {
+        return Ok(InstantiationBatch {
+            candidates: vec![],
+            search: matched.report,
+        });
+    }
+    let cost_fn = make_cost();
     let instantiation_cost_fn = cost_fn.clone();
     let extractor_start = Instant::now();
-    let extractor = ArrayTermExtractor::new(
+    let mut extractor = ArrayTermExtractor::for_eclasses(
         egraph,
         cost_fn,
         ArrayTermExtractorOptions {
@@ -317,13 +384,14 @@ where
             depth,
             profiling: profiling.clone(),
         },
+        needed_classes,
     );
+    extractor.admit_terms_for_eclasses(egraph, &additional_terms, needed_classes);
     if let Some(profiling) = &profiling {
         profiling
             .borrow_mut()
             .record_timing("extractor_init", extractor_start.elapsed());
     }
-    let rules = array_rules_with_types(array_types);
     let mut instantiator = ArrayRuleInstantiator::new(
         instantiation_cost_fn,
         extractor,
@@ -334,12 +402,13 @@ where
             profiling: profiling.clone(),
         },
     );
-    let search_start = Instant::now();
-    let search_rounds = instantiator.search_rules(egraph, &rules, demand)?;
+    let grounding_start = Instant::now();
+    let search_rounds = matched.report.rounds;
+    instantiator.instantiate_matches(egraph, rules, matched.matches, demand)?;
     if let Some(profiling) = &profiling {
         profiling
             .borrow_mut()
-            .record_timing("rule_search_total", search_start.elapsed());
+            .record_timing("rule_grounding_total", grounding_start.elapsed());
         profiling.borrow_mut().set_egraph_after_rule_search(
             egraph.number_of_classes(),
             egraph_node_count(egraph),
@@ -358,21 +427,32 @@ where
         log::debug!("============================\n");
     }
 
-    Ok(InstantiationBatch { candidates })
+    Ok(InstantiationBatch {
+        candidates,
+        search: matched.report,
+    })
 }
 
-pub(crate) struct ArrayQuantifiedRule<N>
+#[derive(Clone, Copy)]
+enum RuleGrouping {
+    MatchRoot,
+    Rule,
+}
+
+pub(crate) struct CompiledQuantifiedRule<N>
 where
     N: Analysis<ArrayLanguage>,
 {
     metadata: QuantifiedRule,
     searcher: Box<dyn Searcher<ArrayLanguage, N> + Send + Sync>,
-    trigger: ArrayPattern,
-    consequence: ArrayPattern,
+    trigger: Option<ArrayPattern>,
+    consequence: Option<ArrayPattern>,
     formula: ArrayPattern,
+    formula_variables: Vec<Var>,
+    grouping: RuleGrouping,
 }
 
-impl<N> ArrayQuantifiedRule<N>
+impl<N> CompiledQuantifiedRule<N>
 where
     N: Analysis<ArrayLanguage>,
 {
@@ -402,10 +482,42 @@ where
         Ok(Self {
             metadata,
             searcher: Box::new(searcher),
-            trigger,
-            consequence: consequence.ast,
+            trigger: Some(trigger),
+            consequence: Some(consequence.ast),
+            formula_variables: formula.vars(),
             formula: formula.ast,
+            grouping: RuleGrouping::MatchRoot,
         })
+    }
+
+    /// Input binders use a typed multi-pattern join. Their arbitrary Boolean
+    /// formulas are checked against the SMT model during batch preparation.
+    pub(crate) fn input_binder(
+        metadata: QuantifiedRule,
+        searcher: MultiPattern<ArrayLanguage>,
+        formula: Pattern<ArrayLanguage>,
+    ) -> Self {
+        let variables =
+            <MultiPattern<ArrayLanguage> as Searcher<ArrayLanguage, N>>::vars(&searcher);
+        assert!(formula.vars().iter().all(|var| variables.contains(var)));
+        Self {
+            metadata,
+            searcher: Box::new(searcher),
+            // All formula variables participate in ordinary term grounding.
+            trigger: None,
+            consequence: None,
+            formula_variables: formula.vars(),
+            formula: formula.ast,
+            grouping: RuleGrouping::Rule,
+        }
+    }
+
+    pub(crate) fn group(&self, root: Id) -> super::instantiation_candidate::CandidateGroup {
+        use super::instantiation_candidate::CandidateGroup;
+        match self.grouping {
+            RuleGrouping::MatchRoot => CandidateGroup::MatchRoot(root),
+            RuleGrouping::Rule => CandidateGroup::Rule,
+        }
     }
 
     pub(crate) fn metadata(&self) -> &QuantifiedRule {
@@ -421,11 +533,15 @@ where
     }
 
     pub(crate) fn trigger(&self) -> &ArrayPattern {
-        &self.trigger
+        self.trigger.as_ref().unwrap_or(&self.formula)
     }
 
-    pub(crate) fn consequence(&self) -> &ArrayPattern {
-        &self.consequence
+    pub(crate) fn consequence(&self) -> Option<&ArrayPattern> {
+        self.consequence.as_ref()
+    }
+
+    pub(crate) fn formula_variables(&self) -> &[Var] {
+        &self.formula_variables
     }
 
     pub(crate) fn formula(&self) -> &ArrayPattern {
@@ -435,7 +551,7 @@ where
 
 /// Generate array rules for a specific type pair (index_sort, value_sort).
 /// This creates type-specific versions of the three core array axioms.
-fn array_rules_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<ArrayQuantifiedRule<N>>
+fn array_rules_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<CompiledQuantifiedRule<N>>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {
@@ -453,7 +569,7 @@ where
     let replacement_1 = format!("(Read {} {} ?a ?c)", index_sort, value_sort);
     let parsed_pattern: egg::Pattern<ArrayLanguage> = pattern_1.parse().unwrap();
     let formula_1 = format!("(=> (not (= ?c ?idx)) (= {pattern_1} {replacement_1}))");
-    let axiom_1 = ArrayQuantifiedRule::new(
+    let axiom_1 = CompiledQuantifiedRule::new(
         rule_1,
         ConditionalSearcher::new(parsed_pattern, not_equal("?idx", "?c")),
         replacement_1.parse().unwrap(),
@@ -472,7 +588,7 @@ where
     let pat2 = pattern_2.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
     let replacement_2 = "?val";
     let formula_2 = format!("(= {pattern_2} {replacement_2})");
-    let axiom_2 = ArrayQuantifiedRule::new(
+    let axiom_2 = CompiledQuantifiedRule::new(
         rule_2,
         pat2,
         replacement_2.parse().unwrap(),
@@ -488,7 +604,7 @@ where
     let pat3 = pattern_3.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
     let replacement_3 = "?a";
     let formula_3 = format!("(= {pattern_3} {replacement_3})");
-    let axiom_3 = ArrayQuantifiedRule::new(
+    let axiom_3 = CompiledQuantifiedRule::new(
         rule_3,
         pat3,
         replacement_3.parse().unwrap(),
@@ -500,7 +616,7 @@ where
 }
 
 /// Generate executable quantified rules for all discovered array types.
-fn array_rules_with_types<N>(array_types: &[(String, String)]) -> Vec<ArrayQuantifiedRule<N>>
+fn array_rules_with_types<N>(array_types: &[(String, String)]) -> Vec<CompiledQuantifiedRule<N>>
 where
     N: Analysis<ArrayLanguage> + 'static,
 {

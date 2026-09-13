@@ -8,22 +8,15 @@ use crate::{
     instantiation_provenance::InstantiationProvenance,
     profiling::ArrayProfilingCollector,
     theories::array::{
-        array_axioms::{expr_to_term, ArrayLanguage, ArrayQuantifiedRule},
+        array_axioms::{expr_to_term, ArrayLanguage, CompiledQuantifiedRule},
         array_grounding::{groundings, instantiate_pattern, GroundContext, GroundSubstitution},
         array_term_extractor::ArrayTermExtractor,
         instantiation_candidate::{
-            CandidateGroup, InstantiationCandidate, InstantiationGrounding,
-            SelectionHistoryDecision,
+            InstantiationCandidate, InstantiationGrounding, SelectionHistoryDecision,
         },
     },
     training::canonical_term_hash,
 };
-
-// Preserve the initial limit used by egg's `BackoffScheduler`, which this
-// direct-search scheduler replaced. A smaller limit can truncate a conditional
-// search before rejected substitutions are filtered out.
-const INITIAL_RULE_MATCH_LIMIT: usize = 1_000;
-const MAX_RULE_SEARCH_ROUNDS: usize = 15;
 
 fn trace_conflicts_enabled() -> bool {
     log::log_enabled!(log::Level::Trace)
@@ -295,31 +288,30 @@ where
         let rule = executable_rule.metadata();
         let tracing = trace_conflicts_enabled();
         let searcher_ast = executable_rule.trigger();
-        let consequence_ast = executable_rule.consequence();
         let apply_start = Instant::now();
         let candidate = {
-            let new_lhs = instantiate_pattern(searcher_ast, &grounding)
-                .expect("Fully grounded trigger must be instantiable.");
-            let new_rhs = instantiate_pattern(consequence_ast, &grounding)
-                .expect("Fully grounded consequence must be instantiable.");
-
             let mut decisions = grounding.decisions().to_vec();
             let mut selection_history = grounding.selection_history().to_vec();
             let used_derived_candidate = grounding.used_derived_candidate();
-
-            let rhs_eclass = egraph.lookup_expr(&new_rhs);
-            if tracing {
-                trace_conflicts(format!(
-                    "    grounding lhs={} rhs={} lhs_eclass={} rhs_eclass={rhs_eclass:?}",
-                    new_lhs, new_rhs, root
-                ));
-            }
-            // the eclass that we would have inserted from this pattern
-            // would cause a union from `rhs_eclass` to `eclass`. This means it
-            // is creating an equality that wouldn't otherwise be in the
-            // e-graph. This is a conflict, so we record the rule instantiation
-            // here.
-            if Some(root) != rhs_eclass {
+            let is_conflict = if let Some(consequence_ast) = executable_rule.consequence() {
+                let new_rhs = instantiate_pattern(consequence_ast, &grounding)
+                    .expect("Fully grounded consequence must be instantiable.");
+                let rhs_eclass = egraph.lookup_expr(&new_rhs);
+                if tracing {
+                    let new_lhs = instantiate_pattern(searcher_ast, &grounding)
+                        .expect("Fully grounded trigger must be instantiable.");
+                    trace_conflicts(format!(
+                        "    grounding lhs={} rhs={} lhs_eclass={} rhs_eclass={rhs_eclass:?}",
+                        new_lhs, new_rhs, root
+                    ));
+                }
+                Some(root) != rhs_eclass
+            } else {
+                // An arbitrary Boolean rule has no equality-union shortcut.
+                // Build its formula once; batch preparation checks the model.
+                true
+            };
+            if is_conflict {
                 let instantiation = instantiate_pattern(executable_rule.formula(), &grounding)
                     .expect("Fully grounded rule formula must be instantiable.");
 
@@ -378,19 +370,22 @@ where
                     self.cost_fn.cost_rec(cost_expression)
                 };
 
-                let conflict = self.artifact_capture.conflicts.then(|| {
-                    ArrayConflictRecord::new(
-                        ordinal,
-                        abstract_instantiation_id.clone(),
-                        rule.name(),
-                        instantiation.clone(),
-                        expr_to_term(instantiation.clone()),
-                        self.depth,
-                        self.refinement_step,
-                        cost,
-                        decision_keys,
-                    )
-                });
+                let conflict = (self.artifact_capture.conflicts
+                    && executable_rule.metadata().category()
+                        == crate::quantified_rule::QuantifiedRuleCategory::ArrayAxiom)
+                    .then(|| {
+                        ArrayConflictRecord::new(
+                            ordinal,
+                            abstract_instantiation_id.clone(),
+                            rule.name(),
+                            instantiation.clone(),
+                            expr_to_term(instantiation.clone()),
+                            self.depth,
+                            self.refinement_step,
+                            cost,
+                            decision_keys,
+                        )
+                    });
                 let abstract_instantiation = self
                     .artifact_capture
                     .instantiation_provenance
@@ -413,7 +408,7 @@ where
                     selection_history,
                     abstract_instantiation,
                     conflict,
-                    group: CandidateGroup::MatchRoot(egraph.find(root)),
+                    group: executable_rule.group(egraph.find(root)),
                     model_violation_verified: false,
                 };
                 if tracing {

@@ -77,12 +77,13 @@ pub(crate) struct BatchSummary {
     pub(crate) rejected_ranker: usize,
     pub(crate) selected_arrays: usize,
     pub(crate) selected_guards: usize,
+    pub(crate) selected_binders: usize,
     pub(crate) conflicts: usize,
 }
 
 impl BatchSummary {
     pub(crate) fn selected_count(&self) -> usize {
-        self.selected_arrays + self.selected_guards
+        self.selected_arrays + self.selected_guards + self.selected_binders
     }
 }
 
@@ -176,7 +177,7 @@ impl InstantiationBatch {
             match candidate.rule.category() {
                 QuantifiedRuleCategory::ArrayAxiom => summary.selected_arrays += 1,
                 QuantifiedRuleCategory::TransitionGuard => summary.selected_guards += 1,
-                QuantifiedRuleCategory::Other => {}
+                QuantifiedRuleCategory::InputBinder => summary.selected_binders += 1,
             }
             if candidate.conflict.is_some() {
                 summary.conflicts += 1;
@@ -230,7 +231,10 @@ impl InstantiationBatch {
         // Full search spends its per-e-class budget before novelty checks:
         // rejecting a winner must not promote another match from that group.
         if scope == CandidateScope::AllCandidates {
-            self.select_full_axioms(winners_per_group, ranker);
+            self.select_groups(winners_per_group, ranker, |candidate| {
+                candidate.rule.category() == QuantifiedRuleCategory::ArrayAxiom
+                    && matches!(candidate.group, CandidateGroup::MatchRoot(_))
+            });
         }
         let mut rejected = 0;
         let mut rejected_ranker = 0;
@@ -260,6 +264,10 @@ impl InstantiationBatch {
 
         // Guards and source-grounded axioms choose from eligible candidates.
         self.select_guards(scope, ranker);
+        self.select_groups(winners_per_group, ranker, |candidate| {
+            candidate.rule.category() == QuantifiedRuleCategory::InputBinder
+                && ranker.is_eligible(candidate, scope)
+        });
         if scope == CandidateScope::SourceGroundedOnly {
             self.select_source_axioms(winners_per_group, ranker);
             self.order_source_installations(ranker);
@@ -271,7 +279,7 @@ impl InstantiationBatch {
             }
             if !candidate.selected
                 && (scope == CandidateScope::SourceGroundedOnly
-                    || candidate.rule.category() == QuantifiedRuleCategory::TransitionGuard)
+                    || candidate.rule.category() != QuantifiedRuleCategory::ArrayAxiom)
             {
                 candidate.selection_history.clear();
             }
@@ -359,23 +367,23 @@ impl InstantiationBatch {
         }
     }
 
-    fn select_full_axioms(&mut self, winners_per_group: usize, ranker: &dyn InstantiationRanker) {
-        let mut groups = HashMap::<(String, egg::Id), Vec<usize>>::new();
-        for candidate_index in 0..self.candidates.len() {
-            let candidate = &self.candidates[candidate_index];
-            if candidate.rule.category() != QuantifiedRuleCategory::ArrayAxiom {
-                continue;
+    /// The same group ranking applies to model-equality matches and input
+    /// binders. Scheduling decides when novelty is checked, not how to rank.
+    fn select_groups(
+        &mut self,
+        winners_per_group: usize,
+        ranker: &dyn InstantiationRanker,
+        eligible: impl Fn(&InstantiationCandidate) -> bool,
+    ) {
+        let mut groups = HashMap::<(String, CandidateGroup), Vec<usize>>::new();
+        for (index, candidate) in self.candidates.iter().enumerate() {
+            if eligible(candidate) {
+                groups
+                    .entry((candidate.rule.name().to_string(), candidate.group))
+                    .or_default()
+                    .push(index);
             }
-            let CandidateGroup::MatchRoot(root) = candidate.group else {
-                continue;
-            };
-
-            groups
-                .entry((candidate.rule.name().to_string(), root))
-                .or_default()
-                .push(candidate_index);
         }
-
         for mut group in groups.into_values() {
             group
                 .sort_by(|left, right| compare_candidates(ranker, &self.candidates, *left, *right));
