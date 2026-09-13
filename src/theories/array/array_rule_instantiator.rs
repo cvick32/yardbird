@@ -8,22 +8,15 @@ use crate::{
     instantiation_provenance::InstantiationProvenance,
     profiling::ArrayProfilingCollector,
     theories::array::{
-        array_axioms::{expr_to_term, ArrayLanguage, ArrayQuantifiedRule},
+        array_axioms::{expr_to_term, ArrayLanguage, CompiledQuantifiedRule},
         array_grounding::{groundings, instantiate_pattern, GroundContext, GroundSubstitution},
         array_term_extractor::ArrayTermExtractor,
         instantiation_candidate::{
-            CandidateGroup, InstantiationCandidate, InstantiationGrounding,
-            SelectionHistoryDecision,
+            InstantiationCandidate, InstantiationGrounding, SelectionHistoryDecision,
         },
     },
     training::canonical_term_hash,
 };
-
-// Preserve the initial limit used by egg's `BackoffScheduler`, which this
-// direct-search scheduler replaced. A smaller limit can truncate a conditional
-// search before rejected substitutions are filtered out.
-const INITIAL_RULE_MATCH_LIMIT: usize = 1_000;
-const MAX_RULE_SEARCH_ROUNDS: usize = 15;
 
 fn trace_conflicts_enabled() -> bool {
     log::log_enabled!(log::Level::Trace)
@@ -134,90 +127,26 @@ impl<CF> ArrayRuleInstantiator<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    pub(crate) fn search_rules<N>(
+    pub(crate) fn instantiate_matches<N>(
         &mut self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
-        rules: &[ArrayQuantifiedRule<N>],
+        rules: &[CompiledQuantifiedRule<N>],
+        pending: Vec<super::quantified_search::RuleMatch>,
         mut demand: Option<CandidateDemand<'_>>,
-    ) -> anyhow::Result<usize>
+    ) -> anyhow::Result<()>
     where
         N: egg::Analysis<ArrayLanguage>,
     {
-        // A broad quantified rule should not monopolize one search pass. Start
-        // with a bounded search and double only the limits of rules that exceed
-        // it. This retains egg's former BackoffScheduler behavior without
-        // modeling quantified rules as rewrites.
-        let mut pending = Vec::new();
-        let mut search_rounds = MAX_RULE_SEARCH_ROUNDS;
-        let mut times_over_limit = vec![0u32; rules.len()];
-        for round in 0..MAX_RULE_SEARCH_ROUNDS {
-            let mut any_rule_over_limit = false;
-            let mut matches_by_rule = Vec::with_capacity(rules.len());
-
-            for (rule_index, rule) in rules.iter().enumerate() {
-                let threshold = INITIAL_RULE_MATCH_LIMIT
-                    .checked_shl(times_over_limit[rule_index])
-                    .unwrap_or(usize::MAX);
-                let search_start = Instant::now();
-                let mut matches = rule.search_with_limit(egraph, threshold.saturating_add(1));
-                let substitutions = matches
-                    .iter()
-                    .map(|search_match| search_match.substs.len())
-                    .sum::<usize>();
-                let over_limit = substitutions > threshold;
-                if over_limit {
-                    times_over_limit[rule_index] += 1;
-                    any_rule_over_limit = true;
-                    matches.clear();
-                }
-                if let Some(profiling) = &self.profiling {
-                    profiling.borrow_mut().record_rule_search(
-                        rule.metadata().name(),
-                        matches.len(),
-                        if over_limit { 0 } else { substitutions },
-                        search_start.elapsed(),
-                    );
-                }
-                if trace_conflicts_enabled() {
-                    trace_conflicts(format!(
-                        "search round={round} rule={} eclasses={} matches={} substitutions={} threshold={} backed_off={} existing_insts={}",
-                        rule.metadata().name(),
-                        egraph.number_of_classes(),
-                        matches.len(),
-                        substitutions,
-                        threshold,
-                        over_limit,
-                        self.candidates.len()
-                    ));
-                    for (match_ix, search_match) in matches.iter().enumerate() {
-                        trace_conflicts(format!(
-                            "  match[{match_ix}] eclass={} subst_count={}",
-                            search_match.eclass,
-                            search_match.substs.len(),
-                        ));
-                    }
-                }
-                matches_by_rule.push(matches);
-            }
-
-            for (rule_index, matches) in matches_by_rule.into_iter().enumerate() {
-                for matched in matches {
-                    for subst in matched.substs {
-                        pending.push((rule_index, matched.eclass, subst));
-                    }
-                }
-            }
-
-            if !any_rule_over_limit {
-                search_rounds = round + 1;
-                break;
-            }
-        }
-
         let first_round = pending.len();
         let streams = pending
             .into_iter()
-            .map(|(rule_index, root, subst)| {
+            .map(|matched| {
+                let super::quantified_search::RuleMatch {
+                    rule_index,
+                    root,
+                    substitution: subst,
+                    model_violation_verified,
+                } = matched;
                 let rule = &rules[rule_index];
                 let profiling = self.profiling.is_some();
                 let mut choices = groundings(
@@ -239,6 +168,7 @@ where
                         rule_index,
                         root,
                         grounding,
+                        model_violation_verified,
                         start.map(|start| start.elapsed()).unwrap_or_default(),
                     ))
                 })
@@ -246,24 +176,26 @@ where
             .collect::<Vec<_>>();
         let mut work = round_robin(streams);
         let budget = demand.as_ref().map(|demand| demand.budget);
-        let mut visit = |(rule_index, root, grounding, grounding_time)| -> anyhow::Result<usize> {
-            let Some(mut candidate) = self.instantiate_grounding(
-                egraph,
-                &rules[rule_index],
-                root,
-                grounding,
-                grounding_time,
-            ) else {
-                return Ok(0);
+        let mut visit =
+            |(rule_index, root, grounding, verified, grounding_time)| -> anyhow::Result<usize> {
+                let Some(mut candidate) = self.instantiate_grounding(
+                    egraph,
+                    &rules[rule_index],
+                    root,
+                    grounding,
+                    grounding_time,
+                ) else {
+                    return Ok(0);
+                };
+                candidate.model_violation_verified = verified;
+                let accepted = if let Some(demand) = demand.as_mut() {
+                    (demand.accept)(&mut candidate)?
+                } else {
+                    true
+                };
+                self.candidates.push(candidate);
+                Ok(usize::from(accepted))
             };
-            let accepted = if let Some(demand) = demand.as_mut() {
-                (demand.accept)(&mut candidate)?
-            } else {
-                true
-            };
-            self.candidates.push(candidate);
-            Ok(usize::from(accepted))
-        };
         let mut accepted = 0;
         // Preserve the existing first pass and let the whole-candidate ranker
         // compare its proposals. Only underfilled source batches explore more.
@@ -278,13 +210,13 @@ where
                 accepted += visit(item)?;
             }
         }
-        Ok(search_rounds)
+        Ok(())
     }
 
     fn instantiate_grounding<N>(
         &mut self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
-        executable_rule: &ArrayQuantifiedRule<N>,
+        executable_rule: &CompiledQuantifiedRule<N>,
         root: egg::Id,
         grounding: GroundSubstitution,
         grounding_time: std::time::Duration,
@@ -295,31 +227,30 @@ where
         let rule = executable_rule.metadata();
         let tracing = trace_conflicts_enabled();
         let searcher_ast = executable_rule.trigger();
-        let consequence_ast = executable_rule.consequence();
         let apply_start = Instant::now();
         let candidate = {
-            let new_lhs = instantiate_pattern(searcher_ast, &grounding)
-                .expect("Fully grounded trigger must be instantiable.");
-            let new_rhs = instantiate_pattern(consequence_ast, &grounding)
-                .expect("Fully grounded consequence must be instantiable.");
-
             let mut decisions = grounding.decisions().to_vec();
             let mut selection_history = grounding.selection_history().to_vec();
             let used_derived_candidate = grounding.used_derived_candidate();
-
-            let rhs_eclass = egraph.lookup_expr(&new_rhs);
-            if tracing {
-                trace_conflicts(format!(
-                    "    grounding lhs={} rhs={} lhs_eclass={} rhs_eclass={rhs_eclass:?}",
-                    new_lhs, new_rhs, root
-                ));
-            }
-            // the eclass that we would have inserted from this pattern
-            // would cause a union from `rhs_eclass` to `eclass`. This means it
-            // is creating an equality that wouldn't otherwise be in the
-            // e-graph. This is a conflict, so we record the rule instantiation
-            // here.
-            if Some(root) != rhs_eclass {
+            let is_conflict = if let Some(consequence_ast) = executable_rule.consequence() {
+                let new_rhs = instantiate_pattern(consequence_ast, &grounding)
+                    .expect("Fully grounded consequence must be instantiable.");
+                let rhs_eclass = egraph.lookup_expr(&new_rhs);
+                if tracing {
+                    let new_lhs = instantiate_pattern(searcher_ast, &grounding)
+                        .expect("Fully grounded trigger must be instantiable.");
+                    trace_conflicts(format!(
+                        "    grounding lhs={} rhs={} lhs_eclass={} rhs_eclass={rhs_eclass:?}",
+                        new_lhs, new_rhs, root
+                    ));
+                }
+                Some(root) != rhs_eclass
+            } else {
+                // An arbitrary Boolean rule has no equality-union shortcut.
+                // Build its formula once; batch preparation checks the model.
+                true
+            };
+            if is_conflict {
                 let instantiation = instantiate_pattern(executable_rule.formula(), &grounding)
                     .expect("Fully grounded rule formula must be instantiable.");
 
@@ -378,19 +309,22 @@ where
                     self.cost_fn.cost_rec(cost_expression)
                 };
 
-                let conflict = self.artifact_capture.conflicts.then(|| {
-                    ArrayConflictRecord::new(
-                        ordinal,
-                        abstract_instantiation_id.clone(),
-                        rule.name(),
-                        instantiation.clone(),
-                        expr_to_term(instantiation.clone()),
-                        self.depth,
-                        self.refinement_step,
-                        cost,
-                        decision_keys,
-                    )
-                });
+                let conflict = (self.artifact_capture.conflicts
+                    && executable_rule.metadata().category()
+                        == crate::quantified_rule::QuantifiedRuleCategory::ArrayAxiom)
+                    .then(|| {
+                        ArrayConflictRecord::new(
+                            ordinal,
+                            abstract_instantiation_id.clone(),
+                            rule.name(),
+                            instantiation.clone(),
+                            expr_to_term(instantiation.clone()),
+                            self.depth,
+                            self.refinement_step,
+                            cost,
+                            decision_keys,
+                        )
+                    });
                 let abstract_instantiation = self
                     .artifact_capture
                     .instantiation_provenance
@@ -413,7 +347,7 @@ where
                     selection_history,
                     abstract_instantiation,
                     conflict,
-                    group: CandidateGroup::MatchRoot(egraph.find(root)),
+                    group: executable_rule.group(egraph.find(root)),
                     model_violation_verified: false,
                 };
                 if tracing {

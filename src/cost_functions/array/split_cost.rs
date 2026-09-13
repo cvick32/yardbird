@@ -236,7 +236,10 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
             ArrayLanguage::Mod(_) => 20,
             ArrayLanguage::Div(_) => 20,
             ArrayLanguage::ToReal(_) => 1,
-            ArrayLanguage::Ite(_) => 5,
+            ArrayLanguage::Ite(_)
+            | ArrayLanguage::Apply(_)
+            | ArrayLanguage::Domain(_)
+            | ArrayLanguage::SortTag(_) => 5,
 
             ArrayLanguage::Symbol(sym) => {
                 let symbol_str = sym.as_str().to_string();

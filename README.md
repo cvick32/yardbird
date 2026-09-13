@@ -394,6 +394,21 @@ that orders complete formulas only by the active term cost. Garden exposes the
 same `instantiation_rankers` matrix dimension; see
 `deep-abstract-instantiation-rankers` in `garden/benchmark_config.yaml`.
 
+Input quantifiers (including protocol guards and array lambdas) use the same
+egg rule engine, term extractor, whole-instantiation ranker, and decision history
+as built-in array axioms. Closure-converted binders match helper applications
+and typed term domains in egg; equal model values from different SMT sorts do
+not share a binding pool. Witness obligations are scheduled first, followed by
+ordinary conflicts and, if needed, instances that introduce further terms.
+These phases all use the configured cost function and ranker.
+
+Binder conflict searches first evaluate the fixed rule obligation using cheap
+original representatives of typed model-equivalent classes. Only violated
+matches initialize the cost function, extract ranked representatives, and score
+complete instances. The typed graph and obligation results are reused across
+phases for one solver model and discarded before the next model. Expansion can
+still admit satisfied instances to expose nested binders, including witnesses.
+
 Use `--cost-function protocol-bmc` to try BMC scoring tuned for Boolean
 protocol state. It gives `true` and `false` cost 0 (instead of BMC's 100),
 and gives every other symbol a minimum cost of 1 so literals beat even
@@ -405,6 +420,27 @@ scoring follows BMC. Garden configurations accept `protocol-bmc` in
 budget, including preservation (write-does-not-overwrite) lemmas. Set it to
 1 for one-at-a-time selection or increase it to allow multiple preservation
 lemmas in the same batch.
+
+The same setting limits input-binder winners per helper rule, including witness
+and expansion batches. Previously those instances bypassed the ranker and this
+budget. A budget of 1 can therefore require more protocol refinements than it
+did before. Binder matching uses pages of 4,096 substitutions and continues past
+known or satisfied pages when no winner is available. Each rule's search pass is
+limited to a 65,536-substitution window; repeated prefix work is also bounded
+and counted per pass. Later array stages can reconsider matches with updated
+selection history while reusing model facts. Incomplete searches are reported
+in the candidate batch and profiling counters, and exhaustion never establishes
+satisfiability.
+Built-in array rules retain their previous backoff search range.
+
+Profiling separates raw egg matching (`rule_matching_total`) from grounding and
+complete-instance scoring (`rule_grounding_total`). These replace the ambiguous
+`rule_search_total` timer. `rule_search_continuations_available` counts rules
+with another searchable page, while `rule_search_budget_exhausted` counts rules
+whose search budget was exhausted with matches still remaining. Ordinary paging
+does not count as budget exhaustion; the old `rule_search_truncated` counter is
+retired. Search reports expose these states as `continuable_rules` and
+`budget_exhausted_rules`.
 
 If the first source-stage pass leaves that budget underfilled, Yardbird explores
 additional intact source-write groundings round-robin across the existing

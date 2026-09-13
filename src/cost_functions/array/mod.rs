@@ -33,6 +33,7 @@ pub use symbol_cost::ArrayBMCCost;
 ///
 /// Cone builders receive only source-grounded vocabulary. The legacy full
 /// builder receives the historical merged vocabulary, preserving its baseline.
+#[derive(Default)]
 pub struct ArrayCostContext {
     init_and_transition_subterms: Vec<String>,
     property_subterms: Vec<String>,

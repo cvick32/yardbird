@@ -11,7 +11,7 @@ use smt2parser::{
 pub enum QuantifiedRuleCategory {
     ArrayAxiom,
     TransitionGuard,
-    Other,
+    InputBinder,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -35,7 +35,7 @@ impl ArrayAxiomKind {
 pub enum QuantifiedRuleKind {
     ArrayAxiom(ArrayAxiomKind),
     TransitionGuard,
-    Other,
+    InputBinder,
 }
 
 impl QuantifiedRuleKind {
@@ -43,7 +43,7 @@ impl QuantifiedRuleKind {
         match self {
             Self::ArrayAxiom(_) => QuantifiedRuleCategory::ArrayAxiom,
             Self::TransitionGuard => QuantifiedRuleCategory::TransitionGuard,
-            Self::Other => QuantifiedRuleCategory::Other,
+            Self::InputBinder => QuantifiedRuleCategory::InputBinder,
         }
     }
 }
@@ -79,7 +79,7 @@ impl QuantifiedRule {
         let helper = helper.into();
         Self {
             name: format!("input-binder-{helper}"),
-            kind: QuantifiedRuleKind::Other,
+            kind: QuantifiedRuleKind::InputBinder,
             provenance: QuantifiedRuleProvenance::InputBinder { helper },
         }
     }
