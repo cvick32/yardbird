@@ -124,6 +124,13 @@ impl TrainingSession {
     }
 
     pub fn complete_result(&mut self, result: &ProofLoopResult) -> anyhow::Result<()> {
+        if result
+            .run_progress
+            .as_ref()
+            .is_some_and(|p| p.termination_reason == "timeout")
+        {
+            return self.complete_failure();
+        }
         use std::collections::HashMap;
 
         info!(

@@ -660,6 +660,7 @@ fn run_config_benchmark(
             command: None,
             filename: Some(filename.to_string()),
             depth: run.depth,
+            wall_timeout_secs: None,
             print_file: false,
             interpolate: false,
             repl: false,

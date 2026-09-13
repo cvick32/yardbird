@@ -92,6 +92,10 @@ pub struct YardbirdOptions {
     #[arg(short, long, default_value_t = 10)]
     pub depth: u16,
 
+    /// Cooperative VMT wall timeout, checked between high-level actions (may overrun).
+    #[arg(long)]
+    pub wall_timeout_secs: Option<u64>,
+
     /// Output VMT files before and after instantiation.
     #[arg(short, long, default_value_t = false)]
     pub print_file: bool,
@@ -242,6 +246,7 @@ impl Default for YardbirdOptions {
             command: None,
             filename: None,
             depth: 10,
+            wall_timeout_secs: None,
             print_file: false,
             interpolate: false,
             strategy: Strategy::Abstract,
@@ -377,6 +382,10 @@ impl YardbirdOptions {
     }
 
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.wall_timeout_secs.is_none(),
+            "--wall-timeout-secs is currently supported only for VMT inputs"
+        );
         if self.synthesis_trigger != SynthesisTrigger::Off {
             anyhow::bail!(
                 "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",

@@ -791,6 +791,7 @@ impl SmtlibRefinementRunner {
             indexed_instantiations,
             unsat_events,
             auxiliary_records: vec![],
+            run_progress: None,
             profiling: ProfilingRunRecord::default(),
         };
         record_solver_phase_statistics(

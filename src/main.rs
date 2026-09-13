@@ -310,6 +310,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                     options.dump_unsat_core.clone(),
                 )
                 .with_profiler(options.build_profiler())
+                .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
                 .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
@@ -347,6 +348,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                     options.dump_unsat_core.clone(),
                 )
                 .with_profiler(options.build_profiler())
+                .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
                 .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
@@ -403,7 +405,15 @@ fn print_file_results(
         println!("{}", serde_json::to_string(&res)?);
     } else {
         // Normal human-readable output
-        info!("SUCCESSFUL BMC!");
+        if res
+            .run_progress
+            .as_ref()
+            .is_some_and(|p| p.termination_reason == "timeout")
+        {
+            info!("BMC timed out: {:?}", res.run_progress);
+        } else {
+            info!("SUCCESSFUL BMC!");
+        }
         if let Strategy::Abstract = options.strategy {
             info!(
                 "NEEDED INSTANTIATIONS:\n{}",

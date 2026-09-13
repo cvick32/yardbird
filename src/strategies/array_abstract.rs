@@ -661,6 +661,7 @@ where
             indexed_instantiations: vec![],
             unsat_events: vec![],
             auxiliary_records: smt.get_auxiliary_records(),
+            run_progress: None,
             profiling: ProfilingRunRecord::default(),
         }
     }
