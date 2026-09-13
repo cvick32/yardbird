@@ -123,6 +123,8 @@ enum BenchmarkResult {
     NoProgress(ProofLoopResult),
     Timeout(u128),
     Error(String),
+    /// Structured diagnostics from a non-successful Yardbird exit.
+    Failed(ProofLoopResult),
 }
 
 #[derive(Debug, Serialize)]
@@ -219,6 +221,35 @@ fn append_refinement_policy_args(command: &mut Command, options: &YardbirdOption
         .arg(options.synthesis_refinement_retention.to_string())
         .arg("--synthesis-predicate-relevance")
         .arg(options.synthesis_predicate_relevance.to_string());
+}
+
+fn parse_yardbird_output(success: bool, stdout: &str, stderr: &str) -> BenchmarkResult {
+    if let Ok(result) = serde_json::from_str::<ProofLoopResult>(stdout.trim()) {
+        let reason = result
+            .run_progress
+            .as_ref()
+            .map(|p| p.termination_reason.as_str());
+        if reason == Some("no_progress") {
+            return BenchmarkResult::NoProgress(result);
+        }
+        if !success
+            || reason.is_some_and(|r| !matches!(r, "depth_limit" | "proof"))
+            || result.counterexample
+        {
+            return BenchmarkResult::Failed(result);
+        }
+        return if result.found_proof {
+            BenchmarkResult::_FoundProof(result)
+        } else {
+            BenchmarkResult::Success(result)
+        };
+    }
+    // Older binaries and failures before the solver starts may have no JSON.
+    if !success && stderr.contains("No progress") {
+        BenchmarkResult::NoProgress(ProofLoopResult::default())
+    } else {
+        BenchmarkResult::Error(format!("Yardbird produced no valid result (success={success})\nOutput: {stdout}\nStderr: {stderr}"))
+    }
 }
 
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
@@ -353,34 +384,7 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
                 let stdout = collect_reader(&mut stdout_reader);
                 let stderr = collect_reader(&mut stderr_reader);
 
-                if status.success() {
-                    // Parse JSON output from yardbird
-                    match serde_json::from_str::<ProofLoopResult>(stdout.trim()) {
-                        Ok(result) => {
-                            if result.found_proof {
-                                return BenchmarkResult::_FoundProof(result);
-                            } else {
-                                return BenchmarkResult::Success(result);
-                            }
-                        }
-                        Err(e) => {
-                            return BenchmarkResult::Error(format!(
-                                "Failed to parse JSON from yardbird: {e}\nOutput: {stdout}\nStderr: {stderr}"
-                            ));
-                        }
-                    }
-                } else {
-                    // Parse common yardbird errors
-                    if stderr.contains("No progress") {
-                        return BenchmarkResult::NoProgress(ProofLoopResult::default());
-                    } else if stderr.contains("counter-example") {
-                        return BenchmarkResult::Error("Found counter-example".to_string());
-                    } else {
-                        return BenchmarkResult::Error(format!(
-                            "Process exited with error: {stderr}"
-                        ));
-                    }
-                }
+                return parse_yardbird_output(status.success(), &stdout, &stderr);
             }
             Ok(None) => {
                 // Process still running, check timeout
@@ -441,7 +445,7 @@ fn run_single(
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
             println!("  retrying: {filename}");
             continue;
-        } else if let Some(BenchmarkResult::Error(_)) = status_code {
+        } else if let Some(BenchmarkResult::Error(_) | BenchmarkResult::Failed(_)) = status_code {
             println!("  retrying error: {filename}");
             continue;
         } else if let Some(BenchmarkResult::NoProgress(_)) = status_code {
@@ -885,6 +889,20 @@ mod tests {
         solver::PropertyCheckMode,
         InstantiationStrategyType, YardbirdOptions,
     };
+
+    #[test]
+    fn failed_exit_keeps_profile_instead_of_classifying_as_success() {
+        let result = yardbird::ProofLoopResult::default();
+        let json = serde_json::to_string(&result).unwrap();
+        let result = super::parse_yardbird_output(false, &json, "refinement limit");
+        assert!(matches!(result, super::BenchmarkResult::Failed(_)));
+        let serialized = serde_json::to_value(result).unwrap();
+        assert!(serialized["Failed"]["profiling"].is_object());
+        assert!(matches!(
+            super::parse_yardbird_output(true, &json, ""),
+            super::BenchmarkResult::Success(_)
+        ));
+    }
 
     #[test]
     fn auxiliary_synthesis_is_not_a_garden_cli_override() {

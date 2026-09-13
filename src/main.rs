@@ -325,6 +325,14 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             let res = match driver.check_strategy(options.depth, proof_plan.strategy) {
                 Ok(res) => res,
                 Err(err) => {
+                    if let Some(result) = driver.take_failed_result() {
+                        if let Err(capture_error) =
+                            finish_solver_capture(solver_capture.as_ref(), &result.profiling)
+                        {
+                            log::warn!("Could not finalize failed run capture: {capture_error}");
+                        }
+                        print_file_results(result, options)?;
+                    }
                     if let Some(session) = training_session.as_mut() {
                         session.complete_failure()?;
                     }
@@ -359,6 +367,14 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             let res = match driver.check_strategy(options.depth, options.build_list_strategy()) {
                 Ok(res) => res,
                 Err(err) => {
+                    if let Some(result) = driver.take_failed_result() {
+                        if let Err(capture_error) =
+                            finish_solver_capture(solver_capture.as_ref(), &result.profiling)
+                        {
+                            log::warn!("Could not finalize failed run capture: {capture_error}");
+                        }
+                        print_file_results(result, options)?;
+                    }
                     if let Some(session) = training_session.as_mut() {
                         session.complete_failure()?;
                     }
@@ -408,9 +424,9 @@ fn print_file_results(
         if res
             .run_progress
             .as_ref()
-            .is_some_and(|p| p.termination_reason == "timeout")
+            .is_some_and(|p| !matches!(p.termination_reason.as_str(), "depth_limit" | "proof"))
         {
-            info!("BMC timed out: {:?}", res.run_progress);
+            info!("BMC stopped: {:?}", res.run_progress);
         } else {
             info!("SUCCESSFUL BMC!");
         }

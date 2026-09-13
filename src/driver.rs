@@ -41,12 +41,14 @@ pub struct CoreInstantiation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunProgress {
     pub termination_reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub elapsed_wall_secs: f64,
     pub target_depth: u16,
     pub deepest_completed_depth: Option<u16>,
     pub current_depth: Option<u16>,
     pub current_refinement_step: Option<u32>,
-    /// Last completed high-level action when the deadline was observed.
+    /// Last completed high-level action before termination.
     pub last_completed_action: Option<String>,
 }
 
@@ -385,6 +387,7 @@ pub struct Driver<'ctx, S> {
     dump_unsat_core_path: Option<String>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
     solver_backend: SolverBackend,
+    failed_result: Option<ProofLoopResult>,
     wall_timeout: Option<Duration>,
     profiler: Option<Profiler>,
     solver_capture: Option<SolverCapture>,
@@ -552,6 +555,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             dump_unsat_core_path: None,
             instantiation_strategy,
             solver_backend,
+            failed_result: None,
             wall_timeout: None,
             profiler: None,
             solver_capture: None,
@@ -569,6 +573,12 @@ impl<'ctx, S> Driver<'ctx, S> {
         self.track_instantiations = track_instantiations || dump_solver_requested;
         self.dump_unsat_core_path = dump_unsat_core;
         self
+    }
+
+    /// Recover the partial result after `check_strategy` returns an error.
+    /// Setup failures before a solver session exists have no partial result.
+    pub fn take_failed_result(&mut self) -> Option<ProofLoopResult> {
+        self.failed_result.take()
     }
 
     pub fn with_wall_timeout(mut self, timeout: Option<Duration>) -> Self {
@@ -609,9 +619,11 @@ impl<'ctx, S> Driver<'ctx, S> {
         target_depth: u16,
         mut strat: Box<dyn ProofStrategy<'ctx, S>>,
     ) -> Result<ProofLoopResult> {
+        self.failed_result = None;
         let driver_start = Instant::now();
         let mut progress = RunProgress {
             termination_reason: "depth_limit".into(),
+            error: None,
             elapsed_wall_secs: 0.0,
             target_depth,
             deepest_completed_depth: None,
@@ -684,297 +696,332 @@ impl<'ctx, S> Driver<'ctx, S> {
             };
         }
 
-        'bmc: for depth in 0..target_depth {
-            checkpoint!('bmc, if depth == 0 { "setup" } else { "depth_completed" }, None::<DriverProfilingRecord>, driver_start);
-            info!("STARTING BMC FOR DEPTH {depth}");
-            for refinement_step in 0..n_refines {
+        let mut driver_record: Option<DriverProfilingRecord> = None;
+        let mut step_start = driver_start;
+        let mut active_phase: Option<(&str, Instant)> = None;
+        let loop_outcome = (|| -> Result<()> {
+            'bmc: for depth in 0..target_depth {
+                checkpoint!('bmc, if depth == 0 { "setup" } else { "depth_completed" }, None::<DriverProfilingRecord>, driver_start);
                 progress.current_depth = Some(depth);
-                progress.current_refinement_step = Some(refinement_step);
-                let step_start = Instant::now();
-                let mut driver_record = profiling.then(|| {
-                    DriverProfilingRecord::new(
-                        depth,
-                        refinement_step,
-                        smt_problem.get_instantiations().len(),
-                        smt_problem.get_number_instantiations_added(),
-                    )
-                });
-                total_refinement_steps += 1;
-                let unroll_start = Instant::now();
-                smt_problem.unroll(depth);
-                if let Some(record) = &mut driver_record {
-                    record.record_timing("unroll", unroll_start.elapsed());
-                    for (stage, secs) in smt_problem.take_last_unroll_profile() {
-                        record.record_timing_secs(stage, secs);
-                    }
-                }
-                checkpoint!('bmc, "unroll", driver_record.take(), step_start);
-                let setup_start = Instant::now();
-                let mut state = strat.setup(&smt_problem, depth)?;
-                if let Some(record) = &mut driver_record {
-                    record.record_timing("strategy_setup", setup_start.elapsed());
-                }
-                checkpoint!('bmc, "strategy_setup", driver_record.take(), step_start);
-                let check_start = Instant::now();
-                let check_result = smt_problem.check_property();
-                if let Some(record) = &mut driver_record {
-                    record.record_timing("check", check_start.elapsed());
-                    for (stage, secs) in smt_problem.take_last_check_profile() {
-                        record.record_timing_secs(stage, secs);
-                    }
-                }
-                if let Some(profiler) = &mut profiler {
-                    let measurement = smt_problem
-                        .take_last_solver_check_profile()
-                        .expect("solver profiling should produce one measurement per check");
-                    debug_assert_eq!(measurement.result, check_result);
-                    let instances_total = smt_problem.get_number_instantiations_added();
-                    profiler.record_solver_check(
-                        SolverCheckContext {
+                progress.current_refinement_step = None;
+                info!("STARTING BMC FOR DEPTH {depth}");
+                for refinement_step in 0..n_refines {
+                    progress.current_depth = Some(depth);
+                    progress.current_refinement_step = Some(refinement_step);
+                    step_start = Instant::now();
+                    driver_record = profiling.then(|| {
+                        DriverProfilingRecord::new(
                             depth,
-                            refinement_id: total_refinement_steps,
                             refinement_step,
-                            instances_total,
-                            solver: smt_problem.solver_profile_metadata(),
-                        },
-                        measurement,
-                    );
-                }
-                if check_result == SolverCheckResult::Unsat {
-                    progress.deepest_completed_depth = Some(depth);
-                }
-                checkpoint!('bmc, "check", driver_record.take(), step_start);
-                let mut action = match check_result {
-                    SolverCheckResult::Unsat => {
-                        info!("  check completed");
-                        let unsat_start = Instant::now();
-                        unsat_event_tracker.record_vmt_event(
-                            &smt_problem,
-                            depth,
-                            total_refinement_steps,
-                            self.track_instantiations,
-                        );
-                        // Handle solver dumping if requested
-                        if let Some(ref path) = self.dump_solver_path {
-                            info!("Dumping solver to: {}", path);
-                            smt_problem.dump_solver_to_file(path)?;
-                        }
-
-                        // Handle unsat core dumping if requested
-                        if let Some(ref path) = self.dump_unsat_core_path {
-                            if self.track_instantiations {
-                                info!("Dumping unsat core to: {}", path);
-                                smt_problem.export_unsat_core_json(path)?;
-                            } else {
-                                log::warn!("--dump-unsat-core specified but --track-instantiations not enabled");
-                            }
-                        }
-
-                        self.extensions.unsat(&mut state, &smt_problem)?;
-                        let action = strat.unsat(&mut state, &smt_problem)?;
-                        if let Some(record) = &mut driver_record {
-                            record.record_timing("strategy_unsat", unsat_start.elapsed());
-                        }
-                        action
-                    }
-                    SolverCheckResult::Unknown => {
-                        let unknown_start = Instant::now();
-                        self.extensions.unknown(&mut state, &smt_problem)?;
-                        let action = strat.unknown(&mut state, &smt_problem)?;
-                        if let Some(record) = &mut driver_record {
-                            record.record_timing("strategy_unknown", unknown_start.elapsed());
-                        }
-                        action
-                    }
-                    SolverCheckResult::Sat => {
-                        info!("  refinement: {}/{n_refines}", refinement_step);
-                        let sat_start = Instant::now();
-                        self.extensions
-                            .sat(&mut state, &smt_problem, refinement_step)?;
-                        let action = strat.sat(&mut state, &smt_problem, refinement_step)?;
-                        if let Some(record) = &mut driver_record {
-                            record.record_timing("strategy_sat", sat_start.elapsed());
-                        }
-                        action
-                    }
-                };
-
-                checkpoint!('bmc, "strategy_action", driver_record.take(), step_start);
-                while matches!(action, ProofAction::Continue)
-                    && !strat.has_pending_refinement(&state)
-                {
-                    checkpoint!('bmc, "strategy_sat", driver_record.take(), step_start);
-                    if !strat.allows_concrete_validation() {
-                        // Widen the abstract search without delegating any
-                        // quantified formula to the concrete solver.
-                        action = strat.sat(&mut state, &smt_problem, refinement_step)?;
-                        checkpoint!('bmc, "strategy_sat", driver_record.take(), step_start);
-                        continue;
-                    }
-                    info!(
-                        "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
-                    );
-                    let concrete_start = Instant::now();
-                    let (concrete_result, concrete_problem) =
-                        self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
-                    concrete_validation_checks += 1;
-                    accumulate_solver_statistics(
-                        &mut concrete_validation_statistics,
-                        &concrete_problem.get_solver_statistics(),
-                    );
+                            smt_problem.get_instantiations().len(),
+                            smt_problem.get_number_instantiations_added(),
+                        )
+                    });
+                    total_refinement_steps += 1;
+                    let unroll_start = Instant::now();
+                    smt_problem.unroll(depth);
                     if let Some(record) = &mut driver_record {
-                        record.record_timing("concrete_validation", concrete_start.elapsed());
-                    }
-
-                    checkpoint!('bmc, "concrete_validation", driver_record.take(), step_start);
-                    match concrete_result {
-                        SolverCheckResult::Sat => {
-                            info!("Concrete counterexample found at depth {depth}");
-                            info!("Counterexample:\n{}", concrete_problem.model_to_string()?);
-                            return Err(Error::Counterexample);
+                        record.record_timing("unroll", unroll_start.elapsed());
+                        for (stage, secs) in smt_problem.take_last_unroll_profile() {
+                            record.record_timing_secs(stage, secs);
                         }
+                    }
+                    checkpoint!('bmc, "unroll", driver_record.take(), step_start);
+                    let setup_start = Instant::now();
+                    active_phase = Some(("strategy_setup", setup_start));
+                    let mut state = strat.setup(&smt_problem, depth)?;
+                    active_phase = None;
+                    if let Some(record) = &mut driver_record {
+                        record.record_timing("strategy_setup", setup_start.elapsed());
+                    }
+                    checkpoint!('bmc, "strategy_setup", driver_record.take(), step_start);
+                    let check_start = Instant::now();
+                    let check_result = smt_problem.check_property();
+                    if let Some(record) = &mut driver_record {
+                        record.record_timing("check", check_start.elapsed());
+                        for (stage, secs) in smt_problem.take_last_check_profile() {
+                            record.record_timing_secs(stage, secs);
+                        }
+                    }
+                    if let Some(profiler) = &mut profiler {
+                        let measurement = smt_problem
+                            .take_last_solver_check_profile()
+                            .expect("solver profiling should produce one measurement per check");
+                        debug_assert_eq!(measurement.result, check_result);
+                        let instances_total = smt_problem.get_number_instantiations_added();
+                        profiler.record_solver_check(
+                            SolverCheckContext {
+                                depth,
+                                refinement_id: total_refinement_steps,
+                                refinement_step,
+                                instances_total,
+                                solver: smt_problem.solver_profile_metadata(),
+                            },
+                            measurement,
+                        );
+                    }
+                    if check_result == SolverCheckResult::Unsat {
+                        progress.deepest_completed_depth = Some(depth);
+                    }
+                    checkpoint!('bmc, "check", driver_record.take(), step_start);
+                    let mut action = match check_result {
                         SolverCheckResult::Unsat => {
-                            info!(
-                                "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
+                            info!("  check completed");
+                            let unsat_start = Instant::now();
+                            active_phase = Some(("strategy_unsat", unsat_start));
+                            unsat_event_tracker.record_vmt_event(
+                                &smt_problem,
+                                depth,
+                                total_refinement_steps,
+                                self.track_instantiations,
                             );
-                            action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                            // Handle solver dumping if requested
+                            if let Some(ref path) = self.dump_solver_path {
+                                info!("Dumping solver to: {}", path);
+                                smt_problem.dump_solver_to_file(path)?;
+                            }
+
+                            // Handle unsat core dumping if requested
+                            if let Some(ref path) = self.dump_unsat_core_path {
+                                if self.track_instantiations {
+                                    info!("Dumping unsat core to: {}", path);
+                                    smt_problem.export_unsat_core_json(path)?;
+                                } else {
+                                    log::warn!("--dump-unsat-core specified but --track-instantiations not enabled");
+                                }
+                            }
+
+                            self.extensions.unsat(&mut state, &smt_problem)?;
+                            let action = strat.unsat(&mut state, &smt_problem)?;
+                            active_phase = None;
+                            if let Some(record) = &mut driver_record {
+                                record.record_timing("strategy_unsat", unsat_start.elapsed());
+                            }
+                            action
                         }
                         SolverCheckResult::Unknown => {
-                            return Err(Error::SolverUnknown(
-                                concrete_problem.get_reason_unknown(),
-                            ));
+                            let unknown_start = Instant::now();
+                            active_phase = Some(("strategy_unknown", unknown_start));
+                            self.extensions.unknown(&mut state, &smt_problem)?;
+                            let action = strat.unknown(&mut state, &smt_problem)?;
+                            active_phase = None;
+                            if let Some(record) = &mut driver_record {
+                                record.record_timing("strategy_unknown", unknown_start.elapsed());
+                            }
+                            action
+                        }
+                        SolverCheckResult::Sat => {
+                            info!("  refinement: {}/{n_refines}", refinement_step);
+                            let sat_start = Instant::now();
+                            active_phase = Some(("strategy_sat", sat_start));
+                            self.extensions
+                                .sat(&mut state, &smt_problem, refinement_step)?;
+                            let action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                            active_phase = None;
+                            if let Some(record) = &mut driver_record {
+                                record.record_timing("strategy_sat", sat_start.elapsed());
+                            }
+                            action
+                        }
+                    };
+
+                    checkpoint!('bmc, "strategy_action", driver_record.take(), step_start);
+                    while matches!(action, ProofAction::Continue)
+                        && !strat.has_pending_refinement(&state)
+                    {
+                        checkpoint!('bmc, "strategy_sat", driver_record.take(), step_start);
+                        if !strat.allows_concrete_validation() {
+                            // Widen the abstract search without delegating any
+                            // quantified formula to the concrete solver.
+                            let sat_start = Instant::now();
+                            active_phase = Some(("strategy_sat", sat_start));
+                            action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                            active_phase = None;
+                            if let Some(record) = &mut driver_record {
+                                record.record_timing("strategy_sat", sat_start.elapsed());
+                            }
+                            checkpoint!('bmc, "strategy_sat", driver_record.take(), step_start);
+                            continue;
+                        }
+                        info!(
+                        "Yardbird found no refinement at depth {depth}; checking the concrete array theory"
+                    );
+                        let concrete_start = Instant::now();
+                        active_phase = Some(("concrete_validation", concrete_start));
+                        let (concrete_result, concrete_problem) =
+                            self.check_concrete_counterexample(&concrete_vmt_model, depth)?;
+                        concrete_validation_checks += 1;
+                        accumulate_solver_statistics(
+                            &mut concrete_validation_statistics,
+                            &concrete_problem.get_solver_statistics(),
+                        );
+                        active_phase = None;
+                        if let Some(record) = &mut driver_record {
+                            record.record_timing("concrete_validation", concrete_start.elapsed());
+                        }
+
+                        checkpoint!('bmc, "concrete_validation", driver_record.take(), step_start);
+                        match concrete_result {
+                            SolverCheckResult::Sat => {
+                                info!("Concrete counterexample found at depth {depth}");
+                                info!("Counterexample:\n{}", concrete_problem.model_to_string()?);
+                                return Err(Error::Counterexample);
+                            }
+                            SolverCheckResult::Unsat => {
+                                info!(
+                                "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
+                            );
+                                let sat_start = Instant::now();
+                                active_phase = Some(("strategy_sat", sat_start));
+                                action = strat.sat(&mut state, &smt_problem, refinement_step)?;
+                                active_phase = None;
+                                if let Some(record) = &mut driver_record {
+                                    record.record_timing("strategy_sat", sat_start.elapsed());
+                                }
+                            }
+                            SolverCheckResult::Unknown => {
+                                return Err(Error::SolverUnknown(
+                                    concrete_problem.get_reason_unknown(),
+                                ));
+                            }
+                        }
+                    }
+
+                    checkpoint!('bmc, "refinement_search", driver_record.take(), step_start);
+                    match action {
+                        ProofAction::Continue => {
+                            let finish_start = Instant::now();
+                            active_phase = Some(("finish", finish_start));
+                            let solver_assertions_before =
+                                smt_problem.get_number_instantiation_assertions_added();
+                            let auxiliary_records_before =
+                                smt_problem.get_auxiliary_records().len();
+                            {
+                                let mut context = RefinementContext {
+                                    abstract_problem: &mut smt_problem,
+                                    concrete_vmt_model: &concrete_vmt_model,
+                                    solver_backend: self.solver_backend,
+                                    instantiation_strategy: self.instantiation_strategy.as_ref(),
+                                    concrete_validation_checks: &mut concrete_validation_checks,
+                                    concrete_validation_statistics:
+                                        &mut concrete_validation_statistics,
+                                    allows_concrete_validation: strat.allows_concrete_validation(),
+                                };
+                                self.extensions.refine(&mut state, &mut context)?;
+                            }
+                            strat.finish(state, &mut smt_problem)?;
+                            let instantiations_after = smt_problem.get_instantiations();
+                            let solver_assertions_after =
+                                smt_problem.get_number_instantiation_assertions_added();
+                            let auxiliary_records_after = smt_problem.get_auxiliary_records().len();
+                            active_phase = None;
+                            if let Some(record) = &mut driver_record {
+                                record.record_timing("finish", finish_start.elapsed());
+                            }
+                            checkpoint!('bmc, "finish", driver_record.take(), step_start);
+                            if !refinement_made_progress(
+                                solver_assertions_before,
+                                auxiliary_records_before,
+                                solver_assertions_after,
+                                auxiliary_records_after,
+                            ) {
+                                return Err(Error::NoProgress {
+                                    depth,
+                                    instantiations: instantiations_after,
+                                });
+                            }
+
+                            if let Some(mut record) = driver_record.take() {
+                                record.record_timing("driver_step_total", step_start.elapsed());
+                                if let Some(profiler) = &mut profiler {
+                                    profiler.add_driver_record(record.finish(
+                                        "continue",
+                                        smt_problem.get_instantiations().len(),
+                                        smt_problem.get_number_instantiations_added(),
+                                    ));
+                                }
+                            }
+                        }
+                        ProofAction::NextDepth => {
+                            progress.deepest_completed_depth = Some(depth);
+                            if let Some(mut record) = driver_record.take() {
+                                record.record_timing("driver_step_total", step_start.elapsed());
+                                if let Some(profiler) = &mut profiler {
+                                    profiler.add_driver_record(record.finish(
+                                        "next_depth",
+                                        smt_problem.get_instantiations().len(),
+                                        smt_problem.get_number_instantiations_added(),
+                                    ));
+                                }
+                            }
+                            continue 'bmc;
+                        }
+                        ProofAction::FoundCounterexample => {
+                            if let Some(mut record) = driver_record.take() {
+                                record.record_timing("driver_step_total", step_start.elapsed());
+                                if let Some(profiler) = &mut profiler {
+                                    profiler.add_driver_record(record.finish(
+                                        "found_counterexample",
+                                        smt_problem.get_instantiations().len(),
+                                        smt_problem.get_number_instantiations_added(),
+                                    ));
+                                }
+                            }
+                            return Err(Error::Counterexample);
+                        }
+                        ProofAction::FoundProof => {
+                            if let Some(mut record) = driver_record.take() {
+                                record.record_timing("driver_step_total", step_start.elapsed());
+                                if let Some(profiler) = &mut profiler {
+                                    profiler.add_driver_record(record.finish(
+                                        "found_proof",
+                                        smt_problem.get_instantiations().len(),
+                                        smt_problem.get_number_instantiations_added(),
+                                    ));
+                                }
+                            }
+                            progress.termination_reason = "proof".into();
+                            break 'bmc;
                         }
                     }
                 }
+                return Err(Error::TooManyRefinements { n_refines, depth });
+            }
+            Ok(())
+        })();
 
-                checkpoint!('bmc, "refinement_search", driver_record.take(), step_start);
-                match action {
-                    ProofAction::Continue => {
-                        let finish_start = Instant::now();
-                        let solver_assertions_before =
-                            smt_problem.get_number_instantiation_assertions_added();
-                        let auxiliary_records_before = smt_problem.get_auxiliary_records().len();
-                        {
-                            let mut context = RefinementContext {
-                                abstract_problem: &mut smt_problem,
-                                concrete_vmt_model: &concrete_vmt_model,
-                                solver_backend: self.solver_backend,
-                                instantiation_strategy: self.instantiation_strategy.as_ref(),
-                                concrete_validation_checks: &mut concrete_validation_checks,
-                                concrete_validation_statistics: &mut concrete_validation_statistics,
-                                allows_concrete_validation: strat.allows_concrete_validation(),
-                            };
-                            self.extensions.refine(&mut state, &mut context)?;
-                        }
-                        strat.finish(state, &mut smt_problem)?;
-                        let instantiations_after = smt_problem.get_instantiations();
-                        let solver_assertions_after =
-                            smt_problem.get_number_instantiation_assertions_added();
-                        let auxiliary_records_after = smt_problem.get_auxiliary_records().len();
-                        if let Some(record) = &mut driver_record {
-                            record.record_timing("finish", finish_start.elapsed());
-                        }
-                        checkpoint!('bmc, "finish", driver_record.take(), step_start);
-                        if !refinement_made_progress(
-                            solver_assertions_before,
-                            auxiliary_records_before,
-                            solver_assertions_after,
-                            auxiliary_records_after,
-                        ) {
-                            return Err(Error::NoProgress {
-                                depth,
-                                instantiations: instantiations_after,
-                            });
-                        }
-
-                        if let Some(mut record) = driver_record {
-                            record.record_timing("driver_step_total", step_start.elapsed());
-                            if let Some(profiler) = &mut profiler {
-                                profiler.add_driver_record(record.finish(
-                                    "continue",
-                                    smt_problem.get_instantiations().len(),
-                                    smt_problem.get_number_instantiations_added(),
-                                ));
-                            }
-                        }
-                    }
-                    ProofAction::NextDepth => {
-                        progress.deepest_completed_depth = Some(depth);
-                        if let Some(mut record) = driver_record {
-                            record.record_timing("driver_step_total", step_start.elapsed());
-                            if let Some(profiler) = &mut profiler {
-                                profiler.add_driver_record(record.finish(
-                                    "next_depth",
-                                    smt_problem.get_instantiations().len(),
-                                    smt_problem.get_number_instantiations_added(),
-                                ));
-                            }
-                        }
-                        continue 'bmc;
-                    }
-                    ProofAction::FoundCounterexample => {
-                        if let Some(mut record) = driver_record {
-                            record.record_timing("driver_step_total", step_start.elapsed());
-                            if let Some(profiler) = &mut profiler {
-                                profiler.add_driver_record(record.finish(
-                                    "found_counterexample",
-                                    smt_problem.get_instantiations().len(),
-                                    smt_problem.get_number_instantiations_added(),
-                                ));
-                            }
-                        }
-                        return Err(Error::Counterexample);
-                    }
-                    ProofAction::FoundProof => {
-                        if let Some(mut record) = driver_record {
-                            record.record_timing("driver_step_total", step_start.elapsed());
-                            if let Some(profiler) = &mut profiler {
-                                profiler.add_driver_record(record.finish(
-                                    "found_proof",
-                                    smt_problem.get_instantiations().len(),
-                                    smt_problem.get_number_instantiations_added(),
-                                ));
-                            }
-                        }
-                        info!("Building final proof result");
-                        let mut result = strat.result(&mut self.vmt_model.clone(), &smt_problem);
-                        record_solver_phase_statistics(
-                            &mut result.solver_statistics,
-                            concrete_validation_checks,
-                            &concrete_validation_statistics,
-                        );
-                        progress.termination_reason = "proof".into();
-                        progress.elapsed_wall_secs = driver_start.elapsed().as_secs_f64();
-                        result.run_progress = Some(progress);
-                        result.total_refinement_steps = total_refinement_steps;
-                        result.unsat_events = unsat_event_tracker.events.clone();
-                        if let Some(mut profiler) = profiler {
-                            profiler.record_timing(
-                                "driver_check_strategy_total",
-                                driver_start.elapsed(),
-                            );
-                            profiler.extend_cost_records(strat.take_profiling_records());
-                            result.profiling = profiler.finish();
-                        }
-                        info!("Collecting unsat core metadata");
-                        result.unsat_core = self.build_unsat_core_info(&smt_problem);
-                        info!("Collecting indexed instantiation records");
-                        result.indexed_instantiations =
-                            self.build_indexed_instantiation_records(&smt_problem);
-                        self.annotate_instantiation_core_membership(&mut result);
-                        info!("Final proof result is ready");
-                        return Ok(result);
-                    }
+        if let Err(error) = &loop_outcome {
+            progress.termination_reason = match error {
+                Error::Counterexample => "counterexample",
+                Error::NoProgress { .. } => "no_progress",
+                Error::TooManyRefinements { .. } => "refinement_limit",
+                Error::AbstractionExhausted { .. } => "abstraction_exhausted",
+                Error::SolverUnknown(_) => "solver_unknown",
+                _ => "error",
+            }
+            .into();
+            progress.error = Some(error.to_string());
+            if let Some(mut record) = driver_record.take() {
+                if let Some((phase, start)) = active_phase {
+                    record.record_timing(phase, start.elapsed());
+                }
+                record.record_timing("driver_step_total", step_start.elapsed());
+                if let Some(profiler) = &mut profiler {
+                    profiler.add_driver_record(record.finish(
+                        &progress.termination_reason,
+                        smt_problem.get_instantiations().len(),
+                        smt_problem.get_number_instantiations_added(),
+                    ));
                 }
             }
-            return Err(Error::TooManyRefinements { n_refines, depth });
         }
 
         info!("Building final proof result");
-        let mut result = if progress.termination_reason == "timeout" {
+        let mut result = if progress.termination_reason == "timeout" || loop_outcome.is_err() {
             // Strategy::result may invoke IC3IA; a partial run must not do that.
             let (decision_data, abstract_instantiations) = strat.take_logging_artifacts();
             ProofLoopResult {
+                counterexample: matches!(loop_outcome, Err(Error::Counterexample)),
                 decision_data,
                 abstract_instantiations,
                 used_instances: smt_problem.get_instantiations(),
@@ -1009,7 +1056,13 @@ impl<'ctx, S> Driver<'ctx, S> {
         progress.elapsed_wall_secs = driver_start.elapsed().as_secs_f64();
         result.run_progress = Some(progress);
         info!("Final proof result is ready");
-        Ok(result)
+        match loop_outcome {
+            Ok(()) => Ok(result),
+            Err(error) => {
+                self.failed_result = Some(result);
+                Err(error)
+            }
+        }
     }
 
     fn check_concrete_counterexample(
