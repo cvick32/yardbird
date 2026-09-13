@@ -10,3 +10,7 @@ pub(crate) mod encodings;
 pub mod instantiation_candidate;
 pub mod instantiation_ranker;
 pub mod transition_guard_instantiator;
+
+pub mod quantified_search;
+
+pub mod quantified_search;

@@ -90,6 +90,7 @@ impl BatchSummary {
 /// Candidates generated during one array/guard search pass.
 #[derive(Default)]
 pub struct InstantiationBatch {
+    pub search: super::quantified_search::RuleSearchReport,
     pub candidates: Vec<InstantiationCandidate>,
 }
 
@@ -498,6 +499,7 @@ mod tests {
         derived.grounding = InstantiationGrounding::Derived;
         let expected = source.expression.clone();
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![derived, source],
         };
 
@@ -544,6 +546,7 @@ mod tests {
         let expected = independent.expression.clone();
         let known = HashSet::from([normalized_key(&installed).unwrap()]);
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![known_winner, alternative, independent],
         };
 
@@ -583,6 +586,7 @@ mod tests {
         independent.group = CandidateGroup::MatchRoot(egg::Id::from(1));
         let expected = vec![winner.expression.clone(), independent.expression.clone()];
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![winner, loser, independent],
         };
 
@@ -634,6 +638,7 @@ mod tests {
             let expected = alternative.expression.clone();
             let known = HashSet::from([normalized_key(&known_winner).unwrap()]);
             let mut batch = InstantiationBatch {
+                search: Default::default(),
                 candidates: vec![known_winner, alternative],
             };
 
@@ -664,6 +669,7 @@ mod tests {
             .parse::<ArrayExpr>()
             .unwrap();
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![array_candidate(expression)],
         };
         let known = HashSet::from([UnquantifiedInstantiator::rewrite_unquantified(
@@ -700,6 +706,7 @@ mod tests {
         let installed: ArrayExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
         let reversed: ArrayExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![array_candidate(reversed)],
         };
         let installed =
@@ -726,6 +733,7 @@ mod tests {
         let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
         let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 array_candidate(satisfied),
                 array_candidate(violated.clone()),
@@ -760,9 +768,11 @@ mod tests {
         guard.rule = QuantifiedRule::transition_guard("guard", 0);
         guard.group = CandidateGroup::Rule;
         let mut source_batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![array_candidate(expression.clone())],
         };
         let mut full_batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![array_candidate(expression.clone()), guard],
         };
 
@@ -798,6 +808,7 @@ mod tests {
         let second: ArrayExpr = "(=> guard (= a b))".parse().unwrap();
         let violated: ArrayExpr = "(= x y)".parse().unwrap();
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 array_candidate(first),
                 array_candidate(second),
@@ -837,6 +848,7 @@ mod tests {
             let mut candidate = array_candidate("(= x y)".parse().unwrap());
             candidate.rule = rule;
             let mut batch = InstantiationBatch {
+                search: Default::default(),
                 candidates: vec![candidate],
             };
 
@@ -857,6 +869,7 @@ mod tests {
     #[test]
     fn full_search_skips_model_eval() {
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![array_candidate("(= x y)".parse().unwrap())],
         };
 
@@ -881,6 +894,7 @@ mod tests {
         guard.group = CandidateGroup::Rule;
         guard.model_violation_verified = true;
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![guard],
         };
 
@@ -958,7 +972,10 @@ mod tests {
                 vec![],
             ));
         }
-        let mut batch = InstantiationBatch { candidates };
+        let mut batch = InstantiationBatch {
+            search: Default::default(),
+            candidates,
+        };
         let known = HashSet::from([canonical_instantiation_key(&expr_to_term(
             "(= a b)".parse().unwrap(),
         ))]);
@@ -1066,6 +1083,7 @@ mod tests {
         let second_guard = QuantifiedRule::transition_guard("second", 0);
         let array_rule = QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 candidate(
                     first_guard.clone(),
@@ -1105,6 +1123,7 @@ mod tests {
     fn source_selection_keeps_the_configured_number_of_array_winners() {
         let array_rule = QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 candidate(
                     array_rule.clone(),
@@ -1153,6 +1172,7 @@ mod tests {
         let conditional =
             QuantifiedRule::array_axiom(ArrayAxiomKind::WriteDoesNotOverwrite, "Int", "Int");
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 candidate(
                     unconditional.clone(),
@@ -1211,6 +1231,7 @@ mod tests {
         let rule = QuantifiedRule::array_axiom(ArrayAxiomKind::WriteDoesNotOverwrite, "Int", "Int");
         for budget in [1, 4, 16, 32] {
             let mut batch = InstantiationBatch {
+                search: Default::default(),
                 candidates: (0..20)
                     .map(|index| {
                         candidate(
@@ -1241,6 +1262,7 @@ mod tests {
         let conditional =
             QuantifiedRule::array_axiom(ArrayAxiomKind::WriteDoesNotOverwrite, "Int", "Int");
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 candidate(
                     conditional.clone(),
@@ -1275,6 +1297,7 @@ mod tests {
     fn full_selection_keeps_the_configured_number_of_winners_per_rule_and_root() {
         let array_rule = QuantifiedRule::array_axiom(ArrayAxiomKind::ReadAfterWrite, "Int", "Int");
         let mut batch = InstantiationBatch {
+            search: Default::default(),
             candidates: vec![
                 candidate(
                     array_rule.clone(),

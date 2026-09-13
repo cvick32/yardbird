@@ -1489,6 +1489,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1531,6 +1532,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1572,6 +1574,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1605,6 +1608,7 @@ mod test {
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
                 ArrayInstantiationOptions {
+                    additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: scope,
                     refinement_step: 0,
@@ -1660,6 +1664,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
                 refinement_step: 0,
@@ -1697,6 +1702,7 @@ mod test {
             HighCostA,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
                 refinement_step: 0,
@@ -1744,6 +1750,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1784,6 +1791,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1820,6 +1828,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
                 refinement_step: 0,
@@ -1890,6 +1899,7 @@ mod test {
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
                 ArrayInstantiationOptions {
+                    additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: CandidateScope::AllCandidates,
                     refinement_step: 0,

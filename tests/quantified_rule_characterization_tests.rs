@@ -36,6 +36,7 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
         cost,
         &[("Int".to_string(), "Int".to_string())],
         ArrayInstantiationOptions {
+            additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),
             candidate_scope: CandidateScope::AllCandidates,
             refinement_step: 0,
@@ -188,5 +189,45 @@ fn array_generation_characterizes_all_three_ground_rules() {
     assert_eq!(
         generated_array_instances("(Read Int Int (ConstArr Int Int v) i)"),
         vec!["(= (Read_Int_Int (ConstArr_Int_Int v) i) v)"]
+    );
+}
+
+#[test]
+fn array_search_keeps_all_conflicts_past_4096() {
+    let mut graph = egg::EGraph::<ArrayLanguage, ()>::default();
+    for index in 0..4097 {
+        graph.add_expr(
+            &format!("(Read Int Int (ConstArr Int Int v) i{index})")
+                .parse()
+                .unwrap(),
+        );
+    }
+    graph.rebuild();
+    let batch = generate_array_instantiation_candidates(
+        &graph,
+        ArrayAstSize {
+            current_bmc_depth: 0,
+            init_and_transition_system_terms: vec![],
+            property_terms: vec![],
+            reads_writes: Default::default(),
+        },
+        &[("Int".into(), "Int".into())],
+        ArrayInstantiationOptions {
+            additional_terms: vec![],
+            candidate_catalog: ArrayCandidateCatalog::default(),
+            candidate_scope: CandidateScope::AllCandidates,
+            refinement_step: 0,
+            selection_counts: Default::default(),
+            depth: 0,
+            instrumentation: ArrayInstantiationInstrumentation {
+                artifact_capture: Default::default(),
+                profiling: None,
+            },
+        },
+    );
+    assert_eq!(
+        batch.candidates.len(),
+        4097,
+        "array search silently discarded a match"
     );
 }

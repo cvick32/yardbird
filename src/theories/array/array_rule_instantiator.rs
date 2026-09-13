@@ -127,90 +127,26 @@ impl<CF> ArrayRuleInstantiator<CF>
 where
     CF: YardbirdCostFunction<ArrayLanguage>,
 {
-    pub(crate) fn search_rules<N>(
+    pub(crate) fn instantiate_matches<N>(
         &mut self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
-        rules: &[ArrayQuantifiedRule<N>],
+        rules: &[CompiledQuantifiedRule<N>],
+        pending: Vec<super::quantified_search::RuleMatch>,
         mut demand: Option<CandidateDemand<'_>>,
-    ) -> anyhow::Result<usize>
+    ) -> anyhow::Result<()>
     where
         N: egg::Analysis<ArrayLanguage>,
     {
-        // A broad quantified rule should not monopolize one search pass. Start
-        // with a bounded search and double only the limits of rules that exceed
-        // it. This retains egg's former BackoffScheduler behavior without
-        // modeling quantified rules as rewrites.
-        let mut pending = Vec::new();
-        let mut search_rounds = MAX_RULE_SEARCH_ROUNDS;
-        let mut times_over_limit = vec![0u32; rules.len()];
-        for round in 0..MAX_RULE_SEARCH_ROUNDS {
-            let mut any_rule_over_limit = false;
-            let mut matches_by_rule = Vec::with_capacity(rules.len());
-
-            for (rule_index, rule) in rules.iter().enumerate() {
-                let threshold = INITIAL_RULE_MATCH_LIMIT
-                    .checked_shl(times_over_limit[rule_index])
-                    .unwrap_or(usize::MAX);
-                let search_start = Instant::now();
-                let mut matches = rule.search_with_limit(egraph, threshold.saturating_add(1));
-                let substitutions = matches
-                    .iter()
-                    .map(|search_match| search_match.substs.len())
-                    .sum::<usize>();
-                let over_limit = substitutions > threshold;
-                if over_limit {
-                    times_over_limit[rule_index] += 1;
-                    any_rule_over_limit = true;
-                    matches.clear();
-                }
-                if let Some(profiling) = &self.profiling {
-                    profiling.borrow_mut().record_rule_search(
-                        rule.metadata().name(),
-                        matches.len(),
-                        if over_limit { 0 } else { substitutions },
-                        search_start.elapsed(),
-                    );
-                }
-                if trace_conflicts_enabled() {
-                    trace_conflicts(format!(
-                        "search round={round} rule={} eclasses={} matches={} substitutions={} threshold={} backed_off={} existing_insts={}",
-                        rule.metadata().name(),
-                        egraph.number_of_classes(),
-                        matches.len(),
-                        substitutions,
-                        threshold,
-                        over_limit,
-                        self.candidates.len()
-                    ));
-                    for (match_ix, search_match) in matches.iter().enumerate() {
-                        trace_conflicts(format!(
-                            "  match[{match_ix}] eclass={} subst_count={}",
-                            search_match.eclass,
-                            search_match.substs.len(),
-                        ));
-                    }
-                }
-                matches_by_rule.push(matches);
-            }
-
-            for (rule_index, matches) in matches_by_rule.into_iter().enumerate() {
-                for matched in matches {
-                    for subst in matched.substs {
-                        pending.push((rule_index, matched.eclass, subst));
-                    }
-                }
-            }
-
-            if !any_rule_over_limit {
-                search_rounds = round + 1;
-                break;
-            }
-        }
-
         let first_round = pending.len();
         let streams = pending
             .into_iter()
-            .map(|(rule_index, root, subst)| {
+            .map(|matched| {
+                let super::quantified_search::RuleMatch {
+                    rule_index,
+                    root,
+                    substitution: subst,
+                    model_violation_verified,
+                } = matched;
                 let rule = &rules[rule_index];
                 let profiling = self.profiling.is_some();
                 let mut choices = groundings(
@@ -232,6 +168,7 @@ where
                         rule_index,
                         root,
                         grounding,
+                        model_violation_verified,
                         start.map(|start| start.elapsed()).unwrap_or_default(),
                     ))
                 })
@@ -239,24 +176,26 @@ where
             .collect::<Vec<_>>();
         let mut work = round_robin(streams);
         let budget = demand.as_ref().map(|demand| demand.budget);
-        let mut visit = |(rule_index, root, grounding, grounding_time)| -> anyhow::Result<usize> {
-            let Some(mut candidate) = self.instantiate_grounding(
-                egraph,
-                &rules[rule_index],
-                root,
-                grounding,
-                grounding_time,
-            ) else {
-                return Ok(0);
+        let mut visit =
+            |(rule_index, root, grounding, verified, grounding_time)| -> anyhow::Result<usize> {
+                let Some(mut candidate) = self.instantiate_grounding(
+                    egraph,
+                    &rules[rule_index],
+                    root,
+                    grounding,
+                    grounding_time,
+                ) else {
+                    return Ok(0);
+                };
+                candidate.model_violation_verified = verified;
+                let accepted = if let Some(demand) = demand.as_mut() {
+                    (demand.accept)(&mut candidate)?
+                } else {
+                    true
+                };
+                self.candidates.push(candidate);
+                Ok(usize::from(accepted))
             };
-            let accepted = if let Some(demand) = demand.as_mut() {
-                (demand.accept)(&mut candidate)?
-            } else {
-                true
-            };
-            self.candidates.push(candidate);
-            Ok(usize::from(accepted))
-        };
         let mut accepted = 0;
         // Preserve the existing first pass and let the whole-candidate ranker
         // compare its proposals. Only underfilled source batches explore more.
@@ -271,13 +210,13 @@ where
                 accepted += visit(item)?;
             }
         }
-        Ok(search_rounds)
+        Ok(())
     }
 
     fn instantiate_grounding<N>(
         &mut self,
         egraph: &egg::EGraph<ArrayLanguage, N>,
-        executable_rule: &ArrayQuantifiedRule<N>,
+        executable_rule: &CompiledQuantifiedRule<N>,
         root: egg::Id,
         grounding: GroundSubstitution,
         grounding_time: std::time::Duration,

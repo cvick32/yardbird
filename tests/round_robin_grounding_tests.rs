@@ -74,6 +74,7 @@ fn explore(
         cost,
         &[("Int".into(), "Bool".into())],
         ArrayInstantiationOptions {
+            additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog {
                 source_grounded: ArrayCandidatePool {
                     terms,
