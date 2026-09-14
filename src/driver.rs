@@ -1045,6 +1045,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         result.unsat_events = unsat_event_tracker.events;
         if let Some(mut profiler) = profiler {
             profiler.record_timing("driver_check_strategy_total", driver_start.elapsed());
+            profiler.set_quantifier_provenance(strat.quantifier_provenance());
             profiler.extend_cost_records(strat.take_profiling_records());
             result.profiling = profiler.finish();
         }

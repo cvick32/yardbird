@@ -515,6 +515,14 @@ impl PreparedQuantifierSearch {
         let mut cached_obligations = 0;
         for mut candidate in matched.matches {
             let rule = &rules[candidate.rule_index];
+            let candidate_start = profiling.as_ref().map(|_| std::time::Instant::now());
+            let count = |key: &str| {
+                if let Some(p) = &profiling {
+                    p.borrow_mut()
+                        .record_quantifier_counter(rule.metadata().name(), key, 1);
+                }
+            };
+            count("matches_examined");
             let bindings = rule
                 .formula_variables()
                 .iter()
@@ -528,8 +536,11 @@ impl PreparedQuantifierSearch {
                 );
                 let violated = if let Some(violated) = self.obligations.get(&key) {
                     cached_obligations += 1;
+                    count("obligation_cache_hits");
                     *violated
                 } else {
+                    count("obligation_cache_misses");
+                    let construction_start = profiling.as_ref().map(|_| std::time::Instant::now());
                     let expression = instantiate_with_bindings(rule.formula(), |variable| {
                         let id = self.egraph.find(candidate.substitution[variable]);
                         self.representatives.get(&id).ok_or_else(|| {
@@ -537,10 +548,31 @@ impl PreparedQuantifierSearch {
                         })
                     })?;
                     let term = expr_to_term(expression);
+                    if let (Some(p), Some(start)) = (&profiling, construction_start) {
+                        p.borrow_mut().record_quantifier_timing(
+                            rule.metadata().name(),
+                            "formula_construction",
+                            start.elapsed(),
+                        );
+                    }
                     let value = match self.evaluations.get(&term) {
-                        Some(value) => value.clone(),
+                        Some(value) => {
+                            count("evaluation_cache_hits");
+                            value.clone()
+                        }
                         None => {
-                            let value = evaluate(&term)?;
+                            count("model_evaluations");
+                            let evaluation_start =
+                                profiling.as_ref().map(|_| std::time::Instant::now());
+                            let value = evaluate(&term);
+                            if let (Some(p), Some(start)) = (&profiling, evaluation_start) {
+                                p.borrow_mut().record_quantifier_timing(
+                                    rule.metadata().name(),
+                                    "model_evaluation",
+                                    start.elapsed(),
+                                );
+                            }
+                            let value = value?;
                             self.evaluations.insert(term, value.clone());
                             value
                         }
@@ -551,9 +583,25 @@ impl PreparedQuantifierSearch {
                 };
                 if !violated {
                     rejected += 1;
+                    count("satisfied_or_unresolved_matches");
+                    if let (Some(p), Some(start)) = (&profiling, candidate_start) {
+                        p.borrow_mut().record_quantifier_timing(
+                            rule.metadata().name(),
+                            "model_filter",
+                            start.elapsed(),
+                        );
+                    }
                     continue;
                 }
                 candidate.model_violation_verified = true;
+            }
+            count("matches_to_ground");
+            if let (Some(p), Some(start)) = (&profiling, candidate_start) {
+                p.borrow_mut().record_quantifier_timing(
+                    rule.metadata().name(),
+                    "model_filter",
+                    start.elapsed(),
+                );
             }
             needed_classes.extend(bindings);
             kept.push(candidate);
@@ -594,7 +642,8 @@ impl PreparedQuantifierSearch {
     }
 }
 
-struct Lowerer {
+struct Lowerer<'a> {
+    provenance: &'a mut crate::quantifier_provenance::QuantifierProvenance,
     signatures: HashMap<String, (Vec<Sort>, Sort)>,
     reserved: HashSet<String>,
     next_id: usize,
@@ -684,7 +733,7 @@ fn term_sort(
     }
 }
 
-impl Lowerer {
+impl Lowerer<'_> {
     fn fresh(&mut self, kind: &str) -> String {
         loop {
             let name = format!("__yardbird_{kind}_{}", self.next_id);
@@ -823,6 +872,8 @@ impl Lowerer {
         body: Term,
         scope: &HashMap<String, Sort>,
     ) -> anyhow::Result<Term> {
+        let source_id = self.provenance.source_for_variables(&vars);
+        let scoped_variables = source_id.as_ref().map(|_| vars.clone()).unwrap_or_default();
         let mut inner = scope.clone();
         let mut renaming = Vec::new();
         let variables = vars
@@ -855,6 +906,13 @@ impl Lowerer {
                 depends_on_binder |= variables.iter().any(|(symbol, _)| symbol.0 == name);
             });
             if !depends_on_binder {
+                if let Some(id) = &source_id {
+                    self.provenance
+                        .sources
+                        .get_mut(id)
+                        .unwrap()
+                        .eliminated_as_constant_array = true;
+                }
                 let mut value_sort = term_sort(&body, &self.signatures, &inner)?;
                 let mut constant = body;
                 for (_, index) in variables.iter().rev() {
@@ -938,6 +996,31 @@ impl Lowerer {
                 .join(" "),
             witnesses.join(" "),
         );
+        if let Some(source_id) = source_id {
+            use crate::quantifier_provenance::{LoweredQuantifier, LoweredVariable};
+            self.provenance.rules.insert(
+                QuantifiedRule::input_binder(&name).name().into(),
+                LoweredQuantifier {
+                    source_id,
+                    helper: name.clone(),
+                    kind: format!("{kind:?}").to_lowercase(),
+                    variables: scoped_variables
+                        .iter()
+                        .zip(&variables)
+                        .map(|((scoped, _), (lowered, _))| LoweredVariable {
+                            scoped_name: scoped.0.clone(),
+                            lowered_name: lowered.0.clone(),
+                        })
+                        .collect(),
+                    captures: captures
+                        .iter()
+                        .map(|(s, t)| (s.to_string(), t.to_string()))
+                        .collect(),
+                    witnesses: witnesses.clone(),
+                    lowered_body: body.to_string(),
+                },
+            );
+        }
         self.rules.push(BinderRule {
             name: name.clone(),
             kind,
@@ -980,116 +1063,17 @@ pub(crate) fn contains_binders(term: &Term) -> bool {
     }
 }
 
-/// Rename lexical binders before let expansion or property Herbrandization.
-/// In `(let ((a x)) (forall ((x S)) a))`, expanding `a` must not capture
-/// the free `x`. Fresh binder names make the existing let substitution safe.
-pub(crate) fn scope_binders(model: VMTModel) -> anyhow::Result<VMTModel> {
-    fn rewrite(
-        term: Term,
-        scope: &HashMap<String, String>,
-        reserved: &mut HashSet<String>,
-        next: &mut usize,
-    ) -> Term {
-        match term {
-            Term::QualIdentifier(id) => scope
-                .get(&id.get_name())
-                .map(|name| app(name, vec![]))
-                .unwrap_or(Term::QualIdentifier(id)),
-            Term::Application {
-                qual_identifier,
-                arguments,
-            } => Term::Application {
-                qual_identifier,
-                arguments: arguments
-                    .into_iter()
-                    .map(|term| rewrite(term, scope, reserved, next))
-                    .collect(),
-            },
-            Term::Attributes { term, attributes } => Term::Attributes {
-                term: Box::new(rewrite(*term, scope, reserved, next)),
-                attributes,
-            },
-            Term::Let { var_bindings, term } => {
-                let mut inner = scope.clone();
-                for (symbol, _) in &var_bindings {
-                    inner.remove(&symbol.0);
-                }
-                Term::Let {
-                    var_bindings: var_bindings
-                        .into_iter()
-                        .map(|(symbol, term)| (symbol, rewrite(term, scope, reserved, next)))
-                        .collect(),
-                    term: Box::new(rewrite(*term, &inner, reserved, next)),
-                }
-            }
-            term @ (Term::Forall { .. } | Term::Exists { .. } | Term::Lambda { .. }) => {
-                let kind = match &term {
-                    Term::Forall { .. } => BinderKind::Forall,
-                    Term::Exists { .. } => BinderKind::Exists,
-                    _ => BinderKind::Lambda,
-                };
-                let (vars, term) = match term {
-                    Term::Forall { vars, term }
-                    | Term::Exists { vars, term }
-                    | Term::Lambda { vars, term } => (vars, term),
-                    _ => unreachable!(),
-                };
-                let mut inner = scope.clone();
-                let vars = vars
-                    .into_iter()
-                    .map(|(symbol, sort)| {
-                        let name = loop {
-                            let name = format!("__yardbird_scoped_binder_{next}");
-                            *next += 1;
-                            if reserved.insert(name.clone()) {
-                                break name;
-                            }
-                        };
-                        inner.insert(symbol.0, name.clone());
-                        (Symbol(name), sort)
-                    })
-                    .collect();
-                let term = Box::new(rewrite(*term, &inner, reserved, next));
-                match kind {
-                    BinderKind::Forall => Term::Forall { vars, term },
-                    BinderKind::Exists => Term::Exists { vars, term },
-                    BinderKind::Lambda => Term::Lambda { vars, term },
-                }
-            }
-            other => other,
-        }
-    }
-    let commands = model.as_commands();
-    let mut reserved = commands
-        .iter()
-        .flat_map(|command| {
-            command
-                .to_string()
-                .split(|c: char| c.is_whitespace() || matches!(c, '(' | ')' | '|'))
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    let mut next = 0;
-    let commands = commands
-        .into_iter()
-        .map(|command| match command {
-            Command::DefineFun { sig, term } => Command::DefineFun {
-                sig,
-                term: rewrite(term, &HashMap::new(), &mut reserved, &mut next),
-            },
-            Command::Assert { term } => Command::Assert {
-                term: rewrite(term, &HashMap::new(), &mut reserved, &mut next),
-            },
-            other => other,
-        })
-        .collect();
-    Ok(VMTModel::checked_from(commands)?)
-}
-
 /// Lower every binder before array abstraction, including helper definitions
 /// and background assertions. The returned model contains no binder terms.
+#[cfg(test)]
 pub(crate) fn lower_model(model: VMTModel) -> anyhow::Result<(VMTModel, QuantifierPlan)> {
+    lower_model_with_provenance(model, &mut Default::default())
+}
+
+pub(crate) fn lower_model_with_provenance(
+    model: VMTModel,
+    provenance: &mut crate::quantifier_provenance::QuantifierProvenance,
+) -> anyhow::Result<(VMTModel, QuantifierPlan)> {
     let commands = model.as_commands();
     if !commands.iter().any(|command| match command {
         Command::DefineFun { term, .. } | Command::Assert { term } => contains_binders(term),
@@ -1133,6 +1117,7 @@ pub(crate) fn lower_model(model: VMTModel) -> anyhow::Result<(VMTModel, Quantifi
         }
     }
     let mut lowerer = Lowerer {
+        provenance,
         signatures,
         reserved,
         next_id: 0,
@@ -1244,6 +1229,174 @@ mod tests {
             SolverBackend::Z3,
         );
         driver.check_strategy(1, options.build_array_strategy())
+    }
+
+    #[test]
+    fn provenance_preserves_nested_shadowing_and_lowered_bindings() {
+        let input = formula_model("(forall ((x Int)) (exists ((x Int)) (= x 0)))", "false");
+        let (scoped, mut provenance) =
+            crate::quantifier_provenance::scope_model(input.clone(), true).unwrap();
+        let (without_profile, empty) =
+            crate::quantifier_provenance::scope_model(input, false).unwrap();
+        assert_eq!(scoped.as_commands(), without_profile.as_commands());
+        assert!(empty.sources.is_empty());
+        assert_eq!(provenance.sources.len(), 2);
+        let child = provenance
+            .sources
+            .values()
+            .find(|s| s.kind == "exists")
+            .unwrap();
+        let parent = &provenance.sources[child.parent_source_id.as_ref().unwrap()];
+        assert_eq!(parent.kind, "forall");
+        assert_eq!(child.variables[0].name, "x");
+        assert_eq!(parent.variables[0].name, "x");
+        assert_ne!(
+            child.variables[0].scoped_name,
+            parent.variables[0].scoped_name
+        );
+        assert_eq!(child.formula, "(exists ((x Int)) (= x 0))");
+        let (lowered, plan) = lower_model_with_provenance(scoped.clone(), &mut provenance).unwrap();
+        let (untracked, _) = lower_model(scoped).unwrap();
+        assert_eq!(lowered.as_commands(), untracked.as_commands());
+        assert_eq!(provenance.rules.len(), plan.rules.len());
+        for (name, rule) in &provenance.rules {
+            assert_eq!(name, QuantifiedRule::input_binder(&rule.helper).name());
+            assert_eq!(rule.witnesses.len(), rule.variables.len());
+            let source = &provenance.sources[&rule.source_id];
+            assert_eq!(
+                rule.variables[0].scoped_name,
+                source.variables[0].scoped_name
+            );
+            assert!(rule.variables[0]
+                .lowered_name
+                .starts_with("__yardbird_bound_"));
+        }
+    }
+
+    #[test]
+    fn provenance_tracks_property_witnesses_without_binder_rules() {
+        let input = formula_model("true", "(forall ((i Int)) (= i i))");
+        let (scoped, mut provenance) =
+            crate::quantifier_provenance::scope_model(input, true).unwrap();
+        let (rewritten, bindings) = scoped.herbrandize_universal_property_with_bindings();
+        provenance.record_property_witnesses(&bindings);
+        let (_, plan) = lower_model_with_provenance(rewritten, &mut provenance).unwrap();
+        assert_eq!(bindings.len(), 1);
+        assert!(plan.rules.is_empty());
+        assert!(provenance.rules.is_empty());
+        let source = provenance.sources.values().next().unwrap();
+        assert_eq!(source.formula, "(forall ((i Int)) (= i i))");
+        assert_eq!(
+            source.property_witnesses[0].scoped_variable,
+            source.variables[0].scoped_name
+        );
+        assert_eq!(source.property_witnesses[0].witness, bindings[0].1 .0);
+    }
+
+    #[test]
+    fn provenance_keeps_one_source_for_let_copies_and_constant_lambdas() {
+        let input = formula_model("(let ((p (forall ((x Int)) (= x 0)))) (and p p))", "false");
+        let (scoped, mut provenance) =
+            crate::quantifier_provenance::scope_model(input, true).unwrap();
+        lower_model_with_provenance(scoped, &mut provenance).unwrap();
+        assert_eq!(provenance.sources.len(), 1);
+        assert_eq!(provenance.rules.len(), 2);
+        assert!(provenance
+            .rules
+            .values()
+            .all(|r| provenance.sources.contains_key(&r.source_id)));
+        let input = formula_model("(= (select (lambda ((i Int)) 0) 0) 0)", "true");
+        let (scoped, mut provenance) =
+            crate::quantifier_provenance::scope_model(input, true).unwrap();
+        lower_model_with_provenance(scoped, &mut provenance).unwrap();
+        assert!(provenance.rules.is_empty());
+        assert!(
+            provenance
+                .sources
+                .values()
+                .next()
+                .unwrap()
+                .eliminated_as_constant_array
+        );
+    }
+
+    #[test]
+    fn provenance_and_work_are_retained_on_timeout_and_exhaustion() {
+        for timeout in [Some(std::time::Duration::ZERO), None] {
+            let input = formula_model(
+                "(forall ((i Int)) (= (select a true) (select a true)))",
+                "false",
+            );
+            let mut options = YardbirdOptions::from_filename("provenance.vmt".into());
+            options.profile = true;
+            let mut driver = Driver::new(
+                input,
+                options.build_instantiation_strategy(),
+                SolverBackend::Z3,
+            )
+            .with_profiler(options.build_profiler())
+            .with_wall_timeout(timeout);
+            let result = match driver.check_strategy(1, options.build_array_strategy()) {
+                Ok(result) => result,
+                Err(_) => driver.take_failed_result().unwrap(),
+            };
+            assert!(!result.profiling.quantifier_provenance.sources.is_empty());
+            assert!(!result.profiling.quantifier_provenance.rules.is_empty());
+            let serialized = serde_json::to_value(&result.profiling).unwrap();
+            let roundtrip: crate::profiling::ProfilingRunRecord =
+                serde_json::from_value(serialized).unwrap();
+            assert_eq!(roundtrip.quantifier_provenance.sources.len(), 1);
+            if timeout.is_none() {
+                assert!(result
+                    .profiling
+                    .cost_records
+                    .iter()
+                    .any(|r| !r.quantifier_work.is_empty()));
+            }
+        }
+        let legacy: crate::profiling::ProfilingRunRecord = serde_json::from_str("{}").unwrap();
+        assert!(legacy.quantifier_provenance.sources.is_empty());
+    }
+
+    #[test]
+    fn provenance_joins_successful_rule_work_and_actual_installations() {
+        let input = formula_model("(forall ((x Bool)) (select a x))", "(select a true)");
+        let mut options = YardbirdOptions::from_filename("provenance.vmt".into());
+        options.profile = true;
+        let mut driver = Driver::new(
+            input,
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler());
+        let result = driver
+            .check_strategy(1, options.build_array_strategy())
+            .unwrap();
+        let mut installed = 0;
+        let mut examined = 0;
+        for record in &result.profiling.cost_records {
+            for (rule, phases) in &record.quantifier_work {
+                let source_id = &result.profiling.quantifier_provenance.rules[rule].source_id;
+                assert!(result
+                    .profiling
+                    .quantifier_provenance
+                    .sources
+                    .contains_key(source_id));
+                for work in phases.values() {
+                    examined += work.counters.get("matches_examined").copied().unwrap_or(0);
+                    installed += work
+                        .counters
+                        .get("abstract_instances_added")
+                        .copied()
+                        .unwrap_or(0);
+                }
+            }
+        }
+        assert!(examined > 0);
+        assert!(installed > 0);
+        let old_record = r#"{"scope":"legacy","bmc_depth":0,"refinement_step":0,"array_types":[],"timing_secs":{},"counters":{},"cost_rec":{"total_calls":0,"total_secs":0.0,"total_expr_nodes":0,"max_expr_nodes":0,"by_site":{}},"egraph":{},"rule_instantiation":{"rule_search_calls":0,"rule_instantiation_calls":0,"skipped_instantiation_calls":0,"matches_total":0,"substitutions_total":0,"substitutions_explored":0,"candidates_generated":0,"candidates_selected":0,"by_rule":{}}}"#;
+        let legacy: crate::profiling::ProfilingRecord = serde_json::from_str(old_record).unwrap();
+        assert!(legacy.quantifier_work.is_empty());
     }
 
     #[derive(Clone)]

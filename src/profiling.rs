@@ -13,6 +13,7 @@ static RUN_ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProfilingRunRecord {
+    pub quantifier_provenance: crate::quantifier_provenance::QuantifierProvenance,
     pub timing_secs: BTreeMap<String, f64>,
     pub driver_records: Vec<DriverProfilingRecord>,
     pub cost_records: Vec<ProfilingRecord>,
@@ -94,6 +95,13 @@ impl Profiler {
             statistics_after: measurement.statistics_after,
             statistics_delta: measurement.statistics_delta,
         });
+    }
+
+    pub fn set_quantifier_provenance(
+        &mut self,
+        provenance: crate::quantifier_provenance::QuantifierProvenance,
+    ) {
+        self.profile.quantifier_provenance = provenance;
     }
 
     pub fn add_driver_record(&mut self, record: DriverProfilingRecord) {
@@ -289,6 +297,9 @@ pub struct ProfilingRecord {
     pub cost_rec: CostRecProfile,
     pub egraph: EGraphProfile,
     pub rule_instantiation: RuleInstantiationProfile,
+    /// Rule name -> search phase -> work observed at this depth/refinement.
+    #[serde(default)]
+    pub quantifier_work: BTreeMap<String, BTreeMap<String, QuantifierWorkProfile>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -403,8 +414,32 @@ pub struct RuleProfile {
     pub candidates_selected: u64,
 }
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct QuantifierWorkProfile {
+    pub timing_secs: BTreeMap<String, f64>,
+    pub counters: BTreeMap<String, u64>,
+}
+
+pub(crate) struct QuantifierPhaseGuard(std::rc::Rc<std::cell::RefCell<ArrayProfilingCollector>>);
+impl QuantifierPhaseGuard {
+    pub fn new(
+        collector: std::rc::Rc<std::cell::RefCell<ArrayProfilingCollector>>,
+        phase: &str,
+    ) -> Self {
+        collector.borrow_mut().quantifier_phase = Some(phase.to_string());
+        Self(collector)
+    }
+}
+impl Drop for QuantifierPhaseGuard {
+    fn drop(&mut self) {
+        self.0.borrow_mut().quantifier_phase = None;
+    }
+}
+
 pub struct ArrayProfilingCollector {
     record: ProfilingRecord,
+    quantifier_phase: Option<String>,
 }
 
 impl ArrayProfilingCollector {
@@ -415,6 +450,7 @@ impl ArrayProfilingCollector {
         array_types: Vec<(String, String)>,
     ) -> Self {
         Self {
+            quantifier_phase: None,
             record: ProfilingRecord {
                 scope: scope.into(),
                 bmc_depth,
@@ -425,6 +461,7 @@ impl ArrayProfilingCollector {
                 cost_rec: CostRecProfile::default(),
                 egraph: EGraphProfile::default(),
                 rule_instantiation: RuleInstantiationProfile::default(),
+                quantifier_work: BTreeMap::new(),
             },
         }
     }
@@ -480,6 +517,32 @@ impl ArrayProfilingCollector {
         result
     }
 
+    pub fn record_quantifier_counter(&mut self, rule: &str, counter: &str, amount: u64) {
+        if let Some(phase) = &self.quantifier_phase {
+            let work = self
+                .record
+                .quantifier_work
+                .entry(rule.to_string())
+                .or_default()
+                .entry(phase.clone())
+                .or_default();
+            *work.counters.entry(counter.to_string()).or_default() += amount;
+        }
+    }
+
+    pub fn record_quantifier_timing(&mut self, rule: &str, stage: &str, duration: Duration) {
+        if let Some(phase) = &self.quantifier_phase {
+            let work = self
+                .record
+                .quantifier_work
+                .entry(rule.to_string())
+                .or_default()
+                .entry(phase.clone())
+                .or_default();
+            *work.timing_secs.entry(stage.to_string()).or_default() += duration.as_secs_f64();
+        }
+    }
+
     /// Record direct e-graph matching.
     pub fn record_rule_search(
         &mut self,
@@ -488,6 +551,8 @@ impl ArrayProfilingCollector {
         substitutions: usize,
         duration: Duration,
     ) {
+        self.record_quantifier_counter(rule_name, "matches_returned", substitutions as u64);
+        self.record_quantifier_timing(rule_name, "matching", duration);
         let profile = &mut self.record.rule_instantiation;
         profile.rule_search_calls += 1;
         profile.matches_total += matches as u64;
@@ -507,6 +572,12 @@ impl ArrayProfilingCollector {
         skipped: bool,
         duration: Duration,
     ) {
+        self.record_quantifier_counter(
+            rule_name,
+            "grounding_attempts",
+            substitutions_explored as u64,
+        );
+        self.record_quantifier_timing(rule_name, "grounding_and_instantiation", duration);
         let profile = &mut self.record.rule_instantiation;
         profile.rule_instantiation_calls += 1;
         profile.substitutions_explored += substitutions_explored as u64;
@@ -524,6 +595,8 @@ impl ArrayProfilingCollector {
     }
 
     pub fn record_rule_candidates(&mut self, rule_name: &str, generated: usize, selected: usize) {
+        self.record_quantifier_counter(rule_name, "candidates_grounded", generated as u64);
+        self.record_quantifier_counter(rule_name, "candidates_selected", selected as u64);
         let profile = &mut self.record.rule_instantiation;
         profile.candidates_generated += generated as u64;
         profile.candidates_selected += selected as u64;

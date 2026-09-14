@@ -63,6 +63,7 @@ pub struct InstantiationCandidate {
 pub(crate) struct RuleCandidateCounts {
     pub(crate) generated: usize,
     pub(crate) selected: usize,
+    pub(crate) rejected_known_or_uninstallable: usize,
 }
 
 /// Batch-local outcomes for the strategy's logging and progress checks.
@@ -163,10 +164,17 @@ impl InstantiationBatch {
         let mut seen = HashSet::new();
         (summary.rejected_known, summary.rejected_ranker) =
             self.select(scope, winners_per_group, ranker, |candidate| {
-                let Some(normalized) = normalize(candidate) else {
-                    return false;
-                };
-                !known.contains(&normalized) && seen.insert(normalized)
+                let accepted = normalize(candidate).is_some_and(|normalized| {
+                    !known.contains(&normalized) && seen.insert(normalized)
+                });
+                if !accepted {
+                    summary
+                        .by_rule
+                        .entry(candidate.rule.name().to_string())
+                        .or_default()
+                        .rejected_known_or_uninstallable += 1;
+                }
+                accepted
             });
 
         for candidate in self.selected() {
@@ -1010,6 +1018,7 @@ mod tests {
             summary.by_rule[array.name()],
             RuleCandidateCounts {
                 generated: 6,
+                rejected_known_or_uninstallable: 3,
                 selected: 1
             }
         );
@@ -1017,6 +1026,7 @@ mod tests {
             summary.by_rule[guard.name()],
             RuleCandidateCounts {
                 generated: 2,
+                rejected_known_or_uninstallable: 0,
                 selected: 1
             }
         );
@@ -1024,6 +1034,7 @@ mod tests {
             summary.by_rule[satisfied_guard.name()],
             RuleCandidateCounts {
                 generated: 1,
+                rejected_known_or_uninstallable: 0,
                 selected: 0
             }
         );

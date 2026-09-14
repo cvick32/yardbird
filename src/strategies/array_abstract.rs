@@ -57,6 +57,7 @@ where
     cost_config: F::Config,
     discovered_array_types: Vec<(String, String)>,
     quantifiers: crate::quantifier_abstraction::QuantifierPlan,
+    quantifier_provenance: crate::quantifier_provenance::QuantifierProvenance,
     configuration_error: Option<String>,
     owns_quantifiers: bool,
     decision_data: Vec<DecisionRecord>,
@@ -88,6 +89,7 @@ where
             cost_config,
             discovered_array_types: vec![],
             quantifiers: crate::quantifier_abstraction::QuantifierPlan::default(),
+            quantifier_provenance: Default::default(),
             configuration_error: None,
             owns_quantifiers: false,
             decision_data: vec![],
@@ -193,19 +195,28 @@ where
             }
             _ => false,
         });
-        let model = match crate::quantifier_abstraction::scope_binders(model.clone()) {
-            Ok(model) => model,
+        let model = match crate::quantifier_provenance::scope_model(model.clone(), self.profile) {
+            Ok((model, provenance)) => {
+                self.quantifier_provenance = provenance;
+                model
+            }
             Err(error) => {
                 self.configuration_error = Some(error.to_string());
                 return model;
             }
         };
-        let (model, herbrand_witnesses) = model.herbrandize_universal_property();
+        let (model, bindings) = model.herbrandize_universal_property_with_bindings();
+        self.quantifier_provenance
+            .record_property_witnesses(&bindings);
+        let herbrand_witnesses = bindings.len();
         if herbrand_witnesses > 0 {
             info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
         }
         let original = model.clone();
-        let model = match crate::quantifier_abstraction::lower_model(model) {
+        let model = match crate::quantifier_abstraction::lower_model_with_provenance(
+            model,
+            &mut self.quantifier_provenance,
+        ) {
             Ok((model, plan)) => {
                 info!(
                     "Abstracted {} quantifier/lambda expressions for Yardbird instantiation",
@@ -577,6 +588,7 @@ where
             let term_hash = crate::training::canonical_term_hash(&expression);
             let term = expr_to_term(expression);
             let quantifier_kind = candidate.rule.category();
+            let rule_name = candidate.rule.name().to_string();
 
             let abstract_id = provenance.abstract_instantiation_id().to_string();
             if trace_instantiations {
@@ -595,6 +607,30 @@ where
                 continue;
             };
             let result = smt.add_instantiation(request);
+            if quantifier_kind == crate::quantified_rule::QuantifiedRuleCategory::InputBinder {
+                if let Some(record) = self
+                    .profiling_records
+                    .last_mut()
+                    .filter(|r| r.bmc_depth == Some(state.depth))
+                {
+                    let counters = &mut record
+                        .quantifier_work
+                        .entry(rule_name)
+                        .or_default()
+                        .entry("installation".into())
+                        .or_default()
+                        .counters;
+                    *counters
+                        .entry("abstract_instances_added".into())
+                        .or_default() += u64::from(result.abstract_instance_added);
+                    *counters
+                        .entry("indexed_assertions_added".into())
+                        .or_default() += result.indexed_assertions_added;
+                    *counters
+                        .entry("indexed_assertions_deduplicated".into())
+                        .or_default() += result.indexed_assertions_deduplicated;
+                }
+            }
             self.record_installation_outcome(&abstract_id, result);
             if trace_instantiations {
                 trace!(
@@ -617,6 +653,10 @@ where
             mem::take(&mut self.decision_data),
             mem::take(&mut self.abstract_instantiations),
         )
+    }
+
+    fn quantifier_provenance(&self) -> crate::quantifier_provenance::QuantifierProvenance {
+        self.quantifier_provenance.clone()
     }
 
     fn take_profiling_records(&mut self) -> Vec<ProfilingRecord> {
@@ -702,6 +742,9 @@ where
         if self.quantifiers.rules.is_empty() {
             return Ok(InstantiationBatch::default());
         }
+        let _ = profiling
+            .as_ref()
+            .map(|p| crate::profiling::QuantifierPhaseGuard::new(p.clone(), phase.timing_key()));
         let phase_start = Instant::now();
         if state.binder_search.is_none() {
             let start = Instant::now();
@@ -740,6 +783,7 @@ where
                     },
                 },
             )?;
+            let selection_start = profiling.as_ref().map(|_| Instant::now());
             let summary = batch.prepare_with_ranker(
                 scope,
                 &known,
@@ -750,8 +794,16 @@ where
             )?;
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();
+                if let Some(start) = selection_start {
+                    profiling.record_timing("input_binder_selection", start.elapsed());
+                }
                 for (rule, counts) in summary.by_rule {
                     profiling.record_rule_candidates(&rule, counts.generated, counts.selected);
+                    profiling.record_quantifier_counter(
+                        &rule,
+                        "known_or_uninstallable_candidates",
+                        counts.rejected_known_or_uninstallable as u64,
+                    );
                 }
                 profiling.add_counter(
                     "duplicate_or_uninstallable_instantiations_filtered",

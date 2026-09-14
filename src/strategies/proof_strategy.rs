@@ -94,6 +94,10 @@ pub trait ProofStrategy<'ctx, S> {
         (vec![], vec![])
     }
 
+    fn quantifier_provenance(&self) -> crate::quantifier_provenance::QuantifierProvenance {
+        Default::default()
+    }
+
     fn take_profiling_records(&mut self) -> Vec<ProfilingRecord> {
         vec![]
     }
