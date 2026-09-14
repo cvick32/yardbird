@@ -742,7 +742,7 @@ where
         if self.quantifiers.rules.is_empty() {
             return Ok(InstantiationBatch::default());
         }
-        let _ = profiling
+        let _phase_guard = profiling
             .as_ref()
             .map(|p| crate::profiling::QuantifierPhaseGuard::new(p.clone(), phase.timing_key()));
         let phase_start = Instant::now();
