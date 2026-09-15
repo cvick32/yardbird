@@ -465,11 +465,22 @@ impl SearchPhase {
 }
 
 impl PreparedQuantifierSearch {
-    pub fn start_phase(&mut self, phase: SearchPhase) {
+    pub fn start_phase(&mut self, phase: SearchPhase, next_rule: usize) {
         // Array-stage attempts can change representative-use history without
         // changing the solver model. Reuse model facts, but allow the new
         // selection context to reconsider matches from an earlier pass.
-        self.cursors.remove(&phase);
+        // Only the scheduling position survives a new pass/model; offsets and
+        // completeness refer to this pass's unchanged model-equivalence graph.
+        self.cursors.insert(
+            phase,
+            crate::theories::array::quantified_search::BinderSearchCursor::starting_at(next_rule),
+        );
+    }
+
+    pub fn next_rule_index(&self, phase: SearchPhase) -> usize {
+        self.cursors
+            .get(&phase)
+            .map_or(0, |cursor| cursor.next_rule_index())
     }
 
     pub fn can_continue(&self, phase: SearchPhase) -> bool {
@@ -1708,7 +1719,7 @@ mod tests {
         options
             .selection_counts
             .insert(crate::training::canonical_term_hash(&preferred), 100);
-        prepared.start_phase(SearchPhase::Expand);
+        prepared.start_phase(SearchPhase::Expand, 0);
         let second = prepared
             .candidates(
                 |_| unreachable!(),
@@ -1763,15 +1774,15 @@ mod tests {
             array_grounding::instantiate_with_bindings,
             quantified_search::{search_binder_page, BinderSearchCursor},
         };
-        let mut prepared = prepared_fixture(2, 65); // 4,225 typed substitutions.
+        let mut prepared = prepared_fixture(2, 11); // 121 typed substitutions.
         let rules = &prepared.compiled.phases[&SearchPhase::Conflicts];
         let mut cursor = BinderSearchCursor::default();
         let first = search_binder_page(&prepared.egraph, rules, &mut cursor, &None);
-        assert_eq!(first.matches.len(), 4096);
+        assert_eq!(first.matches.len(), 100);
         assert_eq!(first.report.continuable_rules.len(), 1);
         assert!(first.report.budget_exhausted_rules.is_empty());
         let second = search_binder_page(&prepared.egraph, rules, &mut cursor, &None);
-        assert_eq!(second.matches.len(), 129);
+        assert_eq!(second.matches.len(), 21);
         assert!(second.report.continuable_rules.is_empty());
         assert!(second.report.budget_exhausted_rules.is_empty());
         let last = second.matches.last().unwrap();
@@ -1875,7 +1886,7 @@ mod tests {
         }
         assert_eq!(count, 65_536);
         assert_eq!(
-            examined, 557_072,
+            examined, 21_550_192,
             "prefix re-examination must also be bounded"
         );
         let exhausted = search_binder_page(&prepared.egraph, rules, &mut cursor, &None);
@@ -2339,5 +2350,117 @@ mod tests {
                 "{init}"
             );
         }
+    }
+
+    #[test]
+    fn binder_page_rotate_and_preserve_each_rules_position() {
+        use crate::theories::array::quantified_search::{search_binder_page, BinderSearchCursor};
+
+        let prepared = prepared_fixture(2, 11);
+        let other = prepared_fixture(2, 11);
+
+        let mut first_compiled = std::rc::Rc::try_unwrap(prepared.compiled).ok().unwrap();
+        let mut second_comiled = std::rc::Rc::try_unwrap(other.compiled).ok().unwrap();
+
+        let mut rules = first_compiled
+            .phases
+            .remove(&SearchPhase::Conflicts)
+            .unwrap();
+        rules.extend(
+            second_comiled
+                .phases
+                .remove(&SearchPhase::Conflicts)
+                .unwrap(),
+        );
+
+        assert_eq!(rules.len(), 2);
+
+        let mut cursor = BinderSearchCursor::default();
+        let mut seen = [
+            HashSet::<Vec<egg::Id>>::new(),
+            HashSet::<Vec<egg::Id>>::new(),
+        ];
+
+        for (rule_index, count, pending) in [(0, 100, 2), (1, 100, 2), (0, 21, 1), (1, 21, 0)] {
+            let page = search_binder_page(&prepared.egraph, &rules, &mut cursor, &None);
+
+            assert_eq!(page.matches.len(), count);
+            assert_eq!(page.report.rounds, 1);
+            assert_eq!(page.report.continuable_rules.len(), pending);
+            assert_eq!(cursor.can_continue(), pending > 0);
+            assert!(page.report.budget_exhausted_rules.is_empty());
+
+            for matched in page.matches {
+                assert_eq!(matched.rule_index, rule_index);
+                let bindings = rules[rule_index]
+                    .formula_variables()
+                    .iter()
+                    .map(|var| prepared.egraph.find(matched.substitution[*var]))
+                    .collect::<Vec<_>>();
+
+                assert!(
+                    seen[rule_index].insert(bindings),
+                    "a binding was returned more than once for rule {rule_index}"
+                );
+            }
+        }
+
+        assert_eq!(seen[0].len(), 121);
+        assert_eq!(seen[1].len(), 121);
+
+        let finished = search_binder_page(&prepared.egraph, &rules, &mut cursor, &None);
+
+        assert!(finished.matches.is_empty());
+        assert_eq!(finished.report.rounds, 0);
+        assert_eq!(finished.report.examined_substitutions, 0);
+        assert!(finished.report.continuable_rules.is_empty());
+        assert!(finished.report.budget_exhausted_rules.is_empty());
+    }
+
+    #[test]
+    fn binder_pages_skip_completed_rules() {
+        use crate::theories::array::quantified_search::{search_binder_page, BinderSearchCursor};
+
+        // Both rules use the same domain of 11 values.
+        // One variable gives 11 matches; two give 121.
+        let short = prepared_fixture(1, 11);
+        let long = prepared_fixture(2, 11);
+
+        let mut short_compiled = std::rc::Rc::try_unwrap(short.compiled).ok().unwrap();
+        let mut long_compiled = std::rc::Rc::try_unwrap(long.compiled).ok().unwrap();
+
+        let mut rules = short_compiled
+            .phases
+            .remove(&SearchPhase::Conflicts)
+            .unwrap();
+        rules.extend(
+            long_compiled
+                .phases
+                .remove(&SearchPhase::Conflicts)
+                .unwrap(),
+        );
+        assert_eq!(rules.len(), 2);
+
+        let mut cursor = BinderSearchCursor::default();
+
+        for (rule_index, count, more) in [(0, 11, true), (1, 100, true), (1, 21, false)] {
+            let page = search_binder_page(&long.egraph, &rules, &mut cursor, &None);
+
+            assert_eq!(page.matches.len(), count);
+            assert!(page
+                .matches
+                .iter()
+                .all(|matched| matched.rule_index == rule_index));
+            assert_eq!(page.report.rounds, 1);
+            assert_eq!(page.report.continuable_rules.len(), usize::from(more));
+            assert!(page.report.budget_exhausted_rules.is_empty());
+            assert_eq!(cursor.can_continue(), more);
+        }
+
+        let finished = search_binder_page(&long.egraph, &rules, &mut cursor, &None);
+        assert!(finished.matches.is_empty());
+        assert_eq!(finished.report.examined_substitutions, 0);
+        assert_eq!(finished.report.rounds, 0);
+        assert!(!cursor.can_continue());
     }
 }

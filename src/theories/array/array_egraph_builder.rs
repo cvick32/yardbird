@@ -50,8 +50,9 @@ pub enum ArrayEGraphBuildStep {
 
 /// Controls which model equalities are admitted before array-axiom matching.
 ///
-/// Repeated calls expand the same e-graph. `Exhausted` means that no broader construction
-/// stage remains, so the abstract strategy must report abstraction exhaustion.
+/// Repeated calls expand the same e-graph. `Exhausted` means that no broader array
+/// construction stage remains. The strategy may still try binder term expansion
+/// before reporting abstraction exhaustion.
 pub trait ArrayEGraphBuilder: Debug + Send {
     fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder>;
 

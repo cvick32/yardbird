@@ -8,10 +8,10 @@ use super::array_axioms::{ArrayLanguage, CompiledQuantifiedRule};
 
 const INITIAL_ARRAY_MATCH_LIMIT: usize = 1_000;
 const ARRAY_SEARCH_ROUNDS: usize = 15;
-const BINDER_PAGE_SIZE: usize = 4_096;
+const BINDER_PAGE_SIZE: usize = 100;
 // egg does not expose a resumable join. Bound prefix re-examination as well as
-// retained matches: at most 16 queries (557,072 returned substitutions) per
-// binder search pass, including lookahead. No budget establishes completeness.
+// retained matches: at most 656 queries (21,550,192 returned substitutions) per
+// rule per search pass, including lookahead. No budget establishes completeness.
 const BINDER_SEARCH_LIMIT: usize = 65_536;
 
 #[derive(Clone, Debug, Default)]
@@ -37,18 +37,35 @@ pub(crate) struct MatchedRules {
     pub report: RuleSearchReport,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum BinderRuleCursor {
+    Pending { offset: usize },
+    Complete,
+    Exhausted,
+}
+
 #[derive(Default)]
 pub(crate) struct BinderSearchCursor {
-    offsets: Vec<usize>,
-    complete: Vec<bool>,
+    rules: Vec<BinderRuleCursor>,
+    next_rule: usize,
 }
 
 impl BinderSearchCursor {
+    pub(crate) fn starting_at(next_rule: usize) -> Self {
+        Self {
+            next_rule,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn next_rule_index(&self) -> usize {
+        self.next_rule
+    }
+
     pub fn can_continue(&self) -> bool {
-        self.offsets
+        self.rules
             .iter()
-            .zip(&self.complete)
-            .any(|(offset, complete)| !complete && *offset < BINDER_SEARCH_LIMIT)
+            .any(|rule| matches!(rule, BinderRuleCursor::Pending { .. }))
     }
 }
 
@@ -85,7 +102,7 @@ fn search<N: egg::Analysis<ArrayLanguage>>(
 }
 
 /// Preserve the historical array backoff range and ordering. Unlike binder
-/// joins, array rules are not restricted to a 4,096-substitution prefix.
+/// joins, array rules are not restricted to a binder-sized page.
 pub(crate) fn search_array_rules<N: egg::Analysis<ArrayLanguage>>(
     egraph: &egg::EGraph<ArrayLanguage, N>,
     rules: &[CompiledQuantifiedRule<N>],
@@ -120,6 +137,43 @@ pub(crate) fn search_array_rules<N: egg::Analysis<ArrayLanguage>>(
     result
 }
 
+fn search_binder_rule_page<N: egg::Analysis<ArrayLanguage>>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    rule: &CompiledQuantifiedRule<N>,
+    rule_index: usize,
+    cursor: &mut BinderRuleCursor,
+    profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
+) -> MatchedRules {
+    let BinderRuleCursor::Pending { offset } = *cursor else {
+        return MatchedRules::default();
+    };
+
+    let end = (offset + BINDER_PAGE_SIZE).min(BINDER_SEARCH_LIMIT);
+    let matches = search(egraph, rule, rule_index, end + 1, profiling);
+    let examined_substitutions = matches.len();
+
+    *cursor = if examined_substitutions <= end {
+        BinderRuleCursor::Complete
+    } else if end == BINDER_SEARCH_LIMIT {
+        BinderRuleCursor::Exhausted
+    } else {
+        BinderRuleCursor::Pending { offset: end }
+    };
+
+    MatchedRules {
+        matches: matches
+            .into_iter()
+            .skip(offset)
+            .take(end - offset)
+            .collect(),
+        report: RuleSearchReport {
+            examined_substitutions,
+            rounds: 1,
+            ..Default::default()
+        },
+    }
+}
+
 /// Continue within the SAME model-equivalence graph. A new model must use a
 /// new cursor; its e-class identities and matching order may have changed.
 pub(crate) fn search_binder_page<N: egg::Analysis<ArrayLanguage>>(
@@ -128,33 +182,45 @@ pub(crate) fn search_binder_page<N: egg::Analysis<ArrayLanguage>>(
     cursor: &mut BinderSearchCursor,
     profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
 ) -> MatchedRules {
-    cursor.offsets.resize(rules.len(), 0);
-    cursor.complete.resize(rules.len(), false);
+    cursor
+        .rules
+        .resize(rules.len(), BinderRuleCursor::Pending { offset: 0 });
+
     let mut result = MatchedRules::default();
-    result.report.rounds = 1;
+
+    // Find the next pending rule, wrapping around once. For an empty rule
+    // list, this iterator is empty and the modulo is never evaluated.
+    let next = (0..rules.len())
+        .map(|distance| (cursor.next_rule + distance) % rules.len())
+        .find(|&index| matches!(cursor.rules[index], BinderRuleCursor::Pending { .. }));
+
+    if let Some(index) = next {
+        result = search_binder_rule_page(
+            egraph,
+            &rules[index],
+            index,
+            &mut cursor.rules[index],
+            profiling,
+        );
+
+        cursor.next_rule = (index + 1) % rules.len();
+    }
+
     for (index, rule) in rules.iter().enumerate() {
-        if cursor.complete[index] {
-            continue;
-        }
-        let offset = cursor.offsets[index];
-        if offset < BINDER_SEARCH_LIMIT {
-            let end = (offset + BINDER_PAGE_SIZE).min(BINDER_SEARCH_LIMIT);
-            // Always ask for a lookahead, including at the work limit.
-            let matches = search(egraph, rule, index, end + 1, profiling);
-            result.report.examined_substitutions += matches.len();
-            cursor.complete[index] = matches.len() <= end;
-            result
-                .matches
-                .extend(matches.into_iter().skip(offset).take(end - offset));
-            cursor.offsets[index] = end;
-        }
-        if !cursor.complete[index] {
-            let remaining = if cursor.offsets[index] < BINDER_SEARCH_LIMIT {
-                &mut result.report.continuable_rules
-            } else {
-                &mut result.report.budget_exhausted_rules
-            };
-            remaining.push(rule.metadata().name().to_owned());
+        match cursor.rules[index] {
+            BinderRuleCursor::Pending { .. } => {
+                result
+                    .report
+                    .continuable_rules
+                    .push(rule.metadata().name().to_owned());
+            }
+            BinderRuleCursor::Exhausted => {
+                result
+                    .report
+                    .budget_exhausted_rules
+                    .push(rule.metadata().name().to_owned());
+            }
+            BinderRuleCursor::Complete => {}
         }
     }
     result

@@ -57,6 +57,8 @@ where
     cost_config: F::Config,
     discovered_array_types: Vec<(String, String)>,
     quantifiers: crate::quantifier_abstraction::QuantifierPlan,
+    // Scheduling survives solver checks; model-specific matches live in state.
+    binder_next_rule: HashMap<crate::quantifier_abstraction::SearchPhase, usize>,
     quantifier_provenance: crate::quantifier_provenance::QuantifierProvenance,
     configuration_error: Option<String>,
     owns_quantifiers: bool,
@@ -89,6 +91,7 @@ where
             cost_config,
             discovered_array_types: vec![],
             quantifiers: crate::quantifier_abstraction::QuantifierPlan::default(),
+            binder_next_rule: HashMap::new(),
             quantifier_provenance: Default::default(),
             configuration_error: None,
             owns_quantifiers: false,
@@ -171,7 +174,18 @@ pub struct ArrayRefinementState {
     pub(crate) guarded_read_updates: Vec<Term>,
     pub array_types: Vec<(String, String)>,
     pub(crate) egraph_builder: Box<dyn ArrayEGraphBuilder>,
-    pub(crate) binder_search: Option<crate::quantifier_abstraction::PreparedQuantifierSearch>,
+    pub(crate) binder_search: Option<BinderSearchState>,
+}
+
+/// One solver model's fixed binder graph and unsuccessful selection passes.
+pub(crate) struct BinderSearchState {
+    prepared: crate::quantifier_abstraction::PreparedQuantifierSearch,
+    empty_passes: HashMap<crate::quantifier_abstraction::SearchPhase, BinderPassContext>,
+}
+
+struct BinderPassContext {
+    refinement_step: u32,
+    selection_counts: FxHashMap<String, u32>,
 }
 
 impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
@@ -188,6 +202,7 @@ where
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
         self.configuration_error = None;
+        self.binder_next_rule.clear();
         self.owns_quantifiers = model.as_commands().iter().any(|command| match command {
             smt2parser::concrete::Command::DefineFun { term, .. }
             | smt2parser::concrete::Command::Assert { term } => {
@@ -366,8 +381,9 @@ where
                 egraph_node_count(&state.egraph),
             );
         }
-        // The driver may call `sat` again with this same state after concrete
-        // validation rejects the current abstract counterexample.
+        // With no selected instances, the driver calls `sat` again on this
+        // model to widen the array graph (after concrete validation when allowed).
+        // Keep those stages ahead of term-generating binder expansion.
         #[allow(clippy::never_loop)]
         loop {
             let build_start = Instant::now();
@@ -380,7 +396,18 @@ where
             let expansion = match build_step {
                 ArrayEGraphBuildStep::Expanded(expansion) => expansion,
                 ArrayEGraphBuildStep::Exhausted => {
+                    let binders = self.binder_candidates(
+                        smt,
+                        state,
+                        refinement_step,
+                        crate::quantifier_abstraction::SearchPhase::Expand,
+                        profiling.clone(),
+                    )?;
+                    self.absorb_candidates(state, binders);
                     self.finish_profiling_record(profiling);
+                    if !state.candidates.is_empty() {
+                        return Ok(ProofAction::Continue);
+                    }
                     return Err(driver::Error::AbstractionExhausted { depth: state.depth });
                 }
             };
@@ -557,15 +584,6 @@ where
                     profiling.clone(),
                 )?;
             }
-            if binders.selected().next().is_none() {
-                binders = self.binder_candidates(
-                    smt,
-                    state,
-                    refinement_step,
-                    crate::quantifier_abstraction::SearchPhase::Expand,
-                    profiling.clone(),
-                )?;
-            }
             self.absorb_candidates(state, binders);
 
             self.finish_profiling_record(profiling);
@@ -732,7 +750,7 @@ where
     }
 
     fn binder_candidates(
-        &self,
+        &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
         state: &mut ArrayRefinementState,
         refinement_step: u32,
@@ -748,15 +766,37 @@ where
         let phase_start = Instant::now();
         if state.binder_search.is_none() {
             let start = Instant::now();
-            state.binder_search = Some(self.quantifiers.prepare(smt)?);
+            state.binder_search = Some(BinderSearchState {
+                prepared: self.quantifiers.prepare(smt)?,
+                empty_passes: HashMap::new(),
+            });
             if let Some(profiling) = &profiling {
                 let mut profiling = profiling.borrow_mut();
                 profiling.record_timing("input_binder_prepare", start.elapsed());
                 profiling.add_counter("input_binder_model_preparations", 1);
             }
         }
-        let prepared = state.binder_search.as_mut().unwrap();
-        prepared.start_phase(phase);
+        let search = state.binder_search.as_mut().unwrap();
+        // Widening the array graph leaves the prepared binder graph, model,
+        // known instances, cost configuration and ranker unchanged. Only
+        // representative-use history may change between these attempts.
+        if search.empty_passes.get(&phase).is_some_and(|context| {
+            context.refinement_step == refinement_step
+                && context.selection_counts == self.term_selection_counts
+        }) {
+            if let Some(profiling) = &profiling {
+                let mut profiling = profiling.borrow_mut();
+                profiling.add_counter("input_binder_empty_passes_reused", 1);
+                profiling.record_timing(phase.timing_key(), phase_start.elapsed());
+            }
+            return Ok(InstantiationBatch::default());
+        }
+        search.empty_passes.remove(&phase);
+        let prepared = &mut search.prepared;
+        prepared.start_phase(
+            phase,
+            self.binder_next_rule.get(&phase).copied().unwrap_or(0),
+        );
         // Derived terms remain available for witnesses and nested binders.
         // Model-violation eligibility is independent of this vocabulary scope.
         let scope = crate::theories::array::candidate_scope::CandidateScope::AllCandidates;
@@ -783,6 +823,8 @@ where
                     },
                 },
             )?;
+            self.binder_next_rule
+                .insert(phase, prepared.next_rule_index(phase));
             let selection_start = profiling.as_ref().map(|_| Instant::now());
             let summary = batch.prepare_with_ranker(
                 scope,
@@ -819,6 +861,17 @@ where
                 );
             }
             if batch.selected().next().is_some() || !prepared.can_continue(phase) {
+                if batch.selected().next().is_none() {
+                    // Includes search-budget exhaustion: reuse the bounded
+                    // result without claiming that no other matches exist.
+                    search.empty_passes.insert(
+                        phase,
+                        BinderPassContext {
+                            refinement_step,
+                            selection_counts: self.term_selection_counts.clone(),
+                        },
+                    );
+                }
                 if let Some(profiling) = &profiling {
                     profiling
                         .borrow_mut()
@@ -901,6 +954,325 @@ where
             } else {
                 warn!("Unable to unwrap array profiling collector; profiling record dropped");
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theories::array::{
+        array_egraph_builder::{ArrayEGraphExpansion, FullEGraphBuilder},
+        candidate_scope::CandidateScope,
+    };
+    use crate::{
+        cost_functions::array::ArrayAstSize, problem_context::ProblemContext,
+        quantifier_abstraction::SearchPhase, solver::SolverCheckResult,
+        vmt_bmc_session::VmtBmcSession, SolverBackend, YardbirdOptions,
+    };
+
+    fn sat_fixture(input: &str) -> (Abstract<ArrayAstSize>, VmtBmcSession) {
+        let commands = smt2parser::CommandStream::new(
+            std::io::Cursor::new(input.as_bytes()),
+            smt2parser::concrete::SyntaxBuilder,
+            None,
+        )
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut strategy = Abstract::<ArrayAstSize>::new(1, false, (), false);
+        let mut theory: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+            Box::new(Abstract::<ArrayAstSize>::new(1, false, (), false));
+        theory.configure_model(model.clone());
+        let model = strategy.configure_model(model);
+        let options = YardbirdOptions::from_filename("binder-search.vmt".into());
+        let mut smt = VmtBmcSession::new(
+            &model,
+            &theory,
+            SolverBackend::Z3,
+            false,
+            options.build_instantiation_strategy(),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+        (strategy, smt)
+    }
+
+    fn round_robin_fixture() -> (Abstract<ArrayAstSize>, VmtBmcSession) {
+        // Both binders stay eligible. No selected batch is installed: this
+        // isolates scheduling from changes to eligibility caused by refinement.
+        let input = "
+            (declare-fun a () (Array Bool Bool))
+            (declare-fun p (Bool) Bool)
+            (declare-fun q (Bool) Bool)
+            (define-fun init () Bool
+              (! (and (forall ((x Bool)) (p x))
+                      (forall ((y Bool)) (q y))) :init true))
+            (define-fun trans () Bool (! true :trans true))
+            (define-fun prop () Bool (! false :invar-property 0))";
+        sat_fixture(input)
+    }
+
+    // An empty narrow stage followed by real full construction makes the
+    // scheduling boundary independent of source provenance heuristics.
+    #[derive(Clone, Debug, Default)]
+    struct DeferredFullBuilder {
+        source_searched: bool,
+        full: FullEGraphBuilder,
+    }
+
+    impl ArrayEGraphBuilder for DeferredFullBuilder {
+        fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder> {
+            Box::new(self.clone())
+        }
+
+        fn expand(
+            &mut self,
+            egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+            smt: &dyn crate::problem_context::ProblemContext,
+            cone: &PropertyCone,
+            depth: u16,
+        ) -> anyhow::Result<ArrayEGraphBuildStep> {
+            if !self.source_searched {
+                self.source_searched = true;
+                return Ok(ArrayEGraphBuildStep::Expanded(ArrayEGraphExpansion {
+                    stage: ArrayEGraphBuildStage::Source,
+                    candidate_scope: CandidateScope::SourceGroundedOnly,
+                    total_subterms: 0,
+                    admitted_subterms: 0,
+                    newly_admitted_subterms: 0,
+                    demand_frontier_sites: 0,
+                }));
+            }
+            self.full.expand(egraph, smt, cone, depth)
+        }
+    }
+
+    fn expansion_fixture(array_conflict: bool) -> (Abstract<ArrayAstSize>, VmtBmcSession) {
+        let extra = if array_conflict {
+            "(not (= (select ((as const (Array Bool Bool)) false) true) false))"
+        } else {
+            "true"
+        };
+        let (mut strategy, smt) = sat_fixture(&format!(
+            "(declare-fun a () (Array Bool Bool))
+             (declare-fun p (Bool) Bool)
+             (define-fun init () Bool
+               (! (and (forall ((x Bool)) (p x)) (p true) (p false) {extra}) :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool (! false :invar-property 0))"
+        ));
+        strategy.egraph_builder = Box::<DeferredFullBuilder>::default();
+        (strategy, smt)
+    }
+
+    #[test]
+    fn binder_expansion_waits_for_all_array_stages() {
+        let (mut strategy, smt) = expansion_fixture(false);
+        strategy.profile = true;
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        assert!(!strategy.allows_concrete_validation());
+        for _ in 0..2 {
+            assert!(matches!(
+                strategy.sat(&mut state, &smt, 0).unwrap(),
+                ProofAction::Continue
+            ));
+            assert!(!strategy.has_pending_refinement(&state));
+            assert!(!strategy.binder_next_rule.contains_key(&SearchPhase::Expand));
+        }
+        assert!(matches!(
+            strategy.sat(&mut state, &smt, 0).unwrap(),
+            ProofAction::Continue
+        ));
+        assert!(strategy.has_pending_refinement(&state));
+        assert!(strategy.binder_next_rule.contains_key(&SearchPhase::Expand));
+        assert_eq!(strategy.profiling_records.len(), 3);
+        // The full array stage reuses all three unsuccessful binder phases.
+        // No rule matching, grounding or model evaluation is repeated there.
+        assert!(strategy.profiling_records[1].quantifier_work.is_empty());
+        assert_eq!(
+            strategy.profiling_records[1].counters["input_binder_empty_passes_reused"],
+            3
+        );
+        assert!(state.candidates.iter().all(|candidate| {
+            smt.eval_to_string(&expr_to_term(candidate.expression.clone()))
+                .unwrap()
+                .trim()
+                == "true"
+        }));
+    }
+
+    #[test]
+    fn full_array_conflict_is_selected_before_binder_expansion() {
+        let (mut strategy, mut smt) = expansion_fixture(true);
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        assert!(!strategy.has_pending_refinement(&state));
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        assert!(strategy.has_pending_refinement(&state));
+        assert!(!strategy.binder_next_rule.contains_key(&SearchPhase::Expand));
+        assert!(state.candidates.iter().all(|candidate| {
+            !candidate.rule.name().starts_with("input-binder-")
+                && smt
+                    .eval_to_string(&expr_to_term(candidate.expression.clone()))
+                    .unwrap()
+                    .trim()
+                    == "false"
+        }));
+        strategy.finish(state, &mut smt).unwrap();
+        assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
+    fn exhausted_array_and_binder_search_terminates() {
+        let (mut strategy, smt) = sat_fixture(
+            "(declare-fun a () (Array Bool Bool))
+             (define-fun init () Bool (! true :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool (! false :invar-property 0))",
+        );
+        strategy.egraph_builder = Box::<DeferredFullBuilder>::default();
+        strategy.profile = true;
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        for _ in 0..2 {
+            strategy.sat(&mut state, &smt, 0).unwrap();
+            assert!(!strategy.has_pending_refinement(&state));
+        }
+        assert!(matches!(
+            strategy.sat(&mut state, &smt, 0),
+            Err(driver::Error::AbstractionExhausted { depth: 0 })
+        ));
+        assert_eq!(strategy.profiling_records.len(), 3);
+    }
+
+    fn profiled_binder_pass(
+        strategy: &mut Abstract<ArrayAstSize>,
+        state: &mut ArrayRefinementState,
+        smt: &VmtBmcSession,
+        phase: SearchPhase,
+        step: u32,
+    ) -> ProfilingRecord {
+        let profiling = Rc::new(RefCell::new(ArrayProfilingCollector::new(
+            "test",
+            Some(state.depth),
+            Some(step),
+            vec![],
+        )));
+        let batch = strategy
+            .binder_candidates(smt, state, step, phase, Some(profiling.clone()))
+            .unwrap();
+        assert!(batch.selected().next().is_none());
+        Rc::try_unwrap(profiling)
+            .unwrap_or_else(|_| panic!("profiling collector still borrowed"))
+            .into_inner()
+            .finish()
+    }
+
+    #[test]
+    fn empty_binder_pass_reuse_respects_selection_context_and_phase() {
+        let (mut strategy, smt) = expansion_fixture(false);
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        let first =
+            profiled_binder_pass(&mut strategy, &mut state, &smt, SearchPhase::Conflicts, 0);
+        assert!(first.rule_instantiation.rule_search_calls > 0);
+        let repeated =
+            profiled_binder_pass(&mut strategy, &mut state, &smt, SearchPhase::Conflicts, 0);
+        assert_eq!(repeated.rule_instantiation.rule_search_calls, 0);
+        assert_eq!(repeated.counters["input_binder_empty_passes_reused"], 1);
+
+        let other_phase = profiled_binder_pass(
+            &mut strategy,
+            &mut state,
+            &smt,
+            SearchPhase::TriggeredConflicts,
+            0,
+        );
+        assert!(other_phase.rule_instantiation.rule_search_calls > 0);
+        strategy.term_selection_counts.insert(
+            crate::training::canonical_term_hash(&"true".parse().unwrap()),
+            1,
+        );
+        let changed_history =
+            profiled_binder_pass(&mut strategy, &mut state, &smt, SearchPhase::Conflicts, 0);
+        assert!(changed_history.rule_instantiation.rule_search_calls > 0);
+        let changed_step =
+            profiled_binder_pass(&mut strategy, &mut state, &smt, SearchPhase::Conflicts, 1);
+        assert!(changed_step.rule_instantiation.rule_search_calls > 0);
+    }
+
+    #[test]
+    fn empty_binder_pass_is_not_reused_after_a_solver_check() {
+        let (mut strategy, mut smt) = expansion_fixture(false);
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        profiled_binder_pass(&mut strategy, &mut state, &smt, SearchPhase::Conflicts, 0);
+        assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+        let mut next_state = strategy.setup(&smt, 0).unwrap();
+        let fresh = profiled_binder_pass(
+            &mut strategy,
+            &mut next_state,
+            &smt,
+            SearchPhase::Conflicts,
+            0,
+        );
+        assert!(fresh.rule_instantiation.rule_search_calls > 0);
+        assert!(!fresh
+            .counters
+            .contains_key("input_binder_empty_passes_reused"));
+    }
+
+    #[test]
+    fn binder_round_robin_survives_new_models_and_phase_reentry() {
+        for fresh_model in [false, true] {
+            let (mut strategy, mut smt) = round_robin_fixture();
+            let names = strategy
+                .quantifiers
+                .rules
+                .iter()
+                .map(|rule| format!("input-binder-{}", rule.name))
+                .collect::<Vec<_>>();
+            assert_eq!(names.len(), 2);
+            let mut state = strategy.setup(&smt, 0).unwrap();
+            for step in 0..4 {
+                if fresh_model {
+                    assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+                    state = strategy.setup(&smt, 0).unwrap();
+                    assert!(state.binder_search.is_none());
+                }
+                let batch = strategy
+                    .binder_candidates(&smt, &mut state, step, SearchPhase::Conflicts, None)
+                    .unwrap();
+                let selected = batch.selected().collect::<Vec<_>>();
+                assert_eq!(selected.len(), 1);
+                assert_eq!(selected[0].rule.name(), names[step as usize % 2]);
+            }
+        }
+    }
+
+    #[test]
+    fn binder_round_robin_keeps_phase_positions_independent() {
+        let (mut strategy, smt) = round_robin_fixture();
+        let names = strategy
+            .quantifiers
+            .rules
+            .iter()
+            .map(|rule| format!("input-binder-{}", rule.name))
+            .collect::<Vec<_>>();
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        for (phase, expected) in [
+            (SearchPhase::Conflicts, 0),
+            (SearchPhase::Expand, 0),
+            (SearchPhase::Conflicts, 1),
+            (SearchPhase::Expand, 1),
+        ] {
+            let batch = strategy
+                .binder_candidates(&smt, &mut state, 0, phase, None)
+                .unwrap();
+            assert_eq!(
+                batch.selected().next().unwrap().rule.name(),
+                names[expected]
+            );
         }
     }
 }
