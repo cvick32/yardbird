@@ -1,0 +1,42 @@
+{
+  "benchmarks": [
+    "examples/distributed_protocols/chord_ring_maintenance/chord_ring_maintenance.encoding.vmt",
+    "examples/distributed_protocols/client_server_ae/client_server_ae.encoding.vmt",
+    "examples/distributed_protocols/client_server_db_ae/client_server_db_ae.encoding.vmt",
+    "examples/distributed_protocols/consensus_epr/consensus_epr.encoding.vmt",
+    "examples/distributed_protocols/consensus_forall/consensus_forall.encoding.vmt",
+    "examples/distributed_protocols/consensus_wo_decide/consensus_wo_decide.encoding.vmt",
+    "examples/distributed_protocols/database_chain_replication/database_chain_replication.encoding.vmt",
+    "examples/distributed_protocols/decentralized_lock/decentralized_lock.encoding.vmt",
+    "examples/distributed_protocols/distributed_lock/distributed_lock.encoding.vmt",
+    "examples/distributed_protocols/fast_paxos/fast_paxos.encoding.vmt",
+    "examples/distributed_protocols/flash-coherence/flash-coherence.encoding.vmt",
+    "examples/distributed_protocols/flexible_paxos/flexible_paxos.encoding.vmt",
+    "examples/distributed_protocols/german/german.encoding.vmt",
+    "examples/distributed_protocols/german/german_with_ghost_state.encoding.vmt",
+    "examples/distributed_protocols/hybrid_reliable_broadcast/hybrid_reliable_broadcast.encoding.vmt",
+    "examples/distributed_protocols/learning_switch_quad/learning_switch_quad.encoding.vmt",
+    "examples/distributed_protocols/learning_switch_ternary/learning_switch_ternary.encoding.vmt",
+    "examples/distributed_protocols/lock_server_async/lock_server_async.encoding.vmt",
+    "examples/distributed_protocols/lock_server_sync/lock_server_sync.encoding.vmt",
+    "examples/distributed_protocols/multi_paxos/multi_paxos.encoding.vmt",
+    "examples/distributed_protocols/paxos/paxos.encoding.vmt",
+    "examples/distributed_protocols/ring_leader_election/ring_leader_election.encoding.vmt",
+    "examples/distributed_protocols/sharded_key_value_store/sharded_key_value_store.encoding.vmt",
+    "examples/distributed_protocols/sharded_kv_no_lost_keys/sharded_kv_no_lost_keys.encoding.vmt",
+    "examples/distributed_protocols/stoppable_paxos/stoppable_paxos.encoding.vmt",
+    "examples/distributed_protocols/ticket_lock/ticket_lock.encoding.vmt",
+    "examples/distributed_protocols/tomasulo/tomasulo.encoding.vmt",
+    "examples/distributed_protocols/toy_consensus_epr/toy_consensus_epr.encoding.vmt",
+    "examples/distributed_protocols/toy_consensus_forall/toy_consensus_forall.encoding.vmt",
+    "examples/distributed_protocols/two_phase_commit/two_phase_commit.encoding.vmt",
+    "examples/distributed_protocols/vertical_paxos/vertical_paxos.encoding.vmt"
+  ],
+  "executions_per_benchmark": 10,
+  "scheduler": {
+    "max_parallel_runs": 1,
+    "max_parallel_agents": 1
+  },
+  "model": "gpt-6-astra",
+  "reasoning_effort": "high"
+}

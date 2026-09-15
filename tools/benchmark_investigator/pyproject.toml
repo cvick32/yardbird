@@ -1,0 +1,28 @@
+[project]
+name = "yardbird-benchmark-investigator"
+version = "0.1.0"
+description = "Bounded, profile-driven benchmark investigations for Yardbird"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.10,<3"]
+
+[project.scripts]
+investigator = "benchmark_investigator.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "ruff>=0.12"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+benchmark_investigator = ["context/*.md"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

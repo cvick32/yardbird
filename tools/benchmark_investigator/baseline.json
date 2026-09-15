@@ -1,0 +1,8 @@
+{
+  "strategy": "abstract",
+  "cost_function": "protocol-bmc",
+  "egraph_builder": "source-then-full",
+  "candidate_winners_per_group": 20,
+  "instantiation_ranker": "prefer-source",
+  "property_check_mode": "assumptions"
+}
