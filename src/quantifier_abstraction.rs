@@ -13,6 +13,11 @@ use smt2parser::{
 };
 
 use crate::theories::array::array_axioms::ArrayLanguage;
+mod binder_request;
+#[cfg(test)]
+mod binder_request_tests;
+mod dependency_search;
+mod violation_plan;
 use crate::{
     quantified_rule::QuantifiedRule,
     theories::array::{
@@ -22,6 +27,7 @@ use crate::{
         instantiation_candidate::InstantiationBatch,
     },
 };
+pub(crate) use binder_request::{BinderSearch, BinderSearchRequest};
 
 pub(crate) fn app(name: &str, arguments: Vec<Term>) -> Term {
     if arguments.is_empty() {
@@ -166,6 +172,25 @@ impl BinderRule {
         phase: SearchPhase,
         types: &[(String, String)],
     ) -> Option<anyhow::Result<CompiledQuantifiedRule<()>>> {
+        self.compile_with_bindings(phase, types, &[])
+    }
+
+    fn compile_with_bindings(
+        &self,
+        phase: SearchPhase,
+        types: &[(String, String)],
+        supplied: &[(Symbol, Term)],
+    ) -> Option<anyhow::Result<CompiledQuantifiedRule<()>>> {
+        self.compile_plan(phase, types, supplied, None)
+    }
+
+    fn compile_plan(
+        &self,
+        phase: SearchPhase,
+        types: &[(String, String)],
+        supplied: &[(Symbol, Term)],
+        plan: Option<&[violation_plan::SignedAtom]>,
+    ) -> Option<anyhow::Result<CompiledQuantifiedRule<()>>> {
         use egg::{ENodeOrVar, MultiPattern, Pattern, Var};
         let arguments = if self.unit_capture {
             vec![app("true", vec![])]
@@ -214,9 +239,36 @@ impl BinderRule {
                     .into();
                 Ok(Pattern::new(ast))
             };
-            let formula = pattern(formula)?;
+            let fixed_bindings = supplied
+                .iter()
+                .map(|(symbol, term)| {
+                    let expression = translate_term_with_array_types(term.clone(), types)
+                        .ok_or_else(|| anyhow::anyhow!("cannot translate binder binding {term}"))?;
+                    Ok((bindings[&symbol.0], expression))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let original_formula = pattern(formula)?;
+            let formula = binder_request::specialize(original_formula.clone(), &fixed_bindings);
             let anchor = pattern(app(&self.name, arguments))?;
-            let mut patterns = vec![("?root".parse().unwrap(), anchor.ast)];
+            // Bind supplied arguments before the helper, trigger, and domain
+            // joins. Ground terms are inserted as ENodes, never reinterpreted
+            // as binder variables even if symbol names happen to coincide.
+            let mut patterns = fixed_bindings
+                .iter()
+                .map(|(var, expression)| {
+                    (
+                        *var,
+                        expression
+                            .as_ref()
+                            .iter()
+                            .cloned()
+                            .map(ENodeOrVar::ENode)
+                            .collect::<Vec<_>>()
+                            .into(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            patterns.push(("?root".parse().unwrap(), anchor.ast));
             // Search only the active direction of the binder equivalence.
             // In particular, expansion must not invent terms from a vacuous
             // universal direction while its opposite witness is active.
@@ -226,14 +278,35 @@ impl BinderRule {
                 let value = if proxy_is_true { "true" } else { "false" };
                 patterns.push(("?root".parse().unwrap(), pattern(app(value, vec![]))?.ast));
             }
-            if phase == SearchPhase::TriggeredConflicts {
+            let mut filters = Vec::new();
+            if let Some(plan) = plan {
+                // Each alternative gets an independent cursor. Predicates bind
+                // shared variables and their required truth values before any
+                // remaining typed-domain completion.
+                for (index, atom) in plan.iter().enumerate() {
+                    let atom_pattern = pattern(atom.term.clone())?;
+                    if violation_plan::is_filter(atom) {
+                        filters.push((
+                            binder_request::specialize(atom_pattern, &fixed_bindings).ast,
+                            atom.truth,
+                        ));
+                    } else {
+                        let variable = format!("?atom{index}").parse().unwrap();
+                        patterns.push((variable, atom_pattern.ast));
+                        patterns.push((
+                            variable,
+                            pattern(app(if atom.truth { "true" } else { "false" }, vec![]))?.ast,
+                        ));
+                    }
+                }
+            } else if phase == SearchPhase::TriggeredConflicts {
                 use egg::Language;
                 let bound = self
                     .variables
                     .iter()
                     .map(|(symbol, _)| bindings[&symbol.0])
                     .collect::<HashSet<_>>();
-                let mut triggers = formula
+                let mut triggers = original_formula
                     .ast
                     .as_ref()
                     .iter()
@@ -246,7 +319,7 @@ impl BinderRule {
                         ) {
                             return None;
                         }
-                        let ast = node.build_recexpr(|id| formula.ast[id].clone());
+                        let ast = node.build_recexpr(|id| original_formula.ast[id].clone());
                         let pattern = Pattern::new(ast);
                         let coverage = pattern
                             .vars()
@@ -284,7 +357,9 @@ impl BinderRule {
                 QuantifiedRule::input_binder(&self.name),
                 MultiPattern::new(patterns),
                 formula,
-            ))
+                fixed_bindings,
+            )
+            .with_binder_filters(filters, plan.is_some()))
         })())
     }
 }
@@ -317,11 +392,24 @@ impl QuantifierPlan {
             SearchPhase::Conflicts,
             SearchPhase::Expand,
         ] {
-            let mut rules = self
-                .rules
-                .iter()
-                .filter_map(|rule| rule.compile(phase, types))
-                .collect::<anyhow::Result<Vec<_>>>()?;
+            let mut rules = Vec::new();
+            for rule in &self.rules {
+                if phase == SearchPhase::TriggeredConflicts {
+                    if let Some(plans) = violation_plan::plans(rule) {
+                        for plan in plans {
+                            if let Some(compiled) =
+                                rule.compile_plan(phase, types, &[], Some(&plan))
+                            {
+                                rules.push(compiled?);
+                            }
+                        }
+                        continue;
+                    }
+                }
+                if let Some(compiled) = rule.compile(phase, types) {
+                    rules.push(compiled?);
+                }
+            }
             if phase == SearchPhase::Expand {
                 // Even satisfied witnesses can expose previously unseen inner helpers.
                 rules.extend(
@@ -336,6 +424,9 @@ impl QuantifierPlan {
         let rules = std::rc::Rc::new(CompiledBinderRules {
             types: types.to_vec(),
             phases,
+            sources: self.rules.clone(),
+            signatures: self.signatures.clone(),
+            dependencies: dependency_search::DependencyIndex::new(&self.rules),
         });
         *cached = Some(rules.clone());
         Ok(rules)
@@ -427,6 +518,7 @@ impl QuantifierPlan {
             evaluations,
             compiled,
             cursors: HashMap::new(),
+            requests: HashMap::new(),
             obligations: HashMap::new(),
             catalog,
             cost_context,
@@ -437,6 +529,9 @@ impl QuantifierPlan {
 struct CompiledBinderRules {
     types: Vec<(String, String)>,
     phases: HashMap<SearchPhase, Vec<CompiledQuantifiedRule<()>>>,
+    sources: Vec<BinderRule>,
+    signatures: HashMap<String, (Vec<Sort>, Sort)>,
+    dependencies: dependency_search::DependencyIndex,
 }
 
 pub(crate) struct PreparedQuantifierSearch {
@@ -449,6 +544,7 @@ pub(crate) struct PreparedQuantifierSearch {
     obligations: HashMap<(String, bool, Vec<egg::Id>), bool>,
     compiled: std::rc::Rc<CompiledBinderRules>,
     cursors: HashMap<SearchPhase, crate::theories::array::quantified_search::BinderSearchCursor>,
+    requests: HashMap<BinderSearchRequest, binder_request::PreparedBinderRequest>,
     pub catalog: crate::problem_context::ArrayCandidateCatalog,
     pub cost_context: crate::cost_functions::array::ArrayCostContext,
 }
@@ -483,16 +579,18 @@ impl PreparedQuantifierSearch {
             .map_or(0, |cursor| cursor.next_rule_index())
     }
 
-    pub fn can_continue(&self, phase: SearchPhase) -> bool {
-        self.cursors
-            .get(&phase)
-            .is_some_and(|cursor| cursor.can_continue())
+    pub fn can_continue<'a>(&self, search: impl Into<BinderSearch<'a>>) -> bool {
+        let cursor = match search.into() {
+            BinderSearch::Phase(phase) => self.cursors.get(&phase),
+            BinderSearch::Request(request) => self.requests.get(request).map(|state| &state.cursor),
+        };
+        cursor.is_some_and(|cursor| cursor.can_continue())
     }
 
-    pub fn candidates<CF>(
+    pub fn candidates<'a, CF>(
         &mut self,
         mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
-        phase: SearchPhase,
+        search: impl Into<BinderSearch<'a>>,
         make_cost: impl FnOnce(&crate::cost_functions::array::ArrayCostContext) -> CF,
         mut options: ArrayInstantiationOptions,
     ) -> anyhow::Result<InstantiationBatch>
@@ -504,10 +602,23 @@ impl PreparedQuantifierSearch {
             array_grounding::instantiate_with_bindings,
             quantified_search::search_binder_page,
         };
+        let (phase, request) = match search.into() {
+            BinderSearch::Phase(phase) => (phase, None),
+            BinderSearch::Request(request) => (request.phase, Some(request)),
+        };
+        let requested_rule = request
+            .map(|request| self.prepare_request(request))
+            .transpose()?;
         let profiling = options.instrumentation.profiling.clone();
-        let rules = &self.compiled.phases[&phase];
+        let rules = match &requested_rule {
+            Some(rule) => std::slice::from_ref(rule.as_ref()),
+            None => self.compiled.phases[&phase].as_slice(),
+        };
         let start = std::time::Instant::now();
-        let cursor = self.cursors.entry(phase).or_default();
+        let cursor = match request {
+            Some(request) => &mut self.requests.get_mut(request).unwrap().cursor,
+            None => self.cursors.entry(phase).or_default(),
+        };
         let mut matched = search_binder_page(&self.egraph, rules, cursor, &profiling);
         if let Some(profiling) = &profiling {
             let mut profiling = profiling.borrow_mut();
@@ -534,6 +645,45 @@ impl PreparedQuantifierSearch {
                 }
             };
             count("matches_examined");
+            if rule.uses_violation_plan() {
+                count("violation_plan_matches");
+                let filter_start = std::time::Instant::now();
+                let mut rejected_by_filter = false;
+                for (filter, truth) in rule.binder_filters() {
+                    let expression = instantiate_with_bindings(filter, |variable| {
+                        let id = self.egraph.find(candidate.substitution[variable]);
+                        self.representatives.get(&id).ok_or_else(|| {
+                            anyhow::anyhow!("No original term for binder e-class {id}")
+                        })
+                    })?;
+                    let term = expr_to_term(expression);
+                    let value = match self.evaluations.get(&term) {
+                        Some(value) => value.clone(),
+                        None => {
+                            let value = evaluate(&term)?;
+                            self.evaluations.insert(term, value.clone());
+                            value
+                        }
+                    };
+                    count("violation_plan_filter_checks");
+                    if value.trim() != if *truth { "true" } else { "false" } {
+                        rejected_by_filter = true;
+                        break;
+                    }
+                }
+                if let Some(p) = &profiling {
+                    p.borrow_mut().record_quantifier_timing(
+                        rule.metadata().name(),
+                        "violation_plan_filters",
+                        filter_start.elapsed(),
+                    );
+                }
+                if rejected_by_filter {
+                    count("violation_plan_filter_rejections");
+                    rejected += 1;
+                    continue;
+                }
+            }
             let bindings = rule
                 .formula_variables()
                 .iter()
@@ -545,12 +695,20 @@ impl PreparedQuantifierSearch {
                     phase == SearchPhase::Witnesses,
                     bindings.clone(),
                 );
-                let violated = if let Some(violated) = self.obligations.get(&key) {
+                // Specialized formulas have literal bindings in addition to
+                // these remaining variables. Keep their values in the exact
+                // term cache, not the unrestricted rule's e-class cache.
+                let cached = request
+                    .is_none()
+                    .then(|| self.obligations.get(&key))
+                    .flatten();
+                let violated = if let Some(violated) = cached {
                     cached_obligations += 1;
                     count("obligation_cache_hits");
                     *violated
                 } else {
                     count("obligation_cache_misses");
+                    count("full_formula_constructions");
                     let construction_start = profiling.as_ref().map(|_| std::time::Instant::now());
                     let expression = instantiate_with_bindings(rule.formula(), |variable| {
                         let id = self.egraph.find(candidate.substitution[variable]);
@@ -589,7 +747,9 @@ impl PreparedQuantifierSearch {
                         }
                     };
                     let violated = value.trim() == "false";
-                    self.obligations.insert(key, violated);
+                    if request.is_none() {
+                        self.obligations.insert(key, violated);
+                    }
                     violated
                 };
                 if !violated {
@@ -615,6 +775,9 @@ impl PreparedQuantifierSearch {
                 );
             }
             needed_classes.extend(bindings);
+            needed_classes.extend(rule.fixed_bindings().iter().filter_map(|(_, term)| {
+                self.egraph.lookup_expr(term).map(|id| self.egraph.find(id))
+            }));
             kept.push(candidate);
         }
         matched.matches = kept;
@@ -1411,7 +1574,7 @@ mod tests {
     }
 
     #[derive(Clone)]
-    struct PreferLongName;
+    pub(super) struct PreferLongName;
 
     impl egg::CostFunction<ArrayLanguage> for PreferLongName {
         type Cost = u32;
@@ -1460,7 +1623,10 @@ mod tests {
         }
     }
 
-    fn prepared_fixture(variable_count: usize, value_count: usize) -> PreparedQuantifierSearch {
+    pub(super) fn prepared_fixture(
+        variable_count: usize,
+        value_count: usize,
+    ) -> PreparedQuantifierSearch {
         let variables = (0..variable_count)
             .map(|i| (Symbol(format!("x{i}")), string_to_sort("Int")))
             .collect::<Vec<_>>();
@@ -1482,6 +1648,9 @@ mod tests {
         };
         let plan = QuantifierPlan {
             rules: vec![rule],
+            signatures: (0..value_count)
+                .map(|i| (format!("v{i}"), (vec![], string_to_sort("Int"))))
+                .collect(),
             ..Default::default()
         };
         let mut graph = egg::EGraph::<ArrayLanguage, ()>::default();
@@ -1516,13 +1685,14 @@ mod tests {
             evaluations: HashMap::new(),
             compiled: plan.compiled(&[]).unwrap(),
             cursors: HashMap::new(),
+            requests: HashMap::new(),
             obligations: HashMap::new(),
             catalog: Default::default(),
             cost_context: Default::default(),
         }
     }
 
-    fn prepared_options() -> ArrayInstantiationOptions {
+    pub(super) fn prepared_options() -> ArrayInstantiationOptions {
         ArrayInstantiationOptions {
             candidate_catalog: Default::default(),
             additional_terms: vec![],
@@ -1631,6 +1801,16 @@ mod tests {
     #[test]
     fn triggered_and_domain_search_share_model_obligation_results() {
         let mut prepared = prepared_fixture(1, 2);
+        // Keep this test focused on sharing evaluations across the historical
+        // trigger and domain paths; signed-plan matching is tested separately.
+        let legacy = prepared.compiled.sources[0]
+            .compile(SearchPhase::TriggeredConflicts, &[])
+            .unwrap()
+            .unwrap();
+        std::rc::Rc::get_mut(&mut prepared.compiled)
+            .unwrap()
+            .phases
+            .insert(SearchPhase::TriggeredConflicts, vec![legacy]);
         for atom in ["(p v0)", "(p v1)"] {
             prepared
                 .egraph

@@ -231,7 +231,16 @@ where
         let candidate = {
             let mut decisions = grounding.decisions().to_vec();
             let mut selection_history = grounding.selection_history().to_vec();
-            let used_derived_candidate = grounding.used_derived_candidate();
+            let used_derived_candidate = grounding.used_derived_candidate()
+                || executable_rule
+                    .fixed_bindings()
+                    .iter()
+                    .any(|(_, expression)| {
+                        egraph.lookup_expr(expression).is_none_or(|id| {
+                            self.extractor.candidate_origin(egraph, id, expression)
+                                == super::array_term_extractor::CandidateOrigin::Derived
+                        })
+                    });
             let is_conflict = if let Some(consequence_ast) = executable_rule.consequence() {
                 let new_rhs = instantiate_pattern(consequence_ast, &grounding)
                     .expect("Fully grounded consequence must be instantiable.");
@@ -277,6 +286,12 @@ where
                 };
                 let mut substitution = grounding
                     .variable_expressions()
+                    .chain(
+                        executable_rule
+                            .fixed_bindings()
+                            .iter()
+                            .map(|(var, expr)| (*var, expr)),
+                    )
                     .map(|(variable, expression)| {
                         (variable.to_string(), expr_to_term(expression.clone()))
                     })
