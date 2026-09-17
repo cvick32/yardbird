@@ -15,6 +15,7 @@ use crate::{
     driver::{self},
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
+    policy::YardbirdPolicy,
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     solver::PropertyCheckMode,
     theories::array::{
@@ -23,14 +24,10 @@ use crate::{
             ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
         },
         array_dataflow::{build_property_cone, PropertyCone},
-        array_egraph_builder::{
-            ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder,
-            SourceThenFullEGraphBuilder,
-        },
+        array_egraph_builder::{ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder},
         array_rule_instantiator::ArrayArtifactCapture,
         encodings::{EncodingOptions, EncodingPlan},
         instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
-        instantiation_ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -54,7 +51,7 @@ where
 {
     _bmc_depth: u16,
     run_ic3ia: bool,
-    cost_config: F::Config,
+    policy: YardbirdPolicy<F>,
     discovered_array_types: Vec<(String, String)>,
     quantifiers: crate::quantifier_abstraction::QuantifierPlan,
     // Scheduling survives solver checks; model-specific matches live in state.
@@ -69,14 +66,11 @@ where
     artifact_capture: ArrayArtifactCapture,
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
-    egraph_builder: Box<dyn ArrayEGraphBuilder>,
     cone_attempted_depths: HashSet<u16>,
     property_cone: PropertyCone,
     preprocess_exact_read_after_write: bool,
     encoding_options: EncodingOptions,
     encoding_plan: EncodingPlan,
-    candidate_winners_per_group: usize,
-    instantiation_ranker: Box<dyn InstantiationRanker>,
     property_check_mode: PropertyCheckMode,
 }
 
@@ -84,11 +78,11 @@ impl<F> Abstract<F>
 where
     F: ArrayCostFactory,
 {
-    pub fn new(bmc_depth: u16, run_ic3ia: bool, cost_config: F::Config, profile: bool) -> Self {
+    pub fn new(bmc_depth: u16, run_ic3ia: bool, policy: YardbirdPolicy<F>, profile: bool) -> Self {
         Self {
             _bmc_depth: bmc_depth,
             run_ic3ia,
-            cost_config,
+            policy,
             discovered_array_types: vec![],
             quantifiers: crate::quantifier_abstraction::QuantifierPlan::default(),
             binder_next_rule: HashMap::new(),
@@ -102,25 +96,17 @@ where
             artifact_capture: ArrayArtifactCapture::default(),
             profile,
             profiling_records: vec![],
-            egraph_builder: Box::<SourceThenFullEGraphBuilder>::default(),
             cone_attempted_depths: HashSet::new(),
             property_cone: PropertyCone::default(),
             preprocess_exact_read_after_write: false,
             encoding_options: EncodingOptions::default(),
             encoding_plan: EncodingPlan::default(),
-            candidate_winners_per_group: 1,
-            instantiation_ranker: Box::new(PreferSourceInstantiationRanker),
             property_check_mode: PropertyCheckMode::Scoped,
         }
     }
 
     pub fn with_artifact_capture(mut self, artifact_capture: ArrayArtifactCapture) -> Self {
         self.artifact_capture = artifact_capture;
-        self
-    }
-
-    pub fn with_egraph_builder(mut self, egraph_builder: Box<dyn ArrayEGraphBuilder>) -> Self {
-        self.egraph_builder = egraph_builder;
         self
     }
 
@@ -136,20 +122,6 @@ where
 
     pub fn with_guarded_read_updates(mut self, enabled: bool) -> Self {
         self.encoding_options.guarded_read_updates = enabled;
-        self
-    }
-
-    pub fn with_candidate_winners_per_group(mut self, winners_per_group: usize) -> Self {
-        assert!(winners_per_group > 0, "candidate groups need a winner");
-        self.candidate_winners_per_group = winners_per_group;
-        self
-    }
-
-    pub fn with_instantiation_ranker(
-        mut self,
-        instantiation_ranker: Box<dyn InstantiationRanker>,
-    ) -> Self {
-        self.instantiation_ranker = instantiation_ranker;
         self
     }
 
@@ -181,6 +153,7 @@ pub struct ArrayRefinementState {
 pub(crate) struct BinderSearchState {
     prepared: crate::quantifier_abstraction::PreparedQuantifierSearch,
     empty_passes: HashMap<crate::quantifier_abstraction::SearchPhase, BinderPassContext>,
+    dependencies_searched: bool,
 }
 
 struct BinderPassContext {
@@ -250,7 +223,7 @@ where
         let (abstracted_model, encoding_plan) =
             EncodingPlan::apply(abstracted_model, &discovered_types, self.encoding_options);
         self.encoding_plan = encoding_plan;
-        self.property_cone = if self.egraph_builder.requires_property_cone() {
+        self.property_cone = if self.policy.effort().requires_property_cone() {
             build_property_cone(&abstracted_model)
         } else {
             PropertyCone::default()
@@ -295,8 +268,9 @@ where
     ) -> driver::Result<ArrayRefinementState> {
         let egraph = egg::EGraph::new(());
         let egraph_builder = self
-            .egraph_builder
-            .clone_for_refinement(&mut self.cone_attempted_depths, depth);
+            .policy
+            .effort()
+            .builder_for_refinement(&mut self.cone_attempted_depths, depth);
         // Use discovered_array_types if available (VMT mode via configure_model),
         // otherwise get from ProblemContext (SMTLIB mode)
         let array_types = if self.discovered_array_types.is_empty() {
@@ -349,6 +323,13 @@ where
                 state.array_types.clone(),
             )))
         });
+        let directed =
+            self.dependency_candidates(smt, state, refinement_step, profiling.clone())?;
+        self.absorb_candidates(state, directed);
+        if !state.candidates.is_empty() {
+            self.finish_profiling_record(profiling);
+            return Ok(ProofAction::Continue);
+        }
         let witnesses = self.binder_candidates(
             smt,
             state,
@@ -364,7 +345,7 @@ where
         state.guarded_read_updates = self.encoding_plan.violated_guarded_read_updates(
             smt,
             state.depth,
-            self.candidate_winners_per_group,
+            self.policy.effort().winners_per_group(),
         );
         if !state.guarded_read_updates.is_empty() {
             info!(
@@ -439,7 +420,10 @@ where
 
             let cost_factory_start = Instant::now();
             let candidate_catalog = if expansion.candidate_scope.tracks_provenance()
-                || self.instantiation_ranker.requires_source_provenance()
+                || self
+                    .policy
+                    .instantiation_ranker()
+                    .requires_source_provenance()
             {
                 smt.get_array_candidate_catalog()
             } else {
@@ -447,7 +431,7 @@ where
             };
             let cost_context =
                 ArrayCostContext::from_problem(smt, &candidate_catalog, expansion.candidate_scope);
-            let cost_fn = F::from_context(&cost_context, state.depth as u32, &self.cost_config);
+            let cost_fn = self.policy.term_cost(&cost_context, state.depth as u32);
             if let Some(profiling) = &profiling {
                 profiling
                     .borrow_mut()
@@ -480,10 +464,11 @@ where
                         profiling: profiling.clone(),
                     },
                 },
-                self.candidate_winners_per_group,
+                self.policy.effort().winners_per_group(),
                 |candidate| {
                     if !self
-                        .instantiation_ranker
+                        .policy
+                        .instantiation_ranker()
                         .is_eligible(candidate, expansion.candidate_scope)
                     {
                         return Ok(false);
@@ -492,8 +477,9 @@ where
                     let count = accepted_by_rule.entry(rule_kind).or_insert(0);
                     if *count
                         >= self
-                            .instantiation_ranker
-                            .source_batch_limit(rule_kind, self.candidate_winners_per_group)
+                            .policy
+                            .instantiation_ranker()
+                            .source_batch_limit(rule_kind, self.policy.effort().winners_per_group())
                     {
                         return Ok(false);
                     }
@@ -519,8 +505,8 @@ where
             let summary = candidate_batch.prepare_with_ranker(
                 expansion.candidate_scope,
                 &known_instantiations,
-                self.candidate_winners_per_group,
-                self.instantiation_ranker.as_ref(),
+                self.policy.effort().winners_per_group(),
+                self.policy.instantiation_ranker(),
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
@@ -906,18 +892,7 @@ where
             .as_ref()
             .map(|p| crate::profiling::QuantifierPhaseGuard::new(p.clone(), phase.timing_key()));
         let phase_start = Instant::now();
-        if state.binder_search.is_none() {
-            let start = Instant::now();
-            state.binder_search = Some(BinderSearchState {
-                prepared: self.quantifiers.prepare(smt)?,
-                empty_passes: HashMap::new(),
-            });
-            if let Some(profiling) = &profiling {
-                let mut profiling = profiling.borrow_mut();
-                profiling.record_timing("input_binder_prepare", start.elapsed());
-                profiling.add_counter("input_binder_model_preparations", 1);
-            }
-        }
+        self.prepare_binder_search(smt, state, &profiling)?;
         let search = state.binder_search.as_mut().unwrap();
         // Widening the array graph leaves the prepared binder graph, model,
         // known instances, cost configuration and ranker unchanged. Only
@@ -951,7 +926,7 @@ where
             let mut batch = prepared.candidates(
                 |term| smt.eval_to_string(term),
                 phase,
-                |context| F::from_context(context, state.depth as u32, &self.cost_config),
+                |context| self.policy.term_cost(context, state.depth as u32),
                 ArrayInstantiationOptions {
                     additional_terms: vec![],
                     candidate_catalog: prepared.catalog.clone(),
@@ -971,8 +946,8 @@ where
             let summary = batch.prepare_with_ranker(
                 scope,
                 &known,
-                self.candidate_winners_per_group,
-                self.instantiation_ranker.as_ref(),
+                self.policy.effort().winners_per_group(),
+                self.policy.instantiation_ranker(),
                 |term| smt.eval_to_string(term),
                 |candidate| self.installable_expression(smt, &candidate.expression),
             )?;
@@ -1122,9 +1097,15 @@ mod tests {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut strategy = Abstract::<ArrayAstSize>::new(1, false, (), false);
+        let mut strategy =
+            Abstract::<ArrayAstSize>::new(1, false, crate::YardbirdPolicy::new(()), false);
         let mut theory: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
-            Box::new(Abstract::<ArrayAstSize>::new(1, false, (), false));
+            Box::new(Abstract::<ArrayAstSize>::new(
+                1,
+                false,
+                crate::YardbirdPolicy::new(()),
+                false,
+            ));
         theory.configure_model(model.clone());
         let model = strategy.configure_model(model);
         let options = YardbirdOptions::from_filename("binder-search.vmt".into());
@@ -1418,7 +1399,9 @@ mod tests {
              (define-fun trans () Bool (! true :trans true))
              (define-fun prop () Bool (! false :invar-property 0))"
         ));
-        strategy.egraph_builder = Box::<DeferredFullBuilder>::default();
+        strategy.policy = strategy
+            .policy
+            .with_egraph_builder(Box::<DeferredFullBuilder>::default());
         (strategy, smt)
     }
 
@@ -1487,7 +1470,9 @@ mod tests {
              (define-fun trans () Bool (! true :trans true))
              (define-fun prop () Bool (! false :invar-property 0))",
         );
-        strategy.egraph_builder = Box::<DeferredFullBuilder>::default();
+        strategy.policy = strategy
+            .policy
+            .with_egraph_builder(Box::<DeferredFullBuilder>::default());
         strategy.profile = true;
         let mut state = strategy.setup(&smt, 0).unwrap();
         for _ in 0..2 {

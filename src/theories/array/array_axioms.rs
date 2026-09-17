@@ -449,6 +449,11 @@ where
     consequence: Option<ArrayPattern>,
     formula: ArrayPattern,
     formula_variables: Vec<Var>,
+    /// Symbolic bindings supplied by a directed binder request. These remain
+    /// literal terms in the formula rather than being chosen by extraction.
+    fixed_bindings: Vec<(Var, ArrayExpr)>,
+    binder_filters: Vec<(ArrayPattern, bool)>,
+    uses_violation_plan: bool,
     grouping: RuleGrouping,
 }
 
@@ -486,6 +491,9 @@ where
             consequence: Some(consequence.ast),
             formula_variables: formula.vars(),
             formula: formula.ast,
+            fixed_bindings: vec![],
+            binder_filters: vec![],
+            uses_violation_plan: false,
             grouping: RuleGrouping::MatchRoot,
         })
     }
@@ -496,6 +504,7 @@ where
         metadata: QuantifiedRule,
         searcher: MultiPattern<ArrayLanguage>,
         formula: Pattern<ArrayLanguage>,
+        fixed_bindings: Vec<(Var, ArrayExpr)>,
     ) -> Self {
         let variables =
             <MultiPattern<ArrayLanguage> as Searcher<ArrayLanguage, N>>::vars(&searcher);
@@ -508,6 +517,9 @@ where
             consequence: None,
             formula_variables: formula.vars(),
             formula: formula.ast,
+            fixed_bindings,
+            binder_filters: vec![],
+            uses_violation_plan: false,
             grouping: RuleGrouping::Rule,
         }
     }
@@ -520,6 +532,24 @@ where
         }
     }
 
+    pub(crate) fn with_binder_filters(
+        mut self,
+        filters: Vec<(ArrayPattern, bool)>,
+        planned: bool,
+    ) -> Self {
+        self.binder_filters = filters;
+        self.uses_violation_plan = planned;
+        self
+    }
+
+    pub(crate) fn binder_filters(&self) -> &[(ArrayPattern, bool)] {
+        &self.binder_filters
+    }
+
+    pub(crate) fn uses_violation_plan(&self) -> bool {
+        self.uses_violation_plan
+    }
+
     pub(crate) fn metadata(&self) -> &QuantifiedRule {
         &self.metadata
     }
@@ -529,7 +559,25 @@ where
         egraph: &EGraph<ArrayLanguage, N>,
         limit: usize,
     ) -> Vec<SearchMatches<'a, ArrayLanguage>> {
-        self.searcher.search_with_limit(egraph, limit)
+        if let Some((_, expression)) = self.fixed_bindings.first() {
+            // The first multipattern clause binds this exact symbolic term.
+            // Start at its class rather than scanning the graph for it.
+            egraph
+                .lookup_expr(expression)
+                .and_then(|id| self.searcher.search_eclass_with_limit(egraph, id, limit))
+                .into_iter()
+                .collect()
+        } else {
+            self.searcher.search_with_limit(egraph, limit)
+        }
+    }
+
+    pub(crate) fn fixed_bindings(&self) -> &[(Var, ArrayExpr)] {
+        &self.fixed_bindings
+    }
+
+    pub(crate) fn is_direct_binder_instance(&self) -> bool {
+        !self.fixed_bindings.is_empty() && self.formula_variables.is_empty()
     }
 
     pub(crate) fn trigger(&self) -> &ArrayPattern {

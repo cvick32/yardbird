@@ -42,7 +42,12 @@ pub fn run_model(
         Box::new(yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy::new());
     let mut driver = Driver::new(model, instantiation_strategy, yardbird::SolverBackend::Z3);
 
-    let strat = Box::new(Abstract::<ArrayBMCCost>::new(depth, false, (), false));
+    let strat = Box::new(Abstract::<ArrayBMCCost>::new(
+        depth,
+        false,
+        yardbird::YardbirdPolicy::new(()),
+        false,
+    ));
 
     match driver.check_strategy(depth, strat) {
         Ok(res) => {

@@ -55,7 +55,7 @@ fn run_array_copy_result(artifact_capture: ArrayArtifactCapture) -> yardbird::Pr
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
             let strat: Box<dyn ProofStrategy<_>> = Box::new(
-                Abstract::<ArrayBMCCost>::new(10, false, (), false)
+                Abstract::<ArrayBMCCost>::new(10, false, yardbird::YardbirdPolicy::new(()), false)
                     .with_artifact_capture(artifact_capture),
             );
             driver
@@ -511,7 +511,7 @@ fn smtlib_strategy_populates_logging_artifacts() {
             let problem =
                 SMTLIBProblem::from_commands(commands).expect("should construct SMT-LIB problem");
             let strategy: Box<dyn ProofStrategy<_>> = Box::new(
-                Abstract::<ArrayBMCCost>::new(0, false, (), false)
+                Abstract::<ArrayBMCCost>::new(0, false, yardbird::YardbirdPolicy::new(()), false)
                     .with_artifact_capture(full_decision_capture()),
             );
             SmtlibRefinementRunner::execute(
@@ -597,7 +597,7 @@ fn single_example_persists_provenance_to_db() {
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
             let strat: Box<dyn ProofStrategy<_>> = Box::new(
-                Abstract::<ArrayBMCCost>::new(10, false, (), false)
+                Abstract::<ArrayBMCCost>::new(10, false, yardbird::YardbirdPolicy::new(()), false)
                     .with_artifact_capture(full_decision_capture()),
             );
             let result = driver

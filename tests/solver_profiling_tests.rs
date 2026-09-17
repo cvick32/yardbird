@@ -89,8 +89,12 @@ fn strategy_smtlib_profiles_checks() {
         YardbirdOptions::from_filename("examples/smt2/array_bitvec_simple.smt2".to_string());
     options.profile = true;
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let strategy: Box<dyn ProofStrategy<_>> =
-        Box::new(Abstract::<ArrayBMCCost>::new(0, false, (), false));
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+        0,
+        false,
+        yardbird::YardbirdPolicy::new(()),
+        false,
+    ));
 
     let result = SmtlibRefinementRunner::execute(
         &problem,

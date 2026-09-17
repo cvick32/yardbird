@@ -1397,7 +1397,8 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(2, false, (), false);
+        let mut concrete_strategy =
+            Abstract::<ArrayBMCCost>::new(2, false, crate::YardbirdPolicy::new(()), false);
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);
@@ -1574,8 +1575,9 @@ mod tests {
     #[test]
     fn installs_auxiliary_specs_for_existing_and_future_frames() {
         let model = VMTModel::from_path("./examples/array/array_copy.vmt").unwrap();
-        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(4, false, (), false)
-            .with_property_check_mode(PropertyCheckMode::Assumptions);
+        let mut concrete_strategy =
+            Abstract::<ArrayBMCCost>::new(4, false, crate::YardbirdPolicy::new(()), false)
+                .with_property_check_mode(PropertyCheckMode::Assumptions);
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
             Box::new(concrete_strategy);

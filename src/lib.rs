@@ -53,6 +53,8 @@ pub mod instantiation_provenance;
 pub mod instantiation_strategy;
 pub mod interpolant;
 pub mod logger;
+pub mod policy;
+pub use policy::YardbirdPolicy;
 pub mod problem_context;
 pub mod profiling;
 mod proof_tree;
@@ -518,20 +520,16 @@ impl YardbirdOptions {
     where
         F: ArrayCostFactory + 'static,
     {
-        Abstract::new(
-            bmc_depth,
-            self.run_ic3ia,
-            cost_config,
-            self.profiling_enabled(),
-        )
-        .with_artifact_capture(self.build_array_artifact_capture())
-        .with_egraph_builder(self.build_array_egraph_builder())
-        .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
-        .with_recurrent_product_abstraction(self.abstract_recurrent_products)
-        .with_guarded_read_updates(self.guarded_read_updates)
-        .with_candidate_winners_per_group(self.candidate_winners_per_group)
-        .with_instantiation_ranker(self.build_instantiation_ranker())
-        .with_property_check_mode(self.property_check_mode)
+        let policy = YardbirdPolicy::new(cost_config)
+            .with_egraph_builder(self.build_array_egraph_builder())
+            .with_candidate_winners_per_group(self.candidate_winners_per_group)
+            .with_instantiation_ranker(self.build_instantiation_ranker());
+        Abstract::new(bmc_depth, self.run_ic3ia, policy, self.profiling_enabled())
+            .with_artifact_capture(self.build_array_artifact_capture())
+            .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
+            .with_recurrent_product_abstraction(self.abstract_recurrent_products)
+            .with_guarded_read_updates(self.guarded_read_updates)
+            .with_property_check_mode(self.property_check_mode)
     }
 
     fn build_abstract_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan

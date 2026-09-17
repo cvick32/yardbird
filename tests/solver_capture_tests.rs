@@ -432,8 +432,12 @@ fn multi_refinement_capture_preserves_added_instances_between_checks() {
     options.solver_capture_dir = Some(temp.path().join("capture"));
     let capture = options.build_solver_capture().unwrap();
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let strategy: Box<dyn ProofStrategy<_>> =
-        Box::new(Abstract::<ArrayBMCCost>::new(0, false, (), false));
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+        0,
+        false,
+        yardbird::YardbirdPolicy::new(()),
+        false,
+    ));
 
     let result = SmtlibRefinementRunner::execute(
         &problem,

@@ -89,17 +89,17 @@ fn check_abstract_model_with_aux(
     if aux_enabled {
         driver.add_extension(ConditionalHistory::<ArrayBMCCost>::new(aux_config, ()));
     }
-    let strategy = Abstract::<ArrayBMCCost>::new(depth, false, (), false).with_artifact_capture(
-        ArrayArtifactCapture {
+    let policy = yardbird::YardbirdPolicy::new(());
+    let policy = if aux_enabled {
+        policy.with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker))
+    } else {
+        policy
+    };
+    let strategy = Abstract::<ArrayBMCCost>::new(depth, false, policy, false)
+        .with_artifact_capture(ArrayArtifactCapture {
             conflicts: aux_enabled,
             ..ArrayArtifactCapture::default()
-        },
-    );
-    let strategy = if aux_enabled {
-        strategy.with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker))
-    } else {
-        strategy
-    };
+        });
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(strategy);
     driver.check_strategy(depth, strategy)
 }
@@ -129,12 +129,17 @@ fn check_adaptive_model_with_aux(
     );
     driver.add_extension(ConditionalHistory::<AdaptiveArrayCost>::new(aux_config, ()));
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(
-        Abstract::<AdaptiveArrayCost>::new(depth, false, (), false)
-            .with_artifact_capture(ArrayArtifactCapture {
-                conflicts: true,
-                ..ArrayArtifactCapture::default()
-            })
-            .with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker)),
+        Abstract::<AdaptiveArrayCost>::new(
+            depth,
+            false,
+            yardbird::YardbirdPolicy::new(())
+                .with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker)),
+            false,
+        )
+        .with_artifact_capture(ArrayArtifactCapture {
+            conflicts: true,
+            ..ArrayArtifactCapture::default()
+        }),
     );
     driver.check_strategy(depth, strategy)
 }
