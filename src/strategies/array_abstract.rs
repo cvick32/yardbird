@@ -749,6 +749,148 @@ where
         record.helper_assertions_deduplicated += result.helper_assertions_deduplicated;
     }
 
+    fn prepare_binder_search(
+        &self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        state: &mut ArrayRefinementState,
+        profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
+    ) -> anyhow::Result<()> {
+        if state.binder_search.is_none() {
+            let start = Instant::now();
+            state.binder_search = Some(BinderSearchState {
+                prepared: self.quantifiers.prepare(smt)?,
+                empty_passes: HashMap::new(),
+                dependencies_searched: false,
+            });
+            if let Some(profiling) = profiling {
+                let mut profiling = profiling.borrow_mut();
+                profiling.record_timing("input_binder_prepare", start.elapsed());
+                profiling.add_counter("input_binder_model_preparations", 1);
+            }
+        }
+        Ok(())
+    }
+
+    fn dependency_candidates(
+        &mut self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        state: &mut ArrayRefinementState,
+        refinement_step: u32,
+        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
+    ) -> anyhow::Result<InstantiationBatch> {
+        // A bounded burst gives ordinary witness/array/round-robin refinement
+        // a turn even if dependency hints keep producing fresh instances.
+        if self.quantifiers.rules.is_empty()
+            || !self
+                .policy
+                .effort()
+                .permits_dependency_pass(refinement_step)
+        {
+            return Ok(InstantiationBatch::default());
+        }
+        self.prepare_binder_search(smt, state, &profiling)?;
+        let search = state.binder_search.as_mut().unwrap();
+        if search.dependencies_searched {
+            return Ok(InstantiationBatch::default());
+        }
+        search.dependencies_searched = true;
+        let prepared = &mut search.prepared;
+        let _phase_guard = profiling.as_ref().map(|p| {
+            crate::profiling::QuantifierPhaseGuard::new(p.clone(), "input_binder_dependencies")
+        });
+        let start = Instant::now();
+        let discovery = prepared.dependency_paths(smt)?;
+        if let Some(profiling) = &profiling {
+            let mut profiling = profiling.borrow_mut();
+            profiling.record_timing("input_binder_dependency_discovery", start.elapsed());
+            profiling.add_counter("input_binder_dependency_demands", discovery.demands as u64);
+            profiling.add_counter("input_binder_dependency_work", discovery.work as u64);
+            profiling.add_counter(
+                "input_binder_dependency_paths",
+                discovery.paths.len() as u64,
+            );
+            profiling.add_counter(
+                "input_binder_dependency_budget_exhausted",
+                u64::from(discovery.budget_exhausted),
+            );
+        }
+        let scope = crate::theories::array::candidate_scope::CandidateScope::AllCandidates;
+        let known = smt
+            .get_instantiations()
+            .iter()
+            .map(canonical_instantiation_key)
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        for path in discovery.paths {
+            for request in &path.requests {
+                if !seen.insert(request.clone()) {
+                    continue;
+                }
+                // One page per request; the existing round-robin searches
+                // retain coverage when a partially bound request is expensive.
+                if seen.len() > self.policy.effort().dependency_request_limit() {
+                    return Ok(InstantiationBatch::default());
+                }
+                let mut batch = prepared.candidates(
+                    |term| smt.eval_to_string(term),
+                    request,
+                    |context| self.policy.term_cost(context, state.depth as u32),
+                    ArrayInstantiationOptions {
+                        additional_terms: vec![],
+                        candidate_catalog: prepared.catalog.clone(),
+                        candidate_scope: scope,
+                        refinement_step,
+                        selection_counts: self.term_selection_counts.clone(),
+                        depth: state.depth,
+                        instrumentation: ArrayInstantiationInstrumentation {
+                            artifact_capture: self.artifact_capture,
+                            profiling: profiling.clone(),
+                        },
+                    },
+                )?;
+                let summary = batch.prepare_with_ranker(
+                    scope,
+                    &known,
+                    self.policy.effort().winners_per_group(),
+                    self.policy.instantiation_ranker(),
+                    |term| smt.eval_to_string(term),
+                    |candidate| self.installable_expression(smt, &candidate.expression),
+                )?;
+                if let Some(profiling) = &profiling {
+                    let mut profiling = profiling.borrow_mut();
+                    profiling.add_counter("input_binder_dependency_requests", 1);
+                    profiling.add_counter(
+                        "input_binder_dependency_instances_selected",
+                        summary.selected_binders as u64,
+                    );
+                    for (rule, counts) in summary.by_rule {
+                        profiling.record_rule_candidates(&rule, counts.generated, counts.selected);
+                        profiling.record_quantifier_counter(
+                            &rule,
+                            "dependency_instances_selected",
+                            counts.selected as u64,
+                        );
+                    }
+                }
+                if batch.selected().next().is_some() {
+                    info!(
+                        "Dependency-guided instance for {}={} via {} (selected {})",
+                        path.demand,
+                        path.desired_truth,
+                        path.requests
+                            .iter()
+                            .map(|request| request.helper.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" -> "),
+                        request.helper
+                    );
+                    return Ok(batch);
+                }
+            }
+        }
+        Ok(InstantiationBatch::default())
+    }
+
     fn binder_candidates(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
@@ -1013,6 +1155,218 @@ mod tests {
             (define-fun trans () Bool (! true :trans true))
             (define-fun prop () Bool (! false :invar-property 0))";
         sat_fixture(input)
+    }
+
+    #[test]
+    fn dependency_scheduler_discovers_paxos_initialization_chain_without_helper_ids() {
+        let (mut strategy, mut smt) = sat_fixture(include_str!(
+            "../../examples/distributed_protocols/paxos/paxos.encoding.vmt"
+        ));
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        let witnesses = strategy
+            .binder_candidates(&smt, &mut state, 0, SearchPhase::Witnesses, None)
+            .unwrap();
+        assert!(witnesses.selected().next().is_some());
+        strategy.absorb_candidates(&mut state, witnesses);
+        strategy.finish(state, &mut smt).unwrap();
+        assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+        let mut prepared = strategy.quantifiers.prepare(&smt).unwrap();
+        let discovery = prepared.dependency_paths(&smt).unwrap();
+        let path = discovery
+            .paths
+            .iter()
+            .find(|path| {
+                !path.desired_truth
+                    && path.demand.to_string().starts_with("(Read_value_Bool ")
+                    && path.demand.to_string().contains("decision@0")
+                    && path.requests.len() == 3
+            })
+            .expect("discover the three nested initial-state binders");
+        assert!(path.requests.iter().all(|request| request
+            .bindings
+            .iter()
+            .any(|(_, term)| term.to_string().contains("__yardbird_witness_"))));
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        let profiling = Rc::new(RefCell::new(ArrayProfilingCollector::new(
+            "test",
+            Some(0),
+            Some(1),
+            vec![],
+        )));
+        let batch = strategy
+            .dependency_candidates(&smt, &mut state, 1, Some(profiling.clone()))
+            .unwrap();
+        assert!(batch.selected().next().is_some());
+        assert_eq!(batch.search.examined_substitutions, 0);
+        assert!(batch
+            .selected()
+            .all(|candidate| candidate.model_violation_verified));
+        assert!(Rc::try_unwrap(profiling)
+            .unwrap_or_else(|_| panic!("collector still borrowed"))
+            .into_inner()
+            .finish()
+            .counters
+            .contains_key("input_binder_dependency_requests"));
+    }
+
+    #[test]
+    fn dependency_scheduler_proves_a_renamed_nested_property_through_normal_driver() {
+        let input = "
+            (declare-sort Agent 0)
+            (declare-sort Epoch 0)
+            (declare-sort Payload 0)
+            (declare-fun ledger () (Array Agent (Array Epoch (Array Payload Bool))))
+            (define-fun init () Bool (!
+                (forall ((who Agent)) (forall ((when Epoch)) (forall ((what Payload))
+                    (= (select (select (select ledger who) when) what) false)))) :init true))
+            (define-fun trans () Bool (! true :trans true))
+            (define-fun prop () Bool (! (and
+                (forall ((a Agent) (b Agent) (r Epoch) (s Epoch) (v Payload) (w Payload))
+                    (=> (and (select (select (select ledger a) r) v)
+                             (select (select (select ledger b) s) w)) (= v w)))
+                true) :invar-property 0))";
+        let commands = smt2parser::CommandStream::new(
+            std::io::Cursor::new(input.as_bytes()),
+            smt2parser::concrete::SyntaxBuilder,
+            None,
+        )
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+        let model = VMTModel::checked_from(commands).unwrap();
+        let mut options = YardbirdOptions::from_filename("renamed.vmt".into());
+        options.profile = true;
+        let mut driver = crate::Driver::new(
+            model,
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+        let result = driver
+            .check_strategy(1, options.build_array_strategy())
+            .unwrap();
+        assert!(!result.counterexample);
+        let selected: u64 = result
+            .profiling
+            .cost_records
+            .iter()
+            .map(|record| {
+                record
+                    .counters
+                    .get("input_binder_dependency_instances_selected")
+                    .copied()
+                    .unwrap_or(0)
+            })
+            .sum();
+        assert!(
+            selected >= 3,
+            "selected={selected}, checks={}, counters={:?}",
+            result.profiling.solver_checks.len(),
+            result
+                .profiling
+                .cost_records
+                .iter()
+                .map(|record| &record.counters)
+                .collect::<Vec<_>>()
+        );
+        assert!(result.profiling.solver_checks.len() <= 8);
+    }
+
+    #[test]
+    fn dependency_scheduler_uses_egg_for_remaining_variables_and_yields_to_ordinary_search() {
+        let (mut strategy, smt) = sat_fixture(
+            "(declare-sort Node 0)
+            (declare-sort Value 0)
+            (declare-fun unused () (Array Bool Bool))
+            (declare-fun p (Node) Bool)
+            (declare-fun q (Value) Bool)
+            (define-fun init () Bool (! (forall ((x Node) (y Value))
+                (and (not (p x)) (q y))) :init true))
+            (define-fun trans () Bool (! true :trans true))
+            (define-fun prop () Bool (! (forall ((z Node)) (not (p z))) :invar-property 0))",
+        );
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        assert!(strategy
+            .dependency_candidates(&smt, &mut state, 7, None)
+            .unwrap()
+            .candidates
+            .is_empty());
+        assert!(
+            state.binder_search.is_none(),
+            "every eighth step is reserved for ordinary refinement"
+        );
+        let batch = strategy
+            .dependency_candidates(&smt, &mut state, 0, None)
+            .unwrap();
+        assert!(batch.search.examined_substitutions > 0, "egg must supply y");
+        assert!(batch.selected().next().is_some());
+        assert!(batch
+            .selected()
+            .all(|candidate| candidate.model_violation_verified));
+        assert!(
+            strategy
+                .dependency_candidates(&smt, &mut state, 0, None)
+                .unwrap()
+                .candidates
+                .is_empty(),
+            "array-stage retries must not repeat dependency work on this model"
+        );
+    }
+
+    #[test]
+    fn dependency_search_reports_bounded_incompleteness_for_deep_paths() {
+        let mut body = "(not (p x0 x1 x2 x3 x4 x5 x6 x7 x8))".to_string();
+        for i in (0..9).rev() {
+            body = format!("(forall ((x{i} Bool)) {body})");
+        }
+        let input = format!("(declare-fun unused () (Array Bool Bool))
+            (declare-fun p (Bool Bool Bool Bool Bool Bool Bool Bool Bool) Bool)
+            (define-fun init () Bool (! {body} :init true))
+            (define-fun trans () Bool (! true :trans true))
+            (define-fun prop () Bool (! (not (p true true true true true true true true true)) :invar-property 0))");
+        let (strategy, smt) = sat_fixture(&input);
+        let mut prepared = strategy.quantifiers.prepare(&smt).unwrap();
+        let discovery = prepared.dependency_paths(&smt).unwrap();
+        assert!(discovery.paths.is_empty());
+        assert!(discovery.budget_exhausted);
+        assert!(discovery.work <= 512);
+    }
+
+    #[test]
+    fn dependency_scheduler_completes_all_paxos_properties_at_depth_zero() {
+        let model =
+            VMTModel::from_path("examples/distributed_protocols/paxos/paxos.encoding.vmt").unwrap();
+        let mut options = YardbirdOptions::from_filename("paxos.encoding.vmt".into());
+        options.profile = true;
+        options.cost_function = crate::CostFunction::ProtocolBmc;
+        options.candidate_winners_per_group = 20;
+        options.property_check_mode = PropertyCheckMode::Assumptions;
+        let mut driver = crate::Driver::new(
+            model,
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(15)));
+        let result = driver
+            .check_strategy(1, options.build_array_strategy())
+            .unwrap();
+        assert_eq!(
+            result
+                .run_progress
+                .as_ref()
+                .unwrap()
+                .deepest_completed_depth,
+            Some(0)
+        );
+        assert!(!result.counterexample);
+        assert!(result.profiling.cost_records.iter().any(|record| record
+            .counters
+            .get("input_binder_dependency_instances_selected")
+            .copied()
+            .unwrap_or(0)
+            > 0));
+        assert!(result.profiling.solver_checks.len() < 80);
     }
 
     // An empty narrow stage followed by real full construction makes the

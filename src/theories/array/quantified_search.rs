@@ -84,6 +84,18 @@ fn search<N: egg::Analysis<ArrayLanguage>>(
         let mut profiling = profiling.borrow_mut();
         profiling.record_timing("rule_matching_total", elapsed);
         profiling.record_rule_search(rule.metadata().name(), matches.len(), count, elapsed);
+        if rule.uses_violation_plan() {
+            profiling.record_quantifier_counter(
+                rule.metadata().name(),
+                "violation_plan_searches",
+                1,
+            );
+            profiling.record_quantifier_counter(
+                rule.metadata().name(),
+                "violation_plan_substitutions_returned",
+                count as u64,
+            );
+        }
     }
     matches
         .into_iter()
@@ -147,6 +159,32 @@ fn search_binder_rule_page<N: egg::Analysis<ArrayLanguage>>(
     let BinderRuleCursor::Pending { offset } = *cursor else {
         return MatchedRules::default();
     };
+
+    if rule.is_direct_binder_instance() {
+        // Every argument is already symbolic and ground. In particular the
+        // helper application need not exist in this model's term vocabulary.
+        *cursor = BinderRuleCursor::Complete;
+        if let Some(profiling) = profiling {
+            profiling
+                .borrow_mut()
+                .add_counter("input_binder_direct_instances", 1);
+        }
+        return MatchedRules {
+            matches: vec![RuleMatch {
+                rule_index,
+                // Binder candidates are grouped by rule; no equality root is
+                // consulted when grounding their complete Boolean formula.
+                root: egraph
+                    .classes()
+                    .next()
+                    .expect("prepared binder graph is nonempty")
+                    .id,
+                substitution: egg::Subst::default(),
+                model_violation_verified: false,
+            }],
+            report: RuleSearchReport::default(),
+        };
+    }
 
     let end = (offset + BINDER_PAGE_SIZE).min(BINDER_SEARCH_LIMIT);
     let matches = search(egraph, rule, rule_index, end + 1, profiling);
