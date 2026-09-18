@@ -60,7 +60,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
             array_exhausted: false,
             model_reported: false,
             depth,
-            egraph: egg::EGraph::default(),
+            egraph: crate::refinement_graph::RefinementGraph::default(),
             candidates: vec![],
             guarded_read_updates: vec![],
             array_types: vec![],

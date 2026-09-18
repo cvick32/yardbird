@@ -109,10 +109,6 @@ impl InstantiationBatch {
             .filter(|candidate| candidate.selected)
     }
 
-    pub(crate) fn extend(&mut self, candidates: impl IntoIterator<Item = InstantiationCandidate>) {
-        self.candidates.extend(candidates);
-    }
-
     /// Filter, deduplicate, and select with the baseline term-cost ranker.
     #[cfg(test)]
     pub(crate) fn prepare<K>(

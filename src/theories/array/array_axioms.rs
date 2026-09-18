@@ -68,6 +68,9 @@ pub struct ArrayInstantiationInstrumentation {
 }
 
 pub struct ArrayInstantiationOptions {
+    /// Temporary array-stage admission on the shared graph. This restricts
+    /// structural matches before truncation; it is not another graph.
+    pub match_scope: Option<std::collections::HashSet<ArrayLanguage>>,
     pub search_allowance: crate::policy::effort::WorkAllowance,
     pub candidate_catalog: ArrayCandidateCatalog,
     pub additional_terms: Vec<ArrayExpr>,
@@ -314,6 +317,7 @@ where
         egraph,
         rules,
         &options.search_allowance,
+        options.match_scope.as_ref(),
         &options.instrumentation.profiling,
     );
     instantiate_quantified_matches(egraph, || cost_fn, rules, options, matched, demand, None)
@@ -334,6 +338,7 @@ where
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
     let ArrayInstantiationOptions {
+        match_scope: _,
         search_allowance: _,
         candidate_catalog,
         additional_terms,
@@ -573,6 +578,35 @@ where
         } else {
             self.searcher.search_with_limit(egraph, limit)
         }
+    }
+
+    pub(crate) fn match_is_admitted(
+        &self,
+        egraph: &EGraph<ArrayLanguage, N>,
+        subst: &Subst,
+        allowed: &std::collections::HashSet<ArrayLanguage>,
+    ) -> bool {
+        let Some(pattern) = &self.trigger else {
+            return true;
+        };
+        let mut ids = Vec::new();
+        for node in pattern.as_ref() {
+            let id = match node {
+                ENodeOrVar::Var(var) => egraph.find(subst[*var]),
+                ENodeOrVar::ENode(node) => {
+                    let node = node.clone().map_children(|id| ids[usize::from(id)]);
+                    if !allowed.contains(&node) {
+                        return false;
+                    }
+                    let Some(id) = egraph.lookup(node) else {
+                        return false;
+                    };
+                    egraph.find(id)
+                }
+            };
+            ids.push(id);
+        }
+        true
     }
 
     pub(crate) fn fixed_bindings(&self) -> &[(Var, ArrayExpr)] {
@@ -1540,6 +1574,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
@@ -1584,6 +1619,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
@@ -1627,6 +1663,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
@@ -1662,6 +1699,7 @@ mod test {
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
                 ArrayInstantiationOptions {
+                    match_scope: None,
                     search_allowance: crate::policy::effort::WorkAllowance::default(),
                     additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
@@ -1719,6 +1757,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
@@ -1758,6 +1797,7 @@ mod test {
             HighCostA,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
@@ -1807,6 +1847,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
@@ -1849,6 +1890,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
@@ -1887,6 +1929,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
@@ -1959,6 +2002,7 @@ mod test {
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
                 ArrayInstantiationOptions {
+                    match_scope: None,
                     search_allowance: crate::policy::effort::WorkAllowance::default(),
                     additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),

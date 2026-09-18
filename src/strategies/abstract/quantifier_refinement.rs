@@ -23,7 +23,7 @@ pub(super) struct QuantifierRefinement {
     pub(super) owns_quantifiers: bool,
 }
 
-/// One solver model's fixed binder graph and unsuccessful selection passes.
+/// One solver model's compiled searches and graph-versioned unsuccessful passes.
 pub(crate) struct BinderSearchState {
     prepared: crate::quantifier_abstraction::PreparedQuantifierSearch,
     empty_passes: HashMap<crate::quantifier_abstraction::SearchPhase, BinderPassContext>,
@@ -37,6 +37,7 @@ pub(super) struct DependencyWork {
 }
 
 struct BinderPassContext {
+    graph_version: u64,
     refinement_step: u32,
     selection_counts: FxHashMap<String, u32>,
     allowance: crate::policy::effort::WorkAllowance,
@@ -90,16 +91,20 @@ impl QuantifierRefinement {
         }
     }
 
-    fn prepare_binder_search(
+    pub(super) fn prepare_binder_search(
         &self,
         smt: &dyn crate::problem_context::ProblemContext,
         state: &mut Option<BinderSearchState>,
+        graph: &mut crate::refinement_graph::RefinementGraph,
+        graph_version: &mut u64,
         profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> anyhow::Result<()> {
         if state.is_none() {
             let start = Instant::now();
+            let prepared = self.plan.prepare(smt, graph)?;
+            *graph_version += 1;
             *state = Some(BinderSearchState {
-                prepared: self.plan.prepare(smt)?,
+                prepared,
                 empty_passes: HashMap::new(),
                 dependencies_searched: false,
                 requests: Vec::new(),
@@ -110,6 +115,13 @@ impl QuantifierRefinement {
                 profiling.add_counter("input_binder_model_preparations", 1);
             }
         }
+        let search = state.as_mut().unwrap();
+        if search.prepared.graph_version() != *graph_version {
+            search.prepared.refresh_graph(graph, *graph_version);
+            search.empty_passes.clear();
+            search.requests.clear();
+            search.dependencies_searched = false;
+        }
         Ok(())
     }
 
@@ -118,7 +130,6 @@ impl QuantifierRefinement {
         state: &mut Option<BinderSearchState>,
         context: &SearchContext<'_, F>,
     ) -> anyhow::Result<crate::policy::effort::WorkReport> {
-        self.prepare_binder_search(context.smt, state, &context.profiling)?;
         let search = state.as_mut().unwrap();
         let _phase_guard = context.profiling.as_ref().map(|p| {
             crate::profiling::QuantifierPhaseGuard::new(p.clone(), "input_binder_dependencies")
@@ -195,10 +206,12 @@ impl QuantifierRefinement {
         });
         let scope = crate::theories::array::candidate_scope::CandidateScope::AllCandidates;
         let mut batch = prepared.candidates(
+            context.graph,
             |term| context.smt.eval_to_string(term),
             crate::quantifier_abstraction::BinderSearch::RequestPage(request, context.allowance),
             |cost_context| context.term_cost(cost_context, context.depth as u32),
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: context.allowance,
                 additional_terms: vec![],
                 candidate_catalog: prepared.catalog.clone(),
@@ -263,13 +276,12 @@ impl QuantifierRefinement {
             .as_ref()
             .map(|p| crate::profiling::QuantifierPhaseGuard::new(p.clone(), phase.timing_key()));
         let phase_start = Instant::now();
-        self.prepare_binder_search(smt, state, profiling)?;
         let search = state.as_mut().unwrap();
-        // Widening the array graph leaves the prepared binder graph, model,
-        // known instances, cost configuration and ranker unchanged. Only
-        // representative-use history may change between these attempts.
+        // Graph growth resets match offsets and empty-pass conclusions. Exact
+        // formula evaluations remain valid while this solver model is unchanged.
         if search.empty_passes.get(&phase).is_some_and(|cached| {
-            cached.refinement_step == refinement_step
+            cached.graph_version == context.graph_version
+                && cached.refinement_step == refinement_step
                 && cached.selection_counts == *context.selection_counts
                 && cached.allowance == context.allowance
                 && cached.pending_instances == *context.pending_instances
@@ -303,6 +315,7 @@ impl QuantifierRefinement {
                 search.empty_passes.insert(
                     phase,
                     BinderPassContext {
+                        graph_version: context.graph_version,
                         refinement_step,
                         selection_counts: context.selection_counts.clone(),
                         allowance: context.allowance,
@@ -332,6 +345,7 @@ impl QuantifierRefinement {
             );
             let page_start = Instant::now();
             let mut batch = prepared.candidates(
+                context.graph,
                 |term| smt.eval_to_string(term),
                 crate::quantifier_abstraction::BinderSearch::Page {
                     phase,
@@ -340,6 +354,7 @@ impl QuantifierRefinement {
                 },
                 |cost_context| context.term_cost(cost_context, context.depth as u32),
                 ArrayInstantiationOptions {
+                    match_scope: None,
                     search_allowance: context.allowance,
                     additional_terms: vec![],
                     candidate_catalog: prepared.catalog.clone(),
@@ -400,6 +415,7 @@ impl QuantifierRefinement {
                 profiling
                     .borrow_mut()
                     .record_effort(crate::policy::effort::EffortRecord {
+                        graph_version: context.graph_version,
                         operation_id: context.operation_id,
                         operation: format!(
                             "{phase:?}:{}",
@@ -418,6 +434,7 @@ impl QuantifierRefinement {
                     search.empty_passes.insert(
                         phase,
                         BinderPassContext {
+                            graph_version: context.graph_version,
                             refinement_step,
                             selection_counts: context.selection_counts.clone(),
                             allowance: context.allowance,

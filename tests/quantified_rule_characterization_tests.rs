@@ -36,6 +36,7 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
         cost,
         &[("Int".to_string(), "Int".to_string())],
         ArrayInstantiationOptions {
+            match_scope: None,
             search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),
@@ -214,6 +215,7 @@ fn array_search_keeps_all_conflicts_past_4096() {
         },
         &[("Int".into(), "Int".into())],
         ArrayInstantiationOptions {
+            match_scope: None,
             search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),

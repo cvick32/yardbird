@@ -354,6 +354,7 @@ impl WorkReport {
 /// abstract instances. They describe observed work, not causal proof credit.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EffortRecord {
+    pub graph_version: u64,
     pub operation_id: Option<OperationId>,
     pub operation: String,
     pub offered: Vec<String>,

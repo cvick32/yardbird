@@ -1052,6 +1052,17 @@ impl VmtBmcSession {
 }
 
 impl ProblemContext for VmtBmcSession {
+    fn get_refinement_declarations(&self) -> Vec<Command> {
+        self.function_definitions
+            .iter()
+            .chain(&self.variable_definitions)
+            .chain(&self.input_variables)
+            .chain(&self.action_variables)
+            .chain(self.variables.iter().map(|v| &v.current))
+            .cloned()
+            .collect()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

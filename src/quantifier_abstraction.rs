@@ -65,7 +65,7 @@ fn sort_name(sort: &Sort) -> String {
     }
 }
 
-fn abstract_sort(sort: &Sort) -> Sort {
+pub(crate) fn abstract_sort(sort: &Sort) -> Sort {
     match sort {
         Sort::Parameterized { identifier, .. } if identifier.to_string() == "Array" => {
             string_to_sort(&sort_name(sort))
@@ -373,10 +373,6 @@ pub(crate) struct QuantifierPlan {
 }
 
 impl QuantifierPlan {
-    pub fn sort_of(&self, term: &Term) -> Option<Sort> {
-        term_sort(term, &self.signatures, &HashMap::new()).ok()
-    }
-
     fn compiled(
         &self,
         types: &[(String, String)],
@@ -437,8 +433,8 @@ impl QuantifierPlan {
     pub fn prepare(
         &self,
         smt: &dyn crate::problem_context::ProblemContext,
+        graph: &mut crate::refinement_graph::RefinementGraph,
     ) -> anyhow::Result<PreparedQuantifierSearch> {
-        use egg::Language;
         let types = smt.get_array_types();
         let compiled = self.compiled(&types)?;
         let mut terms = smt
@@ -461,50 +457,13 @@ impl QuantifierPlan {
             })
             .collect::<HashSet<_>>();
         needed_sorts.insert(string_to_sort("Bool"));
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let mut values = HashMap::<(Sort, String), egg::Id>::new();
-        let mut evaluations = HashMap::new();
-        let mut additional_terms = Vec::new();
-        let mut original_representatives = Vec::new();
-        let mut seen = HashSet::new();
+        graph.set_domain_sorts(needed_sorts);
         for term in terms {
-            let Some(expression) = translate_term_with_array_types(term.clone(), &types) else {
-                continue;
-            };
-            let id = egraph.add_expr(&expression);
-            // Retain original subexpressions, without running a cost function
-            // or an egg extractor. Captures can occur inside helper arguments.
-            let mut ids = Vec::new();
-            for node in expression.as_ref() {
-                let id = egraph.add(node.clone().map_children(|child| ids[usize::from(child)]));
-                ids.push(id);
-                if seen.insert(id) {
-                    original_representatives
-                        .push((id, node.build_recexpr(|child| expression[child].clone())));
-                }
+            if translate_term_with_array_types(term.clone(), &types).is_some() {
+                graph.admit(smt, &term, false)?;
             }
-            additional_terms.push(expression);
-            let Some(sort) = self.sort_of(&term) else {
-                continue;
-            };
-            if !needed_sorts.contains(&sort) {
-                continue;
-            }
-            let value = smt.eval_to_string(&term)?;
-            evaluations.insert(term, value.clone());
-            // Never merge equal-looking values of different SMT sorts or add
-            // solver-private model values to the term vocabulary.
-            if let Some(other) = values.insert((sort.clone(), value), id) {
-                egraph.union(id, other);
-            }
-            let sort_id = egraph.add(ArrayLanguage::SortTag(sort.to_string().into()));
-            egraph.add(ArrayLanguage::Domain([sort_id, id]));
         }
-        egraph.rebuild();
-        let mut representatives = HashMap::new();
-        for (id, expression) in original_representatives {
-            representatives.entry(egraph.find(id)).or_insert(expression);
-        }
+        graph.rebuild();
         let catalog = smt.get_array_candidate_catalog();
         let cost_context = crate::cost_functions::array::ArrayCostContext::from_problem(
             smt,
@@ -512,10 +471,10 @@ impl QuantifierPlan {
             crate::theories::array::candidate_scope::CandidateScope::AllCandidates,
         );
         Ok(PreparedQuantifierSearch {
-            egraph,
-            additional_terms,
-            representatives,
-            evaluations,
+            graph_version: 0,
+            additional_terms: graph.terms.clone(),
+            representatives: graph.representatives(),
+            evaluations: graph.evaluations.clone(),
             compiled,
             cursors: HashMap::new(),
             requests: HashMap::new(),
@@ -535,7 +494,7 @@ struct CompiledBinderRules {
 }
 
 pub(crate) struct PreparedQuantifierSearch {
-    egraph: egg::EGraph<ArrayLanguage, ()>,
+    graph_version: u64,
     additional_terms: Vec<crate::theories::array::array_axioms::ArrayExpr>,
     representatives: HashMap<egg::Id, crate::theories::array::array_axioms::ArrayExpr>,
     evaluations: HashMap<Term, String>,
@@ -561,6 +520,28 @@ impl SearchPhase {
 }
 
 impl PreparedQuantifierSearch {
+    pub(crate) fn graph_version(&self) -> u64 {
+        self.graph_version
+    }
+    pub(crate) fn refresh_graph(
+        &mut self,
+        graph: &crate::refinement_graph::RefinementGraph,
+        version: u64,
+    ) {
+        if self.graph_version == version {
+            return;
+        }
+        self.graph_version = version;
+        self.additional_terms = graph.terms.clone();
+        self.representatives = graph.representatives();
+        self.evaluations.extend(graph.evaluations.clone());
+        self.cursors.clear();
+        self.obligations.clear();
+        for request in self.requests.values_mut() {
+            request.cursor = Default::default();
+        }
+    }
+
     pub fn start_phase(&mut self, phase: SearchPhase, next_rule: usize) {
         // Array-stage attempts can change representative-use history without
         // changing the solver model. Reuse model facts, but allow the new
@@ -605,6 +586,7 @@ impl PreparedQuantifierSearch {
 
     pub fn candidates<'a, CF>(
         &mut self,
+        egraph: &egg::EGraph<ArrayLanguage, ()>,
         mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
         search: impl Into<BinderSearch<'a>>,
         make_cost: impl FnOnce(&crate::cost_functions::array::ArrayCostContext) -> CF,
@@ -654,14 +636,11 @@ impl PreparedQuantifierSearch {
         };
         let mut matched = match page {
             Some((rule, allowance)) => {
-                search_binder_page_at(&self.egraph, rules, cursor, rule, &allowance, &profiling)
+                search_binder_page_at(egraph, rules, cursor, rule, &allowance, &profiling)
             }
             #[cfg(test)]
             None => crate::theories::array::quantified_search::search_binder_page(
-                &self.egraph,
-                rules,
-                cursor,
-                &profiling,
+                egraph, rules, cursor, &profiling,
             ),
             #[cfg(not(test))]
             None => unreachable!("production search requires an explicit rule"),
@@ -697,7 +676,7 @@ impl PreparedQuantifierSearch {
                 let mut rejected_by_filter = false;
                 for (filter, truth) in rule.binder_filters() {
                     let expression = instantiate_with_bindings(filter, |variable| {
-                        let id = self.egraph.find(candidate.substitution[variable]);
+                        let id = egraph.find(candidate.substitution[variable]);
                         self.representatives.get(&id).ok_or_else(|| {
                             anyhow::anyhow!("No original term for binder e-class {id}")
                         })
@@ -733,7 +712,7 @@ impl PreparedQuantifierSearch {
             let bindings = rule
                 .formula_variables()
                 .iter()
-                .map(|variable| self.egraph.find(candidate.substitution[*variable]))
+                .map(|variable| egraph.find(candidate.substitution[*variable]))
                 .collect::<Vec<_>>();
             if phase != SearchPhase::Expand {
                 let key = (
@@ -757,7 +736,7 @@ impl PreparedQuantifierSearch {
                     count("full_formula_constructions");
                     let construction_start = profiling.as_ref().map(|_| std::time::Instant::now());
                     let expression = instantiate_with_bindings(rule.formula(), |variable| {
-                        let id = self.egraph.find(candidate.substitution[variable]);
+                        let id = egraph.find(candidate.substitution[variable]);
                         self.representatives.get(&id).ok_or_else(|| {
                             anyhow::anyhow!("No original term for binder e-class {id}")
                         })
@@ -821,9 +800,11 @@ impl PreparedQuantifierSearch {
                 );
             }
             needed_classes.extend(bindings);
-            needed_classes.extend(rule.fixed_bindings().iter().filter_map(|(_, term)| {
-                self.egraph.lookup_expr(term).map(|id| self.egraph.find(id))
-            }));
+            needed_classes.extend(
+                rule.fixed_bindings()
+                    .iter()
+                    .filter_map(|(_, term)| egraph.lookup_expr(term).map(|id| egraph.find(id))),
+            );
             kept.push(candidate);
         }
         matched.matches = kept;
@@ -839,7 +820,7 @@ impl PreparedQuantifierSearch {
         }
         options.additional_terms = self.additional_terms.clone();
         let batch = instantiate_quantified_matches(
-            &self.egraph,
+            egraph,
             || make_cost(&self.cost_context),
             rules,
             options,
@@ -871,7 +852,7 @@ struct Lowerer<'a> {
     rules: Vec<BinderRule>,
 }
 
-fn term_sort(
+pub(crate) fn term_sort(
     term: &Term,
     signatures: &HashMap<String, (Vec<Sort>, Sort)>,
     scope: &HashMap<String, Sort>,
@@ -889,7 +870,8 @@ fn term_sort(
                 .map(|(name, _)| name)
                 .unwrap_or(name.clone());
             signatures
-                .get(&base)
+                .get(&name)
+                .or_else(|| signatures.get(&base))
                 .or_else(|| signatures.get(base.trim_matches('|')))
                 .map(|(_, sort)| sort.clone())
                 .ok_or_else(|| anyhow::anyhow!("unknown sort for {name}"))
@@ -1669,10 +1651,38 @@ mod tests {
         }
     }
 
-    pub(super) fn prepared_fixture(
-        variable_count: usize,
-        value_count: usize,
-    ) -> PreparedQuantifierSearch {
+    pub(crate) struct PreparedFixture {
+        pub(crate) egraph: egg::EGraph<ArrayLanguage, ()>,
+        pub(crate) search: PreparedQuantifierSearch,
+    }
+    impl std::ops::Deref for PreparedFixture {
+        type Target = PreparedQuantifierSearch;
+        fn deref(&self) -> &Self::Target {
+            &self.search
+        }
+    }
+    impl std::ops::DerefMut for PreparedFixture {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.search
+        }
+    }
+    impl PreparedFixture {
+        pub(crate) fn candidates<'a, CF>(
+            &mut self,
+            evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+            search: impl Into<BinderSearch<'a>>,
+            make_cost: impl FnOnce(&crate::cost_functions::array::ArrayCostContext) -> CF,
+            options: ArrayInstantiationOptions,
+        ) -> anyhow::Result<InstantiationBatch>
+        where
+            CF: crate::cost_functions::YardbirdCostFunction<ArrayLanguage> + 'static,
+        {
+            self.search
+                .candidates(&self.egraph, evaluate, search, make_cost, options)
+        }
+    }
+
+    pub(super) fn prepared_fixture(variable_count: usize, value_count: usize) -> PreparedFixture {
         let variables = (0..variable_count)
             .map(|i| (Symbol(format!("x{i}")), string_to_sort("Int")))
             .collect::<Vec<_>>();
@@ -1724,22 +1734,26 @@ mod tests {
                 .entry(graph.find(graph.lookup_expr(expression).unwrap()))
                 .or_insert(expression.clone());
         }
-        PreparedQuantifierSearch {
+        PreparedFixture {
             egraph: graph,
-            additional_terms: terms,
-            representatives,
-            evaluations: HashMap::new(),
-            compiled: plan.compiled(&[]).unwrap(),
-            cursors: HashMap::new(),
-            requests: HashMap::new(),
-            obligations: HashMap::new(),
-            catalog: Default::default(),
-            cost_context: Default::default(),
+            search: PreparedQuantifierSearch {
+                graph_version: 0,
+                additional_terms: terms,
+                representatives,
+                evaluations: HashMap::new(),
+                compiled: plan.compiled(&[]).unwrap(),
+                cursors: HashMap::new(),
+                requests: HashMap::new(),
+                obligations: HashMap::new(),
+                catalog: Default::default(),
+                cost_context: Default::default(),
+            },
         }
     }
 
     pub(super) fn prepared_options() -> ArrayInstantiationOptions {
         ArrayInstantiationOptions {
+            match_scope: None,
             search_allowance: crate::policy::effort::WorkAllowance::default(),
             candidate_catalog: Default::default(),
             additional_terms: vec![],
@@ -2244,6 +2258,7 @@ mod tests {
             PreferLongName,
             &[rule.compile(phase, &[]).unwrap().unwrap()],
             ArrayInstantiationOptions {
+                match_scope: None,
                 search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: catalog
                     .source_grounded
@@ -2587,8 +2602,10 @@ mod tests {
         let prepared = prepared_fixture(2, 11);
         let other = prepared_fixture(2, 11);
 
-        let mut first_compiled = std::rc::Rc::try_unwrap(prepared.compiled).ok().unwrap();
-        let mut second_comiled = std::rc::Rc::try_unwrap(other.compiled).ok().unwrap();
+        let mut first_compiled = std::rc::Rc::try_unwrap(prepared.search.compiled)
+            .ok()
+            .unwrap();
+        let mut second_comiled = std::rc::Rc::try_unwrap(other.search.compiled).ok().unwrap();
 
         let mut rules = first_compiled
             .phases
@@ -2654,8 +2671,8 @@ mod tests {
         let short = prepared_fixture(1, 11);
         let long = prepared_fixture(2, 11);
 
-        let mut short_compiled = std::rc::Rc::try_unwrap(short.compiled).ok().unwrap();
-        let mut long_compiled = std::rc::Rc::try_unwrap(long.compiled).ok().unwrap();
+        let mut short_compiled = std::rc::Rc::try_unwrap(short.search.compiled).ok().unwrap();
+        let mut long_compiled = std::rc::Rc::try_unwrap(long.search.compiled).ok().unwrap();
 
         let mut rules = short_compiled
             .phases

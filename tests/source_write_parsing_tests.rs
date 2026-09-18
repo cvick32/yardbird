@@ -49,6 +49,7 @@ fn assert_source_write_is_preserved(array: &str, index: &str, value: &str) {
         cost,
         &[("Int".into(), "Bool".into())],
         ArrayInstantiationOptions {
+            match_scope: None,
             search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog {

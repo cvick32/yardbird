@@ -86,7 +86,6 @@ impl ArrayRefinement {
         known_instantiations.extend(context.pending_instances.iter().cloned());
 
         let instantiation_start = Instant::now();
-        let mut candidate_batch = InstantiationBatch::default();
         let mut seen = HashSet::new();
         let mut accepted_by_rule = HashMap::new();
         let array_candidates = generate_array_instantiation_candidates_with_budget(
@@ -94,6 +93,7 @@ impl ArrayRefinement {
             cost_fn.clone(),
             array_types,
             ArrayInstantiationOptions {
+                match_scope: Some(context.graph.array_match_scope()),
                 search_allowance: context.allowance,
                 additional_terms: vec![],
                 candidate_catalog: candidate_catalog.clone(),
@@ -141,7 +141,7 @@ impl ArrayRefinement {
                 Ok(true)
             },
         )?;
-        candidate_batch.extend(array_candidates.candidates);
+        let mut candidate_batch = array_candidates;
         let summary = candidate_batch.prepare_with_ranker(
             expansion.candidate_scope,
             &known_instantiations,

@@ -54,6 +54,7 @@ pub mod instantiation_strategy;
 pub mod interpolant;
 pub mod logger;
 pub mod policy;
+pub mod refinement_graph;
 pub use policy::YardbirdPolicy;
 pub mod problem_context;
 pub mod profiling;

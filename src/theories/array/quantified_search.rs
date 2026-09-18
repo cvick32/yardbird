@@ -72,11 +72,39 @@ fn search<N: egg::Analysis<ArrayLanguage>>(
     rule: &CompiledQuantifiedRule<N>,
     rule_index: usize,
     limit: usize,
+    scope: Option<&std::collections::HashSet<ArrayLanguage>>,
     profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
-) -> Vec<RuleMatch> {
+) -> (Vec<RuleMatch>, usize) {
     let start = Instant::now();
-    let matches = rule.search_with_limit(egraph, limit);
-    let count = matches.iter().map(|m| m.substs.len()).sum();
+    if scope.is_some_and(|scope| scope.is_empty()) {
+        return (Vec::new(), 0);
+    }
+    // Temporary stage scoping must not let unadmitted matches consume the
+    // stage's candidate limit. Replay a larger prefix when necessary; count
+    // that actual matching work in the report.
+    let mut raw_limit = limit;
+    let mut count = 0;
+    let matches = loop {
+        let mut matches = rule.search_with_limit(egraph, raw_limit);
+        let raw_count: usize = matches.iter().map(|m| m.substs.len()).sum();
+        count += raw_count;
+        if let Some(scope) = scope {
+            let mut remaining = limit;
+            for matched in &mut matches {
+                matched
+                    .substs
+                    .retain(|s| rule.match_is_admitted(egraph, s, scope));
+                matched.substs.truncate(remaining);
+                remaining -= matched.substs.len();
+            }
+            matches.retain(|m| !m.substs.is_empty());
+            if remaining > 0 && raw_count == raw_limit && raw_limit < usize::MAX {
+                raw_limit = raw_limit.saturating_mul(2);
+                continue;
+            }
+        }
+        break matches;
+    };
     if let Some(profiling) = profiling {
         let elapsed = start.elapsed();
         let mut profiling = profiling.borrow_mut();
@@ -95,7 +123,7 @@ fn search<N: egg::Analysis<ArrayLanguage>>(
             );
         }
     }
-    matches
+    let found = matches
         .into_iter()
         .flat_map(|matched| {
             matched
@@ -108,7 +136,8 @@ fn search<N: egg::Analysis<ArrayLanguage>>(
                     model_violation_verified: false,
                 })
         })
-        .collect()
+        .collect();
+    (found, count)
 }
 
 /// Preserve the historical array backoff range and ordering. Unlike binder
@@ -117,6 +146,7 @@ pub(crate) fn search_array_rules<N: egg::Analysis<ArrayLanguage>>(
     egraph: &egg::EGraph<ArrayLanguage, N>,
     rules: &[CompiledQuantifiedRule<N>],
     allowance: &crate::policy::effort::WorkAllowance,
+    scope: Option<&std::collections::HashSet<ArrayLanguage>>,
     profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
 ) -> MatchedRules {
     let mut result = MatchedRules::default();
@@ -128,8 +158,8 @@ pub(crate) fn search_array_rules<N: egg::Analysis<ArrayLanguage>>(
             if completed[index] {
                 continue;
             }
-            let matches = search(egraph, rule, index, limit + 1, profiling);
-            result.report.examined_substitutions += matches.len();
+            let (matches, examined) = search(egraph, rule, index, limit + 1, scope, profiling);
+            result.report.examined_substitutions += examined;
             if matches.len() <= limit {
                 completed[index] = true;
                 result.matches.extend(matches);
@@ -189,8 +219,8 @@ fn search_binder_rule_page<N: egg::Analysis<ArrayLanguage>>(
     let end = offset
         .saturating_add(allowance.binder_page_size)
         .min(allowance.binder_search_limit);
-    let matches = search(egraph, rule, rule_index, end + 1, profiling);
-    let examined_substitutions = matches.len();
+    let (matches, examined_substitutions) =
+        search(egraph, rule, rule_index, end + 1, None, profiling);
 
     *cursor = if examined_substitutions <= end {
         BinderRuleCursor::Complete

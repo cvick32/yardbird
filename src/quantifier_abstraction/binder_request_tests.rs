@@ -14,7 +14,7 @@ fn request(bindings: &[(&str, &str)]) -> BinderSearchRequest {
 }
 
 fn page(
-    prepared: &mut PreparedQuantifierSearch,
+    prepared: &mut super::tests::PreparedFixture,
     request: &BinderSearchRequest,
 ) -> InstantiationBatch {
     prepared

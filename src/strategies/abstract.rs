@@ -134,11 +134,11 @@ where
 
 /// Coordinator-owned state for one solver model. Searches reuse it during staged
 /// expansion; a fresh setup discards both modules' model-dependent caches.
-/// The array graph and prepared binder graph remain separate until vocabulary
-/// construction is reconciled in the shared-graph checkpoint.
+/// Both modules borrow this graph. Staged admission and all graph mutation occur
+/// between searches; a new model receives a fresh graph and search caches.
 pub struct ArrayRefinementState {
     pub depth: u16,
-    pub egraph: egg::EGraph<ArrayLanguage, ()>,
+    pub egraph: crate::refinement_graph::RefinementGraph,
     pub candidates: Vec<InstantiationCandidate>,
     pub(crate) guarded_read_updates: Vec<Term>,
     pub array_types: Vec<(String, String)>,
@@ -263,7 +263,8 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
     ) -> driver::Result<ArrayRefinementState> {
-        let egraph = egg::EGraph::new(());
+        let egraph =
+            crate::refinement_graph::RefinementGraph::new(self.quantifier.plan.signatures.clone());
         let egraph_builder = self
             .policy
             .effort()
@@ -363,6 +364,15 @@ where
         });
         let mut exhausted = false;
         loop {
+            if state.binder_search.is_some() {
+                self.quantifier.prepare_binder_search(
+                    smt,
+                    &mut state.binder_search,
+                    &mut state.egraph,
+                    &mut state.graph_version,
+                    &profiling,
+                )?;
+            }
             self.offer_sequence += 1;
             let mut kinds = Vec::new();
             if !self.quantifier.plan.rules.is_empty() {
@@ -440,12 +450,28 @@ where
                 })?;
             allowance.validate()?;
             let start = Instant::now();
+            if matches!(
+                operation.kind,
+                OperationKind::DiscoverDependencies
+                    | OperationKind::DependencyRequest(_)
+                    | OperationKind::Binder(_)
+            ) {
+                self.quantifier.prepare_binder_search(
+                    smt,
+                    &mut state.binder_search,
+                    &mut state.egraph,
+                    &mut state.graph_version,
+                    &profiling,
+                )?;
+            }
             let pending_instances = state.candidates.iter().filter_map(|candidate| {
                 smt.make_unquantified_instance(expr_to_term(candidate.expression.clone()))
                     .map(|instance| crate::instantiation_strategy::assertion_tracker::canonical_instantiation_key(instance.get_term()))
             }).collect::<HashSet<_>>();
             let (term_config, ranker, effort) = self.policy.parts();
             let context = SearchContext::<F> {
+                graph: &state.egraph,
+                graph_version: state.graph_version,
                 smt,
                 term_config,
                 ranker,
@@ -528,6 +554,7 @@ where
             });
             if let Some(profiling) = &profiling {
                 profiling.borrow_mut().record_effort(EffortRecord {
+                    graph_version: state.graph_version,
                     operation_id: Some(operation.id),
                     operation: format!("{:?}", operation.kind),
                     offered: operations.iter().map(|o| o.description.clone()).collect(),
@@ -761,8 +788,17 @@ where
                 return Ok(InstantiationBatch::default());
             };
             let kind = operations.iter().find(|o| o.id == operation).unwrap().kind;
+            self.quantifier.prepare_binder_search(
+                smt,
+                &mut state.binder_search,
+                &mut state.egraph,
+                &mut state.graph_version,
+                &profiling,
+            )?;
             let (term_config, ranker, _) = self.policy.parts();
             let context = SearchContext::<F> {
+                graph: &state.egraph,
+                graph_version: state.graph_version,
                 smt,
                 term_config,
                 ranker,
@@ -811,11 +847,20 @@ where
         phase: crate::quantifier_abstraction::SearchPhase,
         profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> anyhow::Result<InstantiationBatch> {
+        self.quantifier.prepare_binder_search(
+            smt,
+            &mut state.binder_search,
+            &mut state.egraph,
+            &mut state.graph_version,
+            &profiling,
+        )?;
         let (term_config, ranker, effort) = self.policy.parts();
         self.quantifier.candidates(
             &mut state.binder_search,
             phase,
             &SearchContext::<F> {
+                graph: &state.egraph,
+                graph_version: state.graph_version,
                 smt,
                 term_config,
                 ranker,
@@ -974,7 +1019,10 @@ mod tests {
         strategy.absorb_candidates(&mut state, witnesses);
         strategy.finish(state, &mut smt).unwrap();
         assert_eq!(smt.check_property(), SolverCheckResult::Sat);
-        let mut prepared = strategy.quantifier.plan.prepare(&smt).unwrap();
+        let mut graph = crate::refinement_graph::RefinementGraph::new(
+            strategy.quantifier.plan.signatures.clone(),
+        );
+        let mut prepared = strategy.quantifier.plan.prepare(&smt, &mut graph).unwrap();
         let discovery = prepared.dependency_paths(&smt).unwrap();
         let path = discovery
             .paths
@@ -1129,7 +1177,10 @@ mod tests {
             (define-fun trans () Bool (! true :trans true))
             (define-fun prop () Bool (! (not (p true true true true true true true true true)) :invar-property 0))");
         let (strategy, smt) = sat_fixture(&input);
-        let mut prepared = strategy.quantifier.plan.prepare(&smt).unwrap();
+        let mut graph = crate::refinement_graph::RefinementGraph::new(
+            strategy.quantifier.plan.signatures.clone(),
+        );
+        let mut prepared = strategy.quantifier.plan.prepare(&smt, &mut graph).unwrap();
         let discovery = prepared.dependency_paths(&smt).unwrap();
         assert!(discovery.paths.is_empty());
         assert!(discovery.budget_exhausted);
@@ -1188,7 +1239,7 @@ mod tests {
 
         fn expand(
             &mut self,
-            egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+            egraph: &mut crate::refinement_graph::RefinementGraph,
             smt: &dyn crate::problem_context::ProblemContext,
             cone: &PropertyCone,
             depth: u16,
@@ -1259,13 +1310,12 @@ mod tests {
             .flat_map(|r| &r.effort)
             .any(|e| e.operation == "Binder(Expand)"));
         assert_eq!(strategy.profiling_records.len(), 3);
-        // The full array stage reuses all three unsuccessful binder phases.
-        // No rule matching, grounding or model evaluation is repeated there.
-        assert!(strategy.profiling_records[1].quantifier_work.is_empty());
-        assert_eq!(
-            strategy.profiling_records[1].counters["input_binder_empty_passes_reused"],
-            3
-        );
+        // Shared-graph growth invalidates empty passes and equality-ID caches.
+        // Prepared rules and exact model evaluations still belong to this model.
+        assert!(!strategy.profiling_records[1].quantifier_work.is_empty());
+        assert!(!strategy.profiling_records[1]
+            .counters
+            .contains_key("input_binder_model_preparations"));
         assert!(state.candidates.iter().all(|candidate| {
             smt.eval_to_string(&expr_to_term(candidate.expression.clone()))
                 .unwrap()
@@ -1463,7 +1513,8 @@ mod tests {
         strategy.sat(&mut state, &smt, 0).unwrap();
         assert!(strategy.has_pending_refinement(&state));
         assert!(state.array_expansion.is_none());
-        assert_eq!(state.egraph.number_of_classes(), 0);
+        assert!(state.egraph.number_of_classes() > 0);
+        assert!(state.egraph.array_match_scope().is_empty());
     }
 
     #[test]
@@ -1483,6 +1534,70 @@ mod tests {
             assert_eq!(state.candidates.len(), 1);
             assert_eq!(state.candidates[0].rule.name(), expected);
         }
+    }
+
+    #[test]
+    fn shared_graph_growth_restarts_search_but_keeps_model_evaluations() {
+        let (mut strategy, smt) = expansion_fixture(false);
+        strategy.policy = strategy
+            .policy
+            .with_effort(TestEffort::phase(SearchPhase::Conflicts));
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        let snapshot = state
+            .egraph
+            .classes()
+            .map(|c| (c.id, c.nodes.clone()))
+            .collect::<Vec<_>>();
+        let version = state.graph_version;
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        assert_eq!(version, state.graph_version);
+        assert_eq!(
+            snapshot,
+            state
+                .egraph
+                .classes()
+                .map(|c| (c.id, c.nodes.clone()))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            strategy.profiling_records[1].counters["input_binder_empty_passes_reused"],
+            1
+        );
+
+        state
+            .egraph
+            .admit(&smt, &"(or (and true true) false)".parse().unwrap(), true)
+            .unwrap();
+        state.egraph.rebuild();
+        state.graph_version += 1;
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        let record = &strategy.profiling_records[2];
+        assert!(record.rule_instantiation.rule_search_calls > 0);
+        assert!(!record
+            .counters
+            .contains_key("input_binder_empty_passes_reused"));
+        assert!(!record
+            .counters
+            .contains_key("input_binder_model_preparations"));
+        assert_eq!(
+            record
+                .counters
+                .get("input_binder_obligation_cache_hits")
+                .copied()
+                .unwrap_or(0),
+            0
+        );
+        assert!(record
+            .quantifier_work
+            .values()
+            .flat_map(|phases| phases.values())
+            .any(|phase| phase
+                .counters
+                .get("evaluation_cache_hits")
+                .copied()
+                .unwrap_or(0)
+                > 0));
     }
 
     #[test]
@@ -1544,7 +1659,10 @@ mod tests {
     #[test]
     fn dependency_discovery_respects_small_total_allowance() {
         let (strategy, smt) = round_robin_fixture();
-        let mut prepared = strategy.quantifier.plan.prepare(&smt).unwrap();
+        let mut graph = crate::refinement_graph::RefinementGraph::new(
+            strategy.quantifier.plan.signatures.clone(),
+        );
+        let mut prepared = strategy.quantifier.plan.prepare(&smt, &mut graph).unwrap();
         let full = prepared
             .dependency_paths_with_allowance(&smt, &WorkAllowance::default())
             .unwrap();

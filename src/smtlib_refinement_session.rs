@@ -515,6 +515,10 @@ impl SmtlibRefinementSession {
 }
 
 impl ProblemContext for SmtlibRefinementSession {
+    fn get_refinement_declarations(&self) -> Vec<Command> {
+        self.original_problem.get_function_definitions()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

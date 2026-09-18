@@ -17,6 +17,8 @@ use smt2parser::concrete::Term;
 use std::{cell::RefCell, rc::Rc};
 
 pub(super) struct SearchContext<'a, F: ArrayCostFactory> {
+    pub graph: &'a crate::refinement_graph::RefinementGraph,
+    pub graph_version: u64,
     pub smt: &'a dyn ProblemContext,
     pub term_config: &'a F::Config,
     pub ranker: &'a dyn InstantiationRanker,

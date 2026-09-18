@@ -249,7 +249,10 @@ mod tests {
         assert!(plans(&rule(&body)).is_none());
     }
 
-    fn fixture(body: &str, atoms: &[(&str, bool)]) -> PreparedQuantifierSearch {
+    fn fixture(
+        body: &str,
+        atoms: &[(&str, bool)],
+    ) -> crate::quantifier_abstraction::tests::PreparedFixture {
         let mut prepared = prepared_fixture(4, 20);
         let plan = QuantifierPlan {
             rules: vec![rule(body)],
@@ -272,11 +275,12 @@ mod tests {
         }
         prepared.egraph.rebuild();
         prepared.representatives.clear();
-        for expression in &prepared.additional_terms {
+        for expression in &prepared.search.additional_terms {
             let id = prepared
                 .egraph
                 .find(prepared.egraph.lookup_expr(expression).unwrap());
             prepared
+                .search
                 .representatives
                 .entry(id)
                 .or_insert(expression.clone());
