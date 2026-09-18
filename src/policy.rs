@@ -10,6 +10,55 @@ use crate::{
 };
 pub use effort::{DefaultEffort, ProofEffort};
 
+/// Executable policies selected by name. Each constructs its own proof plan.
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamedPolicy {
+    /// German's BMC-cost policy with batched winners and property assumptions.
+    GermanFast,
+}
+
+impl NamedPolicy {
+    pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
+        match self {
+            Self::GermanFast => german_fast(run),
+        }
+    }
+}
+
+fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
+    use crate::{
+        auxiliary_synthesis::ConditionalHistory,
+        cost_functions::array::ArrayBMCCost,
+        instantiation_strategy::full_unroll::FullUnrollStrategy,
+        solver::PropertyCheckMode,
+        strategies::{Abstract, ArrayRefinementState, ProofStrategyExt},
+        theories::array::array_egraph_builder::SourceThenFullEGraphBuilder,
+        ArrayProofPlan, SolverBackend,
+    };
+
+    let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
+        .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker))
+        .with_effort(
+            DefaultEffort::default()
+                .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
+                .with_winners_per_group(20),
+        );
+    let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
+        .with_artifact_capture(run.build_array_artifact_capture())
+        .with_property_check_mode(PropertyCheckMode::Assumptions);
+    let synthesis = run.build_aux_synthesis_config();
+    let conditional_history = (!synthesis.is_off()).then(|| {
+        Box::new(ConditionalHistory::<ArrayBMCCost>::new(synthesis, ()))
+            as Box<dyn ProofStrategyExt<ArrayRefinementState>>
+    });
+    ArrayProofPlan {
+        solver: SolverBackend::Z3,
+        instantiation_strategy: Box::new(FullUnrollStrategy::new()),
+        strategy: Box::new(strategy),
+        conditional_history,
+    }
+}
+
 /// One policy configuration, retaining the existing term and ranker seams.
 pub struct YardbirdPolicy<F: ArrayCostFactory> {
     term_config: F::Config,

@@ -235,6 +235,11 @@ fn build_smtlib_strategy(
     use yardbird::cost_functions::array::*;
     use yardbird::strategies::{AbstractArrayWithQuantifiers, ConcreteArrayZ3};
 
+    if let Some(policy) = options.policy {
+        let mut run = options.clone();
+        run.depth = 0;
+        return policy.build_plan(&run).strategy;
+    }
     match options.strategy {
         Strategy::Abstract => match options.cost_function {
             CostFunction::LogisticRegression => {
@@ -308,28 +313,31 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     options.validate_solver_backend_for_vmt_mode()?;
     info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
-    let instantiation_strategy = options.build_instantiation_strategy();
     let mut training_session = TrainingSession::from_options(options)?;
     let solver_capture = options.build_solver_capture();
 
     match options.theory {
         Theory::Array => {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
-                .with_tracking_options(
-                    options.dump_solver.clone(),
-                    options.track_instantiations,
-                    options.dump_unsat_core.clone(),
-                )
-                .with_profiler(options.build_profiler())
-                .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
-                .with_solver_capture(solver_capture.clone());
+            let proof_plan = options.build_array_proof_plan();
+            let mut driver = Driver::new(
+                vmt_model,
+                proof_plan.instantiation_strategy,
+                proof_plan.solver,
+            )
+            .with_tracking_options(
+                options.dump_solver.clone(),
+                options.track_instantiations,
+                options.dump_unsat_core.clone(),
+            )
+            .with_profiler(options.build_profiler())
+            .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
+            .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
             }
             if options.interpolate {
                 driver.add_extension(Interpolating);
             }
-            let proof_plan = options.build_array_proof_plan();
             if let Some(extension) = proof_plan.conditional_history {
                 driver.add_boxed_extension(extension);
             }
@@ -362,6 +370,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             todo!("Implement BVList!")
         }
         Theory::List => {
+            let instantiation_strategy = options.build_instantiation_strategy();
             let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
                 .with_tracking_options(
                     options.dump_solver.clone(),

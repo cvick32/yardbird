@@ -75,6 +75,8 @@ pub mod vmt_bmc_session;
 /// configuration. Keeping them together ensures synthesis uses the same cost
 /// configuration as ordinary array refinement.
 pub struct ArrayProofPlan {
+    pub solver: SolverBackend,
+    pub instantiation_strategy: Box<dyn instantiation_strategy::InstantiationStrategy>,
     pub strategy: Box<dyn ProofStrategy<'static, ArrayRefinementState>>,
     pub conditional_history: Option<Box<dyn ProofStrategyExt<ArrayRefinementState>>>,
 }
@@ -85,6 +87,15 @@ pub struct YardbirdOptions {
     /// Run a repository-level operation instead of solving one input file.
     #[command(subcommand)]
     pub command: Option<YardbirdCommand>,
+
+    /// Select an executable policy instead of configuring individual policy choices.
+    #[arg(long, value_enum, conflicts_with_all = [
+        "strategy", "cost_function", "egraph_builder", "candidate_winners_per_group",
+        "instantiation_ranker", "property_check_mode", "instantiation_strategy",
+        "theory", "solver", "ranker_model", "preprocess_exact_read_after_write",
+        "abstract_recurrent_products", "guarded_read_updates",
+    ])]
+    pub policy: Option<policy::NamedPolicy>,
 
     /// Name of the VMT file.
     #[arg(short, long)]
@@ -246,6 +257,7 @@ impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
             command: None,
+            policy: None,
             filename: None,
             depth: 10,
             wall_timeout_secs: None,
@@ -370,7 +382,7 @@ impl YardbirdOptions {
             .map(crate::solver::SolverCapture::new)
     }
 
-    fn profiling_enabled(&self) -> bool {
+    pub(crate) fn profiling_enabled(&self) -> bool {
         self.profile || self.train || self.solver_capture_dir.is_some()
     }
 
@@ -547,6 +559,8 @@ impl YardbirdOptions {
                 as Box<dyn ProofStrategyExt<ArrayRefinementState>>
         });
         ArrayProofPlan {
+            solver: self.solver,
+            instantiation_strategy: self.build_instantiation_strategy(),
             strategy,
             conditional_history,
         }
@@ -568,6 +582,9 @@ impl YardbirdOptions {
     }
 
     pub fn build_array_proof_plan(&self) -> ArrayProofPlan {
+        if let Some(policy) = self.policy {
+            return policy.build_plan(self);
+        }
         match self.strategy {
             Strategy::Abstract => match self.cost_function {
                 CostFunction::LogisticRegression => self
@@ -599,6 +616,8 @@ impl YardbirdOptions {
                 CostFunction::Generated => self.build_abstract_array_plan::<ArrayGenerated>(()),
             },
             Strategy::AbstractWithQuantifiers => ArrayProofPlan {
+                solver: self.solver,
+                instantiation_strategy: self.build_instantiation_strategy(),
                 strategy: Box::new(
                     AbstractArrayWithQuantifiers::new(self.run_ic3ia)
                         .with_exact_read_after_write_preprocessing(
@@ -609,6 +628,8 @@ impl YardbirdOptions {
                 conditional_history: None,
             },
             Strategy::Concrete => ArrayProofPlan {
+                solver: self.solver,
+                instantiation_strategy: self.build_instantiation_strategy(),
                 strategy: Box::new(
                     ConcreteArrayZ3::new(self.run_ic3ia)
                         .with_property_check_mode(self.property_check_mode),
