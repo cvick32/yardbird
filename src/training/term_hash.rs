@@ -6,13 +6,13 @@
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::theories::array::array_axioms::ArrayExpr;
+use crate::instantiation::language::TermExpr;
 
-/// Compute a canonical hash for an ArrayExpr.
+/// Compute a canonical hash for an TermExpr.
 ///
 /// This uses the string representation of the expression and FxHash for speed.
 /// The hash is consistent across runs for the same term.
-pub fn canonical_term_hash(expr: &ArrayExpr) -> String {
+pub fn canonical_term_hash(expr: &TermExpr) -> String {
     let term_str = expr.to_string();
     let mut hasher = FxHasher::default();
     term_str.hash(&mut hasher);
@@ -34,16 +34,16 @@ mod tests {
 
     #[test]
     fn test_hash_consistency() {
-        let expr1: ArrayExpr = "(Read Int Int A 0)".parse().unwrap();
-        let expr2: ArrayExpr = "(Read Int Int A 0)".parse().unwrap();
+        let expr1: TermExpr = "(Read Int Int A 0)".parse().unwrap();
+        let expr2: TermExpr = "(Read Int Int A 0)".parse().unwrap();
 
         assert_eq!(canonical_term_hash(&expr1), canonical_term_hash(&expr2));
     }
 
     #[test]
     fn test_hash_different_terms() {
-        let expr1: ArrayExpr = "(Read Int Int A 0)".parse().unwrap();
-        let expr2: ArrayExpr = "(Read Int Int A 1)".parse().unwrap();
+        let expr1: TermExpr = "(Read Int Int A 0)".parse().unwrap();
+        let expr2: TermExpr = "(Read Int Int A 1)".parse().unwrap();
 
         assert_ne!(canonical_term_hash(&expr1), canonical_term_hash(&expr2));
     }
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn test_hash_from_string() {
         let term_str = "(Read Int Int A 0)";
-        let expr: ArrayExpr = term_str.parse().unwrap();
+        let expr: TermExpr = term_str.parse().unwrap();
 
         // String-based hash should match expr-based hash
         assert_eq!(

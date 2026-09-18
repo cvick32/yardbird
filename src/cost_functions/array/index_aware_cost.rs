@@ -7,7 +7,8 @@ use crate::{
         array::{ArrayCostContext, ArrayCostFactory},
         YardbirdCostFunction,
     },
-    theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
+    instantiation::language::TermLanguage,
+    theories::list::list_axioms::ListLanguage,
 };
 
 /// Index-aware cost function that extends ArrayBMCCost by:
@@ -144,15 +145,15 @@ impl ArrayCostFactory for IndexAwareArrayCost {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for IndexAwareArrayCost {
+impl egg::CostFunction<TermLanguage> for IndexAwareArrayCost {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
         let op_cost = match enode {
-            ArrayLanguage::Num(num) => {
+            TermLanguage::Num(num) => {
                 let num_symbol: Symbol = num.to_string().into();
                 let in_trans = self.init_and_transition_system_terms.contains(&num_symbol);
                 let in_prop = self.property_terms.contains(&num_symbol);
@@ -164,31 +165,31 @@ impl egg::CostFunction<ArrayLanguage> for IndexAwareArrayCost {
                     5
                 }
             }
-            ArrayLanguage::ConstArrTyped(_) => 0,
-            ArrayLanguage::WriteTyped(_) => 1,
-            ArrayLanguage::ReadTyped(_) => 1,
-            ArrayLanguage::And(_) => 1,
-            ArrayLanguage::Not(_) => 1,
-            ArrayLanguage::Or(_) => 1,
-            ArrayLanguage::Implies(_) => 1,
-            ArrayLanguage::Eq(_) => 1,
-            ArrayLanguage::Geq(_) => 1,
-            ArrayLanguage::Gt(_) => 1,
-            ArrayLanguage::Leq(_) => 1,
-            ArrayLanguage::Lt(_) => 1,
-            ArrayLanguage::Plus(_) => 1,
-            ArrayLanguage::Negate(_) => 1,
+            TermLanguage::ConstArrTyped(_) => 0,
+            TermLanguage::WriteTyped(_) => 1,
+            TermLanguage::ReadTyped(_) => 1,
+            TermLanguage::And(_) => 1,
+            TermLanguage::Not(_) => 1,
+            TermLanguage::Or(_) => 1,
+            TermLanguage::Implies(_) => 1,
+            TermLanguage::Eq(_) => 1,
+            TermLanguage::Geq(_) => 1,
+            TermLanguage::Gt(_) => 1,
+            TermLanguage::Leq(_) => 1,
+            TermLanguage::Lt(_) => 1,
+            TermLanguage::Plus(_) => 1,
+            TermLanguage::Negate(_) => 1,
             // Discount Times/Mod/Div slightly — compound index expressions like
             // (* 3 i) need these and shouldn't be penalized vs simpler terms.
-            ArrayLanguage::Times(_) => 1,
-            ArrayLanguage::Mod(_) => 1,
-            ArrayLanguage::Div(_) => 1,
-            ArrayLanguage::ToReal(_) => 1,
-            ArrayLanguage::Ite(_)
-            | ArrayLanguage::Apply(_)
-            | ArrayLanguage::Domain(_)
-            | ArrayLanguage::SortTag(_) => 1,
-            ArrayLanguage::Symbol(sym) => {
+            TermLanguage::Times(_) => 1,
+            TermLanguage::Mod(_) => 1,
+            TermLanguage::Div(_) => 1,
+            TermLanguage::ToReal(_) => 1,
+            TermLanguage::Ite(_)
+            | TermLanguage::Apply(_)
+            | TermLanguage::Domain(_)
+            | TermLanguage::SortTag(_) => 1,
+            TermLanguage::Symbol(sym) => {
                 let in_trans = self.init_and_transition_system_terms.contains(sym);
                 let in_prop = self.property_terms.contains(sym);
                 let is_index = self.is_index_symbol(sym);
@@ -239,7 +240,7 @@ impl egg::CostFunction<ListLanguage> for IndexAwareArrayCost {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for IndexAwareArrayCost {
+impl YardbirdCostFunction<TermLanguage> for IndexAwareArrayCost {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .iter()

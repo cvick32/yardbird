@@ -3,7 +3,7 @@
 //! resumes matching. It does not infer or assert prerequisites.
 
 use super::*;
-use crate::theories::array::{array_axioms::ArrayExpr, quantified_search::BinderSearchCursor};
+use crate::instantiation::{language::TermExpr, search::BinderSearchCursor};
 use std::rc::Rc;
 
 /// Names refer to the lowered helper and its capture/bound-variable symbols.
@@ -119,9 +119,9 @@ impl PreparedQuantifierSearch {
 /// Substitute at the pattern level so a supplied symbol can never accidentally
 /// become a pattern variable. Literals also survive cost-based extraction.
 pub(super) fn specialize(
-    pattern: egg::Pattern<ArrayLanguage>,
-    bindings: &[(egg::Var, ArrayExpr)],
-) -> egg::Pattern<ArrayLanguage> {
+    pattern: egg::Pattern<TermLanguage>,
+    bindings: &[(egg::Var, TermExpr)],
+) -> egg::Pattern<TermLanguage> {
     use egg::{ENodeOrVar, Language};
     if bindings.is_empty() {
         return pattern;

@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 use self::guarded_read_updates::{plan_guarded_read_updates, GuardedReadUpdatePlan};
 use crate::{
-    instantiation_provenance::InstantiationRequest,
+    instantiation::provenance::InstantiationRequest,
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     problem_context::ProblemContext, utils::SolverStatistics,
 };

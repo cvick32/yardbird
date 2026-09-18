@@ -1,13 +1,5 @@
 pub mod array_axioms;
 pub mod array_dataflow;
 pub mod array_egraph_builder;
-pub(crate) mod array_expr_parser;
-pub(crate) mod array_grounding;
-pub mod array_rule_instantiator;
-pub mod array_term_extractor;
-pub mod candidate_scope;
 pub(crate) mod encodings;
-pub mod instantiation_candidate;
-pub mod instantiation_ranker;
-pub mod quantified_search;
 pub mod transition_guard_instantiator;

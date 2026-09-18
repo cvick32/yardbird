@@ -1,21 +1,25 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
 use std::cmp::Ordering;
-use yardbird::{
-    auxiliary_synthesis::{
-        AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
-        PredicateRelevancePolicy, SynthesisTrigger,
-    },
-    cost_functions::array::{AdaptiveArrayCost, ArrayBMCCost},
-    instantiation_strategy::full_unroll::FullUnrollStrategy,
-    strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
-    theories::array::{
-        array_rule_instantiator::ArrayArtifactCapture,
-        candidate_scope::CandidateScope,
-        instantiation_candidate::{InstantiationCandidate, InstantiationGrounding},
-        instantiation_ranker::InstantiationRanker,
-    },
-    Driver, Error, SolverBackend,
-};
+use yardbird::auxiliary_synthesis::AuxRefinementRetention;
+use yardbird::auxiliary_synthesis::AuxSynthesisConfig;
+use yardbird::auxiliary_synthesis::ConditionalHistory;
+use yardbird::auxiliary_synthesis::GuardPolicy;
+use yardbird::auxiliary_synthesis::PredicateRelevancePolicy;
+use yardbird::auxiliary_synthesis::SynthesisTrigger;
+use yardbird::cost_functions::array::AdaptiveArrayCost;
+use yardbird::cost_functions::array::ArrayBMCCost;
+use yardbird::instantiation::candidate::InstantiationCandidate;
+use yardbird::instantiation::candidate::InstantiationGrounding;
+use yardbird::instantiation::instantiator::ArtifactCapture;
+use yardbird::instantiation::ranker::InstantiationRanker;
+use yardbird::instantiation::scope::CandidateScope;
+use yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy;
+use yardbird::strategies::Abstract;
+use yardbird::strategies::ConcreteArrayZ3;
+use yardbird::strategies::ProofStrategy;
+use yardbird::Driver;
+use yardbird::Error;
+use yardbird::SolverBackend;
 
 /// Freeze the pre-ablation ordering so these tests exercise synthesis rather
 /// than whichever ordinary refinement the default ranker currently prefers.
@@ -96,9 +100,9 @@ fn check_abstract_model_with_aux(
         policy
     };
     let strategy = Abstract::<ArrayBMCCost>::new(depth, false, policy, false)
-        .with_artifact_capture(ArrayArtifactCapture {
+        .with_artifact_capture(ArtifactCapture {
             conflicts: aux_enabled,
-            ..ArrayArtifactCapture::default()
+            ..ArtifactCapture::default()
         });
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(strategy);
     driver.check_strategy(depth, strategy)
@@ -136,9 +140,9 @@ fn check_adaptive_model_with_aux(
                 .with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker)),
             false,
         )
-        .with_artifact_capture(ArrayArtifactCapture {
+        .with_artifact_capture(ArtifactCapture {
             conflicts: true,
-            ..ArrayArtifactCapture::default()
+            ..ArtifactCapture::default()
         }),
     );
     driver.check_strategy(depth, strategy)
@@ -155,15 +159,25 @@ fn no_refinements_trigger_a_concrete_counterexample_check() {
 }
 
 #[test]
-fn concrete_unsat_stall_is_reported_as_abstraction_exhaustion() {
-    // The abstract Write function may return a different array, but native
-    // array semantics prove that storing the value already at an index is a no-op.
+fn concrete_unsat_stall_keeps_searching_until_timeout() {
     let model = parse_vmt("(= (store a 0 (select a 0)) a)");
-
-    assert!(matches!(
-        check_abstract_model(model, 1),
-        Err(Error::AbstractionExhausted { depth: 0 })
-    ));
+    let mut driver = Driver::new(
+        model,
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    )
+    .with_wall_timeout(Some(std::time::Duration::from_secs(2)));
+    let strategy =
+        Abstract::<ArrayBMCCost>::new(1, false, yardbird::YardbirdPolicy::new(()), false);
+    let result = driver.check_strategy(1, Box::new(strategy)).unwrap();
+    assert_eq!(result.run_progress.unwrap().termination_reason, "timeout");
+    assert!(!result.found_proof && !result.counterexample);
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks"),
+        Some(1.0)
+    );
 }
 
 #[test]

@@ -5,16 +5,15 @@ use log::{debug, trace};
 use crate::{
     auxiliary_synthesis::ArrayConflictRecord,
     cost_functions::YardbirdCostFunction,
-    instantiation_provenance::InstantiationProvenance,
-    profiling::ArrayProfilingCollector,
-    theories::array::{
-        array_axioms::{expr_to_term, ArrayLanguage, CompiledQuantifiedRule},
-        array_grounding::{groundings, instantiate_pattern, GroundContext, GroundSubstitution},
-        array_term_extractor::ArrayTermExtractor,
-        instantiation_candidate::{
-            InstantiationCandidate, InstantiationGrounding, SelectionHistoryDecision,
-        },
+    instantiation::{
+        candidate::{InstantiationCandidate, InstantiationGrounding, SelectionHistoryDecision},
+        engine::CompiledQuantifiedRule,
+        extractor::TermExtractor,
+        grounding::{groundings, instantiate_pattern, GroundContext, GroundSubstitution},
+        language::{expr_to_term, TermLanguage},
+        provenance::InstantiationProvenance,
     },
+    profiling::ArrayProfilingCollector,
     training::canonical_term_hash,
 };
 
@@ -27,7 +26,7 @@ fn trace_conflicts(message: impl AsRef<str>) {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ArrayArtifactCapture {
+pub struct ArtifactCapture {
     pub decisions: bool,
     pub instantiation_provenance: bool,
     pub conflicts: bool,
@@ -52,38 +51,38 @@ fn round_robin<I: Iterator>(streams: impl IntoIterator<Item = I>) -> impl Iterat
     })
 }
 
-pub struct ArrayRuleInstantiatorOptions {
+pub struct RuleInstantiatorOptions {
     pub refinement_step: u32,
     pub depth: u16,
-    pub artifact_capture: ArrayArtifactCapture,
+    pub artifact_capture: ArtifactCapture,
     pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
-pub struct ArrayRuleInstantiator<CF>
+pub struct RuleInstantiator<CF>
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     candidates: Vec<InstantiationCandidate>,
     selection_history: Vec<SelectionHistoryDecision>,
-    artifact_capture: ArrayArtifactCapture,
+    artifact_capture: ArtifactCapture,
     next_instantiation_ordinal: usize,
     pub cost_fn: CF,
-    extractor: Rc<ArrayTermExtractor<CF>>,
+    extractor: Rc<TermExtractor<CF>>,
     refinement_step: u32,
     depth: u16,
     profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
-impl<CF> ArrayRuleInstantiator<CF>
+impl<CF> RuleInstantiator<CF>
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     pub fn new(
         cost_fn: CF,
-        extractor: ArrayTermExtractor<CF>,
-        options: ArrayRuleInstantiatorOptions,
+        extractor: TermExtractor<CF>,
+        options: RuleInstantiatorOptions,
     ) -> Self {
-        let ArrayRuleInstantiatorOptions {
+        let RuleInstantiatorOptions {
             refinement_step,
             depth,
             artifact_capture,
@@ -123,25 +122,25 @@ where
     }
 }
 
-impl<CF> ArrayRuleInstantiator<CF>
+impl<CF> RuleInstantiator<CF>
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     pub(crate) fn instantiate_matches<N>(
         &mut self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         rules: &[CompiledQuantifiedRule<N>],
-        pending: Vec<super::quantified_search::RuleMatch>,
+        pending: Vec<crate::instantiation::search::RuleMatch>,
         mut demand: Option<CandidateDemand<'_>>,
     ) -> anyhow::Result<()>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let first_round = pending.len();
         let streams = pending
             .into_iter()
             .map(|matched| {
-                let super::quantified_search::RuleMatch {
+                let crate::instantiation::search::RuleMatch {
                     rule_index,
                     root,
                     substitution: subst,
@@ -215,14 +214,14 @@ where
 
     fn instantiate_grounding<N>(
         &mut self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         executable_rule: &CompiledQuantifiedRule<N>,
         root: egg::Id,
         grounding: GroundSubstitution,
         grounding_time: std::time::Duration,
     ) -> Option<InstantiationCandidate>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let rule = executable_rule.metadata();
         let tracing = trace_conflicts_enabled();
@@ -238,7 +237,7 @@ where
                     .any(|(_, expression)| {
                         egraph.lookup_expr(expression).is_none_or(|id| {
                             self.extractor.candidate_origin(egraph, id, expression)
-                                == super::array_term_extractor::CandidateOrigin::Derived
+                                == crate::instantiation::extractor::CandidateOrigin::Derived
                         })
                     });
             let is_conflict = if let Some(consequence_ast) = executable_rule.consequence() {
@@ -326,7 +325,7 @@ where
 
                 let conflict = (self.artifact_capture.conflicts
                     && executable_rule.metadata().category()
-                        == crate::quantified_rule::QuantifiedRuleCategory::ArrayAxiom)
+                        == crate::instantiation::rule::QuantifiedRuleCategory::ArrayAxiom)
                     .then(|| {
                         ArrayConflictRecord::new(
                             ordinal,

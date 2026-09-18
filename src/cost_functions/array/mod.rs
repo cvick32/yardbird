@@ -1,7 +1,7 @@
 use crate::{
     cost_functions::YardbirdCostFunction,
+    instantiation::{language::TermLanguage, scope::CandidateScope},
     problem_context::{ArrayCandidateCatalog, ProblemContext},
-    theories::array::{array_axioms::ArrayLanguage, candidate_scope::CandidateScope},
 };
 use smt2parser::vmt::ReadsAndWrites;
 
@@ -74,7 +74,7 @@ impl ArrayCostContext {
     }
 }
 
-pub trait ArrayCostFactory: YardbirdCostFunction<ArrayLanguage> + Sized {
+pub trait ArrayCostFactory: YardbirdCostFunction<TermLanguage> + Sized {
     type Config: Clone + Send + Sync + 'static;
 
     fn from_context(smt: &ArrayCostContext, depth: u32, config: &Self::Config) -> Self;

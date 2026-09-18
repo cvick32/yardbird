@@ -8,7 +8,7 @@ use std::any::Any;
 
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
-    instantiation_provenance::{
+    instantiation::provenance::{
         InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
     },
     utils::SolverStatistics,

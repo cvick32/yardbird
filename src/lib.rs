@@ -29,16 +29,16 @@ use crate::{
         },
         list::list_ast_size_cost_factory,
     },
-    strategies::ListRefinementState,
-    theories::array::{
-        array_egraph_builder::{
-            ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder,
-            SourceThenFullEGraphBuilder,
-        },
-        array_rule_instantiator::ArrayArtifactCapture,
-        instantiation_ranker::{
+    instantiation::{
+        instantiator::ArtifactCapture,
+        ranker::{
             InstantiationRanker, PreferSourceInstantiationRanker, TermCostInstantiationRanker,
         },
+    },
+    strategies::ListRefinementState,
+    theories::array::array_egraph_builder::{
+        ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder,
+        SourceThenFullEGraphBuilder,
     },
     training::LogisticRegressionModel,
 };
@@ -49,19 +49,17 @@ pub mod cost_functions;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
-pub mod instantiation_provenance;
 pub mod instantiation_strategy;
 pub mod interpolant;
 pub mod logger;
 pub mod policy;
 pub mod refinement_graph;
 pub use policy::YardbirdPolicy;
+pub mod instantiation;
 pub mod problem_context;
 pub mod profiling;
 mod proof_tree;
-pub mod quantified_rule;
-mod quantifier_abstraction;
-pub mod quantifier_provenance;
+pub mod quantifiers;
 pub mod smtlib_problem;
 pub mod smtlib_refinement_session;
 pub mod solver;
@@ -96,7 +94,7 @@ pub struct YardbirdOptions {
     #[arg(short, long, default_value_t = 10)]
     pub depth: u16,
 
-    /// Cooperative VMT wall timeout, checked between high-level actions (may overrun).
+    /// Cooperative refinement wall timeout, checked between high-level actions (may overrun).
     #[arg(long)]
     pub wall_timeout_secs: Option<u64>,
 
@@ -376,9 +374,9 @@ impl YardbirdOptions {
         self.profile || self.solver_capture_dir.is_some()
     }
 
-    pub fn build_array_artifact_capture(&self) -> ArrayArtifactCapture {
+    pub fn build_array_artifact_capture(&self) -> ArtifactCapture {
         let decisions = self.record_decisions || self.train;
-        ArrayArtifactCapture {
+        ArtifactCapture {
             decisions,
             instantiation_provenance: decisions || self.track_instantiations,
             conflicts: self.synthesis_trigger != SynthesisTrigger::Off,

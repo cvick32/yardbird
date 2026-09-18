@@ -1,11 +1,11 @@
-//! Feature extraction from ArrayExpr terms.
+//! Feature extraction from TermExpr terms.
 //!
 //! These features are used for training models to predict good instantiation terms.
 
 use rustc_hash::FxHashSet;
 use smt2parser::vmt::VARIABLE_FRAME_DELIMITER;
 
-use crate::theories::array::array_axioms::{ArrayExpr, ArrayLanguage};
+use crate::instantiation::language::{TermExpr, TermLanguage};
 
 /// Features extracted from a term for training.
 #[derive(Debug, Clone, Default)]
@@ -25,14 +25,14 @@ pub struct TermFeatures {
 }
 
 impl TermFeatures {
-    /// Extract features from an ArrayExpr.
+    /// Extract features from an TermExpr.
     ///
     /// # Arguments
     /// * `expr` - The expression to extract features from
     /// * `property_terms` - Set of term strings that appear in the property
     /// * `transition_terms` - Set of term strings that appear in init/transition
     pub fn extract(
-        expr: &ArrayExpr,
+        expr: &TermExpr,
         property_terms: &FxHashSet<String>,
         transition_terms: &FxHashSet<String>,
     ) -> Self {
@@ -43,7 +43,7 @@ impl TermFeatures {
         let is_variable = expr.as_ref().len() == 1
             && matches!(
                 &expr.as_ref()[0],
-                ArrayLanguage::Symbol(_) | ArrayLanguage::Num(_)
+                TermLanguage::Symbol(_) | TermLanguage::Num(_)
             );
 
         // Check if constant (no frame delimiter in any node)
@@ -67,9 +67,9 @@ impl TermFeatures {
     }
 
     /// Check if the expression contains any frame-indexed variables
-    fn contains_frame_index(expr: &ArrayExpr) -> bool {
+    fn contains_frame_index(expr: &TermExpr) -> bool {
         for node in expr.as_ref() {
-            if let ArrayLanguage::Symbol(sym) = node {
+            if let TermLanguage::Symbol(sym) = node {
                 if sym.as_str().contains(VARIABLE_FRAME_DELIMITER) {
                     return true;
                 }
@@ -79,9 +79,9 @@ impl TermFeatures {
     }
 
     /// Extract the frame index from the expression (first one found)
-    fn extract_frame_index(expr: &ArrayExpr) -> Option<i32> {
+    fn extract_frame_index(expr: &TermExpr) -> Option<i32> {
         for node in expr.as_ref() {
-            if let ArrayLanguage::Symbol(sym) = node {
+            if let TermLanguage::Symbol(sym) = node {
                 if let Some((_, frame_str)) = sym.as_str().split_once(VARIABLE_FRAME_DELIMITER) {
                     if let Ok(frame) = frame_str.parse::<i32>() {
                         return Some(frame);
@@ -95,9 +95,9 @@ impl TermFeatures {
     /// Compute cost from a YardbirdCostFunction for this expression.
     ///
     /// This is a separate method because it requires the cost function.
-    pub fn compute_cost<CF>(expr: &ArrayExpr, cost_fn: &mut CF) -> i32
+    pub fn compute_cost<CF>(expr: &TermExpr, cost_fn: &mut CF) -> i32
     where
-        CF: egg::CostFunction<ArrayLanguage, Cost = u32>,
+        CF: egg::CostFunction<TermLanguage, Cost = u32>,
     {
         cost_fn.cost_rec(expr) as i32
     }
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_simple_variable() {
-        let expr: ArrayExpr = "x".parse().unwrap();
+        let expr: TermExpr = "x".parse().unwrap();
         let features = TermFeatures::extract(&expr, &FxHashSet::default(), &FxHashSet::default());
 
         assert!(features.is_variable);
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn test_framed_variable() {
-        let expr: ArrayExpr = "x@0".parse().unwrap();
+        let expr: TermExpr = "x@0".parse().unwrap();
         let features = TermFeatures::extract(&expr, &FxHashSet::default(), &FxHashSet::default());
 
         assert!(features.is_variable);
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_complex_expression() {
-        let expr: ArrayExpr = "(Read Int Int A 0)".parse().unwrap();
+        let expr: TermExpr = "(Read Int Int A 0)".parse().unwrap();
         let features = TermFeatures::extract(&expr, &FxHashSet::default(), &FxHashSet::default());
 
         assert!(!features.is_variable);
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_vocabulary_membership() {
-        let expr: ArrayExpr = "x".parse().unwrap();
+        let expr: TermExpr = "x".parse().unwrap();
         let mut property_terms = FxHashSet::default();
         property_terms.insert("x".to_string());
 

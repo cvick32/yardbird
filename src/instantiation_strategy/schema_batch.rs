@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    instantiation_provenance::{InstantiationInstallResult, InstantiationRequest},
+    instantiation::provenance::{InstantiationInstallResult, InstantiationRequest},
     SolverBackend,
 };
 

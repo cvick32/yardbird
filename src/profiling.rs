@@ -13,7 +13,7 @@ static RUN_ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProfilingRunRecord {
-    pub quantifier_provenance: crate::quantifier_provenance::QuantifierProvenance,
+    pub quantifier_provenance: crate::quantifiers::provenance::QuantifierProvenance,
     pub timing_secs: BTreeMap<String, f64>,
     pub driver_records: Vec<DriverProfilingRecord>,
     pub cost_records: Vec<ProfilingRecord>,
@@ -99,7 +99,7 @@ impl Profiler {
 
     pub fn set_quantifier_provenance(
         &mut self,
-        provenance: crate::quantifier_provenance::QuantifierProvenance,
+        provenance: crate::quantifiers::provenance::QuantifierProvenance,
     ) {
         self.profile.quantifier_provenance = provenance;
     }

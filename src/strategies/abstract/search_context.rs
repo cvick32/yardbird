@@ -2,15 +2,15 @@
 //! updates remain with the coordinator.
 use crate::{
     cost_functions::array::ArrayCostFactory,
+    instantiation::{
+        instantiator::ArtifactCapture,
+        language::{expr_to_term, TermExpr},
+        ranker::InstantiationRanker,
+    },
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     policy::effort::WorkAllowance,
     problem_context::ProblemContext,
     profiling::ArrayProfilingCollector,
-    theories::array::instantiation_ranker::InstantiationRanker,
-    theories::array::{
-        array_axioms::{expr_to_term, ArrayExpr},
-        array_rule_instantiator::ArrayArtifactCapture,
-    },
 };
 use rustc_hash::FxHashMap;
 use smt2parser::concrete::Term;
@@ -26,7 +26,7 @@ pub(super) struct SearchContext<'a, F: ArrayCostFactory> {
     pub operation_id: Option<crate::policy::effort::OperationId>,
     pub pending_instances: &'a std::collections::HashSet<Term>,
     pub selection_counts: &'a FxHashMap<String, u32>,
-    pub artifact_capture: ArrayArtifactCapture,
+    pub artifact_capture: ArtifactCapture,
     pub depth: u16,
     pub refinement_step: u32,
     pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
@@ -40,7 +40,7 @@ impl<F: ArrayCostFactory> SearchContext<'_, F> {
     ) -> F {
         F::from_context(context, depth, self.term_config)
     }
-    pub fn installable_expression(&self, expression: &ArrayExpr) -> Option<Term> {
+    pub fn installable_expression(&self, expression: &TermExpr) -> Option<Term> {
         let term = expr_to_term(expression.clone());
         self.smt
             .make_unquantified_instance(term)

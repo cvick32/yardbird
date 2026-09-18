@@ -11,7 +11,7 @@ use smt2parser::{
 use std::collections::HashSet;
 
 use crate::{
-    instantiation_provenance::{
+    instantiation::provenance::{
         InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
         InstantiationSubstitution, StoredInstantiation,
     },

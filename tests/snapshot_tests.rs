@@ -385,7 +385,10 @@ fn solve_smt2_strategy(filename: &Path) -> Smt2StrategyOutcome {
             &problem,
             strat,
             SolverBackend::Z3,
-            250,
+            yardbird::smtlib_problem::RefinementLimits {
+                max_refinements: Some(250),
+                ..Default::default()
+            },
             false,
             None,
             None,

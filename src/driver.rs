@@ -34,7 +34,7 @@ pub struct CoreInstantiation {
     #[serde(default)]
     pub frame: u16,
     #[serde(default)]
-    pub substitution: Vec<crate::instantiation_provenance::InstantiationSubstitution>,
+    pub substitution: Vec<crate::instantiation::provenance::InstantiationSubstitution>,
 }
 
 /// Progress uses zero-based BMC depths; `None` means no depth completed/started.
@@ -410,9 +410,6 @@ pub enum Error {
         instantiations: Vec<Term>,
     },
 
-    #[error("Abstract refinement exhausted without proving or refuting depth {depth}")]
-    AbstractionExhausted { depth: u16 },
-
     #[error("Hit refinement limit of {n_refines} at depth {depth}")]
     TooManyRefinements { n_refines: u32, depth: u16 },
 
@@ -608,8 +605,8 @@ impl<'ctx, S> Driver<'ctx, S> {
 
     /// The main control flow of the proof loop.
     ///
-    /// We loop up until the `target_depth`. For each of these BMC loops, we loop up to
-    /// `n_refines` times. Each time, we unroll the `vmt_model` up to the current depth,
+    /// We loop up until the `target_depth`. Each depth uses the strategy's
+    /// optional refinement limit. Each time, we unroll the `vmt_model` up to the current depth,
     /// ask the solver if we have any counter-examples this loop, and then continue.
     ///
     /// The `ProofStrategy` specified by `stat` defines what we do in the case of the
@@ -654,7 +651,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         if let Some(error) = strat.configuration_error() {
             return Err(anyhow::anyhow!("quantifier abstraction failed: {error}").into());
         }
-        let n_refines = strat.n_refines();
+        let n_refines = strat.refinement_limit().unwrap_or(u32::MAX);
         let mut total_refinement_steps = 0;
         let mut concrete_validation_checks = 0_u64;
         let mut concrete_validation_statistics = SolverStatistics::new();
@@ -705,6 +702,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                 progress.current_depth = Some(depth);
                 progress.current_refinement_step = None;
                 info!("STARTING BMC FOR DEPTH {depth}");
+                // The concrete query is fixed at this depth, independently of
+                // the successive abstract models and valid refinement lemmas.
+                let mut concrete_rejected = false;
                 for refinement_step in 0..n_refines {
                     progress.current_depth = Some(depth);
                     progress.current_refinement_step = Some(refinement_step);
@@ -830,7 +830,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                         && !strat.has_pending_refinement(&state)
                     {
                         checkpoint!('bmc, "strategy_sat", driver_record.take(), step_start);
-                        if !strat.allows_concrete_validation() {
+                        if !strat.allows_concrete_validation() || concrete_rejected {
                             // Widen the abstract search without delegating any
                             // quantified formula to the concrete solver.
                             let sat_start = Instant::now();
@@ -868,6 +868,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                                 return Err(Error::Counterexample);
                             }
                             SolverCheckResult::Unsat => {
+                                concrete_rejected = true;
                                 info!(
                                 "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
                             );
@@ -995,7 +996,6 @@ impl<'ctx, S> Driver<'ctx, S> {
                 Error::Counterexample => "counterexample",
                 Error::NoProgress { .. } => "no_progress",
                 Error::TooManyRefinements { .. } => "refinement_limit",
-                Error::AbstractionExhausted { .. } => "abstraction_exhausted",
                 Error::SolverUnknown(_) => "solver_unknown",
                 _ => "error",
             }

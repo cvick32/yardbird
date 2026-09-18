@@ -6,7 +6,7 @@
 pub mod effort;
 use crate::{
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
-    theories::array::instantiation_ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
+    instantiation::ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
 };
 pub use effort::{DefaultEffort, ProofEffort};
 

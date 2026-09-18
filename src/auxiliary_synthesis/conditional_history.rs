@@ -1,16 +1,16 @@
+use crate::driver;
 use std::collections::HashSet;
 
 use log::{debug, info, warn};
 
 use crate::{
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
-    driver::{self, RefinementContext},
+    driver::RefinementContext,
+    instantiation::{
+        candidate::InstantiationCandidate, language::translate_term, scope::CandidateScope,
+    },
     problem_context::ProblemContext,
     strategies::{ArrayRefinementState, ProofStrategyExt},
-    theories::array::{
-        array_axioms::translate_term, candidate_scope::CandidateScope,
-        instantiation_candidate::InstantiationCandidate,
-    },
     utils::run_sequence_smtinterpol,
 };
 

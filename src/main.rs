@@ -138,7 +138,12 @@ fn run_smtlib_with_strategy(
         problem,
         strategy,
         options.solver,
-        250, // max refinements (like VMT mode)
+        yardbird::smtlib_problem::RefinementLimits {
+            max_refinements: None,
+            wall_timeout: options
+                .wall_timeout_secs
+                .map(std::time::Duration::from_secs),
+        },
         options.track_instantiations,
         options.build_profiler(),
         solver_capture.clone(),

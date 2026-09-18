@@ -2,26 +2,26 @@ use rustc_hash::FxHashMap;
 use smt2parser::vmt::ReadsAndWrites;
 use smt2parser::vmt::VMTModel;
 use yardbird::cost_functions::array::ArrayAstSize;
+use yardbird::instantiation::engine::InstantiationInstrumentation;
+use yardbird::instantiation::engine::InstantiationOptions;
+use yardbird::instantiation::instantiator::ArtifactCapture;
+use yardbird::instantiation::language::expr_to_term;
+use yardbird::instantiation::language::TermExpr;
+use yardbird::instantiation::language::TermLanguage;
+use yardbird::instantiation::rule::QuantifiedRuleKind;
+use yardbird::instantiation::rule::QuantifiedRuleProvenance;
+use yardbird::instantiation::rule::TransitionGuardRule;
+use yardbird::instantiation::scope::CandidateScope;
 use yardbird::problem_context::ArrayCandidateCatalog;
-use yardbird::quantified_rule::{
-    QuantifiedRuleKind, QuantifiedRuleProvenance, TransitionGuardRule,
-};
-use yardbird::theories::array::{
-    array_axioms::{
-        expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
-        ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
-    },
-    array_rule_instantiator::ArrayArtifactCapture,
-    candidate_scope::CandidateScope,
-    transition_guard_instantiator::supports_transition_guard,
-};
+use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates;
+use yardbird::theories::array::transition_guard_instantiator::supports_transition_guard;
 use yardbird::{
     model_from_options, Driver, ProofLoopResult, SolverBackend, Strategy, YardbirdOptions,
 };
 
 fn generated_array_instances(expression: &str) -> Vec<String> {
-    let expression = expression.parse::<ArrayExpr>().unwrap();
-    let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let expression = expression.parse::<TermExpr>().unwrap();
+    let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
     egraph.add_expr(&expression);
     egraph.rebuild();
 
@@ -35,8 +35,7 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
         &egraph,
         cost,
         &[("Int".to_string(), "Int".to_string())],
-        ArrayInstantiationOptions {
-            match_scope: None,
+        InstantiationOptions {
             search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),
@@ -44,8 +43,8 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
             refinement_step: 0,
             selection_counts: FxHashMap::default(),
             depth: 0,
-            instrumentation: ArrayInstantiationInstrumentation {
-                artifact_capture: ArrayArtifactCapture::default(),
+            instrumentation: InstantiationInstrumentation {
+                artifact_capture: ArtifactCapture::default(),
                 profiling: None,
             },
         },
@@ -196,7 +195,7 @@ fn array_generation_characterizes_all_three_ground_rules() {
 
 #[test]
 fn array_search_keeps_all_conflicts_past_4096() {
-    let mut graph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let mut graph = egg::EGraph::<TermLanguage, ()>::default();
     for index in 0..4097 {
         graph.add_expr(
             &format!("(Read Int Int (ConstArr Int Int v) i{index})")
@@ -214,8 +213,7 @@ fn array_search_keeps_all_conflicts_past_4096() {
             reads_writes: Default::default(),
         },
         &[("Int".into(), "Int".into())],
-        ArrayInstantiationOptions {
-            match_scope: None,
+        InstantiationOptions {
             search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),
@@ -223,7 +221,7 @@ fn array_search_keeps_all_conflicts_past_4096() {
             refinement_step: 0,
             selection_counts: Default::default(),
             depth: 0,
-            instrumentation: ArrayInstantiationInstrumentation {
+            instrumentation: InstantiationInstrumentation {
                 artifact_capture: Default::default(),
                 profiling: None,
             },

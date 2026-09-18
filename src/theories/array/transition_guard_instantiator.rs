@@ -1,13 +1,13 @@
 //! Recognition of the original single-index transition-guard fragment.
-//! General quantifier instantiation lives in `quantifier_abstraction`.
-use crate::{quantified_rule::TransitionGuardRule, theories::array::array_axioms::ArrayLanguage};
+//! General quantifier instantiation lives in `quantifiers`.
+use crate::instantiation::{language::TermLanguage, rule::TransitionGuardRule};
 use smt2parser::concrete::Term;
 
 pub fn supports_transition_guard(rule: &TransitionGuardRule) -> bool {
     let [(binder, sort)] = rule.bound_variables() else {
         return false;
     };
-    is_supported_negative_read_guard(rule.body(), &binder.0, &ArrayLanguage::sort_to_name(sort))
+    is_supported_negative_read_guard(rule.body(), &binder.0, &TermLanguage::sort_to_name(sort))
 }
 
 fn is_supported_negative_read_guard(body: &Term, binder: &str, index_sort: &str) -> bool {

@@ -6,12 +6,12 @@ use egg::Language;
 use smt2parser::{concrete::Term, vmt::split_framed_symbol};
 
 use crate::{
-    problem_context::{ArrayCandidateCatalog, ProblemContext},
-    theories::array::{
-        array_axioms::{expr_to_term, translate_term_with_array_types, ArrayExpr, ArrayLanguage},
-        array_dataflow::PropertyCone,
-        candidate_scope::CandidateScope,
+    instantiation::{
+        language::{expr_to_term, translate_term_with_array_types, TermExpr, TermLanguage},
+        scope::CandidateScope,
     },
+    problem_context::{ArrayCandidateCatalog, ProblemContext},
+    theories::array::array_dataflow::PropertyCone,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -230,12 +230,12 @@ fn source_array_axiom_triggers(
                 .and_then(|term| translate_term_with_array_types(term, array_types))
         })
         .filter_map(|expression| {
-            let Some(ArrayLanguage::ReadTyped([index_sort, value_sort, _, index])) =
+            let Some(TermLanguage::ReadTyped([index_sort, value_sort, _, index])) =
                 expression.as_ref().last()
             else {
                 return None;
             };
-            let (ArrayLanguage::Symbol(index_sort), ArrayLanguage::Symbol(value_sort)) =
+            let (TermLanguage::Symbol(index_sort), TermLanguage::Symbol(value_sort)) =
                 (&expression[*index_sort], &expression[*value_sort])
             else {
                 return None;
@@ -256,12 +256,12 @@ fn source_array_axiom_triggers(
         else {
             continue;
         };
-        let Some(ArrayLanguage::WriteTyped([index_sort, value_sort, _, index, _])) =
+        let Some(TermLanguage::WriteTyped([index_sort, value_sort, _, index, _])) =
             expression.as_ref().last()
         else {
             continue;
         };
-        let (ArrayLanguage::Symbol(index_sort), ArrayLanguage::Symbol(value_sort)) =
+        let (TermLanguage::Symbol(index_sort), TermLanguage::Symbol(value_sort)) =
             (&expression[*index_sort], &expression[*value_sort])
         else {
             continue;
@@ -280,7 +280,7 @@ fn source_array_axiom_triggers(
         );
         for index in indices {
             let trigger =
-                ArrayLanguage::read_typed(index_sort, value_sort, expression.clone(), index);
+                TermLanguage::read_typed(index_sort, value_sort, expression.clone(), index);
             triggers.insert(expr_to_term(trigger));
         }
     }
@@ -289,7 +289,7 @@ fn source_array_axiom_triggers(
     triggers
 }
 
-fn expression_at(expression: &ArrayExpr, root: egg::Id) -> ArrayExpr {
+fn expression_at(expression: &TermExpr, root: egg::Id) -> TermExpr {
     expression[root].build_recexpr(|id| expression[id].clone())
 }
 
@@ -521,8 +521,7 @@ mod tests {
     use super::*;
     use smt2parser::vmt::{variable::Variable, ReadsAndWrites};
 
-    use crate::problem_context::ArrayCandidatePool;
-    use crate::utils::SolverStatistics;
+    use crate::{problem_context::ArrayCandidatePool, utils::SolverStatistics};
 
     struct FakeContext {
         model_values: std::collections::HashMap<Term, String>,
@@ -569,8 +568,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation_provenance::InstantiationRequest,
-        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            _request: crate::instantiation::provenance::InstantiationRequest,
+        ) -> crate::instantiation::provenance::InstantiationInstallResult {
             Default::default()
         }
 
@@ -659,11 +658,9 @@ mod tests {
     }
 
     #[test]
-    fn shared_array_admission_filters_matches_before_search_budget() {
-        use super::super::array_axioms::{
-            generate_array_instantiation_candidates, ArrayInstantiationInstrumentation,
-            ArrayInstantiationOptions,
-        };
+    fn array_matching_sees_terms_admitted_by_binder_preparation() {
+        use super::super::array_axioms::generate_array_instantiation_candidates;
+        use crate::instantiation::engine::{InstantiationInstrumentation, InstantiationOptions};
         use crate::{cost_functions::array::ArrayAstSize, refinement_graph::RefinementGraph};
         let terms = (0..32)
             .map(|i| {
@@ -692,10 +689,9 @@ mod tests {
                     reads_writes: Default::default(),
                 },
                 &context.get_array_types(),
-                ArrayInstantiationOptions {
-                    match_scope: Some(graph.array_match_scope()),
+                InstantiationOptions {
                     search_allowance: crate::policy::effort::WorkAllowance {
-                        array_initial_limit: 1,
+                        array_initial_limit: 64,
                         array_rounds: 1,
                         ..Default::default()
                     },
@@ -705,22 +701,16 @@ mod tests {
                     refinement_step: 0,
                     selection_counts: Default::default(),
                     depth: 0,
-                    instrumentation: ArrayInstantiationInstrumentation {
+                    instrumentation: InstantiationInstrumentation {
                         artifact_capture: Default::default(),
                         profiling: None,
                     },
                 },
             )
         };
-        assert!(generate(&graph).candidates.is_empty());
-        graph.admit(&context, terms.last().unwrap(), true).unwrap();
-        graph.rebuild();
         let batch = generate(&graph);
-        assert_eq!(batch.candidates.len(), 1);
+        assert_eq!(batch.candidates.len(), 32);
         assert!(batch.search.budget_exhausted_rules.is_empty());
-        assert!(expr_to_term(batch.candidates[0].expression.clone())
-            .to_string()
-            .contains("31"));
     }
 
     #[test]

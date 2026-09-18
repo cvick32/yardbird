@@ -4,10 +4,10 @@ use log::{debug, trace};
 use crate::{
     cost_functions::YardbirdCostFunction,
     egg_utils::RecExprRoot,
-    theories::array::{
-        array_axioms::{ArrayExpr, ArrayLanguage, ArrayPattern},
-        array_term_extractor::{ArrayTermExtractor, CandidateOrigin},
-        instantiation_candidate::SelectionHistoryDecision,
+    instantiation::{
+        candidate::SelectionHistoryDecision,
+        extractor::{CandidateOrigin, TermExtractor},
+        language::{TermExpr, TermLanguage, TermPattern},
     },
     training::{canonical_term_hash, DecisionRecord},
 };
@@ -24,7 +24,7 @@ fn trace_conflicts(message: impl AsRef<str>) {
 struct GroundBinding {
     variable: egg::Var,
     eclass: egg::Id,
-    expression: ArrayExpr,
+    expression: TermExpr,
     origin: CandidateOrigin,
 }
 
@@ -40,14 +40,14 @@ pub(super) struct GroundSubstitution {
 pub(super) struct GroundContext<'a> {
     record_decisions: bool,
     rule_name: &'a str,
-    rule_category: crate::quantified_rule::QuantifiedRuleCategory,
+    rule_category: crate::instantiation::rule::QuantifiedRuleCategory,
 }
 
 impl<'a> GroundContext<'a> {
     pub(super) fn new(
         record_decisions: bool,
         rule_name: &'a str,
-        rule_category: crate::quantified_rule::QuantifiedRuleCategory,
+        rule_category: crate::instantiation::rule::QuantifiedRuleCategory,
     ) -> Self {
         Self {
             record_decisions,
@@ -70,7 +70,7 @@ impl GroundSubstitution {
         self.used_derived_candidate
     }
 
-    pub(super) fn variable_expressions(&self) -> impl Iterator<Item = (egg::Var, &ArrayExpr)> {
+    pub(super) fn variable_expressions(&self) -> impl Iterator<Item = (egg::Var, &TermExpr)> {
         self.bindings
             .iter()
             .map(|binding| (binding.variable, &binding.expression))
@@ -81,13 +81,13 @@ impl GroundSubstitution {
         &mut self,
         variable: egg::Var,
         eclass: egg::Id,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        extractor: &ArrayTermExtractor<CF>,
+        egraph: &egg::EGraph<TermLanguage, N>,
+        extractor: &TermExtractor<CF>,
         context: GroundContext<'_>,
     ) -> anyhow::Result<()>
     where
-        N: egg::Analysis<ArrayLanguage>,
-        CF: YardbirdCostFunction<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
+        CF: YardbirdCostFunction<TermLanguage>,
     {
         let canonical_eclass = egraph.find(eclass);
 
@@ -128,14 +128,14 @@ impl GroundSubstitution {
         &mut self,
         variable: egg::Var,
         eclass: egg::Id,
-        expression: ArrayExpr,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        extractor: &ArrayTermExtractor<CF>,
+        expression: TermExpr,
+        egraph: &egg::EGraph<TermLanguage, N>,
+        extractor: &TermExtractor<CF>,
         context: GroundContext<'_>,
     ) -> anyhow::Result<()>
     where
-        N: egg::Analysis<ArrayLanguage>,
-        CF: YardbirdCostFunction<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
+        CF: YardbirdCostFunction<TermLanguage>,
     {
         let eclass = egraph.find(eclass); // why?
 
@@ -154,14 +154,14 @@ impl GroundSubstitution {
     fn bind_source_choice<N, CF>(
         &mut self,
         variable: egg::Var,
-        expression: ArrayExpr,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        extractor: &ArrayTermExtractor<CF>,
+        expression: TermExpr,
+        egraph: &egg::EGraph<TermLanguage, N>,
+        extractor: &TermExtractor<CF>,
         context: GroundContext<'_>,
     ) -> anyhow::Result<()>
     where
-        N: egg::Analysis<ArrayLanguage>,
-        CF: YardbirdCostFunction<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
+        CF: YardbirdCostFunction<TermLanguage>,
     {
         let eclass = egraph
             .lookup_expr(&expression)
@@ -187,15 +187,15 @@ impl GroundSubstitution {
     fn bind_recorded_choice<N, CF>(
         &mut self,
         variable: egg::Var,
-        expression: ArrayExpr,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        extractor: &ArrayTermExtractor<CF>,
+        expression: TermExpr,
+        egraph: &egg::EGraph<TermLanguage, N>,
+        extractor: &TermExtractor<CF>,
         context: GroundContext<'_>,
         origin: CandidateOrigin,
     ) -> anyhow::Result<()>
     where
-        N: egg::Analysis<ArrayLanguage>,
-        CF: YardbirdCostFunction<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
+        CF: YardbirdCostFunction<TermLanguage>,
     {
         let eclass = egraph
             .lookup_expr(&expression)
@@ -262,16 +262,16 @@ impl GroundSubstitution {
 }
 
 fn ground_pattern_variables<N, CF>(
-    pattern: &ArrayPattern,
+    pattern: &TermPattern,
     subst: &egg::Subst,
     grounding: &mut GroundSubstitution,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     context: GroundContext<'_>,
 ) -> anyhow::Result<()>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     for node in pattern.as_ref() {
         let egg::ENodeOrVar::Var(variable) = node else {
@@ -292,16 +292,16 @@ where
 /// Scalar representatives are still chosen by the existing extractor. Alternative
 /// bindings and their decision records are only constructed when requested.
 pub(super) fn groundings<'a, N, CF>(
-    pattern: &'a ArrayPattern,
+    pattern: &'a TermPattern,
     expected_eclass: egg::Id,
     subst: egg::Subst,
-    egraph: &'a egg::EGraph<ArrayLanguage, N>,
-    extractor: std::rc::Rc<ArrayTermExtractor<CF>>,
+    egraph: &'a egg::EGraph<TermLanguage, N>,
+    extractor: std::rc::Rc<TermExtractor<CF>>,
     context: GroundContext<'a>,
 ) -> impl Iterator<Item = GroundSubstitution> + 'a
 where
-    N: egg::Analysis<ArrayLanguage> + 'a,
-    CF: YardbirdCostFunction<ArrayLanguage> + 'a,
+    N: egg::Analysis<TermLanguage> + 'a,
+    CF: YardbirdCostFunction<TermLanguage> + 'a,
 {
     let mut first = true;
     let mut sites = None;
@@ -333,7 +333,7 @@ where
         // The array axioms bind the three write children as variables. Keep
         // more general patterns on the existing one-grounding path for now.
         let (index_sort, value_sort, variables) = pattern.as_ref().iter().find_map(|node| {
-            let egg::ENodeOrVar::ENode(ArrayLanguage::WriteTyped([is, vs, a, i, v])) = node else {
+            let egg::ENodeOrVar::ENode(TermLanguage::WriteTyped([is, vs, a, i, v])) = node else {
                 return None;
             };
             let [egg::ENodeOrVar::Var(a), egg::ENodeOrVar::Var(i), egg::ENodeOrVar::Var(v)] =
@@ -357,7 +357,7 @@ where
             )
             .into_iter()
             .map(|(a, i, v)| {
-                let write = ArrayLanguage::write_typed(
+                let write = TermLanguage::write_typed(
                     &index_sort,
                     &value_sort,
                     a.clone(),
@@ -405,15 +405,15 @@ where
 }
 
 fn choose_best_grounding<CF, C, I, F>(
-    extractor: &ArrayTermExtractor<CF>,
+    extractor: &TermExtractor<CF>,
     grounding: &mut GroundSubstitution,
     candidates: I,
     mut build_expression: F,
 ) -> anyhow::Result<bool>
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
     I: IntoIterator<Item = C>,
-    F: FnMut(C, &mut GroundSubstitution) -> anyhow::Result<ArrayExpr>,
+    F: FnMut(C, &mut GroundSubstitution) -> anyhow::Result<TermExpr>,
 {
     let mut best: Option<(u32, String, GroundSubstitution)> = None;
 
@@ -439,17 +439,17 @@ where
 }
 
 pub(super) fn ground_pattern<N, CF>(
-    pattern: &ArrayPattern,
+    pattern: &TermPattern,
     expected_eclass: Option<egg::Id>,
     subst: &egg::Subst,
     grounding: &mut GroundSubstitution,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     context: GroundContext<'_>,
 ) -> anyhow::Result<()>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     if let Some(expected_eclass) = expected_eclass {
         if ground_expected_write(
@@ -489,19 +489,19 @@ where
 }
 
 fn ground_expected_write<N, CF>(
-    pattern: &ArrayPattern,
+    pattern: &TermPattern,
     expected_eclass: egg::Id,
     subst: &egg::Subst,
     grounding: &mut GroundSubstitution,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     context: GroundContext<'_>,
 ) -> anyhow::Result<bool>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
-    let egg::ENodeOrVar::ENode(ArrayLanguage::WriteTyped(
+    let egg::ENodeOrVar::ENode(TermLanguage::WriteTyped(
         [index_sort, value_sort, array, index, value],
     )) = pattern.rooted().clone()
     else {
@@ -519,7 +519,7 @@ where
 
     let mut candidates = Vec::new();
     for node in &egraph[expected_eclass].nodes {
-        let ArrayLanguage::WriteTyped([_, _, array_eclass, index_eclass, value_eclass]) = node
+        let TermLanguage::WriteTyped([_, _, array_eclass, index_eclass, value_eclass]) = node
         else {
             continue;
         };
@@ -704,19 +704,19 @@ where
 }
 
 fn ground_expected_read<N, CF>(
-    pattern: &ArrayPattern,
+    pattern: &TermPattern,
     expected_eclass: egg::Id,
     subst: &egg::Subst,
     grounding: &mut GroundSubstitution,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     context: GroundContext<'_>,
 ) -> anyhow::Result<bool>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
-    let egg::ENodeOrVar::ENode(ArrayLanguage::ReadTyped([_, _, array, index])) =
+    let egg::ENodeOrVar::ENode(TermLanguage::ReadTyped([_, _, array, index])) =
         pattern.rooted().clone()
     else {
         return Ok(false);
@@ -727,7 +727,7 @@ where
     let expected_eclass = egraph.find(expected_eclass);
 
     let candidates = egraph[expected_eclass].nodes.iter().filter_map(|node| {
-        let ArrayLanguage::ReadTyped([_, _, array_eclass, index_eclass]) = node else {
+        let TermLanguage::ReadTyped([_, _, array_eclass, index_eclass]) = node else {
             return None;
         };
 
@@ -779,17 +779,17 @@ where
 }
 
 fn bind_exact_variable<N, CF>(
-    pattern: &ArrayPattern,
+    pattern: &TermPattern,
     eclass: egg::Id,
-    expression: &ArrayExpr,
+    expression: &TermExpr,
     grounding: &mut GroundSubstitution,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     context: GroundContext<'_>,
 ) -> anyhow::Result<bool>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     let [egg::ENodeOrVar::Var(variable)] = pattern.as_ref() else {
         return Ok(false);
@@ -808,16 +808,16 @@ where
 }
 
 fn bind_exact_source_variable<N, CF>(
-    pattern: &ArrayPattern,
-    expression: &ArrayExpr,
+    pattern: &TermPattern,
+    expression: &TermExpr,
     grounding: &mut GroundSubstitution,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     context: GroundContext<'_>,
 ) -> anyhow::Result<bool>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     let [egg::ENodeOrVar::Var(variable)] = pattern.as_ref() else {
         return Ok(false);
@@ -829,7 +829,7 @@ where
 }
 
 // Have to remap the IDs out the output expr to account for the IDs of the input expr.
-fn append_expr(output: &mut ArrayExpr, input: &ArrayExpr) -> anyhow::Result<egg::Id> {
+fn append_expr(output: &mut TermExpr, input: &TermExpr) -> anyhow::Result<egg::Id> {
     let mut roots = Vec::<egg::Id>::with_capacity(input.as_ref().len());
 
     for node in input.as_ref() {
@@ -844,9 +844,9 @@ fn append_expr(output: &mut ArrayExpr, input: &ArrayExpr) -> anyhow::Result<egg:
 }
 
 pub(super) fn instantiate_pattern(
-    pattern: &ArrayPattern,
+    pattern: &TermPattern,
     substitution: &GroundSubstitution,
-) -> anyhow::Result<ArrayExpr> {
+) -> anyhow::Result<TermExpr> {
     instantiate_with_bindings(pattern, |var| {
         substitution
             .get_binding(var)
@@ -857,10 +857,10 @@ pub(super) fn instantiate_pattern(
 
 /// Substitute a fixed rule formula without choosing or scoring representatives.
 pub(crate) fn instantiate_with_bindings<'a>(
-    pattern: &ArrayPattern,
-    mut binding: impl FnMut(egg::Var) -> anyhow::Result<&'a ArrayExpr>,
-) -> anyhow::Result<ArrayExpr> {
-    let mut result_expression = ArrayExpr::default();
+    pattern: &TermPattern,
+    mut binding: impl FnMut(egg::Var) -> anyhow::Result<&'a TermExpr>,
+) -> anyhow::Result<TermExpr> {
+    let mut result_expression = TermExpr::default();
     let mut roots = Vec::<egg::Id>::with_capacity(pattern.as_ref().len());
 
     for node in pattern.as_ref() {
@@ -879,9 +879,9 @@ pub(crate) fn instantiate_with_bindings<'a>(
 }
 
 fn subpattern(
-    pattern: &egg::PatternAst<ArrayLanguage>,
+    pattern: &egg::PatternAst<TermLanguage>,
     root: egg::Id,
-) -> egg::PatternAst<ArrayLanguage> {
+) -> egg::PatternAst<TermLanguage> {
     let node = pattern[root].clone();
     if node.is_leaf() {
         vec![node].into()
@@ -890,25 +890,25 @@ fn subpattern(
     }
 }
 
-fn pattern_sort_symbol(pattern: &egg::PatternAst<ArrayLanguage>, id: egg::Id) -> Option<String> {
+fn pattern_sort_symbol(pattern: &egg::PatternAst<TermLanguage>, id: egg::Id) -> Option<String> {
     match &pattern[id] {
-        egg::ENodeOrVar::ENode(ArrayLanguage::Symbol(symbol)) => Some(symbol.to_string()),
+        egg::ENodeOrVar::ENode(TermLanguage::Symbol(symbol)) => Some(symbol.to_string()),
         _ => None,
     }
 }
 
 fn best_matching_write_children<N, CF>(
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
-    array_expr: &ArrayExpr,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
+    array_expr: &TermExpr,
     index_sort: &str,
     value_sort: &str,
     index_eclass: egg::Id,
     value_eclass: egg::Id,
-) -> Option<(ArrayExpr, ArrayExpr)>
+) -> Option<(TermExpr, TermExpr)>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     let index_eclass = egraph.find(index_eclass);
     let value_eclass = egraph.find(value_eclass);
@@ -922,8 +922,8 @@ where
         return cached;
     }
 
-    let best_in_pool = |candidates: &[(ArrayExpr, ArrayExpr)]| {
-        let mut best: Option<(u32, String, ArrayExpr, ArrayExpr)> = None;
+    let best_in_pool = |candidates: &[(TermExpr, TermExpr)]| {
+        let mut best: Option<(u32, String, TermExpr, TermExpr)> = None;
         for (index_expr, value_expr) in candidates {
             if !egraph_contains_at(egraph, index_expr, index_eclass) {
                 continue;
@@ -932,7 +932,7 @@ where
                 continue;
             }
 
-            let write_expr = ArrayLanguage::write_typed(
+            let write_expr = TermLanguage::write_typed(
                 index_sort,
                 value_sort,
                 array_expr.clone(),
@@ -971,15 +971,15 @@ where
 }
 
 fn matching_source_write_sites<N, CF>(
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    extractor: &ArrayTermExtractor<CF>,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    extractor: &TermExtractor<CF>,
     array_eclass: egg::Id,
     index_eclass: egg::Id,
     value_eclass: egg::Id,
-) -> Vec<(ArrayExpr, ArrayExpr, ArrayExpr)>
+) -> Vec<(TermExpr, TermExpr, TermExpr)>
 where
-    N: egg::Analysis<ArrayLanguage>,
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     let mut sites = Vec::new();
     for array in extractor.source_candidates_for_eclass(egraph, array_eclass) {
@@ -997,12 +997,12 @@ where
 }
 
 fn egraph_contains_at<N>(
-    egraph: &egg::EGraph<ArrayLanguage, N>,
-    expr: &ArrayExpr,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    expr: &TermExpr,
     expected_eclass: egg::Id,
 ) -> bool
 where
-    N: egg::Analysis<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
 {
     egraph
         .lookup_expr(expr)
@@ -1010,13 +1010,13 @@ where
 }
 
 fn child_patterns_compatible<const N_CHILDREN: usize, N>(
-    egraph: &egg::EGraph<ArrayLanguage, N>,
+    egraph: &egg::EGraph<TermLanguage, N>,
     subst: &egg::Subst,
-    patterns: [&egg::PatternAst<ArrayLanguage>; N_CHILDREN],
+    patterns: [&egg::PatternAst<TermLanguage>; N_CHILDREN],
     candidate_eclasses: [egg::Id; N_CHILDREN],
 ) -> bool
 where
-    N: egg::Analysis<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
 {
     patterns
         .into_iter()
@@ -1027,13 +1027,13 @@ where
 }
 
 fn pattern_matches_eclass<N>(
-    pattern: &egg::PatternAst<ArrayLanguage>,
+    pattern: &egg::PatternAst<TermLanguage>,
     candidate_eclass: egg::Id,
-    egraph: &egg::EGraph<ArrayLanguage, N>,
+    egraph: &egg::EGraph<TermLanguage, N>,
     subst: &egg::Subst,
 ) -> bool
 where
-    N: egg::Analysis<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
 {
     match pattern.rooted() {
         egg::ENodeOrVar::Var(var) => {
@@ -1061,22 +1061,22 @@ mod test {
     use smt2parser::vmt::ReadsAndWrites;
 
     use crate::{
-        problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
-        theories::array::{
-            array_axioms::{ArrayLanguage, ArrayPattern},
-            array_grounding::*,
-            array_term_extractor::ArrayTermExtractorOptions,
-            candidate_scope::CandidateScope,
+        instantiation::{
+            extractor::TermExtractorOptions,
+            grounding::*,
+            language::{TermLanguage, TermPattern},
+            scope::CandidateScope,
         },
+        problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
     };
 
     #[derive(Clone)]
     struct ZeroCost;
 
-    impl egg::CostFunction<ArrayLanguage> for ZeroCost {
+    impl egg::CostFunction<TermLanguage> for ZeroCost {
         type Cost = u32;
 
-        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        fn cost<C>(&mut self, _enode: &TermLanguage, _costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
@@ -1084,7 +1084,7 @@ mod test {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for ZeroCost {
+    impl YardbirdCostFunction<TermLanguage> for ZeroCost {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1096,11 +1096,11 @@ mod test {
 
     #[test]
     fn source_only_lookup_returns_the_exact_source_write_children() {
-        let write: ArrayExpr = "(Write Int Int A i v)".parse().unwrap();
-        let array: ArrayExpr = "A".parse().unwrap();
-        let index: ArrayExpr = "i".parse().unwrap();
-        let value: ArrayExpr = "v".parse().unwrap();
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let write: TermExpr = "(Write Int Int A i v)".parse().unwrap();
+        let array: TermExpr = "A".parse().unwrap();
+        let index: TermExpr = "i".parse().unwrap();
+        let value: TermExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&write);
         egraph.rebuild();
         let index_eclass = egraph.lookup_expr(&index).unwrap();
@@ -1109,10 +1109,10 @@ mod test {
             std::collections::HashSet::new(),
             std::collections::HashSet::from([("A".to_string(), "i".to_string(), "v".to_string())]),
         );
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCost,
-            ArrayTermExtractorOptions {
+            TermExtractorOptions {
                 candidate_catalog: ArrayCandidateCatalog {
                     source_grounded: ArrayCandidatePool {
                         terms: vec![
@@ -1149,18 +1149,18 @@ mod test {
 
     #[test]
     fn source_write_lookup_canonicalizes_nested_array_lineage() {
-        let array: ArrayExpr = "(Write Int Int A outer previous)".parse().unwrap();
-        let index: ArrayExpr = "i".parse().unwrap();
-        let value: ArrayExpr = "v".parse().unwrap();
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let array: TermExpr = "(Write Int Int A outer previous)".parse().unwrap();
+        let index: TermExpr = "i".parse().unwrap();
+        let value: TermExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&array);
         let index_eclass = egraph.add_expr(&index);
         let value_eclass = egraph.add_expr(&value);
         egraph.rebuild();
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCost,
-            ArrayTermExtractorOptions {
+            TermExtractorOptions {
                 candidate_catalog: ArrayCandidateCatalog {
                     source_grounded: ArrayCandidatePool {
                         terms: vec![],
@@ -1199,7 +1199,7 @@ mod test {
 
     #[test]
     fn instantiates_multiple_and_repeated_variables() {
-        let pattern: ArrayPattern = "(= (+ ?x ?y) (+ ?x ?y))".parse().unwrap();
+        let pattern: TermPattern = "(= (+ ?x ?y) (+ ?x ?y))".parse().unwrap();
         let x: egg::Var = "?x".parse().unwrap();
         let y: egg::Var = "?y".parse().unwrap();
 
@@ -1228,13 +1228,13 @@ mod test {
 
     #[test]
     fn grounds_each_variable_once_from_egg_substitution() {
-        let pattern: ArrayPattern = "(= (+ ?x ?y) (+ ?x ?y))".parse().unwrap();
+        let pattern: TermPattern = "(= (+ ?x ?y) (+ ?x ?y))".parse().unwrap();
         let x: egg::Var = "?x".parse().unwrap();
         let y: egg::Var = "?y".parse().unwrap();
 
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let a: ArrayExpr = "a".parse().unwrap();
-        let b: ArrayExpr = "b".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let a: TermExpr = "a".parse().unwrap();
+        let b: TermExpr = "b".parse().unwrap();
         let a_eclass = egraph.add_expr(&a);
         let b_eclass = egraph.add_expr(&b);
         egraph.rebuild();
@@ -1243,10 +1243,10 @@ mod test {
         subst.insert(x, a_eclass);
         subst.insert(y, b_eclass);
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCost,
-            ArrayTermExtractorOptions {
+            TermExtractorOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1266,7 +1266,7 @@ mod test {
             GroundContext {
                 record_decisions: false,
                 rule_name: "test-rule",
-                rule_category: crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
+                rule_category: crate::instantiation::rule::QuantifiedRuleCategory::InputBinder,
             },
         )
         .unwrap();
@@ -1287,15 +1287,15 @@ mod test {
 
     #[test]
     fn expected_read_grounds_the_read_matching_the_egg_substitution() {
-        let pattern: ArrayPattern = "(Read Int Int ?array ?index)".parse().unwrap();
+        let pattern: TermPattern = "(Read Int Int ?array ?index)".parse().unwrap();
         let array_var: egg::Var = "?array".parse().unwrap();
         let index_var: egg::Var = "?index".parse().unwrap();
 
-        let first_read: ArrayExpr = "(Read Int Int A i)".parse().unwrap();
-        let matching_read: ArrayExpr = "(Read Int Int B j)".parse().unwrap();
-        let matching_array: ArrayExpr = "B".parse().unwrap();
-        let matching_index: ArrayExpr = "j".parse().unwrap();
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let first_read: TermExpr = "(Read Int Int A i)".parse().unwrap();
+        let matching_read: TermExpr = "(Read Int Int B j)".parse().unwrap();
+        let matching_array: TermExpr = "B".parse().unwrap();
+        let matching_index: TermExpr = "j".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
         let first_read_eclass = egraph.add_expr(&first_read);
         let matching_read_eclass = egraph.add_expr(&matching_read);
         egraph.union(first_read_eclass, matching_read_eclass);
@@ -1305,10 +1305,10 @@ mod test {
         subst.insert(array_var, egraph.lookup_expr(&matching_array).unwrap());
         subst.insert(index_var, egraph.lookup_expr(&matching_index).unwrap());
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCost,
-            ArrayTermExtractorOptions {
+            TermExtractorOptions {
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
@@ -1329,7 +1329,7 @@ mod test {
             GroundContext::new(
                 false,
                 "read-after-write",
-                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
+                crate::instantiation::rule::QuantifiedRuleCategory::InputBinder,
             ),
         )
         .unwrap();
@@ -1345,18 +1345,18 @@ mod test {
 
     #[test]
     fn expected_write_preserves_the_index_and_value_from_one_source_write() {
-        let pattern: ArrayPattern = "(Write Int Int ?array ?index ?value)".parse().unwrap();
+        let pattern: TermPattern = "(Write Int Int ?array ?index ?value)".parse().unwrap();
         let array_var: egg::Var = "?array".parse().unwrap();
         let index_var: egg::Var = "?index".parse().unwrap();
         let value_var: egg::Var = "?value".parse().unwrap();
 
-        let source_write: ArrayExpr = "(Write Int Int A i v)".parse().unwrap();
-        let array: ArrayExpr = "A".parse().unwrap();
-        let index: ArrayExpr = "i".parse().unwrap();
-        let index_alias: ArrayExpr = "index_alias".parse().unwrap();
-        let value: ArrayExpr = "v".parse().unwrap();
-        let value_alias: ArrayExpr = "value_alias".parse().unwrap();
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let source_write: TermExpr = "(Write Int Int A i v)".parse().unwrap();
+        let array: TermExpr = "A".parse().unwrap();
+        let index: TermExpr = "i".parse().unwrap();
+        let index_alias: TermExpr = "index_alias".parse().unwrap();
+        let value: TermExpr = "v".parse().unwrap();
+        let value_alias: TermExpr = "value_alias".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
         let expected_write_eclass = egraph.add_expr(&source_write);
         let index_eclass = egraph.lookup_expr(&index).unwrap();
         let index_alias_eclass = egraph.add_expr(&index_alias);
@@ -1371,10 +1371,10 @@ mod test {
         subst.insert(index_var, egraph.find(index_eclass));
         subst.insert(value_var, egraph.find(value_eclass));
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCost,
-            ArrayTermExtractorOptions {
+            TermExtractorOptions {
                 candidate_catalog: ArrayCandidateCatalog {
                     source_grounded: ArrayCandidatePool {
                         // Deliberately omit the scalar terms. The specialized write
@@ -1410,7 +1410,7 @@ mod test {
             GroundContext::new(
                 false,
                 "write-grounding",
-                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
+                crate::instantiation::rule::QuantifiedRuleCategory::InputBinder,
             ),
         )
         .unwrap();
@@ -1426,17 +1426,17 @@ mod test {
 
     #[test]
     fn expected_write_keeps_an_intact_source_site_when_the_base_has_a_cheaper_alias() {
-        let pattern: ArrayPattern = "(Write Int Int ?array ?index ?value)".parse().unwrap();
+        let pattern: TermPattern = "(Write Int Int ?array ?index ?value)".parse().unwrap();
         let array_var: egg::Var = "?array".parse().unwrap();
         let index_var: egg::Var = "?index".parse().unwrap();
         let value_var: egg::Var = "?value".parse().unwrap();
 
-        let source_write: ArrayExpr = "(Write Int Int source_array i v)".parse().unwrap();
-        let source_array: ArrayExpr = "source_array".parse().unwrap();
-        let cheaper_alias: ArrayExpr = "alias".parse().unwrap();
-        let index: ArrayExpr = "i".parse().unwrap();
-        let value: ArrayExpr = "v".parse().unwrap();
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let source_write: TermExpr = "(Write Int Int source_array i v)".parse().unwrap();
+        let source_array: TermExpr = "source_array".parse().unwrap();
+        let cheaper_alias: TermExpr = "alias".parse().unwrap();
+        let index: TermExpr = "i".parse().unwrap();
+        let value: TermExpr = "v".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
         let expected_write_eclass = egraph.add_expr(&source_write);
         let source_array_eclass = egraph.lookup_expr(&source_array).unwrap();
         let alias_eclass = egraph.add_expr(&cheaper_alias);
@@ -1448,10 +1448,10 @@ mod test {
         subst.insert(index_var, egraph.lookup_expr(&index).unwrap());
         subst.insert(value_var, egraph.lookup_expr(&value).unwrap());
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCost,
-            ArrayTermExtractorOptions {
+            TermExtractorOptions {
                 candidate_catalog: ArrayCandidateCatalog {
                     source_grounded: ArrayCandidatePool {
                         terms: vec![
@@ -1491,7 +1491,7 @@ mod test {
             GroundContext::new(
                 false,
                 "write-grounding",
-                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
+                crate::instantiation::rule::QuantifiedRuleCategory::InputBinder,
             ),
         )
         .unwrap();

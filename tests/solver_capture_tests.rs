@@ -443,7 +443,10 @@ fn multi_refinement_capture_preserves_added_instances_between_checks() {
         &problem,
         strategy,
         SolverBackend::Z3,
-        5,
+        yardbird::smtlib_problem::RefinementLimits {
+            max_refinements: Some(5),
+            ..Default::default()
+        },
         false,
         options.build_profiler(),
         Some(capture.clone()),

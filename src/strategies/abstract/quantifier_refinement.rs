@@ -3,12 +3,12 @@
 use super::search_context::SearchContext;
 use crate::{
     cost_functions::array::ArrayCostFactory,
+    instantiation::{
+        candidate::InstantiationBatch,
+        engine::{InstantiationInstrumentation, InstantiationOptions},
+    },
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     profiling::ArrayProfilingCollector,
-    theories::array::{
-        array_axioms::{ArrayInstantiationInstrumentation, ArrayInstantiationOptions},
-        instantiation_candidate::InstantiationBatch,
-    },
 };
 use log::info;
 use rustc_hash::FxHashMap;
@@ -17,22 +17,22 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 #[derive(Default)]
 pub(super) struct QuantifierRefinement {
-    pub(super) plan: crate::quantifier_abstraction::QuantifierPlan,
-    pub(super) provenance: crate::quantifier_provenance::QuantifierProvenance,
+    pub(super) plan: crate::quantifiers::QuantifierPlan,
+    pub(super) provenance: crate::quantifiers::provenance::QuantifierProvenance,
     pub(super) configuration_error: Option<String>,
     pub(super) owns_quantifiers: bool,
 }
 
 /// One solver model's compiled searches and graph-versioned unsuccessful passes.
 pub(crate) struct BinderSearchState {
-    prepared: crate::quantifier_abstraction::PreparedQuantifierSearch,
-    empty_passes: HashMap<crate::quantifier_abstraction::SearchPhase, BinderPassContext>,
+    prepared: crate::quantifiers::PreparedQuantifierSearch,
+    empty_passes: HashMap<crate::quantifiers::SearchPhase, BinderPassContext>,
     pub(super) requests: Vec<DependencyWork>,
     pub(super) dependencies_searched: bool,
 }
 
 pub(super) struct DependencyWork {
-    pub(super) request: crate::quantifier_abstraction::BinderSearchRequest,
+    pub(super) request: crate::quantifiers::BinderSearchRequest,
     pub(super) description: String,
 }
 
@@ -51,11 +51,11 @@ impl QuantifierRefinement {
         self.owns_quantifiers = model.as_commands().iter().any(|command| match command {
             smt2parser::concrete::Command::DefineFun { term, .. }
             | smt2parser::concrete::Command::Assert { term } => {
-                crate::quantifier_abstraction::contains_binders(term)
+                crate::quantifiers::contains_binders(term)
             }
             _ => false,
         });
-        let model = match crate::quantifier_provenance::scope_model(model.clone(), profile) {
+        let model = match crate::quantifiers::provenance::scope_model(model.clone(), profile) {
             Ok((model, provenance)) => {
                 self.provenance = provenance;
                 model
@@ -72,10 +72,7 @@ impl QuantifierRefinement {
             info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
         }
         let original = model.clone();
-        match crate::quantifier_abstraction::lower_model_with_provenance(
-            model,
-            &mut self.provenance,
-        ) {
+        match crate::quantifiers::lower_model_with_provenance(model, &mut self.provenance) {
             Ok((model, plan)) => {
                 info!(
                     "Abstracted {} quantifier/lambda expressions for Yardbird instantiation",
@@ -204,14 +201,13 @@ impl QuantifierRefinement {
         let _phase_guard = context.profiling.as_ref().map(|p| {
             crate::profiling::QuantifierPhaseGuard::new(p.clone(), "input_binder_dependencies")
         });
-        let scope = crate::theories::array::candidate_scope::CandidateScope::AllCandidates;
+        let scope = crate::instantiation::scope::CandidateScope::AllCandidates;
         let mut batch = prepared.candidates(
             context.graph,
             |term| context.smt.eval_to_string(term),
-            crate::quantifier_abstraction::BinderSearch::RequestPage(request, context.allowance),
+            crate::quantifiers::BinderSearch::RequestPage(request, context.allowance),
             |cost_context| context.term_cost(cost_context, context.depth as u32),
-            ArrayInstantiationOptions {
-                match_scope: None,
+            InstantiationOptions {
                 search_allowance: context.allowance,
                 additional_terms: vec![],
                 candidate_catalog: prepared.catalog.clone(),
@@ -219,7 +215,7 @@ impl QuantifierRefinement {
                 refinement_step: context.refinement_step,
                 selection_counts: context.selection_counts.clone(),
                 depth: context.depth,
-                instrumentation: ArrayInstantiationInstrumentation {
+                instrumentation: InstantiationInstrumentation {
                     artifact_capture: context.artifact_capture,
                     profiling: context.profiling.clone(),
                 },
@@ -262,7 +258,7 @@ impl QuantifierRefinement {
     pub(super) fn candidates<F: ArrayCostFactory + 'static>(
         &mut self,
         state: &mut Option<BinderSearchState>,
-        phase: crate::quantifier_abstraction::SearchPhase,
+        phase: crate::quantifiers::SearchPhase,
         context: &SearchContext<'_, F>,
         effort: &mut dyn crate::policy::ProofEffort,
     ) -> anyhow::Result<InstantiationBatch> {
@@ -301,7 +297,7 @@ impl QuantifierRefinement {
         prepared.start_phase(phase, 0);
         // Derived terms remain available for witnesses and nested binders.
         // Model-violation eligibility is independent of this vocabulary scope.
-        let scope = crate::theories::array::candidate_scope::CandidateScope::AllCandidates;
+        let scope = crate::instantiation::scope::CandidateScope::AllCandidates;
         let mut known: std::collections::HashSet<_> = smt
             .get_instantiations()
             .iter()
@@ -347,14 +343,13 @@ impl QuantifierRefinement {
             let mut batch = prepared.candidates(
                 context.graph,
                 |term| smt.eval_to_string(term),
-                crate::quantifier_abstraction::BinderSearch::Page {
+                crate::quantifiers::BinderSearch::Page {
                     phase,
                     rule,
                     allowance: context.allowance,
                 },
                 |cost_context| context.term_cost(cost_context, context.depth as u32),
-                ArrayInstantiationOptions {
-                    match_scope: None,
+                InstantiationOptions {
                     search_allowance: context.allowance,
                     additional_terms: vec![],
                     candidate_catalog: prepared.catalog.clone(),
@@ -362,7 +357,7 @@ impl QuantifierRefinement {
                     refinement_step,
                     selection_counts: context.selection_counts.clone(),
                     depth: context.depth,
-                    instrumentation: ArrayInstantiationInstrumentation {
+                    instrumentation: InstantiationInstrumentation {
                         artifact_capture: context.artifact_capture,
                         profiling: profiling.clone(),
                     },

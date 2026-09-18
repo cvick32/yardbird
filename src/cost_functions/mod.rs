@@ -5,7 +5,7 @@ pub mod list;
 use egg::CostFunction;
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::quantified_rule::QuantifiedRuleCategory;
+use crate::instantiation::rule::QuantifiedRuleCategory;
 
 #[derive(Clone, Copy, Debug)]
 pub struct CandidateSelectionContext<'a> {

@@ -7,7 +7,7 @@ use smt2parser::{
 };
 
 use crate::{
-    instantiation_provenance::{
+    instantiation::provenance::{
         InstantiationInstallResult, InstantiationRequest, StoredInstantiation,
     },
     instantiation_strategy::assertion_tracker::{AssertionKind, InstantiationAssertionTracker},

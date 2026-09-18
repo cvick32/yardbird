@@ -43,8 +43,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
         model
     }
 
-    fn n_refines(&mut self) -> u32 {
-        1
+    fn refinement_limit(&self) -> Option<u32> {
+        Some(1)
     }
 
     fn setup(

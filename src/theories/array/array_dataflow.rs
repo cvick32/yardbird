@@ -685,8 +685,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation_provenance::InstantiationRequest,
-        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            _request: crate::instantiation::provenance::InstantiationRequest,
+        ) -> crate::instantiation::provenance::InstantiationInstallResult {
             Default::default()
         }
 
@@ -755,8 +755,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation_provenance::InstantiationRequest,
-        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            _request: crate::instantiation::provenance::InstantiationRequest,
+        ) -> crate::instantiation::provenance::InstantiationInstallResult {
             Default::default()
         }
 

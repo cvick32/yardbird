@@ -6,7 +6,8 @@ use crate::{
         array::{ArrayCostContext, ArrayCostFactory},
         YardbirdCostFunction,
     },
-    theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
+    instantiation::language::TermLanguage,
+    theories::list::list_axioms::ListLanguage,
 };
 
 /// Adaptive cost function designed to handle complex array examples that timeout
@@ -67,10 +68,10 @@ impl ArrayCostFactory for AdaptiveArrayCost {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
+impl egg::CostFunction<TermLanguage> for AdaptiveArrayCost {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
@@ -84,7 +85,7 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
         };
 
         let op_cost = match enode {
-            ArrayLanguage::Num(num) => {
+            TermLanguage::Num(num) => {
                 let num_string = num.to_string();
                 let in_trans = self.init_and_transition_system_terms.contains(&num_string);
                 let in_prop = self.property_terms.contains(&num_string);
@@ -98,8 +99,8 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
                     50
                 }
             }
-            ArrayLanguage::ConstArrTyped(_) => 0,
-            ArrayLanguage::WriteTyped(_) => {
+            TermLanguage::ConstArrTyped(_) => 0,
+            TermLanguage::WriteTyped(_) => {
                 if self.depth > 2 {
                     10 + ((self.depth - 2) * 5) // Penalize nested writes strongly
                 } else {
@@ -107,36 +108,36 @@ impl egg::CostFunction<ArrayLanguage> for AdaptiveArrayCost {
                 }
             }
             // Penalize Read operations that are nested
-            ArrayLanguage::ReadTyped(_) => {
+            TermLanguage::ReadTyped(_) => {
                 if self.depth > 2 {
                     8 + ((self.depth - 2) * 3) // Penalize nested reads
                 } else {
                     2 // Base read cost - keep low for simple reads
                 }
             }
-            ArrayLanguage::And(_) => 1,
-            ArrayLanguage::Not(_) => 1,
-            ArrayLanguage::Or(_) => 1,
-            ArrayLanguage::Implies(_) => 1,
-            ArrayLanguage::Eq(_) => 1,
-            ArrayLanguage::Geq(_) => 1,
-            ArrayLanguage::Gt(_) => 1,
-            ArrayLanguage::Leq(_) => 1,
-            ArrayLanguage::Lt(_) => 1,
+            TermLanguage::And(_) => 1,
+            TermLanguage::Not(_) => 1,
+            TermLanguage::Or(_) => 1,
+            TermLanguage::Implies(_) => 1,
+            TermLanguage::Eq(_) => 1,
+            TermLanguage::Geq(_) => 1,
+            TermLanguage::Gt(_) => 1,
+            TermLanguage::Leq(_) => 1,
+            TermLanguage::Lt(_) => 1,
 
             // Arithmetic operations - penalize based on complexity
-            ArrayLanguage::Plus(_) => self.arithmetic_complexity("Plus"),
-            ArrayLanguage::Negate(_) => self.arithmetic_complexity("Negate"),
-            ArrayLanguage::Times(_) => self.arithmetic_complexity("Times"),
-            ArrayLanguage::Mod(_) => self.arithmetic_complexity("Mod"),
-            ArrayLanguage::Div(_) => self.arithmetic_complexity("Div"),
-            ArrayLanguage::ToReal(_) => self.arithmetic_complexity("ToReal"),
-            ArrayLanguage::Ite(_)
-            | ArrayLanguage::Apply(_)
-            | ArrayLanguage::Domain(_)
-            | ArrayLanguage::SortTag(_) => 5,
+            TermLanguage::Plus(_) => self.arithmetic_complexity("Plus"),
+            TermLanguage::Negate(_) => self.arithmetic_complexity("Negate"),
+            TermLanguage::Times(_) => self.arithmetic_complexity("Times"),
+            TermLanguage::Mod(_) => self.arithmetic_complexity("Mod"),
+            TermLanguage::Div(_) => self.arithmetic_complexity("Div"),
+            TermLanguage::ToReal(_) => self.arithmetic_complexity("ToReal"),
+            TermLanguage::Ite(_)
+            | TermLanguage::Apply(_)
+            | TermLanguage::Domain(_)
+            | TermLanguage::SortTag(_) => 5,
 
-            ArrayLanguage::Symbol(sym) => {
+            TermLanguage::Symbol(sym) => {
                 let symbol_str = sym.as_str().to_string();
                 let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
                 let in_prop = self.property_terms.contains(&symbol_str);
@@ -209,7 +210,7 @@ impl egg::CostFunction<ListLanguage> for AdaptiveArrayCost {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for AdaptiveArrayCost {
+impl YardbirdCostFunction<TermLanguage> for AdaptiveArrayCost {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .clone()

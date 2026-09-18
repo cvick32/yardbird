@@ -6,11 +6,11 @@
 
 use std::{cmp::Ordering, fmt::Debug};
 
-use crate::quantified_rule::QuantifiedRuleKind;
+use crate::instantiation::rule::QuantifiedRuleKind;
 
-use super::{
-    candidate_scope::CandidateScope,
-    instantiation_candidate::{InstantiationCandidate, InstantiationGrounding},
+use crate::instantiation::{
+    candidate::{InstantiationCandidate, InstantiationGrounding},
+    scope::CandidateScope,
 };
 
 pub trait InstantiationRanker: Debug + Send {
@@ -100,10 +100,10 @@ impl InstantiationRanker for PreferSourceInstantiationRanker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        instantiation_provenance::InstantiationProvenance,
-        quantified_rule::{ArrayAxiomKind, QuantifiedRule},
-        theories::array::instantiation_candidate::{CandidateGroup, InstantiationCandidate},
+    use crate::instantiation::{
+        candidate::{CandidateGroup, InstantiationCandidate},
+        provenance::InstantiationProvenance,
+        rule::{ArrayAxiomKind, QuantifiedRule},
     };
 
     fn candidate(

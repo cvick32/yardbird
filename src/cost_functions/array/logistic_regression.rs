@@ -8,7 +8,7 @@ use crate::{
         CandidateSelectionContext, CandidateView, ContextualCandidateSelector,
         YardbirdCostFunction,
     },
-    theories::array::array_axioms::ArrayLanguage,
+    instantiation::language::TermLanguage,
     training::{
         canonical_term_hash, LogisticRegressionCandidateFeatures, LogisticRegressionModel,
         TermFeatures,
@@ -66,10 +66,10 @@ impl ArrayCostFactory for LogisticRegression {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for LogisticRegression {
+impl egg::CostFunction<TermLanguage> for LogisticRegression {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
@@ -77,7 +77,7 @@ impl egg::CostFunction<ArrayLanguage> for LogisticRegression {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for LogisticRegression {
+impl YardbirdCostFunction<TermLanguage> for LogisticRegression {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .iter()
@@ -98,16 +98,16 @@ impl YardbirdCostFunction<ArrayLanguage> for LogisticRegression {
         self.reads_writes.clone()
     }
 
-    fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<ArrayLanguage>> {
+    fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<TermLanguage>> {
         Some(self)
     }
 }
 
-impl ContextualCandidateSelector<ArrayLanguage> for LogisticRegression {
+impl ContextualCandidateSelector<TermLanguage> for LogisticRegression {
     fn select_candidate(
         &self,
         context: &CandidateSelectionContext<'_>,
-        candidates: &[CandidateView<'_, ArrayLanguage>],
+        candidates: &[CandidateView<'_, TermLanguage>],
     ) -> Option<usize> {
         let mut best: Option<(usize, f64)> = None;
         for (index, candidate) in candidates.iter().enumerate() {
@@ -151,8 +151,8 @@ impl ContextualCandidateSelector<ArrayLanguage> for LogisticRegression {
 }
 
 fn compare_candidate_tiebreak(
-    left: &CandidateView<'_, ArrayLanguage>,
-    right: &CandidateView<'_, ArrayLanguage>,
+    left: &CandidateView<'_, TermLanguage>,
+    right: &CandidateView<'_, TermLanguage>,
 ) -> std::cmp::Ordering {
     left.current_cost
         .saturating_add(left.prior_use_count)

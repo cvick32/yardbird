@@ -1,11 +1,11 @@
 use crate::{
     auxiliary_synthesis::ArrayConflictRecord,
-    instantiation_provenance::InstantiationProvenance,
-    quantified_rule::{QuantifiedRule, QuantifiedRuleCategory, QuantifiedRuleKind},
-    theories::array::{
-        array_axioms::{expr_to_term, ArrayExpr},
-        candidate_scope::CandidateScope,
-        instantiation_ranker::InstantiationRanker,
+    instantiation::{
+        language::{expr_to_term, TermExpr},
+        provenance::InstantiationProvenance,
+        ranker::InstantiationRanker,
+        rule::{QuantifiedRule, QuantifiedRuleCategory, QuantifiedRuleKind},
+        scope::CandidateScope,
     },
     training::{AbstractInstantiationRecord, DecisionRecord},
 };
@@ -44,7 +44,7 @@ pub enum InstantiationGrounding {
 #[derive(Clone, Debug)]
 pub struct InstantiationCandidate {
     pub rule: QuantifiedRule,
-    pub expression: ArrayExpr,
+    pub expression: TermExpr,
     pub cost: u32,
     pub grounding: InstantiationGrounding,
     pub provenance: InstantiationProvenance,
@@ -92,7 +92,7 @@ impl BatchSummary {
 /// Candidates generated during one array/guard search pass.
 #[derive(Default)]
 pub struct InstantiationBatch {
-    pub search: super::quantified_search::RuleSearchReport,
+    pub search: crate::instantiation::search::RuleSearchReport,
     pub candidates: Vec<InstantiationCandidate>,
 }
 
@@ -126,7 +126,7 @@ impl InstantiationBatch {
             scope,
             known,
             winners_per_group,
-            &crate::theories::array::instantiation_ranker::TermCostInstantiationRanker,
+            &crate::instantiation::ranker::TermCostInstantiationRanker,
             evaluate,
             normalize,
         )
@@ -461,16 +461,16 @@ fn compare_candidates(
 mod tests {
     use super::*;
     use crate::{
-        instantiation_provenance::InstantiationProvenance,
-        instantiation_strategy::assertion_tracker::canonical_instantiation_key,
-        quantified_rule::{ArrayAxiomKind, QuantifiedRule},
-        theories::array::instantiation_ranker::{
-            PreferSourceInstantiationRanker, TermCostInstantiationRanker,
+        instantiation::{
+            provenance::InstantiationProvenance,
+            ranker::{PreferSourceInstantiationRanker, TermCostInstantiationRanker},
+            rule::{ArrayAxiomKind, QuantifiedRule},
         },
+        instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     };
     use smt2parser::vmt::quantified_instantiator::UnquantifiedInstantiator;
 
-    fn array_candidate(expression: ArrayExpr) -> InstantiationCandidate {
+    fn array_candidate(expression: TermExpr) -> InstantiationCandidate {
         InstantiationCandidate {
             rule: QuantifiedRule::array_axiom(ArrayAxiomKind::ConstantArray, "Int", "Int"),
             expression,
@@ -668,10 +668,10 @@ mod tests {
     #[test]
     fn shifted_copies_of_an_instantiation_are_duplicate_after_normalization() {
         let installed = "(=> (not (= i@12 i@11)) (= (Read Int Int a@11 i@12) 0))"
-            .parse::<ArrayExpr>()
+            .parse::<TermExpr>()
             .unwrap();
         let expression = "(=> (not (= i@5 i@4)) (= (Read Int Int a@4 i@5) 0))"
-            .parse::<ArrayExpr>()
+            .parse::<TermExpr>()
             .unwrap();
         let mut batch = InstantiationBatch {
             search: Default::default(),
@@ -708,8 +708,8 @@ mod tests {
 
     #[test]
     fn reversed_equalities_are_duplicate_before_whole_candidate_selection() {
-        let installed: ArrayExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
-        let reversed: ArrayExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
+        let installed: TermExpr = "(= (Read Int Int a@0 i@0) 0)".parse().unwrap();
+        let reversed: TermExpr = "(= 0 (Read Int Int a@0 i@0))".parse().unwrap();
         let mut batch = InstantiationBatch {
             search: Default::default(),
             candidates: vec![array_candidate(reversed)],
@@ -735,8 +735,8 @@ mod tests {
 
     #[test]
     fn only_axioms_false_in_the_current_model_remain_eligible() {
-        let satisfied: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
-        let violated: ArrayExpr = "(= (Read Int Int B j) w)".parse().unwrap();
+        let satisfied: TermExpr = "(= (Read Int Int A i) v)".parse().unwrap();
+        let violated: TermExpr = "(= (Read Int Int B j) w)".parse().unwrap();
         let mut batch = InstantiationBatch {
             search: Default::default(),
             candidates: vec![
@@ -768,7 +768,7 @@ mod tests {
 
     #[test]
     fn full_search_keeps_egraph_conflicts_even_when_the_formula_is_model_satisfied() {
-        let expression: ArrayExpr = "(= (Read Int Int A i) v)".parse().unwrap();
+        let expression: TermExpr = "(= (Read Int Int A i) v)".parse().unwrap();
         let mut guard = array_candidate("(=> guard body)".parse().unwrap());
         guard.rule = QuantifiedRule::transition_guard("guard", 0);
         guard.group = CandidateGroup::Rule;
@@ -809,9 +809,9 @@ mod tests {
 
     #[test]
     fn model_filter_reuses_implication_guards() {
-        let first: ArrayExpr = "(=> guard (= x y))".parse().unwrap();
-        let second: ArrayExpr = "(=> guard (= a b))".parse().unwrap();
-        let violated: ArrayExpr = "(= x y)".parse().unwrap();
+        let first: TermExpr = "(=> guard (= x y))".parse().unwrap();
+        let second: TermExpr = "(=> guard (= a b))".parse().unwrap();
+        let violated: TermExpr = "(= x y)".parse().unwrap();
         let mut batch = InstantiationBatch {
             search: Default::default(),
             candidates: vec![

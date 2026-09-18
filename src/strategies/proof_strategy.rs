@@ -63,8 +63,8 @@ pub trait ProofStrategy<'ctx, S> {
         PropertyCheckMode::Scoped
     }
 
-    fn n_refines(&mut self) -> u32 {
-        250
+    fn refinement_limit(&self) -> Option<u32> {
+        Some(250)
     }
 
     fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> driver::Result<S>;
@@ -94,7 +94,7 @@ pub trait ProofStrategy<'ctx, S> {
         (vec![], vec![])
     }
 
-    fn quantifier_provenance(&self) -> crate::quantifier_provenance::QuantifierProvenance {
+    fn quantifier_provenance(&self) -> crate::quantifiers::provenance::QuantifierProvenance {
         Default::default()
     }
 

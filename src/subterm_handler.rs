@@ -85,7 +85,7 @@ impl SubtermHandler {
     pub(crate) fn register_background_term(&mut self, term: &Term) {
         // Concrete/quantified strategies may retain binders. Their bound
         // variables must not enter the ground refinement term pools.
-        if crate::quantifier_abstraction::contains_binders(term) {
+        if crate::quantifiers::contains_binders(term) {
             return;
         }
         collect_terms(

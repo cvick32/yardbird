@@ -6,8 +6,13 @@ use smt2parser::{concrete::Term, vmt::VMTModel};
 
 use crate::{
     cost_functions::array::ArrayCostFactory,
-    driver::{self},
+    driver,
     ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
+    instantiation::{
+        candidate::{InstantiationBatch, InstantiationCandidate},
+        instantiator::ArtifactCapture,
+        language::{expr_to_term, TermLanguage},
+    },
     policy::{
         effort::{
             EffortContext, EffortDecision, EffortEvent, EffortOperation, EffortRecord, OperationId,
@@ -18,11 +23,8 @@ use crate::{
     profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
     solver::PropertyCheckMode,
     theories::array::{
-        array_axioms::{expr_to_term, ArrayLanguage},
         array_egraph_builder::{ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder},
-        array_rule_instantiator::ArrayArtifactCapture,
         encodings::EncodingOptions,
-        instantiation_candidate::{InstantiationBatch, InstantiationCandidate},
     },
     theory_support::{ArrayTheorySupport, TheorySupport},
     training::{AbstractInstantiationRecord, DecisionRecord},
@@ -63,7 +65,7 @@ where
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     term_selection_counts: FxHashMap<String, u32>,
     term_selection_decisions: FxHashMap<String, String>,
-    artifact_capture: ArrayArtifactCapture,
+    artifact_capture: ArtifactCapture,
     profile: bool,
     profiling_records: Vec<ProfilingRecord>,
     cone_attempted_depths: HashSet<u16>,
@@ -89,7 +91,7 @@ where
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
             term_selection_decisions: FxHashMap::default(),
-            artifact_capture: ArrayArtifactCapture::default(),
+            artifact_capture: ArtifactCapture::default(),
             profile,
             profiling_records: vec![],
             cone_attempted_depths: HashSet::new(),
@@ -99,7 +101,7 @@ where
         }
     }
 
-    pub fn with_artifact_capture(mut self, artifact_capture: ArrayArtifactCapture) -> Self {
+    pub fn with_artifact_capture(mut self, artifact_capture: ArtifactCapture) -> Self {
         self.artifact_capture = artifact_capture;
         self
     }
@@ -125,9 +127,9 @@ where
     }
 }
 
-fn egraph_node_count<N>(egraph: &egg::EGraph<ArrayLanguage, N>) -> usize
+fn egraph_node_count<N>(egraph: &egg::EGraph<TermLanguage, N>) -> usize
 where
-    N: egg::Analysis<ArrayLanguage>,
+    N: egg::Analysis<TermLanguage>,
 {
     egraph.classes().map(|class| class.nodes.len()).sum()
 }
@@ -153,6 +155,24 @@ pub struct ArrayRefinementState {
 }
 
 impl ArrayRefinementState {
+    fn grow_vocabulary(
+        &mut self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        budget: usize,
+    ) -> anyhow::Result<WorkReport> {
+        let growth = self.egraph.grow_vocabulary(smt, budget)?;
+        // Revisiting an existing symbolic root can still add model literals or
+        // equivalences. Root-count growth alone is not a graph mutation test.
+        if growth.examined > 0 {
+            self.graph_version += 1;
+        }
+        Ok(WorkReport {
+            vocabulary_work: growth.examined,
+            terms_added: growth.added,
+            ..Default::default()
+        })
+    }
+
     fn expand_array_graph(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
@@ -207,6 +227,10 @@ impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
 where
     F: ArrayCostFactory + 'static,
 {
+    fn refinement_limit(&self) -> Option<u32> {
+        None
+    }
+
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
         Box::new(ArrayTheorySupport::new(self.array.array_types.clone()))
     }
@@ -362,7 +386,6 @@ where
             depth: state.depth,
             refinement_step,
         });
-        let mut exhausted = false;
         loop {
             if state.binder_search.is_some() {
                 self.quantifier.prepare_binder_search(
@@ -389,14 +412,18 @@ where
                     }
                 }
                 for phase in [
-                    crate::quantifier_abstraction::SearchPhase::Witnesses,
-                    crate::quantifier_abstraction::SearchPhase::TriggeredConflicts,
-                    crate::quantifier_abstraction::SearchPhase::Conflicts,
-                    crate::quantifier_abstraction::SearchPhase::Expand,
+                    crate::quantifiers::SearchPhase::Witnesses,
+                    crate::quantifiers::SearchPhase::TriggeredConflicts,
+                    crate::quantifiers::SearchPhase::Conflicts,
+                    crate::quantifiers::SearchPhase::Expand,
                 ] {
                     kinds.push((OperationKind::Binder(phase), format!("{phase:?}")));
                 }
             }
+            kinds.push((
+                OperationKind::GrowVocabulary,
+                "grow shared vocabulary".into(),
+            ));
             kinds.push((
                 OperationKind::GuardedReads,
                 "guarded read consequences".into(),
@@ -437,9 +464,6 @@ where
             } = decision
             else {
                 self.finish_profiling_record(profiling);
-                if exhausted && !self.has_pending_refinement(state) {
-                    return Err(driver::Error::AbstractionExhausted { depth: state.depth });
-                }
                 return Ok(ProofAction::Continue);
             };
             let operation = operations
@@ -487,7 +511,6 @@ where
             let mut batch = InstantiationBatch::default();
             let mut report = WorkReport::default();
             let mut retain = false;
-            exhausted = false;
             match operation.kind {
                 OperationKind::DiscoverDependencies => {
                     report = self
@@ -512,11 +535,7 @@ where
                     )?;
                     report = WorkReport::from_batch(&batch);
                     retain = report.selected > 0
-                        || phase != crate::quantifier_abstraction::SearchPhase::TriggeredConflicts;
-                    exhausted = state.array_exhausted
-                        && phase == crate::quantifier_abstraction::SearchPhase::Expand
-                        && report.selected == 0
-                        && !report.continuable;
+                        || phase != crate::quantifiers::SearchPhase::TriggeredConflicts;
                 }
                 OperationKind::GuardedReads => {
                     let mut updates = self.array.encoding_plan.violated_guarded_read_updates(
@@ -529,13 +548,14 @@ where
                     report.selected = updates.len();
                     state.guarded_read_updates.extend(updates);
                 }
+                OperationKind::GrowVocabulary => {
+                    report = state.grow_vocabulary(smt, allowance.vocabulary_work)?;
+                }
                 OperationKind::ExpandArray => {
                     report.array_exhausted = matches!(
                         state.expand_array_graph(smt, &self.array.property_cone, &profiling)?,
                         ArrayEGraphBuildStep::Exhausted
                     );
-                    // Empty binder modules need no separate Expand operation.
-                    exhausted = report.array_exhausted && self.quantifier.plan.rules.is_empty();
                 }
                 OperationKind::ArrayCandidates => {
                     batch = self.array.candidates(
@@ -608,7 +628,7 @@ where
                 abstract_id: &abstract_id,
                 assertions_added: result.solver_assertions_added(),
             });
-            if quantifier_kind == crate::quantified_rule::QuantifiedRuleCategory::InputBinder {
+            if quantifier_kind == crate::instantiation::rule::QuantifiedRuleCategory::InputBinder {
                 if let Some(record) = self
                     .profiling_records
                     .last_mut()
@@ -656,7 +676,7 @@ where
         )
     }
 
-    fn quantifier_provenance(&self) -> crate::quantifier_provenance::QuantifierProvenance {
+    fn quantifier_provenance(&self) -> crate::quantifiers::provenance::QuantifierProvenance {
         self.quantifier.provenance.clone()
     }
 
@@ -717,7 +737,7 @@ where
     fn record_installation_outcome(
         &mut self,
         abstract_instantiation_id: &str,
-        result: crate::instantiation_provenance::InstantiationInstallResult,
+        result: crate::instantiation::provenance::InstantiationInstallResult,
     ) {
         let Some(record) = self
             .abstract_instantiations
@@ -844,7 +864,7 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         state: &mut ArrayRefinementState,
         refinement_step: u32,
-        phase: crate::quantifier_abstraction::SearchPhase,
+        phase: crate::quantifiers::SearchPhase,
         profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
     ) -> anyhow::Result<InstantiationBatch> {
         self.quantifier.prepare_binder_search(
@@ -944,16 +964,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy::effort::WorkAllowance;
-    use crate::theories::array::array_dataflow::PropertyCone;
-    use crate::theories::array::{
-        array_egraph_builder::{ArrayEGraphExpansion, FullEGraphBuilder},
-        candidate_scope::CandidateScope,
-    };
     use crate::{
-        cost_functions::array::ArrayAstSize, problem_context::ProblemContext,
-        quantifier_abstraction::SearchPhase, solver::SolverCheckResult,
-        vmt_bmc_session::VmtBmcSession, SolverBackend, YardbirdOptions,
+        cost_functions::array::ArrayAstSize,
+        instantiation::scope::CandidateScope,
+        policy::effort::WorkAllowance,
+        problem_context::ProblemContext,
+        quantifiers::SearchPhase,
+        solver::SolverCheckResult,
+        theories::array::{
+            array_dataflow::PropertyCone,
+            array_egraph_builder::{ArrayEGraphExpansion, FullEGraphBuilder},
+        },
+        vmt_bmc_session::VmtBmcSession,
+        SolverBackend, YardbirdOptions,
     };
 
     fn sat_fixture(input: &str) -> (Abstract<ArrayAstSize>, VmtBmcSession) {
@@ -1325,11 +1348,9 @@ mod tests {
     }
 
     #[test]
-    fn full_array_conflict_is_selected_before_binder_expansion() {
+    fn arrays_use_binder_vocabulary_before_the_full_array_stage() {
         let (mut strategy, mut smt) = expansion_fixture(true);
         let mut state = strategy.setup(&smt, 0).unwrap();
-        strategy.sat(&mut state, &smt, 0).unwrap();
-        assert!(!strategy.has_pending_refinement(&state));
         strategy.sat(&mut state, &smt, 0).unwrap();
         assert!(strategy.has_pending_refinement(&state));
         assert!(!strategy
@@ -1389,8 +1410,8 @@ mod tests {
         assert_eq!(
             selected_categories,
             [
-                crate::quantified_rule::QuantifiedRuleCategory::InputBinder,
-                crate::quantified_rule::QuantifiedRuleCategory::ArrayAxiom
+                crate::instantiation::rule::QuantifiedRuleCategory::InputBinder,
+                crate::instantiation::rule::QuantifiedRuleCategory::ArrayAxiom
             ]
         );
         assert_eq!(
@@ -1514,7 +1535,6 @@ mod tests {
         assert!(strategy.has_pending_refinement(&state));
         assert!(state.array_expansion.is_none());
         assert!(state.egraph.number_of_classes() > 0);
-        assert!(state.egraph.array_match_scope().is_empty());
     }
 
     #[test]
@@ -1715,7 +1735,7 @@ mod tests {
     }
 
     #[test]
-    fn exhausted_array_and_binder_search_terminates() {
+    fn exhausted_search_widens_then_grows_on_the_same_model() {
         let (mut strategy, smt) = sat_fixture(
             "(declare-fun a () (Array Bool Bool))
              (define-fun init () Bool (! true :init true))
@@ -1733,11 +1753,144 @@ mod tests {
             strategy.sat(&mut state, &smt, 0).unwrap();
             assert!(!strategy.has_pending_refinement(&state));
         }
-        assert!(matches!(
-            strategy.sat(&mut state, &smt, 0),
-            Err(driver::Error::AbstractionExhausted { depth: 0 })
-        ));
-        assert_eq!(strategy.profiling_records.len(), 3);
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        let version = state.graph_version;
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        let widened = &strategy.profiling_records[3].effort;
+        assert!(widened.iter().any(|e| e.allowance.winners == 2));
+        strategy.sat(&mut state, &smt, 0).unwrap();
+        assert!(state.graph_version > version);
+        let growth = strategy.profiling_records[4]
+            .effort
+            .iter()
+            .find(|e| e.operation == "GrowVocabulary")
+            .unwrap();
+        assert!(growth.report.terms_added > 0);
+        assert!(growth.report.vocabulary_work <= growth.allowance.vocabulary_work);
+        assert!(!strategy.has_pending_refinement(&state));
+    }
+
+    #[test]
+    fn default_effort_recovers_array_matches_hidden_by_small_caps() {
+        let (mut strategy, smt) = sat_fixture(
+            "(declare-fun a () (Array Int Int))
+             (define-fun init () Bool (! (and
+               (not (= (select (store a 0 10) 0) 10))
+               (not (= (select (store a 1 11) 1) 11))
+               (not (= (select (store a 2 12) 2) 12))) :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool (! false :invar-property 0))",
+        );
+        strategy.profile = true;
+        strategy.policy =
+            strategy
+                .policy
+                .with_effort(crate::policy::DefaultEffort::default().with_allowance(
+                    WorkAllowance {
+                        array_initial_limit: 1,
+                        array_rounds: 1,
+                        vocabulary_work: 1,
+                        ..Default::default()
+                    },
+                ));
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        let model = state.model_version;
+        for _ in 0..12 {
+            strategy.sat(&mut state, &smt, 0).unwrap();
+            if strategy.has_pending_refinement(&state) {
+                break;
+            }
+        }
+        assert_eq!(state.model_version, model);
+        assert!(
+            strategy.has_pending_refinement(&state),
+            "wider caps must recover the skipped array rule"
+        );
+        let records = strategy
+            .profiling_records
+            .iter()
+            .flat_map(|p| &p.effort)
+            .collect::<Vec<_>>();
+        assert!(records
+            .iter()
+            .any(|e| e.operation == "ArrayCandidates" && e.report.budget_exhausted));
+        assert!(records.iter().any(|e| e.operation == "ArrayCandidates"
+            && e.allowance.array_initial_limit > 1
+            && e.report.selected > 0));
+    }
+
+    #[test]
+    fn vocabulary_growth_is_bounded_typed_and_deterministic() {
+        let (mut strategy, smt) = sat_fixture(
+            "(declare-fun a () (Array Int Int))
+             (declare-fun f (Int) Int)
+             (declare-fun p (Int) Bool)
+             (define-fun init () Bool (! true :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool (! false :invar-property 0))",
+        );
+        let build = |graph: &mut crate::refinement_graph::RefinementGraph| {
+            graph.admit(&smt, &"0".parse().unwrap(), true).unwrap();
+            for _ in 0..16 {
+                let growth = graph.grow_vocabulary(&smt, 2).unwrap();
+                assert!(growth.examined <= 2);
+                assert!(growth.added <= growth.examined);
+            }
+            graph
+                .terms
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        };
+        let mut first = strategy.setup(&smt, 0).unwrap();
+        let mut second = strategy.setup(&smt, 0).unwrap();
+        let terms = build(&mut first.egraph);
+        assert_eq!(terms, build(&mut second.egraph));
+        for term in ["(f 0)", "(p 0)", "(+ 0 1)", "(- 0 1)"] {
+            let expression =
+                crate::instantiation::language::translate_term(term.parse().unwrap()).unwrap();
+            assert!(first.egraph.lookup_expr(&expression).is_some(), "{term}");
+        }
+        assert!(terms.iter().all(|term| !term.contains("!val!")));
+        assert!(
+            smt.get_instantiations().is_empty(),
+            "vocabulary is not asserted"
+        );
+    }
+
+    #[test]
+    fn vocabulary_revisit_versions_new_model_equalities_even_without_new_roots() {
+        let (mut strategy, smt) = sat_fixture(
+            "(declare-fun a () (Array Int Int))
+             (declare-fun A (Int) Bool)
+             (define-fun init () Bool (! (A 0) :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool (! false :invar-property 0))",
+        );
+        let mut state = strategy.setup(&smt, 0).unwrap();
+        for term in ["0", "(A 0)"] {
+            state
+                .egraph
+                .admit(&smt, &term.parse().unwrap(), false)
+                .unwrap();
+        }
+        state.egraph.rebuild();
+        let version = state.graph_version;
+        assert!(state.egraph.lookup_expr(&"true".parse().unwrap()).is_none());
+        let report = state.grow_vocabulary(&smt, 1).unwrap();
+        assert_eq!(report.terms_added, 0);
+        assert_eq!(report.vocabulary_work, 1);
+        assert!(state.graph_version > version);
+        let expression =
+            crate::instantiation::language::translate_term("(A 0)".parse().unwrap()).unwrap();
+        assert_eq!(
+            state
+                .egraph
+                .find(state.egraph.lookup_expr(&expression).unwrap()),
+            state
+                .egraph
+                .find(state.egraph.lookup_expr(&"true".parse().unwrap()).unwrap())
+        );
     }
 
     fn profiled_binder_pass(

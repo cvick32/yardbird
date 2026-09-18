@@ -6,7 +6,8 @@ use crate::{
         array::{ArrayCostContext, ArrayCostFactory},
         YardbirdCostFunction,
     },
-    theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
+    instantiation::language::TermLanguage,
+    theories::list::list_axioms::ListLanguage,
 };
 
 /// Custom cost function specifically designed for array_split_20.vmt
@@ -181,20 +182,20 @@ impl ArrayCostFactory for SplitArrayCost {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
+impl egg::CostFunction<TermLanguage> for SplitArrayCost {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
         // Log all Negate (subtraction) operations to see what we're building
-        if let ArrayLanguage::Negate(body) = enode {
+        if let TermLanguage::Negate(body) = enode {
             log::info!("COST: Evaluating subtraction node: Negate({:?})", body);
         }
 
         let op_cost = match enode {
-            ArrayLanguage::Num(num) => {
+            TermLanguage::Num(num) => {
                 let num_string = num.to_string();
                 let in_trans = self.init_and_transition_system_terms.contains(&num_string);
                 let in_prop = self.property_terms.contains(&num_string);
@@ -209,39 +210,39 @@ impl egg::CostFunction<ArrayLanguage> for SplitArrayCost {
                 }
             }
 
-            ArrayLanguage::ConstArrTyped(_) => 0,
+            TermLanguage::ConstArrTyped(_) => 0,
 
             // Keep array operations reasonable, but not as cheap as arithmetic
             // We want to prefer simple indices over nested reads
-            ArrayLanguage::WriteTyped(_) => 2,
-            ArrayLanguage::ReadTyped(_) => 3,
+            TermLanguage::WriteTyped(_) => 2,
+            TermLanguage::ReadTyped(_) => 3,
 
             // Logical operations - keep cheap
-            ArrayLanguage::And(_)
-            | ArrayLanguage::Not(_)
-            | ArrayLanguage::Or(_)
-            | ArrayLanguage::Implies(_)
-            | ArrayLanguage::Eq(_)
-            | ArrayLanguage::Geq(_)
-            | ArrayLanguage::Gt(_)
-            | ArrayLanguage::Leq(_)
-            | ArrayLanguage::Lt(_) => 1,
+            TermLanguage::And(_)
+            | TermLanguage::Not(_)
+            | TermLanguage::Or(_)
+            | TermLanguage::Implies(_)
+            | TermLanguage::Eq(_)
+            | TermLanguage::Geq(_)
+            | TermLanguage::Gt(_)
+            | TermLanguage::Leq(_)
+            | TermLanguage::Lt(_) => 1,
 
             // CRITICAL: Keep arithmetic operations EXTREMELY cheap
             // This is the key difference - we WANT these arithmetic expressions
             // because they match the program structure
-            ArrayLanguage::Plus(_) => 0, // Essential for (+ i 1) and sums - FREE
-            ArrayLanguage::Negate(_) => 0, // Essential for (- i 1), (- i N), (- Z N) - FREE
-            ArrayLanguage::Times(_) => 2, // Used for (* 2 N) in property
-            ArrayLanguage::Mod(_) => 20,
-            ArrayLanguage::Div(_) => 20,
-            ArrayLanguage::ToReal(_) => 1,
-            ArrayLanguage::Ite(_)
-            | ArrayLanguage::Apply(_)
-            | ArrayLanguage::Domain(_)
-            | ArrayLanguage::SortTag(_) => 5,
+            TermLanguage::Plus(_) => 0, // Essential for (+ i 1) and sums - FREE
+            TermLanguage::Negate(_) => 0, // Essential for (- i 1), (- i N), (- Z N) - FREE
+            TermLanguage::Times(_) => 2, // Used for (* 2 N) in property
+            TermLanguage::Mod(_) => 20,
+            TermLanguage::Div(_) => 20,
+            TermLanguage::ToReal(_) => 1,
+            TermLanguage::Ite(_)
+            | TermLanguage::Apply(_)
+            | TermLanguage::Domain(_)
+            | TermLanguage::SortTag(_) => 5,
 
-            ArrayLanguage::Symbol(sym) => {
+            TermLanguage::Symbol(sym) => {
                 let symbol_str = sym.as_str().to_string();
                 let in_trans = self.init_and_transition_system_terms.contains(&symbol_str);
                 let in_prop = self.property_terms.contains(&symbol_str);
@@ -339,7 +340,7 @@ impl egg::CostFunction<ListLanguage> for SplitArrayCost {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for SplitArrayCost {
+impl YardbirdCostFunction<TermLanguage> for SplitArrayCost {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .clone()

@@ -20,7 +20,7 @@ use smt2parser::{
 
 use crate::{
     auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec, FrameSpan},
-    instantiation_provenance::{
+    instantiation::provenance::{
         InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
         StoredInstantiation,
     },
@@ -195,10 +195,10 @@ impl VmtBmcSession {
             .filter(|function| function.name.starts_with("Read_") && function.arg_sorts.len() == 2)
             .map(|function| {
                 (
-                    crate::theories::array::array_axioms::ArrayLanguage::sort_to_name(
+                    crate::instantiation::language::TermLanguage::sort_to_name(
                         &function.arg_sorts[1],
                     ),
-                    crate::theories::array::array_axioms::ArrayLanguage::sort_to_name(
+                    crate::instantiation::language::TermLanguage::sort_to_name(
                         &function.return_sort,
                     ),
                 )
@@ -771,7 +771,7 @@ impl VmtBmcSession {
             term: String,
             abstract_instantiation_id: Option<String>,
             frame: u16,
-            substitution: Vec<crate::instantiation_provenance::InstantiationSubstitution>,
+            substitution: Vec<crate::instantiation::provenance::InstantiationSubstitution>,
             in_core: bool,
         }
 

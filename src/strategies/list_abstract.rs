@@ -136,7 +136,7 @@ where
             .into_iter()
             .map(|inst| {
                 smt.add_instantiation(
-                    crate::instantiation_provenance::InstantiationRequest::untracked(inst),
+                    crate::instantiation::provenance::InstantiationRequest::untracked(inst),
                 )
                 .abstract_instance_added
             })

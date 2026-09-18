@@ -1,19 +1,17 @@
 use std::collections::HashSet;
 
 use smt2parser::{concrete::Term, vmt::ReadsAndWrites};
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
-    theories::array::{
-        array_axioms::{
-            generate_array_instantiation_candidates_with_budget, translate_term,
-            ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
-        },
-        array_rule_instantiator::ArrayArtifactCapture,
-        candidate_scope::CandidateScope,
-        instantiation_candidate::InstantiationCandidate,
-    },
-};
+use yardbird::cost_functions::array::ArrayBMCCost;
+use yardbird::instantiation::candidate::InstantiationCandidate;
+use yardbird::instantiation::engine::InstantiationInstrumentation;
+use yardbird::instantiation::engine::InstantiationOptions;
+use yardbird::instantiation::instantiator::ArtifactCapture;
+use yardbird::instantiation::language::translate_term;
+use yardbird::instantiation::language::TermLanguage;
+use yardbird::instantiation::scope::CandidateScope;
+use yardbird::problem_context::ArrayCandidateCatalog;
+use yardbird::problem_context::ArrayCandidatePool;
+use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates_with_budget;
 
 fn array_binding(candidate: &InstantiationCandidate) -> String {
     candidate
@@ -31,7 +29,7 @@ fn explore(
     budget: usize,
     mut accept: impl FnMut(&InstantiationCandidate) -> anyhow::Result<bool>,
 ) -> anyhow::Result<Vec<String>> {
-    let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
     let mut terms = vec![
         "false".to_string(),
         "true".to_string(),
@@ -73,8 +71,7 @@ fn explore(
         &egraph,
         cost,
         &[("Int".into(), "Bool".into())],
-        ArrayInstantiationOptions {
-            match_scope: None,
+        InstantiationOptions {
             search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog {
@@ -88,8 +85,8 @@ fn explore(
             refinement_step: 0,
             selection_counts: Default::default(),
             depth: 1,
-            instrumentation: ArrayInstantiationInstrumentation {
-                artifact_capture: ArrayArtifactCapture::default(),
+            instrumentation: InstantiationInstrumentation {
+                artifact_capture: ArtifactCapture::default(),
                 profiling: None,
             },
         },

@@ -6,7 +6,8 @@ use crate::{
         array::{ArrayCostContext, ArrayCostFactory},
         YardbirdCostFunction,
     },
-    theories::{array::array_axioms::ArrayLanguage, list::list_axioms::ListLanguage},
+    instantiation::language::TermLanguage,
+    theories::list::list_axioms::ListLanguage,
 };
 
 #[derive(Clone)]
@@ -30,16 +31,16 @@ impl ArrayCostFactory for ArrayPreferConstants {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for ArrayPreferConstants {
+impl egg::CostFunction<TermLanguage> for ArrayPreferConstants {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
         let op_cost = match enode {
-            ArrayLanguage::Num(_) => 0,
-            ArrayLanguage::Symbol(sym) => {
+            TermLanguage::Num(_) => 0,
+            TermLanguage::Symbol(sym) => {
                 if let Some((_, _)) = sym.as_str().split_once(VARIABLE_FRAME_DELIMITER) {
                     20
                 } else {
@@ -64,7 +65,7 @@ impl egg::CostFunction<ListLanguage> for ArrayPreferConstants {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for ArrayPreferConstants {
+impl YardbirdCostFunction<TermLanguage> for ArrayPreferConstants {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .iter()

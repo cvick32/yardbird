@@ -7,7 +7,7 @@ use crate::{
         array::{ArrayBMCCost, ArrayCostContext, ArrayCostFactory},
         YardbirdCostFunction,
     },
-    theories::array::array_axioms::ArrayLanguage,
+    instantiation::language::TermLanguage,
 };
 
 /// BMC scoring with free Boolean literals for protocol instantiations.
@@ -48,22 +48,22 @@ impl ArrayCostFactory for ProtocolBmcCost {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for ProtocolBmcCost {
+impl egg::CostFunction<TermLanguage> for ProtocolBmcCost {
     type Cost = u32;
 
-    fn cost<C>(&mut self, enode: &ArrayLanguage, costs: C) -> Self::Cost
+    fn cost<C>(&mut self, enode: &TermLanguage, costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
         match enode {
-            ArrayLanguage::Symbol(sym) if matches!(sym.as_str(), "true" | "false") => 0,
-            ArrayLanguage::Symbol(_) => self.base.cost(enode, costs).max(1),
+            TermLanguage::Symbol(sym) if matches!(sym.as_str(), "true" | "false") => 0,
+            TermLanguage::Symbol(_) => self.base.cost(enode, costs).max(1),
             _ => self.base.cost(enode, costs),
         }
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for ProtocolBmcCost {
+impl YardbirdCostFunction<TermLanguage> for ProtocolBmcCost {
     fn get_string_terms(&self) -> Vec<String> {
         self.base.get_string_terms()
     }
@@ -101,7 +101,7 @@ mod tests {
     fn boolean_literals_are_cheaper_than_bmc_and_rule_guards() {
         let mut cost = protocol_cost();
         for literal in ["true", "false"] {
-            let expr: RecExpr<ArrayLanguage> = literal.parse().unwrap();
+            let expr: RecExpr<TermLanguage> = literal.parse().unwrap();
             assert_eq!(cost.cost_rec(&expr), 0);
             assert!(cost.cost_rec(&expr) < cost.base.cost_rec(&expr));
             let guard = "grant_exclusive_rule@0".parse().unwrap();
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn extraction_prefers_literal_values_in_boolean_arrays() {
         for literal in ["true", "false"] {
-            let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+            let mut egraph = EGraph::<TermLanguage, ()>::default();
             let guard = egraph.add_expr(&"grant_exclusive_rule@3".parse().unwrap());
             let value = egraph.add_expr(&literal.parse().unwrap());
             egraph.union(guard, value);
@@ -145,7 +145,7 @@ mod tests {
             "(+ i@0 1)",
             "(Read Int Int (Write Int Int a@0 i@0 2) j@1)",
         ] {
-            let expr: RecExpr<ArrayLanguage> = term.parse().unwrap();
+            let expr: RecExpr<TermLanguage> = term.parse().unwrap();
             assert_eq!(cost.cost_rec(&expr), cost.base.cost_rec(&expr), "{term}");
         }
     }
@@ -154,7 +154,7 @@ mod tests {
     fn boolean_literals_beat_property_and_current_frame_symbols() {
         let mut cost = protocol_cost();
         for term in ["property@3", "grant_exclusive_rule@3"] {
-            let expr: RecExpr<ArrayLanguage> = term.parse().unwrap();
+            let expr: RecExpr<TermLanguage> = term.parse().unwrap();
             assert_eq!(cost.base.cost_rec(&expr), 0);
             assert_eq!(cost.cost_rec(&expr), 1);
             for literal in ["true", "false"] {

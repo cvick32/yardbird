@@ -16,8 +16,7 @@ use crate::solver::{
     new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
 };
 use crate::strategies::{ProofAction, ProofStrategy};
-use crate::training::UnsatEventRecord;
-use crate::utils::SolverStatistics;
+use crate::{training::UnsatEventRecord, utils::SolverStatistics};
 use crate::{ProofLoopResult, SolverBackend};
 
 /// Represents an SMTLIB problem (non-transition system)
@@ -457,6 +456,13 @@ impl SmtlibCommandExecutor {
     }
 }
 
+/// External limits for one SMT-LIB refinement run. None leaves that limit open.
+#[derive(Clone, Copy, Default)]
+pub struct RefinementLimits {
+    pub max_refinements: Option<u32>,
+    pub wall_timeout: Option<std::time::Duration>,
+}
+
 /// Orchestrates strategy setup and refinement around a
 /// [`SmtlibRefinementSession`]. This is separate from direct command-stream
 /// execution because its SAT results feed Yardbird's refinement loop.
@@ -525,12 +531,39 @@ impl SmtlibRefinementRunner {
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
-        max_refinements: u32,
+        limits: RefinementLimits,
         track_instantiations: bool,
         mut profiler: Option<Profiler>,
         solver_capture: Option<SolverCapture>,
     ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
         use log::info;
+        let run_start = std::time::Instant::now();
+        let max_refinements = limits
+            .max_refinements
+            .or_else(|| strategy.refinement_limit())
+            .unwrap_or(u32::MAX);
+        let mut progress = crate::driver::RunProgress {
+            termination_reason: "refinement_limit".into(),
+            error: None,
+            elapsed_wall_secs: 0.0,
+            target_depth: 1,
+            deepest_completed_depth: None,
+            current_depth: Some(0),
+            current_refinement_step: None,
+            last_completed_action: None,
+        };
+        macro_rules! checkpoint {
+            ($label:lifetime, $action:expr) => {
+                progress.last_completed_action = Some($action.into());
+                if limits
+                    .wall_timeout
+                    .is_some_and(|limit| run_start.elapsed() >= limit)
+                {
+                    progress.termination_reason = "timeout".into();
+                    break $label;
+                }
+            };
+        }
 
         // 1. Abstract if needed
         let theory = strategy.get_theory_support();
@@ -585,11 +618,15 @@ impl SmtlibRefinementRunner {
         let mut last_unsat_instantiation_count = 0;
         let mut last_unsat_stats: Option<SolverStatistics> = None;
 
+        let mut concrete_rejected = false;
         'refinement: for refinement_step in 0..max_refinements {
+            checkpoint!('refinement, "setup");
+            progress.current_refinement_step = Some(refinement_step);
             info!("Refinement iteration {}", refinement_step + 1);
             total_refinement_steps += 1;
 
             let mut state = strategy.setup(&smt_problem, 0)?;
+            checkpoint!('refinement, "strategy_setup");
 
             let check_result = smt_problem.check_current_query();
             if let Some(profiler) = &mut profiler {
@@ -610,6 +647,7 @@ impl SmtlibRefinementRunner {
                 );
             }
 
+            checkpoint!('refinement, "check");
             let mut action = match check_result {
                 SolverCheckResult::Unsat => {
                     info!("  Result: UNSAT");
@@ -640,9 +678,16 @@ impl SmtlibRefinementRunner {
                 }
             };
 
+            checkpoint!('refinement, "strategy_action");
             while matches!(action, ProofAction::Continue)
                 && !strategy.has_pending_refinement(&state)
             {
+                checkpoint!('refinement, "refinement_search");
+                if !strategy.allows_concrete_validation() || concrete_rejected {
+                    action = strategy.sat(&mut state, &smt_problem, refinement_step)?;
+                    checkpoint!('refinement, "strategy_action");
+                    continue;
+                }
                 info!("  Yardbird found no refinement; checking the concrete array theory");
                 let concrete_strategy: Box<
                     dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
@@ -663,13 +708,16 @@ impl SmtlibRefinementRunner {
                     &concrete_problem.get_solver_statistics(),
                 );
 
+                checkpoint!('refinement, "concrete_validation");
                 match concrete_result {
                     SolverCheckResult::Sat => {
                         info!("  Concrete validation: SAT");
                         counterexample = true;
+                        progress.termination_reason = "counterexample".into();
                         break 'refinement;
                     }
                     SolverCheckResult::Unsat => {
+                        concrete_rejected = true;
                         info!("  Concrete validation: UNSAT; expanding Yardbird's e-graph");
                         action = strategy.sat(&mut state, &smt_problem, refinement_step)?;
                     }
@@ -684,6 +732,7 @@ impl SmtlibRefinementRunner {
                 }
             }
 
+            checkpoint!('refinement, "refinement_search");
             match action {
                 ProofAction::Continue => {
                     info!("  Action: Continue refinement");
@@ -706,10 +755,14 @@ impl SmtlibRefinementRunner {
                 ProofAction::FoundProof => {
                     info!("  Action: Found proof!");
                     found_proof = true;
+                    progress.termination_reason = "proof".into();
+                    progress.deepest_completed_depth = Some(0);
                     strategy.finish(state, &mut smt_problem)?;
                     break;
                 }
                 ProofAction::NextDepth => {
+                    progress.termination_reason = "unsat".into();
+                    progress.deepest_completed_depth = Some(0);
                     // For SMTLIB (no depths), treat this as completion
                     info!("  Action: Refinement complete");
                     strategy.finish(state, &mut smt_problem)?;
@@ -718,6 +771,7 @@ impl SmtlibRefinementRunner {
                 ProofAction::FoundCounterexample => {
                     info!("  Action: Found counterexample");
                     counterexample = true;
+                    progress.termination_reason = "counterexample".into();
                     strategy.finish(state, &mut smt_problem)?;
                     break;
                 }
@@ -791,7 +845,10 @@ impl SmtlibRefinementRunner {
             indexed_instantiations,
             unsat_events,
             auxiliary_records: vec![],
-            run_progress: None,
+            run_progress: Some({
+                progress.elapsed_wall_secs = run_start.elapsed().as_secs_f64();
+                progress
+            }),
             profiling: ProfilingRunRecord::default(),
         };
         record_solver_phase_statistics(

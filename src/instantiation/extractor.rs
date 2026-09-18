@@ -6,13 +6,13 @@ use smt2parser::vmt::{ReadsAndWrites, VARIABLE_FRAME_DELIMITER};
 
 use crate::{
     cost_functions::{CandidateSelectionContext, CandidateView, YardbirdCostFunction},
+    instantiation::{
+        language::{translate_term, TermExpr, TermLanguage},
+        rule::QuantifiedRuleCategory,
+        scope::CandidateScope,
+    },
     problem_context::ArrayCandidateCatalog,
     profiling::ArrayProfilingCollector,
-    quantified_rule::QuantifiedRuleCategory,
-    theories::array::{
-        array_axioms::{translate_term, ArrayExpr, ArrayLanguage},
-        candidate_scope::CandidateScope,
-    },
     training::{
         canonical_term_hash, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
         TermFeatures,
@@ -25,7 +25,7 @@ pub enum CandidateOrigin {
     Derived,
 }
 
-pub struct ArrayTermExtractorOptions {
+pub struct TermExtractorOptions {
     pub candidate_catalog: ArrayCandidateCatalog,
     pub candidate_scope: CandidateScope,
     pub refinement_step: u32,
@@ -34,10 +34,10 @@ pub struct ArrayTermExtractorOptions {
     pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
 }
 
-type RankedTerm = (ArrayExpr, u32);
+type RankedTerm = (TermExpr, u32);
 type CandidatePoolRef<'a> = (&'a Vec<RankedTerm>, CandidateOrigin);
 type MatchingWriteCacheKey = (String, String, String, egg::Id, egg::Id);
-type WriteCandidateIndex = FxHashMap<String, Vec<(ArrayExpr, ArrayExpr)>>;
+type WriteCandidateIndex = FxHashMap<String, Vec<(TermExpr, TermExpr)>>;
 
 fn index_write_candidates(reads_and_writes: &ReadsAndWrites) -> WriteCandidateIndex {
     let mut index = WriteCandidateIndex::default();
@@ -71,16 +71,13 @@ fn index_write_candidates(reads_and_writes: &ReadsAndWrites) -> WriteCandidateIn
     index
 }
 
-fn compare_terms_with_cost(
-    left: (&ArrayExpr, u32),
-    right: (&ArrayExpr, u32),
-) -> std::cmp::Ordering {
+fn compare_terms_with_cost(left: (&TermExpr, u32), right: (&TermExpr, u32)) -> std::cmp::Ordering {
     left.1
         .cmp(&right.1)
         .then_with(|| left.0.to_string().cmp(&right.0.to_string()))
 }
 
-fn prior_use_count(selection_counts: &FxHashMap<String, u32>, term: &ArrayExpr) -> u32 {
+fn prior_use_count(selection_counts: &FxHashMap<String, u32>, term: &TermExpr) -> u32 {
     selection_counts
         .get(&canonical_term_hash(term))
         .copied()
@@ -89,8 +86,8 @@ fn prior_use_count(selection_counts: &FxHashMap<String, u32>, term: &ArrayExpr) 
 
 #[cfg(test)]
 fn compare_terms_with_history(
-    left: (&ArrayExpr, u32),
-    right: (&ArrayExpr, u32),
+    left: (&TermExpr, u32),
+    right: (&TermExpr, u32),
     selection_counts: &FxHashMap<String, u32>,
     baseline_use_count: u32,
 ) -> std::cmp::Ordering {
@@ -104,17 +101,17 @@ fn compare_terms_with_history(
         .then_with(|| compare_terms_with_cost(left, right))
 }
 
-fn is_z3_model_value_node(node: &ArrayLanguage) -> bool {
-    matches!(node, ArrayLanguage::Symbol(symbol) if symbol.as_str().contains("!val!"))
+fn is_z3_model_value_node(node: &TermLanguage) -> bool {
+    matches!(node, TermLanguage::Symbol(symbol) if symbol.as_str().contains("!val!"))
 }
 
-fn contains_z3_model_value(expr: &ArrayExpr) -> bool {
+fn contains_z3_model_value(expr: &TermExpr) -> bool {
     expr.as_ref().iter().any(is_z3_model_value_node)
 }
 
-pub struct ArrayTermExtractor<CF>
+pub struct TermExtractor<CF>
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     source_term_map: HashMap<egg::Id, Vec<RankedTerm>>,
     all_term_map: HashMap<egg::Id, Vec<RankedTerm>>,
@@ -129,55 +126,55 @@ where
     selection_counts: FxHashMap<String, u32>,
     depth: u16,
     profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
-    fallback_term_map: RefCell<Option<FxHashMap<egg::Id, ArrayExpr>>>,
+    fallback_term_map: RefCell<Option<FxHashMap<egg::Id, TermExpr>>>,
     fallback_roots: Option<std::collections::HashSet<egg::Id>>,
-    matching_write_cache: RefCell<FxHashMap<MatchingWriteCacheKey, Option<(ArrayExpr, ArrayExpr)>>>,
+    matching_write_cache: RefCell<FxHashMap<MatchingWriteCacheKey, Option<(TermExpr, TermExpr)>>>,
 }
 
-fn deindex_abstract_term(instantiation: &ArrayExpr) -> ArrayExpr {
+fn deindex_abstract_term(instantiation: &TermExpr) -> TermExpr {
     let nodes = instantiation
         .as_ref()
         .iter()
         .map(|node| match node {
-            ArrayLanguage::Symbol(sym) => {
+            TermLanguage::Symbol(sym) => {
                 let normalized = match sym.as_str().split_once(VARIABLE_FRAME_DELIMITER) {
                     Some((base, suffix)) if suffix.parse::<u32>().is_ok() => base.into(),
                     _ => *sym,
                 };
-                ArrayLanguage::Symbol(normalized)
+                TermLanguage::Symbol(normalized)
             }
             _ => node.clone(),
         })
         .collect::<Vec<_>>();
 
-    ArrayExpr::from(nodes)
+    TermExpr::from(nodes)
 }
 
-impl<CF> ArrayTermExtractor<CF>
+impl<CF> TermExtractor<CF>
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     pub fn new<N>(
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         cost_function: CF,
-        options: ArrayTermExtractorOptions,
+        options: TermExtractorOptions,
     ) -> Self
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         Self::for_eclasses(egraph, cost_function, options, None)
     }
 
     pub(crate) fn for_eclasses<N>(
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         mut cost_function: CF,
-        options: ArrayTermExtractorOptions,
+        options: TermExtractorOptions,
         needed_classes: Option<&std::collections::HashSet<egg::Id>>,
     ) -> Self
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
-        let ArrayTermExtractorOptions {
+        let TermExtractorOptions {
             candidate_catalog,
             candidate_scope,
             refinement_step,
@@ -200,7 +197,7 @@ where
                 continue;
             }
             source_terms.insert(term.to_string());
-            if matches!(term.as_ref().last(), Some(ArrayLanguage::WriteTyped(_))) {
+            if matches!(term.as_ref().last(), Some(TermLanguage::WriteTyped(_))) {
                 source_write_terms.insert(term.to_string());
             }
             let Some(expr) = egraph.lookup_expr(&term) else {
@@ -290,11 +287,11 @@ where
     /// Provenance continues to come from the source catalog.
     pub(crate) fn admit_terms_for_eclasses<N>(
         &mut self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-        terms: &[ArrayExpr],
+        egraph: &egg::EGraph<TermLanguage, N>,
+        terms: &[TermExpr],
         needed_classes: Option<&std::collections::HashSet<egg::Id>>,
     ) where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         if !self.candidate_scope.allows_derived() {
             return;
@@ -321,12 +318,12 @@ where
 
     pub(crate) fn cached_matching_write(
         &self,
-        array: &ArrayExpr,
+        array: &TermExpr,
         index_sort: &str,
         value_sort: &str,
         index_eclass: egg::Id,
         value_eclass: egg::Id,
-    ) -> Option<Option<(ArrayExpr, ArrayExpr)>> {
+    ) -> Option<Option<(TermExpr, TermExpr)>> {
         self.matching_write_cache
             .borrow()
             .get(&(
@@ -341,12 +338,12 @@ where
 
     pub(crate) fn cache_matching_write(
         &self,
-        array: &ArrayExpr,
+        array: &TermExpr,
         index_sort: &str,
         value_sort: &str,
         index_eclass: egg::Id,
         value_eclass: egg::Id,
-        result: Option<(ArrayExpr, ArrayExpr)>,
+        result: Option<(TermExpr, TermExpr)>,
     ) {
         self.matching_write_cache.borrow_mut().insert(
             (
@@ -360,7 +357,7 @@ where
         );
     }
 
-    pub(crate) fn source_write_candidates(&self, array: &ArrayExpr) -> &[(ArrayExpr, ArrayExpr)] {
+    pub(crate) fn source_write_candidates(&self, array: &TermExpr) -> &[(TermExpr, TermExpr)] {
         self.source_write_candidates
             .get(&array.to_string())
             .map(Vec::as_slice)
@@ -369,14 +366,14 @@ where
 
     pub(crate) fn source_candidates_for_eclass<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
-    ) -> Vec<ArrayExpr>
+    ) -> Vec<TermExpr>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let eclass = egraph.find(eclass);
-        let mut expressions: Vec<ArrayExpr> = self
+        let mut expressions: Vec<TermExpr> = self
             .source_term_map
             .get(&egraph.find(eclass))
             .map(|candidates| {
@@ -387,7 +384,7 @@ where
             })
             .unwrap_or_default();
         for raw_array in self.source_write_candidates.keys() {
-            let Ok(array) = raw_array.parse::<ArrayExpr>() else {
+            let Ok(array) = raw_array.parse::<TermExpr>() else {
                 continue;
             };
             if egraph
@@ -402,7 +399,7 @@ where
         expressions
     }
 
-    pub(crate) fn all_write_candidates(&self, array: &ArrayExpr) -> &[(ArrayExpr, ArrayExpr)] {
+    pub(crate) fn all_write_candidates(&self, array: &TermExpr) -> &[(TermExpr, TermExpr)] {
         self.all_write_candidates
             .get(&array.to_string())
             .map(Vec::as_slice)
@@ -411,11 +408,11 @@ where
 
     pub fn ranked_candidates<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
-    ) -> Vec<(ArrayExpr, i32)>
+    ) -> Vec<(TermExpr, i32)>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         if let Some(terms) = self.candidates_for_eclass(egraph, eclass) {
             let candidates = terms
@@ -438,12 +435,12 @@ where
 
     pub fn candidate_origin<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
-        term: &ArrayExpr,
+        term: &TermExpr,
     ) -> CandidateOrigin
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let eclass = egraph.find(eclass);
         if self
@@ -463,15 +460,15 @@ where
 
     /// A source-only instantiation may choose model-equivalent representatives
     /// for scalar slots, but its array update must remain one exact source site.
-    pub fn is_source_write(&self, expr: &ArrayExpr) -> bool {
+    pub fn is_source_write(&self, expr: &TermExpr) -> bool {
         self.source_write_terms.contains(&expr.to_string())
     }
 
-    pub fn cost_of(&self, expr: &ArrayExpr) -> u32 {
+    pub fn cost_of(&self, expr: &TermExpr) -> u32 {
         self.cost_of_at("extractor_cost_of", expr)
     }
 
-    pub fn cost_of_at(&self, site: &'static str, expr: &ArrayExpr) -> u32 {
+    pub fn cost_of_at(&self, site: &'static str, expr: &TermExpr) -> u32 {
         let mut cost_function = self.cost_function.borrow_mut();
         if let Some(profiling) = &self.profiling {
             profiling
@@ -484,15 +481,15 @@ where
 
     pub fn decision_record<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
         axiom_name: &str,
         variable: egg::Var,
-        chosen_term: &ArrayExpr,
+        chosen_term: &TermExpr,
         decision_key: String,
     ) -> DecisionRecord
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let chosen_hash = canonical_term_hash(chosen_term);
         let mut candidates = self
@@ -555,7 +552,7 @@ where
     pub fn abstract_instantiation_record(
         &self,
         axiom_name: &str,
-        instantiation: &ArrayExpr,
+        instantiation: &TermExpr,
         decision_keys: Vec<String>,
         substitution: &[(String, smt2parser::concrete::Term)],
     ) -> AbstractInstantiationRecord {
@@ -564,7 +561,7 @@ where
         let substitution = substitution
             .iter()
             .map(
-                |(variable, term)| crate::instantiation_provenance::InstantiationSubstitution {
+                |(variable, term)| crate::instantiation::provenance::InstantiationSubstitution {
                     variable: variable.clone(),
                     term: term.to_string(),
                 },
@@ -596,10 +593,7 @@ where
         }
     }
 
-    fn candidate_ranks(
-        &self,
-        valid_terms: &[&(ArrayExpr, u32)],
-    ) -> FxHashMap<String, (usize, f64)> {
+    fn candidate_ranks(&self, valid_terms: &[&(TermExpr, u32)]) -> FxHashMap<String, (usize, f64)> {
         let candidate_count = valid_terms.len();
         let mut ranked_terms = valid_terms
             .iter()
@@ -634,11 +628,11 @@ where
 
     fn select_contextual_candidate<'a>(
         &self,
-        valid_terms: &[&'a (ArrayExpr, u32)],
+        valid_terms: &[&'a (TermExpr, u32)],
         rule_name: &str,
         rule_category: QuantifiedRuleCategory,
         variable: egg::Var,
-    ) -> Option<(&'a ArrayExpr, u32)> {
+    ) -> Option<(&'a TermExpr, u32)> {
         let candidate_count = valid_terms.len();
         if candidate_count == 0 {
             return None;
@@ -696,9 +690,9 @@ where
 
     fn choose_with_history<'a>(
         &self,
-        valid_terms: Vec<&'a (ArrayExpr, u32)>,
+        valid_terms: Vec<&'a (TermExpr, u32)>,
         baseline_use_count: u32,
-    ) -> Option<(&'a ArrayExpr, u32)> {
+    ) -> Option<(&'a TermExpr, u32)> {
         valid_terms
             .into_iter()
             .min_by(|(left_term, left_cost), (right_term, right_cost)| {
@@ -718,14 +712,14 @@ where
 
     pub fn extract_for_decision<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
         rule_name: &str,
         rule_category: QuantifiedRuleCategory,
         variable: egg::Var,
-    ) -> egg::RecExpr<ArrayLanguage>
+    ) -> egg::RecExpr<TermLanguage>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         self.extract_for_decision_with_origin(egraph, eclass, rule_name, rule_category, variable)
             .0
@@ -733,14 +727,14 @@ where
 
     pub fn extract_for_decision_with_origin<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
         rule_name: &str,
         rule_category: QuantifiedRuleCategory,
         variable: egg::Var,
-    ) -> (egg::RecExpr<ArrayLanguage>, CandidateOrigin)
+    ) -> (egg::RecExpr<TermLanguage>, CandidateOrigin)
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         if let Some((terms, _)) = self.candidates_with_origin(egraph, eclass) {
             log::debug!("NUMBER OF OPTIONS: {}", terms.len());
@@ -793,11 +787,11 @@ where
 
     fn candidates_for_eclass<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
-    ) -> Option<&Vec<(ArrayExpr, CF::Cost)>>
+    ) -> Option<&Vec<(TermExpr, CF::Cost)>>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         self.candidates_with_origin(egraph, eclass)
             .map(|(terms, _)| terms)
@@ -805,11 +799,11 @@ where
 
     fn candidates_with_origin<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
     ) -> Option<CandidatePoolRef<'_>>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let eclass = egraph.find(eclass);
         match self.candidate_scope {
@@ -830,11 +824,11 @@ where
 
     fn extract_from_egraph<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
-    ) -> Option<ArrayExpr>
+    ) -> Option<TermExpr>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         if self.fallback_term_map.borrow().is_none() {
             let computed = self.compute_fallback_terms(egraph);
@@ -849,10 +843,10 @@ where
 
     fn compute_fallback_terms<N>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
-    ) -> FxHashMap<egg::Id, ArrayExpr>
+        egraph: &egg::EGraph<TermLanguage, N>,
+    ) -> FxHashMap<egg::Id, TermExpr>
     where
-        N: egg::Analysis<ArrayLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         // Preserve the normal best-representative fallback without costing
         // disconnected classes belonging only to rejected binder matches.
@@ -869,7 +863,7 @@ where
             }
             reachable
         });
-        let mut best_by_eclass: FxHashMap<egg::Id, (u32, String, ArrayExpr)> = FxHashMap::default();
+        let mut best_by_eclass: FxHashMap<egg::Id, (u32, String, TermExpr)> = FxHashMap::default();
 
         loop {
             let mut changed = false;
@@ -950,10 +944,10 @@ fn self_cost<CF>(
     cost_function: &mut CF,
     profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
     site: &'static str,
-    term: &ArrayExpr,
+    term: &TermExpr,
 ) -> u32
 where
-    CF: YardbirdCostFunction<ArrayLanguage>,
+    CF: YardbirdCostFunction<TermLanguage>,
 {
     if let Some(profiling) = profiling {
         profiling
@@ -965,9 +959,9 @@ where
 }
 
 fn insert_candidate<C: Copy + Ord>(
-    term_map: &mut HashMap<egg::Id, Vec<(ArrayExpr, C)>>,
+    term_map: &mut HashMap<egg::Id, Vec<(TermExpr, C)>>,
     eclass: egg::Id,
-    term: ArrayExpr,
+    term: TermExpr,
     cost: C,
 ) {
     let candidates = term_map.entry(eclass).or_default();
@@ -983,19 +977,23 @@ mod tests {
         rc::Rc,
     };
 
-    use super::{
-        compare_terms_with_cost, compare_terms_with_history, deindex_abstract_term,
-        ArrayTermExtractor, ArrayTermExtractorOptions, CandidateOrigin,
-    };
-    use crate::theories::array::candidate_scope::CandidateScope;
+    use super::compare_terms_with_cost;
+    use super::compare_terms_with_history;
+    use super::deindex_abstract_term;
+    use super::CandidateOrigin;
+    use super::TermExtractor;
+    use super::TermExtractorOptions;
     use crate::{
         cost_functions::{
             CandidateSelectionContext, CandidateView, ContextualCandidateSelector,
             YardbirdCostFunction,
         },
+        instantiation::{
+            language::{TermExpr, TermLanguage},
+            rule::QuantifiedRuleCategory,
+            scope::CandidateScope,
+        },
         problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
-        quantified_rule::QuantifiedRuleCategory,
-        theories::array::array_axioms::{ArrayExpr, ArrayLanguage},
         training::canonical_term_hash,
     };
     use rustc_hash::FxHashMap;
@@ -1003,7 +1001,7 @@ mod tests {
 
     #[derive(Clone)]
     struct ZeroCostTerms {
-        terms: Vec<ArrayExpr>,
+        terms: Vec<TermExpr>,
     }
 
     #[derive(Clone)]
@@ -1036,7 +1034,7 @@ mod tests {
 
     #[derive(Clone)]
     struct ContextualSelector {
-        terms: Vec<ArrayExpr>,
+        terms: Vec<TermExpr>,
         observed: Rc<RefCell<Option<ObservedSelection>>>,
     }
 
@@ -1044,8 +1042,8 @@ mod tests {
         candidate_catalog: ArrayCandidateCatalog,
         candidate_scope: CandidateScope,
         selection_counts: FxHashMap<String, u32>,
-    ) -> ArrayTermExtractorOptions {
-        ArrayTermExtractorOptions {
+    ) -> TermExtractorOptions {
+        TermExtractorOptions {
             candidate_catalog,
             candidate_scope,
             refinement_step: 0,
@@ -1056,13 +1054,13 @@ mod tests {
     }
 
     fn extract_for_test<CF, N>(
-        extractor: &ArrayTermExtractor<CF>,
-        egraph: &egg::EGraph<ArrayLanguage, N>,
+        extractor: &TermExtractor<CF>,
+        egraph: &egg::EGraph<TermLanguage, N>,
         eclass: egg::Id,
-    ) -> ArrayExpr
+    ) -> TermExpr
     where
-        CF: YardbirdCostFunction<ArrayLanguage>,
-        N: egg::Analysis<ArrayLanguage>,
+        CF: YardbirdCostFunction<TermLanguage>,
+        N: egg::Analysis<TermLanguage>,
     {
         let variable = "?test_variable".parse().unwrap();
 
@@ -1075,10 +1073,10 @@ mod tests {
         )
     }
 
-    impl egg::CostFunction<ArrayLanguage> for ZeroCostTerms {
+    impl egg::CostFunction<TermLanguage> for ZeroCostTerms {
         type Cost = u32;
 
-        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        fn cost<C>(&mut self, _enode: &TermLanguage, _costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
@@ -1086,7 +1084,7 @@ mod tests {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for ZeroCostTerms {
+    impl YardbirdCostFunction<TermLanguage> for ZeroCostTerms {
         fn get_string_terms(&self) -> Vec<String> {
             self.terms.iter().map(ToString::to_string).collect()
         }
@@ -1095,15 +1093,15 @@ mod tests {
             ReadsAndWrites::default()
         }
 
-        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<ArrayLanguage>> {
+        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<TermLanguage>> {
             self.terms.clone()
         }
     }
 
-    impl egg::CostFunction<ArrayLanguage> for CountingCost {
+    impl egg::CostFunction<TermLanguage> for CountingCost {
         type Cost = u32;
 
-        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        fn cost<C>(&mut self, _enode: &TermLanguage, _costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
@@ -1112,7 +1110,7 @@ mod tests {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for CountingCost {
+    impl YardbirdCostFunction<TermLanguage> for CountingCost {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1122,10 +1120,10 @@ mod tests {
         }
     }
 
-    impl egg::CostFunction<ArrayLanguage> for CloneCountingCost {
+    impl egg::CostFunction<TermLanguage> for CloneCountingCost {
         type Cost = u32;
 
-        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        fn cost<C>(&mut self, _enode: &TermLanguage, _costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
@@ -1134,7 +1132,7 @@ mod tests {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for CloneCountingCost {
+    impl YardbirdCostFunction<TermLanguage> for CloneCountingCost {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1144,10 +1142,10 @@ mod tests {
         }
     }
 
-    impl egg::CostFunction<ArrayLanguage> for ContextualSelector {
+    impl egg::CostFunction<TermLanguage> for ContextualSelector {
         type Cost = u32;
 
-        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        fn cost<C>(&mut self, _enode: &TermLanguage, _costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
@@ -1155,7 +1153,7 @@ mod tests {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for ContextualSelector {
+    impl YardbirdCostFunction<TermLanguage> for ContextualSelector {
         fn get_string_terms(&self) -> Vec<String> {
             self.terms.iter().map(ToString::to_string).collect()
         }
@@ -1164,20 +1162,20 @@ mod tests {
             ReadsAndWrites::default()
         }
 
-        fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<ArrayLanguage>> {
+        fn contextual_selector(&self) -> Option<&dyn ContextualCandidateSelector<TermLanguage>> {
             Some(self)
         }
 
-        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<ArrayLanguage>> {
+        fn get_parsed_terms(&self) -> Vec<egg::RecExpr<TermLanguage>> {
             self.terms.clone()
         }
     }
 
-    impl ContextualCandidateSelector<ArrayLanguage> for ContextualSelector {
+    impl ContextualCandidateSelector<TermLanguage> for ContextualSelector {
         fn select_candidate(
             &self,
             context: &CandidateSelectionContext<'_>,
-            candidates: &[CandidateView<'_, ArrayLanguage>],
+            candidates: &[CandidateView<'_, TermLanguage>],
         ) -> Option<usize> {
             self.observed.replace(Some(ObservedSelection {
                 rule_name: context.rule_name.to_string(),
@@ -1193,7 +1191,7 @@ mod tests {
 
     #[test]
     fn deindex_abstract_term_removes_frame_suffixes() {
-        let expr: ArrayExpr =
+        let expr: TermExpr =
             "(= (Read Int Int (Write Int Int b@2 i@2 (Read Int Int a@2 i@2)) Z@3) (Read Int Int b@2 Z@3))"
                 .parse()
                 .unwrap();
@@ -1209,8 +1207,8 @@ mod tests {
 
     #[test]
     fn compare_terms_with_cost_breaks_ties_lexicographically() {
-        let a: ArrayExpr = "a".parse().unwrap();
-        let b: ArrayExpr = "b".parse().unwrap();
+        let a: TermExpr = "a".parse().unwrap();
+        let b: TermExpr = "b".parse().unwrap();
 
         assert!(compare_terms_with_cost((&a, 1), (&b, 1)).is_lt());
         assert!(compare_terms_with_cost((&b, 0), (&a, 1)).is_lt());
@@ -1218,15 +1216,15 @@ mod tests {
 
     #[test]
     fn extractor_uses_deterministic_order_for_equal_cost_terms() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let b: ArrayExpr = "b".parse().unwrap();
-        let a: ArrayExpr = "a".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let b: TermExpr = "b".parse().unwrap();
+        let a: TermExpr = "a".parse().unwrap();
         let b_id = egraph.add_expr(&b);
         let a_id = egraph.add_expr(&a);
         egraph.union(b_id, a_id);
         egraph.rebuild();
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCostTerms {
                 terms: vec![b.clone(), a.clone()],
@@ -1243,15 +1241,15 @@ mod tests {
 
     #[test]
     fn contextual_selector_receives_rule_context_and_overrides_cost_fallback() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let a: ArrayExpr = "a".parse().unwrap();
-        let b: ArrayExpr = "b".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let a: TermExpr = "a".parse().unwrap();
+        let b: TermExpr = "b".parse().unwrap();
         let a_id = egraph.add_expr(&a);
         let b_id = egraph.add_expr(&b);
         egraph.union(a_id, b_id);
         egraph.rebuild();
         let observed = Rc::new(RefCell::new(None));
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ContextualSelector {
                 terms: vec![a, b],
@@ -1300,10 +1298,10 @@ mod tests {
 
     #[test]
     fn extractor_does_not_score_candidates_absent_from_the_partial_egraph() {
-        let egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+        let egraph = egg::EGraph::<TermLanguage, ()>::default();
         let calls = Rc::new(Cell::new(0));
 
-        let _ = ArrayTermExtractor::new(
+        let _ = TermExtractor::new(
             &egraph,
             CountingCost {
                 calls: calls.clone(),
@@ -1326,12 +1324,12 @@ mod tests {
 
     #[test]
     fn fallback_extraction_is_computed_once_per_egraph() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let expression: ArrayExpr = "(+ a b)".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let expression: TermExpr = "(+ a b)".parse().unwrap();
         let eclass = egraph.add_expr(&expression);
         egraph.rebuild();
         let calls = Rc::new(Cell::new(0));
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             CountingCost {
                 calls: calls.clone(),
@@ -1352,11 +1350,11 @@ mod tests {
 
     #[test]
     fn repeated_cost_evaluation_reuses_the_extractors_cost_function() {
-        let egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let expression: ArrayExpr = "(+ a b)".parse().unwrap();
+        let egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let expression: TermExpr = "(+ a b)".parse().unwrap();
         let calls = Rc::new(Cell::new(0));
         let clones = Rc::new(Cell::new(0));
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             CloneCountingCost {
                 calls: calls.clone(),
@@ -1378,8 +1376,8 @@ mod tests {
 
     #[test]
     fn history_penalty_preserves_best_term_until_reuse_outweighs_cost_gap() {
-        let a: ArrayExpr = "a".parse().unwrap();
-        let b: ArrayExpr = "b".parse().unwrap();
+        let a: TermExpr = "a".parse().unwrap();
+        let b: TermExpr = "b".parse().unwrap();
         let mut selection_counts = FxHashMap::default();
         selection_counts.insert(canonical_term_hash(&a), 1);
 
@@ -1391,9 +1389,9 @@ mod tests {
 
     #[test]
     fn extractor_uses_history_to_skip_overused_equal_cost_term() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let a: ArrayExpr = "a".parse().unwrap();
-        let b: ArrayExpr = "b".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let a: TermExpr = "a".parse().unwrap();
+        let b: TermExpr = "b".parse().unwrap();
         let a_id = egraph.add_expr(&a);
         let b_id = egraph.add_expr(&b);
         egraph.union(a_id, b_id);
@@ -1402,7 +1400,7 @@ mod tests {
         let mut selection_counts = FxHashMap::default();
         selection_counts.insert(canonical_term_hash(&a), 1);
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCostTerms {
                 terms: vec![a.clone(), b.clone()],
@@ -1419,15 +1417,15 @@ mod tests {
 
     #[test]
     fn source_grounded_candidate_wins_before_derived_candidate() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let derived: ArrayExpr = "a".parse().unwrap();
-        let source: ArrayExpr = "z".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let derived: TermExpr = "a".parse().unwrap();
+        let source: TermExpr = "z".parse().unwrap();
         let derived_id = egraph.add_expr(&derived);
         let source_id = egraph.add_expr(&source);
         egraph.union(derived_id, source_id);
         egraph.rebuild();
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCostTerms { terms: vec![] },
             options(
@@ -1460,12 +1458,12 @@ mod tests {
 
     #[test]
     fn source_only_scope_classifies_egraph_fallback_as_derived() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let value: ArrayExpr = "137".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let value: TermExpr = "137".parse().unwrap();
         let value_id = egraph.add_expr(&value);
         egraph.rebuild();
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCostTerms { terms: vec![] },
             options(
@@ -1489,15 +1487,15 @@ mod tests {
 
     #[test]
     fn extractor_fallback_skips_z3_model_value_symbols() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let model_value: ArrayExpr = "Array_Int_Int!val!8".parse().unwrap();
-        let symbolic_array: ArrayExpr = "a".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let model_value: TermExpr = "Array_Int_Int!val!8".parse().unwrap();
+        let symbolic_array: TermExpr = "a".parse().unwrap();
         let model_id = egraph.add_expr(&model_value);
         let symbolic_id = egraph.add_expr(&symbolic_array);
         egraph.union(model_id, symbolic_id);
         egraph.rebuild();
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCostTerms { terms: vec![] },
             options(
@@ -1515,15 +1513,15 @@ mod tests {
 
     #[test]
     fn ranked_fallback_candidates_skip_z3_model_value_symbols() {
-        let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
-        let model_value: ArrayExpr = "Array_Int_Int!val!8".parse().unwrap();
-        let symbolic_array: ArrayExpr = "a".parse().unwrap();
+        let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
+        let model_value: TermExpr = "Array_Int_Int!val!8".parse().unwrap();
+        let symbolic_array: TermExpr = "a".parse().unwrap();
         let model_id = egraph.add_expr(&model_value);
         let symbolic_id = egraph.add_expr(&symbolic_array);
         egraph.union(model_id, symbolic_id);
         egraph.rebuild();
 
-        let extractor = ArrayTermExtractor::new(
+        let extractor = TermExtractor::new(
             &egraph,
             ZeroCostTerms { terms: vec![] },
             options(

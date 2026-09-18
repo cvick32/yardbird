@@ -249,10 +249,7 @@ mod tests {
         assert!(plans(&rule(&body)).is_none());
     }
 
-    fn fixture(
-        body: &str,
-        atoms: &[(&str, bool)],
-    ) -> crate::quantifier_abstraction::tests::PreparedFixture {
+    fn fixture(body: &str, atoms: &[(&str, bool)]) -> crate::quantifiers::tests::PreparedFixture {
         let mut prepared = prepared_fixture(4, 20);
         let plan = QuantifierPlan {
             rules: vec![rule(body)],
@@ -260,7 +257,7 @@ mod tests {
         };
         prepared.compiled = plan.compiled(&[]).unwrap();
         for (term, truth) in atoms {
-            let expression = crate::theories::array::array_axioms::translate_term_with_array_types(
+            let expression = crate::instantiation::language::translate_term_with_array_types(
                 term.parse().unwrap(),
                 &[],
             )

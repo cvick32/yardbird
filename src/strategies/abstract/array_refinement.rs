@@ -3,16 +3,17 @@
 use super::{search_context::SearchContext, trace_conflicts_enabled};
 use crate::{
     cost_functions::array::{ArrayCostContext, ArrayCostFactory},
+    instantiation::{
+        candidate::InstantiationBatch,
+        engine::{InstantiationInstrumentation, InstantiationOptions},
+        language::{expr_to_term, TermLanguage},
+    },
     instantiation_strategy::assertion_tracker::canonical_instantiation_key,
     theories::array::{
-        array_axioms::{
-            expr_to_term, generate_array_instantiation_candidates_with_budget,
-            ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
-        },
+        array_axioms::generate_array_instantiation_candidates_with_budget,
         array_dataflow::{build_property_cone, PropertyCone},
         array_egraph_builder::ArrayEGraphExpansion,
         encodings::{EncodingOptions, EncodingPlan},
-        instantiation_candidate::InstantiationBatch,
     },
 };
 use log::trace;
@@ -53,7 +54,7 @@ impl ArrayRefinement {
 
     pub(super) fn candidates<F: ArrayCostFactory + 'static>(
         &self,
-        egraph: &egg::EGraph<ArrayLanguage, ()>,
+        egraph: &egg::EGraph<TermLanguage, ()>,
         array_types: &[(String, String)],
         expansion: &ArrayEGraphExpansion,
         context: &SearchContext<'_, F>,
@@ -92,8 +93,7 @@ impl ArrayRefinement {
             egraph,
             cost_fn.clone(),
             array_types,
-            ArrayInstantiationOptions {
-                match_scope: Some(context.graph.array_match_scope()),
+            InstantiationOptions {
                 search_allowance: context.allowance,
                 additional_terms: vec![],
                 candidate_catalog: candidate_catalog.clone(),
@@ -101,7 +101,7 @@ impl ArrayRefinement {
                 refinement_step,
                 selection_counts: context.selection_counts.clone(),
                 depth: context.depth,
-                instrumentation: ArrayInstantiationInstrumentation {
+                instrumentation: InstantiationInstrumentation {
                     artifact_capture: context.artifact_capture,
                     profiling: profiling.clone(),
                 },

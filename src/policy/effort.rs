@@ -1,5 +1,5 @@
 //! Scheduling decisions, separate from matching and logical validity.
-pub use crate::quantifier_abstraction::SearchPhase;
+pub use crate::quantifiers::SearchPhase;
 use crate::theories::array::array_egraph_builder::{
     ArrayEGraphBuilder, SourceThenFullEGraphBuilder,
 };
@@ -9,6 +9,8 @@ use std::collections::{HashMap, HashSet};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkAllowance {
     pub winners: usize,
+    /// Maximum term-construction attempts in one vocabulary-growth operation.
+    pub vocabulary_work: usize,
     pub binder_page_size: usize,
     pub binder_search_limit: usize,
     pub array_initial_limit: usize,
@@ -23,6 +25,7 @@ impl Default for WorkAllowance {
     fn default() -> Self {
         Self {
             winners: 1,
+            vocabulary_work: 64,
             binder_page_size: 100,
             binder_search_limit: 65_536,
             array_initial_limit: 1_000,
@@ -36,7 +39,28 @@ impl Default for WorkAllowance {
     }
 }
 impl WorkAllowance {
+    fn widen(&mut self) {
+        self.winners = self.winners.saturating_mul(2);
+        self.binder_search_limit = self
+            .binder_search_limit
+            .saturating_mul(2)
+            .min(usize::MAX - 1);
+        self.array_initial_limit = self
+            .array_initial_limit
+            .saturating_mul(2)
+            .min((usize::MAX - 1) >> (self.array_rounds - 1));
+        self.dependency_demands = self.dependency_demands.saturating_mul(2);
+        self.dependency_paths = self.dependency_paths.saturating_mul(2);
+        self.dependency_links = self.dependency_links.saturating_mul(2);
+        self.dependency_work = self.dependency_work.saturating_mul(2);
+        self.dependency_helpers = self.dependency_helpers.saturating_mul(2);
+    }
+
     pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.vocabulary_work > 0,
+            "vocabulary growth needs a positive allowance"
+        );
         anyhow::ensure!(self.winners > 0, "candidate groups need a winner");
         anyhow::ensure!(
             self.binder_page_size > 0
@@ -81,6 +105,7 @@ pub enum OperationKind {
     Binder(SearchPhase),
     GuardedReads,
     ExpandArray,
+    GrowVocabulary,
     ArrayCandidates,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -118,6 +143,8 @@ pub struct WorkReport {
     pub selected: usize,
     pub examined_substitutions: usize,
     pub dependency_work: usize,
+    pub vocabulary_work: usize,
+    pub terms_added: usize,
     pub budget_exhausted: bool,
     pub continuable: bool,
     pub array_exhausted: bool,
@@ -161,6 +188,7 @@ pub trait ProofEffort {
 #[derive(Clone, Copy)]
 enum Stage {
     Dependencies,
+    Grow,
     Witnesses,
     Guards,
     Build,
@@ -170,9 +198,16 @@ enum Stage {
     Expand,
     Return,
 }
-/// The current search order and round-robin scheduling, now replaceable together.
+/// Default ordering and scheduling. After exhausting the initial staged search,
+/// alternate wider search/selection allowances with bounded vocabulary growth.
+/// Return after each pass so the driver can enforce external limits.
 pub struct DefaultEffort {
     allowance: WorkAllowance,
+    initial_allowance: WorkAllowance,
+    retry: bool,
+    grow_next: bool,
+    retrying: bool,
+    array_exhausted: bool,
     egraph_builder: Box<dyn ArrayEGraphBuilder>,
     stage: Stage,
     model: u64,
@@ -186,6 +221,11 @@ impl Default for DefaultEffort {
     fn default() -> Self {
         Self {
             allowance: WorkAllowance::default(),
+            initial_allowance: WorkAllowance::default(),
+            retry: false,
+            grow_next: false,
+            retrying: false,
+            array_exhausted: false,
             egraph_builder: Box::<SourceThenFullEGraphBuilder>::default(),
             stage: Stage::Dependencies,
             model: 0,
@@ -201,11 +241,13 @@ impl DefaultEffort {
     pub fn with_winners_per_group(mut self, winners: usize) -> Self {
         assert!(winners > 0, "candidate groups need a winner");
         self.allowance.winners = winners;
+        self.initial_allowance = self.allowance;
         self
     }
     pub fn with_allowance(mut self, allowance: WorkAllowance) -> Self {
         allowance.validate().expect("valid effort allowance");
         self.allowance = allowance;
+        self.initial_allowance = allowance;
         self
     }
     pub fn with_egraph_builder(mut self, builder: Box<dyn ArrayEGraphBuilder>) -> Self {
@@ -233,8 +275,10 @@ impl ProofEffort for DefaultEffort {
                         None
                     }
                 }
+                Stage::Grow => find(OperationKind::GrowVocabulary),
                 Stage::Witnesses => find(OperationKind::Binder(SearchPhase::Witnesses)),
                 Stage::Guards => find(OperationKind::GuardedReads),
+                Stage::Build if self.retrying => find(OperationKind::ArrayCandidates),
                 Stage::Build => find(OperationKind::ExpandArray),
                 Stage::Arrays => find(OperationKind::ArrayCandidates),
                 Stage::Triggered => find(OperationKind::Binder(SearchPhase::TriggeredConflicts)),
@@ -249,13 +293,21 @@ impl ProofEffort for DefaultEffort {
                 };
             }
             self.stage = match self.stage {
+                Stage::Grow => Stage::Dependencies,
                 Stage::Dependencies => Stage::Witnesses,
                 Stage::Witnesses => Stage::Guards,
                 Stage::Guards => Stage::Build,
+                Stage::Build if self.retrying => Stage::Triggered,
                 Stage::Build => Stage::Expand,
                 Stage::Arrays => Stage::Triggered,
                 Stage::Triggered => Stage::Conflicts,
-                Stage::Conflicts | Stage::Expand | Stage::Return => Stage::Return,
+                Stage::Conflicts if self.retrying => Stage::Expand,
+                Stage::Conflicts | Stage::Expand | Stage::Return => {
+                    if self.array_exhausted {
+                        self.retry = true;
+                    }
+                    Stage::Return
+                }
             };
         }
     }
@@ -274,15 +326,39 @@ impl ProofEffort for DefaultEffort {
             EffortEvent::NewProblem => {
                 self.next_rule.clear();
                 self.dependency_model = None;
+                self.model = 0;
+                self.allowance = self.initial_allowance;
+                self.retry = false;
+                self.retrying = false;
+                self.grow_next = false;
+                self.array_exhausted = false;
             }
             EffortEvent::BeginPass {
                 model,
                 refinement_step,
                 ..
             } => {
+                if self.model != *model {
+                    self.allowance = self.initial_allowance;
+                    self.retry = false;
+                    self.grow_next = false;
+                    self.retrying = false;
+                    self.array_exhausted = false;
+                }
                 self.model = *model;
                 self.step = *refinement_step;
                 self.stage = Stage::Dependencies;
+                if self.retry {
+                    self.retrying = true;
+                    self.dependency_model = None;
+                    if self.grow_next {
+                        self.stage = Stage::Grow;
+                    } else {
+                        self.allowance.widen();
+                    }
+                    self.grow_next = !self.grow_next;
+                    self.retry = false;
+                }
                 self.discovered_this_pass = false;
                 self.requests.clear();
             }
@@ -296,10 +372,12 @@ impl ProofEffort for DefaultEffort {
             }
             EffortEvent::Completed { operation, report } => {
                 if report.selected > 0 {
+                    self.retry = false;
                     self.stage = Stage::Return;
                     return;
                 }
                 self.stage = match operation {
+                    OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
                         self.dependency_model = Some(self.model);
                         self.discovered_this_pass = true;
@@ -311,11 +389,18 @@ impl ProofEffort for DefaultEffort {
                     }
                     OperationKind::Binder(SearchPhase::Witnesses) => Stage::Guards,
                     OperationKind::GuardedReads => Stage::Build,
-                    OperationKind::ExpandArray if report.array_exhausted => Stage::Expand,
+                    OperationKind::ExpandArray if report.array_exhausted => {
+                        self.array_exhausted = true;
+                        Stage::Expand
+                    }
                     OperationKind::ExpandArray => Stage::Arrays,
                     OperationKind::ArrayCandidates => Stage::Triggered,
                     OperationKind::Binder(SearchPhase::TriggeredConflicts) => Stage::Conflicts,
+                    OperationKind::Binder(SearchPhase::Conflicts) if self.retrying => Stage::Expand,
                     OperationKind::Binder(SearchPhase::Conflicts | SearchPhase::Expand) => {
+                        if self.array_exhausted {
+                            self.retry = true;
+                        }
                         Stage::Return
                     }
                 };
@@ -332,9 +417,7 @@ impl ProofEffort for DefaultEffort {
 }
 
 impl WorkReport {
-    pub(crate) fn from_batch(
-        batch: &crate::theories::array::instantiation_candidate::InstantiationBatch,
-    ) -> Self {
+    pub(crate) fn from_batch(batch: &crate::instantiation::candidate::InstantiationBatch) -> Self {
         Self {
             candidates_returned: batch.candidates.len(),
             selected: batch.selected().count(),

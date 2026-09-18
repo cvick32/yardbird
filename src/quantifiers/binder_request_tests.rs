@@ -1,6 +1,6 @@
 use super::tests::{prepared_fixture, prepared_options, PreferLongName};
 use super::*;
-use crate::theories::array::array_axioms::expr_to_term;
+use crate::instantiation::language::expr_to_term;
 
 fn request(bindings: &[(&str, &str)]) -> BinderSearchRequest {
     BinderSearchRequest {
@@ -165,8 +165,8 @@ fn supplied_symbols_are_not_recaptured_as_other_pattern_variables() {
         .signatures
         .insert("x1".into(), (vec![], string_to_sort("Int")));
     let symbol = prepared.egraph.add_expr(&"x1".parse().unwrap());
-    let sort = prepared.egraph.add(ArrayLanguage::SortTag("Int".into()));
-    prepared.egraph.add(ArrayLanguage::Domain([sort, symbol]));
+    let sort = prepared.egraph.add(TermLanguage::SortTag("Int".into()));
+    prepared.egraph.add(TermLanguage::Domain([sort, symbol]));
     prepared.egraph.rebuild();
     prepared
         .representatives

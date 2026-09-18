@@ -5,7 +5,7 @@ use crate::{
         array::{ArrayCostContext, ArrayCostFactory},
         YardbirdCostFunction,
     },
-    theories::array::array_axioms::ArrayLanguage,
+    instantiation::language::TermLanguage,
 };
 
 #[derive(Clone, Debug)]
@@ -29,10 +29,10 @@ impl ArrayCostFactory for ArrayGenerated {
     }
 }
 
-impl egg::CostFunction<ArrayLanguage> for ArrayGenerated {
+impl egg::CostFunction<TermLanguage> for ArrayGenerated {
     type Cost = u32;
 
-    fn cost<C>(&mut self, _enode: &ArrayLanguage, mut _costs: C) -> Self::Cost
+    fn cost<C>(&mut self, _enode: &TermLanguage, mut _costs: C) -> Self::Cost
     where
         C: FnMut(egg::Id) -> Self::Cost,
     {
@@ -40,7 +40,7 @@ impl egg::CostFunction<ArrayLanguage> for ArrayGenerated {
     }
 }
 
-impl YardbirdCostFunction<ArrayLanguage> for ArrayGenerated {
+impl YardbirdCostFunction<TermLanguage> for ArrayGenerated {
     fn get_string_terms(&self) -> Vec<String> {
         self.init_and_transition_system_terms
             .clone()

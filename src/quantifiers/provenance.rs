@@ -9,7 +9,7 @@ use smt2parser::{
     vmt::VMTModel,
 };
 
-use crate::quantifier_abstraction::app;
+use crate::quantifiers::app;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]

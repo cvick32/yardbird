@@ -1,35 +1,34 @@
 //! One model-equivalence graph. Construction admits vocabulary between searches;
 //! matching only receives an immutable e-graph borrow.
+mod vocabulary;
+
 use std::collections::{HashMap, HashSet};
 
 use egg::Language;
 use smt2parser::concrete::{Command, Sort, Term};
 
 use crate::{
+    instantiation::language::{translate_term_with_array_types, TermExpr, TermLanguage},
     problem_context::ProblemContext,
-    theories::array::array_axioms::{translate_term_with_array_types, ArrayExpr, ArrayLanguage},
 };
 
 #[derive(Default)]
 pub struct RefinementGraph {
-    pub(crate) egraph: egg::EGraph<ArrayLanguage, ()>,
+    pub(crate) egraph: egg::EGraph<TermLanguage, ()>,
     signatures: HashMap<String, (Vec<Sort>, Sort)>,
     context_registered: bool,
+    growth: Option<vocabulary::VocabularyGrowth>,
     values: HashMap<(Sort, String), egg::Id>,
     domain_sorts: HashSet<Sort>,
-    pub(crate) terms: Vec<ArrayExpr>,
-    originals: Vec<(egg::Id, ArrayExpr)>,
-    seen_terms: HashSet<ArrayExpr>,
-    // Temporary parity metadata: terms admitted by the array builder's stages.
-    // Remove the module-specific restriction after rearchitecture; the target
-    // is one shared vocabulary with preferences expressed by policy.
-    array_nodes: HashSet<ArrayLanguage>,
+    pub(crate) terms: Vec<TermExpr>,
+    originals: Vec<(egg::Id, TermExpr)>,
+    seen_terms: HashSet<TermExpr>,
     seen_originals: HashSet<egg::Id>,
     pub(crate) evaluations: HashMap<Term, String>,
 }
 
 impl std::ops::Deref for RefinementGraph {
-    type Target = egg::EGraph<ArrayLanguage, ()>;
+    type Target = egg::EGraph<TermLanguage, ()>;
     fn deref(&self) -> &Self::Target {
         &self.egraph
     }
@@ -67,9 +66,9 @@ impl RefinementGraph {
                 (
                     parameters
                         .iter()
-                        .map(crate::quantifier_abstraction::abstract_sort)
+                        .map(crate::quantifiers::abstract_sort)
                         .collect(),
-                    crate::quantifier_abstraction::abstract_sort(&sort),
+                    crate::quantifiers::abstract_sort(&sort),
                 )
             });
         }
@@ -117,10 +116,6 @@ impl RefinementGraph {
             let id = self
                 .egraph
                 .add(node.clone().map_children(|child| ids[usize::from(child)]));
-            if model_literals {
-                self.array_nodes
-                    .insert(node.clone().map_children(|child| ids[usize::from(child)]));
-            }
             ids.push(id);
             if self.seen_originals.insert(id) {
                 self.originals
@@ -138,8 +133,7 @@ impl RefinementGraph {
             _ => term.clone(),
         };
         let sort =
-            crate::quantifier_abstraction::term_sort(&sort_term, &self.signatures, &HashMap::new())
-                .ok();
+            crate::quantifiers::term_sort(&sort_term, &self.signatures, &HashMap::new()).ok();
         // Binder admission evaluates only its typed domains. Array admission
         // additionally needs model values for built-in axiom matching.
         if !model_literals && !sort.as_ref().is_some_and(|s| self.domain_sorts.contains(s)) {
@@ -160,17 +154,17 @@ impl RefinementGraph {
             if self.domain_sorts.contains(sort) {
                 let sort_id = self
                     .egraph
-                    .add(ArrayLanguage::SortTag(sort.to_string().into()));
-                self.egraph.add(ArrayLanguage::Domain([sort_id, id]));
+                    .add(TermLanguage::SortTag(sort.to_string().into()));
+                self.egraph.add(TermLanguage::Domain([sort_id, id]));
             }
         }
         if model_literals && !value.contains("!val!") {
-            let raw = crate::theories::array::array_expr_parser::preprocess_array_expr(&value);
-            let parsed: ArrayExpr = raw.parse()?;
+            let raw = crate::instantiation::parser::preprocess_array_expr(&value);
+            let parsed: TermExpr = raw.parse()?;
             // Literal values are useful array representatives, but an SMT
             // model's private elements must never become candidate terms.
             let value_sort = value.parse::<Term>().ok().and_then(|t| {
-                crate::quantifier_abstraction::term_sort(&t, &self.signatures, &HashMap::new()).ok()
+                crate::quantifiers::term_sort(&t, &self.signatures, &HashMap::new()).ok()
             });
             if sort.is_some() && sort == value_sort {
                 let value_id = self.egraph.add_expr(&parsed);
@@ -180,18 +174,11 @@ impl RefinementGraph {
         Ok(())
     }
 
-    pub(crate) fn array_match_scope(&self) -> HashSet<ArrayLanguage> {
-        self.array_nodes
-            .iter()
-            .map(|node| node.clone().map_children(|id| self.egraph.find(id)))
-            .collect()
-    }
-
     pub fn rebuild(&mut self) {
         self.egraph.rebuild();
     }
 
-    pub(crate) fn representatives(&self) -> HashMap<egg::Id, ArrayExpr> {
+    pub(crate) fn representatives(&self) -> HashMap<egg::Id, TermExpr> {
         let mut result = HashMap::new();
         for (id, expression) in &self.originals {
             result

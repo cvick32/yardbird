@@ -100,7 +100,10 @@ fn strategy_smtlib_profiles_checks() {
         &problem,
         strategy,
         SolverBackend::Z3,
-        5,
+        yardbird::smtlib_problem::RefinementLimits {
+            max_refinements: Some(5),
+            ..Default::default()
+        },
         false,
         options.build_profiler(),
         None,
