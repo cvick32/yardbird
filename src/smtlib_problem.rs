@@ -701,7 +701,7 @@ impl SmtlibRefinementRunner {
                     }
                     info!("  Yardbird found no refinement; checking the concrete array theory");
                     let concrete_strategy: Box<
-                        dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
+                        dyn ProofStrategy<'_, crate::strategies::RefinementState>,
                     > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
                     let (_, concrete_array_types) = problem.abstract_array_theory();
                     let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(

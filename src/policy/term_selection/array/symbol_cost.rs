@@ -1,0 +1,206 @@
+use egg::{Language, Symbol};
+use rustc_hash::FxHashSet;
+use smt2parser::vmt::{split_framed_symbol, ReadsAndWrites};
+
+use crate::policy::term_selection::context::TermCostContext;
+use crate::policy::term_selection::{TermCostFactory, YardbirdCostFunction};
+use crate::terms::language::TermLanguage;
+use crate::theories::list::list_axioms::ListLanguage;
+
+/// Cost function describing how to extract terms from an eclass while we are
+/// instantiating a rule violation with concrete terms.
+#[derive(Clone)]
+pub struct ArrayBMCCost {
+    pub current_bmc_depth: u32,
+    pub init_and_transition_system_terms: FxHashSet<Symbol>,
+    pub property_terms: FxHashSet<Symbol>,
+    pub reads_writes: ReadsAndWrites,
+}
+
+impl std::fmt::Debug for ArrayBMCCost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ArrayBestSymbolSubstitution")
+            .field("current_bmc_depth", &self.current_bmc_depth)
+            .field(
+                "init_and_transition_system_terms",
+                &self.init_and_transition_system_terms,
+            )
+            .field("property_terms", &self.property_terms)
+            .field("reads_writes", &self.reads_writes)
+            .finish()
+    }
+}
+
+impl ArrayBMCCost {
+    pub fn new(
+        current_bmc_depth: u32,
+        init_and_transition_system_terms: FxHashSet<Symbol>,
+        property_terms: FxHashSet<Symbol>,
+        reads_writes: ReadsAndWrites,
+    ) -> Self {
+        Self {
+            current_bmc_depth,
+            init_and_transition_system_terms,
+            property_terms,
+            reads_writes,
+        }
+    }
+}
+
+impl TermCostFactory for ArrayBMCCost {
+    type Config = ();
+
+    fn from_context(smt: &TermCostContext, depth: u32, _config: &Self::Config) -> Self {
+        let init_and_transition_system_terms: FxHashSet<Symbol> = smt
+            .get_init_and_transition_subterms()
+            .into_iter()
+            .map(|term| term.into())
+            .collect();
+        let property_terms: FxHashSet<Symbol> = smt
+            .get_property_subterms()
+            .into_iter()
+            .map(|term| term.into())
+            .collect();
+
+        Self::new(
+            depth,
+            init_and_transition_system_terms,
+            property_terms,
+            smt.get_reads_and_writes(),
+        )
+    }
+}
+
+impl egg::CostFunction<TermLanguage> for ArrayBMCCost {
+    type Cost = u32;
+
+    fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
+    where
+        C: FnMut(egg::Id) -> Self::Cost,
+    {
+        let op_cost = match enode {
+            TermLanguage::Num(num) => {
+                let num_symbol: Symbol = num.to_string().into();
+                let in_trans = self.init_and_transition_system_terms.contains(&num_symbol);
+                let in_prop = self.property_terms.contains(&num_symbol);
+                if in_trans {
+                    // If the constant is just in the transition system, we assign a low cost.
+                    2
+                } else if in_prop {
+                    // If the constant is just property term, we assign a lower cost.
+                    1
+                } else {
+                    5
+                }
+            }
+            TermLanguage::ConstArrTyped(_) => 0,
+            TermLanguage::WriteTyped(_) => 1,
+            TermLanguage::ReadTyped(_) => 1,
+            TermLanguage::And(_) => 1,
+            TermLanguage::Not(_) => 1,
+            TermLanguage::Or(_) => 1,
+            TermLanguage::Implies(_) => 1,
+            TermLanguage::Eq(_) => 1,
+            TermLanguage::Geq(_) => 1,
+            TermLanguage::Gt(_) => 1,
+            TermLanguage::Leq(_) => 1,
+            TermLanguage::Lt(_) => 1,
+            TermLanguage::Plus(_) => 1,
+            TermLanguage::Negate(_) => 1,
+            TermLanguage::Times(_) => 1,
+            TermLanguage::Mod(_) => 1,
+            TermLanguage::Div(_) => 1,
+            TermLanguage::ToReal(_) => 1,
+            TermLanguage::Ite(_)
+            | TermLanguage::Apply(_)
+            | TermLanguage::Domain(_)
+            | TermLanguage::SortTag(_) => 1,
+            TermLanguage::Symbol(sym) => {
+                let in_trans = self.init_and_transition_system_terms.contains(sym);
+                let in_prop = self.property_terms.contains(sym);
+
+                if let Some((name, frame_number)) = split_framed_symbol(sym.as_str()) {
+                    if name == "pc" {
+                        // Never instantiate with the program counter.
+                        return 10000;
+                    } else if in_prop {
+                        return 0;
+                    } else if in_trans {
+                        return 3;
+                    }
+                    // Prefer terms that are close to the property check.
+                    let Ok(n) = u32::try_from(frame_number) else {
+                        return 100;
+                    };
+                    self.current_bmc_depth.saturating_sub(n)
+                } else {
+                    // TODO: extend language to uninterpreted sort constants to
+                    // constants instead of symbols.
+                    // Ex: Array-Int-Int!val!0 is currently a symbol when it should be a
+                    // constant.
+                    100
+                }
+            }
+        };
+
+        enode.fold(op_cost, |sum, id| sum + costs(id))
+    }
+}
+
+impl egg::CostFunction<ListLanguage> for ArrayBMCCost {
+    type Cost = u32;
+
+    fn cost<C>(&mut self, _enode: &ListLanguage, _costs: C) -> Self::Cost
+    where
+        C: FnMut(egg::Id) -> Self::Cost,
+    {
+        todo!()
+    }
+}
+
+impl YardbirdCostFunction<TermLanguage> for ArrayBMCCost {
+    fn get_string_terms(&self) -> Vec<String> {
+        self.init_and_transition_system_terms
+            .iter()
+            .chain(self.property_terms.iter())
+            .map(|sym| sym.as_str().to_string())
+            .collect()
+    }
+
+    fn get_transition_terms(&self) -> Vec<String> {
+        self.init_and_transition_system_terms
+            .iter()
+            .map(|sym| sym.as_str().to_string())
+            .collect()
+    }
+
+    fn get_property_terms(&self) -> Vec<String> {
+        self.property_terms
+            .iter()
+            .map(|sym| sym.as_str().to_string())
+            .collect()
+    }
+
+    fn get_reads_and_writes(&self) -> ReadsAndWrites {
+        self.reads_writes.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egg::CostFunction;
+
+    #[test]
+    fn opaque_application_with_framed_arguments_has_a_finite_cost() {
+        let mut cost = ArrayBMCCost::new(
+            3,
+            FxHashSet::default(),
+            FxHashSet::default(),
+            ReadsAndWrites::default(),
+        );
+        let opaque = TermLanguage::Symbol("(main@is_ends_valid_state_0)@0".into());
+
+        assert!(cost.cost(&opaque, |_| 0) < u32::MAX);
+    }
+}

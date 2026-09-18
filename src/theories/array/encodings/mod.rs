@@ -13,11 +13,10 @@ use smt2parser::{concrete::Term, vmt::VMTModel};
 use std::collections::HashSet;
 
 use self::guarded_read_updates::{plan_guarded_read_updates, GuardedReadUpdatePlan};
-use crate::{
-    instantiation::provenance::InstantiationRequest,
-    instantiation_strategy::assertion_tracker::canonical_instantiation_key,
-    problem_context::ProblemContext, utils::SolverStatistics,
-};
+use crate::instance_installation::assertion_tracker::canonical_instantiation_key;
+use crate::instance_installation::request::InstantiationRequest;
+use crate::problem_context::ProblemContext;
+use crate::utils::SolverStatistics;
 
 use self::recurrent_products::{abstract_proven_recurrent_products, RecurrentProductReport};
 

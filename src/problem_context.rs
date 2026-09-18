@@ -6,13 +6,10 @@ use smt2parser::vmt::{
 };
 use std::any::Any;
 
-use crate::{
-    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
-    instantiation::provenance::{
-        InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
-    },
-    utils::SolverStatistics,
-};
+use crate::auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec};
+use crate::instance_installation::request::{InstantiationInstallResult, InstantiationRequest};
+use crate::rule_matching::provenance::InstantiationProvenance;
+use crate::utils::SolverStatistics;
 
 /// Candidate terms and array-operation sites with the same provenance.
 #[derive(Clone, Default)]

@@ -4,40 +4,29 @@ use log::{info, trace, warn};
 use rustc_hash::FxHashMap;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
-use crate::{
-    cost_functions::array::ArrayCostFactory,
-    driver,
-    ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    instantiation::{
-        candidate::{InstantiationBatch, InstantiationCandidate},
-        instantiator::ArtifactCapture,
-        language::{expr_to_term, TermLanguage},
-    },
-    policy::{
-        effort::{
-            EffortContext, EffortDecision, EffortEvent, EffortOperation, EffortRecord, OperationId,
-            OperationKind, WorkReport,
-        },
-        YardbirdPolicy,
-    },
-    profiling::{ArrayProfilingCollector, ProfilingRecord, ProfilingRunRecord},
-    solver::PropertyCheckMode,
-    theories::array::{
-        array_egraph_builder::{ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder},
-        encodings::EncodingOptions,
-    },
-    theory_support::{ArrayTheorySupport, TheorySupport},
-    training::{AbstractInstantiationRecord, DecisionRecord},
-    ProofLoopResult,
+use crate::ic3ia::{call_ic3ia, ic3ia_output_contains_proof};
+use crate::policy::effort::{
+    EffortContext, EffortDecision, EffortEvent, EffortOperation, EffortRecord, OperationId,
+    OperationKind, WorkReport,
 };
+use crate::policy::term_selection::TermCostFactory;
+use crate::policy::YardbirdPolicy;
+use crate::profiling::{ProfilingRecord, ProfilingRunRecord, RefinementProfilingCollector};
+use crate::rule_matching::candidate::{InstantiationBatch, InstantiationCandidate};
+use crate::rule_matching::candidate_builder::ArtifactCapture;
+use crate::solver::PropertyCheckMode;
+use crate::terms::language::{expr_to_term, TermLanguage};
+use crate::theories::array::array_egraph_builder::{
+    ArrayEGraphBuildStage, ArrayEGraphBuildStep, ArrayEGraphBuilder,
+};
+use crate::theories::array::encodings::EncodingOptions;
+use crate::theory_support::{ArrayTheorySupport, TheorySupport};
+use crate::training::{AbstractInstantiationRecord, DecisionRecord};
+use crate::{driver, ProofLoopResult};
 
-mod array_refinement;
-mod quantifier_refinement;
-mod search_context;
-
-use array_refinement::ArrayRefinement;
-use quantifier_refinement::{BinderSearchState, QuantifierRefinement};
-use search_context::SearchContext;
+use crate::rule_matching::search_context::SearchContext;
+use crate::theories::array::refinement::ArrayRefinement;
+use crate::theories::quantifiers::refinement::{BinderSearchState, QuantifierRefinement};
 
 use super::{ProofAction, ProofStrategy};
 
@@ -52,7 +41,7 @@ fn trace_instantiations_enabled() -> bool {
 /// Global state carried across different BMC depths
 pub struct Abstract<F>
 where
-    F: ArrayCostFactory,
+    F: TermCostFactory,
 {
     _bmc_depth: u16,
     run_ic3ia: bool,
@@ -76,7 +65,7 @@ where
 
 impl<F> Abstract<F>
 where
-    F: ArrayCostFactory,
+    F: TermCostFactory,
 {
     pub fn new(bmc_depth: u16, run_ic3ia: bool, policy: YardbirdPolicy<F>, profile: bool) -> Self {
         Self {
@@ -138,7 +127,7 @@ where
 /// expansion; a fresh setup discards both modules' model-dependent caches.
 /// Both modules borrow this graph. Staged admission and all graph mutation occur
 /// between searches; a new model receives a fresh graph and search caches.
-pub struct ArrayRefinementState {
+pub struct RefinementState {
     pub depth: u16,
     pub egraph: crate::refinement_graph::RefinementGraph,
     pub candidates: Vec<InstantiationCandidate>,
@@ -154,7 +143,7 @@ pub struct ArrayRefinementState {
     pub(crate) model_reported: bool,
 }
 
-impl ArrayRefinementState {
+impl RefinementState {
     fn grow_vocabulary(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
@@ -177,7 +166,7 @@ impl ArrayRefinementState {
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
         cone: &crate::theories::array::array_dataflow::PropertyCone,
-        profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
+        profiling: &Option<Rc<RefCell<RefinementProfilingCollector>>>,
     ) -> anyhow::Result<ArrayEGraphBuildStep> {
         if let Some(profiling) = profiling {
             profiling.borrow_mut().set_egraph_before_update(
@@ -223,9 +212,9 @@ impl ArrayRefinementState {
     }
 }
 
-impl<F> ProofStrategy<'_, ArrayRefinementState> for Abstract<F>
+impl<F> ProofStrategy<'_, RefinementState> for Abstract<F>
 where
-    F: ArrayCostFactory + 'static,
+    F: TermCostFactory + 'static,
 {
     fn refinement_limit(&self) -> Option<u32> {
         None
@@ -257,7 +246,7 @@ where
         self.preprocess_exact_read_after_write
     }
 
-    fn has_pending_refinement(&self, state: &ArrayRefinementState) -> bool {
+    fn has_pending_refinement(&self, state: &RefinementState) -> bool {
         !state.candidates.is_empty() || !state.guarded_read_updates.is_empty()
     }
 
@@ -286,7 +275,7 @@ where
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
-    ) -> driver::Result<ArrayRefinementState> {
+    ) -> driver::Result<RefinementState> {
         let egraph =
             crate::refinement_graph::RefinementGraph::new(self.quantifier.plan.signatures.clone());
         let egraph_builder = self
@@ -302,7 +291,7 @@ where
             self.array.array_types.clone()
         };
         self.model_sequence += 1;
-        Ok(ArrayRefinementState {
+        Ok(RefinementState {
             model_version: self.model_sequence,
             graph_version: 0,
             array_expansion: None,
@@ -320,7 +309,7 @@ where
 
     fn unsat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         _solver: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         self.policy
@@ -335,7 +324,7 @@ where
 
     fn unknown(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         self.policy
@@ -349,7 +338,7 @@ where
 
     fn sat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
@@ -374,7 +363,7 @@ where
             state.model_reported = true;
         }
         let profiling = self.profile.then(|| {
-            Rc::new(RefCell::new(ArrayProfilingCollector::new(
+            Rc::new(RefCell::new(RefinementProfilingCollector::new(
                 "array_refinement",
                 Some(state.depth),
                 Some(refinement_step),
@@ -412,10 +401,10 @@ where
                     }
                 }
                 for phase in [
-                    crate::quantifiers::SearchPhase::Witnesses,
-                    crate::quantifiers::SearchPhase::TriggeredConflicts,
-                    crate::quantifiers::SearchPhase::Conflicts,
-                    crate::quantifiers::SearchPhase::Expand,
+                    crate::theories::quantifiers::SearchPhase::Witnesses,
+                    crate::theories::quantifiers::SearchPhase::TriggeredConflicts,
+                    crate::theories::quantifiers::SearchPhase::Conflicts,
+                    crate::theories::quantifiers::SearchPhase::Expand,
                 ] {
                     kinds.push((OperationKind::Binder(phase), format!("{phase:?}")));
                 }
@@ -517,7 +506,7 @@ where
             }
             let pending_instances = state.candidates.iter().filter_map(|candidate| {
                 smt.make_unquantified_instance(expr_to_term(candidate.expression.clone()))
-                    .map(|instance| crate::instantiation_strategy::assertion_tracker::canonical_instantiation_key(instance.get_term()))
+                    .map(|instance| crate::instance_installation::assertion_tracker::canonical_instantiation_key(instance.get_term()))
             }).collect::<HashSet<_>>();
             let (term_config, ranker, effort) = self.policy.parts();
             let context = SearchContext::<F> {
@@ -562,7 +551,7 @@ where
                     )?;
                     report = WorkReport::from_batch(&batch);
                     retain = report.selected > 0
-                        || phase != crate::quantifiers::SearchPhase::TriggeredConflicts;
+                        || phase != crate::theories::quantifiers::SearchPhase::TriggeredConflicts;
                 }
                 OperationKind::GuardedReads => {
                     let mut updates = self.array.encoding_plan.violated_guarded_read_updates(
@@ -632,7 +621,7 @@ where
     #[allow(clippy::unnecessary_fold)]
     fn finish(
         &mut self,
-        state: ArrayRefinementState,
+        state: RefinementState,
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         let installations = self.array.encoding_plan.install_guarded_read_updates(
@@ -691,7 +680,7 @@ where
                 abstract_id: &abstract_id,
                 assertions_added: result.solver_assertions_added(),
             });
-            if quantifier_kind == crate::instantiation::rule::QuantifiedRuleCategory::InputBinder {
+            if quantifier_kind == crate::rule_matching::rule::QuantifiedRuleCategory::InputBinder {
                 if let Some(record) = self
                     .profiling_records
                     .last_mut()
@@ -739,7 +728,9 @@ where
         )
     }
 
-    fn quantifier_provenance(&self) -> crate::quantifiers::provenance::QuantifierProvenance {
+    fn quantifier_provenance(
+        &self,
+    ) -> crate::theories::quantifiers::provenance::QuantifierProvenance {
         self.quantifier.provenance.clone()
     }
 
@@ -795,12 +786,12 @@ where
 
 impl<F> Abstract<F>
 where
-    F: ArrayCostFactory + 'static,
+    F: TermCostFactory + 'static,
 {
     fn record_installation_outcome(
         &mut self,
         abstract_instantiation_id: &str,
-        result: crate::instantiation::provenance::InstantiationInstallResult,
+        result: crate::instance_installation::request::InstantiationInstallResult,
     ) {
         let Some(record) = self
             .abstract_instantiations
@@ -821,9 +812,9 @@ where
     fn dependency_candidates(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         refinement_step: u32,
-        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
+        profiling: Option<Rc<RefCell<RefinementProfilingCollector>>>,
     ) -> anyhow::Result<InstantiationBatch> {
         self.policy.effort_mut().observe(&EffortEvent::BeginPass {
             model: state.model_version,
@@ -925,10 +916,10 @@ where
     fn binder_candidates(
         &mut self,
         smt: &dyn crate::problem_context::ProblemContext,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         refinement_step: u32,
-        phase: crate::quantifiers::SearchPhase,
-        profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
+        phase: crate::theories::quantifiers::SearchPhase,
+        profiling: Option<Rc<RefCell<RefinementProfilingCollector>>>,
     ) -> anyhow::Result<InstantiationBatch> {
         self.quantifier.prepare_binder_search(
             smt,
@@ -960,7 +951,7 @@ where
         )
     }
 
-    fn absorb_candidates(&mut self, state: &mut ArrayRefinementState, batch: InstantiationBatch) {
+    fn absorb_candidates(&mut self, state: &mut RefinementState, batch: InstantiationBatch) {
         let selection_history = batch
             .candidates
             .iter()
@@ -1013,7 +1004,10 @@ where
         }
     }
 
-    fn finish_profiling_record(&mut self, profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>) {
+    fn finish_profiling_record(
+        &mut self,
+        profiling: Option<Rc<RefCell<RefinementProfilingCollector>>>,
+    ) {
         if let Some(profiling) = profiling {
             if let Ok(profiling) = Rc::try_unwrap(profiling) {
                 self.profiling_records.push(profiling.into_inner().finish());
@@ -1027,20 +1021,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        cost_functions::array::ArrayAstSize,
-        instantiation::scope::CandidateScope,
-        policy::effort::WorkAllowance,
-        problem_context::ProblemContext,
-        quantifiers::SearchPhase,
-        solver::SolverCheckResult,
-        theories::array::{
-            array_dataflow::PropertyCone,
-            array_egraph_builder::{ArrayEGraphExpansion, FullEGraphBuilder},
-        },
-        vmt_bmc_session::VmtBmcSession,
-        SolverBackend, YardbirdOptions,
-    };
+    use crate::policy::effort::WorkAllowance;
+    use crate::policy::term_selection::array::ArrayAstSize;
+    use crate::problem_context::ProblemContext;
+    use crate::rule_matching::scope::CandidateScope;
+    use crate::solver::SolverCheckResult;
+    use crate::theories::array::array_dataflow::PropertyCone;
+    use crate::theories::array::array_egraph_builder::{ArrayEGraphExpansion, FullEGraphBuilder};
+    use crate::theories::quantifiers::SearchPhase;
+    use crate::vmt_bmc_session::VmtBmcSession;
+    use crate::{SolverBackend, YardbirdOptions};
 
     fn sat_fixture(input: &str) -> (Abstract<ArrayAstSize>, VmtBmcSession) {
         let commands = smt2parser::CommandStream::new(
@@ -1053,7 +1043,7 @@ mod tests {
         let model = VMTModel::checked_from(commands).unwrap();
         let mut strategy =
             Abstract::<ArrayAstSize>::new(1, false, crate::YardbirdPolicy::new(()), false);
-        let mut theory: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+        let mut theory: Box<dyn ProofStrategy<'_, RefinementState>> =
             Box::new(Abstract::<ArrayAstSize>::new(
                 1,
                 false,
@@ -1125,7 +1115,7 @@ mod tests {
             .iter()
             .any(|(_, term)| term.to_string().contains("__yardbird_witness_"))));
         let mut state = strategy.setup(&smt, 0).unwrap();
-        let profiling = Rc::new(RefCell::new(ArrayProfilingCollector::new(
+        let profiling = Rc::new(RefCell::new(RefinementProfilingCollector::new(
             "test",
             Some(0),
             Some(1),
@@ -1473,8 +1463,8 @@ mod tests {
         assert_eq!(
             selected_categories,
             [
-                crate::instantiation::rule::QuantifiedRuleCategory::InputBinder,
-                crate::instantiation::rule::QuantifiedRuleCategory::ArrayAxiom
+                crate::rule_matching::rule::QuantifiedRuleCategory::InputBinder,
+                crate::rule_matching::rule::QuantifiedRuleCategory::ArrayAxiom
             ]
         );
         assert_eq!(
@@ -1912,8 +1902,7 @@ mod tests {
         let terms = build(&mut first.egraph);
         assert_eq!(terms, build(&mut second.egraph));
         for term in ["(f 0)", "(p 0)", "(+ 0 1)", "(- 0 1)"] {
-            let expression =
-                crate::instantiation::language::translate_term(term.parse().unwrap()).unwrap();
+            let expression = crate::terms::language::translate_term(term.parse().unwrap()).unwrap();
             assert!(first.egraph.lookup_expr(&expression).is_some(), "{term}");
         }
         assert!(terms.iter().all(|term| !term.contains("!val!")));
@@ -1946,8 +1935,7 @@ mod tests {
         assert_eq!(report.terms_added, 0);
         assert_eq!(report.vocabulary_work, 1);
         assert!(state.graph_version > version);
-        let expression =
-            crate::instantiation::language::translate_term("(A 0)".parse().unwrap()).unwrap();
+        let expression = crate::terms::language::translate_term("(A 0)".parse().unwrap()).unwrap();
         assert_eq!(
             state
                 .egraph
@@ -1960,12 +1948,12 @@ mod tests {
 
     fn profiled_binder_pass(
         strategy: &mut Abstract<ArrayAstSize>,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &VmtBmcSession,
         phase: SearchPhase,
         step: u32,
     ) -> ProfilingRecord {
-        let profiling = Rc::new(RefCell::new(ArrayProfilingCollector::new(
+        let profiling = Rc::new(RefCell::new(RefinementProfilingCollector::new(
             "test",
             Some(state.depth),
             Some(step),

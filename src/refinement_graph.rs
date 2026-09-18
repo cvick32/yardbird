@@ -7,10 +7,8 @@ use std::collections::{HashMap, HashSet};
 use egg::Language;
 use smt2parser::concrete::{Command, Sort, Term};
 
-use crate::{
-    instantiation::language::{translate_term_with_array_types, TermExpr, TermLanguage},
-    problem_context::ProblemContext,
-};
+use crate::problem_context::ProblemContext;
+use crate::terms::language::{translate_term_with_array_types, TermExpr, TermLanguage};
 
 #[derive(Default)]
 pub struct RefinementGraph {
@@ -66,9 +64,9 @@ impl RefinementGraph {
                 (
                     parameters
                         .iter()
-                        .map(crate::quantifiers::abstract_sort)
+                        .map(crate::theories::quantifiers::abstract_sort)
                         .collect(),
-                    crate::quantifiers::abstract_sort(&sort),
+                    crate::theories::quantifiers::abstract_sort(&sort),
                 )
             });
         }
@@ -133,7 +131,8 @@ impl RefinementGraph {
             _ => term.clone(),
         };
         let sort =
-            crate::quantifiers::term_sort(&sort_term, &self.signatures, &HashMap::new()).ok();
+            crate::theories::quantifiers::term_sort(&sort_term, &self.signatures, &HashMap::new())
+                .ok();
         // Binder admission evaluates only its typed domains. Array admission
         // additionally needs model values for built-in axiom matching.
         if !model_literals && !sort.as_ref().is_some_and(|s| self.domain_sorts.contains(s)) {
@@ -159,12 +158,12 @@ impl RefinementGraph {
             }
         }
         if model_literals && !value.contains("!val!") {
-            let raw = crate::instantiation::parser::preprocess_array_expr(&value);
+            let raw = crate::terms::preprocess::preprocess_array_expr(&value);
             let parsed: TermExpr = raw.parse()?;
             // Literal values are useful array representatives, but an SMT
             // model's private elements must never become candidate terms.
             let value_sort = value.parse::<Term>().ok().and_then(|t| {
-                crate::quantifiers::term_sort(&t, &self.signatures, &HashMap::new()).ok()
+                crate::theories::quantifiers::term_sort(&t, &self.signatures, &HashMap::new()).ok()
             });
             if sort.is_some() && sort == value_sort {
                 let value_id = self.egraph.add_expr(&parsed);

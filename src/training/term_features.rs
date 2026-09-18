@@ -5,7 +5,7 @@
 use rustc_hash::FxHashSet;
 use smt2parser::vmt::VARIABLE_FRAME_DELIMITER;
 
-use crate::instantiation::language::{TermExpr, TermLanguage};
+use crate::terms::language::{TermExpr, TermLanguage};
 
 /// Features extracted from a term for training.
 #[derive(Debug, Clone, Default)]

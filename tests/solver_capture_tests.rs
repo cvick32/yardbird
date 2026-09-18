@@ -1,15 +1,14 @@
 use std::{fs, process::Command};
 
 use tempfile::TempDir;
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    model_from_options,
-    profiling::ProfilingRunRecord,
-    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    solver::{PropertyCheckMode, SolverCheckResult, SolverSessionIndex, SolverSessionManifest},
-    strategies::{Abstract, ProofStrategy},
-    Driver, SolverBackend, Strategy, YardbirdOptions,
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::profiling::ProfilingRunRecord;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner};
+use yardbird::solver::{
+    PropertyCheckMode, SolverCheckResult, SolverSessionIndex, SolverSessionManifest,
 };
+use yardbird::strategies::{Abstract, ProofStrategy};
+use yardbird::{model_from_options, Driver, SolverBackend, Strategy, YardbirdOptions};
 
 #[test]
 fn one_check_capture_writes_replayable_correlated_artifacts() {

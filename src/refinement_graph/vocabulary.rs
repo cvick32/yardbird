@@ -4,7 +4,7 @@
 //! time, so a large product cannot starve another constructor. New terms enter
 //! the next sweep. These are model queries and vocabulary, never assertions.
 use super::*;
-use crate::quantifiers::term_sort;
+use crate::theories::quantifiers::term_sort;
 use smt2parser::concrete::QualIdentifier;
 use std::collections::BTreeMap;
 
@@ -106,7 +106,7 @@ impl VocabularyGrowth {
     fn from_graph(graph: &RefinementGraph) -> Self {
         let mut terms: BTreeMap<String, Vec<Term>> = BTreeMap::new();
         for expression in &graph.terms {
-            let term = crate::instantiation::language::expr_to_term(expression.clone());
+            let term = crate::terms::language::expr_to_term(expression.clone());
             if let Some(sort) = construction_sort(&term, &graph.signatures) {
                 terms.entry(sort.to_string()).or_default().push(term);
             }

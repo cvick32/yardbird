@@ -94,7 +94,9 @@ pub trait ProofStrategy<'ctx, S> {
         (vec![], vec![])
     }
 
-    fn quantifier_provenance(&self) -> crate::quantifiers::provenance::QuantifierProvenance {
+    fn quantifier_provenance(
+        &self,
+    ) -> crate::theories::quantifiers::provenance::QuantifierProvenance {
         Default::default()
     }
 

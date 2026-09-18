@@ -1,12 +1,12 @@
-use crate::strategies::{ArrayRefinementState, ListRefinementState, ProofStrategyExt};
+use crate::strategies::{ListRefinementState, ProofStrategyExt, RefinementState};
 use dialoguer::{theme::SimpleTheme, MultiSelect};
 
 pub struct Repl;
 
-impl ProofStrategyExt<ArrayRefinementState> for Repl {
+impl ProofStrategyExt<RefinementState> for Repl {
     fn refine(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         _context: &mut crate::driver::RefinementContext<'_>,
     ) -> crate::driver::Result<()> {
         if state.candidates.is_empty() {

@@ -13,7 +13,7 @@ static RUN_ID_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProfilingRunRecord {
-    pub quantifier_provenance: crate::quantifiers::provenance::QuantifierProvenance,
+    pub quantifier_provenance: crate::theories::quantifiers::provenance::QuantifierProvenance,
     pub timing_secs: BTreeMap<String, f64>,
     pub driver_records: Vec<DriverProfilingRecord>,
     pub cost_records: Vec<ProfilingRecord>,
@@ -99,7 +99,7 @@ impl Profiler {
 
     pub fn set_quantifier_provenance(
         &mut self,
-        provenance: crate::quantifiers::provenance::QuantifierProvenance,
+        provenance: crate::theories::quantifiers::provenance::QuantifierProvenance,
     ) {
         self.profile.quantifier_provenance = provenance;
     }
@@ -425,10 +425,12 @@ pub struct QuantifierWorkProfile {
     pub counters: BTreeMap<String, u64>,
 }
 
-pub(crate) struct QuantifierPhaseGuard(std::rc::Rc<std::cell::RefCell<ArrayProfilingCollector>>);
+pub(crate) struct QuantifierPhaseGuard(
+    std::rc::Rc<std::cell::RefCell<RefinementProfilingCollector>>,
+);
 impl QuantifierPhaseGuard {
     pub fn new(
-        collector: std::rc::Rc<std::cell::RefCell<ArrayProfilingCollector>>,
+        collector: std::rc::Rc<std::cell::RefCell<RefinementProfilingCollector>>,
         phase: &str,
     ) -> Self {
         collector.borrow_mut().quantifier_phase = Some(phase.to_string());
@@ -441,12 +443,12 @@ impl Drop for QuantifierPhaseGuard {
     }
 }
 
-pub struct ArrayProfilingCollector {
+pub struct RefinementProfilingCollector {
     record: ProfilingRecord,
     quantifier_phase: Option<String>,
 }
 
-impl ArrayProfilingCollector {
+impl RefinementProfilingCollector {
     pub(crate) fn record_effort(&mut self, record: crate::policy::effort::EffortRecord) {
         self.record.effort.push(record);
     }
@@ -730,5 +732,5 @@ mod tests {
 pub struct InstallationRecord {
     pub abstract_instantiation_id: Option<String>,
     pub term: String,
-    pub result: Option<crate::instantiation::provenance::InstantiationInstallResult>,
+    pub result: Option<crate::instance_installation::request::InstantiationInstallResult>,
 }

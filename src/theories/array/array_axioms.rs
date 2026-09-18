@@ -1,14 +1,13 @@
 //! Built-in array axioms, using the shared instantiation engine.
-use crate::instantiation::engine::{
-    generate_quantified_candidates, CompiledQuantifiedRule, InstantiationOptions,
-};
-use crate::instantiation::{
-    instantiator::CandidateDemand,
-    language::*,
-    rule::{ArrayAxiomKind, QuantifiedRule},
-    scope::CandidateScope,
-};
-use crate::{cost_functions::YardbirdCostFunction, instantiation::candidate::InstantiationBatch};
+use crate::policy::term_selection::YardbirdCostFunction;
+use crate::rule_matching::candidate::InstantiationBatch;
+use crate::rule_matching::candidate_builder::{CandidateDemand, InstantiationOptions};
+use crate::rule_matching::compiled_rule::CompiledQuantifiedRule;
+use crate::rule_matching::rule::QuantifiedRule;
+use crate::rule_matching::scope::CandidateScope;
+use crate::terms::language::*;
+use crate::theories::array::rule::ArrayAxiomKind;
+use crate::theories::array::search::generate_quantified_candidates;
 use egg::*;
 
 pub fn generate_array_instantiation_candidates<CF, N>(
@@ -35,7 +34,7 @@ pub fn generate_array_instantiation_candidates_with_budget<CF, N>(
     options: InstantiationOptions,
     budget: usize,
     mut accept: impl FnMut(
-        &crate::instantiation::candidate::InstantiationCandidate,
+        &crate::rule_matching::candidate::InstantiationCandidate,
     ) -> anyhow::Result<bool>,
 ) -> anyhow::Result<InstantiationBatch>
 where
@@ -51,7 +50,7 @@ where
             options,
         ));
     }
-    let mut accept = |candidate: &mut crate::instantiation::candidate::InstantiationCandidate| {
+    let mut accept = |candidate: &mut crate::rule_matching::candidate::InstantiationCandidate| {
         let accepted = accept(candidate)?;
         candidate.model_violation_verified = accepted;
         Ok(accepted)
@@ -257,10 +256,8 @@ mod test {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::{
-        instantiation::{engine::InstantiationInstrumentation, instantiator::ArtifactCapture},
-        problem_context::ArrayCandidateCatalog,
-    };
+    use crate::problem_context::ArrayCandidateCatalog;
+    use crate::rule_matching::candidate_builder::{ArtifactCapture, InstantiationInstrumentation};
     use smt2parser::concrete::{Constant, QualIdentifier, Symbol as SmtSymbol, Term};
 
     #[test]
@@ -283,10 +280,8 @@ mod test {
         let term: Term = "(=> enabled (|match| request response))".parse().unwrap();
         assert_eq!(expr_to_term(translate_term(term.clone()).unwrap()), term);
     }
-    use crate::{
-        cost_functions::YardbirdCostFunction,
-        instantiation::ranker::PreferSourceInstantiationRanker,
-    };
+    use crate::policy::instance_selection::PreferSourceInstantiationRanker;
+    use crate::policy::term_selection::YardbirdCostFunction;
     use rustc_hash::FxHashMap;
     use smt2parser::vmt::ReadsAndWrites;
 
@@ -441,7 +436,7 @@ mod test {
             .iter()
             .find(|rule| {
                 rule.metadata().kind()
-                    == crate::instantiation::rule::QuantifiedRuleKind::ArrayAxiom(
+                    == crate::rule_matching::rule::QuantifiedRuleKind::ArrayAxiom(
                         ArrayAxiomKind::WriteDoesNotOverwrite,
                     )
             })
@@ -462,7 +457,7 @@ mod test {
             .iter()
             .find(|rule| {
                 rule.metadata().kind()
-                    == crate::instantiation::rule::QuantifiedRuleKind::ArrayAxiom(
+                    == crate::rule_matching::rule::QuantifiedRuleKind::ArrayAxiom(
                         ArrayAxiomKind::WriteDoesNotOverwrite,
                     )
             })
@@ -723,7 +718,7 @@ mod test {
         assert_eq!(cone.candidates.len(), 1);
         assert_eq!(
             cone.candidates[0].grounding,
-            crate::instantiation::candidate::InstantiationGrounding::Derived
+            crate::rule_matching::candidate::InstantiationGrounding::Derived
         );
         let summary = cone
             .prepare_with_ranker(

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use smt2parser::concrete::Term;
 
-use crate::{auxiliary_synthesis::FrameSpan, instantiation::language::TermExpr};
+use crate::auxiliary_synthesis::FrameSpan;
+use crate::terms::language::TermExpr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArrayConflictRecord {

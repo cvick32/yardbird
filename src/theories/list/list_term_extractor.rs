@@ -3,10 +3,8 @@ use std::collections::HashMap;
 use egg::Language;
 use smt2parser::vmt::ReadsAndWrites;
 
-use crate::{
-    cost_functions::YardbirdCostFunction,
-    theories::list::list_axioms::{ListExpr, ListLanguage},
-};
+use crate::policy::term_selection::YardbirdCostFunction;
+use crate::theories::list::list_axioms::{ListExpr, ListLanguage};
 
 fn compare_terms_with_cost(left: (&ListExpr, u32), right: (&ListExpr, u32)) -> std::cmp::Ordering {
     left.1

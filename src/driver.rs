@@ -5,17 +5,15 @@ use log::info;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
-use crate::{
-    auxiliary_synthesis::AuxiliaryRecord,
-    instantiation_strategy::InstantiationStrategy,
-    problem_context::ProblemContext,
-    profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext},
-    solver::{SolverCapture, SolverCheckResult},
-    strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
-    training::UnsatEventRecord,
-    utils::SolverStatistics,
-    SolverBackend,
-};
+use crate::auxiliary_synthesis::AuxiliaryRecord;
+use crate::instance_installation::InstantiationStrategy;
+use crate::problem_context::ProblemContext;
+use crate::profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext};
+use crate::solver::{SolverCapture, SolverCheckResult};
+use crate::strategies::{ProofAction, ProofStrategy, ProofStrategyExt};
+use crate::training::UnsatEventRecord;
+use crate::utils::SolverStatistics;
+use crate::SolverBackend;
 
 /// Information about the unsat core when tracking is enabled
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -34,7 +32,7 @@ pub struct CoreInstantiation {
     #[serde(default)]
     pub frame: u16,
     #[serde(default)]
-    pub substitution: Vec<crate::instantiation::provenance::InstantiationSubstitution>,
+    pub substitution: Vec<crate::rule_matching::provenance::InstantiationSubstitution>,
 }
 
 /// Progress uses zero-based BMC depths; `None` means no depth completed/started.
@@ -1162,7 +1160,7 @@ fn run_concrete_counterexample_check(
     solver_backend: SolverBackend,
     instantiation_strategy: &dyn InstantiationStrategy,
 ) -> Result<(SolverCheckResult, crate::vmt_bmc_session::VmtBmcSession)> {
-    let mut concrete_strategy: Box<dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>> =
+    let mut concrete_strategy: Box<dyn ProofStrategy<'_, crate::strategies::RefinementState>> =
         Box::new(crate::strategies::ConcreteArrayZ3::new(false));
     let concrete_vmt_model = concrete_strategy.configure_model(concrete_vmt_model.clone());
     let mut concrete_problem = crate::vmt_bmc_session::VmtBmcSession::new(

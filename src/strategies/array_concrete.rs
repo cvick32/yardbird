@@ -9,7 +9,7 @@ use crate::{
     ProofLoopResult,
 };
 
-use super::{ArrayRefinementState, ProofAction, ProofStrategy};
+use super::{ProofAction, ProofStrategy, RefinementState};
 
 #[derive(Default)]
 pub struct ConcreteArrayZ3 {
@@ -32,7 +32,7 @@ impl ConcreteArrayZ3 {
     }
 }
 
-impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
+impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
@@ -51,8 +51,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
         &mut self,
         _smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
-    ) -> driver::Result<ArrayRefinementState> {
-        Ok(ArrayRefinementState {
+    ) -> driver::Result<RefinementState> {
+        Ok(RefinementState {
             binder_search: None,
             model_version: 0,
             graph_version: 0,
@@ -71,7 +71,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
 
     fn sat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
         _refinement_step: u32,
     ) -> driver::Result<ProofAction> {
@@ -82,7 +82,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
 
     fn finish(
         &mut self,
-        _state: ArrayRefinementState,
+        _state: RefinementState,
         _smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         Ok(())
@@ -125,7 +125,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
 
     fn unsat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         _smt: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);

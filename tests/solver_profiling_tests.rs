@@ -1,10 +1,7 @@
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    model_from_options,
-    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    strategies::{Abstract, ProofStrategy},
-    Driver, SolverBackend, Strategy, YardbirdOptions,
-};
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner};
+use yardbird::strategies::{Abstract, ProofStrategy};
+use yardbird::{model_from_options, Driver, SolverBackend, Strategy, YardbirdOptions};
 
 fn run_profiled_strategy(strategy: Strategy) -> yardbird::ProofLoopResult {
     let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());

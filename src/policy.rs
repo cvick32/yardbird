@@ -4,10 +4,11 @@
 //! The effort policy chooses work; the engine validates and executes it.
 
 pub mod effort;
-use crate::{
-    cost_functions::array::{ArrayCostContext, ArrayCostFactory},
-    instantiation::ranker::{InstantiationRanker, PreferSourceInstantiationRanker},
-};
+pub mod instance_selection;
+pub mod term_selection;
+use crate::policy::instance_selection::{InstantiationRanker, PreferSourceInstantiationRanker};
+use crate::policy::term_selection::context::TermCostContext;
+use crate::policy::term_selection::TermCostFactory;
 pub use effort::{DefaultEffort, ProofEffort};
 
 /// Executable policies selected by name. Each constructs its own proof plan.
@@ -26,15 +27,13 @@ impl NamedPolicy {
 }
 
 fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
-    use crate::{
-        auxiliary_synthesis::ConditionalHistory,
-        cost_functions::array::ArrayBMCCost,
-        instantiation_strategy::full_unroll::FullUnrollStrategy,
-        solver::PropertyCheckMode,
-        strategies::{Abstract, ArrayRefinementState, ProofStrategyExt},
-        theories::array::array_egraph_builder::SourceThenFullEGraphBuilder,
-        ArrayProofPlan, SolverBackend,
-    };
+    use crate::auxiliary_synthesis::ConditionalHistory;
+    use crate::instance_installation::full_unroll::FullUnrollStrategy;
+    use crate::policy::term_selection::array::ArrayBMCCost;
+    use crate::solver::PropertyCheckMode;
+    use crate::strategies::{Abstract, ProofStrategyExt, RefinementState};
+    use crate::theories::array::array_egraph_builder::SourceThenFullEGraphBuilder;
+    use crate::{ArrayProofPlan, SolverBackend};
 
     let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
         .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker))
@@ -49,7 +48,7 @@ fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
     let synthesis = run.build_aux_synthesis_config();
     let conditional_history = (!synthesis.is_off()).then(|| {
         Box::new(ConditionalHistory::<ArrayBMCCost>::new(synthesis, ()))
-            as Box<dyn ProofStrategyExt<ArrayRefinementState>>
+            as Box<dyn ProofStrategyExt<RefinementState>>
     });
     ArrayProofPlan {
         solver: SolverBackend::Z3,
@@ -60,13 +59,13 @@ fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
 }
 
 /// One policy configuration, retaining the existing term and ranker seams.
-pub struct YardbirdPolicy<F: ArrayCostFactory> {
+pub struct YardbirdPolicy<F: TermCostFactory> {
     term_config: F::Config,
     instances: Box<dyn InstantiationRanker>,
     effort: Box<dyn ProofEffort>,
 }
 
-impl<F: ArrayCostFactory> YardbirdPolicy<F> {
+impl<F: TermCostFactory> YardbirdPolicy<F> {
     pub fn new(term_config: F::Config) -> Self {
         Self {
             term_config,
@@ -90,7 +89,7 @@ impl<F: ArrayCostFactory> YardbirdPolicy<F> {
         self
     }
 
-    pub fn term_cost(&self, context: &ArrayCostContext, depth: u32) -> F {
+    pub fn term_cost(&self, context: &TermCostContext, depth: u32) -> F {
         F::from_context(context, depth, &self.term_config)
     }
 
@@ -116,13 +115,9 @@ impl<F: ArrayCostFactory> YardbirdPolicy<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        cost_functions::{
-            array::{ArrayAstSize, LogisticRegression},
-            YardbirdCostFunction,
-        },
-        training::LogisticRegressionModel,
-    };
+    use crate::policy::term_selection::array::{ArrayAstSize, LogisticRegression};
+    use crate::policy::term_selection::YardbirdCostFunction;
+    use crate::training::LogisticRegressionModel;
 
     #[test]
     fn learned_policy_preserves_contextual_selection() {
@@ -133,7 +128,7 @@ mod tests {
         .unwrap();
         let policy = YardbirdPolicy::<LogisticRegression>::new(model);
         assert!(policy
-            .term_cost(&ArrayCostContext::default(), 0)
+            .term_cost(&TermCostContext::default(), 0)
             .contextual_selector()
             .is_some());
     }

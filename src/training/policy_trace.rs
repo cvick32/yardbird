@@ -57,7 +57,7 @@ pub struct PolicyRunOutcome {
     pub found_proof: bool,
     pub total_refinement_steps: u32,
     pub total_instantiations_added: u64,
-    pub quantifier_provenance: crate::quantifiers::provenance::QuantifierProvenance,
+    pub quantifier_provenance: crate::theories::quantifiers::provenance::QuantifierProvenance,
 }
 
 /// Observations of a run, including runs which terminate without a proof.

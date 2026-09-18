@@ -16,55 +16,48 @@ pub use driver::{Driver, Error, ProofLoopResult, Result};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{
-    Abstract, AbstractArrayWithQuantifiers, ArrayRefinementState, ConcreteArrayZ3, ListAbstract,
-    ProofStrategy, ProofStrategyExt,
+    Abstract, AbstractArrayWithQuantifiers, ConcreteArrayZ3, ListAbstract, ProofStrategy,
+    ProofStrategyExt, RefinementState,
 };
 
-use crate::{
-    cost_functions::{
-        array::{
-            AdaptiveArrayCost, ArrayAstSize, ArrayBMCCost, ArrayCostFactory, ArrayGenerated,
-            ArrayPreferConstants, ArrayPreferRead, ArrayPreferWrite, IndexAwareArrayCost,
-            LogisticRegression, ProtocolBmcCost, SplitArrayCost,
-        },
-        list::list_ast_size_cost_factory,
-    },
-    instantiation::{
-        instantiator::ArtifactCapture,
-        ranker::{
-            InstantiationRanker, PreferSourceInstantiationRanker, TermCostInstantiationRanker,
-        },
-    },
-    strategies::ListRefinementState,
-    theories::array::array_egraph_builder::{
-        ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder,
-        SourceThenFullEGraphBuilder,
-    },
-    training::LogisticRegressionModel,
+use crate::policy::instance_selection::{
+    InstantiationRanker, PreferSourceInstantiationRanker, TermCostInstantiationRanker,
 };
+use crate::policy::term_selection::array::{
+    AdaptiveArrayCost, ArrayAstSize, ArrayBMCCost, ArrayGenerated, ArrayPreferConstants,
+    ArrayPreferRead, ArrayPreferWrite, IndexAwareArrayCost, LogisticRegression, ProtocolBmcCost,
+    SplitArrayCost,
+};
+use crate::policy::term_selection::list::list_ast_size_cost_factory;
+use crate::policy::term_selection::TermCostFactory;
+use crate::rule_matching::candidate_builder::ArtifactCapture;
+use crate::strategies::ListRefinementState;
+use crate::theories::array::array_egraph_builder::{
+    ArrayEGraphBuilder, ConeThenFullEGraphBuilder, FullEGraphBuilder, SourceThenFullEGraphBuilder,
+};
+use crate::training::LogisticRegressionModel;
 
 pub mod audit;
 pub mod auxiliary_synthesis;
-pub mod cost_functions;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
-pub mod instantiation_strategy;
+pub mod instance_installation;
 pub mod interpolant;
 pub mod logger;
 pub mod policy;
 pub mod refinement_graph;
 pub use policy::YardbirdPolicy;
-pub mod instantiation;
 pub mod problem_context;
 pub mod profiling;
 mod proof_tree;
-pub mod quantifiers;
+pub mod rule_matching;
 pub mod smtlib_problem;
 pub mod smtlib_refinement_session;
 pub mod solver;
 pub mod strategies;
 mod subterm_handler;
+pub mod terms;
 pub mod theories;
 pub mod theory_support;
 pub mod training;
@@ -76,9 +69,9 @@ pub mod vmt_bmc_session;
 /// configuration as ordinary array refinement.
 pub struct ArrayProofPlan {
     pub solver: SolverBackend,
-    pub instantiation_strategy: Box<dyn instantiation_strategy::InstantiationStrategy>,
-    pub strategy: Box<dyn ProofStrategy<'static, ArrayRefinementState>>,
-    pub conditional_history: Option<Box<dyn ProofStrategyExt<ArrayRefinementState>>>,
+    pub instantiation_strategy: Box<dyn instance_installation::InstantiationStrategy>,
+    pub strategy: Box<dyn ProofStrategy<'static, RefinementState>>,
+    pub conditional_history: Option<Box<dyn ProofStrategyExt<RefinementState>>>,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -345,16 +338,16 @@ impl YardbirdOptions {
 
     pub fn build_instantiation_strategy(
         &self,
-    ) -> Box<dyn instantiation_strategy::InstantiationStrategy> {
+    ) -> Box<dyn instance_installation::InstantiationStrategy> {
         match self.instantiation_strategy {
             InstantiationStrategyType::FullUnroll => {
-                Box::new(instantiation_strategy::full_unroll::FullUnrollStrategy::new())
+                Box::new(instance_installation::full_unroll::FullUnrollStrategy::new())
             }
             InstantiationStrategyType::NoUnrollOnLoop => {
-                Box::new(instantiation_strategy::no_unroll_on_loop::NoUnrollOnLoop::new())
+                Box::new(instance_installation::no_unroll_on_loop::NoUnrollOnLoop::new())
             }
             InstantiationStrategyType::SchemaBatch => {
-                Box::new(instantiation_strategy::schema_batch::SchemaBatchStrategy::new())
+                Box::new(instance_installation::schema_batch::SchemaBatchStrategy::new())
             }
         }
     }
@@ -505,7 +498,7 @@ impl YardbirdOptions {
 
     pub fn build_abstract_array_strategy<F>(&self, bmc_depth: u16) -> Abstract<F>
     where
-        F: ArrayCostFactory<Config = ()> + 'static,
+        F: TermCostFactory<Config = ()> + 'static,
     {
         self.build_configured_abstract_array_strategy(bmc_depth, ())
     }
@@ -529,7 +522,7 @@ impl YardbirdOptions {
         cost_config: F::Config,
     ) -> Abstract<F>
     where
-        F: ArrayCostFactory + 'static,
+        F: TermCostFactory + 'static,
     {
         let policy = YardbirdPolicy::new(cost_config)
             .with_effort(
@@ -548,7 +541,7 @@ impl YardbirdOptions {
 
     fn build_abstract_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan
     where
-        F: ArrayCostFactory + 'static,
+        F: TermCostFactory + 'static,
     {
         let strategy = Box::new(
             self.build_configured_abstract_array_strategy::<F>(self.depth, cost_config.clone()),
@@ -556,7 +549,7 @@ impl YardbirdOptions {
         let config = self.build_aux_synthesis_config();
         let conditional_history = (!config.is_off()).then(|| {
             Box::new(ConditionalHistory::<F>::new(config, cost_config))
-                as Box<dyn ProofStrategyExt<ArrayRefinementState>>
+                as Box<dyn ProofStrategyExt<RefinementState>>
         });
         ArrayProofPlan {
             solver: self.solver,
@@ -639,11 +632,11 @@ impl YardbirdOptions {
         }
     }
 
-    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
+    pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, RefinementState>> {
         self.build_array_proof_plan().strategy
     }
 
-    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
+    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'static, RefinementState>> {
         // For now, use the same strategy structure as arrays
         // TODO: Create proper bit-vector list strategy
         match self.strategy {

@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::instantiation::provenance::InstantiationSubstitution;
+use crate::rule_matching::provenance::InstantiationSubstitution;
 
 fn default_true() -> bool {
     true

@@ -1,14 +1,11 @@
 use log::info;
 use smt2parser::vmt::VMTModel;
 
-use crate::{
-    driver::{self},
-    ic3ia::{self, ic3ia_output_contains_proof},
-    solver::PropertyCheckMode,
-    strategies::ArrayRefinementState,
-    theory_support::{ArrayWithQuantifiersTheorySupport, TheorySupport},
-    ProofLoopResult,
-};
+use crate::ic3ia::ic3ia_output_contains_proof;
+use crate::solver::PropertyCheckMode;
+use crate::strategies::RefinementState;
+use crate::theory_support::{ArrayWithQuantifiersTheorySupport, TheorySupport};
+use crate::{driver, ic3ia, ProofLoopResult};
 
 use super::{ProofAction, ProofStrategy};
 
@@ -40,7 +37,7 @@ impl AbstractArrayWithQuantifiers {
     }
 }
 
-impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
+impl ProofStrategy<'_, RefinementState> for AbstractArrayWithQuantifiers {
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
@@ -66,8 +63,8 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
         &mut self,
         _smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
-    ) -> driver::Result<ArrayRefinementState> {
-        Ok(ArrayRefinementState {
+    ) -> driver::Result<RefinementState> {
+        Ok(RefinementState {
             binder_search: None,
             model_version: 0,
             graph_version: 0,
@@ -86,7 +83,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
 
     fn unsat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         _solver: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
@@ -95,7 +92,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
 
     fn sat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
         _: u32,
     ) -> driver::Result<ProofAction> {
@@ -107,7 +104,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     #[allow(clippy::unnecessary_fold)]
     fn finish(
         &mut self,
-        _: ArrayRefinementState,
+        _: RefinementState,
         _: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         Ok(())

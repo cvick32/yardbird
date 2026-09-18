@@ -1,8 +1,9 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
-use yardbird::{
-    cost_functions::array::ArrayBMCCost, instantiation_strategy::full_unroll::FullUnrollStrategy,
-    solver::PropertyCheckMode, strategies::Abstract, Driver, SolverBackend,
-};
+use yardbird::instance_installation::full_unroll::FullUnrollStrategy;
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::solver::PropertyCheckMode;
+use yardbird::strategies::Abstract;
+use yardbird::{Driver, SolverBackend};
 
 fn model() -> VMTModel {
     let input = r#"

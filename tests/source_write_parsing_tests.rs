@@ -1,14 +1,11 @@
 use smt2parser::{concrete::Term, vmt::ReadsAndWrites};
-use yardbird::cost_functions::array::ArrayBMCCost;
-use yardbird::instantiation::engine::InstantiationInstrumentation;
-use yardbird::instantiation::engine::InstantiationOptions;
-use yardbird::instantiation::instantiator::ArtifactCapture;
-use yardbird::instantiation::language::expr_to_term;
-use yardbird::instantiation::language::translate_term;
-use yardbird::instantiation::language::TermLanguage;
-use yardbird::instantiation::scope::CandidateScope;
-use yardbird::problem_context::ArrayCandidateCatalog;
-use yardbird::problem_context::ArrayCandidatePool;
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::problem_context::{ArrayCandidateCatalog, ArrayCandidatePool};
+use yardbird::rule_matching::candidate_builder::{
+    ArtifactCapture, InstantiationInstrumentation, InstantiationOptions,
+};
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::terms::language::{expr_to_term, translate_term, TermLanguage};
 use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates;
 
 fn assert_source_write_is_preserved(array: &str, index: &str, value: &str) {

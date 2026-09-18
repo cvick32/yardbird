@@ -662,6 +662,7 @@ fn run_config_benchmark(
     let result = run_single(
         YardbirdOptions {
             command: None,
+            policy: None,
             filename: Some(filename.to_string()),
             depth: run.depth,
             wall_timeout_secs: None,

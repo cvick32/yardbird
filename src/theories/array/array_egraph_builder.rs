@@ -5,14 +5,12 @@ use std::{collections::HashSet, fmt::Debug};
 use egg::Language;
 use smt2parser::{concrete::Term, vmt::split_framed_symbol};
 
-use crate::{
-    instantiation::{
-        language::{expr_to_term, translate_term_with_array_types, TermExpr, TermLanguage},
-        scope::CandidateScope,
-    },
-    problem_context::{ArrayCandidateCatalog, ProblemContext},
-    theories::array::array_dataflow::PropertyCone,
+use crate::problem_context::{ArrayCandidateCatalog, ProblemContext};
+use crate::rule_matching::scope::CandidateScope;
+use crate::terms::language::{
+    expr_to_term, translate_term_with_array_types, TermExpr, TermLanguage,
 };
+use crate::theories::array::array_dataflow::PropertyCone;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArrayEGraphBuildStage {
@@ -568,8 +566,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation::provenance::InstantiationRequest,
-        ) -> crate::instantiation::provenance::InstantiationInstallResult {
+            _request: crate::instance_installation::request::InstantiationRequest,
+        ) -> crate::instance_installation::request::InstantiationInstallResult {
             Default::default()
         }
 
@@ -660,8 +658,11 @@ mod tests {
     #[test]
     fn array_matching_sees_terms_admitted_by_binder_preparation() {
         use super::super::array_axioms::generate_array_instantiation_candidates;
-        use crate::instantiation::engine::{InstantiationInstrumentation, InstantiationOptions};
-        use crate::{cost_functions::array::ArrayAstSize, refinement_graph::RefinementGraph};
+        use crate::policy::term_selection::array::ArrayAstSize;
+        use crate::refinement_graph::RefinementGraph;
+        use crate::rule_matching::candidate_builder::{
+            InstantiationInstrumentation, InstantiationOptions,
+        };
         let terms = (0..32)
             .map(|i| {
                 format!("(Read_Int_Int (ConstArr_Int_Int 9) {i})")

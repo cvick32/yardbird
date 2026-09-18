@@ -11,5 +11,6 @@ pub use array_concrete::ConcreteArrayZ3;
 pub use interpolate::Interpolating;
 pub use list_abstract::{ListAbstract, ListRefinementState};
 pub use proof_strategy::{ProofAction, ProofStrategy, ProofStrategyExt};
-pub use r#abstract::{Abstract, ArrayRefinementState};
+pub use r#abstract::Abstract;
+pub use r#abstract::RefinementState;
 pub use repl::Repl;

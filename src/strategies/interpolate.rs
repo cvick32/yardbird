@@ -4,14 +4,14 @@ use crate::{
     strategies::ListRefinementState, utils::run_smtinterpol, vmt_bmc_session::VmtBmcSession,
 };
 
-use super::{ArrayRefinementState, ProofStrategyExt};
+use super::{ProofStrategyExt, RefinementState};
 
 pub struct Interpolating;
 
-impl ProofStrategyExt<ArrayRefinementState> for Interpolating {
+impl ProofStrategyExt<RefinementState> for Interpolating {
     fn unsat(
         &mut self,
-        _state: &mut ArrayRefinementState,
+        _state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
     ) -> anyhow::Result<()> {
         // Downcast to VmtBmcSession for VMT-specific interpolation

@@ -6,7 +6,7 @@
 use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::instantiation::language::TermExpr;
+use crate::terms::language::TermExpr;
 
 /// Compute a canonical hash for an TermExpr.
 ///

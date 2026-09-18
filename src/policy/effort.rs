@@ -1,8 +1,8 @@
 //! Scheduling decisions, separate from matching and logical validity.
-pub use crate::quantifiers::SearchPhase;
 use crate::theories::array::array_egraph_builder::{
     ArrayEGraphBuilder, SourceThenFullEGraphBuilder,
 };
+pub use crate::theories::quantifiers::SearchPhase;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -419,7 +419,7 @@ impl ProofEffort for DefaultEffort {
 }
 
 impl WorkReport {
-    pub(crate) fn from_batch(batch: &crate::instantiation::candidate::InstantiationBatch) -> Self {
+    pub(crate) fn from_batch(batch: &crate::rule_matching::candidate::InstantiationBatch) -> Self {
         Self {
             candidates_returned: batch.candidates.len(),
             selected: batch.selected().count(),
@@ -472,12 +472,12 @@ pub struct EffortCandidate {
     pub selected: bool,
     pub rule: String,
     pub term_hash: String,
-    pub substitution: Vec<crate::instantiation::provenance::InstantiationSubstitution>,
+    pub substitution: Vec<crate::rule_matching::provenance::InstantiationSubstitution>,
 }
 
 impl EffortCandidate {
     pub(crate) fn from_batch(
-        batch: &crate::instantiation::candidate::InstantiationBatch,
+        batch: &crate::rule_matching::candidate::InstantiationBatch,
     ) -> Vec<Self> {
         batch
             .candidates

@@ -1,11 +1,9 @@
 use smt2parser::{concrete::SyntaxBuilder, CommandStream};
 use std::time::Duration;
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    smtlib_problem::{RefinementLimits, SMTLIBProblem, SmtlibRefinementRunner},
-    strategies::Abstract,
-    SolverBackend, YardbirdPolicy,
-};
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::smtlib_problem::{RefinementLimits, SMTLIBProblem, SmtlibRefinementRunner};
+use yardbird::strategies::Abstract;
+use yardbird::{SolverBackend, YardbirdPolicy};
 
 fn problem(source: &str) -> SMTLIBProblem {
     let commands = CommandStream::new(source.as_bytes(), SyntaxBuilder, None)

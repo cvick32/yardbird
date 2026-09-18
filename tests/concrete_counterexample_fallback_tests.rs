@@ -1,25 +1,17 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
 use std::cmp::Ordering;
-use yardbird::auxiliary_synthesis::AuxRefinementRetention;
-use yardbird::auxiliary_synthesis::AuxSynthesisConfig;
-use yardbird::auxiliary_synthesis::ConditionalHistory;
-use yardbird::auxiliary_synthesis::GuardPolicy;
-use yardbird::auxiliary_synthesis::PredicateRelevancePolicy;
-use yardbird::auxiliary_synthesis::SynthesisTrigger;
-use yardbird::cost_functions::array::AdaptiveArrayCost;
-use yardbird::cost_functions::array::ArrayBMCCost;
-use yardbird::instantiation::candidate::InstantiationCandidate;
-use yardbird::instantiation::candidate::InstantiationGrounding;
-use yardbird::instantiation::instantiator::ArtifactCapture;
-use yardbird::instantiation::ranker::InstantiationRanker;
-use yardbird::instantiation::scope::CandidateScope;
-use yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy;
-use yardbird::strategies::Abstract;
-use yardbird::strategies::ConcreteArrayZ3;
-use yardbird::strategies::ProofStrategy;
-use yardbird::Driver;
-use yardbird::Error;
-use yardbird::SolverBackend;
+use yardbird::auxiliary_synthesis::{
+    AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
+    PredicateRelevancePolicy, SynthesisTrigger,
+};
+use yardbird::instance_installation::full_unroll::FullUnrollStrategy;
+use yardbird::policy::instance_selection::InstantiationRanker;
+use yardbird::policy::term_selection::array::{AdaptiveArrayCost, ArrayBMCCost};
+use yardbird::rule_matching::candidate::{InstantiationCandidate, InstantiationGrounding};
+use yardbird::rule_matching::candidate_builder::ArtifactCapture;
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::strategies::{Abstract, ConcreteArrayZ3, ProofStrategy};
+use yardbird::{Driver, Error, SolverBackend};
 
 /// Freeze the pre-ablation ordering so these tests exercise synthesis rather
 /// than whichever ordinary refinement the default ranker currently prefers.

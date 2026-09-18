@@ -1,20 +1,16 @@
 use rustc_hash::FxHashMap;
-use smt2parser::vmt::ReadsAndWrites;
-use smt2parser::vmt::VMTModel;
-use yardbird::cost_functions::array::ArrayAstSize;
-use yardbird::instantiation::engine::InstantiationInstrumentation;
-use yardbird::instantiation::engine::InstantiationOptions;
-use yardbird::instantiation::instantiator::ArtifactCapture;
-use yardbird::instantiation::language::expr_to_term;
-use yardbird::instantiation::language::TermExpr;
-use yardbird::instantiation::language::TermLanguage;
-use yardbird::instantiation::rule::QuantifiedRuleKind;
-use yardbird::instantiation::rule::QuantifiedRuleProvenance;
-use yardbird::instantiation::rule::TransitionGuardRule;
-use yardbird::instantiation::scope::CandidateScope;
+use smt2parser::vmt::{ReadsAndWrites, VMTModel};
+use yardbird::policy::term_selection::array::ArrayAstSize;
 use yardbird::problem_context::ArrayCandidateCatalog;
+use yardbird::rule_matching::candidate_builder::{
+    ArtifactCapture, InstantiationInstrumentation, InstantiationOptions,
+};
+use yardbird::rule_matching::rule::{QuantifiedRuleKind, QuantifiedRuleProvenance};
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::terms::language::{expr_to_term, TermExpr, TermLanguage};
 use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates;
-use yardbird::theories::array::transition_guard_instantiator::supports_transition_guard;
+use yardbird::theories::array::transition_guard::supports_transition_guard;
+use yardbird::theories::quantifiers::transition_guard::TransitionGuardRule;
 use yardbird::{
     model_from_options, Driver, ProofLoopResult, SolverBackend, Strategy, YardbirdOptions,
 };

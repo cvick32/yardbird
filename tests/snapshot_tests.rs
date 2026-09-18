@@ -7,14 +7,10 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use yardbird::{
-    self,
-    cost_functions::array::ArrayBMCCost,
-    model_from_options,
-    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    strategies::{Abstract, ProofStrategy},
-    Driver, Error, SolverBackend, Strategy, YardbirdOptions,
-};
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner};
+use yardbird::strategies::{Abstract, ProofStrategy};
+use yardbird::{model_from_options, Driver, Error, SolverBackend, Strategy, YardbirdOptions};
 
 #[derive(Debug)]
 enum BenchStatus {

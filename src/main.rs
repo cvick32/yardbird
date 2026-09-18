@@ -1,15 +1,15 @@
 use clap::Parser;
 use log::info;
 use std::{fs::File, io::Write, path::Path, time::Duration};
+use yardbird::audit::AuditConfig;
+use yardbird::profiling::ProfilingRunRecord;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner};
+use yardbird::solver::SolverCapture;
+use yardbird::strategies::{Interpolating, ProofStrategy, RefinementState, Repl};
+use yardbird::training::{reset_training_database, TrainingSession};
 use yardbird::{
-    audit::{self, AuditConfig},
-    logger, model_from_options,
-    profiling::ProfilingRunRecord,
-    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    solver::SolverCapture,
-    strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
-    training::{reset_training_database, TrainingSession},
-    CostFunction, Driver, Strategy, Theory, YardbirdCommand, YardbirdOptions,
+    audit, logger, model_from_options, CostFunction, Driver, Strategy, Theory, YardbirdCommand,
+    YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -231,8 +231,8 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
 /// Build a strategy for SMTLIB mode based on options
 fn build_smtlib_strategy(
     options: &YardbirdOptions,
-) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
-    use yardbird::cost_functions::array::*;
+) -> Box<dyn ProofStrategy<'static, RefinementState>> {
+    use yardbird::policy::term_selection::array::*;
     use yardbird::strategies::{AbstractArrayWithQuantifiers, ConcreteArrayZ3};
 
     if let Some(policy) = options.policy {

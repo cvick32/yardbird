@@ -1,7 +1,9 @@
 pub use smt2parser::vmt::VMTModel;
 pub use vmt_macros::{ensures, generate_test};
 pub use vmtil;
-use yardbird::{cost_functions::array::ArrayBMCCost, strategies::Abstract, Driver};
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::strategies::Abstract;
+use yardbird::Driver;
 
 pub struct RunModelArgs {
     pub builder: vmtil::VmtilBuilder,
@@ -39,7 +41,7 @@ pub fn run_model(
     let model = builder.build_model(debug_vmt);
     //let cfg = z3::Config::new();
     let instantiation_strategy =
-        Box::new(yardbird::instantiation_strategy::full_unroll::FullUnrollStrategy::new());
+        Box::new(yardbird::instance_installation::full_unroll::FullUnrollStrategy::new());
     let mut driver = Driver::new(model, instantiation_strategy, yardbird::SolverBackend::Z3);
 
     let strat = Box::new(Abstract::<ArrayBMCCost>::new(

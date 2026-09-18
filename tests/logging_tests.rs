@@ -13,24 +13,15 @@ use smt2parser::{
 #[cfg(feature = "training")]
 use std::env;
 
-use yardbird::cost_functions::array::ArrayBMCCost;
-use yardbird::instantiation::instantiator::ArtifactCapture;
-use yardbird::model_from_options;
-use yardbird::smtlib_problem::SMTLIBProblem;
-use yardbird::smtlib_problem::SmtlibRefinementRunner;
-use yardbird::strategies::Abstract;
-use yardbird::strategies::ProofStrategy;
-use yardbird::training::reset_training_database;
-use yardbird::training::AbstractInstantiationRecord;
-use yardbird::training::CandidateRecord;
-use yardbird::training::DecisionRecord;
-use yardbird::training::IndexedInstantiationRecord;
-use yardbird::training::TrainingSession;
-use yardbird::training::UnsatEventRecord;
-use yardbird::CostFunction;
-use yardbird::Driver;
-use yardbird::SolverBackend;
-use yardbird::YardbirdOptions;
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::rule_matching::candidate_builder::ArtifactCapture;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibRefinementRunner};
+use yardbird::strategies::{Abstract, ProofStrategy};
+use yardbird::training::{
+    reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
+    IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,
+};
+use yardbird::{model_from_options, CostFunction, Driver, SolverBackend, YardbirdOptions};
 
 #[cfg(feature = "training")]
 use sqlx::Row;
@@ -260,7 +251,7 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             refinement_step: 4,
             decision_keys: vec!["decision-key".to_string()],
             substitution: vec![
-                yardbird::instantiation::provenance::InstantiationSubstitution {
+                yardbird::rule_matching::provenance::InstantiationSubstitution {
                     variable: "?x".to_string(),
                     term: "x+0".to_string(),
                 },
@@ -282,7 +273,7 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             frame: 3,
             unroll_index: 0,
             substitution: vec![
-                yardbird::instantiation::provenance::InstantiationSubstitution {
+                yardbird::rule_matching::provenance::InstantiationSubstitution {
                     variable: "?x".to_string(),
                     term: "x@3".to_string(),
                 },

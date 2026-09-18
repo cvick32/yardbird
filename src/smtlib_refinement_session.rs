@@ -6,24 +6,22 @@ use smt2parser::{
     vmt::ReadsAndWrites,
 };
 
-use crate::{
-    instantiation::provenance::{
-        InstantiationInstallResult, InstantiationRequest, StoredInstantiation,
-    },
-    instantiation_strategy::assertion_tracker::{AssertionKind, InstantiationAssertionTracker},
-    problem_context::ProblemContext,
-    profiling::{SolverCheckMeasurement, SolverProfileMetadata},
-    smtlib_problem::SMTLIBProblem,
-    solver::{
-        check::{run_solver_check, SolverCheckRequest},
-        new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
-    },
-    strategies::ProofStrategy,
-    subterm_handler::SubtermHandler,
-    training::IndexedInstantiationRecord,
-    utils::SolverStatistics,
-    SolverBackend,
+use crate::instance_installation::assertion_tracker::{
+    AssertionKind, InstantiationAssertionTracker,
 };
+use crate::instance_installation::request::{
+    InstantiationInstallResult, InstantiationRequest, StoredInstantiation,
+};
+use crate::problem_context::ProblemContext;
+use crate::profiling::{SolverCheckMeasurement, SolverProfileMetadata};
+use crate::smtlib_problem::SMTLIBProblem;
+use crate::solver::check::{run_solver_check, SolverCheckRequest};
+use crate::solver::{new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver};
+use crate::strategies::ProofStrategy;
+use crate::subterm_handler::SubtermHandler;
+use crate::training::IndexedInstantiationRecord;
+use crate::utils::SolverStatistics;
+use crate::SolverBackend;
 
 /// Helper to create a "true" boolean term
 fn make_true_term() -> Term {

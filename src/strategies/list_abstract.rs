@@ -3,16 +3,13 @@ use std::mem;
 use log::info;
 use smt2parser::{concrete::Term, vmt::VMTModel};
 
-use crate::{
-    cost_functions::YardbirdCostFunction,
-    driver::{self},
-    egg_utils::Saturate,
-    ic3ia::{call_ic3ia, ic3ia_output_contains_proof},
-    problem_context::ProblemContext,
-    theories::list::list_axioms::{translate_term, ListExpr, ListLanguage},
-    theory_support::{ListTheorySupport, TheorySupport},
-    ProofLoopResult,
-};
+use crate::egg_utils::Saturate;
+use crate::ic3ia::{call_ic3ia, ic3ia_output_contains_proof};
+use crate::policy::term_selection::YardbirdCostFunction;
+use crate::problem_context::ProblemContext;
+use crate::theories::list::list_axioms::{translate_term, ListExpr, ListLanguage};
+use crate::theory_support::{ListTheorySupport, TheorySupport};
+use crate::{driver, ProofLoopResult};
 
 use super::{ProofAction, ProofStrategy};
 
@@ -136,7 +133,7 @@ where
             .into_iter()
             .map(|inst| {
                 smt.add_instantiation(
-                    crate::instantiation::provenance::InstantiationRequest::untracked(inst),
+                    crate::instance_installation::request::InstantiationRequest::untracked(inst),
                 )
                 .abstract_instance_added
             })
