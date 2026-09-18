@@ -52,6 +52,51 @@ fn concrete_strategy_emits_solver_profiles() {
 }
 
 #[test]
+fn concrete_timeout_retains_the_last_unsat_event_and_completion_log() {
+    // This protocol's native checks grow expensive with depth, reproducing a
+    // cooperative deadline crossed inside check_property rather than setup.
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_yardbird"))
+        .args([
+            "-f",
+            "examples/distributed_protocols/client_server_ae/client_server_ae.encoding.vmt",
+            "-s",
+            "concrete",
+            "-d",
+            "40",
+            "--property-check-mode",
+            "assumptions",
+            "--wall-timeout-secs",
+            "1",
+            "--profile",
+            "--json-output",
+        ])
+        .env("RUST_LOG", "off,yardbird::driver=info")
+        .env("RUST_LOG_STYLE", "never")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let result: yardbird::ProofLoopResult = serde_json::from_slice(&output.stdout).unwrap();
+    let progress = result.run_progress.as_ref().unwrap();
+    assert_eq!(progress.termination_reason, "timeout");
+    assert_eq!(progress.last_completed_action.as_deref(), Some("check"));
+    let checks = &result.profiling.solver_checks;
+    assert!(!checks.is_empty());
+    assert_eq!(result.unsat_events.len(), checks.len());
+    assert_eq!(
+        progress.deepest_completed_depth,
+        result.unsat_events.last().and_then(|event| event.bmc_depth)
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    for check in checks {
+        assert_eq!(check.result, yardbird::solver::SolverCheckResult::Unsat);
+        assert!(stderr.contains(&format!(
+            "BMC_DEPTH_COMPLETED depth={} elapsed_secs=",
+            check.depth
+        )));
+    }
+}
+
+#[test]
 fn abstract_strategy_emits_solver_profiles() {
     let result = run_profiled_strategy(Strategy::Abstract);
     assert_complete_solver_profile(&result, "abstract");

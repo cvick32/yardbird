@@ -761,20 +761,25 @@ impl<'ctx, S> Driver<'ctx, S> {
                         );
                     }
                     if check_result == SolverCheckResult::Unsat {
+                        // A completed check must be recorded even if it crossed
+                        // the cooperative deadline before returning.
                         progress.deepest_completed_depth = Some(depth);
+                        unsat_event_tracker.record_vmt_event(
+                            &smt_problem,
+                            depth,
+                            total_refinement_steps,
+                            self.track_instantiations,
+                        );
+                        info!(
+                            "BMC_DEPTH_COMPLETED depth={depth} elapsed_secs={:.6}",
+                            driver_start.elapsed().as_secs_f64()
+                        );
                     }
                     checkpoint!('bmc, "check", driver_record.take(), step_start);
                     let mut action = match check_result {
                         SolverCheckResult::Unsat => {
-                            info!("  check completed");
                             let unsat_start = Instant::now();
                             active_phase = Some(("strategy_unsat", unsat_start));
-                            unsat_event_tracker.record_vmt_event(
-                                &smt_problem,
-                                depth,
-                                total_refinement_steps,
-                                self.track_instantiations,
-                            );
                             // Handle solver dumping if requested
                             if let Some(ref path) = self.dump_solver_path {
                                 info!("Dumping solver to: {}", path);
