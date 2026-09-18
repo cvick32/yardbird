@@ -12,7 +12,11 @@ pub struct RuleSearchReport {
     pub continuable_rules: Vec<String>,
     /// Rules with unexamined matches after reaching their search budget.
     pub budget_exhausted_rules: Vec<String>,
+    /// Matcher output examined, including replayed prefixes and lookahead.
     pub examined_substitutions: usize,
+    /// Fresh page substitutions passed on for grounding, excluding replay.
+    pub returned_substitutions: usize,
+    pub cache_hit: bool,
     pub rounds: usize,
 }
 
@@ -140,6 +144,7 @@ pub(crate) fn search_array_rules<N: egg::Analysis<TermLanguage>>(
             break;
         }
     }
+    result.report.returned_substitutions = result.matches.len();
     result.report.budget_exhausted_rules = rules
         .iter()
         .zip(completed)
@@ -183,7 +188,10 @@ fn search_binder_rule_page<N: egg::Analysis<TermLanguage>>(
                 substitution: egg::Subst::default(),
                 model_violation_verified: false,
             }],
-            report: RuleSearchReport::default(),
+            report: RuleSearchReport {
+                returned_substitutions: 1,
+                ..Default::default()
+            },
         };
     }
 
@@ -200,14 +208,17 @@ fn search_binder_rule_page<N: egg::Analysis<TermLanguage>>(
         BinderRuleCursor::Pending { offset: end }
     };
 
+    let matches = matches
+        .into_iter()
+        .skip(offset)
+        .take(end - offset)
+        .collect::<Vec<_>>();
+    let returned_substitutions = matches.len();
     MatchedRules {
-        matches: matches
-            .into_iter()
-            .skip(offset)
-            .take(end - offset)
-            .collect(),
+        matches,
         report: RuleSearchReport {
             examined_substitutions,
+            returned_substitutions,
             rounds: 1,
             ..Default::default()
         },

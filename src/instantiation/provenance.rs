@@ -103,7 +103,7 @@ pub struct StoredInstantiation {
 ///
 /// An abstract instance may be new while adding no solver-visible assertion
 /// because every materialized placement was removed by canonical deduplication.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct InstantiationInstallResult {
     pub abstract_instance_added: bool,
     pub indexed_assertions_attempted: u64,

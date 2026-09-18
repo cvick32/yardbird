@@ -142,6 +142,8 @@ pub struct WorkReport {
     pub candidates_returned: usize,
     pub selected: usize,
     pub examined_substitutions: usize,
+    pub returned_substitutions: usize,
+    pub cache_hit: bool,
     pub dependency_work: usize,
     pub vocabulary_work: usize,
     pub terms_added: usize,
@@ -422,6 +424,8 @@ impl WorkReport {
             candidates_returned: batch.candidates.len(),
             selected: batch.selected().count(),
             examined_substitutions: batch.search.examined_substitutions,
+            returned_substitutions: batch.search.returned_substitutions,
+            cache_hit: batch.search.cache_hit,
             budget_exhausted: !batch.search.budget_exhausted_rules.is_empty(),
             continuable: !batch.search.continuable_rules.is_empty(),
             selected_instances: batch
@@ -437,11 +441,57 @@ impl WorkReport {
 /// abstract instances. They describe observed work, not causal proof credit.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EffortRecord {
+    pub model_version: u64,
+    pub graph_version_before: u64,
     pub graph_version: u64,
+    pub pending_instances: usize,
+    pub kind: EffortRecordKind,
     pub operation_id: Option<OperationId>,
     pub operation: String,
+    /// Symbolic choice, including dependency bindings rather than request indices.
+    pub chosen: String,
     pub offered: Vec<String>,
-    pub allowance: WorkAllowance,
+    pub allowance: Option<WorkAllowance>,
     pub report: WorkReport,
+    pub candidates: Vec<EffortCandidate>,
+    pub choice_elapsed_secs: f64,
     pub elapsed_secs: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffortRecordKind {
+    Operation,
+    BinderPage,
+    ReturnToDriver,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EffortCandidate {
+    pub abstract_instantiation_id: String,
+    pub selected: bool,
+    pub rule: String,
+    pub term_hash: String,
+    pub substitution: Vec<crate::instantiation::provenance::InstantiationSubstitution>,
+}
+
+impl EffortCandidate {
+    pub(crate) fn from_batch(
+        batch: &crate::instantiation::candidate::InstantiationBatch,
+    ) -> Vec<Self> {
+        batch
+            .candidates
+            .iter()
+            .map(|candidate| Self {
+                abstract_instantiation_id: candidate
+                    .provenance
+                    .abstract_instantiation_id()
+                    .to_owned(),
+                selected: candidate.selected,
+                rule: candidate.rule.name().to_owned(),
+                term_hash: crate::training::canonical_term_hash(&candidate.expression),
+                substitution: candidate.provenance.relative_substitution(),
+            })
+            .collect()
+    }
 }

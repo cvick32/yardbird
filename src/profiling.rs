@@ -290,6 +290,8 @@ pub(crate) struct SolverCheckMeasurement {
 pub struct ProfilingRecord {
     #[serde(default)]
     pub effort: Vec<crate::policy::effort::EffortRecord>,
+    #[serde(default)]
+    pub installations: Vec<InstallationRecord>,
     pub scope: String,
     pub bmc_depth: Option<u16>,
     pub refinement_step: Option<u32>,
@@ -458,6 +460,7 @@ impl ArrayProfilingCollector {
             quantifier_phase: None,
             record: ProfilingRecord {
                 effort: Vec::new(),
+                installations: Vec::new(),
                 scope: scope.into(),
                 bmc_depth,
                 refinement_step,
@@ -719,4 +722,13 @@ mod tests {
             Some(3.0)
         );
     }
+}
+
+/// An actual installation attempt. A missing result means normalization could
+/// not produce an installable formula; it does not mean deduplication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallationRecord {
+    pub abstract_instantiation_id: Option<String>,
+    pub term: String,
+    pub result: Option<crate::instantiation::provenance::InstantiationInstallResult>,
 }

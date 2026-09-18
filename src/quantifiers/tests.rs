@@ -729,6 +729,7 @@ fn binder_work_limit_is_reported_as_budget_exhaustion_not_continuation() {
     loop {
         let page = search_binder_page(&prepared.egraph, rules, &mut cursor, &None);
         count += page.matches.len();
+        assert_eq!(page.report.returned_substitutions, page.matches.len());
         examined += page.report.examined_substitutions;
         assert_eq!(
             page.report.continuable_rules.len(),

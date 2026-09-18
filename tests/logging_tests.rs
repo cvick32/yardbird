@@ -721,7 +721,7 @@ fn single_example_persists_provenance_to_db() {
         );
         assert_eq!(
             training_run.get::<String, _>("schema_version"),
-            "006_instantiation_substitutions"
+            "007_policy_trace"
         );
         assert_eq!(
             final_unsat_event.get::<i64, _>("total_instantiations_added"),

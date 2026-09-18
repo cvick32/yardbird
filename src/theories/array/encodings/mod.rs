@@ -135,8 +135,17 @@ impl EncodingPlan {
         &mut self,
         schemas: Vec<Term>,
         smt: &mut dyn ProblemContext,
-    ) {
+        capture: bool,
+    ) -> Vec<crate::profiling::InstallationRecord> {
+        let mut records = Vec::new();
         for schema in schemas {
+            if capture {
+                records.push(crate::profiling::InstallationRecord {
+                    abstract_instantiation_id: None,
+                    term: schema.to_string(),
+                    result: None,
+                });
+            }
             let Some(frame_zero) = smt.frame_transition_formula(schema, 0) else {
                 continue;
             };
@@ -145,11 +154,15 @@ impl EncodingPlan {
             };
             let key = canonical_instantiation_key(instance.get_term());
             let result = smt.add_instantiation(InstantiationRequest::untracked(instance));
+            if let Some(record) = records.last_mut() {
+                record.result = Some(result);
+            }
             self.installed_guarded.insert(key);
             if result.abstract_instance_added {
                 self.guarded_schemas_installed += 1;
             }
         }
+        records
     }
 
     pub(crate) fn add_statistics(&self, statistics: &mut SolverStatistics) {

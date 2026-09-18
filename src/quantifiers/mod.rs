@@ -538,6 +538,24 @@ impl PreparedQuantifierSearch {
             .map(|i| (i, rules[i].metadata().name().to_owned()))
             .collect()
     }
+    /// Symbolic identity for a compiled alternative in observation records.
+    /// Unlike a cursor index, this distinguishes the formula and signed path.
+    pub(crate) fn rule_description(&self, phase: SearchPhase, index: usize) -> String {
+        let rule = &self.compiled.phases[&phase][index];
+        let filters = rule
+            .binder_filters()
+            .iter()
+            .map(|(pattern, truth)| format!("{pattern}={truth}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{}: {} [{}]",
+            rule.metadata().name(),
+            rule.formula(),
+            filters
+        )
+    }
+
     pub(crate) fn rule_count(&self, phase: SearchPhase) -> usize {
         self.compiled.phases[&phase].len()
     }

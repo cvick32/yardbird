@@ -386,7 +386,7 @@ where
             depth: state.depth,
             refinement_step,
         });
-        loop {
+        let pass_result = (|| loop {
             if state.binder_search.is_some() {
                 self.quantifier.prepare_binder_search(
                     smt,
@@ -450,6 +450,9 @@ where
                     description,
                 })
                 .collect::<Vec<_>>();
+            let graph_version_before = state.graph_version;
+            let pending_count = state.candidates.len() + state.guarded_read_updates.len();
+            let choice_start = self.profile.then(Instant::now);
             let decision = self.policy.effort_mut().choose(&EffortContext {
                 model: state.model_version,
                 graph_version: state.graph_version,
@@ -458,12 +461,36 @@ where
                 pending_instances: state.candidates.len() + state.guarded_read_updates.len(),
                 operations: &operations,
             });
+            let choice_elapsed_secs = choice_start
+                .map(|start| start.elapsed().as_secs_f64())
+                .unwrap_or_default();
             let EffortDecision::Execute {
                 operation,
                 allowance,
             } = decision
             else {
-                self.finish_profiling_record(profiling);
+                if let Some(profiling) = &profiling {
+                    profiling.borrow_mut().record_effort(EffortRecord {
+                        model_version: state.model_version,
+                        graph_version_before,
+                        graph_version: state.graph_version,
+                        pending_instances: pending_count,
+                        kind: crate::policy::effort::EffortRecordKind::ReturnToDriver,
+                        operation_id: None,
+                        operation: "ReturnToDriver".into(),
+                        chosen: "ReturnToDriver".into(),
+                        offered: operations
+                            .iter()
+                            .map(|o| o.description.clone())
+                            .chain(std::iter::once("ReturnToDriver".into()))
+                            .collect(),
+                        allowance: None,
+                        report: WorkReport::default(),
+                        candidates: Vec::new(),
+                        choice_elapsed_secs,
+                        elapsed_secs: 0.0,
+                    });
+                }
                 return Ok(ProofAction::Continue);
             };
             let operation = operations
@@ -574,19 +601,32 @@ where
             });
             if let Some(profiling) = &profiling {
                 profiling.borrow_mut().record_effort(EffortRecord {
+                    model_version: state.model_version,
+                    graph_version_before,
                     graph_version: state.graph_version,
+                    pending_instances: pending_count,
+                    kind: crate::policy::effort::EffortRecordKind::Operation,
                     operation_id: Some(operation.id),
                     operation: format!("{:?}", operation.kind),
-                    offered: operations.iter().map(|o| o.description.clone()).collect(),
-                    allowance,
+                    chosen: operation.description.clone(),
+                    candidates: crate::policy::effort::EffortCandidate::from_batch(&batch),
+                    offered: operations
+                        .iter()
+                        .map(|o| o.description.clone())
+                        .chain(std::iter::once("ReturnToDriver".into()))
+                        .collect(),
+                    allowance: Some(allowance),
                     report,
+                    choice_elapsed_secs,
                     elapsed_secs: start.elapsed().as_secs_f64(),
                 });
             }
             if retain {
                 self.absorb_candidates(state, batch);
             }
-        }
+        })();
+        self.finish_profiling_record(profiling);
+        pass_result
     }
 
     #[allow(clippy::unnecessary_fold)]
@@ -595,9 +635,14 @@ where
         state: ArrayRefinementState,
         smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
-        self.array
-            .encoding_plan
-            .install_guarded_read_updates(state.guarded_read_updates, smt);
+        let installations = self.array.encoding_plan.install_guarded_read_updates(
+            state.guarded_read_updates,
+            smt,
+            self.profile,
+        );
+        if let Some(record) = self.profiling_records.last_mut() {
+            record.installations.extend(installations);
+        }
         let trace_instantiations = trace_instantiations_enabled();
         for candidate in state.candidates {
             let expression = candidate.expression;
@@ -615,6 +660,17 @@ where
                 );
             }
 
+            if self.profile {
+                if let Some(record) = self.profiling_records.last_mut() {
+                    record
+                        .installations
+                        .push(crate::profiling::InstallationRecord {
+                            abstract_instantiation_id: Some(abstract_id.clone()),
+                            term: term.to_string(),
+                            result: None,
+                        });
+                }
+            }
             let Some(request) = smt.make_provenanced_unquantified_instance(term, provenance) else {
                 if trace_instantiations {
                     trace!(
@@ -624,6 +680,13 @@ where
                 continue;
             };
             let result = smt.add_instantiation(request);
+            if let Some(record) = self
+                .profiling_records
+                .last_mut()
+                .and_then(|r| r.installations.last_mut())
+            {
+                record.result = Some(result);
+            }
             self.policy.effort_mut().observe(&EffortEvent::Installed {
                 abstract_id: &abstract_id,
                 assertions_added: result.solver_assertions_added(),
@@ -1757,7 +1820,9 @@ mod tests {
         let version = state.graph_version;
         strategy.sat(&mut state, &smt, 0).unwrap();
         let widened = &strategy.profiling_records[3].effort;
-        assert!(widened.iter().any(|e| e.allowance.winners == 2));
+        assert!(widened
+            .iter()
+            .any(|e| e.allowance.is_some_and(|a| a.winners == 2)));
         strategy.sat(&mut state, &smt, 0).unwrap();
         assert!(state.graph_version > version);
         let growth = strategy.profiling_records[4]
@@ -1766,7 +1831,7 @@ mod tests {
             .find(|e| e.operation == "GrowVocabulary")
             .unwrap();
         assert!(growth.report.terms_added > 0);
-        assert!(growth.report.vocabulary_work <= growth.allowance.vocabulary_work);
+        assert!(growth.report.vocabulary_work <= growth.allowance.unwrap().vocabulary_work);
         assert!(!strategy.has_pending_refinement(&state));
     }
 
@@ -1815,7 +1880,7 @@ mod tests {
             .iter()
             .any(|e| e.operation == "ArrayCandidates" && e.report.budget_exhausted));
         assert!(records.iter().any(|e| e.operation == "ArrayCandidates"
-            && e.allowance.array_initial_limit > 1
+            && e.allowance.is_some_and(|a| a.array_initial_limit > 1)
             && e.report.selected > 0));
     }
 

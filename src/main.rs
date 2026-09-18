@@ -151,7 +151,13 @@ fn run_smtlib_with_strategy(
     ) {
         Ok(res) => res,
         Err(err) => {
-            if let Some(session) = training_session.as_mut() {
+            if let Some(failure) = err.downcast_ref::<yardbird::smtlib_problem::RefinementFailure>()
+            {
+                if let Some(session) = training_session.as_mut() {
+                    session.complete_result(&failure.result)?;
+                }
+                finish_solver_capture(solver_capture.as_ref(), &failure.result.profiling)?;
+            } else if let Some(session) = training_session.as_mut() {
                 session.complete_failure()?;
             }
             return Err(err);
@@ -336,9 +342,11 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                         {
                             log::warn!("Could not finalize failed run capture: {capture_error}");
                         }
+                        if let Some(session) = training_session.as_mut() {
+                            session.complete_result(&result)?;
+                        }
                         print_file_results(result, options)?;
-                    }
-                    if let Some(session) = training_session.as_mut() {
+                    } else if let Some(session) = training_session.as_mut() {
                         session.complete_failure()?;
                     }
                     return Err(err.into());
@@ -378,9 +386,11 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                         {
                             log::warn!("Could not finalize failed run capture: {capture_error}");
                         }
+                        if let Some(session) = training_session.as_mut() {
+                            session.complete_result(&result)?;
+                        }
                         print_file_results(result, options)?;
-                    }
-                    if let Some(session) = training_session.as_mut() {
+                    } else if let Some(session) = training_session.as_mut() {
                         session.complete_failure()?;
                     }
                     return Err(err.into());

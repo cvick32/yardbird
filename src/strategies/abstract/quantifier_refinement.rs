@@ -288,6 +288,7 @@ impl QuantifierRefinement {
                 profiling.record_timing(phase.timing_key(), phase_start.elapsed());
             }
             let mut batch = InstantiationBatch::default();
+            batch.search.cache_hit = true;
             batch.search.budget_exhausted_rules =
                 search.empty_passes[&phase].budget_exhausted_rules.clone();
             return Ok(batch);
@@ -305,6 +306,7 @@ impl QuantifierRefinement {
             .collect();
         known.extend(context.pending_instances.iter().cloned());
         let mut examined_total = 0;
+        let mut returned_total = 0;
         loop {
             let pending = prepared.pending_rules(phase);
             if pending.is_empty() {
@@ -321,16 +323,53 @@ impl QuantifierRefinement {
                 );
                 return Ok(InstantiationBatch::default());
             }
-            let Some(rule) =
-                effort.choose_binder_rule(&crate::policy::effort::BinderEffortContext {
-                    phase,
-                    pending_rules: &pending,
-                    rule_count: prepared.rule_count(phase),
-                })
-            else {
+            let offered = profiling.as_ref().map(|_| {
+                pending
+                    .iter()
+                    .map(|(index, _)| prepared.rule_description(phase, *index))
+                    .chain(std::iter::once("ReturnToCoordinator".into()))
+                    .collect::<Vec<_>>()
+            });
+            let choice_start = profiling.as_ref().map(|_| Instant::now());
+            let choice = effort.choose_binder_rule(&crate::policy::effort::BinderEffortContext {
+                phase,
+                pending_rules: &pending,
+                rule_count: prepared.rule_count(phase),
+            });
+            let choice_elapsed_secs = choice_start
+                .map(|start| start.elapsed().as_secs_f64())
+                .unwrap_or_default();
+            let Some(rule) = choice else {
+                if let Some(profiling) = &context.profiling {
+                    profiling
+                        .borrow_mut()
+                        .record_effort(crate::policy::effort::EffortRecord {
+                            model_version: context
+                                .operation_id
+                                .map(|id| id.model)
+                                .unwrap_or_default(),
+                            graph_version_before: context.graph_version,
+                            graph_version: context.graph_version,
+                            pending_instances: context.pending_instances.len(),
+                            kind: crate::policy::effort::EffortRecordKind::BinderPage,
+                            operation_id: context.operation_id,
+                            operation: format!("{phase:?}:pause"),
+                            chosen: "ReturnToCoordinator".into(),
+                            offered: offered.clone().unwrap_or_default(),
+                            allowance: None,
+                            report: crate::policy::effort::WorkReport {
+                                continuable: true,
+                                ..Default::default()
+                            },
+                            candidates: Vec::new(),
+                            choice_elapsed_secs,
+                            elapsed_secs: 0.0,
+                        });
+                }
                 // A policy pause is not evidence of an empty/exhausted pass.
                 let mut batch = InstantiationBatch::default();
                 batch.search.examined_substitutions = examined_total;
+                batch.search.returned_substitutions = returned_total;
                 batch.search.continuable_rules =
                     pending.into_iter().map(|(_, name)| name).collect();
                 return Ok(batch);
@@ -400,6 +439,7 @@ impl QuantifierRefinement {
             }
             let report = crate::policy::effort::WorkReport::from_batch(&batch);
             examined_total += report.examined_substitutions;
+            returned_total += report.returned_substitutions;
             effort.observe(&crate::policy::effort::EffortEvent::BinderPage {
                 phase,
                 rule,
@@ -410,15 +450,22 @@ impl QuantifierRefinement {
                 profiling
                     .borrow_mut()
                     .record_effort(crate::policy::effort::EffortRecord {
+                        model_version: context.operation_id.map(|id| id.model).unwrap_or_default(),
+                        graph_version_before: context.graph_version,
                         graph_version: context.graph_version,
+                        pending_instances: context.pending_instances.len(),
+                        kind: crate::policy::effort::EffortRecordKind::BinderPage,
                         operation_id: context.operation_id,
+                        chosen: prepared.rule_description(phase, rule),
+                        candidates: crate::policy::effort::EffortCandidate::from_batch(&batch),
                         operation: format!(
                             "{phase:?}:{}",
                             pending.iter().find(|(i, _)| *i == rule).unwrap().1
                         ),
-                        offered: pending.iter().map(|(_, name)| name.clone()).collect(),
-                        allowance: context.allowance,
+                        offered: offered.clone().unwrap_or_default(),
+                        allowance: Some(context.allowance),
                         report: report.clone(),
+                        choice_elapsed_secs,
                         elapsed_secs: page_start.elapsed().as_secs_f64(),
                     });
             }
@@ -444,6 +491,7 @@ impl QuantifierRefinement {
                         .record_timing(phase.timing_key(), phase_start.elapsed());
                 }
                 batch.search.examined_substitutions = examined_total;
+                batch.search.returned_substitutions = returned_total;
                 return Ok(batch);
             }
             // Known/satisfied prefixes must not hide a later usable candidate.

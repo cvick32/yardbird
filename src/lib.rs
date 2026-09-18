@@ -371,7 +371,7 @@ impl YardbirdOptions {
     }
 
     fn profiling_enabled(&self) -> bool {
-        self.profile || self.solver_capture_dir.is_some()
+        self.profile || self.train || self.solver_capture_dir.is_some()
     }
 
     pub fn build_array_artifact_capture(&self) -> ArtifactCapture {
