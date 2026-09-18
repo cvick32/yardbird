@@ -21,16 +21,29 @@ pub(crate) struct BinderSearchRequest {
 }
 
 pub(crate) enum BinderSearch<'a> {
+    #[cfg(test)]
     Phase(SearchPhase),
+    Page {
+        phase: SearchPhase,
+        rule: usize,
+        allowance: crate::policy::effort::WorkAllowance,
+    },
+    #[cfg(test)]
     Request(&'a BinderSearchRequest),
+    RequestPage(
+        &'a BinderSearchRequest,
+        crate::policy::effort::WorkAllowance,
+    ),
 }
 
+#[cfg(test)]
 impl From<SearchPhase> for BinderSearch<'_> {
     fn from(phase: SearchPhase) -> Self {
         Self::Phase(phase)
     }
 }
 
+#[cfg(test)]
 impl<'a> From<&'a BinderSearchRequest> for BinderSearch<'a> {
     fn from(request: &'a BinderSearchRequest) -> Self {
         Self::Request(request)
@@ -40,6 +53,7 @@ impl<'a> From<&'a BinderSearchRequest> for BinderSearch<'a> {
 pub(super) struct PreparedBinderRequest {
     rule: Rc<CompiledQuantifiedRule<()>>,
     pub cursor: BinderSearchCursor,
+    pub allowance: Option<crate::policy::effort::WorkAllowance>,
 }
 
 impl PreparedQuantifierSearch {
@@ -93,6 +107,7 @@ impl PreparedQuantifierSearch {
         self.requests.insert(
             request.clone(),
             PreparedBinderRequest {
+                allowance: None,
                 rule: rule.clone(),
                 cursor: BinderSearchCursor::default(),
             },

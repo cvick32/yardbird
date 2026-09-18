@@ -4,12 +4,6 @@ use super::*;
 use crate::problem_context::ProblemContext;
 use std::collections::VecDeque;
 
-const MAX_DEMANDS: usize = 64;
-const MAX_PATHS: usize = 16;
-const MAX_LINKS: usize = 8;
-const MAX_WORK: usize = 512;
-const MAX_HELPERS: usize = 128;
-
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Goal {
     atom: Term,
@@ -136,9 +130,17 @@ fn applications(term: &Term, visit: &mut impl FnMut(&Term)) {
 }
 
 impl PreparedQuantifierSearch {
+    #[cfg(test)]
     pub fn dependency_paths(
         &mut self,
         smt: &dyn ProblemContext,
+    ) -> anyhow::Result<DependencySearch> {
+        self.dependency_paths_with_allowance(smt, &crate::policy::effort::WorkAllowance::default())
+    }
+    pub fn dependency_paths_with_allowance(
+        &mut self,
+        smt: &dyn ProblemContext,
+        allowance: &crate::policy::effort::WorkAllowance,
     ) -> anyhow::Result<DependencySearch> {
         let mut terms = smt
             .get_all_subterms()
@@ -161,7 +163,7 @@ impl PreparedQuantifierSearch {
         let mut atom_set = HashSet::new();
         let mut collect_atoms = |term: &Term| {
             applications(term, &mut |term| {
-                if atoms.len() == MAX_DEMANDS {
+                if atoms.len() == allowance.dependency_demands {
                     return;
                 }
                 let goal = Goal::new(term, true);
@@ -209,7 +211,9 @@ impl PreparedQuantifierSearch {
         let mut seen = HashSet::new();
         let mut result = DependencySearch::default();
         for helper in helpers {
-            if result.work == MAX_HELPERS {
+            if result.work >= allowance.dependency_helpers
+                || result.work >= allowance.dependency_work
+            {
                 result.budget_exhausted = true;
                 break;
             }
@@ -234,8 +238,12 @@ impl PreparedQuantifierSearch {
             let witness = rule.witness_instance(arguments).unwrap();
             collect_atoms(&witness);
         }
-        result.budget_exhausted |= atoms.len() == MAX_DEMANDS;
+        result.budget_exhausted |= atoms.len() == allowance.dependency_demands;
         for atom in atoms {
+            if result.work >= allowance.dependency_work {
+                result.budget_exhausted = true;
+                break;
+            }
             result.work += 1;
             let value = model_value(&atom, smt, &mut self.evaluations)?;
             let truth = match value.as_str() {
@@ -256,7 +264,7 @@ impl PreparedQuantifierSearch {
             .map(|goal| (goal.clone(), goal, Vec::new(), HashSet::new()))
             .collect::<VecDeque<_>>();
         while let Some((demand, goal, requests, mut visited)) = queue.pop_front() {
-            if result.work == MAX_WORK {
+            if result.work >= allowance.dependency_work {
                 result.budget_exhausted = true;
                 break;
             }
@@ -278,13 +286,13 @@ impl PreparedQuantifierSearch {
                     desired_truth: demand.truth,
                     requests,
                 });
-                if result.paths.len() == MAX_PATHS {
+                if result.paths.len() == allowance.dependency_paths {
                     result.budget_exhausted |= !queue.is_empty();
                     break;
                 }
                 continue;
             }
-            if requests.len() == MAX_LINKS {
+            if requests.len() == allowance.dependency_links {
                 result.budget_exhausted = true;
                 continue;
             }
@@ -296,7 +304,7 @@ impl PreparedQuantifierSearch {
                 .into_iter()
                 .flatten()
             {
-                if result.work == MAX_WORK {
+                if result.work >= allowance.dependency_work {
                     result.budget_exhausted = true;
                     break;
                 }

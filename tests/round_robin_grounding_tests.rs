@@ -74,6 +74,7 @@ fn explore(
         cost,
         &[("Int".into(), "Bool".into())],
         ArrayInstantiationOptions {
+            search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog {
                 source_grounded: ArrayCandidatePool {

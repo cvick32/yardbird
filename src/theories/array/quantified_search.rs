@@ -6,14 +6,6 @@ use crate::profiling::ArrayProfilingCollector;
 
 use super::array_axioms::{ArrayLanguage, CompiledQuantifiedRule};
 
-const INITIAL_ARRAY_MATCH_LIMIT: usize = 1_000;
-const ARRAY_SEARCH_ROUNDS: usize = 15;
-const BINDER_PAGE_SIZE: usize = 100;
-// egg does not expose a resumable join. Bound prefix re-examination as well as
-// retained matches: at most 656 queries (21,550,192 returned substitutions) per
-// rule per search pass, including lookahead. No budget establishes completeness.
-const BINDER_SEARCH_LIMIT: usize = 65_536;
-
 #[derive(Clone, Debug, Default)]
 pub struct RuleSearchReport {
     /// Rules with another page available within the current search budget.
@@ -58,10 +50,16 @@ impl BinderSearchCursor {
         }
     }
 
-    pub(crate) fn next_rule_index(&self) -> usize {
-        self.next_rule
+    pub(crate) fn pending_rules(&self, count: usize) -> Vec<usize> {
+        (0..count)
+            .filter(|i| {
+                self.rules
+                    .get(*i)
+                    .is_none_or(|r| matches!(r, BinderRuleCursor::Pending { .. }))
+            })
+            .collect()
     }
-
+    #[cfg(test)]
     pub fn can_continue(&self) -> bool {
         self.rules
             .iter()
@@ -118,13 +116,14 @@ fn search<N: egg::Analysis<ArrayLanguage>>(
 pub(crate) fn search_array_rules<N: egg::Analysis<ArrayLanguage>>(
     egraph: &egg::EGraph<ArrayLanguage, N>,
     rules: &[CompiledQuantifiedRule<N>],
+    allowance: &crate::policy::effort::WorkAllowance,
     profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
 ) -> MatchedRules {
     let mut result = MatchedRules::default();
     let mut completed = vec![false; rules.len()];
-    for round in 0..ARRAY_SEARCH_ROUNDS {
+    for round in 0..allowance.array_rounds {
         result.report.rounds = round + 1;
-        let limit = INITIAL_ARRAY_MATCH_LIMIT << round;
+        let limit = allowance.array_initial_limit << round;
         for (index, rule) in rules.iter().enumerate() {
             if completed[index] {
                 continue;
@@ -154,6 +153,7 @@ fn search_binder_rule_page<N: egg::Analysis<ArrayLanguage>>(
     rule: &CompiledQuantifiedRule<N>,
     rule_index: usize,
     cursor: &mut BinderRuleCursor,
+    allowance: &crate::policy::effort::WorkAllowance,
     profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
 ) -> MatchedRules {
     let BinderRuleCursor::Pending { offset } = *cursor else {
@@ -186,13 +186,15 @@ fn search_binder_rule_page<N: egg::Analysis<ArrayLanguage>>(
         };
     }
 
-    let end = (offset + BINDER_PAGE_SIZE).min(BINDER_SEARCH_LIMIT);
+    let end = offset
+        .saturating_add(allowance.binder_page_size)
+        .min(allowance.binder_search_limit);
     let matches = search(egraph, rule, rule_index, end + 1, profiling);
     let examined_substitutions = matches.len();
 
     *cursor = if examined_substitutions <= end {
         BinderRuleCursor::Complete
-    } else if end == BINDER_SEARCH_LIMIT {
+    } else if end == allowance.binder_search_limit {
         BinderRuleCursor::Exhausted
     } else {
         BinderRuleCursor::Pending { offset: end }
@@ -214,6 +216,7 @@ fn search_binder_rule_page<N: egg::Analysis<ArrayLanguage>>(
 
 /// Continue within the SAME model-equivalence graph. A new model must use a
 /// new cursor; its e-class identities and matching order may have changed.
+#[cfg(test)]
 pub(crate) fn search_binder_page<N: egg::Analysis<ArrayLanguage>>(
     egraph: &egg::EGraph<ArrayLanguage, N>,
     rules: &[CompiledQuantifiedRule<N>],
@@ -238,6 +241,7 @@ pub(crate) fn search_binder_page<N: egg::Analysis<ArrayLanguage>>(
             &rules[index],
             index,
             &mut cursor.rules[index],
+            &crate::policy::effort::WorkAllowance::default(),
             profiling,
         );
 
@@ -258,6 +262,43 @@ pub(crate) fn search_binder_page<N: egg::Analysis<ArrayLanguage>>(
                     .budget_exhausted_rules
                     .push(rule.metadata().name().to_owned());
             }
+            BinderRuleCursor::Complete => {}
+        }
+    }
+    result
+}
+
+pub(crate) fn search_binder_page_at<N: egg::Analysis<ArrayLanguage>>(
+    egraph: &egg::EGraph<ArrayLanguage, N>,
+    rules: &[CompiledQuantifiedRule<N>],
+    cursor: &mut BinderSearchCursor,
+    index: usize,
+    allowance: &crate::policy::effort::WorkAllowance,
+    profiling: &Option<Rc<RefCell<ArrayProfilingCollector>>>,
+) -> MatchedRules {
+    cursor
+        .rules
+        .resize(rules.len(), BinderRuleCursor::Pending { offset: 0 });
+    let mut result = search_binder_rule_page(
+        egraph,
+        &rules[index],
+        index,
+        &mut cursor.rules[index],
+        allowance,
+        profiling,
+    );
+    // A cursor records progress; it does not choose the next rule.
+    cursor.next_rule = (index + 1) % rules.len();
+    for (index, rule) in rules.iter().enumerate() {
+        match cursor.rules[index] {
+            BinderRuleCursor::Pending { .. } => result
+                .report
+                .continuable_rules
+                .push(rule.metadata().name().to_owned()),
+            BinderRuleCursor::Exhausted => result
+                .report
+                .budget_exhausted_rules
+                .push(rule.metadata().name().to_owned()),
             BinderRuleCursor::Complete => {}
         }
     }

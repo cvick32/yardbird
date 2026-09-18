@@ -33,7 +33,8 @@ fn run(enabled: bool, budget: usize) -> yardbird::ProofLoopResult {
         Box::new(FullUnrollStrategy::new()),
         SolverBackend::Z3,
     );
-    let policy = yardbird::YardbirdPolicy::new(()).with_candidate_winners_per_group(budget);
+    let policy = yardbird::YardbirdPolicy::new(())
+        .with_effort(yardbird::policy::DefaultEffort::default().with_winners_per_group(budget));
     let strategy = Abstract::<ArrayBMCCost>::new(4, false, policy, false)
         .with_guarded_read_updates(enabled)
         .with_property_check_mode(PropertyCheckMode::Assumptions);

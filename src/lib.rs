@@ -521,8 +521,11 @@ impl YardbirdOptions {
         F: ArrayCostFactory + 'static,
     {
         let policy = YardbirdPolicy::new(cost_config)
-            .with_egraph_builder(self.build_array_egraph_builder())
-            .with_candidate_winners_per_group(self.candidate_winners_per_group)
+            .with_effort(
+                crate::policy::DefaultEffort::default()
+                    .with_egraph_builder(self.build_array_egraph_builder())
+                    .with_winners_per_group(self.candidate_winners_per_group),
+            )
             .with_instantiation_ranker(self.build_instantiation_ranker());
         Abstract::new(bmc_depth, self.run_ic3ia, policy, self.profiling_enabled())
             .with_artifact_capture(self.build_array_artifact_capture())

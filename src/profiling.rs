@@ -288,6 +288,8 @@ pub(crate) struct SolverCheckMeasurement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfilingRecord {
+    #[serde(default)]
+    pub effort: Vec<crate::policy::effort::EffortRecord>,
     pub scope: String,
     pub bmc_depth: Option<u16>,
     pub refinement_step: Option<u32>,
@@ -443,6 +445,9 @@ pub struct ArrayProfilingCollector {
 }
 
 impl ArrayProfilingCollector {
+    pub(crate) fn record_effort(&mut self, record: crate::policy::effort::EffortRecord) {
+        self.record.effort.push(record);
+    }
     pub fn new(
         scope: impl Into<String>,
         bmc_depth: Option<u16>,
@@ -452,6 +457,7 @@ impl ArrayProfilingCollector {
         Self {
             quantifier_phase: None,
             record: ProfilingRecord {
+                effort: Vec::new(),
                 scope: scope.into(),
                 bmc_depth,
                 refinement_step,

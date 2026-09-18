@@ -81,8 +81,8 @@ pub(crate) enum BinderKind {
     Lambda,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum SearchPhase {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SearchPhase {
     Witnesses,
     TriggeredConflicts,
     Conflicts,
@@ -573,18 +573,34 @@ impl PreparedQuantifierSearch {
         );
     }
 
-    pub fn next_rule_index(&self, phase: SearchPhase) -> usize {
-        self.cursors
-            .get(&phase)
-            .map_or(0, |cursor| cursor.next_rule_index())
-    }
-
+    #[cfg(test)]
     pub fn can_continue<'a>(&self, search: impl Into<BinderSearch<'a>>) -> bool {
         let cursor = match search.into() {
+            #[cfg(test)]
             BinderSearch::Phase(phase) => self.cursors.get(&phase),
+            #[cfg(test)]
             BinderSearch::Request(request) => self.requests.get(request).map(|state| &state.cursor),
+            BinderSearch::Page { phase, .. } => self.cursors.get(&phase),
+            BinderSearch::RequestPage(request, _) => {
+                self.requests.get(request).map(|state| &state.cursor)
+            }
         };
         cursor.is_some_and(|cursor| cursor.can_continue())
+    }
+
+    pub(crate) fn pending_rules(&self, phase: SearchPhase) -> Vec<(usize, String)> {
+        let rules = &self.compiled.phases[&phase];
+        let pending = self.cursors.get(&phase).map_or_else(
+            || (0..rules.len()).collect(),
+            |c| c.pending_rules(rules.len()),
+        );
+        pending
+            .into_iter()
+            .map(|i| (i, rules[i].metadata().name().to_owned()))
+            .collect()
+    }
+    pub(crate) fn rule_count(&self, phase: SearchPhase) -> usize {
+        self.compiled.phases[&phase].len()
     }
 
     pub fn candidates<'a, CF>(
@@ -600,15 +616,32 @@ impl PreparedQuantifierSearch {
         use crate::theories::array::{
             array_axioms::{expr_to_term, instantiate_quantified_matches},
             array_grounding::instantiate_with_bindings,
-            quantified_search::search_binder_page,
+            quantified_search::search_binder_page_at,
         };
-        let (phase, request) = match search.into() {
-            BinderSearch::Phase(phase) => (phase, None),
-            BinderSearch::Request(request) => (request.phase, Some(request)),
+        let (phase, request, page) = match search.into() {
+            #[cfg(test)]
+            BinderSearch::Phase(phase) => (phase, None, None),
+            #[cfg(test)]
+            BinderSearch::Request(request) => (request.phase, Some(request), None),
+            BinderSearch::Page {
+                phase,
+                rule,
+                allowance,
+            } => (phase, None, Some((rule, allowance))),
+            BinderSearch::RequestPage(request, allowance) => {
+                (request.phase, Some(request), Some((0, allowance)))
+            }
         };
         let requested_rule = request
             .map(|request| self.prepare_request(request))
             .transpose()?;
+        if let (Some(request), Some((_, allowance))) = (request, page) {
+            let state = self.requests.get_mut(request).unwrap();
+            if state.allowance != Some(allowance) {
+                state.cursor = Default::default();
+                state.allowance = Some(allowance);
+            }
+        }
         let profiling = options.instrumentation.profiling.clone();
         let rules = match &requested_rule {
             Some(rule) => std::slice::from_ref(rule.as_ref()),
@@ -619,7 +652,20 @@ impl PreparedQuantifierSearch {
             Some(request) => &mut self.requests.get_mut(request).unwrap().cursor,
             None => self.cursors.entry(phase).or_default(),
         };
-        let mut matched = search_binder_page(&self.egraph, rules, cursor, &profiling);
+        let mut matched = match page {
+            Some((rule, allowance)) => {
+                search_binder_page_at(&self.egraph, rules, cursor, rule, &allowance, &profiling)
+            }
+            #[cfg(test)]
+            None => crate::theories::array::quantified_search::search_binder_page(
+                &self.egraph,
+                rules,
+                cursor,
+                &profiling,
+            ),
+            #[cfg(not(test))]
+            None => unreachable!("production search requires an explicit rule"),
+        };
         if let Some(profiling) = &profiling {
             let mut profiling = profiling.borrow_mut();
             profiling.record_timing("input_binder_matching", start.elapsed());
@@ -1694,6 +1740,7 @@ mod tests {
 
     pub(super) fn prepared_options() -> ArrayInstantiationOptions {
         ArrayInstantiationOptions {
+            search_allowance: crate::policy::effort::WorkAllowance::default(),
             candidate_catalog: Default::default(),
             additional_terms: vec![],
             candidate_scope: crate::theories::array::candidate_scope::CandidateScope::AllCandidates,
@@ -2197,6 +2244,7 @@ mod tests {
             PreferLongName,
             &[rule.compile(phase, &[]).unwrap().unwrap()],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: catalog
                     .source_grounded
                     .terms

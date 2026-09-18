@@ -68,6 +68,7 @@ pub struct ArrayInstantiationInstrumentation {
 }
 
 pub struct ArrayInstantiationOptions {
+    pub search_allowance: crate::policy::effort::WorkAllowance,
     pub candidate_catalog: ArrayCandidateCatalog,
     pub additional_terms: Vec<ArrayExpr>,
     pub candidate_scope: CandidateScope,
@@ -312,6 +313,7 @@ where
     let matched = super::quantified_search::search_array_rules(
         egraph,
         rules,
+        &options.search_allowance,
         &options.instrumentation.profiling,
     );
     instantiate_quantified_matches(egraph, || cost_fn, rules, options, matched, demand, None)
@@ -332,6 +334,7 @@ where
     CF: YardbirdCostFunction<ArrayLanguage> + 'static,
 {
     let ArrayInstantiationOptions {
+        search_allowance: _,
         candidate_catalog,
         additional_terms,
         candidate_scope,
@@ -1537,6 +1540,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
@@ -1580,6 +1584,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
@@ -1622,6 +1627,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
@@ -1656,6 +1662,7 @@ mod test {
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
                 ArrayInstantiationOptions {
+                    search_allowance: crate::policy::effort::WorkAllowance::default(),
                     additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: scope,
@@ -1712,6 +1719,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
@@ -1750,6 +1758,7 @@ mod test {
             HighCostA,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
@@ -1798,6 +1807,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
@@ -1839,6 +1849,7 @@ mod test {
             ZeroCost,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
@@ -1876,6 +1887,7 @@ mod test {
             PreferB,
             &[("Int".into(), "Int".into())],
             ArrayInstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
@@ -1947,6 +1959,7 @@ mod test {
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
                 ArrayInstantiationOptions {
+                    search_allowance: crate::policy::effort::WorkAllowance::default(),
                     additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: CandidateScope::AllCandidates,

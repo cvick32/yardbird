@@ -83,6 +83,7 @@ pub(crate) struct BatchSummary {
 }
 
 impl BatchSummary {
+    #[cfg(test)]
     pub(crate) fn selected_count(&self) -> usize {
         self.selected_arrays + self.selected_guards + self.selected_binders
     }

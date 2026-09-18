@@ -54,6 +54,11 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
     ) -> driver::Result<ArrayRefinementState> {
         Ok(ArrayRefinementState {
             binder_search: None,
+            model_version: 0,
+            graph_version: 0,
+            array_expansion: None,
+            array_exhausted: false,
+            model_reported: false,
             depth,
             egraph: egg::EGraph::default(),
             candidates: vec![],
