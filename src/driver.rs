@@ -816,7 +816,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                             action
                         }
                         SolverCheckResult::Sat => {
-                            info!("  refinement: {}/{n_refines}", refinement_step);
+                            info!("  refinement: {}", refinement_step);
                             let sat_start = Instant::now();
                             active_phase = Some(("strategy_sat", sat_start));
                             self.extensions
