@@ -69,6 +69,31 @@ pub trait ProofStrategy<'ctx, S> {
 
     fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> driver::Result<S>;
 
+    /// Called once before the first solver check. Installation replays the fixed
+    /// batch at later depths; selection must not inspect a solver model.
+    fn seed_instances(&mut self, smt: &mut dyn ProblemContext) -> driver::Result<()> {
+        if let Some(seeder) = self.instance_seeder() {
+            seeder.seed(smt)?;
+        }
+        Ok(())
+    }
+
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        None
+    }
+
+    fn add_statistics(&mut self, statistics: &mut crate::utils::SolverStatistics) {
+        if let Some(seeder) = self.instance_seeder() {
+            seeder.add_statistics(statistics);
+        }
+    }
+
+    fn take_eager_artifacts(&mut self) -> Vec<AbstractInstantiationRecord> {
+        self.instance_seeder()
+            .map(|seeder| seeder.take_records())
+            .unwrap_or_default()
+    }
+
     fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> driver::Result<ProofAction>;
 
     fn sat(

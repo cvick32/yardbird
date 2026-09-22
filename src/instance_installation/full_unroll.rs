@@ -16,6 +16,6 @@ impl InstantiationStrategy for FullUnrollStrategy {
     }
 
     fn on_loop(&mut self, depth: u16, context: &mut InstantiationContext<'_>) {
-        context.install_existing_at_current_depth(depth);
+        context.install_existing_at_current_depth(depth, true);
     }
 }

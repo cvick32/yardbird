@@ -3,6 +3,7 @@
 //! Cost construction, complete-instance selection and effort settings have one owner.
 //! The effort policy chooses work; the engine validates and executes it.
 
+pub mod eager;
 pub mod effort;
 pub mod instance_selection;
 pub mod term_selection;
@@ -42,6 +43,7 @@ fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
                 .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
                 .with_winners_per_group(20),
         );
+    let policy = run.configure_eager_policy(policy);
     let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
         .with_artifact_capture(run.build_array_artifact_capture())
         .with_property_check_mode(PropertyCheckMode::Assumptions);
@@ -63,6 +65,7 @@ pub struct YardbirdPolicy<F: TermCostFactory> {
     term_config: F::Config,
     instances: Box<dyn InstantiationRanker>,
     effort: Box<dyn ProofEffort>,
+    eager: Option<eager::EagerInstantiation>,
 }
 
 impl<F: TermCostFactory> YardbirdPolicy<F> {
@@ -71,12 +74,30 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
             term_config,
             instances: Box::new(PreferSourceInstantiationRanker),
             effort: Box::<DefaultEffort>::default(),
+            eager: None,
         }
     }
 
     pub fn with_term_config(mut self, config: F::Config) -> Self {
         self.term_config = config;
         self
+    }
+
+    pub fn with_eager_instantiation(mut self, config: eager::EagerInstantiation) -> Self {
+        self.eager = Some(config);
+        self
+    }
+
+    pub(crate) fn eager_seeder(&self) -> Option<Box<dyn crate::strategies::eager::InstanceSeeder>>
+    where
+        F: 'static,
+    {
+        self.eager.map(|config| {
+            Box::new(crate::strategies::eager::CostGuidedSeeder::<F>::new(
+                self.term_config.clone(),
+                config,
+            )) as Box<dyn crate::strategies::eager::InstanceSeeder>
+        })
     }
 
     pub fn with_instantiation_ranker(mut self, ranker: Box<dyn InstantiationRanker>) -> Self {

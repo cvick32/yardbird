@@ -23,6 +23,10 @@ impl SchemaBatchStrategy {
 }
 
 impl InstantiationStrategy for SchemaBatchStrategy {
+    fn supports_eager_instantiation(&self) -> bool {
+        false
+    }
+
     fn clone_box(&self) -> Box<dyn InstantiationStrategy> {
         Box::new(self.clone())
     }
@@ -61,7 +65,7 @@ impl InstantiationStrategy for SchemaBatchStrategy {
 
     fn on_loop(&mut self, depth: u16, context: &mut InstantiationContext<'_>) {
         if context.solver_backend() != SolverBackend::Z3 {
-            context.install_existing_at_current_depth(depth);
+            context.install_existing_at_current_depth(depth, true);
         }
     }
 }

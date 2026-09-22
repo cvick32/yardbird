@@ -156,6 +156,7 @@ impl<'a> InstantiationContext<'a> {
         }
 
         let stored = StoredInstantiation {
+            replay_on_loop: request.replay_on_loop,
             inst: request.inst,
             provenance: request.provenance,
         };
@@ -271,8 +272,9 @@ impl<'a> InstantiationContext<'a> {
         Ok(result)
     }
 
-    /// Replays every stored instance at the BMC builder's current depth.
-    pub fn install_existing_at_current_depth(&mut self, depth: u16) {
+    /// Replays eligible schemas. Fixed eager seeds replay even when ordinary
+    /// refinement replay is disabled.
+    pub fn install_existing_at_current_depth(&mut self, depth: u16, replay_refinements: bool) {
         let stored_instances = self.instantiations.clone();
         if stored_instances.is_empty() {
             return;
@@ -280,6 +282,9 @@ impl<'a> InstantiationContext<'a> {
 
         let mut indexed_instances = Vec::new();
         for stored in stored_instances {
+            if stored.inst.width() > depth || (!replay_refinements && !stored.replay_on_loop) {
+                continue;
+            }
             self.bmc_builder.set_width(stored.inst.width());
             let rewritten = stored.inst.rewrite(self.bmc_builder);
             let substitution = stored
@@ -467,6 +472,11 @@ impl<'a> InstantiationContext<'a> {
 /// Policy controlling when stored quantifier instantiations are replayed.
 pub trait InstantiationStrategy: std::fmt::Debug + Send {
     fn clone_box(&self) -> Box<dyn InstantiationStrategy>;
+
+    /// Whether new instances can be asserted before the first model exists.
+    fn supports_eager_instantiation(&self) -> bool {
+        true
+    }
 
     fn on_generate(
         &mut self,

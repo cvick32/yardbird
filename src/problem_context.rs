@@ -61,6 +61,10 @@ pub trait ProblemContext {
     fn get_reason_unknown(&self) -> Option<String>;
 
     // Methods for instantiation management
+    fn supports_eager_instantiation(&self) -> bool {
+        true
+    }
+
     fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult;
     fn get_instantiations(&self) -> Vec<Term>;
     fn get_variables(&self) -> &[Variable];

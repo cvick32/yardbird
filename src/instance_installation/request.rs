@@ -8,6 +8,7 @@ use smt2parser::vmt::quantified_instantiator::Instance;
 pub struct InstantiationRequest {
     pub(crate) inst: Instance,
     pub(crate) provenance: Option<InstantiationProvenance>,
+    pub(crate) replay_on_loop: bool,
 }
 
 impl InstantiationRequest {
@@ -15,6 +16,7 @@ impl InstantiationRequest {
         Self {
             inst,
             provenance: None,
+            replay_on_loop: false,
         }
     }
 
@@ -22,12 +24,20 @@ impl InstantiationRequest {
         Self {
             inst,
             provenance: Some(provenance),
+            replay_on_loop: false,
         }
+    }
+
+    /// Replay a fixed eager seed even when ordinary refinement replay is disabled.
+    pub(crate) fn with_replay_on_loop(mut self) -> Self {
+        self.replay_on_loop = true;
+        self
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct StoredInstantiation {
+    pub(crate) replay_on_loop: bool,
     pub inst: Instance,
     pub provenance: Option<InstantiationProvenance>,
 }

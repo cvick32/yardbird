@@ -46,6 +46,7 @@ where
     _bmc_depth: u16,
     run_ic3ia: bool,
     policy: YardbirdPolicy<F>,
+    eager: Option<Box<dyn super::eager::InstanceSeeder>>,
     model_sequence: u64,
     offer_sequence: u64,
     array: ArrayRefinement,
@@ -65,12 +66,13 @@ where
 
 impl<F> Abstract<F>
 where
-    F: TermCostFactory,
+    F: TermCostFactory + 'static,
 {
     pub fn new(bmc_depth: u16, run_ic3ia: bool, policy: YardbirdPolicy<F>, profile: bool) -> Self {
         Self {
             _bmc_depth: bmc_depth,
             run_ic3ia,
+            eager: policy.eager_seeder(),
             policy,
             model_sequence: 0,
             offer_sequence: 0,
@@ -228,7 +230,17 @@ where
         self.property_check_mode
     }
 
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        match self.eager.as_mut() {
+            Some(seeder) => Some(seeder.as_mut()),
+            None => None,
+        }
+    }
+
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(&model, true);
+        }
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         let model = self.quantifier.configure_model(model, self.profile);
         if self.quantifier.configuration_error.is_some() {

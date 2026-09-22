@@ -14,6 +14,7 @@ use super::{ProofAction, ProofStrategy, RefinementState};
 #[derive(Default)]
 pub struct ConcreteArrayZ3 {
     run_ic3ia: bool,
+    eager: Option<Box<dyn super::eager::InstanceSeeder>>,
     discovered_array_types: Vec<(String, String)>,
     property_check_mode: PropertyCheckMode,
 }
@@ -21,9 +22,18 @@ impl ConcreteArrayZ3 {
     pub fn new(run_ic3ia: bool) -> Self {
         Self {
             run_ic3ia,
+            eager: None,
             discovered_array_types: vec![],
             property_check_mode: PropertyCheckMode::Scoped,
         }
+    }
+
+    pub fn with_eager_policy<F: crate::policy::term_selection::TermCostFactory + 'static>(
+        mut self,
+        policy: &crate::YardbirdPolicy<F>,
+    ) -> Self {
+        self.eager = policy.eager_seeder();
+        self
     }
 
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
@@ -33,11 +43,21 @@ impl ConcreteArrayZ3 {
 }
 
 impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        match self.eager.as_mut() {
+            Some(seeder) => Some(seeder.as_mut()),
+            None => None,
+        }
+    }
+
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(&model, false);
+        }
         let (_, discovered_array_types) = model.abstract_array_theory();
         self.discovered_array_types = discovered_array_types;
         model
@@ -106,11 +126,11 @@ impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
         };
         ProofLoopResult {
             model: Some(vmt_model.clone()),
-            used_instances: vec![],
+            used_instances: smt.get_instantiations(),
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
-            total_instantiations_added: 0,
+            total_instantiations_added: smt.get_number_instantiations_added(),
             total_refinement_steps: 0,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
             decision_data: vec![],

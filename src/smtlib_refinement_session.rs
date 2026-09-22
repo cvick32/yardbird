@@ -159,6 +159,10 @@ impl SmtlibRefinementSession {
             last_solver_check_profile: None,
             assertion_tracker: InstantiationAssertionTracker::default(),
         };
+        // Stateless sessions do not run BMC's generate_subterms. Make source
+        // vocabulary available before pre-check seeding and term-cost setup.
+        smt.subterm_handler
+            .register_property_support(&smt.assertions);
         let mut accepted_declarations = HashSet::new();
 
         // Add sort declarations
@@ -317,6 +321,7 @@ impl SmtlibRefinementSession {
         {
             result.indexed_assertions_deduplicated = 1;
             self.instantiations.push(StoredInstantiation {
+                replay_on_loop: request.replay_on_loop,
                 inst: request.inst,
                 provenance: request.provenance,
             });
@@ -360,6 +365,7 @@ impl SmtlibRefinementSession {
         }
 
         self.instantiations.push(StoredInstantiation {
+            replay_on_loop: request.replay_on_loop,
             inst: request.inst,
             provenance: request.provenance,
         });

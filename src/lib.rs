@@ -141,6 +141,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub guarded_read_updates: bool,
 
+    /// Select array axiom instances once before the first check, then replay them.
+    #[arg(long, default_value_t = false)]
+    pub eager: bool,
+
     /// Number of ranked quantified-rule candidates selected from each refinement group.
     #[arg(long, default_value_t = 1)]
     pub candidate_winners_per_group: usize,
@@ -264,6 +268,7 @@ impl Default for YardbirdOptions {
             preprocess_exact_read_after_write: false,
             abstract_recurrent_products: false,
             guarded_read_updates: false,
+            eager: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
             property_check_mode: crate::solver::PropertyCheckMode::Scoped,
@@ -402,6 +407,30 @@ impl YardbirdOptions {
         Ok(())
     }
 
+    /// Reject eager configurations that cannot install instances before a model.
+    pub fn validate_eager_options(&self) -> anyhow::Result<()> {
+        if self.eager {
+            anyhow::ensure!(
+                matches!(self.theory, Theory::Array),
+                "--eager currently supports --theory array only"
+            );
+            anyhow::ensure!(!matches!(self.instantiation_strategy, InstantiationStrategyType::SchemaBatch),
+                "--eager requires a model-independent installer; use full-unroll or no-unroll-on-loop instead of schema-batch");
+        }
+        Ok(())
+    }
+
+    pub(crate) fn configure_eager_policy<F: TermCostFactory>(
+        &self,
+        policy: YardbirdPolicy<F>,
+    ) -> YardbirdPolicy<F> {
+        if self.eager {
+            policy.with_eager_instantiation(policy::eager::EagerInstantiation::default())
+        } else {
+            policy
+        }
+    }
+
     /// Validate the guarded-update scope, checking the input format when known.
     /// Garden validates strategy settings before it discovers individual files.
     pub fn validate_guarded_read_updates(&self) -> anyhow::Result<()> {
@@ -474,9 +503,9 @@ impl YardbirdOptions {
                 )
             }
             (CostFunction::LogisticRegression, Some(model_path)) => {
-                if !matches!(self.strategy, Strategy::Abstract) {
+                if !matches!(self.strategy, Strategy::Abstract) && !self.eager {
                     anyhow::bail!(
-                        "--cost-function logistic-regression currently requires --strategy abstract"
+                        "--cost-function logistic-regression requires --strategy abstract or --eager"
                     );
                 }
                 if !matches!(self.theory, Theory::Array) {
@@ -531,6 +560,7 @@ impl YardbirdOptions {
                     .with_winners_per_group(self.candidate_winners_per_group),
             )
             .with_instantiation_ranker(self.build_instantiation_ranker());
+        let policy = self.configure_eager_policy(policy);
         Abstract::new(bmc_depth, self.run_ic3ia, policy, self.profiling_enabled())
             .with_artifact_capture(self.build_array_artifact_capture())
             .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
@@ -539,10 +569,35 @@ impl YardbirdOptions {
             .with_property_check_mode(self.property_check_mode)
     }
 
-    fn build_abstract_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan
+    fn build_costed_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan
     where
         F: TermCostFactory + 'static,
     {
+        if !matches!(self.strategy, Strategy::Abstract) {
+            let policy = self.configure_eager_policy(YardbirdPolicy::<F>::new(cost_config));
+            let strategy: Box<dyn ProofStrategy<'static, RefinementState>> = match self.strategy {
+                Strategy::Concrete => Box::new(
+                    ConcreteArrayZ3::new(self.run_ic3ia)
+                        .with_eager_policy(&policy)
+                        .with_property_check_mode(self.property_check_mode),
+                ),
+                Strategy::AbstractWithQuantifiers => Box::new(
+                    AbstractArrayWithQuantifiers::new(self.run_ic3ia)
+                        .with_eager_policy(&policy)
+                        .with_exact_read_after_write_preprocessing(
+                            self.preprocess_exact_read_after_write,
+                        )
+                        .with_property_check_mode(self.property_check_mode),
+                ),
+                Strategy::Abstract => unreachable!(),
+            };
+            return ArrayProofPlan {
+                solver: self.solver,
+                instantiation_strategy: self.build_instantiation_strategy(),
+                strategy,
+                conditional_history: None,
+            };
+        }
         let strategy = Box::new(
             self.build_configured_abstract_array_strategy::<F>(self.depth, cost_config.clone()),
         );
@@ -578,57 +633,29 @@ impl YardbirdOptions {
         if let Some(policy) = self.policy {
             return policy.build_plan(self);
         }
-        match self.strategy {
-            Strategy::Abstract => match self.cost_function {
-                CostFunction::LogisticRegression => self
-                    .build_abstract_array_plan::<LogisticRegression>(
-                        LogisticRegressionModel::from_path(
-                            self.ranker_model.as_deref().expect(
-                                "--cost-function logistic-regression requires --ranker-model",
-                            ),
-                        )
-                        .unwrap_or_else(|err| {
-                            panic!("failed to configure logistic-regression model: {err}")
-                        }),
-                    ),
-                CostFunction::BmcCost => self.build_abstract_array_plan::<ArrayBMCCost>(()),
-                CostFunction::ProtocolBmc => self.build_abstract_array_plan::<ProtocolBmcCost>(()),
-                CostFunction::AstSize => self.build_abstract_array_plan::<ArrayAstSize>(()),
-                CostFunction::AdaptiveCost => {
-                    self.build_abstract_array_plan::<AdaptiveArrayCost>(())
-                }
-                CostFunction::SplitCost => self.build_abstract_array_plan::<SplitArrayCost>(()),
-                CostFunction::PreferRead => self.build_abstract_array_plan::<ArrayPreferRead>(()),
-                CostFunction::PreferWrite => self.build_abstract_array_plan::<ArrayPreferWrite>(()),
-                CostFunction::PreferConstants => {
-                    self.build_abstract_array_plan::<ArrayPreferConstants>(())
-                }
-                CostFunction::IndexAware => {
-                    self.build_abstract_array_plan::<IndexAwareArrayCost>(())
-                }
-                CostFunction::Generated => self.build_abstract_array_plan::<ArrayGenerated>(()),
-            },
-            Strategy::AbstractWithQuantifiers => ArrayProofPlan {
-                solver: self.solver,
-                instantiation_strategy: self.build_instantiation_strategy(),
-                strategy: Box::new(
-                    AbstractArrayWithQuantifiers::new(self.run_ic3ia)
-                        .with_exact_read_after_write_preprocessing(
-                            self.preprocess_exact_read_after_write,
-                        )
-                        .with_property_check_mode(self.property_check_mode),
-                ),
-                conditional_history: None,
-            },
-            Strategy::Concrete => ArrayProofPlan {
-                solver: self.solver,
-                instantiation_strategy: self.build_instantiation_strategy(),
-                strategy: Box::new(
-                    ConcreteArrayZ3::new(self.run_ic3ia)
-                        .with_property_check_mode(self.property_check_mode),
-                ),
-                conditional_history: None,
-            },
+        match self.cost_function {
+            CostFunction::LogisticRegression => self.build_costed_array_plan::<LogisticRegression>(
+                LogisticRegressionModel::from_path(
+                    self.ranker_model
+                        .as_deref()
+                        .expect("--cost-function logistic-regression requires --ranker-model"),
+                )
+                .unwrap_or_else(|err| {
+                    panic!("failed to configure logistic-regression model: {err}")
+                }),
+            ),
+            CostFunction::BmcCost => self.build_costed_array_plan::<ArrayBMCCost>(()),
+            CostFunction::ProtocolBmc => self.build_costed_array_plan::<ProtocolBmcCost>(()),
+            CostFunction::AstSize => self.build_costed_array_plan::<ArrayAstSize>(()),
+            CostFunction::AdaptiveCost => self.build_costed_array_plan::<AdaptiveArrayCost>(()),
+            CostFunction::SplitCost => self.build_costed_array_plan::<SplitArrayCost>(()),
+            CostFunction::PreferRead => self.build_costed_array_plan::<ArrayPreferRead>(()),
+            CostFunction::PreferWrite => self.build_costed_array_plan::<ArrayPreferWrite>(()),
+            CostFunction::PreferConstants => {
+                self.build_costed_array_plan::<ArrayPreferConstants>(())
+            }
+            CostFunction::IndexAware => self.build_costed_array_plan::<IndexAwareArrayCost>(()),
+            CostFunction::Generated => self.build_costed_array_plan::<ArrayGenerated>(()),
         }
     }
 

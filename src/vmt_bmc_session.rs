@@ -1129,6 +1129,10 @@ impl ProblemContext for VmtBmcSession {
         )
     }
 
+    fn supports_eager_instantiation(&self) -> bool {
+        self.instantiation_strategy.supports_eager_instantiation()
+    }
+
     fn make_provenanced_unquantified_instance(
         &self,
         term: Term,

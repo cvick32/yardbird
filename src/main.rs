@@ -46,6 +46,7 @@ fn main() -> anyhow::Result<()> {
 
     options.validate_ranker_options()?;
     options.validate_guarded_read_updates()?;
+    options.validate_eager_options()?;
     options.validate_solver_backend_available()?;
 
     info!("Z3 version: {}", z3::full_version());
@@ -120,7 +121,9 @@ fn should_use_strategy_mode(options: &YardbirdOptions) -> bool {
     // Use strategy mode if:
     // 1. Strategy is not Concrete (Abstract strategies need refinement)
     // 2. Cost function is not BmcCost (indicates user wants specific cost function)
-    !matches!(options.strategy, Strategy::Concrete)
+    // 3. Eager seeding needs the pre-check strategy hook
+    options.eager
+        || !matches!(options.strategy, Strategy::Concrete)
         || !matches!(options.cost_function, CostFunction::BmcCost)
 }
 
@@ -232,60 +235,9 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
 fn build_smtlib_strategy(
     options: &YardbirdOptions,
 ) -> Box<dyn ProofStrategy<'static, RefinementState>> {
-    use yardbird::policy::term_selection::array::*;
-    use yardbird::strategies::{AbstractArrayWithQuantifiers, ConcreteArrayZ3};
-
-    if let Some(policy) = options.policy {
-        let mut run = options.clone();
-        run.depth = 0;
-        return policy.build_plan(&run).strategy;
-    }
-    match options.strategy {
-        Strategy::Abstract => match options.cost_function {
-            CostFunction::LogisticRegression => {
-                Box::new(options.build_logistic_regression_array_strategy(0))
-            }
-            CostFunction::BmcCost => {
-                Box::new(options.build_abstract_array_strategy::<ArrayBMCCost>(
-                    0, // depth=0 for SMTLIB (no temporal unrolling)
-                ))
-            }
-            CostFunction::AstSize => {
-                Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0))
-            }
-            CostFunction::ProtocolBmc => {
-                Box::new(options.build_abstract_array_strategy::<ProtocolBmcCost>(0))
-            }
-            CostFunction::AdaptiveCost => {
-                Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0))
-            }
-            CostFunction::SplitCost => {
-                Box::new(options.build_abstract_array_strategy::<SplitArrayCost>(0))
-            }
-            CostFunction::PreferRead => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferRead>(0))
-            }
-            CostFunction::PreferWrite => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferWrite>(0))
-            }
-            CostFunction::PreferConstants => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferConstants>(0))
-            }
-            CostFunction::IndexAware => {
-                Box::new(options.build_abstract_array_strategy::<IndexAwareArrayCost>(0))
-            }
-            CostFunction::Generated => {
-                Box::new(options.build_abstract_array_strategy::<ArrayGenerated>(0))
-            }
-        },
-        Strategy::AbstractWithQuantifiers => Box::new(
-            AbstractArrayWithQuantifiers::new(options.run_ic3ia)
-                .with_exact_read_after_write_preprocessing(
-                    options.preprocess_exact_read_after_write,
-                ),
-        ),
-        Strategy::Concrete => Box::new(ConcreteArrayZ3::new(options.run_ic3ia)),
-    }
+    let mut run = options.clone();
+    run.depth = 0; // SMT-LIB sessions have no temporal unrolling.
+    run.build_array_strategy()
 }
 
 /// Print results from strategy-based solving

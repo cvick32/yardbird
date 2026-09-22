@@ -1,6 +1,7 @@
 mod r#abstract;
 mod array_abstract_with_quantifiers;
 mod array_concrete;
+pub mod eager;
 mod interpolate;
 mod list_abstract;
 mod proof_strategy;

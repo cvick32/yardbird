@@ -11,6 +11,7 @@ use super::{ProofAction, ProofStrategy};
 
 pub struct AbstractArrayWithQuantifiers {
     run_ic3ia: bool,
+    eager: Option<Box<dyn super::eager::InstanceSeeder>>,
     discovered_array_types: Vec<(String, String)>,
     preprocess_exact_read_after_write: bool,
     property_check_mode: PropertyCheckMode,
@@ -20,6 +21,7 @@ impl AbstractArrayWithQuantifiers {
     pub fn new(run_ic3ia: bool) -> Self {
         Self {
             run_ic3ia,
+            eager: None,
             discovered_array_types: vec![],
             preprocess_exact_read_after_write: false,
             property_check_mode: PropertyCheckMode::Scoped,
@@ -31,6 +33,14 @@ impl AbstractArrayWithQuantifiers {
         self
     }
 
+    pub fn with_eager_policy<F: crate::policy::term_selection::TermCostFactory + 'static>(
+        mut self,
+        policy: &crate::YardbirdPolicy<F>,
+    ) -> Self {
+        self.eager = policy.eager_seeder();
+        self
+    }
+
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
         self.property_check_mode = mode;
         self
@@ -38,6 +48,13 @@ impl AbstractArrayWithQuantifiers {
 }
 
 impl ProofStrategy<'_, RefinementState> for AbstractArrayWithQuantifiers {
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        match self.eager.as_mut() {
+            Some(seeder) => Some(seeder.as_mut()),
+            None => None,
+        }
+    }
+
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
@@ -49,6 +66,9 @@ impl ProofStrategy<'_, RefinementState> for AbstractArrayWithQuantifiers {
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(&model, true);
+        }
         let (model, types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
         self.discovered_array_types = types;
@@ -128,11 +148,11 @@ impl ProofStrategy<'_, RefinementState> for AbstractArrayWithQuantifiers {
         };
         ProofLoopResult {
             model: Some(vmt_model.clone()),
-            used_instances: vec![],
+            used_instances: smt.get_instantiations(),
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
-            total_instantiations_added: 0,
+            total_instantiations_added: smt.get_number_instantiations_added(),
             total_refinement_steps: 0,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
             decision_data: vec![],

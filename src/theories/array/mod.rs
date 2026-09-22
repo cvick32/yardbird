@@ -2,6 +2,8 @@ pub mod array_axioms;
 pub mod array_dataflow;
 pub mod array_egraph_builder;
 pub(crate) mod candidate;
+pub(crate) mod eager;
+pub(crate) mod eager_source;
 pub(crate) mod encodings;
 pub(crate) mod grounding;
 pub(crate) mod refinement;

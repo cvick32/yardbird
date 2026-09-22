@@ -1,6 +1,6 @@
 use super::{InstantiationContext, InstantiationStrategy};
 
-/// Installs new instances at existing frames without replaying them later.
+/// Disables automatic replay of refinement instances; fixed eager seeds still replay.
 #[derive(Clone, Debug, Default)]
 pub struct NoUnrollOnLoop;
 
@@ -15,5 +15,7 @@ impl InstantiationStrategy for NoUnrollOnLoop {
         Box::new(self.clone())
     }
 
-    fn on_loop(&mut self, _depth: u16, _context: &mut InstantiationContext<'_>) {}
+    fn on_loop(&mut self, depth: u16, context: &mut InstantiationContext<'_>) {
+        context.install_existing_at_current_depth(depth, false);
+    }
 }

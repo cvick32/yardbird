@@ -576,6 +576,9 @@ impl SmtlibRefinementRunner {
 
         // 1. Abstract if needed
         let theory = strategy.get_theory_support();
+        if let Some(seeder) = strategy.instance_seeder() {
+            seeder.configure_smtlib(problem, theory.requires_abstraction());
+        }
         let (working_problem, array_types) = if theory.requires_abstraction() {
             info!("Abstracting array theory");
             let (abs_problem, types) = problem.abstract_array_theory_with_preprocessing(
@@ -635,6 +638,10 @@ impl SmtlibRefinementRunner {
                 info!("Refinement iteration {}", refinement_step + 1);
                 total_refinement_steps += 1;
 
+                if refinement_step == 0 {
+                    strategy.seed_instances(&mut smt_problem)?;
+                    checkpoint!('refinement, "eager_instantiation");
+                }
                 let mut state = strategy.setup(&smt_problem, 0)?;
                 checkpoint!('refinement, "strategy_setup");
 
@@ -853,16 +860,19 @@ impl SmtlibRefinementRunner {
                 ..record
             })
             .collect();
-        let (decision_data, abstract_instantiations) = strategy.take_logging_artifacts();
+        let (decision_data, mut abstract_instantiations) = strategy.take_logging_artifacts();
+        abstract_instantiations.extend(strategy.take_eager_artifacts());
         let profiling_records = strategy.take_profiling_records();
 
         info!("Building final SMTLIB result");
+        let mut solver_statistics = smt_problem.get_solver_statistics();
+        strategy.add_statistics(&mut solver_statistics);
         let mut result = ProofLoopResult {
             model: None, // No VMT model in SMTLIB mode
             used_instances: smt_problem.get_instantiations(),
             total_instantiations_added: smt_problem.get_number_instantiations_added(),
             total_refinement_steps,
-            solver_statistics: smt_problem.get_solver_statistics(),
+            solver_statistics,
             counterexample,
             found_proof,
             unsat_core,

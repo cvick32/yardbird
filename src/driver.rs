@@ -725,6 +725,16 @@ impl<'ctx, S> Driver<'ctx, S> {
                         }
                     }
                     checkpoint!('bmc, "unroll", driver_record.take(), step_start);
+                    if depth == 0 && refinement_step == 0 {
+                        let seed_start = Instant::now();
+                        active_phase = Some(("eager_instantiation", seed_start));
+                        strat.seed_instances(&mut smt_problem)?;
+                        active_phase = None;
+                        if let Some(record) = &mut driver_record {
+                            record.record_timing("eager_instantiation", seed_start.elapsed());
+                        }
+                        checkpoint!('bmc, "eager_instantiation", driver_record.take(), step_start);
+                    }
                     let setup_start = Instant::now();
                     active_phase = Some(("strategy_setup", setup_start));
                     let mut state = strat.setup(&smt_problem, depth)?;
@@ -1036,6 +1046,10 @@ impl<'ctx, S> Driver<'ctx, S> {
         } else {
             strat.result(&mut self.vmt_model.clone(), &smt_problem)
         };
+        strat.add_statistics(&mut result.solver_statistics);
+        result
+            .abstract_instantiations
+            .extend(strat.take_eager_artifacts());
         if result.found_proof {
             progress.termination_reason = "proof".into();
         }

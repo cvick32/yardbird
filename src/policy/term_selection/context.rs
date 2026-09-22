@@ -15,6 +15,17 @@ pub struct TermCostContext {
 }
 
 impl TermCostContext {
+    pub(crate) fn source_vocabulary(
+        init_and_transition_subterms: Vec<String>,
+        property_subterms: Vec<String>,
+        reads_and_writes: ReadsAndWrites,
+    ) -> Self {
+        Self {
+            init_and_transition_subterms,
+            property_subterms,
+            reads_and_writes,
+        }
+    }
     pub fn from_problem(
         smt: &dyn ProblemContext,
         candidates: &ArrayCandidateCatalog,
