@@ -479,6 +479,39 @@ fn fast_symbol_term(symbol: &str) -> Option<Term> {
         .then(|| Term::QualIdentifier(QualIdentifier::simple(quoted)))
 }
 
+fn symbol_to_term(symbol: egg::Symbol) -> Term {
+    if let Some(term) = fast_symbol_term(symbol.as_str()) {
+        return term;
+    }
+
+    // Keep the existing interpretation of literals and opaque expressions, but
+    // avoid reparsing quoted-name identifiers at every binder substitution.
+    thread_local! {
+        static IDENTIFIERS: std::cell::RefCell<std::collections::HashMap<egg::Symbol, QualIdentifier>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    IDENTIFIERS.with(|identifiers| {
+        let mut identifiers = identifiers.borrow_mut();
+        if let Some(identifier) = identifiers.get(&symbol) {
+            return Term::QualIdentifier(identifier.clone());
+        }
+        let term = symbol.as_str().parse().unwrap_or_else(|_| {
+            SmtSymbol(symbol.as_str().to_string())
+                .to_string()
+                .parse()
+                .expect("symbol preserved by the array e-graph must remain valid SMT-LIB")
+        });
+        if let Term::QualIdentifier(identifier) = &term {
+            // Bound retention across long-lived library sessions.
+            if identifiers.len() == 4096 {
+                identifiers.clear();
+            }
+            identifiers.insert(symbol, identifier.clone());
+        }
+        term
+    })
+}
+
 pub fn expr_to_term(expr: TermExpr) -> Term {
     fn inner(expr: &TermExpr, id: egg::Id) -> Term {
         match &expr[id] {
@@ -615,16 +648,37 @@ pub fn expr_to_term(expr: TermExpr) -> Term {
                     inner(expr, *else_term),
                 ],
             },
-            TermLanguage::Symbol(sym) => fast_symbol_term(sym.as_str()).unwrap_or_else(|| {
-                sym.as_str().parse().unwrap_or_else(|_| {
-                    SmtSymbol(sym.as_str().to_string())
-                        .to_string()
-                        .parse()
-                        .expect("symbol preserved by the array e-graph must remain valid SMT-LIB")
-                })
-            }),
+            TermLanguage::Symbol(sym) => symbol_to_term(*sym),
         }
     }
 
     inner(&expr, egg::Id::from(expr.as_ref().len() - 1))
+}
+
+#[cfg(test)]
+mod identifier_conversion_tests {
+    use super::*;
+
+    #[test]
+    fn repeated_conversion_preserves_quoted_identifiers_and_other_symbol_terms() {
+        for source in [
+            "|__fml:n+0|",
+            "|0:round+0|",
+            "|name with spaces|",
+            "(_ bv3 8)",
+            "(as empty Set)",
+            "18446744073709551616",
+            "#b0011",
+            "#x0f",
+            "1.25",
+            "\"text\"",
+            "(let ((x 1)) x)",
+        ] {
+            let term: Term = source.parse().unwrap();
+            let expression = translate_term(term.clone()).unwrap();
+            for _ in 0..3 {
+                assert_eq!(expr_to_term(expression.clone()), term, "{source}");
+            }
+        }
+    }
 }
