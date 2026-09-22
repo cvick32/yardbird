@@ -52,6 +52,8 @@ struct Lowerer<'a> {
     next_id: usize,
     declarations: Vec<Command>,
     rules: Vec<BinderRule>,
+    native_binders: HashMap<String, Term>,
+    retain_native_binders: bool,
 }
 
 pub(crate) fn term_sort(
@@ -289,7 +291,22 @@ impl Lowerer<'_> {
                 (Symbol(fresh), sort)
             })
             .collect::<Vec<_>>();
-        let body = self.lower(substitute(body, renaming), &inner)?;
+        let native_body = substitute(body, renaming);
+        let native = self.retain_native_binders.then(|| match kind {
+            BinderKind::Forall => Term::Forall {
+                vars: variables.clone(),
+                term: Box::new(native_body.clone()),
+            },
+            BinderKind::Exists => Term::Exists {
+                vars: variables.clone(),
+                term: Box::new(native_body.clone()),
+            },
+            BinderKind::Lambda => Term::Lambda {
+                vars: variables.clone(),
+                term: Box::new(native_body.clone()),
+            },
+        });
+        let body = self.lower(native_body, &inner)?;
         let result_sort = if kind == BinderKind::Lambda {
             let result = term_sort(&body, &self.signatures, &inner)?;
             variables
@@ -425,6 +442,9 @@ impl Lowerer<'_> {
                 },
             );
         }
+        if let Some(native) = native {
+            self.native_binders.insert(name.clone(), native);
+        }
         self.rules.push(BinderRule {
             name: name.clone(),
             kind,
@@ -478,6 +498,14 @@ pub(crate) fn lower_model_with_provenance(
     model: VMTModel,
     provenance: &mut crate::theories::quantifiers::provenance::QuantifierProvenance,
 ) -> anyhow::Result<(VMTModel, QuantifierPlan)> {
+    lower_model_for_eager(model, provenance, false)
+}
+
+pub(super) fn lower_model_for_eager(
+    model: VMTModel,
+    provenance: &mut crate::theories::quantifiers::provenance::QuantifierProvenance,
+    retain_native_binders: bool,
+) -> anyhow::Result<(VMTModel, QuantifierPlan)> {
     let commands = model.as_commands();
     if !commands.iter().any(|command| match command {
         Command::DefineFun { term, .. } | Command::Assert { term } => contains_binders(term),
@@ -527,6 +555,8 @@ pub(crate) fn lower_model_with_provenance(
         next_id: 0,
         declarations: vec![],
         rules: vec![],
+        native_binders: HashMap::new(),
+        retain_native_binders,
     };
     let mut lowered = Vec::new();
     for command in commands {
@@ -587,6 +617,7 @@ pub(crate) fn lower_model_with_provenance(
         model,
         QuantifierPlan {
             rules: lowerer.rules,
+            native_binders: lowerer.native_binders,
             signatures,
             seeds,
             compiled: Default::default(),

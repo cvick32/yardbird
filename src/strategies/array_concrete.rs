@@ -55,9 +55,11 @@ impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        if let Some(seeder) = &mut self.eager {
-            seeder.configure_vmt(&model, false);
-        }
+        let model = if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(model, false, false)
+        } else {
+            model
+        };
         let (_, discovered_array_types) = model.abstract_array_theory();
         self.discovered_array_types = discovered_array_types;
         model

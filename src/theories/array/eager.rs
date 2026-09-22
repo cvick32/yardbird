@@ -22,13 +22,14 @@ pub(crate) struct Seed {
     pub family: String,
 }
 
-struct Vocabulary {
+#[derive(Clone)]
+pub(crate) struct Vocabulary {
     signatures: HashMap<String, Sort>,
     types: Vec<(String, String)>,
 }
 
 impl Vocabulary {
-    fn new(source: &SourceVocabulary) -> Self {
+    pub(crate) fn new(source: &SourceVocabulary) -> Self {
         let mut signatures = HashMap::new();
         for declaration in source.declarations.iter().cloned() {
             let (name, sort) = match declaration {
@@ -45,9 +46,21 @@ impl Vocabulary {
         }
     }
 
+    pub(crate) fn add_declarations(&mut self, declarations: &[Command]) {
+        for declaration in declarations {
+            match declaration {
+                Command::DeclareFun { symbol, sort, .. }
+                | Command::DeclareConst { symbol, sort } => {
+                    self.signatures.insert(symbol.0.clone(), sort.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Conservative inference over well-typed source syntax. In particular, do
     // not guess the result width of indexed bitvector operators from operand 0.
-    fn sort(&self, term: &Term) -> Option<Sort> {
+    pub(crate) fn sort(&self, term: &Term) -> Option<Sort> {
         match term {
             Term::QualIdentifier(id) => {
                 let name = id.get_name();
@@ -109,6 +122,22 @@ impl Vocabulary {
                     _ => None,
                 }
             }
+            Term::Lambda { vars, term } => {
+                let mut inner = self.clone();
+                inner
+                    .signatures
+                    .extend(vars.iter().map(|(s, sort)| (s.0.clone(), sort.clone())));
+                Some(
+                    vars.iter()
+                        .rev()
+                        .fold(inner.sort(term)?, |value, (_, index)| Sort::Parameterized {
+                            identifier: smt2parser::concrete::Identifier::Simple {
+                                symbol: smt2parser::concrete::Symbol("Array".into()),
+                            },
+                            parameters: vec![index.clone(), value],
+                        }),
+                )
+            }
             _ => None,
         }
     }
@@ -140,7 +169,15 @@ impl Vocabulary {
         }
     }
 
-    fn normalize(&self, term: &Term) -> Option<Term> {
+    pub(crate) fn normalize(&self, term: &Term) -> Option<Term> {
+        self.normalize_inner(term, false)
+    }
+
+    pub(crate) fn normalize_formula(&self, term: &Term) -> Option<Term> {
+        self.normalize_inner(term, true)
+    }
+
+    fn normalize_inner(&self, term: &Term, binders: bool) -> Option<Term> {
         match term {
             Term::Application {
                 qual_identifier,
@@ -162,17 +199,46 @@ impl Vocabulary {
                     qual_identifier: identifier,
                     arguments: arguments
                         .iter()
-                        .map(|a| self.normalize(a))
+                        .map(|a| self.normalize_inner(a, binders))
                         .collect::<Option<Vec<_>>>()?,
                 })
             }
             Term::QualIdentifier(_) | Term::Constant(_) => Some(term.clone()),
-            // No traversal into binders: their bound symbols are not ground seeds.
+            Term::Forall { vars, term: body }
+            | Term::Exists { vars, term: body }
+            | Term::Lambda { vars, term: body }
+                if binders =>
+            {
+                let mut inner = self.clone();
+                inner
+                    .signatures
+                    .extend(vars.iter().map(|(s, sort)| (s.0.clone(), sort.clone())));
+                let body = Box::new(inner.normalize_inner(body, true)?);
+                let variables = vars
+                    .iter()
+                    .map(|(s, sort)| (s.clone(), abstract_sort(sort)))
+                    .collect();
+                Some(match term {
+                    Term::Forall { .. } => Term::Forall {
+                        vars: variables,
+                        term: body,
+                    },
+                    Term::Exists { .. } => Term::Exists {
+                        vars: variables,
+                        term: body,
+                    },
+                    _ => Term::Lambda {
+                        vars: variables,
+                        term: body,
+                    },
+                })
+            }
+            // No traversal into binders when scoring ground terms.
             _ => None,
         }
     }
 
-    fn expression(&self, term: &Term) -> Option<TermExpr> {
+    pub(crate) fn expression(&self, term: &Term) -> Option<TermExpr> {
         translate_term_with_array_types(self.normalize(term)?, &self.types)
     }
 }

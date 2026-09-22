@@ -15,7 +15,12 @@ use crate::{
 };
 
 pub trait InstanceSeeder {
-    fn configure_vmt(&mut self, model: &smt2parser::vmt::VMTModel, abstract_arrays: bool);
+    fn configure_vmt(
+        &mut self,
+        model: smt2parser::vmt::VMTModel,
+        abstract_arrays: bool,
+        lowered_binders: bool,
+    ) -> smt2parser::vmt::VMTModel;
     fn configure_smtlib(
         &mut self,
         problem: &crate::smtlib_problem::SMTLIBProblem,
@@ -33,6 +38,11 @@ pub(crate) struct CostGuidedSeeder<F: TermCostFactory> {
     seeded: bool,
     source: Option<EagerSource>,
     abstract_arrays: bool,
+    lowered_binders: bool,
+    binders: Option<crate::theories::quantifiers::eager::EagerBinders>,
+    configuration_error: Option<String>,
+    binder_candidates: u64,
+    binder_instances: u64,
     candidates: u64,
     selected: u64,
     assertions: u64,
@@ -49,6 +59,11 @@ impl<F: TermCostFactory> CostGuidedSeeder<F> {
             seeded: false,
             source: None,
             abstract_arrays: false,
+            lowered_binders: false,
+            binders: None,
+            configuration_error: None,
+            binder_candidates: 0,
+            binder_instances: 0,
             candidates: 0,
             selected: 0,
             assertions: 0,
@@ -59,10 +74,42 @@ impl<F: TermCostFactory> CostGuidedSeeder<F> {
 }
 
 impl<F: TermCostFactory> InstanceSeeder for CostGuidedSeeder<F> {
-    fn configure_vmt(&mut self, model: &smt2parser::vmt::VMTModel, abstract_arrays: bool) {
+    fn configure_vmt(
+        &mut self,
+        model: smt2parser::vmt::VMTModel,
+        abstract_arrays: bool,
+        lowered_binders: bool,
+    ) -> smt2parser::vmt::VMTModel {
         *self = Self::new(self.cost_config.clone(), self.config);
-        self.source = Some(EagerSource::vmt(model));
+        self.source = Some(EagerSource::vmt(&model));
         self.abstract_arrays = abstract_arrays;
+        self.lowered_binders = lowered_binders;
+        let has_binders = model.as_commands().iter().any(|command| match command {
+            smt2parser::concrete::Command::DefineFun { term, .. }
+            | smt2parser::concrete::Command::Assert { term } => {
+                crate::theories::quantifiers::contains_binders(term)
+            }
+            _ => false,
+        });
+        if has_binders {
+            match crate::theories::quantifiers::eager::EagerBinders::prepare(&model) {
+                Ok(binders) => {
+                    let mut native = model.clone();
+                    if !lowered_binders && !binders.declarations.is_empty() {
+                        let mut commands = binders.declarations.clone();
+                        commands.extend(model.as_commands());
+                        match smt2parser::vmt::VMTModel::checked_from(commands) {
+                            Ok(model) => native = model,
+                            Err(error) => self.configuration_error = Some(error.to_string()),
+                        }
+                    }
+                    self.binders = Some(binders);
+                    return native;
+                }
+                Err(error) => self.configuration_error = Some(error.to_string()),
+            }
+        }
+        model
     }
 
     fn configure_smtlib(
@@ -86,25 +133,56 @@ impl<F: TermCostFactory> InstanceSeeder for CostGuidedSeeder<F> {
                 "eager instantiation requires original source capture before strategy configuration"
             )
         })?;
-        self.seeded = true;
+        if let Some(error) = &self.configuration_error {
+            anyhow::bail!("eager binder preparation failed: {error}");
+        }
         let start = Instant::now();
-        let seeds = crate::theories::array::eager::generate::<F>(
+        let array_seeds = crate::theories::array::eager::generate::<F>(
             &source.vocabulary,
             &self.cost_config,
             self.config,
             self.abstract_arrays,
         );
-        self.candidates = seeds.len() as u64;
+        let binders = self.binders.take();
+        let binder_seeds = match &binders {
+            Some(binders) => binders.generate::<F>(
+                &source,
+                &self.cost_config,
+                self.config,
+                self.lowered_binders,
+                self.abstract_arrays,
+            )?,
+            None => vec![],
+        };
+        self.binder_candidates = binder_seeds.len() as u64;
+        self.candidates = (array_seeds.len() + binder_seeds.len()) as u64;
+        let seeds = array_seeds
+            .into_iter()
+            .map(|s| (s, false))
+            .chain(binder_seeds.into_iter().map(|s| (s, true)));
         let mut known = HashSet::new();
         let mut eligible = Vec::new();
-        for seed in seeds {
+        for (seed, binder) in seeds {
             let hash = canonical_term_hash(&seed.normalized);
             let id = format!("eager:{}:0:{hash}", seed.rule);
             let provenance = InstantiationProvenance::new(id.clone(), seed.bindings);
-            let Some(request) = source.make_request(seed.term, provenance) else {
+            let installation_source = if binder {
+                &binders.as_ref().unwrap().source
+            } else {
+                &source
+            };
+            let Some(request) = installation_source.make_request(seed.term, provenance) else {
                 continue;
             };
-            let key = canonical_instantiation_key(request.inst.get_term());
+            // Deduplicate before choosing an encoding: two source binders may
+            // expand to identical native formulas but have distinct abstract proxies.
+            let normalized_request = installation_source
+                .make_request(
+                    crate::terms::language::expr_to_term(seed.normalized.clone()),
+                    InstantiationProvenance::new(String::new(), vec![]),
+                )
+                .expect("normalizable eager seed");
+            let key = canonical_instantiation_key(normalized_request.inst.get_term());
             if !known.insert(key) {
                 continue;
             }
@@ -139,7 +217,9 @@ impl<F: TermCostFactory> InstanceSeeder for CostGuidedSeeder<F> {
             self.config.diversify_ties,
         );
         let selected_count = selected.len();
+        self.seeded = true;
         for (request, mut record) in selected {
+            self.binder_instances += u64::from(record.axiom_name.starts_with("input-binder-"));
             let result = smt.add_instantiation(request);
             record.indexed_assertions_attempted = result.indexed_assertions_attempted;
             record.indexed_assertions_added = result.indexed_assertions_added;
@@ -164,6 +244,8 @@ impl<F: TermCostFactory> InstanceSeeder for CostGuidedSeeder<F> {
         for (name, value) in [
             ("passes", u64::from(self.seeded)),
             ("candidates", self.candidates),
+            ("binder_candidates", self.binder_candidates),
+            ("binder_instances", self.binder_instances),
             ("instances", self.selected),
             ("assertions", self.assertions),
         ] {
@@ -285,6 +367,55 @@ mod tests {
         )
         .unwrap();
         (strategy, session)
+    }
+
+    #[test]
+    fn binder_seeds_match_across_encodings_and_replay_without_a_model() {
+        let input = r#"
+            (declare-sort S 0)
+            (declare-fun a () (Array S Bool))
+            (declare-fun k () S)
+            (declare-fun p (S) Bool)
+            (declare-fun rel (S S) Bool)
+            (declare-fun flag () Bool)
+            (define-fun init () Bool (!
+                (and (not (forall ((x S)) (p x)))
+                     (=> flag (forall ((x S) (y S)) (rel x y)))) :init true))
+            (define-fun trans () Bool (!
+                (exists ((x S)) (forall ((y S)) (rel x y))) :trans true))
+            (define-fun prop () Bool (! false :invar-property 0))
+        "#;
+        let mut expected = None;
+        for native in [false, true] {
+            let (mut strategy, mut session) = fixture_for_input(native, true, input);
+            assert!(!session.has_model());
+            strategy.seed_instances(&mut session).unwrap();
+            assert!(!session.has_model());
+            let schemas = session.get_instantiations();
+            let records = strategy.take_eager_artifacts();
+            assert!(records
+                .iter()
+                .any(|r| r.axiom_name.starts_with("input-binder-")));
+            let selected = records
+                .iter()
+                .map(|r| (r.axiom_name.clone(), r.term_hash.clone()))
+                .collect::<Vec<_>>();
+            if let Some(expected) = &expected {
+                assert_eq!(&selected, expected);
+            } else {
+                expected = Some(selected);
+            }
+            // The negated forall and inactive conditional must stay satisfiable.
+            assert_eq!(session.check_property(), SolverCheckResult::Sat);
+            for depth in 1..=2 {
+                session.unroll(depth);
+                let count = session.get_number_instantiation_assertions_added();
+                strategy.seed_instances(&mut session).unwrap();
+                assert_eq!(session.get_number_instantiation_assertions_added(), count);
+                assert_eq!(session.get_instantiations(), schemas);
+                assert!(strategy.take_eager_artifacts().is_empty());
+            }
+        }
     }
 
     #[test]
@@ -411,7 +542,7 @@ mod tests {
         assert!(expected.len() <= 7);
         assert_eq!(describe(false), expected);
         let mut seeder = CostGuidedSeeder::<ArrayAstSize>::new((), config);
-        seeder.configure_vmt(&source_model(), true);
+        seeder.configure_vmt(source_model(), true, true);
         let (_, mut session) = fixture(false, false);
         seeder.seed(&mut session).unwrap();
         assert!(session.get_instantiations().len() <= 2);

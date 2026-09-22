@@ -141,7 +141,7 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub guarded_read_updates: bool,
 
-    /// Select array axiom instances once before the first check, then replay them.
+    /// Seed array axioms and VMT input binders once before checking, then replay.
     #[arg(long, default_value_t = false)]
     pub eager: bool,
 

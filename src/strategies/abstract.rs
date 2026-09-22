@@ -238,9 +238,11 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        if let Some(seeder) = &mut self.eager {
-            seeder.configure_vmt(&model, true);
-        }
+        let model = if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(model, true, true)
+        } else {
+            model
+        };
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         let model = self.quantifier.configure_model(model, self.profile);
         if self.quantifier.configuration_error.is_some() {

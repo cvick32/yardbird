@@ -47,6 +47,29 @@ This will automatically use the BMC Cost strategy.
 ./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
 ```
 
+Use `--eager` to select array axioms and VMT input-binder instances once before
+checking, then replay that fixed batch through later BMC frames:
+
+```bash
+cargo run --release -- -f examples/distributed_protocols/paxos/paxos.vmt -s abstract -d 2 --eager
+cargo run --release -- -f examples/distributed_protocols/paxos/paxos.vmt -s concrete -d 2 --eager
+```
+
+Concrete and abstract strategies use the same source vocabulary, cost function,
+and normalized choices. Binder seeds preserve polarity: a universal contributes
+`Q => body[t]`, an existential contributes `body[t] => Q`, and a nonconstant
+lambda contributes a read equality. Nested and multi-variable binders use bounded,
+cost-ordered tuples of typed ground terms. The complementary witness directions
+remain with normal refinement or the native solver. Concrete receives native
+quantified formulas; abstract receives the corresponding helper implications.
+
+The default frontier allows 512 candidates per theory and selects at most 32
+instances across arrays and binders. JSON reports `eager.binder_candidates` and
+`eager.binder_instances` alongside the existing eager statistics. Eager replay
+works with `full-unroll` and `no-unroll-on-loop`, and preserves relative frame
+distances. SMT-LIB eager seeding remains array-only. The flag is experimental and
+does not guarantee a speedup.
+
 The `german-fast` policy constructs the complete German proof plan:
 
 ```bash

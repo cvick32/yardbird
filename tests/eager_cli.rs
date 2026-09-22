@@ -21,6 +21,16 @@ fn run(extension: &str, options: &[&str]) -> Value {
 }
 
 fn run_fixture(extension: &str, options: &[&str], property: &str, depth: &str) -> Value {
+    run_fixture_with_init(extension, options, property, depth, "true")
+}
+
+fn run_fixture_with_init(
+    extension: &str,
+    options: &[&str],
+    property: &str,
+    depth: &str,
+    init: &str,
+) -> Value {
     let temp = tempfile::tempdir().unwrap();
     let input = temp.path().join(format!("eager.{extension}"));
     let body = if extension == "vmt" {
@@ -30,7 +40,7 @@ fn run_fixture(extension: &str, options: &[&str], property: &str, depth: &str) -
 (define-fun i.link () Int (! i :next i.next))
 (define-fun j.link () Int (! j :next j.next))
 (define-fun v.link () Int (! v :next v.next))
-(define-fun init () Bool (! true :init true))
+(define-fun init () Bool (! {init} :init true))
 (define-fun trans () Bool (! true :trans true))
 (define-fun prop () Bool (! {property} :invar-property 0))"
         )
@@ -339,5 +349,55 @@ fn eager_cli_rejects_incompatible_theory_and_installer() {
             .unwrap();
         assert!(!output.status.success());
         assert!(String::from_utf8_lossy(&output.stderr).contains(expected));
+    }
+}
+
+#[test]
+fn cli_seeds_vmt_input_binders_once_with_matching_choices_for_native_and_lowered_solvers() {
+    // A true property keeps the check trivial; initialization retains a binder.
+    let initial = "(forall ((x Int)) (= (select a x) x))";
+    for cost in ["bmc-cost", "ast-size"] {
+        let mut expected = None;
+        for strategy in ["concrete", "abstract", "abstract-with-quantifiers"] {
+            let result = run_fixture_with_init(
+                "vmt",
+                &["--eager", "-s", strategy, "-c", cost],
+                "true",
+                "3",
+                initial,
+            );
+            let stats = &result["solver_statistics"]["stats"];
+            assert_eq!(stats["eager.passes"], 1);
+            assert!(stats["eager.binder_instances"].as_u64().unwrap() > 0);
+            let choices = result["abstract_instantiations"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| {
+                    r["axiom_name"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with("input-binder-")
+                })
+                .map(|r| {
+                    (
+                        r["abstract_instantiation_id"].clone(),
+                        r["term_hash"].clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            if let Some(expected) = &expected {
+                assert_eq!(&choices, expected);
+            } else {
+                expected = Some(choices);
+            }
+            if strategy == "abstract" {
+                assert!(result["used_instances"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|t| !t.as_str().unwrap().contains("(forall")));
+            }
+        }
     }
 }

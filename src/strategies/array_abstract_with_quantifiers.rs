@@ -66,9 +66,11 @@ impl ProofStrategy<'_, RefinementState> for AbstractArrayWithQuantifiers {
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        if let Some(seeder) = &mut self.eager {
-            seeder.configure_vmt(&model, true);
-        }
+        let model = if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(model, true, false)
+        } else {
+            model
+        };
         let (model, types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
         self.discovered_array_types = types;

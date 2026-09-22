@@ -14,6 +14,7 @@ use smt2parser::{
 
 use crate::terms::language::TermLanguage;
 mod compiled_rule;
+pub(crate) mod eager;
 mod lowering;
 pub mod provenance;
 pub(crate) mod refinement;
@@ -329,6 +330,8 @@ impl BinderRule {
 #[derive(Default)]
 pub(crate) struct QuantifierPlan {
     pub rules: Vec<BinderRule>,
+    /// Native binder expressions, with the same alpha-renamed variables as rules.
+    pub native_binders: HashMap<String, Term>,
     pub signatures: HashMap<String, (Vec<Sort>, Sort)>,
     pub seeds: Vec<(Sort, Term)>,
     compiled: std::cell::RefCell<Option<std::rc::Rc<CompiledBinderRules>>>,
