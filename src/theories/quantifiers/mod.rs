@@ -30,6 +30,7 @@ pub(crate) use lowering::{
 mod binder_request;
 #[cfg(test)]
 mod binder_request_tests;
+pub(crate) mod body_matching;
 pub(crate) mod clauses;
 pub(crate) mod dependency_search;
 pub(crate) mod equations;

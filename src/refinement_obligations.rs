@@ -205,6 +205,24 @@ mod tests {
     };
 
     #[test]
+    fn automatically_closes_captured_paxos_support_frame3() {
+        close_captured_query(
+            include_str!("../tests/fixtures/paxos-support-frame3.smt2"),
+            3,
+            false,
+        );
+    }
+
+    #[test]
+    fn automatically_closes_captured_paxos_guards_frame4() {
+        close_captured_query(
+            include_str!("../tests/fixtures/paxos-guards-frame4.smt2"),
+            4,
+            false,
+        );
+    }
+
+    #[test]
     fn automatically_closes_captured_paxos_agreement_with_both_theories() {
         close_captured_query(
             include_str!("../tests/fixtures/paxos-agreement-frame1.smt2"),

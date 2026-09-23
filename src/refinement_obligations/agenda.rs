@@ -2,6 +2,7 @@
 //! and must still hold before this context can be resumed on a different model.
 use super::*;
 use crate::theories::quantifiers::{
+    body_matching::BodyAgenda,
     clauses::{source_helpers, ClauseAgenda},
     dependency_search::DependencyAgenda,
     equations::{EquationCompiler, EquationCursor},
@@ -23,6 +24,7 @@ pub(super) struct Agenda {
     equation_compilers: VecDeque<EquationCompiler>,
     equation_jobs: VecDeque<(usize, usize, EquationCursor)>,
     clauses: ClauseAgenda,
+    bodies: BodyAgenda,
     dependencies: DependencyAgenda,
     helpers: VecDeque<Term>,
     generated: HashSet<Term>,
@@ -84,6 +86,7 @@ impl Agenda {
             equation_compilers: VecDeque::new(),
             equation_jobs: VecDeque::new(),
             clauses: ClauseAgenda::default(),
+            bodies: BodyAgenda::default(),
             dependencies: DependencyAgenda::new(plan, helpers.clone()),
             helpers: helpers.into(),
             generated: HashSet::new(),
@@ -165,8 +168,10 @@ impl Agenda {
         // False existentials constrain ground bodies with the opposite sign;
         // only true universals produce equations and backward-search roots.
         if !truth {
+            self.bodies.add_demand(plan, &root);
             return;
         }
+        self.bodies.add_guard(plan, &root);
         self.clauses.add_helper(plan, &root);
         self.dependencies.add_root(root.clone());
         self.equation_compilers
@@ -181,6 +186,7 @@ impl Agenda {
             + self.clauses.pending()
             + self.dependencies.pending()
             + self.helpers.len()
+            + self.bodies.pending()
     }
     pub fn demands(&self) -> usize {
         self.goals.len()
@@ -200,7 +206,7 @@ impl Agenda {
         let mut work = 0;
         let result = (|| {
             while work < budget && self.pending() > 0 {
-                let phase = self.turn % 7;
+                let phase = self.turn % 8;
                 self.turn += 1;
                 let mut instances = Vec::new();
                 match phase {
@@ -287,6 +293,20 @@ impl Agenda {
                         work += 1;
                         if eval(&helper)? == "true" {
                             self.clauses.add_helper(plan, &helper);
+                            self.bodies.add_source(plan, &helper);
+                        }
+                    }
+                    6 => {
+                        if self.bodies.pending() == 0 {
+                            continue;
+                        }
+                        work += 1;
+                        if let Some((instance, root)) = self.bodies.step(plan, &mut eval)? {
+                            if let Some(root) = root {
+                                self.explain.push_back((root.clone(), true));
+                                self.dependencies.add_goal(Goal::new(&root, true));
+                            }
+                            instances.push(instance);
                         }
                     }
                     _ => {
@@ -387,7 +407,7 @@ mod tests {
         );
         let mut compilation_work = 0;
         while !agenda.equation_compilers.is_empty() {
-            agenda.turn = 6;
+            agenda.turn = 7;
             let (_, work) = agenda.advance(&plan, &index, &smt, 1).unwrap();
             assert_eq!(work, 1);
             compilation_work += work;
