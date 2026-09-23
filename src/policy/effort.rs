@@ -11,7 +11,9 @@ pub struct WorkAllowance {
     pub winners: usize,
     /// Maximum term-construction attempts in one vocabulary-growth operation.
     pub vocabulary_work: usize,
+    /// Match/page budget; partial-tuple search counts visited prefixes instead.
     pub binder_page_size: usize,
+    /// Per-rule budget in the same units as `binder_page_size`.
     pub binder_search_limit: usize,
     pub array_initial_limit: usize,
     pub array_rounds: usize,

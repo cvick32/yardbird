@@ -12,6 +12,7 @@ use egg::*;
 pub(crate) struct BinderMatchPlan {
     filters: Vec<(TermPattern, bool)>,
     planned: bool,
+    pub(super) partial: Option<super::partial_tuple::PartialTuplePlan>,
 }
 
 pub(crate) type CompiledBinderRule<N> = CompiledQuantifiedRule<N, BinderMatchPlan>;
@@ -53,6 +54,14 @@ impl<N: Analysis<TermLanguage>> CompiledBinderRule<N> {
 
     pub(crate) fn binder_filters(&self) -> &[(TermPattern, bool)] {
         &self.details.filters
+    }
+
+    pub(super) fn with_partial_tuples(
+        mut self,
+        plan: Option<super::partial_tuple::PartialTuplePlan>,
+    ) -> Self {
+        self.details.partial = plan;
+        self
     }
 
     pub(crate) fn uses_violation_plan(&self) -> bool {

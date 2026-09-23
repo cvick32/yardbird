@@ -1,6 +1,7 @@
 //! Bounded Boolean alternatives for one binder body's required model value.
-//! These restrict a heuristic search over represented terms, never establish
-//! completeness. The domain phase and full-instance model check remain intact.
+//! Triggered matching uses these over represented terms. Typed-domain fallback
+//! can also evaluate their atoms to reject partial tuples; neither replaces the
+//! full-instance model check.
 use super::*;
 
 const MAX_ALTERNATIVES: usize = 8;
@@ -253,7 +254,15 @@ mod tests {
         body: &str,
         atoms: &[(&str, bool)],
     ) -> crate::theories::quantifiers::tests::PreparedFixture {
-        let mut prepared = prepared_fixture(4, 20);
+        fixture_with_size(body, atoms, 20)
+    }
+
+    fn fixture_with_size(
+        body: &str,
+        atoms: &[(&str, bool)],
+        size: usize,
+    ) -> crate::theories::quantifiers::tests::PreparedFixture {
+        let mut prepared = prepared_fixture(4, size);
         let plan = QuantifierPlan {
             rules: vec![rule(body)],
             ..Default::default()
@@ -284,6 +293,86 @@ mod tests {
                 .or_insert(expression.clone());
         }
         prepared
+    }
+
+    #[test]
+    fn domain_fallback_prunes_missing_predicates_before_full_construction() {
+        let mut prepared = fixture("(=> (and (p x0 x1) (p x2 x3)) (= x1 x3))", &[]);
+        let mut full_formulas = HashSet::new();
+        let mut visited = 0;
+        let mut candidates = HashSet::new();
+        loop {
+            let batch = prepared
+                .candidates(
+                    |term| {
+                        let Term::Application {
+                            qual_identifier,
+                            arguments,
+                        } = term
+                        else {
+                            panic!()
+                        };
+                        match qual_identifier.get_name().as_str() {
+                            "p" | "=" => Ok((arguments[0] == arguments[1]).to_string()),
+                            "=>" => {
+                                full_formulas.insert(term.to_string());
+                                Ok("false".into())
+                            }
+                            other => panic!("unexpected atom {other}"),
+                        }
+                    },
+                    SearchPhase::Conflicts,
+                    |_| PreferLongName,
+                    prepared_options(),
+                )
+                .unwrap();
+            visited += batch.search.examined_substitutions;
+            assert!(batch.search.examined_substitutions <= 100);
+            assert!(batch.search.budget_exhausted_rules.is_empty());
+            for candidate in batch.candidates {
+                assert!(candidate.model_violation_verified);
+                assert!(candidates.insert(
+                    crate::terms::language::expr_to_term(candidate.expression).to_string()
+                ));
+            }
+            if !prepared.can_continue(SearchPhase::Conflicts) {
+                break;
+            }
+        }
+        // All 20*19 violating pairs survive, despite no p applications existing
+        // in the graph. The old fallback constructs up to 20^4 formulas.
+        assert_eq!(candidates.len(), 380);
+        assert_eq!(full_formulas.len(), 380);
+        assert!(visited < 16_000, "visited {visited} prefixes");
+    }
+
+    #[test]
+    fn unresolved_partial_conditions_still_require_full_model_validation() {
+        let mut prepared = fixture_with_size("(=> (p x0 x1) (r x2 x3))", &[], 3);
+        let mut constructions = 0;
+        loop {
+            let batch = prepared
+                .candidates(
+                    |term| {
+                        if term.to_string().starts_with("(=>") {
+                            constructions += 1;
+                            Ok("true".into())
+                        } else {
+                            Ok("unresolved".into())
+                        }
+                    },
+                    SearchPhase::Conflicts,
+                    |_| PreferLongName,
+                    prepared_options(),
+                )
+                .unwrap();
+            assert!(batch.candidates.is_empty());
+            assert!(batch.search.budget_exhausted_rules.is_empty());
+            if !prepared.can_continue(SearchPhase::Conflicts) {
+                break;
+            }
+        }
+        assert_eq!(constructions, 81);
     }
 
     #[test]
@@ -370,13 +459,14 @@ mod tests {
         assert!(batch.candidates.is_empty());
         let fallback = missing
             .candidates(
-                |_| Ok("false".into()),
+                |term| Ok(term.to_string().starts_with("(p ").to_string()),
                 SearchPhase::Conflicts,
                 |_| PreferLongName,
                 prepared_options(),
             )
             .unwrap();
-        assert_eq!(fallback.candidates.len(), 100);
+        assert!(!fallback.candidates.is_empty());
+        assert!(fallback.candidates.len() <= 100);
         assert!(missing.can_continue(SearchPhase::Conflicts));
     }
 

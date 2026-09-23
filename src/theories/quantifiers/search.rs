@@ -1,5 +1,5 @@
 //! Binder paging and model-local continuation cursors.
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::profiling::RefinementProfilingCollector;
 
@@ -18,6 +18,109 @@ enum BinderRuleCursor {
 pub(crate) struct BinderSearchCursor {
     rules: Vec<BinderRuleCursor>,
     next_rule: usize,
+    partial: HashMap<usize, super::partial_tuple::PartialTupleCursor>,
+}
+
+/// Conflict fallback can test signed conditions on incomplete domain tuples.
+/// The cursor, including every pruning decision, belongs to this model/graph.
+pub(super) fn search_binder_model_page<N: egg::Analysis<TermLanguage>>(
+    egraph: &egg::EGraph<TermLanguage, N>,
+    rules: &[CompiledBinderRule<N>],
+    cursor: &mut BinderSearchCursor,
+    index: Option<usize>,
+    allowance: &crate::policy::effort::WorkAllowance,
+    profiling: &Option<Rc<RefCell<RefinementProfilingCollector>>>,
+    evaluate: impl FnMut(
+        &crate::terms::language::TermPattern,
+        &egg::Subst,
+    ) -> anyhow::Result<Option<bool>>,
+) -> anyhow::Result<MatchedRules> {
+    cursor
+        .rules
+        .resize(rules.len(), BinderRuleCursor::Pending { offset: 0 });
+    let index = index.or_else(|| {
+        (0..rules.len())
+            .map(|distance| (cursor.next_rule + distance) % rules.len())
+            .find(|&index| matches!(cursor.rules[index], BinderRuleCursor::Pending { .. }))
+    });
+    let Some(index) = index else {
+        let mut result = MatchedRules::default();
+        report_progress(rules, cursor, &mut result);
+        return Ok(result);
+    };
+    let rule = &rules[index];
+    let Some(plan) = rule
+        .details
+        .partial
+        .as_ref()
+        .filter(|_| !rule.is_direct_binder_instance())
+    else {
+        return Ok(search_binder_page_at(
+            egraph, rules, cursor, index, allowance, profiling,
+        ));
+    };
+    let mut result = MatchedRules::default();
+    if matches!(cursor.rules[index], BinderRuleCursor::Pending { .. }) {
+        let start = std::time::Instant::now();
+        let traversal = cursor.partial.entry(index).or_insert_with(|| {
+            super::partial_tuple::PartialTupleCursor::new(
+                egraph,
+                plan,
+                allowance.binder_search_limit,
+            )
+        });
+        let page = traversal.page(plan, index, allowance, evaluate)?;
+        if let Some(profiling) = profiling {
+            let mut profiling = profiling.borrow_mut();
+            for (key, count) in [
+                (
+                    "partial_tuple_prefixes",
+                    page.matched.report.examined_substitutions,
+                ),
+                ("partial_tuple_checks", page.checks),
+                ("partial_tuple_rejections", page.rejected),
+                ("partial_tuple_survivors", page.matched.matches.len()),
+            ] {
+                profiling.record_quantifier_counter(rule.metadata().name(), key, count as u64);
+            }
+            profiling.record_quantifier_timing(
+                rule.metadata().name(),
+                "partial_tuple_search",
+                start.elapsed(),
+            );
+        }
+        cursor.rules[index] = if page.complete {
+            BinderRuleCursor::Complete
+        } else if page.exhausted {
+            BinderRuleCursor::Exhausted
+        } else {
+            BinderRuleCursor::Pending { offset: 0 }
+        };
+        result = page.matched;
+    }
+    cursor.next_rule = (index + 1) % rules.len();
+    report_progress(rules, cursor, &mut result);
+    Ok(result)
+}
+
+fn report_progress<N: egg::Analysis<TermLanguage>>(
+    rules: &[CompiledBinderRule<N>],
+    cursor: &BinderSearchCursor,
+    result: &mut MatchedRules,
+) {
+    for (index, rule) in rules.iter().enumerate() {
+        match cursor.rules[index] {
+            BinderRuleCursor::Pending { .. } => result
+                .report
+                .continuable_rules
+                .push(rule.metadata().name().to_owned()),
+            BinderRuleCursor::Exhausted => result
+                .report
+                .budget_exhausted_rules
+                .push(rule.metadata().name().to_owned()),
+            BinderRuleCursor::Complete => {}
+        }
+    }
 }
 
 impl BinderSearchCursor {
@@ -165,23 +268,7 @@ pub(crate) fn search_binder_page<N: egg::Analysis<TermLanguage>>(
         cursor.next_rule = (index + 1) % rules.len();
     }
 
-    for (index, rule) in rules.iter().enumerate() {
-        match cursor.rules[index] {
-            BinderRuleCursor::Pending { .. } => {
-                result
-                    .report
-                    .continuable_rules
-                    .push(rule.metadata().name().to_owned());
-            }
-            BinderRuleCursor::Exhausted => {
-                result
-                    .report
-                    .budget_exhausted_rules
-                    .push(rule.metadata().name().to_owned());
-            }
-            BinderRuleCursor::Complete => {}
-        }
-    }
+    report_progress(rules, cursor, &mut result);
     result
 }
 
@@ -206,18 +293,6 @@ pub(crate) fn search_binder_page_at<N: egg::Analysis<TermLanguage>>(
     );
     // A cursor records progress; it does not choose the next rule.
     cursor.next_rule = (index + 1) % rules.len();
-    for (index, rule) in rules.iter().enumerate() {
-        match cursor.rules[index] {
-            BinderRuleCursor::Pending { .. } => result
-                .report
-                .continuable_rules
-                .push(rule.metadata().name().to_owned()),
-            BinderRuleCursor::Exhausted => result
-                .report
-                .budget_exhausted_rules
-                .push(rule.metadata().name().to_owned()),
-            BinderRuleCursor::Complete => {}
-        }
-    }
+    report_progress(rules, cursor, &mut result);
     result
 }

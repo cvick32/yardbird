@@ -31,6 +31,7 @@ mod binder_request;
 #[cfg(test)]
 mod binder_request_tests;
 mod dependency_search;
+mod partial_tuple;
 mod violation_plan;
 use crate::rule_matching::candidate::InstantiationBatch;
 use crate::rule_matching::candidate_builder::InstantiationOptions;
@@ -243,6 +244,40 @@ impl BinderRule {
                 let value = if proxy_is_true { "true" } else { "false" };
                 patterns.push(("?root".parse().unwrap(), pattern(app(value, vec![]))?.ast));
             }
+            let partial = if phase == SearchPhase::Conflicts {
+                violation_plan::plans(self)
+                    .map(|alternatives| -> anyhow::Result<_> {
+                        let alternatives = alternatives
+                            .into_iter()
+                            .map(|atoms| {
+                                atoms
+                                    .into_iter()
+                                    .map(|atom| {
+                                        Ok((
+                                            binder_request::specialize(
+                                                pattern(atom.term)?,
+                                                &fixed_bindings,
+                                            ),
+                                            atom.truth,
+                                        ))
+                                    })
+                                    .collect::<anyhow::Result<Vec<_>>>()
+                            })
+                            .collect::<anyhow::Result<Vec<_>>>()?;
+                        Ok(partial_tuple::PartialTuplePlan::new(
+                            MultiPattern::new(patterns.clone()),
+                            self.variables
+                                .iter()
+                                .map(|(symbol, sort)| (bindings[&symbol.0], sort.to_string()))
+                                .collect(),
+                            alternatives,
+                        ))
+                    })
+                    .transpose()?
+                    .flatten()
+            } else {
+                None
+            };
             let mut filters = Vec::new();
             if let Some(plan) = plan {
                 // Each alternative gets an independent cursor. Predicates bind
@@ -322,7 +357,8 @@ impl BinderRule {
                 formula,
                 fixed_bindings,
             )
-            .with_binder_filters(filters, plan.is_some()))
+            .with_binder_filters(filters, plan.is_some())
+            .with_partial_tuples(partial))
         })())
     }
 }
@@ -581,7 +617,6 @@ impl PreparedQuantifierSearch {
         use crate::rule_matching::candidate_builder::instantiate_quantified_matches;
         use crate::rule_matching::grounding::instantiate_with_bindings;
         use crate::terms::language::expr_to_term;
-        use crate::theories::quantifiers::search::search_binder_page_at;
         let (phase, request, page) = match search.into() {
             #[cfg(test)]
             BinderSearch::Phase(phase) => (phase, None, None),
@@ -616,17 +651,35 @@ impl PreparedQuantifierSearch {
             Some(request) => &mut self.requests.get_mut(request).unwrap().cursor,
             None => self.cursors.entry(phase).or_default(),
         };
-        let mut matched = match page {
-            Some((rule, allowance)) => {
-                search_binder_page_at(egraph, rules, cursor, rule, &allowance, &profiling)
-            }
-            #[cfg(test)]
-            None => crate::theories::quantifiers::search::search_binder_page(
-                egraph, rules, cursor, &profiling,
-            ),
-            #[cfg(not(test))]
-            None => unreachable!("production search requires an explicit rule"),
-        };
+        let mut matched = search::search_binder_model_page(
+            egraph,
+            rules,
+            cursor,
+            page.map(|(rule, _)| rule),
+            &page.map(|(_, allowance)| allowance).unwrap_or_default(),
+            &profiling,
+            |pattern, substitution| {
+                let expression = instantiate_with_bindings(pattern, |variable| {
+                    let id = egraph.find(substitution[variable]);
+                    self.representatives
+                        .get(&id)
+                        .ok_or_else(|| anyhow::anyhow!("No original term for binder e-class {id}"))
+                })?;
+                let term = expr_to_term(expression);
+                let value = match self.evaluations.entry(term) {
+                    std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        let value = evaluate(entry.key())?;
+                        entry.insert(value)
+                    }
+                };
+                Ok(match value.trim() {
+                    "true" => Some(true),
+                    "false" => Some(false),
+                    _ => None,
+                })
+            },
+        )?;
         if let Some(profiling) = &profiling {
             let mut profiling = profiling.borrow_mut();
             profiling.record_timing("input_binder_matching", start.elapsed());

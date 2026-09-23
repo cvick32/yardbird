@@ -13,7 +13,8 @@ pub struct RuleSearchReport {
     pub continuable_rules: Vec<String>,
     /// Rules with unexamined matches after reaching their search budget.
     pub budget_exhausted_rules: Vec<String>,
-    /// Matcher output examined, including replayed prefixes and lookahead.
+    /// Matcher output examined, including replayed prefixes and lookahead,
+    /// or prefix extensions visited by the model-pruned domain traversal.
     pub examined_substitutions: usize,
     /// Fresh page substitutions passed on for grounding, excluding replay.
     pub returned_substitutions: usize,
