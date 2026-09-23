@@ -1,16 +1,12 @@
 use smt2parser::{concrete::Term, vmt::ReadsAndWrites};
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
-    theories::array::{
-        array_axioms::{
-            expr_to_term, generate_array_instantiation_candidates, translate_term,
-            ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
-        },
-        array_rule_instantiator::ArrayArtifactCapture,
-        candidate_scope::CandidateScope,
-    },
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::problem_context::{ArrayCandidateCatalog, ArrayCandidatePool};
+use yardbird::rule_matching::candidate_builder::{
+    ArtifactCapture, InstantiationInstrumentation, InstantiationOptions,
 };
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::terms::language::{expr_to_term, translate_term, TermLanguage};
+use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates;
 
 fn assert_source_write_is_preserved(array: &str, index: &str, value: &str) {
     let write = format!("(Write_Int_Bool {array} {index} {value})");
@@ -19,7 +15,7 @@ fn assert_source_write_is_preserved(array: &str, index: &str, value: &str) {
         array, index, value, "alias@1", "next@1", "guard@0", "false", "true", &write, &read,
     ]
     .map(str::to_owned);
-    let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
     let ids = terms
         .iter()
         .map(|raw| egraph.add_expr(&translate_term(raw.parse().unwrap()).unwrap()))
@@ -48,7 +44,8 @@ fn assert_source_write_is_preserved(array: &str, index: &str, value: &str) {
         &egraph,
         cost,
         &[("Int".into(), "Bool".into())],
-        ArrayInstantiationOptions {
+        InstantiationOptions {
+            search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog {
                 source_grounded: ArrayCandidatePool {
@@ -61,8 +58,8 @@ fn assert_source_write_is_preserved(array: &str, index: &str, value: &str) {
             refinement_step: 0,
             selection_counts: Default::default(),
             depth: 1,
-            instrumentation: ArrayInstantiationInstrumentation {
-                artifact_capture: ArrayArtifactCapture::default(),
+            instrumentation: InstantiationInstrumentation {
+                artifact_capture: ArtifactCapture::default(),
                 profiling: None,
             },
         },

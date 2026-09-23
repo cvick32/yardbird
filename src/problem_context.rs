@@ -6,13 +6,10 @@ use smt2parser::vmt::{
 };
 use std::any::Any;
 
-use crate::{
-    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec},
-    instantiation_provenance::{
-        InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
-    },
-    utils::SolverStatistics,
-};
+use crate::auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec};
+use crate::instance_installation::request::{InstantiationInstallResult, InstantiationRequest};
+use crate::rule_matching::provenance::InstantiationProvenance;
+use crate::utils::SolverStatistics;
 
 /// Candidate terms and array-operation sites with the same provenance.
 #[derive(Clone, Default)]
@@ -43,6 +40,14 @@ pub trait ProblemContext {
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn model_to_string(&self) -> anyhow::Result<String>;
     fn get_all_subterms(&self) -> Vec<&Term>;
+    /// Declarations used to type model-equivalence classes, including symbols
+    /// introduced by refinement. Temporal frame suffixes are resolved separately.
+    fn get_refinement_declarations(&self) -> Vec<smt2parser::concrete::Command> {
+        self.get_variables()
+            .iter()
+            .map(|v| v.current.clone())
+            .collect()
+    }
     /// Get only problem-authored subterms, excluding formulas introduced by
     /// refinement. Backends without separate provenance use all subterms.
     fn get_source_subterms(&self) -> Vec<&Term> {
@@ -56,8 +61,18 @@ pub trait ProblemContext {
     fn get_reason_unknown(&self) -> Option<String>;
 
     // Methods for instantiation management
+    fn supports_eager_instantiation(&self) -> bool {
+        true
+    }
+
     fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult;
     fn get_instantiations(&self) -> Vec<Term>;
+    /// Ground formulas already asserted by refinement, after frame placement
+    /// and materialization. SMT-LIB inputs may also contain replayed instances.
+    /// These are search hints; callers must not reinterpret them as schemas.
+    fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {
+        vec![]
+    }
     fn get_variables(&self) -> &[Variable];
     fn get_number_instantiations_added(&self) -> u64;
 

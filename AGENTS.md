@@ -14,8 +14,8 @@ yardbird/                       # Root workspace
     driver.rs                   # CEGAR loop orchestrator (check_strategy)
     vmt_bmc_session.rs          # VMT temporal system solver (BMC unrolling)
     smtlib_problem.rs           # SMTLIB problem parser + simple solver
-    smtlib_refinement_session.rs # Adapter: SMTLIB -> SolverInterface
-    solver_interface.rs         # Trait unifying SMT/SMTLIB problem access
+    smtlib_refinement_session.rs # Adapter: SMTLIB -> ProblemContext
+    problem_context.rs         # Trait unifying SMT/SMTLIB problem access
     theory_support.rs           # TheorySupport trait + Array/List impls
     z3_var_context.rs           # SMT term -> Z3 AST conversion
     z3_ext.rs                   # Z3 model dumping utilities
@@ -28,46 +28,66 @@ yardbird/                       # Root workspace
     logger.rs                   # env_logger init
     utils.rs                    # SolverStatistics, general utils
     strategies/
-      mod.rs                    # Re-exports all strategies
-      proof_strategy.rs         # ProofStrategy + ProofStrategyExt traits
-      array_abstract.rs         # Abstract<F> - main CEGAR refinement strategy
-      array_abstract_with_quantifiers.rs  # Quantified axiom variant
-      array_concrete.rs         # ConcreteArrayZ3 - direct Z3 array theory
-      list_abstract.rs          # ListAbstract - list theory refinement
-      interpolate.rs            # Interpolating extension
-      repl.rs                   # Interactive REPL extension
+      abstract.rs               # Shared coordinator + RefinementState
+      array_abstract_with_quantifiers.rs  # Quantified-axiom solver variant
+      array_concrete.rs         # ConcreteArrayZ3
+      list_abstract.rs          # ListAbstract
+      proof_strategy.rs         # ProofStrategy + ProofStrategyExt
+      interpolate.rs, repl.rs   # Strategy extensions
+    terms/
+      language.rs               # TermLanguage, TermExpr, TermPattern, SMT conversion
+      preprocess.rs             # Typed operator preprocessing for e-graph syntax
+    rule_matching/
+      search_context.rs         # Borrowed graph, policy, and history inputs
+      compiled_rule.rs          # Shared executable rule representation
+      search.rs                 # Match enumeration and search reports
+      extractor.rs              # Shared representative extraction
+      grounding.rs              # Substitutions and shared grounding primitives
+      candidate_builder.rs      # Match-to-candidate construction
+      candidate.rs              # Candidate data and model validation
+      rule.rs, provenance.rs    # Shared identities and candidate provenance
+      scope.rs                  # Candidate eligibility scope
     theories/
-      mod.rs
       array/
-        array_axioms.rs         # ArrayLanguage, axioms, e-graph saturation
-        array_conflict_scheduler.rs  # Conflict detection + instantiation gen
-        array_term_extractor.rs # Cost-based e-class extraction
-      list/
-        list_axioms.rs          # ListLanguage, list axioms
-        list_conflict_scheduler.rs
-        list_term_extractor.rs
-      bvlist/
-        bitvector_list_axioms.rs  # BitVectorListLanguage (incomplete)
-    cost_functions/
-      mod.rs                    # YardbirdCostFunction trait
-      array/
-        mod.rs                  # Factory functions for all array costs
-        symbol_cost.rs          # BmcCost - structure-based heuristic
-        ast_size.rs             # AstSize - minimize expression size
-        adaptive_cost.rs        # AdaptiveCost - depth-aware heuristic
-        split_cost.rs           # SplitCost - synthesizes critical terms
-        prefer_read.rs          # PreferRead - bias toward reads
-        prefer_write.rs         # PreferWrite - bias toward writes
-        prefer_constants.rs     # PreferConstants - bias toward constants
-      list/
-        mod.rs
-        ast_size.rs
-      bvlist/
-        mod.rs                  # Empty (TODO)
-    instantiation_strategy/
-      mod.rs                    # InstantiationStrategy trait
-      full_unroll.rs            # FullUnroll - unroll all at each depth
-      no_unroll_on_loop.rs      # NoUnrollOnLoop - selective unrolling
+        refinement.rs           # Array abstraction, encodings, and candidate batches
+        array_axioms.rs         # Built-in array axioms
+        search.rs               # Array backoff search using policy allowances
+        grounding.rs            # Read/write structure and source-write alternatives
+        term_index.rs           # Source-write indexes and model-local lookup caches
+        rule.rs, candidate.rs   # Array rule kinds and synthesis observations
+        transition_guard.rs     # Array-read guard recognition
+        array_egraph_builder.rs # Staged array vocabulary admission
+        array_dataflow.rs       # Property cone analysis
+        encodings/              # Array preprocessing and abstraction encodings
+      quantifiers/
+        mod.rs, lowering.rs     # Binder plans and closure conversion
+        refinement.rs           # Quantifier refinement over the shared graph
+        compiled_rule.rs        # Binder compilation and violation-filter metadata
+        search.rs               # Binder paging and continuation cursors
+        binder_request.rs       # Directed requests and bindings
+        dependency_search.rs    # Dependency paths
+        violation_plan.rs       # Signed violation plans
+        provenance.rs, rule.rs  # Source provenance and binder identity
+        transition_guard.rs     # Quantified transition conditions and substitution
+      list/, bvlist/            # Existing theory implementations
+    policy.rs                   # YardbirdPolicy composition and named policies
+    policy/
+      effort.rs                 # Search scheduling and work allowances
+      instance_selection.rs     # Whole-instance ranking and batch selection
+      term_selection/
+        mod.rs                  # YardbirdCostFunction and TermCostFactory
+        context.rs              # TermCostContext
+        array/                  # Array-specific scoring heuristics
+        list/, bvlist/          # Existing cost implementations
+    instance_installation/
+      mod.rs                    # Installation mechanics and replay strategy interface
+      request.rs, provenance.rs # Requests, outcomes, and absolute-frame substitutions
+      assertion_tracker.rs      # Assertion identity and deduplication
+      full_unroll.rs, no_unroll_on_loop.rs, schema_batch.rs
+    refinement_graph.rs         # One coordinator-owned model-equivalence graph
+    refinement_graph/           # Shared vocabulary growth
+    profiling.rs                # RefinementProfilingCollector and solver observations
+    training/                   # Trajectories, learning, and persistence
   smt2parser/                   # SMT-LIB 2 parser (workspace member)
     src/
       lib.rs                    # Parser exports
@@ -114,11 +134,20 @@ yardbird/                       # Root workspace
   benchmark_results/            # Stored benchmark JSON results
 ```
 
+### Ownership rules
+
+`rule_matching` contains machinery shared by array axioms and general quantifiers.
+Theory-specific preparation and semantics belong under the corresponding theory.
+Policy controls effort and preferences; validation remains separate. The abstract
+coordinator owns graph mutation and model/history lifetimes, passing borrowed
+`SearchContext` to theory searches. Installation owns BMC placement and replay.
+Keep one shared graph and retain observation links across these modules.
+
 ---
 
 ## Execution Flow
 
-### CLI Options (`src/lib.rs:48-105`)
+### CLI Options (`src/lib.rs`)
 
 ```
 yardbird --filename <file> [options]
@@ -143,7 +172,7 @@ Key options:
   --dump-unsat-core <PATH>   Export unsat core JSON
 ```
 
-### Mode Dispatch (`src/main.rs:12-35`)
+### Mode Dispatch (`src/main.rs`)
 
 ```
 main()
@@ -156,14 +185,14 @@ main()
       └─ Theory::BvList -> todo!()
 ```
 
-### CEGAR Loop (`src/driver.rs:255-324`)
+### CEGAR Loop (`src/driver.rs`)
 
 ```
 check_strategy(target_depth, strategy):
   model = strategy.configure_model(model)    // abstract array ops
   smt_problem = VmtBmcSession::new(model, strategy)
   for depth in 0..target_depth:              // outer BMC loop
-    for refinement_step in 0..250:           // inner refinement loop
+    for refinement_step in 0..strategy.refinement_limit().unwrap_or(u32::MAX):
       smt_problem.unroll(depth)
       state = strategy.setup(smt, depth)
       match smt_problem.check():
@@ -182,42 +211,44 @@ check_strategy(target_depth, strategy):
 
 ## Core Traits
 
-### ProofStrategy (`src/strategies/proof_strategy.rs:23-56`)
+### ProofStrategy (`src/strategies/proof_strategy.rs`)
 
 ```rust
 pub trait ProofStrategy<'ctx, S> {
     fn get_theory_support(&self) -> Box<dyn TheorySupport>;
     fn configure_model(&mut self, model: VMTModel) -> VMTModel;  // default: identity
-    fn n_refines(&mut self) -> u32;                               // default: 250
-    fn setup(&mut self, smt: &dyn SolverInterface, depth: u16) -> Result<S>;
-    fn unsat(&mut self, state: &mut S, smt: &dyn SolverInterface) -> Result<ProofAction>;
-    fn sat(&mut self, state: &mut S, smt: &dyn SolverInterface, step: u32) -> Result<ProofAction>;
-    fn unknown(&mut self, state: &mut S, smt: &dyn SolverInterface) -> Result<ProofAction>;
-    fn finish(&mut self, state: S, smt: &mut dyn SolverInterface) -> Result<()>;
-    fn result(&mut self, model: &mut VMTModel, smt: &dyn SolverInterface) -> ProofLoopResult;
+    fn refinement_limit(&self) -> Option<u32>;                    // abstract: no fixed cap
+    fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> Result<S>;
+    fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> Result<ProofAction>;
+    fn sat(&mut self, state: &mut S, smt: &dyn ProblemContext, step: u32) -> Result<ProofAction>;
+    fn unknown(&mut self, state: &mut S, smt: &dyn ProblemContext) -> Result<ProofAction>;
+    fn finish(&mut self, state: S, smt: &mut dyn ProblemContext) -> Result<()>;
+    fn result(&mut self, model: &mut VMTModel, smt: &dyn ProblemContext) -> ProofLoopResult;
 }
 ```
 
-### SolverInterface (`src/solver_interface.rs`)
+### ProblemContext (`src/problem_context.rs`)
+
+The shared refinement interface exposes model evaluation, source and derived
+subterms, array types, variables, installation requests, and solver statistics.
+It is implemented by `VmtBmcSession` and `SmtlibRefinementSession`; concrete solver
+backends live behind `YardbirdSolver` in `src/solver/`.
 
 ```rust
-pub trait SolverInterface {
-    fn get_model(&self) -> &Option<z3::Model>;
-    fn rewrite_term(&self, term: &Term) -> Dynamic;       // Term -> Z3 AST
+pub trait ProblemContext {
+    fn has_model(&self) -> bool;
+    fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
     fn get_all_subterms(&self) -> Vec<&Term>;
-    fn get_interpretation(&self, model: &z3::Model, z3_term: &Dynamic) -> Dynamic;
-    fn add_instantiation(&mut self, inst: Instance) -> bool;
+    fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult;
     fn get_instantiations(&self) -> Vec<Term>;
     fn get_variables(&self) -> &[Variable];
     fn get_reads_and_writes(&self) -> ReadsAndWrites;
     fn get_array_types(&self) -> Vec<(String, String)>;
     fn get_solver_statistics(&self) -> SolverStatistics;
     fn get_reason_unknown(&self) -> Option<String>;
-    // ... more
+    // Additional source-vocabulary, auxiliary, and profiling operations.
 }
 ```
-
-Implementations: **VmtBmcSession** (VMT temporal), **SmtlibRefinementSession** (stateless SMTLIB)
 
 ### TheorySupport (`src/theory_support.rs`)
 
@@ -238,7 +269,7 @@ Implementations:
 - `ConcreteArrayTheory` - no abstraction, QF_AUFLIA logic
 - `ListTheorySupport` - list operations
 
-### YardbirdCostFunction (`src/cost_functions/mod.rs`)
+### YardbirdCostFunction (`src/policy/term_selection/mod.rs`)
 
 ```rust
 pub trait YardbirdCostFunction<L>: egg::CostFunction<L, Cost = u32> + Clone
@@ -250,13 +281,13 @@ where L: egg::Language + egg::FromOp
 }
 ```
 
-### InstantiationStrategy (`src/instantiation_strategy/mod.rs`)
+### InstantiationStrategy (`src/instance_installation/mod.rs`)
 
 ```rust
 pub trait InstantiationStrategy: Debug + Send {
     fn clone_box(&self) -> Box<dyn InstantiationStrategy>;
-    fn on_generate(&mut self, inst, instantiations, depth, bmc_builder, ...);
-    fn on_loop(&mut self, depth, instantiations, bmc_builder, ...);
+    fn on_generate(&mut self, request: InstantiationRequest, context: &mut InstantiationContext) -> InstantiationInstallResult;
+    fn on_loop(&mut self, depth: u16, context: &mut InstantiationContext);
 }
 ```
 
@@ -286,7 +317,7 @@ pub trait InstantiationStrategy: Debug + Send {
 5. CEGAR refinement adds array axiom instances on demand
 ```
 
-### ArrayLanguage (`src/theories/array/array_axioms.rs:14-40`)
+### TermLanguage (`src/terms/language.rs`)
 
 E-graph language for array term manipulation (egg `define_language!`):
 
@@ -308,7 +339,7 @@ E-graph language for array term manipulation (egg `define_language!`):
 | `Symbol` | 0 | Variable/sort name |
 | `Num` | 0 | Numeric literal |
 
-Type aliases: `ArrayExpr = egg::RecExpr<ArrayLanguage>`, `ArrayPattern = egg::PatternAst<ArrayLanguage>`
+Type aliases: `TermExpr = egg::RecExpr<TermLanguage>`, `TermPattern = egg::PatternAst<TermLanguage>`
 
 ### Array Axioms (Rewrite Rules)
 
@@ -332,67 +363,36 @@ Generated per type pair `(IndexSort, ValueSort)` in `array_axioms_for_type()`:
 
 ### Refinement Cycle (Abstract Strategy)
 
-`src/strategies/array_abstract.rs` implements `ProofStrategy<ArrayRefinementState>`:
+`src/strategies/abstract.rs` implements `ProofStrategy<RefinementState>` and owns
+one `RefinementGraph`. Array and quantifier refinement borrow this graph rather
+than maintaining separate equality state.
 
-```
-setup(depth):
-  - Create fresh EGraph<ArrayLanguage>
-  - Collect array_types from model or solver
+1. Configure array abstraction and quantifier lowering in their theory modules.
+2. Prepare a model-local graph and search state, preserving policy scheduling history.
+3. Ask `policy/effort.rs` which operation to execute and with what allowance.
+4. Enumerate matches through `rule_matching/search.rs`, using array backoff or
+   quantifier paging from the corresponding theory module.
+5. Build candidates through shared extraction and grounding, dispatching array
+   structural handling to `theories/array/grounding.rs`.
+6. Apply `policy/instance_selection.rs`, retaining term-selection observations.
+7. Install selected instances through `instance_installation/`; grow vocabulary
+   or allowances when more search is needed. Model equalities are never asserted
+   as theory lemmas. A new solver model invalidates model-local matches and caches.
 
-sat(state, smt, refinement_step):
-  1. Get Z3 model from counterexample
-  2. update_with_subterms(): for each subterm in problem:
-     - Translate term -> ArrayExpr, add to e-graph
-     - Get model interpretation, parse, add to e-graph
-     - Union term with its interpretation (model assignment)
-     - Rebuild e-graph
-  3. saturate_with_array_types():
-     - Create ArrayConflictScheduler with cost function
-     - Run egg::Runner with array axioms on e-graph
-     - Scheduler INTERCEPTS rewrites that would create new equalities
-     - Each intercepted rewrite = conflict = new instantiation
-     - Returns (instantiations, const_instantiations)
-  4. Extend state with discovered instantiations
-  -> ProofAction::Continue
+### Matching and extraction
 
-finish(state, smt):
-  - Convert ArrayExpr instantiations -> SMT Terms via expr_to_term()
-  - Rewrite via UnquantifiedInstantiator (handles variable naming)
-  - Add to solver via smt.add_instantiation()
-  -> Next check() will include these constraints
+`src/theories/array/array_axioms.rs` compiles the built-in rules. Shared matching
+in `src/rule_matching/search.rs` is read-only. Binder-specific filters and paging
+live under `src/theories/quantifiers/`.
 
-unsat(state):
-  -> ProofAction::NextDepth (all counterexamples at this depth ruled out)
-```
-
-### Conflict Detection (`src/theories/array/array_conflict_scheduler.rs`)
-
-The `ArrayConflictScheduler` wraps egg's scheduler to intercept axiom applications:
-
-```
-apply_rewrite(egraph, rewrite, matches):
-  if already have instantiations: return 0  // stop early
-  for each match:
-    compute RHS e-class for this match
-    if LHS e-class != RHS e-class:
-      // Axiom would create new equality -> CONFLICT
-      Extract best terms using cost function
-      Build instantiation term (equality or implication)
-      if cost >= 100: push to const_instantiations
-      else: push to instantiations
-  return 0  // never actually apply the rewrite
-```
-
-### Term Extraction (`src/theories/array/array_term_extractor.rs`)
-
-The `ArrayTermExtractor` provides progressive refinement:
-- Pre-caches terms by cost for each e-class
-- At refinement_step N, selects the Nth-best term representation
-- Falls back to standard egg extraction if step exceeds cache
+`src/rule_matching/extractor.rs` builds ranked representative pools and delegates
+preference to term-selection policies. `src/theories/array/term_index.rs` owns
+source-write indexes and lookup caches. `src/rule_matching/candidate_builder.rs`
+constructs complete candidates while preserving their provenance and decisions.
 
 ### Cost Functions (Array)
 
-All in `src/cost_functions/array/`:
+All in `src/policy/term_selection/array/`:
 
 | Cost Function | File | Strategy |
 |--------------|------|----------|
@@ -414,17 +414,16 @@ Represents a temporal transition system for BMC:
 
 ```rust
 pub struct VmtBmcSession {
-    z3_var_context: Z3VarContext,          // term <-> Z3 mapping
-    bmc_builder: BMCBuilder,              // time-step indexing
-    init_assertion: Term,                  // initial state formula
-    trans_assertion: Term,                 // transition relation
-    depth: u16,                            // current BMC depth
-    instantiations: Vec<Instance>,         // quantifier instantiations
-    subterm_handler: SubtermHandler,       // subterm extraction
-    solver: z3::Solver,                    // Z3 instance
-    newest_model: Option<z3::Model>,       // last SAT model
+    bmc_builder: BMCBuilder,
+    definition_materializer: DefinitionMaterializer,
+    depth: u16,
+    instantiations: Vec<StoredInstantiation>,
+    subterm_handler: SubtermHandler,
+    solver: Box<dyn YardbirdSolver>,
     instantiation_strategy: Box<dyn InstantiationStrategy>,
-    // ... tracking fields
+    assertion_tracker: InstantiationAssertionTracker,
+    // Formulas, declarations, property activation, profiling, and tracking state.
+
 }
 ```
 
@@ -442,7 +441,7 @@ Parsed SMTLIB file:
 - `SmtlibCommandExecutor` - executes commands sequentially (assert, check-sat, push/pop)
 - `SmtlibRefinementRunner` - drives strategy setup and refinement around a stateless SMT-LIB session
 
-### Z3VarContext (`src/z3_var_context.rs`)
+### Z3VarContext (`src/solver/z3_var_context.rs`)
 
 Converts SMT2 parse tree to Z3 AST. Handles:
 - Constants: numerals, hex (-> BV), true/false
@@ -455,7 +454,7 @@ Converts SMT2 parse tree to Z3 AST. Handles:
 
 ## Key Data Structures
 
-### ProofLoopResult (`src/driver.rs:14-22`)
+### ProofLoopResult (`src/driver.rs`)
 
 ```rust
 pub struct ProofLoopResult {
@@ -494,15 +493,16 @@ pub struct Variable {
 }
 ```
 
-### ArrayRefinementState (`src/strategies/array_abstract.rs:58-64`)
+### RefinementState (`src/strategies/abstract.rs`)
 
 ```rust
-pub struct ArrayRefinementState {
+pub struct RefinementState {
     pub depth: u16,
-    pub egraph: egg::EGraph<ArrayLanguage, ()>,
-    pub instantiations: Vec<ArrayExpr>,
-    pub const_instantiations: Vec<ArrayExpr>,
+    pub egraph: RefinementGraph,
+    pub candidates: Vec<InstantiationCandidate>,
     pub array_types: Vec<(String, String)>,
+    // Model/graph versions, binder search caches, and staged array expansion.
+
 }
 ```
 
@@ -522,13 +522,13 @@ pub struct SubtermHandler {
 }
 ```
 
-### Driver Errors (`src/driver.rs:181-209`)
+### Driver Errors (`src/driver.rs`)
 
 ```rust
 pub enum Error {
     Counterexample,                           // real counterexample found
     NoProgress { depth, instantiations },     // refinement stalled
-    TooManyRefinements { n_refines, depth },  // hit 250 limit
+    TooManyRefinements { n_refines, depth },  // strategy-specific refinement limit
     Anyhow(anyhow::Error),                    // generic error
     SolverUnknown(Option<String>),            // Z3 returned unknown
     RecExpr(egg::RecExprParseError),          // e-graph parse failure
@@ -554,9 +554,9 @@ enum ProofAction       { Continue, NextDepth, FoundCounterexample, FoundProof }
 
 | Strategy | File | State Type | Theory | Refinement |
 |----------|------|-----------|--------|------------|
-| `Abstract<F>` | `array_abstract.rs` | `ArrayRefinementState` | Array | E-graph saturation, 250 refines/depth |
-| `AbstractArrayWithQuantifiers` | `array_abstract_with_quantifiers.rs` | `ArrayRefinementState` | Array | Quantified axioms sent to Z3 |
-| `ConcreteArrayZ3` | `array_concrete.rs` | `ArrayRefinementState` | Array | No refinement (n_refines=1), direct Z3 |
+| `Abstract<F>` | `abstract.rs` | `RefinementState` | Array | Shared graph and policy-driven continued search |
+| `AbstractArrayWithQuantifiers` | `array_abstract_with_quantifiers.rs` | `RefinementState` | Array | Quantified axioms sent to Z3 |
+| `ConcreteArrayZ3` | `array_concrete.rs` | `RefinementState` | Array | No refinement, direct Z3 |
 | `ListAbstract` | `list_abstract.rs` | `ListRefinementState` | List | E-graph with list axioms |
 
 Extensions (via `ProofStrategyExt`):
@@ -612,38 +612,38 @@ cargo test -p smt2parser
 
 | What | Where |
 |------|-------|
-| Entry point | `src/main.rs:12` |
-| CLI options struct | `src/lib.rs:48-105` |
-| CEGAR loop | `src/driver.rs:255-324` |
-| Strategy trait | `src/strategies/proof_strategy.rs:23-56` |
-| Array abstract strategy | `src/strategies/array_abstract.rs:86-219` |
+| Entry point | `src/main.rs` |
+| CLI options struct | `src/lib.rs` |
+| CEGAR loop | `src/driver.rs` |
+| Strategy trait | `src/strategies/proof_strategy.rs` |
+| Array abstract strategy | `src/strategies/abstract.rs` |
 | Array axioms + saturation | `src/theories/array/array_axioms.rs` |
-| Conflict detection | `src/theories/array/array_conflict_scheduler.rs` |
-| Term extraction | `src/theories/array/array_term_extractor.rs` |
+| Shared candidate construction | `src/rule_matching/candidate_builder.rs` |
+| Term extraction | `src/rule_matching/extractor.rs` |
 | VMT solver (BMC) | `src/vmt_bmc_session.rs` |
 | SMTLIB solver | `src/smtlib_problem.rs` |
 | SMTLIB adapter | `src/smtlib_refinement_session.rs` |
-| Solver interface trait | `src/solver_interface.rs` |
+| Solver interface trait | `src/problem_context.rs` |
 | Theory support trait | `src/theory_support.rs` |
-| Z3 term conversion | `src/z3_var_context.rs` |
+| Z3 term conversion | `src/solver/z3_var_context.rs` |
 | Array abstractor (parser) | `smt2parser/src/vmt/array_abstractor.rs` |
 | VMT model struct | `smt2parser/src/vmt/mod.rs` |
 | BMC builder | `smt2parser/src/vmt/bmc.rs` |
 | Quantifier instantiator | `smt2parser/src/vmt/quantified_instantiator.rs` |
 | SMT2 AST types | `smt2parser/src/concrete.rs` |
-| Cost function trait | `src/cost_functions/mod.rs` |
-| Instantiation strategy trait | `src/instantiation_strategy/mod.rs` |
+| Cost function trait | `src/policy/term_selection/mod.rs` |
+| Instantiation strategy trait | `src/instance_installation/mod.rs` |
 
 ---
 
 ## Incomplete / TODO Areas
 
-- `Theory::BvList` in VMT mode: `todo!()` at `src/main.rs:241`
-- BvList cost functions: empty module at `src/cost_functions/bvlist/mod.rs`
-- `PreferConstants` for BvList strategy: `todo!()` at `src/lib.rs:230`
+- `Theory::BvList` in VMT mode: `todo!()` at `src/main.rs`
+- BvList cost functions: empty module at `src/policy/term_selection/bvlist/mod.rs`
+- `PreferConstants` for BvList strategy: `todo!()` at `src/lib.rs`
 - List theory: only `AstSize` cost function implemented; other cost functions are `todo!()`
-- `AbstractWithQuantifiers` for List: `todo!()` at `src/lib.rs:255`
-- Concrete strategy for List: `todo!()` at `src/lib.rs:258`
+- `AbstractWithQuantifiers` for List: `todo!()` at `src/lib.rs`
+- Concrete strategy for List: `todo!()` at `src/lib.rs`
 - Decimal, binary, string constants in Z3VarContext: `todo!()` in `z3_var_context.rs`
 
 ---

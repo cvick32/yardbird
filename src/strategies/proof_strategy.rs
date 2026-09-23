@@ -63,11 +63,36 @@ pub trait ProofStrategy<'ctx, S> {
         PropertyCheckMode::Scoped
     }
 
-    fn n_refines(&mut self) -> u32 {
-        250
+    fn refinement_limit(&self) -> Option<u32> {
+        Some(250)
     }
 
     fn setup(&mut self, smt: &dyn ProblemContext, depth: u16) -> driver::Result<S>;
+
+    /// Called once before the first solver check. Installation replays the fixed
+    /// batch at later depths; selection must not inspect a solver model.
+    fn seed_instances(&mut self, smt: &mut dyn ProblemContext) -> driver::Result<()> {
+        if let Some(seeder) = self.instance_seeder() {
+            seeder.seed(smt)?;
+        }
+        Ok(())
+    }
+
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        None
+    }
+
+    fn add_statistics(&mut self, statistics: &mut crate::utils::SolverStatistics) {
+        if let Some(seeder) = self.instance_seeder() {
+            seeder.add_statistics(statistics);
+        }
+    }
+
+    fn take_eager_artifacts(&mut self) -> Vec<AbstractInstantiationRecord> {
+        self.instance_seeder()
+            .map(|seeder| seeder.take_records())
+            .unwrap_or_default()
+    }
 
     fn unsat(&mut self, state: &mut S, smt: &dyn ProblemContext) -> driver::Result<ProofAction>;
 
@@ -92,6 +117,12 @@ pub trait ProofStrategy<'ctx, S> {
         &mut self,
     ) -> (Vec<DecisionRecord>, Vec<AbstractInstantiationRecord>) {
         (vec![], vec![])
+    }
+
+    fn quantifier_provenance(
+        &self,
+    ) -> crate::theories::quantifiers::provenance::QuantifierProvenance {
+        Default::default()
     }
 
     fn take_profiling_records(&mut self) -> Vec<ProfilingRecord> {

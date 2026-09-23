@@ -1,27 +1,23 @@
 use rustc_hash::FxHashMap;
-use smt2parser::vmt::ReadsAndWrites;
-use smt2parser::vmt::VMTModel;
-use yardbird::cost_functions::array::ArrayAstSize;
+use smt2parser::vmt::{ReadsAndWrites, VMTModel};
+use yardbird::policy::term_selection::array::ArrayAstSize;
 use yardbird::problem_context::ArrayCandidateCatalog;
-use yardbird::quantified_rule::{
-    QuantifiedRuleKind, QuantifiedRuleProvenance, TransitionGuardRule,
+use yardbird::rule_matching::candidate_builder::{
+    ArtifactCapture, InstantiationInstrumentation, InstantiationOptions,
 };
-use yardbird::theories::array::{
-    array_axioms::{
-        expr_to_term, generate_array_instantiation_candidates, ArrayExpr,
-        ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
-    },
-    array_rule_instantiator::ArrayArtifactCapture,
-    candidate_scope::CandidateScope,
-    transition_guard_instantiator::supports_transition_guard,
-};
+use yardbird::rule_matching::rule::{QuantifiedRuleKind, QuantifiedRuleProvenance};
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::terms::language::{expr_to_term, TermExpr, TermLanguage};
+use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates;
+use yardbird::theories::array::transition_guard::supports_transition_guard;
+use yardbird::theories::quantifiers::transition_guard::TransitionGuardRule;
 use yardbird::{
     model_from_options, Driver, ProofLoopResult, SolverBackend, Strategy, YardbirdOptions,
 };
 
 fn generated_array_instances(expression: &str) -> Vec<String> {
-    let expression = expression.parse::<ArrayExpr>().unwrap();
-    let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let expression = expression.parse::<TermExpr>().unwrap();
+    let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
     egraph.add_expr(&expression);
     egraph.rebuild();
 
@@ -35,15 +31,16 @@ fn generated_array_instances(expression: &str) -> Vec<String> {
         &egraph,
         cost,
         &[("Int".to_string(), "Int".to_string())],
-        ArrayInstantiationOptions {
+        InstantiationOptions {
+            search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),
             candidate_scope: CandidateScope::AllCandidates,
             refinement_step: 0,
             selection_counts: FxHashMap::default(),
             depth: 0,
-            instrumentation: ArrayInstantiationInstrumentation {
-                artifact_capture: ArrayArtifactCapture::default(),
+            instrumentation: InstantiationInstrumentation {
+                artifact_capture: ArtifactCapture::default(),
                 profiling: None,
             },
         },
@@ -144,7 +141,9 @@ fn german_depth_two_characterizes_current_array_refinement() {
         .map(ToString::to_string)
         .collect::<Vec<_>>();
     assert_eq!(result.total_refinement_steps, 4);
-    assert_eq!(result.total_instantiations_added, 4);
+    // Directed transport shares the constant-array schema and follows the
+    // enabled cache write, saving one assertion over general array search.
+    assert_eq!(result.total_instantiations_added, 3);
     assert!(!result.counterexample);
     assert!(!result.found_proof);
     assert_eq!(used_instances.len(), 2);
@@ -153,7 +152,7 @@ fn german_depth_two_characterizes_current_array_refinement() {
         .any(|instance| { instance.contains("(ConstArr_client_Bool homeCurrentReqExclusive+0)") }));
     assert!(used_instances
         .iter()
-        .any(|instance| instance.contains("(ConstArr_client_Bool grantExclusiveRule+0)")));
+        .any(|instance| instance.contains("(Write_client_Bool cacheExclusive+0")));
 }
 
 #[test]
@@ -194,7 +193,7 @@ fn array_generation_characterizes_all_three_ground_rules() {
 
 #[test]
 fn array_search_keeps_all_conflicts_past_4096() {
-    let mut graph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let mut graph = egg::EGraph::<TermLanguage, ()>::default();
     for index in 0..4097 {
         graph.add_expr(
             &format!("(Read Int Int (ConstArr Int Int v) i{index})")
@@ -212,14 +211,15 @@ fn array_search_keeps_all_conflicts_past_4096() {
             reads_writes: Default::default(),
         },
         &[("Int".into(), "Int".into())],
-        ArrayInstantiationOptions {
+        InstantiationOptions {
+            search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog::default(),
             candidate_scope: CandidateScope::AllCandidates,
             refinement_step: 0,
             selection_counts: Default::default(),
             depth: 0,
-            instrumentation: ArrayInstantiationInstrumentation {
+            instrumentation: InstantiationInstrumentation {
                 artifact_capture: Default::default(),
                 profiling: None,
             },

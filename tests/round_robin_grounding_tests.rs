@@ -1,19 +1,15 @@
 use std::collections::HashSet;
 
 use smt2parser::{concrete::Term, vmt::ReadsAndWrites};
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    problem_context::{ArrayCandidateCatalog, ArrayCandidatePool},
-    theories::array::{
-        array_axioms::{
-            generate_array_instantiation_candidates_with_budget, translate_term,
-            ArrayInstantiationInstrumentation, ArrayInstantiationOptions, ArrayLanguage,
-        },
-        array_rule_instantiator::ArrayArtifactCapture,
-        candidate_scope::CandidateScope,
-        instantiation_candidate::InstantiationCandidate,
-    },
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::problem_context::{ArrayCandidateCatalog, ArrayCandidatePool};
+use yardbird::rule_matching::candidate::InstantiationCandidate;
+use yardbird::rule_matching::candidate_builder::{
+    ArtifactCapture, InstantiationInstrumentation, InstantiationOptions,
 };
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::terms::language::{translate_term, TermLanguage};
+use yardbird::theories::array::array_axioms::generate_array_instantiation_candidates_with_budget;
 
 fn array_binding(candidate: &InstantiationCandidate) -> String {
     candidate
@@ -31,7 +27,7 @@ fn explore(
     budget: usize,
     mut accept: impl FnMut(&InstantiationCandidate) -> anyhow::Result<bool>,
 ) -> anyhow::Result<Vec<String>> {
-    let mut egraph = egg::EGraph::<ArrayLanguage, ()>::default();
+    let mut egraph = egg::EGraph::<TermLanguage, ()>::default();
     let mut terms = vec![
         "false".to_string(),
         "true".to_string(),
@@ -73,7 +69,8 @@ fn explore(
         &egraph,
         cost,
         &[("Int".into(), "Bool".into())],
-        ArrayInstantiationOptions {
+        InstantiationOptions {
+            search_allowance: yardbird::policy::effort::WorkAllowance::default(),
             additional_terms: vec![],
             candidate_catalog: ArrayCandidateCatalog {
                 source_grounded: ArrayCandidatePool {
@@ -86,8 +83,8 @@ fn explore(
             refinement_step: 0,
             selection_counts: Default::default(),
             depth: 1,
-            instrumentation: ArrayInstantiationInstrumentation {
-                artifact_capture: ArrayArtifactCapture::default(),
+            instrumentation: InstantiationInstrumentation {
+                artifact_capture: ArtifactCapture::default(),
                 profiling: None,
             },
         },

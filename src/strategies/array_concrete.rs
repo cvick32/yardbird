@@ -9,11 +9,12 @@ use crate::{
     ProofLoopResult,
 };
 
-use super::{ArrayRefinementState, ProofAction, ProofStrategy};
+use super::{ProofAction, ProofStrategy, RefinementState};
 
 #[derive(Default)]
 pub struct ConcreteArrayZ3 {
     run_ic3ia: bool,
+    eager: Option<Box<dyn super::eager::InstanceSeeder>>,
     discovered_array_types: Vec<(String, String)>,
     property_check_mode: PropertyCheckMode,
 }
@@ -21,9 +22,18 @@ impl ConcreteArrayZ3 {
     pub fn new(run_ic3ia: bool) -> Self {
         Self {
             run_ic3ia,
+            eager: None,
             discovered_array_types: vec![],
             property_check_mode: PropertyCheckMode::Scoped,
         }
+    }
+
+    pub fn with_eager_policy<F: crate::policy::term_selection::TermCostFactory + 'static>(
+        mut self,
+        policy: &crate::YardbirdPolicy<F>,
+    ) -> Self {
+        self.eager = policy.eager_seeder();
+        self
     }
 
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
@@ -32,30 +42,47 @@ impl ConcreteArrayZ3 {
     }
 }
 
-impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
+impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        match self.eager.as_mut() {
+            Some(seeder) => Some(seeder.as_mut()),
+            None => None,
+        }
+    }
+
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        let model = if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(model, false, false)
+        } else {
+            model
+        };
         let (_, discovered_array_types) = model.abstract_array_theory();
         self.discovered_array_types = discovered_array_types;
         model
     }
 
-    fn n_refines(&mut self) -> u32 {
-        1
+    fn refinement_limit(&self) -> Option<u32> {
+        Some(1)
     }
 
     fn setup(
         &mut self,
         _smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
-    ) -> driver::Result<ArrayRefinementState> {
-        Ok(ArrayRefinementState {
+    ) -> driver::Result<RefinementState> {
+        Ok(RefinementState {
             binder_search: None,
+            model_version: 0,
+            graph_version: 0,
+            array_expansion: None,
+            array_exhausted: false,
+            model_reported: false,
             depth,
-            egraph: egg::EGraph::default(),
+            egraph: crate::refinement_graph::RefinementGraph::default(),
             candidates: vec![],
             guarded_read_updates: vec![],
             array_types: vec![],
@@ -66,7 +93,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
 
     fn sat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
         _refinement_step: u32,
     ) -> driver::Result<ProofAction> {
@@ -77,7 +104,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
 
     fn finish(
         &mut self,
-        _state: ArrayRefinementState,
+        _state: RefinementState,
         _smt: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         Ok(())
@@ -101,11 +128,11 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
         };
         ProofLoopResult {
             model: Some(vmt_model.clone()),
-            used_instances: vec![],
+            used_instances: smt.get_instantiations(),
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
-            total_instantiations_added: 0,
+            total_instantiations_added: smt.get_number_instantiations_added(),
             total_refinement_steps: 0,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
             decision_data: vec![],
@@ -120,7 +147,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for ConcreteArrayZ3 {
 
     fn unsat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         _smt: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);

@@ -67,3 +67,9 @@ members = [
 codegen-units = 1
 lto = true
 panic = "abort"
+
+[profile.quick]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = true

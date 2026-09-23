@@ -16,7 +16,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "training")]
-const TRAINING_SCHEMA_VERSION: &str = "006_instantiation_substitutions";
+const TRAINING_SCHEMA_VERSION: &str = "007_policy_trace";
 
 pub struct TrainingSession {
     logger: Box<dyn TrainingLogger>,
@@ -124,13 +124,6 @@ impl TrainingSession {
     }
 
     pub fn complete_result(&mut self, result: &ProofLoopResult) -> anyhow::Result<()> {
-        if result
-            .run_progress
-            .as_ref()
-            .is_some_and(|p| p.termination_reason == "timeout")
-        {
-            return self.complete_failure();
-        }
         use std::collections::HashMap;
 
         info!(
@@ -181,7 +174,16 @@ impl TrainingSession {
         }
         info!("Persisted unsat event rows");
 
-        let success = !result.counterexample;
+        self.logger
+            .log_policy_trace(self.benchmark_id, &super::PolicyTrace::from_result(result))?;
+
+        let success = !result.counterexample
+            && result.run_progress.as_ref().is_none_or(|p| {
+                matches!(
+                    p.termination_reason.as_str(),
+                    "depth_limit" | "proof" | "unsat"
+                )
+            });
         self.logger.complete_benchmark(
             self.benchmark_id,
             success,

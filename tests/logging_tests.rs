@@ -13,18 +13,15 @@ use smt2parser::{
 #[cfg(feature = "training")]
 use std::env;
 
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    model_from_options,
-    smtlib_problem::{SMTLIBProblem, SmtlibRefinementRunner},
-    strategies::{Abstract, ProofStrategy},
-    theories::array::array_rule_instantiator::ArrayArtifactCapture,
-    training::{
-        reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
-        IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,
-    },
-    CostFunction, Driver, SolverBackend, YardbirdOptions,
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::rule_matching::candidate_builder::ArtifactCapture;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibRefinementRunner};
+use yardbird::strategies::{Abstract, ProofStrategy};
+use yardbird::training::{
+    reset_training_database, AbstractInstantiationRecord, CandidateRecord, DecisionRecord,
+    IndexedInstantiationRecord, TrainingSession, UnsatEventRecord,
 };
+use yardbird::{model_from_options, CostFunction, Driver, SolverBackend, YardbirdOptions};
 
 #[cfg(feature = "training")]
 use sqlx::Row;
@@ -36,15 +33,15 @@ fn json_number(value: &serde_json::Value, key: &str) -> f64 {
         .unwrap_or_else(|| panic!("expected numeric JSON value for key `{key}`"))
 }
 
-fn full_decision_capture() -> ArrayArtifactCapture {
-    ArrayArtifactCapture {
+fn full_decision_capture() -> ArtifactCapture {
+    ArtifactCapture {
         decisions: true,
         instantiation_provenance: true,
         conflicts: false,
     }
 }
 
-fn run_array_copy_result(artifact_capture: ArrayArtifactCapture) -> yardbird::ProofLoopResult {
+fn run_array_copy_result(artifact_capture: ArtifactCapture) -> yardbird::ProofLoopResult {
     let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
     options.track_instantiations = true;
     let vmt_model = model_from_options(&options);
@@ -55,7 +52,7 @@ fn run_array_copy_result(artifact_capture: ArrayArtifactCapture) -> yardbird::Pr
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
             let strat: Box<dyn ProofStrategy<_>> = Box::new(
-                Abstract::<ArrayBMCCost>::new(10, false, (), false)
+                Abstract::<ArrayBMCCost>::new(10, false, yardbird::YardbirdPolicy::new(()), false)
                     .with_artifact_capture(artifact_capture),
             );
             driver
@@ -173,7 +170,7 @@ fn array_strategy_populates_decision_data() {
 #[test]
 fn compact_provenance_omits_candidate_decisions_without_changing_refinement() {
     let rich = run_array_copy_result(full_decision_capture());
-    let compact = run_array_copy_result(ArrayArtifactCapture {
+    let compact = run_array_copy_result(ArtifactCapture {
         decisions: false,
         instantiation_provenance: true,
         conflicts: false,
@@ -254,7 +251,7 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             refinement_step: 4,
             decision_keys: vec!["decision-key".to_string()],
             substitution: vec![
-                yardbird::instantiation_provenance::InstantiationSubstitution {
+                yardbird::rule_matching::provenance::InstantiationSubstitution {
                     variable: "?x".to_string(),
                     term: "x+0".to_string(),
                 },
@@ -276,7 +273,7 @@ fn proof_loop_result_json_roundtrip_preserves_logging_artifacts() {
             frame: 3,
             unroll_index: 0,
             substitution: vec![
-                yardbird::instantiation_provenance::InstantiationSubstitution {
+                yardbird::rule_matching::provenance::InstantiationSubstitution {
                     variable: "?x".to_string(),
                     term: "x@3".to_string(),
                 },
@@ -511,14 +508,17 @@ fn smtlib_strategy_populates_logging_artifacts() {
             let problem =
                 SMTLIBProblem::from_commands(commands).expect("should construct SMT-LIB problem");
             let strategy: Box<dyn ProofStrategy<_>> = Box::new(
-                Abstract::<ArrayBMCCost>::new(0, false, (), false)
+                Abstract::<ArrayBMCCost>::new(0, false, yardbird::YardbirdPolicy::new(()), false)
                     .with_artifact_capture(full_decision_capture()),
             );
             SmtlibRefinementRunner::execute(
                 &problem,
                 strategy,
                 SolverBackend::Z3,
-                50,
+                yardbird::smtlib_problem::RefinementLimits {
+                    max_refinements: Some(50),
+                    ..Default::default()
+                },
                 true,
                 None,
                 None,
@@ -597,7 +597,7 @@ fn single_example_persists_provenance_to_db() {
             let mut driver = Driver::new(vmt_model, instantiation_strategy, SolverBackend::Z3)
                 .with_tracking_options(None, true, None);
             let strat: Box<dyn ProofStrategy<_>> = Box::new(
-                Abstract::<ArrayBMCCost>::new(10, false, (), false)
+                Abstract::<ArrayBMCCost>::new(10, false, yardbird::YardbirdPolicy::new(()), false)
                     .with_artifact_capture(full_decision_capture()),
             );
             let result = driver
@@ -712,7 +712,7 @@ fn single_example_persists_provenance_to_db() {
         );
         assert_eq!(
             training_run.get::<String, _>("schema_version"),
-            "006_instantiation_substitutions"
+            "007_policy_trace"
         );
         assert_eq!(
             final_unsat_event.get::<i64, _>("total_instantiations_added"),

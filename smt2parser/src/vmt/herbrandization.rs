@@ -9,6 +9,7 @@ use crate::{
 pub(crate) struct HerbrandizedProperty {
     pub term: Term,
     pub declarations: Vec<Command>,
+    pub bindings: Vec<(Symbol, Symbol)>,
 }
 
 /// Replace the positive universal binders in a forall-only property with fresh
@@ -36,6 +37,7 @@ pub(crate) fn herbrandize_pure_universal_property(
     Some(HerbrandizedProperty {
         term,
         declarations: herbrandizer.declarations,
+        bindings: herbrandizer.bindings,
     })
 }
 
@@ -103,6 +105,7 @@ struct Herbrandizer {
     next_id: usize,
     reserved_names: HashSet<String>,
     declarations: Vec<Command>,
+    bindings: Vec<(Symbol, Symbol)>,
 }
 
 impl Herbrandizer {
@@ -132,7 +135,8 @@ impl Herbrandizer {
                 let bindings = vars
                     .into_iter()
                     .map(|(symbol, sort)| {
-                        let (_, replacement) = self.fresh_constant(sort);
+                        let (witness, replacement) = self.fresh_constant(sort);
+                        self.bindings.push((symbol.clone(), witness));
                         (symbol, replacement)
                     })
                     .collect();

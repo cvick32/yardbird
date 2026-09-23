@@ -4,14 +4,10 @@ use egg::{Analysis, Language};
 use itertools::Itertools;
 use log::{debug, info};
 
-use crate::{
-    cost_functions::YardbirdCostFunction,
-    egg_utils::RecExprRoot,
-    theories::list::{
-        list_axioms::{ListExpr, ListLanguage},
-        list_term_extractor::ListTermExtractor,
-    },
-};
+use crate::egg_utils::RecExprRoot;
+use crate::policy::term_selection::YardbirdCostFunction;
+use crate::theories::list::list_axioms::{ListExpr, ListLanguage};
+use crate::theories::list::list_term_extractor::ListTermExtractor;
 
 #[allow(dead_code)]
 pub struct ListConflictScheduler<S, CF>

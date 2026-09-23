@@ -1,8 +1,9 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
-use yardbird::{
-    cost_functions::array::ArrayBMCCost, instantiation_strategy::full_unroll::FullUnrollStrategy,
-    solver::PropertyCheckMode, strategies::Abstract, Driver, SolverBackend,
-};
+use yardbird::instance_installation::full_unroll::FullUnrollStrategy;
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::solver::PropertyCheckMode;
+use yardbird::strategies::Abstract;
+use yardbird::{Driver, SolverBackend};
 
 fn model() -> VMTModel {
     let input = r#"
@@ -33,9 +34,10 @@ fn run(enabled: bool, budget: usize) -> yardbird::ProofLoopResult {
         Box::new(FullUnrollStrategy::new()),
         SolverBackend::Z3,
     );
-    let strategy = Abstract::<ArrayBMCCost>::new(4, false, (), false)
+    let policy = yardbird::YardbirdPolicy::new(())
+        .with_effort(yardbird::policy::DefaultEffort::default().with_winners_per_group(budget));
+    let strategy = Abstract::<ArrayBMCCost>::new(4, false, policy, false)
         .with_guarded_read_updates(enabled)
-        .with_candidate_winners_per_group(budget)
         .with_property_check_mode(PropertyCheckMode::Assumptions);
     driver.check_strategy(4, Box::new(strategy)).unwrap()
 }

@@ -47,6 +47,58 @@ This will automatically use the BMC Cost strategy.
 ./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
 ```
 
+Use `--eager` to select array axioms and VMT input-binder instances once before
+checking, then replay that fixed batch through later BMC frames:
+
+```bash
+cargo run --release -- -f examples/distributed_protocols/paxos/paxos.vmt -s abstract -d 2 --eager
+cargo run --release -- -f examples/distributed_protocols/paxos/paxos.vmt -s concrete -d 2 --eager
+```
+
+Concrete and abstract strategies use the same source vocabulary, cost function,
+and normalized choices. Binder seeds preserve polarity: a universal contributes
+`Q => body[t]`, an existential contributes `body[t] => Q`, and a nonconstant
+lambda contributes a read equality. Nested and multi-variable binders use bounded,
+cost-ordered tuples of typed ground terms. The complementary witness directions
+remain with normal refinement or the native solver. Concrete receives native
+quantified formulas; abstract receives the corresponding helper implications.
+
+The default frontier allows 512 candidates per theory and selects at most 32
+instances across arrays and binders. JSON reports `eager.binder_candidates` and
+`eager.binder_instances` alongside the existing eager statistics. Eager replay
+works with `full-unroll` and `no-unroll-on-loop`, and preserves relative frame
+distances. SMT-LIB eager seeding remains array-only. The flag is experimental and
+does not guarantee a speedup.
+
+The `german-fast` policy constructs the complete German proof plan:
+
+```bash
+cargo run --release -- \
+  -f examples/distributed_protocols/german/german.vmt \
+  --policy german-fast -d 20
+```
+
+Its implementation in `src/policy.rs` selects abstract arrays, Z3, `bmc-cost`,
+a `source-then-full` graph, `prefer-source` instance ranking, an initial allowance
+of **20 winners per group**, `full-unroll`, and `assumptions` property checks.
+The current default effort policy can widen the initial allowance after
+unsuccessful search. Property assumptions activate the negated property for each
+solver query; they do not assume the safety property.
+
+The named policy owns those choices and directly builds the proof plan; selecting
+it does not modify CLI defaults. Depth, time limits, capture and training remain
+run controls. To experiment with individual policy flags, omit `--policy` and
+use the custom configuration path. Mixing a named policy with its individual
+configuration flags is rejected.
+
+Library callers select `yardbird::policy::NamedPolicy::GermanFast` and call
+`build_plan(&run_options)`. The returned plan supplies the solver, instantiation
+strategy, proof strategy and optional synthesis extension to execute.
+
+The [historical experiment](plans/instantiation-prediction.md) used 40 winners;
+the current policy uses the locally selected value of 20. Neither setting
+promises the historical runtime after the policy redesign.
+
 To collect profiling data for every solver check, add `--profile --json-output`:
 
 ```bash
@@ -465,7 +517,13 @@ array axioms to Z3 unchanged so it remains an MBQI comparison point.
   - `src/main.rs` - CLI entry point
   - `src/driver.rs` - Verification orchestration
   - `src/strategies/` - Proof strategies (abstract, concrete)
-  - `src/cost_functions/` - Heuristics for term selection
+  - `src/theories/array/`, `src/theories/quantifiers/` - Theory-specific preparation, search, and refinement
+  - `src/terms/` - Shared term language and SMT conversion
+  - `src/rule_matching/` - Shared matching, extraction, and candidate construction
+  - `src/policy/` - Proof effort, term selection, and whole-instance selection
+  - `src/instance_installation/` - BMC placement, replay, and assertion tracking
+  - `src/refinement_graph.rs` - Shared model-equivalence graph and vocabulary growth
+  - `src/profiling.rs`, `src/training/` - Cross-theory observations and trajectories
   - `src/z3_ext.rs`, `src/vmt_bmc_session.rs` - Z3 integration and VMT BMC session state
 
 - **Parsing Library**: `smt2parser/` - VMT and SMT2 parsing with array abstraction
@@ -490,7 +548,7 @@ array axioms to Z3 unchanged so it remains an MBQI comparison point.
 - **Main Claim**: Yardbird performs bounded model checking with cost-guided abstraction refinement
 
   - Implemented in `src/strategies/abstract.rs` using egg-based term rewriting
-  - Cost functions in `src/cost_functions/` implement heuristics discussed in paper
+  - Cost functions in `src/policy/term_selection/` implement heuristics discussed in paper
 
 - **Evaluation Results**: All paper benchmarks are included in `examples/array/`
 
@@ -607,22 +665,17 @@ cargo run --release -- --filename my_program.vmt --depth 20
 
 **2. Add New Cost Functions:**
 
-Implement the `egg::CostFunction` trait in `src/cost_functions/`:
+Implement `egg::CostFunction` and `YardbirdCostFunction` under
+`src/policy/term_selection/`. Policies for the shared `TermLanguage` also implement
+`TermCostFactory`, which receives `TermCostContext` and the policy configuration.
+Array-specific scoring belongs in `src/policy/term_selection/array/`.
 
-```rust
-pub trait CostFunction {
-    fn cost(&self, enode: &ENode) -> Cost;
-    fn name(&self) -> &str;
-}
-```
-
-Example: `src/cost_functions/ast_size.rs` shows a simple implementation.
-
-Register in `src/main.rs` to make it available via `--cost-function` flag.
+Example: `src/policy/term_selection/array/ast_size.rs` shows a simple implementation.
+Register the cost function in `src/lib.rs` to expose it through `--cost-function`.
 
 **3. Extend with New Strategies:**
 
-Add to `src/strategies/` following the pattern in `abstract.rs` or `concrete.rs`. Strategies coordinate:
+Add to `src/strategies/` following the pattern in `abstract.rs` or `array_concrete.rs`. Strategies coordinate:
 
 - SMT problem construction
 - Incremental solving
@@ -659,7 +712,7 @@ Run with: `garden --config my_config.yaml --matrix my_experiment`
 
 2. **Documented Extension Interfaces:**
 
-   - **Cost Functions**: `CostFunction` trait in `src/cost_functions/mod.rs`
+   - **Cost Functions**: `YardbirdCostFunction` and `TermCostFactory` in `src/policy/term_selection/mod.rs`
    - **Strategies**: Pattern established in `src/strategies/`
    - **Output Formats**: JSON schema in `garden/src/main.rs`
    - **VMT Parsing**: Public API in `smt2parser/`

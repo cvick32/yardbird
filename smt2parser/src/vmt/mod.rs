@@ -380,13 +380,19 @@ impl VMTModel {
     /// Their stuttering transitions preserve the semantics of a single
     /// Herbrand witness. Unsupported quantifier shapes leave the model
     /// unchanged.
-    pub fn herbrandize_universal_property(mut self) -> (Self, usize) {
+    pub fn herbrandize_universal_property(self) -> (Self, usize) {
+        let (model, bindings) = self.herbrandize_universal_property_with_bindings();
+        (model, bindings.len())
+    }
+
+    /// As above, retaining each replaced bound variable and its witness constant.
+    pub fn herbrandize_universal_property_with_bindings(mut self) -> (Self, Vec<(Symbol, Symbol)>) {
         let Term::Attributes {
             term,
             attributes: property_attributes,
         } = self.property_condition.clone()
         else {
-            return (self, 0);
+            return (self, vec![]);
         };
         let reserved_names = self
             .as_commands()
@@ -399,7 +405,7 @@ impl VMTModel {
                 _ => None,
             });
         let Some(result) = herbrandize_pure_universal_property(*term, reserved_names) else {
-            return (self, 0);
+            return (self, vec![]);
         };
         let witness_count = result.declarations.len();
         let mut stuttering_constraints = Vec::with_capacity(witness_count);
@@ -464,7 +470,7 @@ impl VMTModel {
             term: Box::new(result.term),
             attributes: property_attributes,
         };
-        (self, witness_count)
+        (self, result.bindings)
     }
 
     pub fn abstract_constants_over(mut self, depth: u16) -> Self {

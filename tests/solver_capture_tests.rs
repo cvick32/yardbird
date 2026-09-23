@@ -1,15 +1,14 @@
 use std::{fs, process::Command};
 
 use tempfile::TempDir;
-use yardbird::{
-    cost_functions::array::ArrayBMCCost,
-    model_from_options,
-    profiling::ProfilingRunRecord,
-    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    solver::{PropertyCheckMode, SolverCheckResult, SolverSessionIndex, SolverSessionManifest},
-    strategies::{Abstract, ProofStrategy},
-    Driver, SolverBackend, Strategy, YardbirdOptions,
+use yardbird::policy::term_selection::array::ArrayBMCCost;
+use yardbird::profiling::ProfilingRunRecord;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner};
+use yardbird::solver::{
+    PropertyCheckMode, SolverCheckResult, SolverSessionIndex, SolverSessionManifest,
 };
+use yardbird::strategies::{Abstract, ProofStrategy};
+use yardbird::{model_from_options, Driver, SolverBackend, Strategy, YardbirdOptions};
 
 #[test]
 fn one_check_capture_writes_replayable_correlated_artifacts() {
@@ -432,14 +431,21 @@ fn multi_refinement_capture_preserves_added_instances_between_checks() {
     options.solver_capture_dir = Some(temp.path().join("capture"));
     let capture = options.build_solver_capture().unwrap();
     let problem = SMTLIBProblem::from_path(options.require_filename().unwrap()).unwrap();
-    let strategy: Box<dyn ProofStrategy<_>> =
-        Box::new(Abstract::<ArrayBMCCost>::new(0, false, (), false));
+    let strategy: Box<dyn ProofStrategy<_>> = Box::new(Abstract::<ArrayBMCCost>::new(
+        0,
+        false,
+        yardbird::YardbirdPolicy::new(()),
+        false,
+    ));
 
     let result = SmtlibRefinementRunner::execute(
         &problem,
         strategy,
         SolverBackend::Z3,
-        5,
+        yardbird::smtlib_problem::RefinementLimits {
+            max_refinements: Some(5),
+            ..Default::default()
+        },
         false,
         options.build_profiler(),
         Some(capture.clone()),

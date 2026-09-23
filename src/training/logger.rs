@@ -78,6 +78,13 @@ pub trait TrainingLogger: Send {
         unsat_event: &UnsatEventRecord,
     ) -> LoggerResult<()>;
 
+    /// Persist versioned effort, installation, check and termination observations.
+    fn log_policy_trace(
+        &mut self,
+        benchmark_id: i64,
+        trace: &super::PolicyTrace,
+    ) -> LoggerResult<()>;
+
     /// Complete a benchmark with final status and unsat core info.
     fn complete_benchmark(
         &mut self,
@@ -168,6 +175,14 @@ impl TrainingLogger for NoOpLogger {
         &mut self,
         _benchmark_id: i64,
         _unsat_event: &UnsatEventRecord,
+    ) -> LoggerResult<()> {
+        Ok(())
+    }
+
+    fn log_policy_trace(
+        &mut self,
+        _benchmark_id: i64,
+        _trace: &super::PolicyTrace,
     ) -> LoggerResult<()> {
         Ok(())
     }
@@ -358,6 +373,16 @@ mod postgres_impl {
                     .await
                     .map_err(|e| LoggerError::Database(e.to_string()))
             })
+        }
+
+        fn log_policy_trace(
+            &mut self,
+            benchmark_id: i64,
+            trace: &crate::training::PolicyTrace,
+        ) -> LoggerResult<()> {
+            self.runtime
+                .block_on(self.db.insert_policy_trace(benchmark_id, trace))
+                .map_err(|e| LoggerError::Database(e.to_string()))
         }
 
         fn complete_benchmark(

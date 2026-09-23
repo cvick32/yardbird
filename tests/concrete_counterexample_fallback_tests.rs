@@ -1,21 +1,17 @@
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
 use std::cmp::Ordering;
-use yardbird::{
-    auxiliary_synthesis::{
-        AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
-        PredicateRelevancePolicy, SynthesisTrigger,
-    },
-    cost_functions::array::{AdaptiveArrayCost, ArrayBMCCost},
-    instantiation_strategy::full_unroll::FullUnrollStrategy,
-    strategies::{Abstract, ConcreteArrayZ3, ProofStrategy},
-    theories::array::{
-        array_rule_instantiator::ArrayArtifactCapture,
-        candidate_scope::CandidateScope,
-        instantiation_candidate::{InstantiationCandidate, InstantiationGrounding},
-        instantiation_ranker::InstantiationRanker,
-    },
-    Driver, Error, SolverBackend,
+use yardbird::auxiliary_synthesis::{
+    AuxRefinementRetention, AuxSynthesisConfig, ConditionalHistory, GuardPolicy,
+    PredicateRelevancePolicy, SynthesisTrigger,
 };
+use yardbird::instance_installation::full_unroll::FullUnrollStrategy;
+use yardbird::policy::instance_selection::InstantiationRanker;
+use yardbird::policy::term_selection::array::{AdaptiveArrayCost, ArrayBMCCost};
+use yardbird::rule_matching::candidate::{InstantiationCandidate, InstantiationGrounding};
+use yardbird::rule_matching::candidate_builder::ArtifactCapture;
+use yardbird::rule_matching::scope::CandidateScope;
+use yardbird::strategies::{Abstract, ConcreteArrayZ3, ProofStrategy};
+use yardbird::{Driver, Error, SolverBackend};
 
 /// Freeze the pre-ablation ordering so these tests exercise synthesis rather
 /// than whichever ordinary refinement the default ranker currently prefers.
@@ -89,17 +85,17 @@ fn check_abstract_model_with_aux(
     if aux_enabled {
         driver.add_extension(ConditionalHistory::<ArrayBMCCost>::new(aux_config, ()));
     }
-    let strategy = Abstract::<ArrayBMCCost>::new(depth, false, (), false).with_artifact_capture(
-        ArrayArtifactCapture {
-            conflicts: aux_enabled,
-            ..ArrayArtifactCapture::default()
-        },
-    );
-    let strategy = if aux_enabled {
-        strategy.with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker))
+    let policy = yardbird::YardbirdPolicy::new(());
+    let policy = if aux_enabled {
+        policy.with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker))
     } else {
-        strategy
+        policy
     };
+    let strategy = Abstract::<ArrayBMCCost>::new(depth, false, policy, false)
+        .with_artifact_capture(ArtifactCapture {
+            conflicts: aux_enabled,
+            ..ArtifactCapture::default()
+        });
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(strategy);
     driver.check_strategy(depth, strategy)
 }
@@ -129,12 +125,17 @@ fn check_adaptive_model_with_aux(
     );
     driver.add_extension(ConditionalHistory::<AdaptiveArrayCost>::new(aux_config, ()));
     let strategy: Box<dyn ProofStrategy<_>> = Box::new(
-        Abstract::<AdaptiveArrayCost>::new(depth, false, (), false)
-            .with_artifact_capture(ArrayArtifactCapture {
-                conflicts: true,
-                ..ArrayArtifactCapture::default()
-            })
-            .with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker)),
+        Abstract::<AdaptiveArrayCost>::new(
+            depth,
+            false,
+            yardbird::YardbirdPolicy::new(())
+                .with_instantiation_ranker(Box::new(AuxiliaryFixtureRanker)),
+            false,
+        )
+        .with_artifact_capture(ArtifactCapture {
+            conflicts: true,
+            ..ArtifactCapture::default()
+        }),
     );
     driver.check_strategy(depth, strategy)
 }
@@ -150,15 +151,25 @@ fn no_refinements_trigger_a_concrete_counterexample_check() {
 }
 
 #[test]
-fn concrete_unsat_stall_is_reported_as_abstraction_exhaustion() {
-    // The abstract Write function may return a different array, but native
-    // array semantics prove that storing the value already at an index is a no-op.
+fn concrete_unsat_stall_keeps_searching_until_timeout() {
     let model = parse_vmt("(= (store a 0 (select a 0)) a)");
-
-    assert!(matches!(
-        check_abstract_model(model, 1),
-        Err(Error::AbstractionExhausted { depth: 0 })
-    ));
+    let mut driver = Driver::new(
+        model,
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    )
+    .with_wall_timeout(Some(std::time::Duration::from_secs(2)));
+    let strategy =
+        Abstract::<ArrayBMCCost>::new(1, false, yardbird::YardbirdPolicy::new(()), false);
+    let result = driver.check_strategy(1, Box::new(strategy)).unwrap();
+    assert_eq!(result.run_progress.unwrap().termination_reason, "timeout");
+    assert!(!result.found_proof && !result.counterexample);
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks"),
+        Some(1.0)
+    );
 }
 
 #[test]

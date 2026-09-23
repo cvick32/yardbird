@@ -662,6 +662,7 @@ fn run_config_benchmark(
     let result = run_single(
         YardbirdOptions {
             command: None,
+            policy: None,
             filename: Some(filename.to_string()),
             depth: run.depth,
             wall_timeout_secs: None,
@@ -675,6 +676,8 @@ fn run_config_benchmark(
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
             abstract_recurrent_products: run.abstract_recurrent_products,
             guarded_read_updates: run.guarded_read_updates,
+            native_arrays: false,
+            eager: false,
             candidate_winners_per_group: run.candidate_winners_per_group,
             instantiation_ranker: run.instantiation_ranker,
             property_check_mode: run.property_check_mode,

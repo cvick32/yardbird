@@ -16,8 +16,7 @@ use crate::solver::{
     new_solver_backend, SolverCapture, SolverCheckResult, YardbirdSolver,
 };
 use crate::strategies::{ProofAction, ProofStrategy};
-use crate::training::UnsatEventRecord;
-use crate::utils::SolverStatistics;
+use crate::{training::UnsatEventRecord, utils::SolverStatistics};
 use crate::{ProofLoopResult, SolverBackend};
 
 /// Represents an SMTLIB problem (non-transition system)
@@ -457,6 +456,22 @@ impl SmtlibCommandExecutor {
     }
 }
 
+/// A failed refinement retains observations collected before the failure.
+#[derive(Debug, thiserror::Error)]
+#[error("{source}")]
+pub struct RefinementFailure {
+    #[source]
+    pub source: anyhow::Error,
+    pub result: Box<ProofLoopResult>,
+}
+
+/// External limits for one SMT-LIB refinement run. None leaves that limit open.
+#[derive(Clone, Copy, Default)]
+pub struct RefinementLimits {
+    pub max_refinements: Option<u32>,
+    pub wall_timeout: Option<std::time::Duration>,
+}
+
 /// Orchestrates strategy setup and refinement around a
 /// [`SmtlibRefinementSession`]. This is separate from direct command-stream
 /// execution because its SAT results feed Yardbird's refinement loop.
@@ -525,15 +540,45 @@ impl SmtlibRefinementRunner {
         problem: &SMTLIBProblem,
         mut strategy: Box<dyn ProofStrategy<'_, S>>,
         solver_backend: SolverBackend,
-        max_refinements: u32,
+        limits: RefinementLimits,
         track_instantiations: bool,
         mut profiler: Option<Profiler>,
         solver_capture: Option<SolverCapture>,
     ) -> anyhow::Result<(ProofLoopResult, Option<SMTLIBProblem>)> {
         use log::info;
+        let run_start = std::time::Instant::now();
+        let max_refinements = limits
+            .max_refinements
+            .or_else(|| strategy.refinement_limit())
+            .unwrap_or(u32::MAX);
+        let mut progress = crate::driver::RunProgress {
+            termination_reason: "refinement_limit".into(),
+            error: None,
+            elapsed_wall_secs: 0.0,
+            target_depth: 1,
+            deepest_completed_depth: None,
+            current_depth: Some(0),
+            current_refinement_step: None,
+            last_completed_action: None,
+        };
+        macro_rules! checkpoint {
+            ($label:lifetime, $action:expr) => {
+                progress.last_completed_action = Some($action.into());
+                if limits
+                    .wall_timeout
+                    .is_some_and(|limit| run_start.elapsed() >= limit)
+                {
+                    progress.termination_reason = "timeout".into();
+                    break $label;
+                }
+            };
+        }
 
         // 1. Abstract if needed
         let theory = strategy.get_theory_support();
+        if let Some(seeder) = strategy.instance_seeder() {
+            seeder.configure_smtlib(problem, theory.requires_abstraction());
+        }
         let (working_problem, array_types) = if theory.requires_abstraction() {
             info!("Abstracting array theory");
             let (abs_problem, types) = problem.abstract_array_theory_with_preprocessing(
@@ -585,143 +630,185 @@ impl SmtlibRefinementRunner {
         let mut last_unsat_instantiation_count = 0;
         let mut last_unsat_stats: Option<SolverStatistics> = None;
 
-        'refinement: for refinement_step in 0..max_refinements {
-            info!("Refinement iteration {}", refinement_step + 1);
-            total_refinement_steps += 1;
+        let mut concrete_rejected = false;
+        let loop_outcome = (|| -> anyhow::Result<()> {
+            'refinement: for refinement_step in 0..max_refinements {
+                checkpoint!('refinement, "setup");
+                progress.current_refinement_step = Some(refinement_step);
+                info!("Refinement iteration {}", refinement_step + 1);
+                total_refinement_steps += 1;
 
-            let mut state = strategy.setup(&smt_problem, 0)?;
-
-            let check_result = smt_problem.check_current_query();
-            if let Some(profiler) = &mut profiler {
-                let measurement = smt_problem
-                    .take_last_solver_check_profile()
-                    .expect("solver profiling should produce one measurement per check");
-                debug_assert_eq!(measurement.result, check_result);
-                let instances_total = smt_problem.get_number_instantiations_added();
-                profiler.record_solver_check(
-                    SolverCheckContext {
-                        depth: 0,
-                        refinement_id: total_refinement_steps,
-                        refinement_step,
-                        instances_total,
-                        solver: smt_problem.solver_profile_metadata(),
-                    },
-                    measurement,
-                );
-            }
-
-            let mut action = match check_result {
-                SolverCheckResult::Unsat => {
-                    info!("  Result: UNSAT");
-                    unsat_events.push(Self::build_unsat_event(
-                        unsat_events.len() as u32,
-                        refinement_step,
-                        &smt_problem,
-                        last_unsat_instantiation_count,
-                        last_unsat_stats.as_ref(),
-                        track_instantiations,
-                    ));
-                    last_unsat_instantiation_count = smt_problem.get_number_instantiations_added();
-                    last_unsat_stats = Some(smt_problem.get_solver_statistics());
-                    strategy.unsat(&mut state, &smt_problem)?
+                if refinement_step == 0 {
+                    strategy.seed_instances(&mut smt_problem)?;
+                    checkpoint!('refinement, "eager_instantiation");
                 }
-                SolverCheckResult::Sat => {
-                    info!("  Result: SAT");
-                    strategy.sat(&mut state, &smt_problem, refinement_step)?
-                }
-                SolverCheckResult::Unknown => {
-                    info!(
-                        "  Result: UNKNOWN - {}",
-                        smt_problem
-                            .get_reason_unknown()
-                            .unwrap_or_else(|| "no reason given".to_string())
+                let mut state = strategy.setup(&smt_problem, 0)?;
+                checkpoint!('refinement, "strategy_setup");
+
+                let check_result = smt_problem.check_current_query();
+                if let Some(profiler) = &mut profiler {
+                    let measurement = smt_problem
+                        .take_last_solver_check_profile()
+                        .expect("solver profiling should produce one measurement per check");
+                    debug_assert_eq!(measurement.result, check_result);
+                    let instances_total = smt_problem.get_number_instantiations_added();
+                    profiler.record_solver_check(
+                        SolverCheckContext {
+                            depth: 0,
+                            refinement_id: total_refinement_steps,
+                            refinement_step,
+                            instances_total,
+                            solver: smt_problem.solver_profile_metadata(),
+                        },
+                        measurement,
                     );
-                    strategy.unknown(&mut state, &smt_problem)?
                 }
-            };
 
-            while matches!(action, ProofAction::Continue)
-                && !strategy.has_pending_refinement(&state)
-            {
-                info!("  Yardbird found no refinement; checking the concrete array theory");
-                let concrete_strategy: Box<
-                    dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>,
-                > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
-                let (_, concrete_array_types) = problem.abstract_array_theory();
-                let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(
-                    problem,
-                    &concrete_strategy,
-                    SolverBackend::Z3,
-                    false,
-                    concrete_array_types,
-                    None,
-                )?;
-                let concrete_result = concrete_problem.check_current_query();
-                concrete_validation_checks += 1;
-                accumulate_solver_statistics(
-                    &mut concrete_validation_statistics,
-                    &concrete_problem.get_solver_statistics(),
-                );
-
-                match concrete_result {
-                    SolverCheckResult::Sat => {
-                        info!("  Concrete validation: SAT");
-                        counterexample = true;
-                        break 'refinement;
-                    }
+                checkpoint!('refinement, "check");
+                let mut action = match check_result {
                     SolverCheckResult::Unsat => {
-                        info!("  Concrete validation: UNSAT; expanding Yardbird's e-graph");
-                        action = strategy.sat(&mut state, &smt_problem, refinement_step)?;
+                        info!("  Result: UNSAT");
+                        unsat_events.push(Self::build_unsat_event(
+                            unsat_events.len() as u32,
+                            refinement_step,
+                            &smt_problem,
+                            last_unsat_instantiation_count,
+                            last_unsat_stats.as_ref(),
+                            track_instantiations,
+                        ));
+                        last_unsat_instantiation_count =
+                            smt_problem.get_number_instantiations_added();
+                        last_unsat_stats = Some(smt_problem.get_solver_statistics());
+                        strategy.unsat(&mut state, &smt_problem)?
+                    }
+                    SolverCheckResult::Sat => {
+                        info!("  Result: SAT");
+                        strategy.sat(&mut state, &smt_problem, refinement_step)?
                     }
                     SolverCheckResult::Unknown => {
-                        return Err(anyhow::anyhow!(
-                            "concrete validation returned unknown: {}",
-                            concrete_problem
+                        info!(
+                            "  Result: UNKNOWN - {}",
+                            smt_problem
                                 .get_reason_unknown()
                                 .unwrap_or_else(|| "no reason given".to_string())
-                        ));
+                        );
+                        strategy.unknown(&mut state, &smt_problem)?
+                    }
+                };
+
+                checkpoint!('refinement, "strategy_action");
+                while matches!(action, ProofAction::Continue)
+                    && !strategy.has_pending_refinement(&state)
+                {
+                    checkpoint!('refinement, "refinement_search");
+                    if !strategy.allows_concrete_validation() || concrete_rejected {
+                        action = strategy.sat(&mut state, &smt_problem, refinement_step)?;
+                        checkpoint!('refinement, "strategy_action");
+                        continue;
+                    }
+                    info!("  Yardbird found no refinement; checking the concrete array theory");
+                    let concrete_strategy: Box<
+                        dyn ProofStrategy<'_, crate::strategies::RefinementState>,
+                    > = Box::new(crate::strategies::ConcreteArrayZ3::new(false));
+                    let (_, concrete_array_types) = problem.abstract_array_theory();
+                    let mut concrete_problem = SmtlibRefinementSession::new_with_array_types(
+                        problem,
+                        &concrete_strategy,
+                        SolverBackend::Z3,
+                        false,
+                        concrete_array_types,
+                        None,
+                    )?;
+                    let concrete_result = concrete_problem.check_current_query();
+                    concrete_validation_checks += 1;
+                    accumulate_solver_statistics(
+                        &mut concrete_validation_statistics,
+                        &concrete_problem.get_solver_statistics(),
+                    );
+
+                    checkpoint!('refinement, "concrete_validation");
+                    match concrete_result {
+                        SolverCheckResult::Sat => {
+                            info!("  Concrete validation: SAT");
+                            counterexample = true;
+                            progress.termination_reason = "counterexample".into();
+                            break 'refinement;
+                        }
+                        SolverCheckResult::Unsat => {
+                            concrete_rejected = true;
+                            info!("  Concrete validation: UNSAT; expanding Yardbird's e-graph");
+                            action = strategy.sat(&mut state, &smt_problem, refinement_step)?;
+                        }
+                        SolverCheckResult::Unknown => {
+                            return Err(anyhow::anyhow!(
+                                "concrete validation returned unknown: {}",
+                                concrete_problem
+                                    .get_reason_unknown()
+                                    .unwrap_or_else(|| "no reason given".to_string())
+                            ));
+                        }
+                    }
+                }
+
+                checkpoint!('refinement, "refinement_search");
+                match action {
+                    ProofAction::Continue => {
+                        info!("  Action: Continue refinement");
+                        let solver_assertions_before =
+                            smt_problem.get_number_instantiation_assertions_added();
+                        strategy.finish(state, &mut smt_problem)?;
+                        let solver_assertions_after =
+                            smt_problem.get_number_instantiation_assertions_added();
+                        if !refinement_made_progress(
+                            solver_assertions_before,
+                            0,
+                            solver_assertions_after,
+                            0,
+                        ) {
+                            anyhow::bail!(
+                            "refinement requested another SMTLIB solve without installing a new instantiation"
+                        );
+                        }
+                    }
+                    ProofAction::FoundProof => {
+                        info!("  Action: Found proof!");
+                        found_proof = true;
+                        progress.termination_reason = "proof".into();
+                        progress.deepest_completed_depth = Some(0);
+                        strategy.finish(state, &mut smt_problem)?;
+                        break;
+                    }
+                    ProofAction::NextDepth => {
+                        progress.termination_reason = "unsat".into();
+                        progress.deepest_completed_depth = Some(0);
+                        // For SMTLIB (no depths), treat this as completion
+                        info!("  Action: Refinement complete");
+                        strategy.finish(state, &mut smt_problem)?;
+                        break;
+                    }
+                    ProofAction::FoundCounterexample => {
+                        info!("  Action: Found counterexample");
+                        counterexample = true;
+                        progress.termination_reason = "counterexample".into();
+                        strategy.finish(state, &mut smt_problem)?;
+                        break;
                     }
                 }
             }
 
-            match action {
-                ProofAction::Continue => {
-                    info!("  Action: Continue refinement");
-                    let solver_assertions_before =
-                        smt_problem.get_number_instantiation_assertions_added();
-                    strategy.finish(state, &mut smt_problem)?;
-                    let solver_assertions_after =
-                        smt_problem.get_number_instantiation_assertions_added();
-                    if !refinement_made_progress(
-                        solver_assertions_before,
-                        0,
-                        solver_assertions_after,
-                        0,
-                    ) {
-                        anyhow::bail!(
-                            "refinement requested another SMTLIB solve without installing a new instantiation"
-                        );
-                    }
-                }
-                ProofAction::FoundProof => {
-                    info!("  Action: Found proof!");
-                    found_proof = true;
-                    strategy.finish(state, &mut smt_problem)?;
-                    break;
-                }
-                ProofAction::NextDepth => {
-                    // For SMTLIB (no depths), treat this as completion
-                    info!("  Action: Refinement complete");
-                    strategy.finish(state, &mut smt_problem)?;
-                    break;
-                }
-                ProofAction::FoundCounterexample => {
-                    info!("  Action: Found counterexample");
-                    counterexample = true;
-                    strategy.finish(state, &mut smt_problem)?;
-                    break;
-                }
+            Ok(())
+        })();
+        if let Err(error) = &loop_outcome {
+            progress.termination_reason = if matches!(
+                error.downcast_ref::<crate::driver::Error>(),
+                Some(crate::driver::Error::SolverUnknown(_))
+            ) {
+                "solver_unknown"
+            } else {
+                "error"
             }
+            .into();
+            progress.error = Some(error.to_string());
         }
 
         // 4. Build result
@@ -773,16 +860,19 @@ impl SmtlibRefinementRunner {
                 ..record
             })
             .collect();
-        let (decision_data, abstract_instantiations) = strategy.take_logging_artifacts();
+        let (decision_data, mut abstract_instantiations) = strategy.take_logging_artifacts();
+        abstract_instantiations.extend(strategy.take_eager_artifacts());
         let profiling_records = strategy.take_profiling_records();
 
         info!("Building final SMTLIB result");
+        let mut solver_statistics = smt_problem.get_solver_statistics();
+        strategy.add_statistics(&mut solver_statistics);
         let mut result = ProofLoopResult {
             model: None, // No VMT model in SMTLIB mode
             used_instances: smt_problem.get_instantiations(),
             total_instantiations_added: smt_problem.get_number_instantiations_added(),
             total_refinement_steps,
-            solver_statistics: smt_problem.get_solver_statistics(),
+            solver_statistics,
             counterexample,
             found_proof,
             unsat_core,
@@ -791,7 +881,10 @@ impl SmtlibRefinementRunner {
             indexed_instantiations,
             unsat_events,
             auxiliary_records: vec![],
-            run_progress: None,
+            run_progress: Some({
+                progress.elapsed_wall_secs = run_start.elapsed().as_secs_f64();
+                progress
+            }),
             profiling: ProfilingRunRecord::default(),
         };
         record_solver_phase_statistics(
@@ -800,13 +893,21 @@ impl SmtlibRefinementRunner {
             &concrete_validation_statistics,
         );
         if let Some(mut profiler) = profiler {
+            profiler.set_quantifier_provenance(strategy.quantifier_provenance());
             profiler.extend_cost_records(profiling_records);
             result.profiling = profiler.finish();
         }
         Self::annotate_abstract_instantiation_core_membership(&mut result);
         info!("Final SMTLIB result is ready");
 
-        Ok((result, abstracted_problem))
+        match loop_outcome {
+            Ok(()) => Ok((result, abstracted_problem)),
+            Err(source) => Err(RefinementFailure {
+                source,
+                result: Box::new(result),
+            }
+            .into()),
+        }
     }
 }
 

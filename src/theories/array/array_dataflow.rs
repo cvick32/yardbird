@@ -12,15 +12,15 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use smt2parser::{
-    concrete::{QualIdentifier, Term},
-    vmt::{
-        bmc::BMCBuilder,
-        definition_graph::{DefinitionFrameInfo, DefinitionGraph},
-        VMTModel,
-    },
+    concrete::Term,
+    vmt::{definition_graph::DefinitionGraph, VMTModel},
 };
 
 use crate::problem_context::ProblemContext;
+use crate::transition_index::{
+    leaf_symbol, StateUpdatePath as TransitionUpdatePath, TransitionIndex,
+};
+use std::sync::Arc;
 
 /// The role an exact expression site plays in array/scalar dataflow.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -40,24 +40,18 @@ pub struct ExpressionSite {
     pub role: DataflowRole,
 }
 
-/// A Boolean condition required for a particular update path.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GuardedPathCondition {
-    pub expression: Term,
-    pub required_value: bool,
-}
-
-/// One guarded definition of a next-state variable.
+/// Array-specific expression roles over the shared transition update.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StateUpdatePath {
-    /// Current-state name for the variable being defined.
-    pub target: String,
-    /// Exact next-state expression appearing in the transition relation.
-    pub target_expression: Term,
-    /// Exact expression assigned to the target on this path.
-    pub value: Term,
-    pub guards: Vec<GuardedPathCondition>,
+    pub update: TransitionUpdatePath,
     pub dependencies: Vec<ExpressionSite>,
+}
+
+impl std::ops::Deref for StateUpdatePath {
+    type Target = TransitionUpdatePath;
+    fn deref(&self) -> &Self::Target {
+        &self.update
+    }
 }
 
 /// One exact, framed expression reached by the current model's demand walk.
@@ -92,70 +86,107 @@ impl DemandFrontier {
 /// Static provenance needed to construct model-specific demand frontiers.
 #[derive(Clone, Debug)]
 pub struct StaticArrayProvenance {
-    property: Term,
+    transitions: Arc<TransitionIndex>,
+    action_sites: BTreeMap<String, Vec<ExpressionSite>>,
     property_sites: Vec<ExpressionSite>,
     updates: BTreeMap<String, Vec<StateUpdatePath>>,
     current_variables: Vec<String>,
     array_variables: HashSet<String>,
-    next_to_current: std::collections::HashMap<String, String>,
-    definition_frames: DefinitionFrameInfo,
 }
 
 impl Default for StaticArrayProvenance {
     fn default() -> Self {
         Self {
-            property: Term::QualIdentifier(QualIdentifier::simple("true")),
+            transitions: Arc::new(TransitionIndex::default()),
+            action_sites: BTreeMap::new(),
             property_sites: Vec::new(),
             updates: BTreeMap::new(),
             current_variables: Vec::new(),
             array_variables: HashSet::new(),
-            next_to_current: std::collections::HashMap::new(),
-            definition_frames: DefinitionFrameInfo::default(),
         }
     }
 }
 
 impl StaticArrayProvenance {
     pub fn from_model(model: &VMTModel) -> Self {
-        let graph = model.get_helper_definitions();
-        let current_variable_names = model.get_all_current_variable_names();
-        let next_to_current = model.get_next_to_current_varible_names();
-        let array_variables = model
-            .get_state_variables()
-            .into_iter()
-            .filter(|variable| variable.get_sort_name().contains("Array"))
-            .map(|variable| variable.get_current_variable_name().clone())
-            .collect();
-        let definition_frames =
-            DefinitionFrameInfo::new(graph, &current_variable_names, &next_to_current);
-        let property = model.get_property_for_yardbird();
-        let mut builder = ProvenanceBuilder {
-            graph,
-            next_to_current: next_to_current.clone(),
-        };
-        let property_sites =
-            builder.expression_sites(&property, DataflowRole::PropertyControlDependency);
-        let mut updates = BTreeMap::<String, Vec<StateUpdatePath>>::new();
-        builder.collect_updates(
-            &model.get_trans_condition_for_yardbird(),
-            &[],
-            &mut HashSet::new(),
-            &mut updates,
-        );
+        Self::with_transition_index(
+            model,
+            Arc::new(TransitionIndex::from_model(model, &HashSet::new())),
+        )
+    }
 
+    pub fn with_transition_index(model: &VMTModel, transitions: Arc<TransitionIndex>) -> Self {
+        let builder = ProvenanceBuilder {
+            graph: model.get_helper_definitions(),
+        };
+        let property_sites = builder.expression_sites(
+            transitions.property(),
+            DataflowRole::PropertyControlDependency,
+        );
+        let mut updates = BTreeMap::<String, Vec<StateUpdatePath>>::new();
+        for update in transitions.updates() {
+            let mut dependencies =
+                builder.expression_sites(&update.value, DataflowRole::ScalarUpdateDependency);
+            for guard in &update.guards {
+                dependencies.extend(
+                    builder.expression_sites(
+                        &guard.expression,
+                        DataflowRole::PropertyControlDependency,
+                    ),
+                );
+            }
+            deduplicate_sites(&mut dependencies);
+            updates
+                .entry(update.target.clone())
+                .or_default()
+                .push(StateUpdatePath {
+                    update: update.clone(),
+                    dependencies,
+                });
+        }
+        let action_sites = transitions
+            .actions()
+            .iter()
+            .map(|(name, action)| {
+                let mut sites = action
+                    .requirements
+                    .iter()
+                    .flat_map(|r| {
+                        builder.expression_sites(&r.body, DataflowRole::PropertyControlDependency)
+                    })
+                    .collect();
+                deduplicate_sites(&mut sites);
+                (name.clone(), sites)
+            })
+            .collect();
         Self {
-            property,
+            transitions,
+            action_sites,
             property_sites,
             updates,
-            current_variables: current_variable_names,
-            array_variables,
-            next_to_current,
-            definition_frames,
+            current_variables: model.get_all_current_variable_names(),
+            array_variables: model
+                .get_state_variables()
+                .into_iter()
+                .filter(|v| v.get_sort_name().contains("Array"))
+                .map(|v| v.get_current_variable_name().clone())
+                .collect(),
         }
     }
 
+    pub fn transition_index(&self) -> &TransitionIndex {
+        &self.transitions
+    }
+
+    pub fn action_sites(&self, action: &str) -> &[ExpressionSite] {
+        self.action_sites
+            .get(action)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
     pub fn property(&self) -> &Term {
-        &self.property
+        self.transitions.property()
     }
 
     pub fn property_sites(&self) -> &[ExpressionSite] {
@@ -219,19 +250,64 @@ impl StaticArrayProvenance {
         depth: u16,
         smt: &dyn ProblemContext,
     ) -> anyhow::Result<DemandFrontier> {
+        let roots = self
+            .property_sites
+            .iter()
+            .map(|site| FramedDemandSite {
+                expression: self.index_term(&site.expression, depth),
+                role: site.role,
+            })
+            .collect::<Vec<_>>();
+        self.walk_demand(roots, smt)
+    }
+
+    /// Seed the same action-aware traversal with already-ground, already-framed
+    /// reads exposed by property binder witnesses. No frame shifting is applied
+    /// to the supplied terms (their captures may refer to different frames).
+    pub fn demand_frontier_from_terms(
+        &self,
+        terms: &[Term],
+        smt: &dyn ProblemContext,
+    ) -> anyhow::Result<DemandFrontier> {
+        let graph = DefinitionGraph::default();
+        let builder = ProvenanceBuilder { graph: &graph };
+        let roots = terms
+            .iter()
+            .flat_map(|term| {
+                builder.expression_sites(term, DataflowRole::PropertyControlDependency)
+            })
+            .map(|site| FramedDemandSite {
+                expression: site.expression,
+                role: site.role,
+            })
+            .collect();
+        self.walk_demand(roots, smt)
+    }
+
+    fn walk_demand(
+        &self,
+        roots: Vec<FramedDemandSite>,
+        smt: &dyn ProblemContext,
+    ) -> anyhow::Result<DemandFrontier> {
         let mut sites = BTreeMap::<(String, DataflowRole), FramedDemandSite>::new();
         let mut queue = VecDeque::<(String, u16, DataflowRole)>::new();
         let mut visited = HashSet::<(String, u16, DataflowRole)>::new();
         let mut guard_values = std::collections::HashMap::<Term, bool>::new();
-
-        for site in &self.property_sites {
-            let expression = self.index_term(&site.expression, depth);
-            insert_framed_site(&mut sites, expression, site.role);
-            if let Some(state) =
-                leaf_symbol(&site.expression).filter(|state| self.current_variables.contains(state))
+        let mut selected_actions = BTreeMap::new();
+        for site in roots {
+            if let Some((state, frame)) =
+                leaf_symbol(&site.expression).and_then(|s| smt2parser::vmt::split_framed_symbol(&s))
             {
-                queue.push_back((state, depth, site.role));
+                if self.current_variables.contains(&state) {
+                    queue.push_back((
+                        state,
+                        u16::try_from(frame)
+                            .map_err(|_| anyhow::anyhow!("unsupported demand frame {frame}"))?,
+                        site.role,
+                    ));
+                }
             }
+            insert_framed_site(&mut sites, site.expression, site.role);
         }
 
         while let Some((state, target_frame, demanded_role)) = queue.pop_front() {
@@ -239,7 +315,23 @@ impl StaticArrayProvenance {
                 continue;
             }
             let transition_frame = target_frame - 1;
+            let selected = if let Some(selected) = selected_actions.get(&transition_frame) {
+                selected
+            } else {
+                let selected = self
+                    .transitions
+                    .selected_action(transition_frame, |t| smt.eval_to_string(t))?
+                    .map(str::to_owned);
+                selected_actions.entry(transition_frame).or_insert(selected)
+            };
             for path in self.update_paths(&state) {
+                if path
+                    .action
+                    .as_ref()
+                    .is_some_and(|action| Some(action) != selected.as_ref())
+                {
+                    continue;
+                }
                 if !self.path_is_active(path, transition_frame, smt, &mut guard_values)? {
                     continue;
                 }
@@ -308,13 +400,7 @@ impl StaticArrayProvenance {
     }
 
     fn index_term(&self, term: &Term, depth: u16) -> Term {
-        let mut builder = BMCBuilder::with_definition_frames(
-            self.current_variables.clone(),
-            self.next_to_current.clone(),
-            self.definition_frames.clone(),
-        );
-        builder.set_depth(depth);
-        builder.index_single_step_term(term.clone())
+        self.transitions.index_term(term, depth)
     }
 }
 
@@ -324,162 +410,9 @@ pub fn build_property_cone(model: &VMTModel) -> PropertyCone {
 
 struct ProvenanceBuilder<'a> {
     graph: &'a DefinitionGraph,
-    next_to_current: std::collections::HashMap<String, String>,
 }
 
 impl ProvenanceBuilder<'_> {
-    fn collect_updates(
-        &mut self,
-        term: &Term,
-        guards: &[GuardedPathCondition],
-        active_helpers: &mut HashSet<String>,
-        updates: &mut BTreeMap<String, Vec<StateUpdatePath>>,
-    ) {
-        if let Some(symbol) = leaf_symbol(term) {
-            if let Some(definition) = self.graph.get(&symbol) {
-                if active_helpers.insert(symbol.clone()) {
-                    self.collect_updates(definition.body(), guards, active_helpers, updates);
-                    active_helpers.remove(&symbol);
-                }
-            }
-            return;
-        }
-
-        let Term::Application {
-            qual_identifier,
-            arguments,
-        } = term
-        else {
-            return;
-        };
-
-        match qual_identifier.get_name().as_str() {
-            "=>" if arguments.len() == 2 => {
-                let mut nested_guards = guards.to_vec();
-                nested_guards.push(GuardedPathCondition {
-                    expression: arguments[0].clone(),
-                    required_value: true,
-                });
-                self.collect_updates(&arguments[1], &nested_guards, active_helpers, updates);
-            }
-            "ite" if arguments.len() == 3 => {
-                let condition = arguments[0].clone();
-                for (required_value, branch) in [(true, &arguments[1]), (false, &arguments[2])] {
-                    let mut nested_guards = guards.to_vec();
-                    nested_guards.push(GuardedPathCondition {
-                        expression: condition.clone(),
-                        required_value,
-                    });
-                    self.collect_updates(branch, &nested_guards, active_helpers, updates);
-                }
-            }
-            "or" => {
-                for branch in arguments {
-                    let mut nested_guards = guards.to_vec();
-                    nested_guards.push(GuardedPathCondition {
-                        expression: branch.clone(),
-                        required_value: true,
-                    });
-                    self.collect_updates(branch, &nested_guards, active_helpers, updates);
-                }
-            }
-            "=" if arguments.len() == 2 => {
-                if let Some((target, target_expression, value)) =
-                    self.state_update(&arguments[0], &arguments[1])
-                {
-                    self.record_update_paths(target, target_expression, value, guards, updates);
-                }
-            }
-            _ => {
-                for argument in arguments {
-                    self.collect_updates(argument, guards, active_helpers, updates);
-                }
-            }
-        }
-    }
-
-    fn record_update_paths(
-        &self,
-        target: String,
-        target_expression: Term,
-        value: Term,
-        guards: &[GuardedPathCondition],
-        updates: &mut BTreeMap<String, Vec<StateUpdatePath>>,
-    ) {
-        let expanded_value = self.expand_leaf_helper(&value);
-        if let Term::Application {
-            qual_identifier,
-            arguments,
-        } = &expanded_value
-        {
-            if qual_identifier.get_name() == "ite" && arguments.len() == 3 {
-                for (required_value, branch) in
-                    [(true, arguments[1].clone()), (false, arguments[2].clone())]
-                {
-                    let mut nested_guards = guards.to_vec();
-                    nested_guards.push(GuardedPathCondition {
-                        expression: arguments[0].clone(),
-                        required_value,
-                    });
-                    self.record_update_paths(
-                        target.clone(),
-                        target_expression.clone(),
-                        branch,
-                        &nested_guards,
-                        updates,
-                    );
-                }
-                return;
-            }
-        }
-
-        let mut dependencies =
-            self.expression_sites(&expanded_value, DataflowRole::ScalarUpdateDependency);
-        for guard in guards {
-            dependencies.extend(
-                self.expression_sites(&guard.expression, DataflowRole::PropertyControlDependency),
-            );
-        }
-        deduplicate_sites(&mut dependencies);
-        updates
-            .entry(target.clone())
-            .or_default()
-            .push(StateUpdatePath {
-                target,
-                target_expression,
-                value: expanded_value,
-                guards: guards.to_vec(),
-                dependencies,
-            });
-    }
-
-    fn state_update(&self, left: &Term, right: &Term) -> Option<(String, Term, Term)> {
-        if let Some(target) = self.next_state_target(left) {
-            return Some((target, left.clone(), self.expand_leaf_helper(right)));
-        }
-        self.next_state_target(right)
-            .map(|target| (target, right.clone(), self.expand_leaf_helper(left)))
-    }
-
-    fn next_state_target(&self, term: &Term) -> Option<String> {
-        leaf_symbol(term).and_then(|symbol| self.next_to_current.get(&symbol).cloned())
-    }
-
-    fn expand_leaf_helper(&self, term: &Term) -> Term {
-        let mut expanded = term.clone();
-        let mut active_helpers = HashSet::new();
-        while let Some(symbol) = leaf_symbol(&expanded) {
-            let Some(definition) = self.graph.get(&symbol) else {
-                break;
-            };
-            if !active_helpers.insert(symbol) {
-                break;
-            }
-            expanded = definition.body().clone();
-        }
-        expanded
-    }
-
     fn expression_sites(&self, term: &Term, role: DataflowRole) -> Vec<ExpressionSite> {
         let mut sites = Vec::new();
         self.collect_expression_sites(term, role, &mut HashSet::new(), &mut sites);
@@ -603,17 +536,6 @@ impl ProvenanceBuilder<'_> {
     }
 }
 
-fn leaf_symbol(term: &Term) -> Option<String> {
-    match term {
-        Term::QualIdentifier(identifier) => Some(identifier.get_name()),
-        Term::Application {
-            qual_identifier,
-            arguments,
-        } if arguments.is_empty() => Some(qual_identifier.get_name()),
-        _ => None,
-    }
-}
-
 fn deduplicate_sites(sites: &mut Vec<ExpressionSite>) {
     let mut seen = HashSet::new();
     sites.retain(|site| seen.insert((site.expression.clone(), site.role)));
@@ -685,8 +607,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation_provenance::InstantiationRequest,
-        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            _request: crate::instance_installation::request::InstantiationRequest,
+        ) -> crate::instance_installation::request::InstantiationInstallResult {
             Default::default()
         }
 
@@ -734,7 +656,12 @@ mod tests {
 
         fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
             let rendered = term.to_string();
-            Ok((rendered.contains("(= pc@0 0)") && !rendered.contains("(= pc@0 1)")).to_string())
+            Ok(
+                ((rendered.contains("(= pc@0 0)") && !rendered.contains("(= pc@0 1)"))
+                    || rendered == "send@1"
+                    || rendered == "idle@0")
+                    .to_string(),
+            )
         }
 
         fn model_to_string(&self) -> anyhow::Result<String> {
@@ -755,8 +682,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation_provenance::InstantiationRequest,
-        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            _request: crate::instance_installation::request::InstantiationRequest,
+        ) -> crate::instance_installation::request::InstantiationInstallResult {
             Default::default()
         }
 
@@ -794,12 +721,38 @@ mod tests {
     }
 
     #[test]
+    fn witness_demands_follow_the_selected_action_and_branch_without_reframing_captures() {
+        let model = VMTModel::from_path("tests/fixtures/array_dataflow_actions.vmt").unwrap();
+        let provenance = StaticArrayProvenance::from_model(&model);
+        let witness_read: Term = "(select a@2 (witness a@0))".parse().unwrap();
+        let frontier = provenance
+            .demand_frontier_from_terms(std::slice::from_ref(&witness_read), &DisjunctionModel)
+            .unwrap();
+        assert!(frontier.expressions().any(|t| t == &witness_read));
+        let indices = frontier
+            .sites()
+            .iter()
+            .filter(|s| s.role == DataflowRole::WriteIndex)
+            .map(|s| s.expression.to_string())
+            .collect::<HashSet<_>>();
+        assert_eq!(indices, HashSet::from(["2".into()]));
+        assert!(frontier.expressions().any(|t| t.to_string() == "a@1"));
+        assert!(!frontier.expressions().any(|t| t.to_string() == "b@2"));
+        assert!(frontier
+            .expressions()
+            .any(|t| t.to_string() == "(witness a@0)"));
+        // The original property traversal is still available and remains on b.
+        let original = provenance.demand_frontier(2, &DisjunctionModel).unwrap();
+        assert!(!original
+            .sites()
+            .iter()
+            .any(|s| s.role == DataflowRole::WriteIndex));
+    }
+
+    #[test]
     fn expression_sites_traverse_lambda_bodies() {
         let graph = DefinitionGraph::default();
-        let builder = ProvenanceBuilder {
-            graph: &graph,
-            next_to_current: std::collections::HashMap::new(),
-        };
+        let builder = ProvenanceBuilder { graph: &graph };
         let lambda: Term = "(lambda ((i Int)) (select A i))".parse().unwrap();
 
         let sites = builder.expression_sites(&lambda, DataflowRole::ScalarUpdateDependency);

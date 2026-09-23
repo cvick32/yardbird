@@ -1,0 +1,10 @@
+{
+  "benchmarks": [
+    "examples/array/array_copy.vmt",
+    "examples/distributed_protocols/german/german.vmt",
+    "examples/distributed_protocols/chord_ring_maintenance/chord_ring_maintenance.vmt"
+  ],
+  "scheduler": {"max_parallel_runs": 1, "max_parallel_agents": 1},
+  "model": "gpt-6-astra",
+  "reasoning_effort": "high"
+}

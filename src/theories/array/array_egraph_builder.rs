@@ -5,15 +5,12 @@ use std::{collections::HashSet, fmt::Debug};
 use egg::Language;
 use smt2parser::{concrete::Term, vmt::split_framed_symbol};
 
-use crate::{
-    problem_context::{ArrayCandidateCatalog, ProblemContext},
-    theories::array::{
-        array_axioms::{expr_to_term, translate_term_with_array_types, ArrayExpr, ArrayLanguage},
-        array_dataflow::PropertyCone,
-        array_expr_parser::preprocess_array_expr,
-        candidate_scope::CandidateScope,
-    },
+use crate::problem_context::{ArrayCandidateCatalog, ProblemContext};
+use crate::rule_matching::scope::CandidateScope;
+use crate::terms::language::{
+    expr_to_term, translate_term_with_array_types, TermExpr, TermLanguage,
 };
+use crate::theories::array::array_dataflow::PropertyCone;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArrayEGraphBuildStage {
@@ -50,8 +47,9 @@ pub enum ArrayEGraphBuildStep {
 
 /// Controls which model equalities are admitted before array-axiom matching.
 ///
-/// Repeated calls expand the same e-graph. `Exhausted` means that no broader construction
-/// stage remains, so the abstract strategy must report abstraction exhaustion.
+/// Repeated calls expand the same e-graph. `Exhausted` means that no broader array
+/// construction stage remains. The strategy may still try binder term expansion
+/// before reporting abstraction exhaustion.
 pub trait ArrayEGraphBuilder: Debug + Send {
     fn clone_box(&self) -> Box<dyn ArrayEGraphBuilder>;
 
@@ -76,7 +74,7 @@ pub trait ArrayEGraphBuilder: Debug + Send {
 
     fn expand(
         &mut self,
-        egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+        egraph: &mut crate::refinement_graph::RefinementGraph,
         smt: &dyn ProblemContext,
         property_cone: &PropertyCone,
         depth: u16,
@@ -102,7 +100,7 @@ impl ArrayEGraphBuilder for FullEGraphBuilder {
 
     fn expand(
         &mut self,
-        egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+        egraph: &mut crate::refinement_graph::RefinementGraph,
         smt: &dyn ProblemContext,
         _property_cone: &PropertyCone,
         _depth: u16,
@@ -147,7 +145,7 @@ impl ArrayEGraphBuilder for SourceThenFullEGraphBuilder {
 
     fn expand(
         &mut self,
-        egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+        egraph: &mut crate::refinement_graph::RefinementGraph,
         smt: &dyn ProblemContext,
         _property_cone: &PropertyCone,
         _depth: u16,
@@ -230,12 +228,12 @@ fn source_array_axiom_triggers(
                 .and_then(|term| translate_term_with_array_types(term, array_types))
         })
         .filter_map(|expression| {
-            let Some(ArrayLanguage::ReadTyped([index_sort, value_sort, _, index])) =
+            let Some(TermLanguage::ReadTyped([index_sort, value_sort, _, index])) =
                 expression.as_ref().last()
             else {
                 return None;
             };
-            let (ArrayLanguage::Symbol(index_sort), ArrayLanguage::Symbol(value_sort)) =
+            let (TermLanguage::Symbol(index_sort), TermLanguage::Symbol(value_sort)) =
                 (&expression[*index_sort], &expression[*value_sort])
             else {
                 return None;
@@ -256,12 +254,12 @@ fn source_array_axiom_triggers(
         else {
             continue;
         };
-        let Some(ArrayLanguage::WriteTyped([index_sort, value_sort, _, index, _])) =
+        let Some(TermLanguage::WriteTyped([index_sort, value_sort, _, index, _])) =
             expression.as_ref().last()
         else {
             continue;
         };
-        let (ArrayLanguage::Symbol(index_sort), ArrayLanguage::Symbol(value_sort)) =
+        let (TermLanguage::Symbol(index_sort), TermLanguage::Symbol(value_sort)) =
             (&expression[*index_sort], &expression[*value_sort])
         else {
             continue;
@@ -280,7 +278,7 @@ fn source_array_axiom_triggers(
         );
         for index in indices {
             let trigger =
-                ArrayLanguage::read_typed(index_sort, value_sort, expression.clone(), index);
+                TermLanguage::read_typed(index_sort, value_sort, expression.clone(), index);
             triggers.insert(expr_to_term(trigger));
         }
     }
@@ -289,7 +287,7 @@ fn source_array_axiom_triggers(
     triggers
 }
 
-fn expression_at(expression: &ArrayExpr, root: egg::Id) -> ArrayExpr {
+fn expression_at(expression: &TermExpr, root: egg::Id) -> TermExpr {
     expression[root].build_recexpr(|id| expression[id].clone())
 }
 
@@ -318,7 +316,7 @@ impl ArrayEGraphBuilder for ConeThenFullEGraphBuilder {
 
     fn expand(
         &mut self,
-        egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+        egraph: &mut crate::refinement_graph::RefinementGraph,
         smt: &dyn ProblemContext,
         property_cone: &PropertyCone,
         depth: u16,
@@ -412,7 +410,7 @@ fn static_cone_terms(property_cone: &PropertyCone, subterms: &[&Term]) -> HashSe
 }
 
 fn add_subterms(
-    egraph: &mut egg::EGraph<ArrayLanguage, ()>,
+    egraph: &mut crate::refinement_graph::RefinementGraph,
     smt: &dyn ProblemContext,
     subterms: &[&Term],
     admitted: &mut HashSet<Term>,
@@ -423,16 +421,7 @@ fn add_subterms(
             continue;
         }
         newly_admitted += 1;
-        let interp_str = smt.eval_to_string(term)?;
-        let translated = translate_term_with_array_types((*term).clone(), &smt.get_array_types())
-            .ok_or_else(|| {
-            anyhow::anyhow!("could not translate array refinement term: {term}")
-        })?;
-        let preprocessed = preprocess_array_expr(&interp_str);
-        let parsed_interp = preprocessed.parse()?;
-        let term_id = egraph.add_expr(&translated);
-        let interp_id = egraph.add_expr(&parsed_interp);
-        egraph.union(term_id, interp_id);
+        egraph.admit(smt, term, true)?;
     }
     Ok(newly_admitted)
 }
@@ -530,10 +519,10 @@ mod tests {
     use super::*;
     use smt2parser::vmt::{variable::Variable, ReadsAndWrites};
 
-    use crate::problem_context::ArrayCandidatePool;
-    use crate::utils::SolverStatistics;
+    use crate::{problem_context::ArrayCandidatePool, utils::SolverStatistics};
 
     struct FakeContext {
+        model_values: std::collections::HashMap<Term, String>,
         terms: Vec<Term>,
         source_term_count: usize,
     }
@@ -548,7 +537,11 @@ mod tests {
         }
 
         fn eval_to_string(&self, term: &Term) -> anyhow::Result<String> {
-            Ok(term.to_string())
+            Ok(self
+                .model_values
+                .get(term)
+                .cloned()
+                .unwrap_or_else(|| term.to_string()))
         }
 
         fn model_to_string(&self) -> anyhow::Result<String> {
@@ -573,8 +566,8 @@ mod tests {
 
         fn add_instantiation(
             &mut self,
-            _request: crate::instantiation_provenance::InstantiationRequest,
-        ) -> crate::instantiation_provenance::InstantiationInstallResult {
+            _request: crate::instance_installation::request::InstantiationRequest,
+        ) -> crate::instance_installation::request::InstantiationInstallResult {
             Default::default()
         }
 
@@ -612,6 +605,116 @@ mod tests {
     }
 
     #[test]
+    fn shared_graph_preserves_sorts_and_excludes_private_values() {
+        use crate::refinement_graph::RefinementGraph;
+        let sort = smt2parser::vmt::array_abstractor::string_to_sort;
+        let terms = ["u", "v", "w", "integer", "real"]
+            .into_iter()
+            .map(|s| s.parse::<Term>().unwrap())
+            .collect::<Vec<_>>();
+        let context = FakeContext {
+            model_values: terms
+                .iter()
+                .cloned()
+                .zip(["same!val!0", "same!val!0", "same!val!0", "0", "0"].map(str::to_owned))
+                .collect(),
+            terms: terms.clone(),
+            source_term_count: terms.len(),
+        };
+        let mut graph = RefinementGraph::new(
+            [
+                ("u", "U"),
+                ("v", "V"),
+                ("w", "U"),
+                ("integer", "Int"),
+                ("real", "Real"),
+            ]
+            .into_iter()
+            .map(|(name, ty)| (name.into(), (vec![], sort(ty))))
+            .collect(),
+        );
+        graph.set_domain_sorts(
+            [sort("U"), sort("V"), sort("Int"), sort("Real")]
+                .into_iter()
+                .collect(),
+        );
+        graph.admit(&context, &terms[0], false).unwrap();
+        for term in &terms[1..] {
+            graph.admit(&context, term, true).unwrap();
+        }
+        graph.rebuild();
+        let id = |name: &str| graph.find(graph.lookup_expr(&name.parse().unwrap()).unwrap());
+        assert_eq!(id("u"), id("w"));
+        assert_ne!(id("u"), id("v"));
+        assert_eq!(id("integer"), id("0"));
+        assert_ne!(id("real"), id("0"));
+        assert!(graph.lookup_expr(&"same!val!0".parse().unwrap()).is_none());
+        assert!(graph
+            .representatives()
+            .values()
+            .all(|e| !e.to_string().contains("!val!")));
+    }
+
+    #[test]
+    fn array_matching_sees_terms_admitted_by_binder_preparation() {
+        use super::super::array_axioms::generate_array_instantiation_candidates;
+        use crate::policy::term_selection::array::ArrayAstSize;
+        use crate::refinement_graph::RefinementGraph;
+        use crate::rule_matching::candidate_builder::{
+            InstantiationInstrumentation, InstantiationOptions,
+        };
+        let terms = (0..32)
+            .map(|i| {
+                format!("(Read_Int_Int (ConstArr_Int_Int 9) {i})")
+                    .parse::<Term>()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        let context = FakeContext {
+            terms: terms.clone(),
+            source_term_count: terms.len(),
+            model_values: Default::default(),
+        };
+        let mut graph = RefinementGraph::default();
+        for term in &terms {
+            graph.admit(&context, term, false).unwrap();
+        }
+        graph.rebuild();
+        let generate = |graph: &RefinementGraph| {
+            generate_array_instantiation_candidates(
+                graph,
+                ArrayAstSize {
+                    current_bmc_depth: 0,
+                    init_and_transition_system_terms: vec![],
+                    property_terms: vec![],
+                    reads_writes: Default::default(),
+                },
+                &context.get_array_types(),
+                InstantiationOptions {
+                    search_allowance: crate::policy::effort::WorkAllowance {
+                        array_initial_limit: 64,
+                        array_rounds: 1,
+                        ..Default::default()
+                    },
+                    candidate_catalog: Default::default(),
+                    additional_terms: vec![],
+                    candidate_scope: CandidateScope::AllCandidates,
+                    refinement_step: 0,
+                    selection_counts: Default::default(),
+                    depth: 0,
+                    instrumentation: InstantiationInstrumentation {
+                        artifact_capture: Default::default(),
+                        profiling: None,
+                    },
+                },
+            )
+        };
+        let batch = generate(&graph);
+        assert_eq!(batch.candidates.len(), 32);
+        assert!(batch.search.budget_exhausted_rules.is_empty());
+    }
+
+    #[test]
     fn cone_admission_keeps_dependencies_and_excludes_unrelated_terms() {
         let relevant: Term = "(Read_Int_Int a@3 (+ i@3 1))".parse().unwrap();
         let unrelated: Term = "(Read_Int_Int b@3 j@3)".parse().unwrap();
@@ -644,13 +747,14 @@ mod tests {
                 "(Read_Int_Int b@3 j@3)".parse().unwrap(),
             ],
             source_term_count: 2,
+            model_values: Default::default(),
         };
         let cone = PropertyCone {
             array_states: HashSet::from(["a".to_string()]),
             ..PropertyCone::default()
         };
         let mut builder = ConeThenFullEGraphBuilder::default();
-        let mut egraph = egg::EGraph::new(());
+        let mut egraph = crate::refinement_graph::RefinementGraph::default();
 
         let first = builder.expand(&mut egraph, &context, &cone, 3).unwrap();
         let classes_after_cone = egraph.number_of_classes();
@@ -685,9 +789,10 @@ mod tests {
                 "(Read_Int_Int b@3 j@3)".parse().unwrap(),
             ],
             source_term_count: 1,
+            model_values: Default::default(),
         };
         let mut builder = FullEGraphBuilder::default();
-        let mut egraph = egg::EGraph::new(());
+        let mut egraph = crate::refinement_graph::RefinementGraph::default();
 
         let first = builder
             .expand(&mut egraph, &context, &PropertyCone::default(), 3)
@@ -717,9 +822,10 @@ mod tests {
                 "(Read_Int_Int b@3 j@3)".parse().unwrap(),
             ],
             source_term_count: 1,
+            model_values: Default::default(),
         };
         let mut builder = SourceThenFullEGraphBuilder::default();
-        let mut egraph = egg::EGraph::new(());
+        let mut egraph = crate::refinement_graph::RefinementGraph::default();
 
         let first = builder
             .expand(&mut egraph, &context, &PropertyCone::default(), 3)
@@ -763,12 +869,13 @@ mod tests {
                 "(Read_Int_Int b@3 j@3)".parse().unwrap(),
             ],
             source_term_count: 1,
+            model_values: Default::default(),
         };
         let template = SourceThenFullEGraphBuilder::default();
         let mut attempted_depths = HashSet::new();
 
         let mut source_builder = template.clone_for_refinement(&mut attempted_depths, 3);
-        let mut source_egraph = egg::EGraph::new(());
+        let mut source_egraph = crate::refinement_graph::RefinementGraph::default();
         let source = source_builder
             .expand(&mut source_egraph, &context, &PropertyCone::default(), 3)
             .unwrap();
@@ -776,7 +883,7 @@ mod tests {
         attempted_depths.insert(3);
 
         let mut next_model_builder = template.clone_for_refinement(&mut attempted_depths, 3);
-        let mut next_model_egraph = egg::EGraph::new(());
+        let mut next_model_egraph = crate::refinement_graph::RefinementGraph::default();
         let next_model = next_model_builder
             .expand(
                 &mut next_model_egraph,

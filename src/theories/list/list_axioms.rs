@@ -3,13 +3,10 @@ use std::rc::Rc;
 use egg::*;
 use smt2parser::concrete::{Constant, QualIdentifier, Term};
 
-use crate::{
-    cost_functions::YardbirdCostFunction,
-    egg_utils::Saturate,
-    theories::list::{
-        list_conflict_scheduler::ListConflictScheduler, list_term_extractor::ListTermExtractor,
-    },
-};
+use crate::egg_utils::Saturate;
+use crate::policy::term_selection::YardbirdCostFunction;
+use crate::theories::list::list_conflict_scheduler::ListConflictScheduler;
+use crate::theories::list::list_term_extractor::ListTermExtractor;
 
 define_language! {
     pub enum ListLanguage {

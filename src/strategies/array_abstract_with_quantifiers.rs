@@ -1,19 +1,17 @@
 use log::info;
 use smt2parser::vmt::VMTModel;
 
-use crate::{
-    driver::{self},
-    ic3ia::{self, ic3ia_output_contains_proof},
-    solver::PropertyCheckMode,
-    strategies::ArrayRefinementState,
-    theory_support::{ArrayWithQuantifiersTheorySupport, TheorySupport},
-    ProofLoopResult,
-};
+use crate::ic3ia::ic3ia_output_contains_proof;
+use crate::solver::PropertyCheckMode;
+use crate::strategies::RefinementState;
+use crate::theory_support::{ArrayWithQuantifiersTheorySupport, TheorySupport};
+use crate::{driver, ic3ia, ProofLoopResult};
 
 use super::{ProofAction, ProofStrategy};
 
 pub struct AbstractArrayWithQuantifiers {
     run_ic3ia: bool,
+    eager: Option<Box<dyn super::eager::InstanceSeeder>>,
     discovered_array_types: Vec<(String, String)>,
     preprocess_exact_read_after_write: bool,
     property_check_mode: PropertyCheckMode,
@@ -23,6 +21,7 @@ impl AbstractArrayWithQuantifiers {
     pub fn new(run_ic3ia: bool) -> Self {
         Self {
             run_ic3ia,
+            eager: None,
             discovered_array_types: vec![],
             preprocess_exact_read_after_write: false,
             property_check_mode: PropertyCheckMode::Scoped,
@@ -34,13 +33,28 @@ impl AbstractArrayWithQuantifiers {
         self
     }
 
+    pub fn with_eager_policy<F: crate::policy::term_selection::TermCostFactory + 'static>(
+        mut self,
+        policy: &crate::YardbirdPolicy<F>,
+    ) -> Self {
+        self.eager = policy.eager_seeder();
+        self
+    }
+
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
         self.property_check_mode = mode;
         self
     }
 }
 
-impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
+impl ProofStrategy<'_, RefinementState> for AbstractArrayWithQuantifiers {
+    fn instance_seeder(&mut self) -> Option<&mut (dyn super::eager::InstanceSeeder + '_)> {
+        match self.eager.as_mut() {
+            Some(seeder) => Some(seeder.as_mut()),
+            None => None,
+        }
+    }
+
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
@@ -52,6 +66,11 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
+        let model = if let Some(seeder) = &mut self.eager {
+            seeder.configure_vmt(model, true, false)
+        } else {
+            model
+        };
         let (model, types) =
             model.abstract_array_theory_with_preprocessing(self.preprocess_exact_read_after_write);
         self.discovered_array_types = types;
@@ -66,11 +85,16 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
         &mut self,
         _smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
-    ) -> driver::Result<ArrayRefinementState> {
-        Ok(ArrayRefinementState {
+    ) -> driver::Result<RefinementState> {
+        Ok(RefinementState {
             binder_search: None,
+            model_version: 0,
+            graph_version: 0,
+            array_expansion: None,
+            array_exhausted: false,
+            model_reported: false,
             depth,
-            egraph: egg::EGraph::default(),
+            egraph: crate::refinement_graph::RefinementGraph::default(),
             candidates: vec![],
             guarded_read_updates: vec![],
             array_types: vec![],
@@ -81,7 +105,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
 
     fn unsat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         _solver: &dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<ProofAction> {
         info!("RULED OUT ALL COUNTEREXAMPLES OF DEPTH {}", state.depth);
@@ -90,7 +114,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
 
     fn sat(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
         _: u32,
     ) -> driver::Result<ProofAction> {
@@ -102,7 +126,7 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
     #[allow(clippy::unnecessary_fold)]
     fn finish(
         &mut self,
-        _: ArrayRefinementState,
+        _: RefinementState,
         _: &mut dyn crate::problem_context::ProblemContext,
     ) -> driver::Result<()> {
         Ok(())
@@ -126,11 +150,11 @@ impl ProofStrategy<'_, ArrayRefinementState> for AbstractArrayWithQuantifiers {
         };
         ProofLoopResult {
             model: Some(vmt_model.clone()),
-            used_instances: vec![],
+            used_instances: smt.get_instantiations(),
             solver_statistics: smt.get_solver_statistics(),
             counterexample: false,
             found_proof,
-            total_instantiations_added: 0,
+            total_instantiations_added: smt.get_number_instantiations_added(),
             total_refinement_steps: 0,
             unsat_core: None, // VMT mode unsat core tracked separately via dump-unsat-core
             decision_data: vec![],

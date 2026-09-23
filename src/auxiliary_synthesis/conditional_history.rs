@@ -1,18 +1,17 @@
+use crate::driver;
 use std::collections::HashSet;
 
 use log::{debug, info, warn};
 
-use crate::{
-    cost_functions::array::{ArrayCostContext, ArrayCostFactory},
-    driver::{self, RefinementContext},
-    problem_context::ProblemContext,
-    strategies::{ArrayRefinementState, ProofStrategyExt},
-    theories::array::{
-        array_axioms::translate_term, candidate_scope::CandidateScope,
-        instantiation_candidate::InstantiationCandidate,
-    },
-    utils::run_sequence_smtinterpol,
-};
+use crate::driver::RefinementContext;
+use crate::policy::term_selection::context::TermCostContext;
+use crate::policy::term_selection::TermCostFactory;
+use crate::problem_context::ProblemContext;
+use crate::rule_matching::candidate::InstantiationCandidate;
+use crate::rule_matching::scope::CandidateScope;
+use crate::strategies::{ProofStrategyExt, RefinementState};
+use crate::terms::language::translate_term;
+use crate::utils::run_sequence_smtinterpol;
 
 use super::{
     predicate_ast_size, predicate_supports_structural_cost, select_interpolant_guard,
@@ -27,7 +26,7 @@ use super::{
 /// context; all synthesis policy remains behind this extension.
 pub struct ConditionalHistory<F>
 where
-    F: ArrayCostFactory,
+    F: TermCostFactory,
 {
     config: AuxSynthesisConfig,
     cost_config: F::Config,
@@ -37,7 +36,7 @@ where
 
 impl<F> ConditionalHistory<F>
 where
-    F: ArrayCostFactory,
+    F: TermCostFactory,
 {
     pub fn new(config: AuxSynthesisConfig, cost_config: F::Config) -> Self {
         Self {
@@ -210,7 +209,7 @@ where
                     );
                 }
                 let candidates = abstract_problem.get_array_candidate_catalog();
-                let cost_context = ArrayCostContext::from_problem(
+                let cost_context = TermCostContext::from_problem(
                     abstract_problem,
                     &candidates,
                     CandidateScope::AllCandidates,
@@ -273,13 +272,13 @@ where
     }
 }
 
-impl<F> ProofStrategyExt<ArrayRefinementState> for ConditionalHistory<F>
+impl<F> ProofStrategyExt<RefinementState> for ConditionalHistory<F>
 where
-    F: ArrayCostFactory + 'static,
+    F: TermCostFactory + 'static,
 {
     fn refine(
         &mut self,
-        state: &mut ArrayRefinementState,
+        state: &mut RefinementState,
         context: &mut RefinementContext<'_>,
     ) -> driver::Result<()> {
         let auxiliary_records_before = context.problem().get_auxiliary_records().len();

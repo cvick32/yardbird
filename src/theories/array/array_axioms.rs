@@ -1,234 +1,24 @@
-use std::{cell::RefCell, rc::Rc, time::Instant};
-
+//! Built-in array axioms, using the shared instantiation engine.
+use crate::policy::term_selection::YardbirdCostFunction;
+use crate::rule_matching::candidate::InstantiationBatch;
+use crate::rule_matching::candidate_builder::{CandidateDemand, InstantiationOptions};
+use crate::rule_matching::compiled_rule::CompiledQuantifiedRule;
+use crate::rule_matching::rule::QuantifiedRule;
+use crate::rule_matching::scope::CandidateScope;
+use crate::terms::language::*;
+use crate::theories::array::rule::ArrayAxiomKind;
+use crate::theories::array::search::generate_quantified_candidates;
 use egg::*;
-use rustc_hash::FxHashMap;
-use smt2parser::concrete::{Constant, Identifier, QualIdentifier, Symbol as SmtSymbol, Term};
-
-use crate::{
-    cost_functions::YardbirdCostFunction,
-    problem_context::ArrayCandidateCatalog,
-    profiling::ArrayProfilingCollector,
-    quantified_rule::{ArrayAxiomKind, QuantifiedRule},
-    theories::array::{
-        array_rule_instantiator::{
-            ArrayArtifactCapture, ArrayRuleInstantiator, ArrayRuleInstantiatorOptions,
-            CandidateDemand,
-        },
-        array_term_extractor::{ArrayTermExtractor, ArrayTermExtractorOptions},
-        candidate_scope::CandidateScope,
-        instantiation_candidate::InstantiationBatch,
-    },
-};
-
-define_language! {
-    pub enum ArrayLanguage {
-        Num(u64),
-        // Parameterized array operations that include sort information as Symbol children
-        // Format: "ConstArr" [index_sort_symbol, value_sort_symbol, value]
-        "ConstArr" = ConstArrTyped([Id; 3]),
-        // Format: "Write" [index_sort_symbol, value_sort_symbol, array, index, value]
-        "Write" = WriteTyped([Id; 5]),
-        // Format: "Read" [index_sort_symbol, value_sort_symbol, array, index]
-        "Read" = ReadTyped([Id; 4]),
-        "and" = And(Box<[Id]>),
-        "not" = Not(Id),
-        "or" = Or(Box<[Id]>),
-        "=>" = Implies([Id; 2]),
-        "=" = Eq([Id; 2]),
-        ">=" = Geq([Id; 2]),
-        ">" = Gt([Id; 2]),
-        "<=" = Leq([Id; 2]),
-        "<" = Lt([Id; 2]),
-        "mod" = Mod([Id; 2]),
-        "+" = Plus(Box<[Id]>),
-        "-" = Negate(Box<[Id]>),
-        "*" = Times(Box<[Id]>),
-        "/" = Div([Id; 2]),
-        "to_real" = ToReal(Id),
-        "ite" = Ite([Id; 3]),
-        Symbol(Symbol),
-        // Keep existing node discriminants stable for deterministic array search.
-        // Keep uninterpreted applications transparent to matching/extraction.
-        // The first child is the (possibly qualified) function identifier.
-        "$apply" = Apply(Box<[Id]>),
-        // Internal typed domain membership used by input-binder searchers.
-        "$domain" = Domain([Id; 2]),
-        // Internal sort identity is disjoint from the SMT term namespace.
-        // These leaves are constructed directly, never parsed as source terms.
-        SortTag(Symbol),
-    }
-}
-
-pub type ArrayExpr = egg::RecExpr<ArrayLanguage>;
-pub type ArrayPattern = egg::PatternAst<ArrayLanguage>;
-
-pub struct ArrayInstantiationInstrumentation {
-    pub artifact_capture: ArrayArtifactCapture,
-    pub profiling: Option<Rc<RefCell<ArrayProfilingCollector>>>,
-}
-
-pub struct ArrayInstantiationOptions {
-    pub candidate_catalog: ArrayCandidateCatalog,
-    pub additional_terms: Vec<ArrayExpr>,
-    pub candidate_scope: CandidateScope,
-    pub refinement_step: u32,
-    pub selection_counts: FxHashMap<String, u32>,
-    pub depth: u16,
-    pub instrumentation: ArrayInstantiationInstrumentation,
-}
-
-fn egraph_node_count<N>(egraph: &EGraph<ArrayLanguage, N>) -> usize
-where
-    N: Analysis<ArrayLanguage>,
-{
-    egraph.classes().map(|class| class.nodes.len()).sum()
-}
-
-impl ArrayLanguage {
-    pub fn sort_to_name(sort: &smt2parser::concrete::Sort) -> String {
-        use smt2parser::concrete::{Identifier, Sort};
-        match sort {
-            Sort::Simple { identifier } => match identifier {
-                Identifier::Simple { symbol } => symbol.0.clone(),
-                Identifier::Indexed { symbol, indices } => {
-                    // For indexed identifiers like (_ BitVec 32), format as "BitVec32"
-                    let indices_str = indices
-                        .iter()
-                        .map(|idx| match idx {
-                            smt2parser::visitors::Index::Numeral(n) => n.to_string(),
-                            smt2parser::visitors::Index::Symbol(s) => s.0.clone(),
-                        })
-                        .collect::<Vec<_>>()
-                        .join("_");
-                    format!("{}{}", symbol.0, indices_str)
-                }
-            },
-            Sort::Parameterized {
-                identifier: _,
-                parameters,
-            } => parameters
-                .iter()
-                .map(Self::sort_to_name)
-                .collect::<Vec<_>>()
-                .join("_"),
-        }
-    }
-
-    /// Format a typed array operation name (e.g., "Read_BitVec5_BitVec32" or "Read_Int_Array_Int_Int")
-    pub fn format_array_op_name(op: &str, index_sort: &str, value_sort: &str) -> String {
-        format!("{}_{}_{}", op, index_sort, value_sort)
-    }
-
-    pub fn extract_array_sorts(
-        array_sort: &smt2parser::concrete::Sort,
-    ) -> Option<(smt2parser::concrete::Sort, smt2parser::concrete::Sort)> {
-        use smt2parser::concrete::{Identifier, Sort};
-        match array_sort {
-            Sort::Parameterized {
-                identifier,
-                parameters,
-            } => {
-                let is_array = match identifier {
-                    Identifier::Simple { symbol } => symbol.0 == "Array",
-                    Identifier::Indexed { symbol, .. } => symbol.0 == "Array",
-                };
-                if is_array && parameters.len() == 2 {
-                    Some((parameters[0].clone(), parameters[1].clone()))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    pub fn read_typed(
-        index_sort: &str,
-        value_sort: &str,
-        array: ArrayExpr,
-        index: ArrayExpr,
-    ) -> ArrayExpr {
-        let mut expr = egg::RecExpr::default();
-        let is = expr.add(ArrayLanguage::Symbol(index_sort.into()));
-        let vs = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-        let a = expr.add(ArrayLanguage::Symbol("a".into()));
-        let i = expr.add(ArrayLanguage::Symbol("i".into()));
-        let read = expr.add(ArrayLanguage::ReadTyped([is, vs, a, i]));
-
-        expr[read].join_recexprs(|id| {
-            if id == a {
-                array.clone()
-            } else if id == i {
-                index.clone()
-            } else if id == is || id == vs {
-                // Keep sort symbols as-is (they're not placeholders)
-                RecExpr::from(vec![expr[id].clone()])
-            } else {
-                unreachable!()
-            }
-        })
-    }
-
-    pub fn write_typed(
-        index_sort: &str,
-        value_sort: &str,
-        array: ArrayExpr,
-        index: ArrayExpr,
-        value: ArrayExpr,
-    ) -> ArrayExpr {
-        let mut expr = egg::RecExpr::default();
-        let is = expr.add(ArrayLanguage::Symbol(index_sort.into()));
-        let vs = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-        let a = expr.add(ArrayLanguage::Symbol("a".into()));
-        let i = expr.add(ArrayLanguage::Symbol("i".into()));
-        let v = expr.add(ArrayLanguage::Symbol("v".into()));
-        let write = expr.add(ArrayLanguage::WriteTyped([is, vs, a, i, v]));
-
-        expr[write].join_recexprs(|id| {
-            if id == a {
-                array.clone()
-            } else if id == i {
-                index.clone()
-            } else if id == v {
-                value.clone()
-            } else if id == is || id == vs {
-                // Keep sort symbols as-is (they're not placeholders)
-                RecExpr::from(vec![expr[id].clone()])
-            } else {
-                unreachable!()
-            }
-        })
-    }
-
-    pub fn const_arr_typed(index_sort: &str, value_sort: &str, value: ArrayExpr) -> ArrayExpr {
-        let mut expr = egg::RecExpr::default();
-        let is = expr.add(ArrayLanguage::Symbol(index_sort.into()));
-        let vs = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-        let v = expr.add(ArrayLanguage::Symbol("v".into()));
-        let const_arr = expr.add(ArrayLanguage::ConstArrTyped([is, vs, v]));
-
-        expr[const_arr].join_recexprs(|id| {
-            if id == v {
-                value.clone()
-            } else if id == is || id == vs {
-                // Keep sort symbols as-is (they're not placeholders)
-                RecExpr::from(vec![expr[id].clone()])
-            } else {
-                unreachable!()
-            }
-        })
-    }
-}
 
 pub fn generate_array_instantiation_candidates<CF, N>(
-    egraph: &EGraph<ArrayLanguage, N>,
+    egraph: &EGraph<TermLanguage, N>,
     cost_fn: CF,
     array_types: &[(String, String)],
-    options: ArrayInstantiationOptions,
+    options: InstantiationOptions,
 ) -> InstantiationBatch
 where
-    N: Analysis<ArrayLanguage> + 'static,
-    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+    N: Analysis<TermLanguage> + 'static,
+    CF: YardbirdCostFunction<TermLanguage> + 'static,
 {
     generate_array_candidates(egraph, cost_fn, array_types, options, None)
         .expect("unfiltered array generation cannot fail")
@@ -238,18 +28,18 @@ where
 /// `accept` must admit only novel, installable, model-violated candidates that
 /// satisfy the ranker's eligibility and rule limits. Full search stays unchanged.
 pub fn generate_array_instantiation_candidates_with_budget<CF, N>(
-    egraph: &EGraph<ArrayLanguage, N>,
+    egraph: &EGraph<TermLanguage, N>,
     cost_fn: CF,
     array_types: &[(String, String)],
-    options: ArrayInstantiationOptions,
+    options: InstantiationOptions,
     budget: usize,
     mut accept: impl FnMut(
-        &super::instantiation_candidate::InstantiationCandidate,
+        &crate::rule_matching::candidate::InstantiationCandidate,
     ) -> anyhow::Result<bool>,
 ) -> anyhow::Result<InstantiationBatch>
 where
-    N: Analysis<ArrayLanguage> + 'static,
-    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+    N: Analysis<TermLanguage> + 'static,
+    CF: YardbirdCostFunction<TermLanguage> + 'static,
 {
     assert!(budget > 0, "candidate groups need a winner");
     if options.candidate_scope != CandidateScope::SourceGroundedOnly {
@@ -260,7 +50,7 @@ where
             options,
         ));
     }
-    let mut accept = |candidate: &mut super::instantiation_candidate::InstantiationCandidate| {
+    let mut accept = |candidate: &mut crate::rule_matching::candidate::InstantiationCandidate| {
         let accepted = accept(candidate)?;
         candidate.model_violation_verified = accepted;
         Ok(accepted)
@@ -278,15 +68,15 @@ where
 }
 
 fn generate_array_candidates<CF, N>(
-    egraph: &EGraph<ArrayLanguage, N>,
+    egraph: &EGraph<TermLanguage, N>,
     cost_fn: CF,
     array_types: &[(String, String)],
-    options: ArrayInstantiationOptions,
+    options: InstantiationOptions,
     demand: Option<CandidateDemand<'_>>,
 ) -> anyhow::Result<InstantiationBatch>
 where
-    N: Analysis<ArrayLanguage> + 'static,
-    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
+    N: Analysis<TermLanguage> + 'static,
+    CF: YardbirdCostFunction<TermLanguage> + 'static,
 {
     generate_quantified_candidates(
         egraph,
@@ -297,263 +87,11 @@ where
     )
 }
 
-/// Shared matching, representative extraction and complete-instance scoring.
-pub(crate) fn generate_quantified_candidates<CF, N>(
-    egraph: &EGraph<ArrayLanguage, N>,
-    cost_fn: CF,
-    rules: &[CompiledQuantifiedRule<N>],
-    options: ArrayInstantiationOptions,
-    demand: Option<CandidateDemand<'_>>,
-) -> anyhow::Result<InstantiationBatch>
-where
-    N: Analysis<ArrayLanguage> + 'static,
-    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
-{
-    let matched = super::quantified_search::search_array_rules(
-        egraph,
-        rules,
-        &options.instrumentation.profiling,
-    );
-    instantiate_quantified_matches(egraph, || cost_fn, rules, options, matched, demand, None)
-}
-
-/// Ground only matches that passed the caller's semantic eligibility check.
-pub(crate) fn instantiate_quantified_matches<CF, N>(
-    egraph: &EGraph<ArrayLanguage, N>,
-    make_cost: impl FnOnce() -> CF,
-    rules: &[CompiledQuantifiedRule<N>],
-    options: ArrayInstantiationOptions,
-    matched: super::quantified_search::MatchedRules,
-    demand: Option<CandidateDemand<'_>>,
-    needed_classes: Option<&std::collections::HashSet<Id>>,
-) -> anyhow::Result<InstantiationBatch>
-where
-    N: Analysis<ArrayLanguage> + 'static,
-    CF: YardbirdCostFunction<ArrayLanguage> + 'static,
-{
-    let ArrayInstantiationOptions {
-        candidate_catalog,
-        additional_terms,
-        candidate_scope,
-        refinement_step,
-        selection_counts,
-        depth,
-        instrumentation,
-    } = options;
-    let ArrayInstantiationInstrumentation {
-        artifact_capture,
-        profiling,
-    } = instrumentation;
-    if let Some(profiling) = &profiling {
-        profiling
-            .borrow_mut()
-            .set_egraph_before_rule_search(egraph.number_of_classes(), egraph_node_count(egraph));
-    }
-    if let Some(profiling) = &profiling {
-        let mut profiling = profiling.borrow_mut();
-        profiling.add_counter(
-            "rule_search_substitutions_examined",
-            matched.report.examined_substitutions as u64,
-        );
-        profiling.add_counter(
-            "rule_search_continuations_available",
-            matched.report.continuable_rules.len() as u64,
-        );
-        profiling.add_counter(
-            "rule_search_budget_exhausted",
-            matched.report.budget_exhausted_rules.len() as u64,
-        );
-    }
-    if matched.matches.is_empty() {
-        return Ok(InstantiationBatch {
-            candidates: vec![],
-            search: matched.report,
-        });
-    }
-    let cost_fn = make_cost();
-    let instantiation_cost_fn = cost_fn.clone();
-    let extractor_start = Instant::now();
-    let mut extractor = ArrayTermExtractor::for_eclasses(
-        egraph,
-        cost_fn,
-        ArrayTermExtractorOptions {
-            candidate_catalog,
-            candidate_scope,
-            refinement_step,
-            selection_counts,
-            depth,
-            profiling: profiling.clone(),
-        },
-        needed_classes,
-    );
-    extractor.admit_terms_for_eclasses(egraph, &additional_terms, needed_classes);
-    if let Some(profiling) = &profiling {
-        profiling
-            .borrow_mut()
-            .record_timing("extractor_init", extractor_start.elapsed());
-    }
-    let mut instantiator = ArrayRuleInstantiator::new(
-        instantiation_cost_fn,
-        extractor,
-        ArrayRuleInstantiatorOptions {
-            refinement_step,
-            depth,
-            artifact_capture,
-            profiling: profiling.clone(),
-        },
-    );
-    let grounding_start = Instant::now();
-    let search_rounds = matched.report.rounds;
-    instantiator.instantiate_matches(egraph, rules, matched.matches, demand)?;
-    if let Some(profiling) = &profiling {
-        profiling
-            .borrow_mut()
-            .record_timing("rule_grounding_total", grounding_start.elapsed());
-        profiling.borrow_mut().set_egraph_after_rule_search(
-            egraph.number_of_classes(),
-            egraph_node_count(egraph),
-            search_rounds,
-        );
-    }
-
-    let candidates = instantiator.into_candidates();
-
-    #[cfg(debug_assertions)]
-    {
-        log::debug!("=== FINAL INSTANTIATIONS ===");
-        for (index, candidate) in candidates.iter().enumerate() {
-            log::debug!("  [{}] {}", index, candidate.expression);
-        }
-        log::debug!("============================\n");
-    }
-
-    Ok(InstantiationBatch {
-        candidates,
-        search: matched.report,
-    })
-}
-
-#[derive(Clone, Copy)]
-enum RuleGrouping {
-    MatchRoot,
-    Rule,
-}
-
-pub(crate) struct CompiledQuantifiedRule<N>
-where
-    N: Analysis<ArrayLanguage>,
-{
-    metadata: QuantifiedRule,
-    searcher: Box<dyn Searcher<ArrayLanguage, N> + Send + Sync>,
-    trigger: Option<ArrayPattern>,
-    consequence: Option<ArrayPattern>,
-    formula: ArrayPattern,
-    formula_variables: Vec<Var>,
-    grouping: RuleGrouping,
-}
-
-impl<N> CompiledQuantifiedRule<N>
-where
-    N: Analysis<ArrayLanguage>,
-{
-    fn new<S>(
-        metadata: QuantifiedRule,
-        searcher: S,
-        consequence: Pattern<ArrayLanguage>,
-        formula: Pattern<ArrayLanguage>,
-    ) -> Result<Self, String>
-    where
-        S: Searcher<ArrayLanguage, N> + Send + Sync + 'static,
-    {
-        let trigger = searcher
-            .get_pattern_ast()
-            .cloned()
-            .ok_or_else(|| format!("quantified rule {} has no trigger pattern", metadata.name()))?;
-        let bound_variables = searcher.vars();
-        for variable in consequence.vars().into_iter().chain(formula.vars()) {
-            if !bound_variables.contains(&variable) {
-                return Err(format!(
-                    "quantified rule {} refers to unbound variable {variable}",
-                    metadata.name()
-                ));
-            }
-        }
-
-        Ok(Self {
-            metadata,
-            searcher: Box::new(searcher),
-            trigger: Some(trigger),
-            consequence: Some(consequence.ast),
-            formula_variables: formula.vars(),
-            formula: formula.ast,
-            grouping: RuleGrouping::MatchRoot,
-        })
-    }
-
-    /// Input binders use a typed multi-pattern join. Their arbitrary Boolean
-    /// formulas are checked against the SMT model during batch preparation.
-    pub(crate) fn input_binder(
-        metadata: QuantifiedRule,
-        searcher: MultiPattern<ArrayLanguage>,
-        formula: Pattern<ArrayLanguage>,
-    ) -> Self {
-        let variables =
-            <MultiPattern<ArrayLanguage> as Searcher<ArrayLanguage, N>>::vars(&searcher);
-        assert!(formula.vars().iter().all(|var| variables.contains(var)));
-        Self {
-            metadata,
-            searcher: Box::new(searcher),
-            // All formula variables participate in ordinary term grounding.
-            trigger: None,
-            consequence: None,
-            formula_variables: formula.vars(),
-            formula: formula.ast,
-            grouping: RuleGrouping::Rule,
-        }
-    }
-
-    pub(crate) fn group(&self, root: Id) -> super::instantiation_candidate::CandidateGroup {
-        use super::instantiation_candidate::CandidateGroup;
-        match self.grouping {
-            RuleGrouping::MatchRoot => CandidateGroup::MatchRoot(root),
-            RuleGrouping::Rule => CandidateGroup::Rule,
-        }
-    }
-
-    pub(crate) fn metadata(&self) -> &QuantifiedRule {
-        &self.metadata
-    }
-
-    pub(crate) fn search_with_limit<'a>(
-        &'a self,
-        egraph: &EGraph<ArrayLanguage, N>,
-        limit: usize,
-    ) -> Vec<SearchMatches<'a, ArrayLanguage>> {
-        self.searcher.search_with_limit(egraph, limit)
-    }
-
-    pub(crate) fn trigger(&self) -> &ArrayPattern {
-        self.trigger.as_ref().unwrap_or(&self.formula)
-    }
-
-    pub(crate) fn consequence(&self) -> Option<&ArrayPattern> {
-        self.consequence.as_ref()
-    }
-
-    pub(crate) fn formula_variables(&self) -> &[Var] {
-        &self.formula_variables
-    }
-
-    pub(crate) fn formula(&self) -> &ArrayPattern {
-        &self.formula
-    }
-}
-
 /// Generate array rules for a specific type pair (index_sort, value_sort).
 /// This creates type-specific versions of the three core array axioms.
 fn array_rules_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<CompiledQuantifiedRule<N>>
 where
-    N: Analysis<ArrayLanguage> + 'static,
+    N: Analysis<TermLanguage> + 'static,
 {
     // Axiom 1: write-does-not-overwrite
     // (Read (Write a idx val) c) => (Read a c) when idx != c
@@ -567,7 +105,7 @@ where
         index_sort, value_sort, index_sort, value_sort
     );
     let replacement_1 = format!("(Read {} {} ?a ?c)", index_sort, value_sort);
-    let parsed_pattern: egg::Pattern<ArrayLanguage> = pattern_1.parse().unwrap();
+    let parsed_pattern: egg::Pattern<TermLanguage> = pattern_1.parse().unwrap();
     let formula_1 = format!("(=> (not (= ?c ?idx)) (= {pattern_1} {replacement_1}))");
     let axiom_1 = CompiledQuantifiedRule::new(
         rule_1,
@@ -585,7 +123,7 @@ where
         "(Read {} {} (Write {} {} ?a ?idx ?val) ?idx)",
         index_sort, value_sort, index_sort, value_sort
     );
-    let pat2 = pattern_2.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
+    let pat2 = pattern_2.parse::<egg::Pattern<TermLanguage>>().unwrap();
     let replacement_2 = "?val";
     let formula_2 = format!("(= {pattern_2} {replacement_2})");
     let axiom_2 = CompiledQuantifiedRule::new(
@@ -601,7 +139,7 @@ where
         "(Read {} {} (ConstArr {} {} ?a) ?b)",
         index_sort, value_sort, index_sort, value_sort
     );
-    let pat3 = pattern_3.parse::<egg::Pattern<ArrayLanguage>>().unwrap();
+    let pat3 = pattern_3.parse::<egg::Pattern<TermLanguage>>().unwrap();
     let replacement_3 = "?a";
     let formula_3 = format!("(= {pattern_3} {replacement_3})");
     let axiom_3 = CompiledQuantifiedRule::new(
@@ -618,7 +156,7 @@ where
 /// Generate executable quantified rules for all discovered array types.
 fn array_rules_with_types<N>(array_types: &[(String, String)]) -> Vec<CompiledQuantifiedRule<N>>
 where
-    N: Analysis<ArrayLanguage> + 'static,
+    N: Analysis<TermLanguage> + 'static,
 {
     let mut rules = Vec::new();
     for (index_sort, value_sort) in array_types {
@@ -630,9 +168,9 @@ where
 fn not_equal<N>(
     index_0: &'static str,
     index_1: &'static str,
-) -> impl Fn(&EGraph<ArrayLanguage, N>, Id, &Subst) -> bool
+) -> impl Fn(&EGraph<TermLanguage, N>, Id, &Subst) -> bool
 where
-    N: Analysis<ArrayLanguage>,
+    N: Analysis<TermLanguage>,
 {
     let var_0 = index_0.parse().unwrap();
     let var_1 = index_1.parse().unwrap();
@@ -713,460 +251,14 @@ where
     }
 }
 
-/// Expermiental transformation from Term directly to egg::RecExpr,
-/// so that we can skip using strings as an intermediate representation
-pub fn translate_term(term: Term) -> Option<egg::RecExpr<ArrayLanguage>> {
-    translate_term_with_array_types(term, &[])
-}
-
-/// Use declarations to disambiguate sort names containing underscores.
-pub fn translate_term_with_array_types(
-    term: Term,
-    array_types: &[(String, String)],
-) -> Option<egg::RecExpr<ArrayLanguage>> {
-    fn inner(
-        term: Term,
-        expr: &mut egg::RecExpr<ArrayLanguage>,
-        array_types: &[(String, String)],
-    ) -> Option<egg::Id> {
-        match term {
-            Term::Constant(c) => match c {
-                Constant::Numeral(value) => match value.clone().try_into() {
-                    Ok(value) => Some(expr.add(ArrayLanguage::Num(value))),
-                    Err(_) => Some(expr.add(ArrayLanguage::Symbol(value.to_string().into()))),
-                },
-                other => Some(expr.add(ArrayLanguage::Symbol(other.to_string().into()))),
-            },
-            Term::QualIdentifier(qi) => {
-                let symbol = match qi {
-                    QualIdentifier::Simple {
-                        identifier: Identifier::Simple { symbol },
-                    } => symbol.0,
-                    other => other.to_string(),
-                };
-                Some(expr.add(ArrayLanguage::Symbol(symbol.into())))
-            }
-            Term::Application {
-                qual_identifier,
-                mut arguments,
-            } => {
-                let name = qual_identifier.get_name();
-
-                // Check for parameterized array operations (e.g., "Read_BitVec5_BitVec32" or "Read_Int_Array_Int_Int")
-                // Handle these before the match statement
-                if let Some(rest) = name.strip_prefix("ConstArr_") {
-                    // Parse "IndexSort_ValueSort" from the suffix - supports nested like "Int_Array_Int_Int"
-                    let sorts = array_types
-                        .iter()
-                        .find(|(index, value)| rest == format!("{index}_{value}"))
-                        .cloned()
-                        .or_else(|| {
-                            rest.split_once('_')
-                                .map(|(index, value)| (index.to_string(), value.to_string()))
-                        });
-                    if let Some((index_sort, value_sort)) = sorts {
-                        assert!(arguments.len() == 1);
-                        let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
-                        let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-                        let arg_id = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        return Some(expr.add(ArrayLanguage::ConstArrTyped([
-                            index_sort_id,
-                            value_sort_id,
-                            arg_id,
-                        ])));
-                    }
-                } else if let Some(rest) = name.strip_prefix("Write_") {
-                    let sorts = array_types
-                        .iter()
-                        .find(|(index, value)| rest == format!("{index}_{value}"))
-                        .cloned()
-                        .or_else(|| {
-                            rest.split_once('_')
-                                .map(|(index, value)| (index.to_string(), value.to_string()))
-                        });
-                    if let Some((index_sort, value_sort)) = sorts {
-                        assert!(arguments.len() == 3);
-                        let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
-                        let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-                        // args popped in reverse order
-                        let val = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let idx = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let arr = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        return Some(expr.add(ArrayLanguage::WriteTyped([
-                            index_sort_id,
-                            value_sort_id,
-                            arr,
-                            idx,
-                            val,
-                        ])));
-                    }
-                } else if let Some(rest) = name.strip_prefix("Read_") {
-                    let sorts = array_types
-                        .iter()
-                        .find(|(index, value)| rest == format!("{index}_{value}"))
-                        .cloned()
-                        .or_else(|| {
-                            rest.split_once('_')
-                                .map(|(index, value)| (index.to_string(), value.to_string()))
-                        });
-                    if let Some((index_sort, value_sort)) = sorts {
-                        assert!(arguments.len() == 2);
-                        let index_sort_id = expr.add(ArrayLanguage::Symbol(index_sort.into()));
-                        let value_sort_id = expr.add(ArrayLanguage::Symbol(value_sort.into()));
-                        // args popped in reverse order
-                        let idx = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let arr = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        return Some(expr.add(ArrayLanguage::ReadTyped([
-                            index_sort_id,
-                            value_sort_id,
-                            arr,
-                            idx,
-                        ])));
-                    }
-                }
-
-                // Original hardcoded patterns for backward compatibility (Int_Int arrays)
-                match name.as_str() {
-                    "and" => {
-                        let arg_ids = arguments
-                            .into_iter()
-                            .map(|arg| inner(arg, expr, array_types))
-                            .collect::<Option<_>>()?;
-                        Some(expr.add(ArrayLanguage::And(arg_ids)))
-                    }
-                    "not" => {
-                        assert!(arguments.len() == 1);
-                        let arg_id = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Not(arg_id)))
-                    }
-                    "or" => {
-                        let arg_ids = arguments
-                            .into_iter()
-                            .map(|arg| inner(arg, expr, array_types))
-                            .collect::<Option<_>>()?;
-                        Some(expr.add(ArrayLanguage::Or(arg_ids)))
-                    }
-                    "=>" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Implies([lhs, rhs])))
-                    }
-                    "=" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Eq([lhs, rhs])))
-                    }
-                    ">=" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Geq([lhs, rhs])))
-                    }
-                    ">" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Gt([lhs, rhs])))
-                    }
-                    "<=" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Leq([lhs, rhs])))
-                    }
-                    "<" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Lt([lhs, rhs])))
-                    }
-                    "mod" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Mod([lhs, rhs])))
-                    }
-                    "+" => {
-                        let arg_ids = arguments
-                            .into_iter()
-                            .map(|arg| inner(arg, expr, array_types))
-                            .collect::<Option<_>>()?;
-                        Some(expr.add(ArrayLanguage::Plus(arg_ids)))
-                    }
-                    "-" => {
-                        let arg_ids = arguments
-                            .into_iter()
-                            .map(|arg| inner(arg, expr, array_types))
-                            .collect::<Option<_>>()?;
-                        Some(expr.add(ArrayLanguage::Negate(arg_ids)))
-                    }
-                    "*" => {
-                        let arg_ids = arguments
-                            .into_iter()
-                            .map(|arg| inner(arg, expr, array_types))
-                            .collect::<Option<_>>()?;
-                        Some(expr.add(ArrayLanguage::Times(arg_ids)))
-                    }
-                    "/" => {
-                        assert!(arguments.len() == 2);
-                        // args popped in reverse order
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Div([lhs, rhs])))
-                    }
-                    "to_real" => {
-                        assert!(arguments.len() == 1);
-                        let argument = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::ToReal(argument)))
-                    }
-                    "ite" => {
-                        assert!(arguments.len() == 3);
-                        // args popped in reverse order
-                        let else_term = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let then_term = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let condition = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        Some(expr.add(ArrayLanguage::Ite([condition, then_term, else_term])))
-                    }
-                    "bvcomp" => {
-                        assert!(arguments.len() == 2);
-                        let rhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let lhs = inner(arguments.pop().unwrap(), expr, array_types)?;
-                        let condition = expr.add(ArrayLanguage::Eq([lhs, rhs]));
-                        let one = expr.add(ArrayLanguage::Symbol("#b1".into()));
-                        let zero = expr.add(ArrayLanguage::Symbol("#b0".into()));
-                        Some(expr.add(ArrayLanguage::Ite([condition, one, zero])))
-                    }
-                    _ => {
-                        let head =
-                            expr.add(ArrayLanguage::Symbol(qual_identifier.to_string().into()));
-                        let mut children = vec![head];
-                        for argument in arguments {
-                            children.push(inner(argument, expr, array_types)?);
-                        }
-                        Some(expr.add(ArrayLanguage::Apply(children.into_boxed_slice())))
-                    }
-                }
-            }
-            Term::Lambda { .. } | Term::Forall { .. } => None,
-            Term::Attributes { term, .. } => inner(*term, expr, array_types),
-            opaque @ (Term::Let { .. } | Term::Exists { .. } | Term::Match { .. }) => {
-                Some(expr.add(ArrayLanguage::Symbol(opaque.to_string().into())))
-            }
-        }
-    }
-
-    let mut expr = egg::RecExpr::default();
-    inner(term, &mut expr, array_types)?;
-    Some(expr)
-}
-
-fn is_simple_smt_symbol(symbol: &str) -> bool {
-    fn is_non_digit_symbol_byte(byte: u8) -> bool {
-        matches!(
-            byte,
-            b'a'..=b'z'
-                | b'A'..=b'Z'
-                | b'~'
-                | b'!'
-                | b'@'
-                | b'$'
-                | b'%'
-                | b'^'
-                | b'&'
-                | b'*'
-                | b'_'
-                | b'-'
-                | b'+'
-                | b'='
-                | b'<'
-                | b'>'
-                | b'.'
-                | b'?'
-                | b'/'
-        )
-    }
-
-    let mut bytes = symbol.bytes();
-    bytes.next().is_some_and(is_non_digit_symbol_byte)
-        && bytes.all(|byte| byte.is_ascii_digit() || is_non_digit_symbol_byte(byte))
-}
-
-fn fast_symbol_term(symbol: &str) -> Option<Term> {
-    if is_simple_smt_symbol(symbol) {
-        return Some(Term::QualIdentifier(QualIdentifier::simple(symbol)));
-    }
-
-    let quoted = symbol
-        .strip_prefix('|')
-        .and_then(|symbol| symbol.strip_suffix('|'))?;
-    (!quoted.bytes().any(|byte| matches!(byte, b'|' | b'\\')))
-        .then(|| Term::QualIdentifier(QualIdentifier::simple(quoted)))
-}
-
-pub fn expr_to_term(expr: ArrayExpr) -> Term {
-    fn inner(expr: &ArrayExpr, id: egg::Id) -> Term {
-        match &expr[id] {
-            ArrayLanguage::Apply(ids) => {
-                let Term::QualIdentifier(qual_identifier) = inner(expr, ids[0]) else {
-                    panic!("application head must be an SMT identifier");
-                };
-                Term::Application {
-                    qual_identifier,
-                    arguments: ids[1..].iter().map(|id| inner(expr, *id)).collect(),
-                }
-            }
-            ArrayLanguage::Domain(_) | ArrayLanguage::SortTag(_) => {
-                panic!("internal quantifier domain escaped grounding")
-            }
-            ArrayLanguage::Num(num) => Term::Constant(Constant::Numeral((*num).into())),
-            ArrayLanguage::ConstArrTyped([index_sort, value_sort, x]) => {
-                // Extract sort names from Symbol nodes
-                let index_sort_name = match &expr[*index_sort] {
-                    ArrayLanguage::Symbol(s) => s.as_str(),
-                    _ => "Unknown",
-                };
-                let value_sort_name = match &expr[*value_sort] {
-                    ArrayLanguage::Symbol(s) => s.as_str(),
-                    _ => "Unknown",
-                };
-                let func_name = ArrayLanguage::format_array_op_name(
-                    "ConstArr",
-                    index_sort_name,
-                    value_sort_name,
-                );
-                Term::Application {
-                    qual_identifier: QualIdentifier::simple(func_name),
-                    arguments: vec![inner(expr, *x)],
-                }
-            }
-            ArrayLanguage::WriteTyped([index_sort, value_sort, arr, idx, val]) => {
-                let index_sort_name = match &expr[*index_sort] {
-                    ArrayLanguage::Symbol(s) => s.as_str(),
-                    _ => "Unknown",
-                };
-                let value_sort_name = match &expr[*value_sort] {
-                    ArrayLanguage::Symbol(s) => s.as_str(),
-                    _ => "Unknown",
-                };
-                let func_name =
-                    ArrayLanguage::format_array_op_name("Write", index_sort_name, value_sort_name);
-                Term::Application {
-                    qual_identifier: QualIdentifier::simple(func_name),
-                    arguments: vec![inner(expr, *arr), inner(expr, *idx), inner(expr, *val)],
-                }
-            }
-            ArrayLanguage::ReadTyped([index_sort, value_sort, arr, idx]) => {
-                let index_sort_name = match &expr[*index_sort] {
-                    ArrayLanguage::Symbol(s) => s.as_str(),
-                    _ => "Unknown",
-                };
-                let value_sort_name = match &expr[*value_sort] {
-                    ArrayLanguage::Symbol(s) => s.as_str(),
-                    _ => "Unknown",
-                };
-                let func_name =
-                    ArrayLanguage::format_array_op_name("Read", index_sort_name, value_sort_name);
-                Term::Application {
-                    qual_identifier: QualIdentifier::simple(func_name),
-                    arguments: vec![inner(expr, *arr), inner(expr, *idx)],
-                }
-            }
-            ArrayLanguage::And(ids) => Term::Application {
-                qual_identifier: QualIdentifier::simple("and"),
-                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
-            },
-            ArrayLanguage::Not(id) => Term::Application {
-                qual_identifier: QualIdentifier::simple("not"),
-                arguments: vec![inner(expr, *id)],
-            },
-            ArrayLanguage::Or(ids) => Term::Application {
-                qual_identifier: QualIdentifier::simple("or"),
-                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
-            },
-            ArrayLanguage::Implies([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("=>"),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Eq([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("="),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Geq([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple(">="),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Gt([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple(">"),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Leq([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("<="),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Lt([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("<"),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Mod([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("mod"),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::Plus(ids) => Term::Application {
-                qual_identifier: QualIdentifier::simple("+"),
-                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
-            },
-            ArrayLanguage::Negate(ids) => Term::Application {
-                qual_identifier: QualIdentifier::simple("-"),
-                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
-            },
-            ArrayLanguage::Times(ids) => Term::Application {
-                qual_identifier: QualIdentifier::simple("*"),
-                arguments: ids.iter().map(|id| inner(expr, *id)).collect(),
-            },
-            ArrayLanguage::Div([lhs, rhs]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("/"),
-                arguments: vec![inner(expr, *lhs), inner(expr, *rhs)],
-            },
-            ArrayLanguage::ToReal(argument) => Term::Application {
-                qual_identifier: QualIdentifier::simple("to_real"),
-                arguments: vec![inner(expr, *argument)],
-            },
-            ArrayLanguage::Ite([condition, then_term, else_term]) => Term::Application {
-                qual_identifier: QualIdentifier::simple("ite"),
-                arguments: vec![
-                    inner(expr, *condition),
-                    inner(expr, *then_term),
-                    inner(expr, *else_term),
-                ],
-            },
-            ArrayLanguage::Symbol(sym) => fast_symbol_term(sym.as_str()).unwrap_or_else(|| {
-                sym.as_str().parse().unwrap_or_else(|_| {
-                    SmtSymbol(sym.as_str().to_string())
-                        .to_string()
-                        .parse()
-                        .expect("symbol preserved by the array e-graph must remain valid SMT-LIB")
-                })
-            }),
-        }
-    }
-
-    inner(&expr, egg::Id::from(expr.as_ref().len() - 1))
-}
-
 #[cfg(test)]
 mod test {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::problem_context::ArrayCandidateCatalog;
+    use crate::rule_matching::candidate_builder::{ArtifactCapture, InstantiationInstrumentation};
+    use smt2parser::concrete::{Constant, QualIdentifier, Symbol as SmtSymbol, Term};
 
     #[test]
     fn declared_array_sorts_disambiguate_underscores() {
@@ -1188,10 +280,8 @@ mod test {
         let term: Term = "(=> enabled (|match| request response))".parse().unwrap();
         assert_eq!(expr_to_term(translate_term(term.clone()).unwrap()), term);
     }
-    use crate::{
-        cost_functions::YardbirdCostFunction,
-        theories::array::instantiation_ranker::PreferSourceInstantiationRanker,
-    };
+    use crate::policy::instance_selection::PreferSourceInstantiationRanker;
+    use crate::policy::term_selection::YardbirdCostFunction;
     use rustc_hash::FxHashMap;
     use smt2parser::vmt::ReadsAndWrites;
 
@@ -1218,10 +308,10 @@ mod test {
             .unwrap();
     }
 
-    impl egg::CostFunction<ArrayLanguage> for ZeroCost {
+    impl egg::CostFunction<TermLanguage> for ZeroCost {
         type Cost = u32;
 
-        fn cost<C>(&mut self, _enode: &ArrayLanguage, _costs: C) -> Self::Cost
+        fn cost<C>(&mut self, _enode: &TermLanguage, _costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
@@ -1229,7 +319,7 @@ mod test {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for ZeroCost {
+    impl YardbirdCostFunction<TermLanguage> for ZeroCost {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1239,22 +329,22 @@ mod test {
         }
     }
 
-    impl egg::CostFunction<ArrayLanguage> for PreferB {
+    impl egg::CostFunction<TermLanguage> for PreferB {
         type Cost = u32;
 
-        fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+        fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
             let own = match enode {
-                ArrayLanguage::Symbol(symbol) if symbol.as_str() == "A" => 10,
+                TermLanguage::Symbol(symbol) if symbol.as_str() == "A" => 10,
                 _ => 0,
             };
             enode.fold(own, |sum, child| sum.saturating_add(costs(child)))
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for PreferB {
+    impl YardbirdCostFunction<TermLanguage> for PreferB {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1264,15 +354,15 @@ mod test {
         }
     }
 
-    impl egg::CostFunction<ArrayLanguage> for HighCostA {
+    impl egg::CostFunction<TermLanguage> for HighCostA {
         type Cost = u32;
 
-        fn cost<C>(&mut self, enode: &ArrayLanguage, mut costs: C) -> Self::Cost
+        fn cost<C>(&mut self, enode: &TermLanguage, mut costs: C) -> Self::Cost
         where
             C: FnMut(egg::Id) -> Self::Cost,
         {
             let own = match enode {
-                ArrayLanguage::Symbol(symbol) if symbol.as_str() == "A" => {
+                TermLanguage::Symbol(symbol) if symbol.as_str() == "A" => {
                     LEGACY_HIGH_COST_THRESHOLD + 1
                 }
                 _ => 0,
@@ -1281,7 +371,7 @@ mod test {
         }
     }
 
-    impl YardbirdCostFunction<ArrayLanguage> for HighCostA {
+    impl YardbirdCostFunction<TermLanguage> for HighCostA {
         fn get_string_terms(&self) -> Vec<String> {
             vec![]
         }
@@ -1337,9 +427,8 @@ mod test {
     #[test]
     fn write_does_not_overwrite_searcher_matches_distinct_indices() {
         init();
-        let expr: RecExpr<ArrayLanguage> =
-            "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let expr: RecExpr<TermLanguage> = "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&expr);
         egraph.rebuild();
         let rules = array_rules_with_types::<()>(&[("Int".into(), "Int".into())]);
@@ -1347,7 +436,7 @@ mod test {
             .iter()
             .find(|rule| {
                 rule.metadata().kind()
-                    == crate::quantified_rule::QuantifiedRuleKind::ArrayAxiom(
+                    == crate::rule_matching::rule::QuantifiedRuleKind::ArrayAxiom(
                         ArrayAxiomKind::WriteDoesNotOverwrite,
                     )
             })
@@ -1359,9 +448,8 @@ mod test {
     #[test]
     fn write_does_not_overwrite_searcher_rejects_equal_indices() {
         init();
-        let expr: RecExpr<ArrayLanguage> =
-            "(Read Int Int (Write Int Int A 0 0) 0)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let expr: RecExpr<TermLanguage> = "(Read Int Int (Write Int Int A 0 0) 0)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&expr);
         egraph.rebuild();
         let rules = array_rules_with_types::<()>(&[("Int".into(), "Int".into())]);
@@ -1369,7 +457,7 @@ mod test {
             .iter()
             .find(|rule| {
                 rule.metadata().kind()
-                    == crate::quantified_rule::QuantifiedRuleKind::ArrayAxiom(
+                    == crate::rule_matching::rule::QuantifiedRuleKind::ArrayAxiom(
                         ArrayAxiomKind::WriteDoesNotOverwrite,
                     )
             })
@@ -1381,9 +469,9 @@ mod test {
     #[test]
     fn translate_term_uses_same_numeric_encoding_as_parser() {
         let translated = translate_term(Term::Constant(Constant::Numeral(10u64.into()))).unwrap();
-        let parsed: RecExpr<ArrayLanguage> = "10".parse().unwrap();
+        let parsed: RecExpr<TermLanguage> = "10".parse().unwrap();
 
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         let translated_id = egraph.add_expr(&translated);
         let parsed_id = egraph.add_expr(&parsed);
         egraph.rebuild();
@@ -1395,9 +483,9 @@ mod test {
     fn translate_term_supports_ite() {
         let term = "(ite true x y)".parse().unwrap();
         let translated = translate_term(term).unwrap();
-        let parsed: RecExpr<ArrayLanguage> = "(ite true x y)".parse().unwrap();
+        let parsed: RecExpr<TermLanguage> = "(ite true x y)".parse().unwrap();
 
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         let translated_id = egraph.add_expr(&translated);
         let parsed_id = egraph.add_expr(&parsed);
         egraph.rebuild();
@@ -1417,7 +505,7 @@ mod test {
             "123",
             "(opaque x)",
         ] {
-            let expr = ArrayExpr::from(vec![ArrayLanguage::Symbol(rendered.into())]);
+            let expr = TermExpr::from(vec![TermLanguage::Symbol(rendered.into())]);
             let expected: Term = rendered
                 .parse()
                 .unwrap_or_else(|_| SmtSymbol(rendered.to_string()).to_string().parse().unwrap());
@@ -1478,9 +566,8 @@ mod test {
     #[test]
     fn typed_write_does_not_overwrite_instantiation_keeps_disequality_guard() {
         init();
-        let expr: RecExpr<ArrayLanguage> =
-            "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let expr: RecExpr<TermLanguage> = "(Read Int Int (Write Int Int A 0 0) 1)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&expr);
         egraph.rebuild();
 
@@ -1488,15 +575,16 @@ mod test {
             &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1517,11 +605,11 @@ mod test {
 
     #[test]
     fn full_selection_keeps_a_candidate_from_each_violated_rule() {
-        let write_does_not_overwrite: ArrayExpr =
+        let write_does_not_overwrite: TermExpr =
             "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let read_after_write: ArrayExpr = "(Read Int Int (Write Int Int B k w) k)".parse().unwrap();
-        let constant_array: ArrayExpr = "(Read Int Int (ConstArr Int Int z) p)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let read_after_write: TermExpr = "(Read Int Int (Write Int Int B k w) k)".parse().unwrap();
+        let constant_array: TermExpr = "(Read Int Int (ConstArr Int Int z) p)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&write_does_not_overwrite);
         egraph.add_expr(&read_after_write);
         egraph.add_expr(&constant_array);
@@ -1531,15 +619,16 @@ mod test {
             &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1563,9 +652,8 @@ mod test {
 
     #[test]
     fn generation_borrows_the_egraph_for_staged_expansion() {
-        let expr: RecExpr<ArrayLanguage> =
-            "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let expr: RecExpr<TermLanguage> = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&expr);
         egraph.rebuild();
 
@@ -1573,15 +661,16 @@ mod test {
             &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1596,26 +685,27 @@ mod test {
     #[test]
     fn source_ranker_defers_a_model_derived_join_until_full_search() {
         init();
-        let expr: RecExpr<ArrayLanguage> =
+        let expr: RecExpr<TermLanguage> =
             "(Read Int Int (Write Int Int A i 137) j)".parse().unwrap();
 
         let run = |scope| {
-            let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+            let mut egraph = EGraph::<TermLanguage, ()>::default();
             egraph.add_expr(&expr);
             egraph.rebuild();
             generate_array_instantiation_candidates(
                 &egraph,
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
-                ArrayInstantiationOptions {
+                InstantiationOptions {
+                    search_allowance: crate::policy::effort::WorkAllowance::default(),
                     additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: scope,
                     refinement_step: 0,
                     selection_counts: FxHashMap::default(),
                     depth: 0,
-                    instrumentation: ArrayInstantiationInstrumentation {
-                        artifact_capture: ArrayArtifactCapture::default(),
+                    instrumentation: InstantiationInstrumentation {
+                        artifact_capture: ArtifactCapture::default(),
                         profiling: None,
                     },
                 },
@@ -1628,7 +718,7 @@ mod test {
         assert_eq!(cone.candidates.len(), 1);
         assert_eq!(
             cone.candidates[0].grounding,
-            crate::theories::array::instantiation_candidate::InstantiationGrounding::Derived
+            crate::rule_matching::candidate::InstantiationGrounding::Derived
         );
         let summary = cone
             .prepare_with_ranker(
@@ -1648,13 +738,13 @@ mod test {
 
     #[test]
     fn source_selection_ranks_complete_violations_across_rule_matches() {
-        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
-        let expected: ArrayExpr =
+        let first: TermExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let second: TermExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
+        let expected: TermExpr =
             "(=> (not (= q p)) (= (Read Int Int (Write Int Int B p w) q) (Read Int Int B q)))"
                 .parse()
                 .unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&first);
         egraph.add_expr(&second);
         egraph.rebuild();
@@ -1663,15 +753,16 @@ mod test {
             &egraph,
             PreferB,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1690,9 +781,9 @@ mod test {
 
     #[test]
     fn costs_over_100_compete_without_special_classification() {
-        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let first: TermExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let second: TermExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&first);
         egraph.add_expr(&second);
         egraph.rebuild();
@@ -1701,15 +792,16 @@ mod test {
             &egraph,
             HighCostA,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1733,13 +825,13 @@ mod test {
 
     #[test]
     fn full_selection_chooses_one_candidate_per_matched_eclass() {
-        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
-        let expected: ArrayExpr =
+        let first: TermExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let second: TermExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
+        let expected: TermExpr =
             "(=> (not (= q p)) (= (Read Int Int (Write Int Int B p w) q) (Read Int Int B q)))"
                 .parse()
                 .unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         let first_id = egraph.add_expr(&first);
         let second_id = egraph.add_expr(&second);
         egraph.union(first_id, second_id);
@@ -1749,15 +841,16 @@ mod test {
             &egraph,
             PreferB,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1775,12 +868,12 @@ mod test {
 
     #[test]
     fn matched_eclass_ties_use_canonical_expression_order() {
-        let first: ArrayExpr = "(Read Int Int (ConstArr Int Int z) i)".parse().unwrap();
-        let second: ArrayExpr = "(Read Int Int (ConstArr Int Int z) j)".parse().unwrap();
-        let expected: ArrayExpr = "(= (Read Int Int (ConstArr Int Int z) i) z)"
+        let first: TermExpr = "(Read Int Int (ConstArr Int Int z) i)".parse().unwrap();
+        let second: TermExpr = "(Read Int Int (ConstArr Int Int z) j)".parse().unwrap();
+        let expected: TermExpr = "(= (Read Int Int (ConstArr Int Int z) i) z)"
             .parse()
             .unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         let second_id = egraph.add_expr(&second);
         let first_id = egraph.add_expr(&first);
         egraph.union(first_id, second_id);
@@ -1790,15 +883,16 @@ mod test {
             &egraph,
             ZeroCost,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: ArrayCandidateCatalog::default(),
                 candidate_scope: CandidateScope::AllCandidates,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture::default(),
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture::default(),
                     profiling: None,
                 },
             },
@@ -1816,9 +910,9 @@ mod test {
 
     #[test]
     fn whole_instantiation_capture_keeps_all_candidates_and_marks_one_selected() {
-        let first: ArrayExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-        let second: ArrayExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
-        let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+        let first: TermExpr = "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
+        let second: TermExpr = "(Read Int Int (Write Int Int B p w) q)".parse().unwrap();
+        let mut egraph = EGraph::<TermLanguage, ()>::default();
         egraph.add_expr(&first);
         egraph.add_expr(&second);
         egraph.rebuild();
@@ -1827,15 +921,16 @@ mod test {
             &egraph,
             PreferB,
             &[("Int".into(), "Int".into())],
-            ArrayInstantiationOptions {
+            InstantiationOptions {
+                search_allowance: crate::policy::effort::WorkAllowance::default(),
                 additional_terms: vec![],
                 candidate_catalog: two_write_candidate_catalog(),
                 candidate_scope: CandidateScope::SourceGroundedOnly,
                 refinement_step: 0,
                 selection_counts: FxHashMap::default(),
                 depth: 0,
-                instrumentation: ArrayInstantiationInstrumentation {
-                    artifact_capture: ArrayArtifactCapture {
+                instrumentation: InstantiationInstrumentation {
+                    artifact_capture: ArtifactCapture {
                         decisions: true,
                         instantiation_provenance: true,
                         conflicts: false,
@@ -1887,10 +982,10 @@ mod test {
 
     #[test]
     fn decision_capture_does_not_change_selection() {
-        fn run(artifact_capture: ArrayArtifactCapture) -> InstantiationBatch {
-            let expr: RecExpr<ArrayLanguage> =
+        fn run(artifact_capture: ArtifactCapture) -> InstantiationBatch {
+            let expr: RecExpr<TermLanguage> =
                 "(Read Int Int (Write Int Int A i v) j)".parse().unwrap();
-            let mut egraph = EGraph::<ArrayLanguage, ()>::default();
+            let mut egraph = EGraph::<TermLanguage, ()>::default();
             egraph.add_expr(&expr);
             egraph.rebuild();
 
@@ -1898,14 +993,15 @@ mod test {
                 &egraph,
                 ZeroCost,
                 &[("Int".into(), "Int".into())],
-                ArrayInstantiationOptions {
+                InstantiationOptions {
+                    search_allowance: crate::policy::effort::WorkAllowance::default(),
                     additional_terms: vec![],
                     candidate_catalog: ArrayCandidateCatalog::default(),
                     candidate_scope: CandidateScope::AllCandidates,
                     refinement_step: 0,
                     selection_counts: FxHashMap::default(),
                     depth: 0,
-                    instrumentation: ArrayInstantiationInstrumentation {
+                    instrumentation: InstantiationInstrumentation {
                         artifact_capture,
                         profiling: None,
                     },
@@ -1915,8 +1011,8 @@ mod test {
             result
         }
 
-        let compact = run(ArrayArtifactCapture::default());
-        let recorded = run(ArrayArtifactCapture {
+        let compact = run(ArtifactCapture::default());
+        let recorded = run(ArtifactCapture {
             decisions: true,
             instantiation_provenance: true,
             conflicts: false,

@@ -969,7 +969,7 @@ pub(crate) fn predicate_ast_size(term: &Term) -> u32 {
     }
 }
 
-/// Whether every application is represented structurally in `ArrayLanguage`
+/// Whether every application is represented structurally in `TermLanguage`
 /// with an arity accepted by `translate_term`.
 pub(crate) fn predicate_supports_structural_cost(term: &Term) -> bool {
     match term {

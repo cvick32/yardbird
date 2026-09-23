@@ -5,17 +5,15 @@ use log::info;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use smt2parser::{concrete::Term, get_term_from_term_string, vmt::VMTModel};
 
-use crate::{
-    auxiliary_synthesis::AuxiliaryRecord,
-    instantiation_strategy::InstantiationStrategy,
-    problem_context::ProblemContext,
-    profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext},
-    solver::{SolverCapture, SolverCheckResult},
-    strategies::{ProofAction, ProofStrategy, ProofStrategyExt},
-    training::UnsatEventRecord,
-    utils::SolverStatistics,
-    SolverBackend,
-};
+use crate::auxiliary_synthesis::AuxiliaryRecord;
+use crate::instance_installation::InstantiationStrategy;
+use crate::problem_context::ProblemContext;
+use crate::profiling::{DriverProfilingRecord, Profiler, ProfilingRunRecord, SolverCheckContext};
+use crate::solver::{SolverCapture, SolverCheckResult};
+use crate::strategies::{ProofAction, ProofStrategy, ProofStrategyExt};
+use crate::training::UnsatEventRecord;
+use crate::utils::SolverStatistics;
+use crate::SolverBackend;
 
 /// Information about the unsat core when tracking is enabled
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -34,7 +32,7 @@ pub struct CoreInstantiation {
     #[serde(default)]
     pub frame: u16,
     #[serde(default)]
-    pub substitution: Vec<crate::instantiation_provenance::InstantiationSubstitution>,
+    pub substitution: Vec<crate::rule_matching::provenance::InstantiationSubstitution>,
 }
 
 /// Progress uses zero-based BMC depths; `None` means no depth completed/started.
@@ -410,9 +408,6 @@ pub enum Error {
         instantiations: Vec<Term>,
     },
 
-    #[error("Abstract refinement exhausted without proving or refuting depth {depth}")]
-    AbstractionExhausted { depth: u16 },
-
     #[error("Hit refinement limit of {n_refines} at depth {depth}")]
     TooManyRefinements { n_refines: u32, depth: u16 },
 
@@ -608,8 +603,8 @@ impl<'ctx, S> Driver<'ctx, S> {
 
     /// The main control flow of the proof loop.
     ///
-    /// We loop up until the `target_depth`. For each of these BMC loops, we loop up to
-    /// `n_refines` times. Each time, we unroll the `vmt_model` up to the current depth,
+    /// We loop up until the `target_depth`. Each depth uses the strategy's
+    /// optional refinement limit. Each time, we unroll the `vmt_model` up to the current depth,
     /// ask the solver if we have any counter-examples this loop, and then continue.
     ///
     /// The `ProofStrategy` specified by `stat` defines what we do in the case of the
@@ -654,7 +649,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         if let Some(error) = strat.configuration_error() {
             return Err(anyhow::anyhow!("quantifier abstraction failed: {error}").into());
         }
-        let n_refines = strat.n_refines();
+        let n_refines = strat.refinement_limit().unwrap_or(u32::MAX);
         let mut total_refinement_steps = 0;
         let mut concrete_validation_checks = 0_u64;
         let mut concrete_validation_statistics = SolverStatistics::new();
@@ -705,6 +700,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                 progress.current_depth = Some(depth);
                 progress.current_refinement_step = None;
                 info!("STARTING BMC FOR DEPTH {depth}");
+                // The concrete query is fixed at this depth, independently of
+                // the successive abstract models and valid refinement lemmas.
+                let mut concrete_rejected = false;
                 for refinement_step in 0..n_refines {
                     progress.current_depth = Some(depth);
                     progress.current_refinement_step = Some(refinement_step);
@@ -727,6 +725,16 @@ impl<'ctx, S> Driver<'ctx, S> {
                         }
                     }
                     checkpoint!('bmc, "unroll", driver_record.take(), step_start);
+                    if depth == 0 && refinement_step == 0 {
+                        let seed_start = Instant::now();
+                        active_phase = Some(("eager_instantiation", seed_start));
+                        strat.seed_instances(&mut smt_problem)?;
+                        active_phase = None;
+                        if let Some(record) = &mut driver_record {
+                            record.record_timing("eager_instantiation", seed_start.elapsed());
+                        }
+                        checkpoint!('bmc, "eager_instantiation", driver_record.take(), step_start);
+                    }
                     let setup_start = Instant::now();
                     active_phase = Some(("strategy_setup", setup_start));
                     let mut state = strat.setup(&smt_problem, depth)?;
@@ -761,20 +769,25 @@ impl<'ctx, S> Driver<'ctx, S> {
                         );
                     }
                     if check_result == SolverCheckResult::Unsat {
+                        // A completed check must be recorded even if it crossed
+                        // the cooperative deadline before returning.
                         progress.deepest_completed_depth = Some(depth);
+                        unsat_event_tracker.record_vmt_event(
+                            &smt_problem,
+                            depth,
+                            total_refinement_steps,
+                            self.track_instantiations,
+                        );
+                        info!(
+                            "BMC_DEPTH_COMPLETED depth={depth} elapsed_secs={:.6}",
+                            driver_start.elapsed().as_secs_f64()
+                        );
                     }
                     checkpoint!('bmc, "check", driver_record.take(), step_start);
                     let mut action = match check_result {
                         SolverCheckResult::Unsat => {
-                            info!("  check completed");
                             let unsat_start = Instant::now();
                             active_phase = Some(("strategy_unsat", unsat_start));
-                            unsat_event_tracker.record_vmt_event(
-                                &smt_problem,
-                                depth,
-                                total_refinement_steps,
-                                self.track_instantiations,
-                            );
                             // Handle solver dumping if requested
                             if let Some(ref path) = self.dump_solver_path {
                                 info!("Dumping solver to: {}", path);
@@ -811,7 +824,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                             action
                         }
                         SolverCheckResult::Sat => {
-                            info!("  refinement: {}/{n_refines}", refinement_step);
+                            info!("  refinement: {}", refinement_step);
                             let sat_start = Instant::now();
                             active_phase = Some(("strategy_sat", sat_start));
                             self.extensions
@@ -830,7 +843,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                         && !strat.has_pending_refinement(&state)
                     {
                         checkpoint!('bmc, "strategy_sat", driver_record.take(), step_start);
-                        if !strat.allows_concrete_validation() {
+                        if !strat.allows_concrete_validation() || concrete_rejected {
                             // Widen the abstract search without delegating any
                             // quantified formula to the concrete solver.
                             let sat_start = Instant::now();
@@ -868,6 +881,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                                 return Err(Error::Counterexample);
                             }
                             SolverCheckResult::Unsat => {
+                                concrete_rejected = true;
                                 info!(
                                 "Concrete array theory rejected the abstract counterexample at depth {depth}; expanding Yardbird's e-graph"
                             );
@@ -995,7 +1009,6 @@ impl<'ctx, S> Driver<'ctx, S> {
                 Error::Counterexample => "counterexample",
                 Error::NoProgress { .. } => "no_progress",
                 Error::TooManyRefinements { .. } => "refinement_limit",
-                Error::AbstractionExhausted { .. } => "abstraction_exhausted",
                 Error::SolverUnknown(_) => "solver_unknown",
                 _ => "error",
             }
@@ -1033,6 +1046,10 @@ impl<'ctx, S> Driver<'ctx, S> {
         } else {
             strat.result(&mut self.vmt_model.clone(), &smt_problem)
         };
+        strat.add_statistics(&mut result.solver_statistics);
+        result
+            .abstract_instantiations
+            .extend(strat.take_eager_artifacts());
         if result.found_proof {
             progress.termination_reason = "proof".into();
         }
@@ -1045,6 +1062,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         result.unsat_events = unsat_event_tracker.events;
         if let Some(mut profiler) = profiler {
             profiler.record_timing("driver_check_strategy_total", driver_start.elapsed());
+            profiler.set_quantifier_provenance(strat.quantifier_provenance());
             profiler.extend_cost_records(strat.take_profiling_records());
             result.profiling = profiler.finish();
         }
@@ -1156,7 +1174,7 @@ fn run_concrete_counterexample_check(
     solver_backend: SolverBackend,
     instantiation_strategy: &dyn InstantiationStrategy,
 ) -> Result<(SolverCheckResult, crate::vmt_bmc_session::VmtBmcSession)> {
-    let mut concrete_strategy: Box<dyn ProofStrategy<'_, crate::strategies::ArrayRefinementState>> =
+    let mut concrete_strategy: Box<dyn ProofStrategy<'_, crate::strategies::RefinementState>> =
         Box::new(crate::strategies::ConcreteArrayZ3::new(false));
     let concrete_vmt_model = concrete_strategy.configure_model(concrete_vmt_model.clone());
     let mut concrete_problem = crate::vmt_bmc_session::VmtBmcSession::new(

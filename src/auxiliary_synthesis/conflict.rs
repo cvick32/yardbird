@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use smt2parser::concrete::Term;
 
-use crate::{auxiliary_synthesis::FrameSpan, theories::array::array_axioms::ArrayExpr};
+use crate::auxiliary_synthesis::FrameSpan;
+use crate::terms::language::TermExpr;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ArrayConflictRecord {
@@ -10,7 +11,7 @@ pub struct ArrayConflictRecord {
     pub abstract_instantiation_id: String,
     pub axiom_name: String,
     #[serde(skip)]
-    pub abstract_expr: ArrayExpr,
+    pub abstract_expr: TermExpr,
     pub term: Term,
     pub term_hash: String,
     pub depth: u16,
@@ -27,7 +28,7 @@ impl ArrayConflictRecord {
         ordinal: usize,
         abstract_instantiation_id: impl Into<String>,
         axiom_name: impl Into<String>,
-        abstract_expr: ArrayExpr,
+        abstract_expr: TermExpr,
         term: Term,
         depth: u16,
         refinement_step: u32,

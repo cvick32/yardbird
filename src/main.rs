@@ -1,15 +1,15 @@
 use clap::Parser;
 use log::info;
 use std::{fs::File, io::Write, path::Path, time::Duration};
+use yardbird::audit::AuditConfig;
+use yardbird::profiling::ProfilingRunRecord;
+use yardbird::smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner};
+use yardbird::solver::SolverCapture;
+use yardbird::strategies::{Interpolating, ProofStrategy, RefinementState, Repl};
+use yardbird::training::{reset_training_database, TrainingSession};
 use yardbird::{
-    audit::{self, AuditConfig},
-    logger, model_from_options,
-    profiling::ProfilingRunRecord,
-    smtlib_problem::{SMTLIBProblem, SmtlibCommandExecutor, SmtlibRefinementRunner},
-    solver::SolverCapture,
-    strategies::{ArrayRefinementState, Interpolating, ProofStrategy, Repl},
-    training::{reset_training_database, TrainingSession},
-    CostFunction, Driver, Strategy, Theory, YardbirdCommand, YardbirdOptions,
+    audit, logger, model_from_options, CostFunction, Driver, Strategy, Theory, YardbirdCommand,
+    YardbirdOptions,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -46,6 +46,8 @@ fn main() -> anyhow::Result<()> {
 
     options.validate_ranker_options()?;
     options.validate_guarded_read_updates()?;
+    options.validate_native_arrays()?;
+    options.validate_eager_options()?;
     options.validate_solver_backend_available()?;
 
     info!("Z3 version: {}", z3::full_version());
@@ -120,7 +122,9 @@ fn should_use_strategy_mode(options: &YardbirdOptions) -> bool {
     // Use strategy mode if:
     // 1. Strategy is not Concrete (Abstract strategies need refinement)
     // 2. Cost function is not BmcCost (indicates user wants specific cost function)
-    !matches!(options.strategy, Strategy::Concrete)
+    // 3. Eager seeding needs the pre-check strategy hook
+    options.eager
+        || !matches!(options.strategy, Strategy::Concrete)
         || !matches!(options.cost_function, CostFunction::BmcCost)
 }
 
@@ -138,7 +142,12 @@ fn run_smtlib_with_strategy(
         problem,
         strategy,
         options.solver,
-        250, // max refinements (like VMT mode)
+        yardbird::smtlib_problem::RefinementLimits {
+            max_refinements: None,
+            wall_timeout: options
+                .wall_timeout_secs
+                .map(std::time::Duration::from_secs),
+        },
         options.track_instantiations,
         options.build_profiler(),
         solver_capture.clone(),
@@ -146,7 +155,13 @@ fn run_smtlib_with_strategy(
     ) {
         Ok(res) => res,
         Err(err) => {
-            if let Some(session) = training_session.as_mut() {
+            if let Some(failure) = err.downcast_ref::<yardbird::smtlib_problem::RefinementFailure>()
+            {
+                if let Some(session) = training_session.as_mut() {
+                    session.complete_result(&failure.result)?;
+                }
+                finish_solver_capture(solver_capture.as_ref(), &failure.result.profiling)?;
+            } else if let Some(session) = training_session.as_mut() {
                 session.complete_failure()?;
             }
             return Err(err);
@@ -220,56 +235,10 @@ fn run_smtlib_simple(problem: &SMTLIBProblem, options: &YardbirdOptions) -> anyh
 /// Build a strategy for SMTLIB mode based on options
 fn build_smtlib_strategy(
     options: &YardbirdOptions,
-) -> Box<dyn ProofStrategy<'static, ArrayRefinementState>> {
-    use yardbird::cost_functions::array::*;
-    use yardbird::strategies::{AbstractArrayWithQuantifiers, ConcreteArrayZ3};
-
-    match options.strategy {
-        Strategy::Abstract => match options.cost_function {
-            CostFunction::LogisticRegression => {
-                Box::new(options.build_logistic_regression_array_strategy(0))
-            }
-            CostFunction::BmcCost => {
-                Box::new(options.build_abstract_array_strategy::<ArrayBMCCost>(
-                    0, // depth=0 for SMTLIB (no temporal unrolling)
-                ))
-            }
-            CostFunction::AstSize => {
-                Box::new(options.build_abstract_array_strategy::<ArrayAstSize>(0))
-            }
-            CostFunction::ProtocolBmc => {
-                Box::new(options.build_abstract_array_strategy::<ProtocolBmcCost>(0))
-            }
-            CostFunction::AdaptiveCost => {
-                Box::new(options.build_abstract_array_strategy::<AdaptiveArrayCost>(0))
-            }
-            CostFunction::SplitCost => {
-                Box::new(options.build_abstract_array_strategy::<SplitArrayCost>(0))
-            }
-            CostFunction::PreferRead => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferRead>(0))
-            }
-            CostFunction::PreferWrite => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferWrite>(0))
-            }
-            CostFunction::PreferConstants => {
-                Box::new(options.build_abstract_array_strategy::<ArrayPreferConstants>(0))
-            }
-            CostFunction::IndexAware => {
-                Box::new(options.build_abstract_array_strategy::<IndexAwareArrayCost>(0))
-            }
-            CostFunction::Generated => {
-                Box::new(options.build_abstract_array_strategy::<ArrayGenerated>(0))
-            }
-        },
-        Strategy::AbstractWithQuantifiers => Box::new(
-            AbstractArrayWithQuantifiers::new(options.run_ic3ia)
-                .with_exact_read_after_write_preprocessing(
-                    options.preprocess_exact_read_after_write,
-                ),
-        ),
-        Strategy::Concrete => Box::new(ConcreteArrayZ3::new(options.run_ic3ia)),
-    }
+) -> Box<dyn ProofStrategy<'static, RefinementState>> {
+    let mut run = options.clone();
+    run.depth = 0; // SMT-LIB sessions have no temporal unrolling.
+    run.build_array_strategy()
 }
 
 /// Print results from strategy-based solving
@@ -297,28 +266,31 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     options.validate_solver_backend_for_vmt_mode()?;
     info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
-    let instantiation_strategy = options.build_instantiation_strategy();
     let mut training_session = TrainingSession::from_options(options)?;
     let solver_capture = options.build_solver_capture();
 
     match options.theory {
         Theory::Array => {
-            let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
-                .with_tracking_options(
-                    options.dump_solver.clone(),
-                    options.track_instantiations,
-                    options.dump_unsat_core.clone(),
-                )
-                .with_profiler(options.build_profiler())
-                .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
-                .with_solver_capture(solver_capture.clone());
+            let proof_plan = options.build_array_proof_plan();
+            let mut driver = Driver::new(
+                vmt_model,
+                proof_plan.instantiation_strategy,
+                proof_plan.solver,
+            )
+            .with_tracking_options(
+                options.dump_solver.clone(),
+                options.track_instantiations,
+                options.dump_unsat_core.clone(),
+            )
+            .with_profiler(options.build_profiler())
+            .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
+            .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
             }
             if options.interpolate {
                 driver.add_extension(Interpolating);
             }
-            let proof_plan = options.build_array_proof_plan();
             if let Some(extension) = proof_plan.conditional_history {
                 driver.add_boxed_extension(extension);
             }
@@ -331,9 +303,11 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                         {
                             log::warn!("Could not finalize failed run capture: {capture_error}");
                         }
+                        if let Some(session) = training_session.as_mut() {
+                            session.complete_result(&result)?;
+                        }
                         print_file_results(result, options)?;
-                    }
-                    if let Some(session) = training_session.as_mut() {
+                    } else if let Some(session) = training_session.as_mut() {
                         session.complete_failure()?;
                     }
                     return Err(err.into());
@@ -349,6 +323,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             todo!("Implement BVList!")
         }
         Theory::List => {
+            let instantiation_strategy = options.build_instantiation_strategy();
             let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
                 .with_tracking_options(
                     options.dump_solver.clone(),
@@ -373,9 +348,11 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                         {
                             log::warn!("Could not finalize failed run capture: {capture_error}");
                         }
+                        if let Some(session) = training_session.as_mut() {
+                            session.complete_result(&result)?;
+                        }
                         print_file_results(result, options)?;
-                    }
-                    if let Some(session) = training_session.as_mut() {
+                    } else if let Some(session) = training_session.as_mut() {
                         session.complete_failure()?;
                     }
                     return Err(err.into());

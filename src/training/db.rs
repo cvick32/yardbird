@@ -379,7 +379,62 @@ impl DbConnection {
         ))
         .execute(&self.pool)
         .await?;
+        sqlx::raw_sql(include_str!("migrations/007_policy_trace.sql"))
+            .execute(&self.pool)
+            .await?;
         Ok(())
+    }
+
+    /// Persist the linked policy trace atomically after candidate rows exist.
+    pub async fn insert_policy_trace(
+        &self,
+        benchmark_id: i64,
+        trace: &super::PolicyTrace,
+    ) -> Result<(), sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        for check in &trace.checks {
+            sqlx::query("INSERT INTO policy_solver_checks (benchmark_id, check_id, schema_version, record) VALUES ($1, $2, $3, $4)")
+                .bind(benchmark_id)
+                .bind(check.check_id as i64)
+                .bind(super::POLICY_TRACE_VERSION as i32)
+                .bind(sqlx::types::Json(check))
+                .execute(&mut *tx).await?;
+        }
+        for decision in &trace.decisions {
+            sqlx::query("INSERT INTO effort_decisions (benchmark_id, decision_index, parent_decision_index, preceding_check_id, subsequent_check_id, schema_version, record) VALUES ($1, $2, $3, $4, $5, $6, $7)")
+                .bind(benchmark_id)
+                .bind(decision.decision_index as i64)
+                .bind(decision.parent_decision_index.map(|id| id as i64))
+                .bind(decision.preceding_check_id.map(|id| id as i64))
+                .bind(decision.subsequent_check_id.map(|id| id as i64))
+                .bind(decision.schema_version as i32)
+                .bind(sqlx::types::Json(decision))
+                .execute(&mut *tx).await?;
+            for candidate in &decision.candidates {
+                sqlx::query("INSERT INTO effort_candidates (benchmark_id, decision_index, abstract_instantiation_id, abstract_instantiation_db_id, selected) VALUES ($1, $2, $3, (SELECT id FROM abstract_instantiations WHERE benchmark_id = $1 AND abstract_instantiation_id = $3), $4) ON CONFLICT (benchmark_id, decision_index, abstract_instantiation_id) DO UPDATE SET selected = effort_candidates.selected OR EXCLUDED.selected")
+                    .bind(benchmark_id)
+                    .bind(decision.decision_index as i64)
+                    .bind(&candidate.abstract_instantiation_id)
+                    .bind(candidate.selected)
+                    .execute(&mut *tx).await?;
+            }
+        }
+        for installation in &trace.installations {
+            sqlx::query("INSERT INTO policy_installations (benchmark_id, installation_index, preceding_check_id, subsequent_check_id, abstract_instantiation_id, record) VALUES ($1, $2, $3, $4, $5, $6)")
+                .bind(benchmark_id)
+                .bind(installation.installation_index as i64)
+                .bind(installation.preceding_check_id.map(|id| id as i64))
+                .bind(installation.subsequent_check_id.map(|id| id as i64))
+                .bind(&installation.installation.abstract_instantiation_id)
+                .bind(sqlx::types::Json(installation))
+                .execute(&mut *tx).await?;
+        }
+        sqlx::query("INSERT INTO policy_run_outcomes (benchmark_id, schema_version, record) VALUES ($1, $2, $3)")
+            .bind(benchmark_id)
+            .bind(trace.outcome.schema_version as i32)
+            .bind(sqlx::types::Json(&trace.outcome))
+            .execute(&mut *tx).await?;
+        tx.commit().await
     }
 
     /// Clear all training tables while preserving the schema.
@@ -387,6 +442,11 @@ impl DbConnection {
         sqlx::query(
             r#"
             TRUNCATE TABLE
+                effort_candidates,
+                effort_decisions,
+                policy_installations,
+                policy_solver_checks,
+                policy_run_outcomes,
                 indexed_instantiations,
                 unsat_events,
                 abstract_instantiation_decisions,

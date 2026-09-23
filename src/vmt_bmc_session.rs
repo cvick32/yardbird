@@ -18,29 +18,25 @@ use smt2parser::{
     },
 };
 
-use crate::{
-    auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec, FrameSpan},
-    instantiation_provenance::{
-        InstantiationInstallResult, InstantiationProvenance, InstantiationRequest,
-        StoredInstantiation,
-    },
-    instantiation_strategy::{
-        assertion_tracker::InstantiationAssertionTracker, InstantiationContext,
-        InstantiationStrategy,
-    },
-    interpolant::SequenceInterpolationQuery,
-    problem_context::ProblemContext,
-    profiling::{SolverCheckMeasurement, SolverProfileMetadata},
-    solver::{
-        check::{run_solver_check, SolverCheckRequest},
-        new_solver_backend, PropertyCheckMode, SolverCapture, SolverCheckResult, YardbirdSolver,
-    },
-    strategies::ProofStrategy,
-    subterm_handler::SubtermHandler,
-    training::IndexedInstantiationRecord,
-    utils::SolverStatistics,
-    SolverBackend,
+use crate::auxiliary_synthesis::{AuxiliaryRecord, AuxiliarySpec, FrameSpan};
+use crate::instance_installation::assertion_tracker::InstantiationAssertionTracker;
+use crate::instance_installation::request::{
+    InstantiationInstallResult, InstantiationRequest, StoredInstantiation,
 };
+use crate::instance_installation::{InstantiationContext, InstantiationStrategy};
+use crate::interpolant::SequenceInterpolationQuery;
+use crate::problem_context::ProblemContext;
+use crate::profiling::{SolverCheckMeasurement, SolverProfileMetadata};
+use crate::rule_matching::provenance::InstantiationProvenance;
+use crate::solver::check::{run_solver_check, SolverCheckRequest};
+use crate::solver::{
+    new_solver_backend, PropertyCheckMode, SolverCapture, SolverCheckResult, YardbirdSolver,
+};
+use crate::strategies::ProofStrategy;
+use crate::subterm_handler::SubtermHandler;
+use crate::training::IndexedInstantiationRecord;
+use crate::utils::SolverStatistics;
+use crate::SolverBackend;
 
 const DUMP_PROPERTY_LABEL: &str = "yardbird_negated_property";
 
@@ -195,12 +191,8 @@ impl VmtBmcSession {
             .filter(|function| function.name.starts_with("Read_") && function.arg_sorts.len() == 2)
             .map(|function| {
                 (
-                    crate::theories::array::array_axioms::ArrayLanguage::sort_to_name(
-                        &function.arg_sorts[1],
-                    ),
-                    crate::theories::array::array_axioms::ArrayLanguage::sort_to_name(
-                        &function.return_sort,
-                    ),
+                    crate::terms::language::TermLanguage::sort_to_name(&function.arg_sorts[1]),
+                    crate::terms::language::TermLanguage::sort_to_name(&function.return_sort),
                 )
             })
             .collect();
@@ -209,7 +201,9 @@ impl VmtBmcSession {
         let refinement_terms = strategy.refinement_logic_terms();
         logic_terms.extend(&refinement_terms);
         let logic = theory.get_logic_string_for_problem(&logic_terms, &vmt_model.as_commands())?;
-        let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
+        // Adapt outside capture so transcripts contain the actual solver encoding.
+        let solver =
+            theory.wrap_solver(new_solver_backend(solver_backend, &logic, solver_capture)?);
 
         let mut smt = VmtBmcSession {
             sorts: vmt_model.get_sorts(),
@@ -771,7 +765,7 @@ impl VmtBmcSession {
             term: String,
             abstract_instantiation_id: Option<String>,
             frame: u16,
-            substitution: Vec<crate::instantiation_provenance::InstantiationSubstitution>,
+            substitution: Vec<crate::rule_matching::provenance::InstantiationSubstitution>,
             in_core: bool,
         }
 
@@ -1052,6 +1046,17 @@ impl VmtBmcSession {
 }
 
 impl ProblemContext for VmtBmcSession {
+    fn get_refinement_declarations(&self) -> Vec<Command> {
+        self.function_definitions
+            .iter()
+            .chain(&self.variable_definitions)
+            .chain(&self.input_variables)
+            .chain(&self.action_variables)
+            .chain(self.variables.iter().map(|v| &v.current))
+            .cloned()
+            .collect()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -1107,6 +1112,10 @@ impl ProblemContext for VmtBmcSession {
             .collect()
     }
 
+    fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {
+        self.asserted_instantiation_terms.iter().collect()
+    }
+
     fn get_variables(&self) -> &[Variable] {
         &self.variables
     }
@@ -1124,6 +1133,10 @@ impl ProblemContext for VmtBmcSession {
             term,
             self.bmc_builder.definition_frames().clone(),
         )
+    }
+
+    fn supports_eager_instantiation(&self) -> bool {
+        self.instantiation_strategy.supports_eager_instantiation()
     }
 
     fn make_provenanced_unquantified_instance(
@@ -1215,17 +1228,14 @@ mod tests {
         CommandStream,
     };
 
-    use crate::{
-        auxiliary_synthesis::{
-            AuxiliarySpec, FrameSpan, GuardPolicy, HistoryCaptureMode, HistorySpec,
-            NonMonotonicityCheckRecord, NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
-        },
-        cost_functions::array::ArrayBMCCost,
-        instantiation_strategy::{
-            full_unroll::FullUnrollStrategy, schema_batch::SchemaBatchStrategy,
-        },
-        strategies::{Abstract, ArrayRefinementState, ConcreteArrayZ3, ProofStrategy},
+    use crate::auxiliary_synthesis::{
+        AuxiliarySpec, FrameSpan, GuardPolicy, HistoryCaptureMode, HistorySpec,
+        NonMonotonicityCheckRecord, NonMonotonicityStatus, ProphecySpec, SynthesisTrigger,
     };
+    use crate::instance_installation::full_unroll::FullUnrollStrategy;
+    use crate::instance_installation::schema_batch::SchemaBatchStrategy;
+    use crate::policy::term_selection::array::ArrayBMCCost;
+    use crate::strategies::{Abstract, ConcreteArrayZ3, ProofStrategy, RefinementState};
 
     use super::*;
 
@@ -1279,7 +1289,7 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+        let mut strategy: Box<dyn ProofStrategy<'_, RefinementState>> =
             Box::new(ConcreteArrayZ3::new(false));
         let model = strategy.configure_model(model);
         let mut smt = VmtBmcSession::new(
@@ -1333,8 +1343,7 @@ mod tests {
         let model = VMTModel::checked_from(commands).unwrap();
         let mut concrete_strategy = ConcreteArrayZ3::new(false);
         let model = concrete_strategy.configure_model(model);
-        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
-            Box::new(concrete_strategy);
+        let strategy: Box<dyn ProofStrategy<'_, RefinementState>> = Box::new(concrete_strategy);
         let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
@@ -1397,10 +1406,10 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(2, false, (), false);
+        let mut concrete_strategy =
+            Abstract::<ArrayBMCCost>::new(2, false, crate::YardbirdPolicy::new(()), false);
         let model = concrete_strategy.configure_model(model);
-        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
-            Box::new(concrete_strategy);
+        let strategy: Box<dyn ProofStrategy<'_, RefinementState>> = Box::new(concrete_strategy);
         let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
@@ -1469,7 +1478,7 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+        let mut strategy: Box<dyn ProofStrategy<'_, RefinementState>> =
             Box::new(ConcreteArrayZ3::new(false));
         let model = strategy.configure_model(model);
         let mut smt = VmtBmcSession::new(
@@ -1511,7 +1520,7 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+        let mut strategy: Box<dyn ProofStrategy<'_, RefinementState>> =
             Box::new(ConcreteArrayZ3::new(false));
         let model = strategy.configure_model(model);
         let mut smt = VmtBmcSession::new(
@@ -1549,7 +1558,7 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
+        let mut strategy: Box<dyn ProofStrategy<'_, RefinementState>> =
             Box::new(ConcreteArrayZ3::new(false));
         let model = strategy.configure_model(model);
 
@@ -1574,11 +1583,11 @@ mod tests {
     #[test]
     fn installs_auxiliary_specs_for_existing_and_future_frames() {
         let model = VMTModel::from_path("./examples/array/array_copy.vmt").unwrap();
-        let mut concrete_strategy = Abstract::<ArrayBMCCost>::new(4, false, (), false)
-            .with_property_check_mode(PropertyCheckMode::Assumptions);
+        let mut concrete_strategy =
+            Abstract::<ArrayBMCCost>::new(4, false, crate::YardbirdPolicy::new(()), false)
+                .with_property_check_mode(PropertyCheckMode::Assumptions);
         let model = concrete_strategy.configure_model(model);
-        let strategy: Box<dyn ProofStrategy<'_, ArrayRefinementState>> =
-            Box::new(concrete_strategy);
+        let strategy: Box<dyn ProofStrategy<'_, RefinementState>> = Box::new(concrete_strategy);
         let mut smt = VmtBmcSession::new(
             &model,
             &strategy,
