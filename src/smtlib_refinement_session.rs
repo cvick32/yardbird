@@ -559,6 +559,17 @@ impl ProblemContext for SmtlibRefinementSession {
         self.get_instantiations()
     }
 
+    fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {
+        self.assertions
+            .iter()
+            .chain(
+                self.instantiations
+                    .iter()
+                    .map(|stored| stored.inst.get_term()),
+            )
+            .collect()
+    }
+
     fn get_variables(&self) -> &[smt2parser::vmt::variable::Variable] {
         // SMTLIB problems don't have VMT-style state variables
         &[]

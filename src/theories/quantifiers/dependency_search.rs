@@ -389,14 +389,12 @@ impl PreparedQuantifierSearch {
 /// here. One step expands one queued goal and retains every unfinished path.
 type DependencyJob = (Goal, Goal, Vec<BinderSearchRequest>, HashSet<Goal>);
 
-#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
 pub(crate) struct DependencyAgenda {
     index: DependencyIndex,
     roots: HashSet<Term>,
     queue: VecDeque<DependencyJob>,
     waiting: HashMap<Term, Vec<DependencyJob>>,
 }
-#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
 impl DependencyAgenda {
     pub fn new(plan: &QuantifierPlan, roots: Vec<Term>) -> Self {
         Self {

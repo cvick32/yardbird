@@ -1112,6 +1112,10 @@ impl ProblemContext for VmtBmcSession {
             .collect()
     }
 
+    fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {
+        self.asserted_instantiation_terms.iter().collect()
+    }
+
     fn get_variables(&self) -> &[Variable] {
         &self.variables
     }

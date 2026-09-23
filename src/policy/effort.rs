@@ -218,6 +218,7 @@ pub struct DefaultEffort {
     step: u32,
     dependency_model: Option<u64>,
     discovered_this_pass: bool,
+    dependency_slices: usize,
     requests: HashSet<usize>,
     next_rule: HashMap<SearchPhase, usize>,
 }
@@ -236,6 +237,7 @@ impl Default for DefaultEffort {
             step: 0,
             dependency_model: None,
             discovered_this_pass: false,
+            dependency_slices: 0,
             requests: HashSet::new(),
             next_rule: HashMap::new(),
         }
@@ -364,6 +366,7 @@ impl ProofEffort for DefaultEffort {
                     self.retry = false;
                 }
                 self.discovered_this_pass = false;
+                self.dependency_slices = 0;
                 self.requests.clear();
             }
             EffortEvent::BinderPage {
@@ -383,8 +386,13 @@ impl ProofEffort for DefaultEffort {
                 self.stage = match operation {
                     OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
-                        self.dependency_model = Some(self.model);
-                        self.discovered_this_pass = true;
+                        self.dependency_slices += 1;
+                        // Bound the burst so general matching and the driver's
+                        // cooperative timeout still get turns. Pending symbolic
+                        // work survives the burst and is resumed next time.
+                        let resume = report.continuable && self.dependency_slices < 8;
+                        self.dependency_model = (!resume).then_some(self.model);
+                        self.discovered_this_pass = !resume;
                         Stage::Dependencies
                     }
                     OperationKind::DependencyRequest(i) => {
@@ -495,5 +503,68 @@ impl EffortCandidate {
                 substitution: candidate.provenance.relative_substitution(),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod continuation_tests {
+    use super::*;
+
+    #[test]
+    fn unfinished_dependencies_resume_but_eventually_yield_to_general_matching() {
+        let mut policy = DefaultEffort::default();
+        policy.observe(&EffortEvent::BeginPass {
+            model: 1,
+            depth: 4,
+            refinement_step: 0,
+        });
+        let operations = [
+            OperationKind::DiscoverDependencies,
+            OperationKind::Binder(SearchPhase::Witnesses),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, kind)| EffortOperation {
+            id: OperationId {
+                model: 1,
+                offer: 1,
+                index,
+            },
+            kind,
+            description: String::new(),
+        })
+        .collect::<Vec<_>>();
+        let context = EffortContext {
+            model: 1,
+            graph_version: 1,
+            depth: 4,
+            refinement_step: 0,
+            pending_instances: 0,
+            operations: &operations,
+        };
+        let mut slices = 0;
+        loop {
+            let EffortDecision::Execute { operation, .. } = policy.choose(&context) else {
+                panic!("must give the general matcher a turn");
+            };
+            if operation == operations[1].id {
+                break;
+            }
+            assert_eq!(operation, operations[0].id);
+            slices += 1;
+            assert!(
+                slices < 100,
+                "continuation must yield within a bounded burst"
+            );
+            policy.observe(&EffortEvent::Completed {
+                operation: OperationKind::DiscoverDependencies,
+                report: &WorkReport {
+                    continuable: true,
+                    budget_exhausted: true,
+                    ..Default::default()
+                },
+            });
+        }
+        assert!(slices > 1, "a paused agenda must get a continuation");
     }
 }

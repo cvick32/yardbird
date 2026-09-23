@@ -201,12 +201,12 @@ impl InstantiationBatch {
             candidate.selected = false;
         }
 
-        // Full search spends its per-e-class budget before novelty checks:
-        // rejecting a winner must not promote another match from that group.
+        // Full search spends its group budget before novelty checks. Exact
+        // obligation instances use a rule group; e-graph matches use an e-class.
+        // Rejecting a winner must not promote another match from that group.
         if scope == CandidateScope::AllCandidates {
             self.select_groups(winners_per_group, ranker, |candidate| {
                 candidate.rule.category() == QuantifiedRuleCategory::ArrayAxiom
-                    && matches!(candidate.group, CandidateGroup::MatchRoot(_))
             });
         }
         let mut rejected = 0;

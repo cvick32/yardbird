@@ -30,12 +30,9 @@ pub(crate) use lowering::{
 mod binder_request;
 #[cfg(test)]
 mod binder_request_tests;
-#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
 pub(crate) mod clauses;
 pub(crate) mod dependency_search;
-#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
 pub(crate) mod equations;
-#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
 pub(crate) mod obligations;
 mod partial_tuple;
 mod violation_plan;

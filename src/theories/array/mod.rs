@@ -7,7 +7,6 @@ pub(crate) mod eager_source;
 pub(crate) mod encodings;
 pub(crate) mod grounding;
 pub(crate) mod native;
-#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
 pub(crate) mod obligations;
 pub(crate) mod refinement;
 pub mod rule;

@@ -51,6 +51,7 @@ where
     offer_sequence: u64,
     array: ArrayRefinement,
     quantifier: QuantifierRefinement,
+    obligations: crate::refinement_obligations::RefinementObligations,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     term_selection_counts: FxHashMap<String, u32>,
@@ -79,6 +80,7 @@ where
             offer_sequence: 0,
             array: ArrayRefinement::default(),
             quantifier: QuantifierRefinement::default(),
+            obligations: Default::default(),
             decision_data: vec![],
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
@@ -255,6 +257,7 @@ where
             model
         };
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
+        self.obligations = Default::default();
         let model = self.quantifier.configure_model(model, self.profile);
         if self.quantifier.configuration_error.is_some() {
             return model;
@@ -422,7 +425,7 @@ where
             if !self.quantifier.plan.rules.is_empty() {
                 kinds.push((
                     OperationKind::DiscoverDependencies,
-                    "discover dependency paths".into(),
+                    "discover property/action obligations and dependency paths".into(),
                 ));
                 if let Some(search) = &state.binder_search {
                     for (i, request) in search.requests.iter().enumerate() {
@@ -561,9 +564,13 @@ where
             let mut retain = false;
             match operation.kind {
                 OperationKind::DiscoverDependencies => {
-                    report = self
-                        .quantifier
-                        .discover(&mut state.binder_search, &context)?;
+                    (report, batch) = self.quantifier.discover_obligations(
+                        &mut state.binder_search,
+                        &mut self.obligations,
+                        self.array.property_cone.provenance.transition_index(),
+                        &context,
+                    )?;
+                    retain = report.selected > 0;
                 }
                 OperationKind::DependencyRequest(i) => {
                     batch = self.quantifier.dependency_request(
@@ -1349,7 +1356,7 @@ mod tests {
         assert!(!result.counterexample);
         assert!(result.profiling.cost_records.iter().any(|record| record
             .counters
-            .get("input_binder_dependency_instances_selected")
+            .get("obligation_selected_instances")
             .copied()
             .unwrap_or(0)
             > 0));

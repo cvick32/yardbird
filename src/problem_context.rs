@@ -67,6 +67,12 @@ pub trait ProblemContext {
 
     fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult;
     fn get_instantiations(&self) -> Vec<Term>;
+    /// Ground formulas already asserted by refinement, after frame placement
+    /// and materialization. SMT-LIB inputs may also contain replayed instances.
+    /// These are search hints; callers must not reinterpret them as schemas.
+    fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {
+        vec![]
+    }
     fn get_variables(&self) -> &[Variable];
     fn get_number_instantiations_added(&self) -> u64;
 

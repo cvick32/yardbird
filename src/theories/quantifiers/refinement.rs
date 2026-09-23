@@ -132,6 +132,61 @@ impl QuantifierRefinement {
         Ok(())
     }
 
+    pub(crate) fn discover_obligations<F: TermCostFactory + 'static>(
+        &mut self,
+        state: &mut Option<BinderSearchState>,
+        obligations: &mut crate::refinement_obligations::RefinementObligations,
+        index: &crate::transition_index::TransitionIndex,
+        context: &SearchContext<'_, F>,
+    ) -> anyhow::Result<(crate::policy::effort::WorkReport, InstantiationBatch)> {
+        // Structural transport follows explicit stores. Lambda-defined arrays
+        // need their equation matcher; do not steer those models with an
+        // incomplete structural explanation. SMTLIB/actionless inputs likewise
+        // retain their existing dependency search.
+        if index.actions().is_empty()
+            || self
+                .plan
+                .rules
+                .iter()
+                .any(|rule| rule.kind == super::BinderKind::Lambda)
+        {
+            return Ok((
+                self.discover(state, context)?,
+                InstantiationBatch::default(),
+            ));
+        }
+        let discovery = obligations.discover(
+            &self.plan,
+            index,
+            context.smt,
+            context.depth,
+            context
+                .operation_id
+                .map(|id| id.model)
+                .unwrap_or(context.refinement_step as u64),
+            &context.allowance,
+        )?;
+        let batch = obligations.candidates(context)?;
+        let mut report = crate::policy::effort::WorkReport::from_batch(&batch);
+        report.dependency_work = discovery.work;
+        report.continuable = discovery.pending > 0;
+        report.budget_exhausted = report.continuable;
+        if let Some(profile) = &context.profiling {
+            let mut p = profile.borrow_mut();
+            p.add_counter("obligation_demands", discovery.demands as u64);
+            p.add_counter("obligation_pending_work", discovery.pending as u64);
+            p.add_counter("obligation_search_contexts", discovery.contexts as u64);
+        }
+        if report.selected == 0 && !report.continuable {
+            let fallback = self.discover(state, context)?;
+            report.dependency_work += fallback.dependency_work;
+            report.budget_exhausted |= fallback.budget_exhausted;
+        } else {
+            state.as_mut().unwrap().dependencies_searched = !report.continuable;
+        }
+        Ok((report, batch))
+    }
+
     pub(crate) fn discover<F: TermCostFactory + 'static>(
         &mut self,
         state: &mut Option<BinderSearchState>,

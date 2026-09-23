@@ -141,7 +141,9 @@ fn german_depth_two_characterizes_current_array_refinement() {
         .map(ToString::to_string)
         .collect::<Vec<_>>();
     assert_eq!(result.total_refinement_steps, 4);
-    assert_eq!(result.total_instantiations_added, 4);
+    // Directed transport shares the constant-array schema and follows the
+    // enabled cache write, saving one assertion over general array search.
+    assert_eq!(result.total_instantiations_added, 3);
     assert!(!result.counterexample);
     assert!(!result.found_proof);
     assert_eq!(used_instances.len(), 2);
@@ -150,7 +152,7 @@ fn german_depth_two_characterizes_current_array_refinement() {
         .any(|instance| { instance.contains("(ConstArr_client_Bool homeCurrentReqExclusive+0)") }));
     assert!(used_instances
         .iter()
-        .any(|instance| instance.contains("(ConstArr_client_Bool grantExclusiveRule+0)")));
+        .any(|instance| instance.contains("(Write_client_Bool cacheExclusive+0")));
 }
 
 #[test]

@@ -154,7 +154,6 @@ impl TransitionIndex {
     }
 
     /// Expand a definition at its actual frame without reframing witness captures.
-    #[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
     pub(crate) fn expand_framed_leaf(&self, term: &Term) -> Option<Term> {
         let name = leaf_symbol(term)?;
         if let Some(definition) = self.definitions.get(&name) {
