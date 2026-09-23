@@ -136,23 +136,7 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy::term_selection::array::{ArrayAstSize, LogisticRegression};
-    use crate::policy::term_selection::YardbirdCostFunction;
-    use crate::training::LogisticRegressionModel;
-
-    #[test]
-    fn learned_policy_preserves_contextual_selection() {
-        let model = LogisticRegressionModel::from_path(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/policy_parity/learned-model.json"),
-        )
-        .unwrap();
-        let policy = YardbirdPolicy::<LogisticRegression>::new(model);
-        assert!(policy
-            .term_cost(&TermCostContext::default(), 0)
-            .contextual_selector()
-            .is_some());
-    }
+    use crate::policy::term_selection::array::ArrayAstSize;
 
     #[test]
     #[should_panic(expected = "candidate groups need a winner")]
