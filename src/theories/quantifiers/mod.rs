@@ -30,7 +30,9 @@ pub(crate) use lowering::{
 mod binder_request;
 #[cfg(test)]
 mod binder_request_tests;
-mod dependency_search;
+pub(crate) mod dependency_search;
+#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
+pub(crate) mod obligations;
 mod partial_tuple;
 mod violation_plan;
 use crate::rule_matching::candidate::InstantiationBatch;

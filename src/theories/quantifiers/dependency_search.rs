@@ -5,13 +5,13 @@ use crate::problem_context::ProblemContext;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct Goal {
-    atom: Term,
-    truth: bool,
+pub(crate) struct Goal {
+    pub(crate) atom: Term,
+    pub(crate) truth: bool,
 }
 
 impl Goal {
-    fn new(term: &Term, truth: bool) -> Self {
+    pub(crate) fn new(term: &Term, truth: bool) -> Self {
         if let Term::Application {
             qual_identifier,
             arguments,

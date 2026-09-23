@@ -153,6 +153,18 @@ impl TransitionIndex {
         builder.index_single_step_term(term.clone())
     }
 
+    /// Expand a definition at its actual frame without reframing witness captures.
+    #[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
+    pub(crate) fn expand_framed_leaf(&self, term: &Term) -> Option<Term> {
+        let name = leaf_symbol(term)?;
+        if let Some(definition) = self.definitions.get(&name) {
+            return Some(definition.body().clone());
+        }
+        let (base, frame) = smt2parser::vmt::split_framed_symbol(&name)?;
+        let definition = self.definitions.get(&base)?;
+        Some(self.index_term(definition.body(), u16::try_from(frame).ok()?))
+    }
+
     /// Selection is local to this model and transition frame. None covers
     /// actionless inputs or a stuttering encoding with no asserted action flag.
     pub fn selected_action(
