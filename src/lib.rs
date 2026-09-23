@@ -61,6 +61,7 @@ pub mod terms;
 pub mod theories;
 pub mod theory_support;
 pub mod training;
+pub mod transition_index;
 mod utils;
 pub mod vmt_bmc_session;
 
