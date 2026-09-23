@@ -264,6 +264,13 @@ where
             self.preprocess_exact_read_after_write,
             self.encoding_options,
             self.policy.effort().requires_property_cone(),
+            &self
+                .quantifier
+                .plan
+                .rules
+                .iter()
+                .map(|rule| rule.name.clone())
+                .collect(),
         )
     }
 
@@ -1286,6 +1293,30 @@ mod tests {
         assert!(discovery.paths.is_empty());
         assert!(discovery.budget_exhausted);
         assert!(discovery.work <= 512);
+    }
+
+    #[test]
+    fn configuration_retains_action_binder_links_without_profiling_or_cone_policy() {
+        let model =
+            VMTModel::from_path("examples/distributed_protocols/paxos/paxos.encoding.vmt").unwrap();
+        let mut strategy =
+            Abstract::<ArrayAstSize>::new(2, false, crate::YardbirdPolicy::new(()), false);
+        assert!(!strategy.policy.effort().requires_property_cone());
+        strategy.configure_model(model);
+        let index = strategy.array.property_cone.provenance.transition_index();
+        assert_eq!(index.actions().len(), 5);
+        let helpers = index.actions()["decide"]
+            .requirements
+            .iter()
+            .flat_map(|r| &r.binders)
+            .collect::<Vec<_>>();
+        assert_eq!(helpers.len(), 1);
+        assert!(strategy
+            .quantifier
+            .plan
+            .rules
+            .iter()
+            .any(|r| r.name == helpers[0].helper && r.body.to_string().contains("member")));
     }
 
     #[test]

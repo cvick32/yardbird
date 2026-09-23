@@ -1,5 +1,7 @@
 use super::*;
+use crate::theories::array::array_dataflow::{DataflowRole, StaticArrayProvenance};
 use smt2parser::{concrete::SyntaxBuilder, CommandStream};
+use std::sync::Arc;
 
 fn parse(input: &str) -> VMTModel {
     VMTModel::checked_from(
@@ -35,9 +37,12 @@ fn example() -> VMTModel {
 }
 
 #[test]
-fn keeps_action_body_branches_binder_links_and_updates_together() {
+fn keeps_action_body_branches_binder_links_and_array_sites_together() {
     let model = example();
-    let index = TransitionIndex::from_model(&model, &HashSet::from(["guard".into()]));
+    let index = Arc::new(TransitionIndex::from_model(
+        &model,
+        &HashSet::from(["guard".into()]),
+    ));
     let action = &index.actions()["send"];
     // The requirement resolves the zero-argument helper and retains the full
     // Boolean structure, including the alternative to the quantified guard.
@@ -60,6 +65,11 @@ fn keeps_action_body_branches_binder_links_and_updates_together() {
         .iter()
         .any(|g| g.expression.to_string() == "choose" && !g.required_value)));
     assert_eq!(index.action_updates("idle").count(), 1);
+    let arrays = StaticArrayProvenance::with_transition_index(&model, index);
+    assert!(arrays
+        .action_sites("send")
+        .iter()
+        .any(|s| s.role == DataflowRole::WriteIndex && s.expression.to_string() == "2"));
 }
 
 #[test]

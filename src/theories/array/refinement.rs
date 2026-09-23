@@ -11,9 +11,10 @@ use crate::rule_matching::candidate::InstantiationBatch;
 use crate::rule_matching::candidate_builder::{InstantiationInstrumentation, InstantiationOptions};
 use crate::terms::language::{expr_to_term, TermLanguage};
 use crate::theories::array::array_axioms::generate_array_instantiation_candidates_with_budget;
-use crate::theories::array::array_dataflow::{build_property_cone, PropertyCone};
+use crate::theories::array::array_dataflow::{PropertyCone, StaticArrayProvenance};
 use crate::theories::array::array_egraph_builder::ArrayEGraphExpansion;
 use crate::theories::array::encodings::{EncodingOptions, EncodingPlan};
+use crate::transition_index::TransitionIndex;
 use log::trace;
 use smt2parser::vmt::VMTModel;
 use std::{
@@ -35,17 +36,24 @@ impl ArrayRefinement {
         preprocess: bool,
         encoding_options: EncodingOptions,
         requires_property_cone: bool,
+        binder_helpers: &HashSet<String>,
     ) -> VMTModel {
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(preprocess);
         let (abstracted_model, encoding_plan) =
             EncodingPlan::apply(abstracted_model, &discovered_types, encoding_options);
         self.encoding_plan = encoding_plan;
-        self.property_cone = if requires_property_cone {
-            build_property_cone(&abstracted_model)
-        } else {
-            PropertyCone::default()
-        };
+        self.property_cone =
+            if requires_property_cone || !abstracted_model.get_action_variables().is_empty() {
+                let transitions = std::sync::Arc::new(TransitionIndex::from_model(
+                    &abstracted_model,
+                    binder_helpers,
+                ));
+                StaticArrayProvenance::with_transition_index(&abstracted_model, transitions)
+                    .property_cone()
+            } else {
+                PropertyCone::default()
+            };
         self.array_types = discovered_types;
         abstracted_model
     }
