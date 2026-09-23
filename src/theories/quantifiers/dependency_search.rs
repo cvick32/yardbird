@@ -35,7 +35,7 @@ impl Goal {
         }
     }
 
-    fn key(&self) -> Option<(String, bool)> {
+    pub(super) fn key(&self) -> Option<(String, bool)> {
         match &self.atom {
             Term::Application {
                 qual_identifier, ..
@@ -201,12 +201,6 @@ impl PreparedQuantifierSearch {
                 }
             });
         }
-        let mut roots = HashSet::new();
-        for term in smt.get_source_subterms() {
-            applications(term, &mut |term| {
-                roots.insert(term.clone());
-            });
-        }
         let mut demands = Vec::new();
         let mut seen = HashSet::new();
         let mut result = DependencySearch::default();
@@ -256,7 +250,36 @@ impl PreparedQuantifierSearch {
                 demands.push(goal);
             }
         }
-        result.demands = demands.len();
+        let remaining = crate::policy::effort::WorkAllowance {
+            dependency_work: allowance.dependency_work.saturating_sub(result.work),
+            ..*allowance
+        };
+        let explicit = self.paths_from_demands(smt, &remaining, demands)?;
+        result.work += explicit.work;
+        result.demands = explicit.demands;
+        result.paths = explicit.paths;
+        result.budget_exhausted |= explicit.budget_exhausted;
+        Ok(result)
+    }
+
+    /// Preserve the requested sign even when a predecessor atom already has
+    /// that value in this model. Its instances may be needed in the next model.
+    pub(crate) fn paths_from_demands(
+        &mut self,
+        smt: &dyn ProblemContext,
+        allowance: &crate::policy::effort::WorkAllowance,
+        demands: Vec<Goal>,
+    ) -> anyhow::Result<DependencySearch> {
+        let mut roots = HashSet::new();
+        for term in smt.get_source_subterms() {
+            applications(term, &mut |term| {
+                roots.insert(term.clone());
+            });
+        }
+        let mut result = DependencySearch {
+            demands: demands.len(),
+            ..Default::default()
+        };
         // One shared breadth-first queue prefers short routes across demands,
         // rather than exhausting a difficult demand before considering another.
         let mut queue = demands
@@ -362,6 +385,132 @@ impl PreparedQuantifierSearch {
     }
 }
 
+/// Symbolic backward-search continuations; no e-class IDs or model values live
+/// here. One step expands one queued goal and retains every unfinished path.
+type DependencyJob = (Goal, Goal, Vec<BinderSearchRequest>, HashSet<Goal>);
+
+#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
+pub(crate) struct DependencyAgenda {
+    index: DependencyIndex,
+    roots: HashSet<Term>,
+    queue: VecDeque<DependencyJob>,
+    waiting: HashMap<Term, Vec<DependencyJob>>,
+}
+#[allow(dead_code)] // Connected by the upcoming obligation-discovery integration.
+impl DependencyAgenda {
+    pub fn new(plan: &QuantifierPlan, roots: Vec<Term>) -> Self {
+        Self {
+            index: DependencyIndex::new(&plan.rules),
+            roots: roots.into_iter().collect(),
+            queue: VecDeque::new(),
+            waiting: HashMap::new(),
+        }
+    }
+    pub fn add_goal(&mut self, goal: Goal) {
+        self.queue
+            .push_back((goal.clone(), goal, vec![], HashSet::new()));
+    }
+    pub fn add_root(&mut self, root: Term) {
+        if self.roots.insert(root.clone()) {
+            self.queue
+                .extend(self.waiting.remove(&root).into_iter().flatten());
+        }
+    }
+    pub fn pending(&self) -> usize {
+        self.queue.len()
+    }
+    pub fn step(
+        &mut self,
+        plan: &QuantifierPlan,
+        mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+    ) -> anyhow::Result<Vec<crate::rule_matching::candidate::SymbolicInstance>> {
+        let Some((demand, goal, requests, mut visited)) = self.queue.pop_front() else {
+            return Ok(vec![]);
+        };
+        // A helper discovered by another operation can activate this path
+        // later. Keep its cursor before marking the goal visited.
+        if goal.truth
+            && goal
+                .key()
+                .is_some_and(|k| self.index.helpers.contains_key(&k.0))
+            && !self.roots.contains(&goal.atom)
+            && !visited.contains(&goal)
+        {
+            self.waiting.entry(goal.atom.clone()).or_default().push((
+                demand.clone(),
+                goal.clone(),
+                requests.clone(),
+                visited.clone(),
+            ));
+        }
+        if !visited.insert(goal.clone()) {
+            return Ok(vec![]);
+        }
+        let Some(key) = goal.key() else {
+            return Ok(vec![]);
+        };
+        if goal.truth
+            && self.index.helpers.contains_key(&key.0)
+            && self.roots.contains(&goal.atom)
+            && evaluate(&goal.atom)?.trim() == "true"
+        {
+            return Ok(requests
+                .iter()
+                .rev()
+                .filter_map(|r| plan.dependency_instance(r))
+                .collect());
+        }
+        for producer in self.index.producers.get(&key).into_iter().flatten() {
+            let rule = &plan.rules[producer.rule];
+            let variables = rule
+                .captures
+                .iter()
+                .chain(&rule.variables)
+                .cloned()
+                .collect();
+            let mut bindings = HashMap::new();
+            if !unify(
+                &producer.conclusion.atom,
+                &goal.atom,
+                &variables,
+                &plan.signatures,
+                &mut bindings,
+            ) {
+                continue;
+            }
+            if rule.unit_capture {
+                bindings.insert(rule.captures[0].0.clone(), app("true", vec![]));
+            }
+            let Some(arguments) = rule
+                .captures
+                .iter()
+                .map(|(n, _)| bindings.get(n).cloned())
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            let mut path = requests.clone();
+            path.push(BinderSearchRequest {
+                helper: rule.name.clone(),
+                phase: SearchPhase::Conflicts,
+                bindings: rule
+                    .captures
+                    .iter()
+                    .chain(&rule.variables)
+                    .filter_map(|(n, _)| bindings.get(n).map(|t| (n.clone(), t.clone())))
+                    .collect(),
+            });
+            self.queue.push_back((
+                demand.clone(),
+                Goal::new(&app(&rule.name, arguments), true),
+                path,
+                visited.clone(),
+            ));
+        }
+        Ok(vec![])
+    }
+}
+
 fn model_value(
     term: &Term,
     smt: &dyn ProblemContext,
@@ -375,7 +524,7 @@ fn model_value(
     Ok(value)
 }
 
-fn unify(
+pub(super) fn unify(
     pattern: &Term,
     ground: &Term,
     variables: &HashMap<Symbol, Sort>,
@@ -442,6 +591,45 @@ mod tests {
             Goal::new(&"(= false (p true))".parse().unwrap(), true),
             Goal::new(&"(p true)".parse().unwrap(), false)
         );
+    }
+
+    #[test]
+    fn dependency_chains_resume_and_wake_when_their_root_is_discovered() {
+        for length in [1, 2, 4, 8, 16] {
+            let mut plan = QuantifierPlan::default();
+            for i in 0..length {
+                plan.rules.push(BinderRule {
+                    name: format!("q{i}"),
+                    kind: BinderKind::Forall,
+                    captures: vec![(Symbol(format!("unit{i}")), string_to_sort("Bool"))],
+                    variables: vec![(Symbol(format!("x{i}")), string_to_sort("Bool"))],
+                    body: app(&format!("q{}", i + 1), vec![app(&format!("x{i}"), vec![])]),
+                    witnesses: vec![format!("w{i}")],
+                    result_sort: string_to_sort("Bool"),
+                    unit_capture: true,
+                });
+            }
+            let root = app("q0", vec![app("true", vec![])]);
+            let mut agenda = DependencyAgenda::new(&plan, vec![]);
+            agenda.add_goal(Goal::new(
+                &app(&format!("q{length}"), vec![app("true", vec![])]),
+                true,
+            ));
+            let mut steps = 0;
+            while agenda.pending() > 0 {
+                assert!(agenda
+                    .step(&plan, |_| Ok("true".into()))
+                    .unwrap()
+                    .is_empty());
+                steps += 1;
+                assert!(steps <= length + 1);
+            }
+            agenda.add_root(root);
+            assert!(agenda.pending() > 0, "new root must wake a suspended path");
+            let instances = agenda.step(&plan, |_| Ok("true".into())).unwrap();
+            assert_eq!(instances.len(), length, "must not truncate a long chain");
+            assert_eq!(agenda.pending(), 0);
+        }
     }
 
     #[test]
