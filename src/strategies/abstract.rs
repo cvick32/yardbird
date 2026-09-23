@@ -62,6 +62,7 @@ where
     preprocess_exact_read_after_write: bool,
     encoding_options: EncodingOptions,
     property_check_mode: PropertyCheckMode,
+    native_arrays: bool,
 }
 
 impl<F> Abstract<F>
@@ -89,6 +90,7 @@ where
             preprocess_exact_read_after_write: false,
             encoding_options: EncodingOptions::default(),
             property_check_mode: PropertyCheckMode::Scoped,
+            native_arrays: false,
         }
     }
 
@@ -114,6 +116,12 @@ where
 
     pub fn with_property_check_mode(mut self, mode: PropertyCheckMode) -> Self {
         self.property_check_mode = mode;
+        self
+    }
+
+    /// Diagnostic ablation: retain Yardbird binders with native solver arrays.
+    pub fn with_native_arrays(mut self, enabled: bool) -> Self {
+        self.native_arrays = enabled;
         self
     }
 }
@@ -223,7 +231,10 @@ where
     }
 
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
-        Box::new(ArrayTheorySupport::new(self.array.array_types.clone()))
+        Box::new(
+            ArrayTheorySupport::new(self.array.array_types.clone())
+                .with_native_semantics(self.native_arrays),
+        )
     }
 
     fn property_check_mode(&self) -> PropertyCheckMode {

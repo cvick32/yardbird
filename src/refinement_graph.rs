@@ -158,14 +158,14 @@ impl RefinementGraph {
             }
         }
         if model_literals && !value.contains("!val!") {
-            let raw = crate::terms::preprocess::preprocess_array_expr(&value);
-            let parsed: TermExpr = raw.parse()?;
             // Literal values are useful array representatives, but an SMT
             // model's private elements must never become candidate terms.
             let value_sort = value.parse::<Term>().ok().and_then(|t| {
                 crate::theories::quantifiers::term_sort(&t, &self.signatures, &HashMap::new()).ok()
             });
             if sort.is_some() && sort == value_sort {
+                let raw = crate::terms::preprocess::preprocess_array_expr(&value);
+                let parsed: TermExpr = raw.parse()?;
                 let value_id = self.egraph.add_expr(&parsed);
                 self.egraph.union(id, value_id);
             }

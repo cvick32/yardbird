@@ -141,6 +141,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub guarded_read_updates: bool,
 
+    /// Diagnostic VMT ablation: native Z3 arrays with Yardbird binder refinement.
+    #[arg(long, default_value_t = false)]
+    pub native_arrays: bool,
+
     /// Seed array axioms and VMT input binders once before checking, then replay.
     #[arg(long, default_value_t = false)]
     pub eager: bool,
@@ -268,6 +272,7 @@ impl Default for YardbirdOptions {
             preprocess_exact_read_after_write: false,
             abstract_recurrent_products: false,
             guarded_read_updates: false,
+            native_arrays: false,
             eager: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
@@ -451,6 +456,19 @@ impl YardbirdOptions {
         Ok(())
     }
 
+    pub fn validate_native_arrays(&self) -> anyhow::Result<()> {
+        if self.native_arrays {
+            anyhow::ensure!(matches!(self.strategy, Strategy::Abstract)
+                && matches!(self.theory, Theory::Array)
+                && self.solver == SolverBackend::Z3
+                && self.filename.as_deref().is_some_and(|filename| Path::new(filename).extension().is_some_and(|ext| ext == "vmt")),
+                "--native-arrays requires VMT input, --strategy abstract, --theory array, and --solver z3");
+            anyhow::ensure!(self.dump_solver.is_none() && !self.interpolate && !self.run_ic3ia,
+                "--native-arrays does not support VMT-based solver dumps, interpolation, or IC3IA; use --solver-capture-dir for a native solver transcript");
+        }
+        Ok(())
+    }
+
     pub fn validate_solver_backend_available(&self) -> anyhow::Result<()> {
         match self.solver {
             SolverBackend::Z3 => Ok(()),
@@ -566,6 +584,7 @@ impl YardbirdOptions {
             .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
             .with_recurrent_product_abstraction(self.abstract_recurrent_products)
             .with_guarded_read_updates(self.guarded_read_updates)
+            .with_native_arrays(self.native_arrays)
             .with_property_check_mode(self.property_check_mode)
     }
 

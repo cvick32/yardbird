@@ -201,7 +201,9 @@ impl VmtBmcSession {
         let refinement_terms = strategy.refinement_logic_terms();
         logic_terms.extend(&refinement_terms);
         let logic = theory.get_logic_string_for_problem(&logic_terms, &vmt_model.as_commands())?;
-        let solver = new_solver_backend(solver_backend, &logic, solver_capture)?;
+        // Adapt outside capture so transcripts contain the actual solver encoding.
+        let solver =
+            theory.wrap_solver(new_solver_backend(solver_backend, &logic, solver_capture)?);
 
         let mut smt = VmtBmcSession {
             sorts: vmt_model.get_sorts(),

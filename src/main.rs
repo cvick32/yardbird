@@ -46,6 +46,7 @@ fn main() -> anyhow::Result<()> {
 
     options.validate_ranker_options()?;
     options.validate_guarded_read_updates()?;
+    options.validate_native_arrays()?;
     options.validate_eager_options()?;
     options.validate_solver_backend_available()?;
 
