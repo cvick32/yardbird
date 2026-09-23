@@ -9,7 +9,7 @@ then
     exit 1
 fi
 
-if ! cargo clippy --all-targets -- -D warnings
+if ! cargo clippy --profile quick --all-targets -- -D warnings
 then
     echo "There are some clippy issues."
     exit 1
