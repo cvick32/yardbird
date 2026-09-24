@@ -1,0 +1,173 @@
+# Launch after the intended code/config revision is available on the workers:
+# python3 main_eval.py --env aws --config garden/protocol_encodings_config.yaml \
+#   --benchmark-type protocol-bmc-cost-prefer-source-w1 \
+#   --benchmark-type protocol-bmc-cost-prefer-source-w16 \
+#   --benchmark-type protocol-bmc-cost-term-cost-w1 \
+#   --benchmark-type protocol-bmc-cost-term-cost-w16 \
+#   --benchmark-type protocol-bmc-prefer-source-w1 \
+#   --benchmark-type protocol-bmc-prefer-source-w16 \
+#   --benchmark-type protocol-bmc-term-cost-w1 \
+#   --benchmark-type protocol-bmc-term-cost-w16 \
+#   --benchmark-type protocol-ast-size-prefer-source-w16 \
+#   --benchmark-type protocol-concrete-z3 \
+#   --name protocol-encodings-depth20-500s
+
+global:
+  examples_dir: examples/distributed_protocols
+  timeout_seconds: 500
+  retry_count: 1
+  jobs: 1
+  benchmark_limit:
+  sample_seed: 20260923
+  require_array_reads_and_writes: false
+  output_format: json
+  include_patterns: ["**/*.encoding.vmt"]
+  exclude_patterns: []
+
+parameter_matrices:
+  protocol-bmc-cost-prefer-source-w1:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-cost-prefer-source-w16:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-cost-term-cost-w1:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-cost-term-cost-w16:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-prefer-source-w1:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [protocol-bmc]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-prefer-source-w16:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [protocol-bmc]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-term-cost-w1:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [protocol-bmc]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-bmc-term-cost-w16:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [protocol-bmc]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-ast-size-prefer-source-w16:
+    depths: [20]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [ast-size]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+  protocol-concrete-z3:
+    depths: [20]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+    egraph_builders: [full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: false
+  timestamp_format: "%Y%m%d_%H%M%S"
