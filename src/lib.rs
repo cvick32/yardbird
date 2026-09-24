@@ -12,7 +12,7 @@ use crate::auxiliary_synthesis::{
     PredicateRelevancePolicy, SynthesisTrigger,
 };
 use clap::{Parser, Subcommand, ValueEnum};
-pub use driver::{Driver, Error, ProofLoopResult, Result};
+pub use driver::{Driver, Error, ProofLoopResult, Result, RunProgress};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{
@@ -103,6 +103,10 @@ pub struct YardbirdOptions {
     /// Cooperative refinement wall timeout, checked between high-level actions (may overrun).
     #[arg(long)]
     pub wall_timeout_secs: Option<u64>,
+
+    /// Atomically save VMT depth progress here, including before final JSON is available.
+    #[arg(long)]
+    pub progress_file: Option<std::path::PathBuf>,
 
     /// Output VMT files before and after instantiation.
     #[arg(short, long, default_value_t = false)]
@@ -264,6 +268,7 @@ impl Default for YardbirdOptions {
             filename: None,
             depth: 10,
             wall_timeout_secs: None,
+            progress_file: None,
             print_file: false,
             interpolate: false,
             strategy: Strategy::Abstract,

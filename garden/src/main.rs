@@ -163,6 +163,8 @@ struct StrategyResult {
     guarded_read_updates: bool,
     auxiliary_synthesis: AuxSynthesisConfig,
     result: BenchmarkResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_progress: Option<yardbird::RunProgress>,
     run_time: u128,
     depth: u16,
     record_decisions: bool,
@@ -252,7 +254,54 @@ fn parse_yardbird_output(success: bool, stdout: &str, stderr: &str) -> Benchmark
     }
 }
 
-fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> BenchmarkResult {
+#[derive(Debug, Serialize)]
+struct SubprocessOutcome {
+    result: BenchmarkResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_progress: Option<yardbird::RunProgress>,
+}
+
+impl From<BenchmarkResult> for SubprocessOutcome {
+    fn from(result: BenchmarkResult) -> Self {
+        let run_progress = match &result {
+            BenchmarkResult::Success(result)
+            | BenchmarkResult::_FoundProof(result)
+            | BenchmarkResult::NoProgress(result)
+            | BenchmarkResult::Failed(result) => result.run_progress.clone(),
+            _ => None,
+        };
+        Self {
+            result,
+            run_progress,
+        }
+    }
+}
+
+fn read_progress_checkpoint(path: Option<&Path>) -> Option<yardbird::RunProgress> {
+    let path = path?;
+    match fs::read(path) {
+        Ok(contents) => match serde_json::from_slice(&contents) {
+            Ok(progress) => Some(progress),
+            Err(error) => {
+                eprintln!(
+                    "Could not read progress checkpoint {}: {error}",
+                    path.display()
+                );
+                None
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            eprintln!(
+                "Could not read progress checkpoint {}: {error}",
+                path.display()
+            );
+            None
+        }
+    }
+}
+
+fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> SubprocessOutcome {
     // Get the path to the yardbird binary (in target/release/)
     let yardbird_bin = std::env::current_exe()
         .ok()
@@ -364,6 +413,24 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
             .arg(training_run_version);
     }
 
+    // A fresh directory per attempt prevents stale progress leaking across retries.
+    let directory = match tempfile::tempdir() {
+        Ok(directory) => directory,
+        Err(error) => {
+            return BenchmarkResult::Error(format!("Cannot create progress directory: {error}"))
+                .into()
+        }
+    };
+    let progress_path = directory.path().join("progress.json");
+    command.arg("--progress-file").arg(&progress_path);
+    run_command_with_timeout(&mut command, timeout, Some(&progress_path))
+}
+
+fn run_command_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+    progress_path: Option<&Path>,
+) -> SubprocessOutcome {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -384,7 +451,18 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
                 let stdout = collect_reader(&mut stdout_reader);
                 let stderr = collect_reader(&mut stderr_reader);
 
-                return parse_yardbird_output(status.success(), &stdout, &stderr);
+                let mut outcome: SubprocessOutcome =
+                    parse_yardbird_output(status.success(), &stdout, &stderr).into();
+                if outcome.run_progress.is_none() {
+                    outcome.run_progress =
+                        read_progress_checkpoint(progress_path).map(|mut progress| {
+                            // A checkpoint alone is never evidence of a successful exit.
+                            progress.termination_reason = "process_exit".into();
+                            progress.elapsed_wall_secs = start.elapsed().as_secs_f64();
+                            progress
+                        });
+                }
+                return outcome;
             }
             Ok(None) => {
                 // Process still running, check timeout
@@ -392,15 +470,27 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Benc
                     eprintln!("Timeout reached for PID {pid}, killing process");
                     let _ = child.kill();
                     let _ = child.wait();
-                    let _ = collect_reader(&mut stdout_reader);
+                    let stdout = collect_reader(&mut stdout_reader);
                     let _ = collect_reader(&mut stderr_reader);
-                    return BenchmarkResult::Timeout(timeout.as_millis());
+                    let run_progress = serde_json::from_str::<ProofLoopResult>(stdout.trim())
+                        .ok()
+                        .and_then(|result| result.run_progress)
+                        .or_else(|| read_progress_checkpoint(progress_path))
+                        .map(|mut progress| {
+                            progress.termination_reason = "timeout".into();
+                            progress.elapsed_wall_secs = start.elapsed().as_secs_f64();
+                            progress
+                        });
+                    return SubprocessOutcome {
+                        result: BenchmarkResult::Timeout(timeout.as_millis()),
+                        run_progress,
+                    };
                 }
                 // Sleep briefly before checking again
                 thread::sleep(Duration::from_millis(100));
             }
             Err(e) => {
-                return BenchmarkResult::Error(format!("Failed to wait on subprocess: {e}"));
+                return BenchmarkResult::Error(format!("Failed to wait on subprocess: {e}")).into();
             }
         }
     }
@@ -417,6 +507,7 @@ fn run_single(
 
     let mut status_code = None;
     let mut run_time = Duration::default();
+    let mut run_progress = None;
     // Captures are immutable, so a captured run cannot reuse its output on retry.
     let retry = if matches!(options.strategy, yardbird::Strategy::Concrete)
         || options.solver_capture_dir.is_some()
@@ -435,10 +526,9 @@ fn run_single(
             .to_string();
 
         // Run yardbird in subprocess with timeout
-        status_code = Some(run_yardbird_subprocess(
-            &options,
-            Duration::from_secs(timeout),
-        ));
+        let outcome = run_yardbird_subprocess(&options, Duration::from_secs(timeout));
+        run_progress = outcome.run_progress;
+        status_code = Some(outcome.result);
 
         run_time = now.elapsed();
         // TODO: this is really a hack to try and mitigate z3 model randomness
@@ -472,6 +562,7 @@ fn run_single(
             guarded_read_updates: options.guarded_read_updates,
             auxiliary_synthesis,
             run_time: run_time.as_millis(),
+            run_progress,
             depth: options.depth,
             record_decisions: options.record_decisions || options.train,
             solver_capture_dir: options.solver_capture_dir,
@@ -666,6 +757,7 @@ fn run_config_benchmark(
             filename: Some(filename.to_string()),
             depth: run.depth,
             wall_timeout_secs: None,
+            progress_file: None,
             print_file: false,
             interpolate: false,
             repl: false,
@@ -892,6 +984,111 @@ mod tests {
         solver::PropertyCheckMode,
         InstantiationStrategyType, YardbirdOptions,
     };
+
+    #[test]
+    #[cfg(unix)]
+    fn forced_timeout_retains_completed_depth_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("progress.json");
+        let checkpoint = serde_json::json!({
+            "termination_reason": "running", "elapsed_wall_secs": 0.01,
+            "target_depth": 20, "deepest_completed_depth": 2,
+            "current_depth": 3, "current_refinement_step": 7,
+            "last_completed_action": "check"
+        });
+        // The child has no final stdout JSON and remains blocked until Garden kills it.
+        let mut command = std::process::Command::new("sh");
+        command
+            .args([
+                "-c",
+                "printf '%s' \"$1\" > \"$2\"; exec sleep 10",
+                "checkpoint-child",
+            ])
+            .arg(checkpoint.to_string())
+            .arg(&path);
+        let outcome = super::run_command_with_timeout(
+            &mut command,
+            std::time::Duration::from_millis(300),
+            Some(&path),
+        );
+        let value = serde_json::to_value(outcome).unwrap();
+        assert_eq!(value["result"]["Timeout"], 300);
+        assert_eq!(value["run_progress"]["deepest_completed_depth"], 2);
+        assert_eq!(value["run_progress"]["current_depth"], 3);
+        assert_eq!(value["run_progress"]["termination_reason"], "timeout");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn timeouts_distinguish_no_completed_depth_from_no_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        for (name, content) in [
+            ("missing", None),
+            ("invalid", Some("{\"deepest_completed_depth\":")),
+            (
+                "no-completed-depth",
+                Some(
+                    r#"{"termination_reason":"running","elapsed_wall_secs":0.0,"target_depth":20,"deepest_completed_depth":null,"current_depth":0,"current_refinement_step":0,"last_completed_action":null}"#,
+                ),
+            ),
+        ] {
+            let path = temp.path().join(name);
+            if let Some(content) = content {
+                fs::write(&path, content).unwrap();
+            }
+            let mut command = std::process::Command::new("sleep");
+            command.arg("10");
+            let outcome = super::run_command_with_timeout(
+                &mut command,
+                std::time::Duration::from_millis(50),
+                Some(&path),
+            );
+            let value = serde_json::to_value(outcome).unwrap();
+            assert_eq!(value["result"]["Timeout"], 50);
+            if name == "no-completed-depth" {
+                assert_eq!(value["run_progress"]["current_depth"], 0);
+                assert!(value["run_progress"]["deepest_completed_depth"].is_null());
+            } else {
+                assert!(value.get("run_progress").is_none());
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn final_json_progress_takes_precedence_over_checkpoint() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("progress.json");
+        let mut progress: yardbird::RunProgress = serde_json::from_value(serde_json::json!({
+            "termination_reason":"running", "elapsed_wall_secs":0.0,
+            "target_depth":2, "deepest_completed_depth":0, "current_depth":1,
+            "current_refinement_step":0, "last_completed_action":"check"
+        }))
+        .unwrap();
+        fs::write(&path, serde_json::to_vec(&progress).unwrap()).unwrap();
+        progress.deepest_completed_depth = Some(1);
+        progress.termination_reason = "depth_limit".into();
+        let final_result = yardbird::ProofLoopResult {
+            run_progress: Some(progress),
+            ..Default::default()
+        };
+        let mut command = std::process::Command::new("sh");
+        command
+            .args(["-c", "printf '%s' \"$1\"", "final-result-child"])
+            .arg(serde_json::to_string(&final_result).unwrap());
+        let outcome = super::run_command_with_timeout(
+            &mut command,
+            std::time::Duration::from_secs(2),
+            Some(&path),
+        );
+        let value = serde_json::to_value(outcome).unwrap();
+        assert!(value["result"].get("Success").is_some());
+        assert_eq!(value["run_progress"]["deepest_completed_depth"], 1);
+        assert_eq!(
+            value["run_progress"],
+            value["result"]["Success"]["run_progress"]
+        );
+    }
 
     #[test]
     fn failed_exit_keeps_profile_instead_of_classifying_as_success() {

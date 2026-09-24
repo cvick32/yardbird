@@ -1,4 +1,10 @@
-use std::time::{Duration, Instant};
+use std::{
+    io::Write,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+
+use anyhow::Context;
 
 use itertools::Itertools;
 use log::info;
@@ -48,6 +54,51 @@ pub struct RunProgress {
     pub current_refinement_step: Option<u32>,
     /// Last completed high-level action before termination.
     pub last_completed_action: Option<String>,
+}
+
+/// Small, atomic checkpoint independent of the final proof result and logging.
+/// Depth boundaries are always saved; other updates are limited to four per second.
+struct ProgressCheckpoint {
+    path: Option<PathBuf>,
+    last_write: Option<Instant>,
+}
+
+impl ProgressCheckpoint {
+    fn write(
+        &mut self,
+        progress: &RunProgress,
+        elapsed: Duration,
+        running: bool,
+        force: bool,
+    ) -> anyhow::Result<()> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        if !force
+            && self
+                .last_write
+                .is_some_and(|last| last.elapsed() < Duration::from_millis(250))
+        {
+            return Ok(());
+        }
+        let mut snapshot = progress.clone();
+        if running {
+            snapshot.elapsed_wall_secs = elapsed.as_secs_f64();
+            snapshot.termination_reason = "running".into();
+        }
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let mut temporary = tempfile::NamedTempFile::new_in(parent)
+            .with_context(|| format!("creating progress checkpoint for {}", path.display()))?;
+        temporary.write_all(&serde_json::to_vec(&snapshot)?)?;
+        temporary
+            .persist(path)
+            .with_context(|| format!("saving progress checkpoint {}", path.display()))?;
+        self.last_write = Some(Instant::now());
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -387,6 +438,7 @@ pub struct Driver<'ctx, S> {
     solver_backend: SolverBackend,
     failed_result: Option<ProofLoopResult>,
     wall_timeout: Option<Duration>,
+    progress_file: Option<PathBuf>,
     profiler: Option<Profiler>,
     solver_capture: Option<SolverCapture>,
 }
@@ -552,6 +604,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             solver_backend,
             failed_result: None,
             wall_timeout: None,
+            progress_file: None,
             profiler: None,
             solver_capture: None,
         }
@@ -578,6 +631,11 @@ impl<'ctx, S> Driver<'ctx, S> {
 
     pub fn with_wall_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.wall_timeout = timeout;
+        self
+    }
+
+    pub fn with_progress_file(mut self, path: Option<PathBuf>) -> Self {
+        self.progress_file = path;
         self
     }
 
@@ -626,6 +684,11 @@ impl<'ctx, S> Driver<'ctx, S> {
             current_refinement_step: None,
             last_completed_action: None,
         };
+        let mut progress_checkpoint = ProgressCheckpoint {
+            path: self.progress_file.clone(),
+            last_write: None,
+        };
+        progress_checkpoint.write(&progress, driver_start.elapsed(), true, true)?;
         let concrete_vmt_model = self.vmt_model.clone();
         if self.solver_backend == SolverBackend::Cvc5
             && concrete_vmt_model.uses_lambda_terms()
@@ -671,6 +734,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         macro_rules! checkpoint {
             ($label:lifetime, $action:expr, $record:expr, $step_start:expr) => {
                 progress.last_completed_action = Some($action.into());
+                progress_checkpoint.write(&progress, driver_start.elapsed(), true, false)?;
                 if self
                     .wall_timeout
                     .is_some_and(|limit| driver_start.elapsed() >= limit)
@@ -699,6 +763,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 checkpoint!('bmc, if depth == 0 { "setup" } else { "depth_completed" }, None::<DriverProfilingRecord>, driver_start);
                 progress.current_depth = Some(depth);
                 progress.current_refinement_step = None;
+                progress_checkpoint.write(&progress, driver_start.elapsed(), true, true)?;
                 info!("STARTING BMC FOR DEPTH {depth}");
                 // The concrete query is fixed at this depth, independently of
                 // the successive abstract models and valid refinement lemmas.
@@ -706,6 +771,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                 for refinement_step in 0..n_refines {
                     progress.current_depth = Some(depth);
                     progress.current_refinement_step = Some(refinement_step);
+                    progress_checkpoint.write(&progress, driver_start.elapsed(), true, false)?;
                     step_start = Instant::now();
                     driver_record = profiling.then(|| {
                         DriverProfilingRecord::new(
@@ -772,6 +838,8 @@ impl<'ctx, S> Driver<'ctx, S> {
                         // A completed check must be recorded even if it crossed
                         // the cooperative deadline before returning.
                         progress.deepest_completed_depth = Some(depth);
+                        progress.last_completed_action = Some("check".into());
+                        progress_checkpoint.write(&progress, driver_start.elapsed(), true, true)?;
                         unsat_event_tracker.record_vmt_event(
                             &smt_problem,
                             depth,
@@ -958,6 +1026,13 @@ impl<'ctx, S> Driver<'ctx, S> {
                         }
                         ProofAction::NextDepth => {
                             progress.deepest_completed_depth = Some(depth);
+                            progress.last_completed_action = Some("depth_completed".into());
+                            progress_checkpoint.write(
+                                &progress,
+                                driver_start.elapsed(),
+                                true,
+                                true,
+                            )?;
                             if let Some(mut record) = driver_record.take() {
                                 record.record_timing("driver_step_total", step_start.elapsed());
                                 if let Some(profiler) = &mut profiler {
@@ -1072,6 +1147,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         result.indexed_instantiations = self.build_indexed_instantiation_records(&smt_problem);
         self.annotate_instantiation_core_membership(&mut result);
         progress.elapsed_wall_secs = driver_start.elapsed().as_secs_f64();
+        progress_checkpoint.write(&progress, driver_start.elapsed(), false, true)?;
         result.run_progress = Some(progress);
         info!("Final proof result is ready");
         match loop_outcome {
