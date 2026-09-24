@@ -160,7 +160,7 @@ pub struct YardbirdOptions {
     pub instantiation_ranker: InstantiationRankerStrategy,
 
     /// How array VMT property checks are presented to the incremental solver.
-    #[arg(long, value_enum, default_value_t = crate::solver::PropertyCheckMode::Scoped)]
+    #[arg(long, value_enum, default_value_t = crate::solver::PropertyCheckMode::default())]
     pub property_check_mode: crate::solver::PropertyCheckMode,
 
     /// JSON logistic-regression model produced by tools/ml_ranker/train_ranker.py
@@ -278,7 +278,7 @@ impl Default for YardbirdOptions {
             eager: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
-            property_check_mode: crate::solver::PropertyCheckMode::Scoped,
+            property_check_mode: crate::solver::PropertyCheckMode::default(),
             ranker_model: None,
             theory: Theory::Array,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
@@ -931,6 +931,37 @@ impl Display for InstantiationStrategyType {
 #[cfg(test)]
 mod option_tests {
     use super::*;
+
+    #[test]
+    fn property_checks_default_to_assumptions_and_allow_scoped_override() {
+        use crate::solver::PropertyCheckMode;
+
+        for strategy in ["abstract", "abstract-with-quantifiers", "concrete"] {
+            for mode in [None, Some("scoped")] {
+                let mut args = vec!["yardbird", "-f", "input.vmt", "-s", strategy];
+                if let Some(mode) = mode {
+                    args.extend(["--property-check-mode", mode]);
+                }
+                let options = YardbirdOptions::try_parse_from(args).unwrap();
+                let expected = if mode.is_some() {
+                    PropertyCheckMode::Scoped
+                } else {
+                    PropertyCheckMode::Assumptions
+                };
+                assert_eq!(options.property_check_mode, expected);
+                assert_eq!(
+                    options.build_array_strategy().property_check_mode(),
+                    expected
+                );
+            }
+        }
+        assert_eq!(
+            YardbirdOptions::from_filename("input.vmt".into())
+                .build_array_strategy()
+                .property_check_mode(),
+            PropertyCheckMode::Assumptions
+        );
+    }
 
     #[test]
     fn exact_read_after_write_preprocessing_is_disabled_by_default() {

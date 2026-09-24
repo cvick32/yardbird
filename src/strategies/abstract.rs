@@ -91,7 +91,7 @@ where
             cone_attempted_depths: HashSet::new(),
             preprocess_exact_read_after_write: false,
             encoding_options: EncodingOptions::default(),
-            property_check_mode: PropertyCheckMode::Scoped,
+            property_check_mode: PropertyCheckMode::default(),
             native_arrays: false,
         }
     }

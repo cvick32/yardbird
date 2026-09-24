@@ -60,7 +60,7 @@ pub trait ProofStrategy<'ctx, S> {
 
     /// Select how VMT property queries are presented to the incremental solver.
     fn property_check_mode(&self) -> PropertyCheckMode {
-        PropertyCheckMode::Scoped
+        PropertyCheckMode::default()
     }
 
     fn refinement_limit(&self) -> Option<u32> {

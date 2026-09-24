@@ -112,7 +112,7 @@ fn default_candidate_winners_per_group_values() -> Vec<usize> {
 }
 
 fn default_property_check_mode() -> PropertyCheckMode {
-    PropertyCheckMode::Scoped
+    PropertyCheckMode::default()
 }
 
 fn default_property_check_modes() -> Vec<PropertyCheckMode> {
@@ -267,7 +267,8 @@ fn matrix_run_name(
     } else {
         format!("{name}_w{}", selection.candidate_winners_per_group)
     };
-    let name = if selection.property_check_mode == default_property_check_mode() {
+    // Preserve historical names: assumption checks keep their explicit suffix.
+    let name = if selection.property_check_mode == PropertyCheckMode::Scoped {
         name
     } else {
         format!("{name}_p{:?}", selection.property_check_mode)

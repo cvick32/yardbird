@@ -24,7 +24,7 @@ impl AbstractArrayWithQuantifiers {
             eager: None,
             discovered_array_types: vec![],
             preprocess_exact_read_after_write: false,
-            property_check_mode: PropertyCheckMode::Scoped,
+            property_check_mode: PropertyCheckMode::default(),
         }
     }
 

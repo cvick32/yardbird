@@ -24,7 +24,7 @@ impl ConcreteArrayZ3 {
             run_ic3ia,
             eager: None,
             discovered_array_types: vec![],
-            property_check_mode: PropertyCheckMode::Scoped,
+            property_check_mode: PropertyCheckMode::default(),
         }
     }
 

@@ -1341,7 +1341,8 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         let model = VMTModel::checked_from(commands).unwrap();
-        let mut concrete_strategy = ConcreteArrayZ3::new(false);
+        let mut concrete_strategy =
+            ConcreteArrayZ3::new(false).with_property_check_mode(PropertyCheckMode::Scoped);
         let model = concrete_strategy.configure_model(model);
         let strategy: Box<dyn ProofStrategy<'_, RefinementState>> = Box::new(concrete_strategy);
         let mut smt = VmtBmcSession::new(

@@ -21,11 +21,11 @@ use crate::{utils::SolverStatistics, SolverBackend};
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum PropertyCheckMode {
-    /// Temporarily push and assert the negated property around each check.
-    #[default]
-    Scoped,
     /// Permanently guard each negated property and enable it as an assumption.
+    #[default]
+    /// Temporarily push and assert the negated property around each check.
     Assumptions,
+    Scoped,
     /// Start each depth with a scoped check, then use an assumption after SAT
     /// indicates that refinement will re-query the same depth.
     RefinementAssumptions,

@@ -18,6 +18,7 @@ fn one_check_capture_writes_replayable_correlated_artifacts() {
     let mut options = YardbirdOptions::from_filename("examples/array/array_copy.vmt".to_string());
     options.depth = 1;
     options.strategy = Strategy::Concrete;
+    options.property_check_mode = PropertyCheckMode::Scoped;
     options.solver_capture_dir = Some(capture_dir.clone());
 
     let capture = options.build_solver_capture().unwrap();
@@ -266,14 +267,13 @@ fn incremental_capture_preserves_every_check_and_ordered_result() {
 }
 
 #[test]
-fn property_assumption_capture_is_replayable_without_property_scopes() {
+fn default_property_capture_uses_replayable_assumptions_without_scopes() {
     let temp = TempDir::new().unwrap();
     let capture_dir = temp.path().join("capture");
     let mut options = YardbirdOptions::from_filename(
         "examples/distributed_protocols/german/german.vmt".to_string(),
     );
     options.depth = 2;
-    options.property_check_mode = PropertyCheckMode::Assumptions;
     options.solver_capture_dir = Some(capture_dir);
 
     let capture = options.build_solver_capture().unwrap();
@@ -411,10 +411,15 @@ fn multi_depth_capture_correlates_each_bmc_check() {
     );
     assert_valid_check_boundaries(&transcript, &index);
     for check in &index.checks {
-        let post_check =
-            &transcript[check.check_byte_end as usize..check.post_check_byte_end as usize];
-        assert!(post_check.contains("(pop 1)\n"));
+        assert_eq!(
+            &transcript[check.check_byte_start as usize..check.check_byte_end as usize],
+            format!(
+                "(check-sat-assuming (yardbird_property_depth_{}))\n",
+                check.depth
+            )
+        );
     }
+    assert!(!transcript.contains("(pop 1)"));
     assert!(setup_slice(&transcript, &index, 1).contains("(assert"));
     assert_eq!(
         replay_with_yardbird(&artifacts.transcript),
