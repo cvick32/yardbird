@@ -1,0 +1,10 @@
+; Safe: equivalent 128-bit hex, binary, and indexed decimal literals.
+(declare-fun x () (_ BitVec 128))
+(declare-fun xn () (_ BitVec 128))
+(define-fun .x () (_ BitVec 128) (! x :next xn))
+(define-fun init () Bool (! (= x #x80000000000000000000000000000001) :init true))
+(define-fun trans () Bool (! (= xn x) :trans true))
+(define-fun prop () Bool (!
+  (and (= x (_ bv170141183460469231731687303715884105729 128))
+       (= x #b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001))
+  :invar-property 0))

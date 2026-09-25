@@ -44,6 +44,7 @@ class BenchmarkResult:
     solver_time_s: float = 0.0  # Time spent in Z3 solver (seconds)
     total_conflicts: Optional[float] = None
     solver_stats: dict[str, float] = field(default_factory=dict)
+    run_progress: Optional[dict] = None
 
     def has_extended_configuration(self) -> bool:
         return any(
@@ -539,6 +540,10 @@ class BenchmarkParser:
 
         result_data = result_entry.get("result", {})
         result_type = list(result_data.keys())[0] if result_data else "Unknown"
+        payload = result_data.get(result_type)
+        run_progress = result_entry.get("run_progress")
+        if run_progress is None and isinstance(payload, dict):
+            run_progress = payload.get("run_progress")
 
         success = result_type in SOLVED_RESULT_TYPES
 
@@ -550,6 +555,7 @@ class BenchmarkParser:
         solver_stats = extract_solver_stats(result_entry, success)
 
         return BenchmarkResult(
+            run_progress=run_progress,
             example_name=example_name,
             strategy=strategy,
             cost_function=cost_function,

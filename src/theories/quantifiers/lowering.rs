@@ -54,6 +54,7 @@ struct Lowerer<'a> {
     rules: Vec<BinderRule>,
     native_binders: HashMap<String, Term>,
     retain_native_binders: bool,
+    abstract_arrays: bool,
 }
 
 pub(crate) fn term_sort(
@@ -209,7 +210,7 @@ impl Lowerer<'_> {
                         app("and", pairs)
                     });
                 }
-                if name == "const" {
+                if self.abstract_arrays && name == "const" {
                     if let QualIdentifier::Sorted {
                         sort: Sort::Parameterized { parameters, .. },
                         ..
@@ -230,7 +231,9 @@ impl Lowerer<'_> {
                         return Ok(app(&function, arguments));
                     }
                 }
-                if let Some(Sort::Parameterized { parameters, .. }) = array_sort {
+                if let Some(Sort::Parameterized { parameters, .. }) =
+                    array_sort.filter(|_| self.abstract_arrays)
+                {
                     let index = &parameters[0];
                     let value = &parameters[1];
                     let function = format!(
@@ -506,6 +509,15 @@ pub(super) fn lower_model_for_eager(
     provenance: &mut crate::theories::quantifiers::provenance::QuantifierProvenance,
     retain_native_binders: bool,
 ) -> anyhow::Result<(VMTModel, QuantifierPlan)> {
+    lower_model_with_arrays(model, provenance, retain_native_binders, true)
+}
+
+pub(super) fn lower_model_with_arrays(
+    model: VMTModel,
+    provenance: &mut crate::theories::quantifiers::provenance::QuantifierProvenance,
+    retain_native_binders: bool,
+    abstract_arrays: bool,
+) -> anyhow::Result<(VMTModel, QuantifierPlan)> {
     let commands = model.as_commands();
     if !commands.iter().any(|command| match command {
         Command::DefineFun { term, .. } | Command::Assert { term } => contains_binders(term),
@@ -557,6 +569,7 @@ pub(super) fn lower_model_for_eager(
         rules: vec![],
         native_binders: HashMap::new(),
         retain_native_binders,
+        abstract_arrays,
     };
     let mut lowered = Vec::new();
     for command in commands {
@@ -578,6 +591,13 @@ pub(super) fn lower_model_for_eager(
             other => other,
         });
     }
+    let prepared_sort = |sort: &Sort| {
+        if abstract_arrays {
+            abstract_sort(sort)
+        } else {
+            sort.clone()
+        }
+    };
     let mut seeds = Vec::new();
     let sorts = lowerer
         .rules
@@ -589,7 +609,7 @@ pub(super) fn lower_model_for_eager(
     for sort in sorts {
         let name = lowerer.fresh("seed");
         lowerer.declare(name.clone(), vec![string_to_sort("Bool")], sort.clone());
-        seeds.push((abstract_sort(&sort), app(&name, vec![app("true", vec![])])));
+        seeds.push((prepared_sort(&sort), app(&name, vec![app("true", vec![])])));
     }
     // Declare closures before any zero-argument helpers that use them.
     let mut declarations = lowerer.declarations;
@@ -597,7 +617,7 @@ pub(super) fn lower_model_for_eager(
     let model = VMTModel::checked_from(declarations)?;
     for rule in &mut lowerer.rules {
         for (_, sort) in rule.captures.iter_mut().chain(&mut rule.variables) {
-            *sort = abstract_sort(sort);
+            *sort = prepared_sort(sort);
         }
     }
     let signatures = lowerer
@@ -607,8 +627,8 @@ pub(super) fn lower_model_for_eager(
             (
                 name,
                 (
-                    params.iter().map(abstract_sort).collect(),
-                    abstract_sort(&result),
+                    params.iter().map(prepared_sort).collect(),
+                    prepared_sort(&result),
                 ),
             )
         })

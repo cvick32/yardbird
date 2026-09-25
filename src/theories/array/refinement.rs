@@ -40,6 +40,23 @@ impl ArrayRefinement {
     ) -> VMTModel {
         let (abstracted_model, discovered_types) =
             model.abstract_array_theory_with_preprocessing(preprocess);
+        self.configure_prepared(
+            abstracted_model,
+            discovered_types,
+            encoding_options,
+            requires_property_cone,
+            binder_helpers,
+        )
+    }
+
+    pub(crate) fn configure_prepared(
+        &mut self,
+        abstracted_model: VMTModel,
+        discovered_types: Vec<(String, String)>,
+        encoding_options: EncodingOptions,
+        requires_property_cone: bool,
+        binder_helpers: &HashSet<String>,
+    ) -> VMTModel {
         let (abstracted_model, encoding_plan) =
             EncodingPlan::apply(abstracted_model, &discovered_types, encoding_options);
         self.encoding_plan = encoding_plan;

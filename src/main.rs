@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
 
     options.validate_ranker_options()?;
     options.validate_guarded_read_updates()?;
-    options.validate_native_arrays()?;
+    options.validate_theory_selection()?;
     options.validate_eager_options()?;
     options.validate_solver_backend_available()?;
 
@@ -269,8 +269,8 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     let mut training_session = TrainingSession::from_options(options)?;
     let solver_capture = options.build_solver_capture();
 
-    match options.theory {
-        Theory::Array => {
+    match options.theory.legacy_theory() {
+        None => {
             let proof_plan = options.build_array_proof_plan();
             let mut driver = Driver::new(
                 vmt_model,
@@ -320,10 +320,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             finish_solver_capture(solver_capture.as_ref(), &res.profiling)?;
             print_file_results(res, options)?;
         }
-        Theory::BvList => {
-            todo!("Implement BVList!")
-        }
-        Theory::List => {
+        Some(Theory::List) => {
             let instantiation_strategy = options.build_instantiation_strategy();
             let mut driver = Driver::new(vmt_model, instantiation_strategy, options.solver)
                 .with_tracking_options(
@@ -366,6 +363,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             finish_solver_capture(solver_capture.as_ref(), &res.profiling)?;
             print_file_results(res, options)?;
         }
+        Some(_) => unreachable!("only legacy theories are dispatched separately"),
     };
 
     Ok(())

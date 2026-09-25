@@ -1,0 +1,7 @@
+; Safe: Int array indices and bitvector values require a mixed backend logic.
+(declare-fun a () (Array Int (_ BitVec 8)))
+(declare-fun an () (Array Int (_ BitVec 8)))
+(define-fun .a () (Array Int (_ BitVec 8)) (! a :next an))
+(define-fun init () Bool (! (forall ((i Int)) (= (select a i) #x00)) :init true))
+(define-fun trans () Bool (! (= an (store a 1 #xff)) :trans true))
+(define-fun prop () Bool (! (= (select a 0) #x00) :invar-property 0))

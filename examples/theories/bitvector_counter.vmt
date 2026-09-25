@@ -1,0 +1,13 @@
+; Safe through depth 2. Exercises wrapping addition and signed/unsigned comparison.
+(declare-fun x () (_ BitVec 8))
+(declare-fun xn () (_ BitVec 8))
+(define-fun .x () (_ BitVec 8) (! x :next xn))
+(define-fun init () Bool (! (= x #xfe) :init true))
+(define-fun trans () Bool (! (= xn (bvadd x #b00000001)) :trans true))
+(define-fun prop () Bool (!
+  (and (or (= x (_ bv254 8)) (= x (_ bv255 8)))
+       (bvslt x #x00) (bvugt x #x7f)
+       (= ((_ extract 7 0) ((_ zero_extend 8) x)) x)
+       (= ((_ extract 7 0) ((_ sign_extend 8) x)) x)
+       (= (concat ((_ extract 7 4) x) ((_ extract 3 0) x)) x))
+  :invar-property 0))

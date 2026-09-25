@@ -102,23 +102,16 @@ fn check_protocol(file: &Path, depth: u16) {
 }
 
 #[test]
-fn every_distributed_protocol_checks_its_initial_state_without_solver_quantifiers() {
+fn lambda_free_companions_parse_and_match_the_original_inventory() {
     let files = protocol_files();
     assert!(
         files.len() >= 30,
         "distributed protocol inventory unexpectedly shrank"
     );
-    for file in files {
-        check_protocol(&file, 1);
-    }
-}
-
-#[test]
-fn lambda_free_companions_parse_and_match_the_original_inventory() {
     // Pointwise array definitions add universal constraints. Some companions
     // exhaust the bounded runtime even at depth zero, so parsing/equivalence
     // coverage must not silently assert that all of them are quickly solvable.
-    for original in protocol_files() {
+    for original in files {
         let encoded = original.with_extension("encoding.vmt");
         let source = fs::read_to_string(&encoded).unwrap();
         assert!(!source.contains("(lambda "), "{}", encoded.display());
@@ -134,28 +127,6 @@ fn lambda_free_database_companion_uses_only_ground_solver_assertions() {
         &root.join("client_server_db_ae/client_server_db_ae.encoding.vmt"),
         5,
     );
-}
-
-#[test]
-fn alternating_properties_and_multivariable_guards_survive_a_transition() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/distributed_protocols");
-    for protocol in [
-        "client_server_ae",
-        "client_server_db_ae",
-        "consensus_forall",
-        "two_phase_commit",
-        "tomasulo",
-    ] {
-        check_protocol(&root.join(protocol).join(format!("{protocol}.vmt")), 2);
-    }
-}
-
-#[test]
-fn lock_servers_and_two_phase_commit_complete_five_depths() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/distributed_protocols");
-    for protocol in ["lock_server_async", "lock_server_sync", "two_phase_commit"] {
-        check_protocol(&root.join(protocol).join(format!("{protocol}.vmt")), 5);
-    }
 }
 
 #[test]

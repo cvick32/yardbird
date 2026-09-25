@@ -47,6 +47,38 @@ This will automatically use the BMC Cost strategy.
 ./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
 ```
 
+For VMT inputs, `--theory` selects what **Yardbird abstracts**. Other constructs
+stay with the selected solver (`--solver z3` by default), provided Yardbird's
+adapter can translate them. See the [tested VMT theory examples](examples/theories/README.md)
+for the supported cases and known limitations:
+
+```bash
+# Automatically abstract every supported theory present in the input (default)
+yardbird -f problem.vmt --theory auto
+# Instantiate input quantifiers in Yardbird, preserving native solver arrays
+yardbird -f problem.vmt --theory quantifiers
+# Abstract arrays; leave input quantifiers with the solver
+yardbird -f problem.vmt --theory array
+# Explicitly request both, or delegate everything
+yardbird -f problem.vmt --theory array,quantifiers
+yardbird -f problem.vmt --theory none
+```
+
+Automatic selection delegates unsupported abstractions with a warning. Explicit
+requests fail when the requested abstraction is unsupported. The startup log
+reports resolved array and quantifier ownership. Native arrays remain native
+throughout preparation, refinement, and solver calls; `--native-arrays` has been
+removed in favor of `--theory quantifiers`.
+Automatic selection currently covers arrays and input quantifiers; the legacy
+`list` mode still requires explicit selection.
+
+Mixed ownership currently targets lambda-free VMT inputs, including the
+distributed protocol `*.encoding.vmt` benchmarks. Existing automatic lambda
+handling is preserved. SMT-LIB ownership selection is not implemented. Eager
+seeding with partial ownership is not supported yet. The legacy `concrete` and
+`abstract-with-quantifiers` strategies remain available; conflicting explicit
+ownership selections are rejected.
+
 Use `--eager` to select array axioms and VMT input-binder instances once before
 checking, then replay that fixed batch through later BMC frames:
 

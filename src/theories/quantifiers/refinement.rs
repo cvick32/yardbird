@@ -42,15 +42,31 @@ struct BinderPassContext {
 }
 
 impl QuantifierRefinement {
+    #[cfg(test)]
     pub(crate) fn configure_model(&mut self, model: VMTModel, profile: bool) -> VMTModel {
-        self.configure(model, profile, false)
+        self.configure(model, profile, false, true)
     }
 
     pub(super) fn configure_eager_model(&mut self, model: VMTModel) -> VMTModel {
-        self.configure(model, false, true)
+        self.configure(model, false, true, true)
     }
 
-    fn configure(&mut self, model: VMTModel, profile: bool, retain_native: bool) -> VMTModel {
+    pub(crate) fn configure_with_arrays(
+        &mut self,
+        model: VMTModel,
+        profile: bool,
+        abstract_arrays: bool,
+    ) -> VMTModel {
+        self.configure(model, profile, false, abstract_arrays)
+    }
+
+    fn configure(
+        &mut self,
+        model: VMTModel,
+        profile: bool,
+        retain_native: bool,
+        abstract_arrays: bool,
+    ) -> VMTModel {
         self.configuration_error = None;
         self.owns_quantifiers = model.as_commands().iter().any(|command| match command {
             smt2parser::concrete::Command::DefineFun { term, .. }
@@ -77,7 +93,14 @@ impl QuantifierRefinement {
             info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
         }
         let original = model.clone();
-        let lowered = if retain_native {
+        let lowered = if !abstract_arrays {
+            super::lowering::lower_model_with_arrays(
+                model,
+                &mut self.provenance,
+                retain_native,
+                false,
+            )
+        } else if retain_native {
             super::lowering::lower_model_for_eager(model, &mut self.provenance, true)
         } else {
             super::lower_model_with_provenance(model, &mut self.provenance)

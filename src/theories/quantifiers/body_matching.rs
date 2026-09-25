@@ -5,7 +5,7 @@
 //! search. Both operations produce correlated tuples via structural joins.
 //! Only original guarded binder instances are emitted; body matches and model
 //! equalities are search hints. Unsupported Boolean shapes use general search.
-use super::{abstract_sort, app, substitute, term_sort, BinderKind, QuantifierPlan};
+use super::{app, substitute, term_sort, BinderKind, QuantifierPlan};
 use crate::rule_matching::{candidate::SymbolicInstance, rule::QuantifiedRule};
 use smt2parser::concrete::{QualIdentifier, Sort, Symbol, Term};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -65,10 +65,7 @@ fn expand(term: &Term, plan: &QuantifierPlan, free: &HashSet<Symbol>, bound: &[S
                 scope.extend(rule.variables.iter().map(|(s, _)| s.clone()));
                 return Body::Binder(
                     rule.kind,
-                    rule.variables
-                        .iter()
-                        .map(|(_, s)| abstract_sort(s))
-                        .collect(),
+                    rule.variables.iter().map(|(_, s)| s.clone()).collect(),
                     Box::new(expand(&body, plan, free, &scope)),
                 );
             }
@@ -113,10 +110,7 @@ fn matches(
         let Some(term) = source.ground() else {
             return Ok(false);
         };
-        if term_sort(&term, &plan.signatures, &HashMap::new())
-            .ok()
-            .map(|s| abstract_sort(&s))
-            != Some(abstract_sort(&variables[name]))
+        if term_sort(&term, &plan.signatures, &HashMap::new()).ok() != Some(variables[name].clone())
         {
             return Ok(false);
         }
@@ -134,11 +128,7 @@ fn matches(
         if left == right {
             return Ok(true);
         }
-        let sort = |t: &Term| {
-            term_sort(t, &plan.signatures, &HashMap::new())
-                .ok()
-                .map(|s| abstract_sort(&s))
-        };
+        let sort = |t: &Term| term_sort(t, &plan.signatures, &HashMap::new()).ok();
         if sort(&left).is_none() || sort(&left) != sort(&right) {
             return Ok(false);
         }

@@ -60,15 +60,10 @@ impl RefinementGraph {
                 ),
                 _ => continue,
             };
-            self.signatures.entry(symbol.0).or_insert_with(|| {
-                (
-                    parameters
-                        .iter()
-                        .map(crate::theories::quantifiers::abstract_sort)
-                        .collect(),
-                    crate::theories::quantifiers::abstract_sort(&sort),
-                )
-            });
+            // Declarations already have the representation chosen by preparation.
+            self.signatures
+                .entry(symbol.0)
+                .or_insert((parameters, sort));
         }
         for (index, value) in smt.get_array_types() {
             let parse = smt2parser::vmt::array_abstractor::string_to_sort;
