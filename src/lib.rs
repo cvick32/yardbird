@@ -60,6 +60,7 @@ pub mod strategies;
 mod subterm_handler;
 pub mod terms;
 pub mod theories;
+pub use theories::preparation::TheorySelection;
 pub mod theory_support;
 pub mod training;
 pub mod transition_index;
@@ -87,7 +88,7 @@ pub struct YardbirdOptions {
     #[arg(long, value_enum, conflicts_with_all = [
         "strategy", "cost_function", "egraph_builder", "candidate_winners_per_group",
         "instantiation_ranker", "property_check_mode", "instantiation_strategy",
-        "theory", "solver", "ranker_model", "preprocess_exact_read_after_write",
+        "solver", "ranker_model", "preprocess_exact_read_after_write",
         "abstract_recurrent_products", "guarded_read_updates",
     ])]
     pub policy: Option<policy::NamedPolicy>,
@@ -147,10 +148,6 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub guarded_read_updates: bool,
 
-    /// Diagnostic VMT ablation: native Z3 arrays with Yardbird binder refinement.
-    #[arg(long, default_value_t = false)]
-    pub native_arrays: bool,
-
     /// Seed array axioms and VMT input binders once before checking, then replay.
     #[arg(long, default_value_t = false)]
     pub eager: bool,
@@ -171,9 +168,9 @@ pub struct YardbirdOptions {
     #[arg(long)]
     pub ranker_model: Option<String>,
 
-    // Choose Theory
-    #[arg(short, long, value_enum, default_value_t = Theory::Array)]
-    pub theory: Theory,
+    /// VMT theories for Yardbird to abstract: auto, none, or a comma-separated list (array,quantifiers).
+    #[arg(short, long, default_value_t = TheorySelection::Auto)]
+    pub theory: TheorySelection,
 
     // Choose Instantiation Strategy
     #[arg(long, value_enum, default_value_t = InstantiationStrategyType::FullUnroll)]
@@ -279,13 +276,12 @@ impl Default for YardbirdOptions {
             preprocess_exact_read_after_write: false,
             abstract_recurrent_products: false,
             guarded_read_updates: false,
-            native_arrays: false,
             eager: false,
             candidate_winners_per_group: 1,
             instantiation_ranker: InstantiationRankerStrategy::PreferSource,
             property_check_mode: crate::solver::PropertyCheckMode::default(),
             ranker_model: None,
-            theory: Theory::Array,
+            theory: TheorySelection::Auto,
             instantiation_strategy: InstantiationStrategyType::FullUnroll,
             solver: SolverBackend::Z3,
             json_output: false,
@@ -407,6 +403,11 @@ impl YardbirdOptions {
 
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
+            matches!(&self.theory, TheorySelection::Auto)
+                || self.theory == TheorySelection::Explicit(vec![Theory::Array]),
+            "theory ownership selection is currently supported only for VMT inputs"
+        );
+        anyhow::ensure!(
             self.wall_timeout_secs.is_none(),
             "--wall-timeout-secs is currently supported only for VMT inputs"
         );
@@ -423,7 +424,7 @@ impl YardbirdOptions {
     pub fn validate_eager_options(&self) -> anyhow::Result<()> {
         if self.eager {
             anyhow::ensure!(
-                matches!(self.theory, Theory::Array),
+                self.theory.includes(Theory::Array),
                 "--eager currently supports --theory array only"
             );
             anyhow::ensure!(!matches!(self.instantiation_strategy, InstantiationStrategyType::SchemaBatch),
@@ -448,7 +449,7 @@ impl YardbirdOptions {
     pub fn validate_guarded_read_updates(&self) -> anyhow::Result<()> {
         if self.guarded_read_updates
             && (!matches!(self.strategy, Strategy::Abstract)
-                || !matches!(self.theory, Theory::Array)
+                || !self.theory.includes(Theory::Array)
                 || self.filename.as_deref().is_some_and(|filename| {
                     Path::new(filename)
                         .extension()
@@ -463,15 +464,22 @@ impl YardbirdOptions {
         Ok(())
     }
 
-    pub fn validate_native_arrays(&self) -> anyhow::Result<()> {
-        if self.native_arrays {
-            anyhow::ensure!(matches!(self.strategy, Strategy::Abstract)
-                && matches!(self.theory, Theory::Array)
-                && self.solver == SolverBackend::Z3
-                && self.filename.as_deref().is_some_and(|filename| Path::new(filename).extension().is_some_and(|ext| ext == "vmt")),
-                "--native-arrays requires VMT input, --strategy abstract, --theory array, and --solver z3");
-            anyhow::ensure!(self.dump_solver.is_none() && !self.interpolate && !self.run_ic3ia,
-                "--native-arrays does not support VMT-based solver dumps, interpolation, or IC3IA; use --solver-capture-dir for a native solver transcript");
+    pub fn validate_theory_selection(&self) -> anyhow::Result<()> {
+        if self.theory.legacy_theory().is_none() && !matches!(self.strategy, Strategy::Abstract) {
+            let compatible = match self.strategy {
+                Strategy::Concrete => {
+                    matches!(&self.theory, TheorySelection::Auto)
+                        || self.theory == TheorySelection::Explicit(vec![])
+                }
+                Strategy::AbstractWithQuantifiers => {
+                    matches!(&self.theory, TheorySelection::Auto)
+                        || self.theory == TheorySelection::Explicit(vec![Theory::Array])
+                }
+                Strategy::Abstract => true,
+            };
+            anyhow::ensure!(compatible,
+                "--strategy {} conflicts with --theory {}; use --strategy abstract for explicit theory ownership",
+                self.strategy, self.theory);
         }
         Ok(())
     }
@@ -499,7 +507,7 @@ impl YardbirdOptions {
         match self.solver {
             SolverBackend::Z3 => Ok(()),
             SolverBackend::Cvc5 => {
-                if !matches!(self.theory, Theory::Array) {
+                if self.theory.legacy_theory().is_some() {
                     anyhow::bail!(
                         "--solver cvc5 in VMT mode currently supports array theory only; {:?} theory is not implemented yet",
                         self.theory
@@ -533,7 +541,7 @@ impl YardbirdOptions {
                         "--cost-function logistic-regression requires --strategy abstract or --eager"
                     );
                 }
-                if !matches!(self.theory, Theory::Array) {
+                if !self.theory.includes(Theory::Array) {
                     anyhow::bail!(
                         "--cost-function logistic-regression currently supports --theory array only"
                     );
@@ -591,7 +599,7 @@ impl YardbirdOptions {
             .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
             .with_recurrent_product_abstraction(self.abstract_recurrent_products)
             .with_guarded_read_updates(self.guarded_read_updates)
-            .with_native_arrays(self.native_arrays)
+            .with_theory_selection(self.theory.clone())
             .with_property_check_mode(self.property_check_mode)
     }
 
@@ -687,55 +695,6 @@ impl YardbirdOptions {
 
     pub fn build_array_strategy(&self) -> Box<dyn ProofStrategy<'static, RefinementState>> {
         self.build_array_proof_plan().strategy
-    }
-
-    pub fn build_bvlist_strategy(&self) -> Box<dyn ProofStrategy<'static, RefinementState>> {
-        // For now, use the same strategy structure as arrays
-        // TODO: Create proper bit-vector list strategy
-        match self.strategy {
-            Strategy::Abstract => match self.cost_function {
-                CostFunction::LogisticRegression => {
-                    todo!("logistic-regression is not implemented for bv-list theory")
-                }
-                CostFunction::BmcCost => {
-                    Box::new(self.build_abstract_array_strategy::<ArrayBMCCost>(self.depth))
-                }
-                CostFunction::ProtocolBmc => {
-                    Box::new(self.build_abstract_array_strategy::<ProtocolBmcCost>(self.depth))
-                }
-                CostFunction::AstSize => {
-                    Box::new(self.build_abstract_array_strategy::<ArrayAstSize>(self.depth))
-                }
-                CostFunction::AdaptiveCost => {
-                    Box::new(self.build_abstract_array_strategy::<AdaptiveArrayCost>(self.depth))
-                }
-                CostFunction::SplitCost => {
-                    Box::new(self.build_abstract_array_strategy::<SplitArrayCost>(self.depth))
-                }
-                CostFunction::PreferRead => {
-                    Box::new(self.build_abstract_array_strategy::<ArrayPreferRead>(self.depth))
-                }
-                CostFunction::PreferWrite => {
-                    Box::new(self.build_abstract_array_strategy::<ArrayPreferWrite>(self.depth))
-                }
-                CostFunction::PreferConstants => todo!(),
-                CostFunction::IndexAware => {
-                    Box::new(self.build_abstract_array_strategy::<IndexAwareArrayCost>(self.depth))
-                }
-                CostFunction::Generated => todo!(),
-            },
-            Strategy::AbstractWithQuantifiers => Box::new(
-                AbstractArrayWithQuantifiers::new(self.run_ic3ia)
-                    .with_exact_read_after_write_preprocessing(
-                        self.preprocess_exact_read_after_write,
-                    )
-                    .with_property_check_mode(self.property_check_mode),
-            ),
-            Strategy::Concrete => Box::new(
-                ConcreteArrayZ3::new(self.run_ic3ia)
-                    .with_property_check_mode(self.property_check_mode),
-            ),
-        }
     }
 
     pub fn build_list_strategy(&self) -> Box<dyn ProofStrategy<'_, ListRefinementState>> {
@@ -876,12 +835,12 @@ impl Display for CostFunction {
 }
 
 /// Describes the theories available.
-#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum Theory {
     Array,
-    BvList,
+    Quantifiers,
     List,
 }
 
@@ -889,7 +848,7 @@ impl Display for Theory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Theory::Array => write!(f, "array"),
-            Theory::BvList => write!(f, "bv-list"),
+            Theory::Quantifiers => write!(f, "quantifiers"),
             Theory::List => write!(f, "list"),
         }
     }

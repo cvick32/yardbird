@@ -535,11 +535,7 @@ pub(super) fn unify(
             if let Some(bound) = bindings.get(&name) {
                 return bound == ground;
             }
-            if term_sort(ground, signatures, &HashMap::new())
-                .ok()
-                .map(|sort| abstract_sort(&sort))
-                != Some(abstract_sort(expected))
-            {
+            if term_sort(ground, signatures, &HashMap::new()).ok() != Some(expected.clone()) {
                 return false;
             }
             bindings.insert(name, ground.clone());

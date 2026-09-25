@@ -98,7 +98,6 @@ fn cli_rejects_unsupported_guarded_updates_before_loading_input() {
             "abstract-with-quantifiers",
         ],
         vec!["--filename", "missing.vmt", "--theory", "list"],
-        vec!["--filename", "missing.vmt", "--theory", "bv-list"],
         vec!["--filename", "missing.smt2"],
     ] {
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_yardbird"))

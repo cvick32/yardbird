@@ -7,14 +7,6 @@ use smt2parser::vmt::VMTModel;
 
 /// Trait for providing theory-specific function declarations and model abstractions
 pub trait TheorySupport {
-    /// Adapt the solver representation without changing refinement vocabulary.
-    fn wrap_solver(
-        &self,
-        solver: Box<dyn crate::solver::YardbirdSolver>,
-    ) -> Box<dyn crate::solver::YardbirdSolver> {
-        solver
-    }
-
     /// Returns the list of uninterpreted functions that need to be declared in Z3
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration>;
 
@@ -519,20 +511,11 @@ pub fn array_sort(index_sort: &str, element_sort: &str) -> Sort {
 pub struct ArrayTheorySupport {
     /// Set of (index_sort, value_sort) pairs discovered during abstraction
     pub array_types: Vec<(String, String)>,
-    native_semantics: bool,
 }
 
 impl ArrayTheorySupport {
     pub fn new(array_types: Vec<(String, String)>) -> Self {
-        Self {
-            array_types,
-            native_semantics: false,
-        }
-    }
-
-    pub fn with_native_semantics(mut self, enabled: bool) -> Self {
-        self.native_semantics = enabled;
-        self
+        Self { array_types }
     }
 }
 
@@ -626,34 +609,12 @@ pub fn get_uninterpreted_array_functions(
 }
 
 impl TheorySupport for ArrayTheorySupport {
-    fn wrap_solver(
-        &self,
-        solver: Box<dyn crate::solver::YardbirdSolver>,
-    ) -> Box<dyn crate::solver::YardbirdSolver> {
-        if self.native_semantics {
-            Box::new(crate::theories::array::native::NativeArraySolver::new(
-                solver,
-                &self.array_types,
-            ))
-        } else {
-            solver
-        }
-    }
-
     fn get_uninterpreted_functions(&self) -> Vec<FunctionDeclaration> {
         get_uninterpreted_array_functions(&self.array_types)
     }
 
     fn get_logic_string(&self) -> Result<String> {
-        array_logic(
-            &self.array_types,
-            self.native_semantics,
-            if self.native_semantics {
-                ArrayEncoding::Native
-            } else {
-                ArrayEncoding::Abstracted
-            },
-        )
+        array_logic(&self.array_types, false, ArrayEncoding::Abstracted)
     }
 
     fn abstract_model(&self, model: VMTModel) -> (VMTModel, Vec<(String, String)>) {
@@ -1019,6 +980,9 @@ impl TheorySupport for ConcreteArrayTheory {
     }
 
     fn get_logic_string(&self) -> Result<String> {
+        if self.array_types.is_empty() {
+            return Ok("QF_UF".into());
+        }
         array_logic(&self.array_types, true, ArrayEncoding::Native)
     }
 

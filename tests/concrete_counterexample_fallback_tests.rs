@@ -91,7 +91,16 @@ fn check_abstract_model_with_aux(
     } else {
         policy
     };
+    // These synthesis fixtures assert exact instances and validation counts.
+    // Pin their historical solver-query mode along with AuxiliaryFixtureRanker;
+    // assumptions can choose a different valid refinement trace.
+    let property_check_mode = if aux_enabled {
+        yardbird::solver::PropertyCheckMode::Scoped
+    } else {
+        yardbird::solver::PropertyCheckMode::default()
+    };
     let strategy = Abstract::<ArrayBMCCost>::new(depth, false, policy, false)
+        .with_property_check_mode(property_check_mode)
         .with_artifact_capture(ArtifactCapture {
             conflicts: aux_enabled,
             ..ArtifactCapture::default()

@@ -63,7 +63,10 @@ where
     preprocess_exact_read_after_write: bool,
     encoding_options: EncodingOptions,
     property_check_mode: PropertyCheckMode,
-    native_arrays: bool,
+    theory_selection: crate::TheorySelection,
+    prepared_theory: Option<crate::theories::preparation::PreparedTheory>,
+    ownership: crate::theories::preparation::Ownership,
+    preparation_error: Option<String>,
 }
 
 impl<F> Abstract<F>
@@ -92,7 +95,13 @@ where
             preprocess_exact_read_after_write: false,
             encoding_options: EncodingOptions::default(),
             property_check_mode: PropertyCheckMode::default(),
-            native_arrays: false,
+            theory_selection: crate::TheorySelection::Auto,
+            prepared_theory: None,
+            ownership: crate::theories::preparation::Ownership {
+                arrays: true,
+                quantifiers: true,
+            },
+            preparation_error: None,
         }
     }
 
@@ -121,9 +130,8 @@ where
         self
     }
 
-    /// Diagnostic ablation: retain Yardbird binders with native solver arrays.
-    pub fn with_native_arrays(mut self, enabled: bool) -> Self {
-        self.native_arrays = enabled;
+    pub fn with_theory_selection(mut self, selection: crate::TheorySelection) -> Self {
+        self.theory_selection = selection;
         self
     }
 }
@@ -233,10 +241,10 @@ where
     }
 
     fn get_theory_support(&self) -> Box<dyn TheorySupport> {
-        Box::new(
-            ArrayTheorySupport::new(self.array.array_types.clone())
-                .with_native_semantics(self.native_arrays),
-        )
+        match &self.prepared_theory {
+            Some(theory) => Box::new(theory.clone()),
+            None => Box::new(ArrayTheorySupport::new(self.array.array_types.clone())),
+        }
     }
 
     fn property_check_mode(&self) -> PropertyCheckMode {
@@ -251,30 +259,68 @@ where
     }
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {
-        let model = if let Some(seeder) = &mut self.eager {
-            seeder.configure_vmt(model, true, true)
-        } else {
-            model
-        };
+        use crate::theories::preparation::{prepare_vmt, PreparationOptions};
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         self.obligations = Default::default();
-        let model = self.quantifier.configure_model(model, self.profile);
-        if self.quantifier.configuration_error.is_some() {
-            return model;
+        self.preparation_error = None;
+        let prepared = prepare_vmt(
+            model.clone(),
+            PreparationOptions {
+                selection: &self.theory_selection,
+                preprocess_arrays: self.preprocess_exact_read_after_write,
+                encoding: self.encoding_options,
+                property_cone: self.policy.effort().requires_property_cone(),
+                profile: self.profile,
+            },
+        );
+        match prepared {
+            Ok(prepared) => {
+                for notice in &prepared.notices {
+                    warn!("{notice}");
+                }
+                info!(
+                    "VMT theory ownership: arrays={}, quantifiers={} (all other theories: solver)",
+                    if prepared.ownership.arrays {
+                        "yardbird"
+                    } else {
+                        "solver"
+                    },
+                    if prepared.ownership.quantifiers {
+                        "yardbird"
+                    } else {
+                        "solver"
+                    }
+                );
+                if let Some(seeder) = &mut self.eager {
+                    let features = smt2parser::analysis::theories::TheoryFeatures::analyze(
+                        &model.as_commands(),
+                    );
+                    if (features.has_arrays() && !prepared.ownership.arrays)
+                        || (features.has_quantifiers() && !prepared.ownership.quantifiers)
+                    {
+                        self.preparation_error = Some(
+                            "--eager with partial theory ownership is not supported yet".into(),
+                        );
+                    } else {
+                        // Eager seeding captures source vocabulary, before preparation.
+                        seeder.configure_vmt(
+                            model,
+                            prepared.ownership.arrays,
+                            prepared.ownership.quantifiers,
+                        );
+                    }
+                }
+                self.array = prepared.array;
+                self.quantifier = prepared.quantifier;
+                self.ownership = prepared.ownership;
+                self.prepared_theory = Some(prepared.theory);
+                prepared.model
+            }
+            Err(error) => {
+                self.preparation_error = Some(error.to_string());
+                model
+            }
         }
-        self.array.configure_model(
-            model,
-            self.preprocess_exact_read_after_write,
-            self.encoding_options,
-            self.policy.effort().requires_property_cone(),
-            &self
-                .quantifier
-                .plan
-                .rules
-                .iter()
-                .map(|rule| rule.name.clone())
-                .collect(),
-        )
     }
 
     fn preprocess_exact_read_after_write(&self) -> bool {
@@ -290,7 +336,9 @@ where
     }
 
     fn configuration_error(&self) -> Option<&str> {
-        self.quantifier.configuration_error.as_deref()
+        self.preparation_error
+            .as_deref()
+            .or(self.quantifier.configuration_error.as_deref())
     }
 
     fn refinement_logic_terms(&self) -> Vec<Term> {
@@ -330,7 +378,7 @@ where
             model_version: self.model_sequence,
             graph_version: 0,
             array_expansion: None,
-            array_exhausted: false,
+            array_exhausted: !self.ownership.arrays,
             model_reported: false,
             depth,
             egraph,
@@ -377,6 +425,9 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         refinement_step: u32,
     ) -> driver::Result<ProofAction> {
+        if !self.ownership.arrays && self.quantifier.plan.rules.is_empty() {
+            return Ok(ProofAction::FoundCounterexample);
+        }
         if trace_conflicts_enabled() {
             trace!(
                 "[yardbird::conflict-trace] sat depth={} refinement_step={} eclasses_before={}",
@@ -448,10 +499,12 @@ where
                 OperationKind::GrowVocabulary,
                 "grow shared vocabulary".into(),
             ));
-            kinds.push((
-                OperationKind::GuardedReads,
-                "guarded read consequences".into(),
-            ));
+            if self.ownership.arrays {
+                kinds.push((
+                    OperationKind::GuardedReads,
+                    "guarded read consequences".into(),
+                ));
+            }
             if !state.array_exhausted {
                 kinds.push((OperationKind::ExpandArray, "expand array vocabulary".into()));
             }

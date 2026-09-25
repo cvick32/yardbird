@@ -60,8 +60,14 @@ impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
         } else {
             model
         };
-        let (_, discovered_array_types) = model.abstract_array_theory();
-        self.discovered_array_types = discovered_array_types;
+        let features =
+            smt2parser::analysis::theories::TheoryFeatures::analyze(&model.as_commands());
+        let names = smt2parser::vmt::array_abstractor::ArrayAbstractor::default();
+        self.discovered_array_types = features
+            .array_sorts
+            .iter()
+            .map(|(i, v)| (names.sort_to_string(i), names.sort_to_string(v)))
+            .collect();
         model
     }
 

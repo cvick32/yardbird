@@ -690,6 +690,10 @@ impl<'ctx, S> Driver<'ctx, S> {
         };
         progress_checkpoint.write(&progress, driver_start.elapsed(), true, true)?;
         let concrete_vmt_model = self.vmt_model.clone();
+        crate::theories::preparation::validate_vmt_backend(
+            &concrete_vmt_model,
+            self.solver_backend,
+        )?;
         if self.solver_backend == SolverBackend::Cvc5
             && concrete_vmt_model.uses_lambda_terms()
             && !strat.supports_lambda_abstraction()
@@ -710,7 +714,7 @@ impl<'ctx, S> Driver<'ctx, S> {
         }
         self.vmt_model = strat.configure_model(concrete_vmt_model.clone());
         if let Some(error) = strat.configuration_error() {
-            return Err(anyhow::anyhow!("quantifier abstraction failed: {error}").into());
+            return Err(anyhow::anyhow!("VMT preparation failed: {error}").into());
         }
         let n_refines = strat.refinement_limit().unwrap_or(u32::MAX);
         let mut total_refinement_steps = 0;

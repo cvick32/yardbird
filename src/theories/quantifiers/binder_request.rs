@@ -97,7 +97,7 @@ impl PreparedQuantifierSearch {
             );
             let actual = term_sort(term, &self.compiled.signatures, &HashMap::new())?;
             anyhow::ensure!(
-                abstract_sort(&actual) == abstract_sort(expected),
+                actual == *expected,
                 "binding {symbol} expects {expected}, got {actual}"
             );
         }
