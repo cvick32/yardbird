@@ -71,12 +71,14 @@ impl Z3VarContext {
                 Constant::Decimal(_) => todo!(),
                 Constant::Hexadecimal(hex_bytes) => {
                     let bit_width = (hex_bytes.len() * 4) as u32;
-                    // Convert hex digits to u64 (big-endian interpretation)
-                    let mut value: u64 = 0;
-                    for &hex_digit in hex_bytes.iter() {
-                        value = (value << 4) | (hex_digit as u64);
-                    }
-                    z3::ast::BV::from_u64(value, bit_width).into()
+                    let value = hex_bytes
+                        .iter()
+                        .fold(num::BigUint::from(0_u8), |value, digit| {
+                            (value << 4) + num::BigUint::from(*digit)
+                        });
+                    z3::ast::BV::from_str(bit_width, &value.to_string())
+                        .expect("parsed hexadecimal literal")
+                        .into()
                 }
                 Constant::Binary(bin) => {
                     // SMT-LIB prints bit-vector literals most-significant bit first,
