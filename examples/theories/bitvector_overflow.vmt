@@ -1,0 +1,7 @@
+; Counterexample at depth 1: 8-bit addition wraps from 255 to zero.
+(declare-fun x () (_ BitVec 8))
+(declare-fun xn () (_ BitVec 8))
+(define-fun .x () (_ BitVec 8) (! x :next xn))
+(define-fun init () Bool (! (= x #xff) :init true))
+(define-fun trans () Bool (! (= xn (bvadd x (_ bv1 8))) :trans true))
+(define-fun prop () Bool (! (not (= x #x00)) :invar-property 0))

@@ -1,0 +1,9 @@
+; Known refinement limitation: --theory auto can time out on this counterexample.
+; --theory none exposes a counterexample at depth 1.
+(declare-fun a () (Array (_ BitVec 8) (_ BitVec 16)))
+(declare-fun an () (Array (_ BitVec 8) (_ BitVec 16)))
+(define-fun .a () (Array (_ BitVec 8) (_ BitVec 16)) (! a :next an))
+(define-fun init () Bool (!
+  (forall ((i (_ BitVec 8))) (= (select a i) #x0000)) :init true))
+(define-fun trans () Bool (! (= an (store a #x00 #x0001)) :trans true))
+(define-fun prop () Bool (! (= (select a #x00) #x0000) :invar-property 0))
