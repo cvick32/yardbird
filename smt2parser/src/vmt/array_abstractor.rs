@@ -97,7 +97,7 @@ impl ArrayAbstractor {
     /// Convert a Sort to a simplified string name (e.g., "Int", "BitVec32", "Array_Int_Int")
     /// For nested arrays like (Array Int (Array Int Int)), produces "Array_Int_Array_Int_Int"
     #[allow(clippy::only_used_in_recursion)]
-    fn sort_to_string(&self, sort: &Sort) -> String {
+    pub fn sort_to_string(&self, sort: &Sort) -> String {
         match sort {
             Sort::Simple { identifier } => match identifier {
                 Identifier::Simple { symbol } => symbol.0.clone(),
@@ -227,7 +227,7 @@ impl ArrayAbstractor {
         }
     }
 
-    fn convert_sort_to_abstracted(&mut self, sort: &Sort) -> Sort {
+    pub(crate) fn convert_sort_to_abstracted(&mut self, sort: &Sort) -> Sort {
         match sort {
             crate::concrete::Sort::Simple { identifier: _ } => sort.clone(),
             crate::concrete::Sort::Parameterized {

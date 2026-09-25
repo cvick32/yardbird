@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use crate::concrete::{Command, FunctionDec, Identifier, QualIdentifier, Sort, Symbol, Term};
 
 type LocalSorts = HashMap<String, Option<Sort>>;
+pub type AbstractedArrayCommands = (Vec<Command>, Vec<(String, String)>);
 
 #[derive(Clone, Debug)]
 struct FunctionSignature {
@@ -34,6 +35,9 @@ pub struct ArrayTermSimplifier {
     function_signatures: HashMap<String, FunctionSignature>,
     user_function_names: HashSet<String>,
     exact_read_after_write_rewrites: u64,
+    abstraction: Option<super::array_abstractor::ArrayAbstractor>,
+    skip_simplification: bool,
+    abstraction_error: Option<String>,
 }
 
 impl ArrayTermSimplifier {
@@ -63,6 +67,79 @@ impl ArrayTermSimplifier {
             }
         }
         simplifier
+    }
+
+    /// Type-directed abstraction, including lexically scoped binder variables.
+    /// Unknown array operand sorts are errors, never guessed as Int -> Int.
+    pub fn abstract_commands(
+        commands: &[Command],
+        simplify: bool,
+    ) -> Result<AbstractedArrayCommands, String> {
+        let mut pass = Self::from_commands(commands);
+        pass.abstraction = Some(super::array_abstractor::ArrayAbstractor::default());
+        pass.skip_simplification = !simplify;
+        let rewritten = commands
+            .iter()
+            .cloned()
+            .map(|c| pass.simplify_command(c))
+            .collect::<Vec<_>>();
+        if let Some(error) = pass.abstraction_error {
+            return Err(error);
+        }
+        let mut abstractor = pass.abstraction.take().unwrap();
+        // Terms were rewritten using source sorts; now consistently rewrite all
+        // annotations and declarations, including quantified variable sorts.
+        struct Sorts<'a>(&'a mut super::array_abstractor::ArrayAbstractor);
+        impl crate::rewriter::Rewriter for Sorts<'_> {
+            type V = crate::concrete::SyntaxBuilder;
+            type Error = crate::concrete::Error;
+            fn visitor(&mut self) -> &mut Self::V {
+                &mut self.0.visitor
+            }
+            fn process_sort(&mut self, sort: Sort) -> Result<Sort, Self::Error> {
+                Ok(self.0.convert_sort_to_abstracted(&sort))
+            }
+        }
+        let rewritten = rewritten
+            .into_iter()
+            .map(|c| {
+                c.accept(&mut Sorts(&mut abstractor))
+                    .map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let types = abstractor.sorted_array_types();
+        let mut result = abstractor.get_array_type_definitions();
+        // Quantifier lowering can already have declared these exact functions.
+        // The preparation caller checks source-name collisions before lowering.
+        for command in rewritten {
+            let name = match &command {
+                Command::DeclareFun { symbol, .. }
+                | Command::DeclareSort { symbol, .. }
+                | Command::DeclareConst { symbol, .. } => Some(&symbol.0),
+                Command::DefineFun { sig, .. } | Command::DefineFunRec { sig, .. } => {
+                    Some(&sig.name.0)
+                }
+                _ => None,
+            };
+            let duplicate = name.and_then(|name| {
+                result.iter().find(|existing| match existing {
+                    Command::DeclareFun { symbol, .. } | Command::DeclareSort { symbol, .. } => {
+                        &symbol.0 == name
+                    }
+                    _ => false,
+                })
+            });
+            match duplicate {
+                Some(existing) if existing == &command => {}
+                Some(_) => {
+                    return Err(
+                        "generated array declaration conflicts with an existing declaration".into(),
+                    )
+                }
+                None => result.push(command),
+            }
+        }
+        Ok((result, types))
     }
 
     pub fn exact_read_after_write_rewrites(&self) -> u64 {
@@ -286,7 +363,8 @@ impl ArrayTermSimplifier {
             && is_unshadowed
             && arguments[0].sort.as_ref().is_some_and(is_array_sort);
 
-        if is_native_select
+        if !self.skip_simplification
+            && is_native_select
             && arguments[0].native_array_operation == Some(NativeArrayOperation::Store)
         {
             if let Term::Application {
@@ -318,6 +396,36 @@ impl ArrayTermSimplifier {
                 (signature.parameters.len() == arguments.len()).then(|| signature.result.clone())
             })
         };
+        let mut qual_identifier = qual_identifier;
+        if let Some(abstractor) = &mut self.abstraction {
+            let array_sort = if is_native_select || is_native_store {
+                arguments[0].sort.as_ref()
+            } else if name == "const" && is_unshadowed {
+                sort.as_ref()
+            } else {
+                None
+            };
+            if let Some(array_sort @ Sort::Parameterized { parameters, .. }) = array_sort {
+                if is_array_sort(array_sort) {
+                    abstractor.convert_sort_to_abstracted(array_sort);
+                    let op = if is_native_select {
+                        "Read"
+                    } else if is_native_store {
+                        "Write"
+                    } else {
+                        "ConstArr"
+                    };
+                    qual_identifier = QualIdentifier::simple(format!(
+                        "{}_{}_{}",
+                        op,
+                        abstractor.sort_to_string(&parameters[0]),
+                        abstractor.sort_to_string(&parameters[1])
+                    ));
+                }
+            } else if is_unshadowed && matches!(name.as_str(), "select" | "store" | "const") {
+                self.abstraction_error = Some(format!("cannot determine array sort for {name}"));
+            }
+        }
         SimplifiedTerm {
             term: Term::Application {
                 qual_identifier,
