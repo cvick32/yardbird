@@ -24,6 +24,7 @@ from src.benchmark_parsing import (  # noqa: E402
 )
 from report.instrumentation import build_instrumentation_report  # noqa: E402
 from report.typst import typst_table  # noqa: E402
+from report.protocol_depths import protocol_depth_sections  # noqa: E402
 
 
 FIGURE_PREFIXES = (
@@ -239,7 +240,7 @@ def diagnostic_number(value: int | float | None) -> str:
     return f"{value:g}"
 
 
-def analysis_workbook_sections(analysis: dict) -> list[str]:
+def summary_workbook_sections(analysis: dict) -> list[str]:
     overview = analysis["overview"]
     baseline_name = analysis["baseline_display_name"]
     lines = [
@@ -278,7 +279,6 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                 summary["missing_results"],
                 solve_rate_text,
                 median_text,
-                diagnostic_number(summary["median_num_checks"]),
                 summary["fastest_solve_count"],
                 summary["exclusive_solve_count"],
             ]
@@ -295,12 +295,11 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                     "Missing",
                     "Rate",
                     "Median",
-                    "Checks",
                     "Fastest",
                     "Exclusive",
                 ],
                 strategy_rows,
-                columns="(1.6fr, .55fr, .65fr, .6fr, .6fr, .7fr, .65fr, .6fr, .65fr)",
+                columns="(1.6fr, .55fr, .65fr, .6fr, .6fr, .7fr, .6fr, .65fr)",
             ),
             "",
             "_Fastest_ counts the lowest observed runtime among successful strategies for each "
@@ -313,14 +312,6 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
     for comparison in analysis["baseline_comparisons"]:
         speedup = comparison["geomean_runtime_speedup"]
         speedup_text = f"{speedup:.3f}x" if speedup is not None else "-"
-        solver_speedup = comparison["geomean_solver_time_speedup"]
-        solver_speedup_text = (
-            f"{solver_speedup:.3f}x" if solver_speedup is not None else "-"
-        )
-        check_reduction = comparison["geomean_check_reduction"]
-        check_reduction_text = (
-            f"{check_reduction:.3f}x" if check_reduction is not None else "-"
-        )
         comparison_rows.append(
             [
                 comparison["candidate_display_name"],
@@ -331,8 +322,6 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                 f"{comparison['runtime_tie_count']} / "
                 f"{comparison['runtime_loss_count']}",
                 speedup_text,
-                solver_speedup_text,
-                check_reduction_text,
             ]
         )
     if comparison_rows:
@@ -348,11 +337,9 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                         "Shared",
                         "Win/Tie/Loss",
                         "Runtime",
-                        "Z3 time",
-                        "Checks",
                     ],
                     comparison_rows,
-                    columns="(1.6fr, .55fr, .55fr, .55fr, .9fr, .7fr, .7fr, .7fr)",
+                    columns="(1.6fr, .55fr, .55fr, .55fr, .9fr, .7fr)",
                 ),
                 "",
                 f"Runtime wins and losses use a "
@@ -361,6 +348,44 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
             ]
         )
 
+    return lines
+
+
+def solver_workbook_sections(analysis: dict) -> list[str]:
+    lines = ["#pagebreak()", "", "= Solver Statistics", ""]
+    lines.extend(
+        [
+            typst_table(
+                ["Strategy", "Median checks"],
+                [
+                    [row["display_name"], diagnostic_number(row["median_num_checks"])]
+                    for row in analysis["strategy_summaries"]
+                ],
+                columns="(1fr, 1fr)",
+            ),
+            "",
+            typst_table(
+                ["Candidate", "Z3 time speedup", "Check reduction"],
+                [
+                    [
+                        row["candidate_display_name"],
+                        f"{row['geomean_solver_time_speedup']:.3f}x"
+                        if row["geomean_solver_time_speedup"] is not None
+                        else "-",
+                        f"{row['geomean_check_reduction']:.3f}x"
+                        if row["geomean_check_reduction"] is not None
+                        else "-",
+                    ]
+                    for row in analysis["baseline_comparisons"]
+                ],
+                columns="(1.6fr, 1fr, 1fr)",
+            ),
+            "",
+            "Solver-time speedup and check-count reduction are geometric means over shared solves. "
+            "Values above 1x favor the candidate over the baseline.",
+            "",
+        ]
+    )
     for diagnostic in analysis.get("solver_diagnostics", []):
         metric_rows = []
         for metric in diagnostic["metrics"]:
@@ -427,18 +452,16 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                 ]
             )
 
+    return lines
+
+
+def comparison_workbook_sections(analysis: dict) -> list[str]:
+    baseline_name = analysis["baseline_display_name"]
+    lines = []
     for comparison in analysis["baseline_comparisons"]:
         candidate_name = comparison["candidate_display_name"]
         speedup = comparison["geomean_runtime_speedup"]
         speedup_text = f"{speedup:.3f}x" if speedup is not None else "n/a"
-        solver_speedup = comparison["geomean_solver_time_speedup"]
-        solver_speedup_text = (
-            f"{solver_speedup:.3f}x" if solver_speedup is not None else "n/a"
-        )
-        check_reduction = comparison["geomean_check_reduction"]
-        check_reduction_text = (
-            f"{check_reduction:.3f}x" if check_reduction is not None else "n/a"
-        )
         lines.extend(
             [
                 "#pagebreak()",
@@ -456,10 +479,6 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
                 f"{comparison['runtime_loss_count']} losses across "
                 f"{comparison['both_solved_count']} shared solves. Geometric-mean speedup: "
                 f"*{speedup_text}*.",
-                "",
-                f"*Solver-query effect:* geometric-mean Z3-time speedup is "
-                f"*{solver_speedup_text}* and geometric-mean check-count reduction is "
-                f"*{check_reduction_text}*. Values above 1x favor the candidate.",
                 "",
             ]
         )
@@ -542,12 +561,31 @@ def analysis_workbook_sections(analysis: dict) -> list[str]:
     return lines
 
 
+def figure_workbook_sections(figure_assets: list[Path]) -> list[str]:
+    lines = []
+    for asset in figure_assets:
+        rel_asset = asset.relative_to(asset.parent.parent).as_posix()
+        lines.extend(
+            [
+                "#pagebreak()",
+                "",
+                f"= {figure_title(asset)}",
+                "",
+                f'#image("{rel_asset}", width: 100%)',
+                "",
+            ]
+        )
+
+    return lines
+
+
 def workbook_body(
     manifest: dict,
     analysis: dict,
     figure_assets: list[Path],
     table_sources: list[Path],
     instrumentation_sections: list[str],
+    depth_sections: list[str] | None = None,
 ) -> str:
     benchmark_types = ", ".join(manifest.get("benchmark_types", []))
     lines = [
@@ -585,21 +623,24 @@ def workbook_body(
         lines.append(detail)
     lines.append("")
 
-    lines.extend(analysis_workbook_sections(analysis))
-    lines.extend(instrumentation_sections)
-
-    for asset in figure_assets:
-        rel_asset = asset.relative_to(asset.parent.parent).as_posix()
-        lines.extend(
-            [
-                "#pagebreak()",
-                "",
-                f"= {figure_title(asset)}",
-                "",
-                f'#image("{rel_asset}", width: 100%)',
-                "",
-            ]
-        )
+    runtime_cactus = [
+        asset for asset in figure_assets if asset.stem == "runtime_cactus_plot"
+    ]
+    solver_figures = [
+        asset
+        for asset in figure_assets
+        if asset.stem.startswith(("solver_", "conflict_", "instantiation_"))
+    ]
+    remaining_figures = [
+        asset
+        for asset in figure_assets
+        if asset not in runtime_cactus and asset not in solver_figures
+    ]
+    lines.extend(summary_workbook_sections(analysis))
+    lines.extend(figure_workbook_sections(runtime_cactus))
+    lines.extend(comparison_workbook_sections(analysis))
+    lines.extend(depth_sections or [])
+    lines.extend(figure_workbook_sections(remaining_figures))
 
     lines.extend(["#pagebreak()", "", "= Analysis Artifacts", ""])
     lines.extend(
@@ -629,6 +670,10 @@ def workbook_body(
     else:
         lines.append("No tables were generated for this run.")
     lines.append("")
+
+    lines.extend(solver_workbook_sections(analysis))
+    lines.extend(instrumentation_sections)
+    lines.extend(figure_workbook_sections(solver_figures))
 
     return "\n".join(lines)
 
@@ -683,6 +728,7 @@ def build_report_from_manifest(
             compiled_assets,
             table_sources,
             instrumentation_report.sections,
+            protocol_depth_sections(grouped),
         )
     )
     run_command(
