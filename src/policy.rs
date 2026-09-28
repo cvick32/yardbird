@@ -45,6 +45,7 @@ fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         );
     let policy = run.configure_eager_policy(policy);
     let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
+        .with_countermodel_trace_work(run.countermodel_trace_work)
         .with_artifact_capture(run.build_array_artifact_capture())
         .with_theory_selection(run.theory.clone())
         .with_property_check_mode(PropertyCheckMode::Assumptions);

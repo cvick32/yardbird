@@ -39,6 +39,7 @@ use crate::training::LogisticRegressionModel;
 
 pub mod audit;
 pub mod auxiliary_synthesis;
+pub mod countermodel;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
@@ -204,6 +205,10 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub profile: bool,
 
+    /// Bound read-only counter-model tracing per refinement (0 disables). Includes JSON profiling.
+    #[arg(long, default_value_t = 0)]
+    pub countermodel_trace_work: usize,
+
     /// Write a replayable solver session and its metadata to this directory.
     #[arg(long)]
     pub solver_capture_dir: Option<PathBuf>,
@@ -290,6 +295,7 @@ impl Default for YardbirdOptions {
             dump_unsat_core: None,
             verbose: false,
             profile: false,
+            countermodel_trace_work: 0,
             solver_capture_dir: None,
             record_decisions: false,
             train: false,
@@ -389,7 +395,10 @@ impl YardbirdOptions {
     }
 
     pub(crate) fn profiling_enabled(&self) -> bool {
-        self.profile || self.train || self.solver_capture_dir.is_some()
+        self.profile
+            || self.train
+            || self.solver_capture_dir.is_some()
+            || self.countermodel_trace_work > 0
     }
 
     pub fn build_array_artifact_capture(&self) -> ArtifactCapture {
@@ -415,6 +424,27 @@ impl YardbirdOptions {
             anyhow::bail!(
                 "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
                 self.synthesis_trigger
+            );
+        }
+        Ok(())
+    }
+
+    /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
+    pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        if self.countermodel_trace_work > 0 {
+            anyhow::ensure!(
+                matches!(self.strategy, Strategy::Abstract) || self.policy.is_some(),
+                "counter-model tracing currently requires the abstract strategy"
+            );
+            anyhow::ensure!(
+                self.filename
+                    .as_deref()
+                    .is_some_and(|f| f.ends_with(".vmt")),
+                "counter-model tracing currently requires a VMT input"
+            );
+            anyhow::ensure!(
+                self.theory.includes(Theory::Array),
+                "counter-model tracing currently supports array VMT inputs"
             );
         }
         Ok(())
@@ -595,6 +625,7 @@ impl YardbirdOptions {
             .with_instantiation_ranker(self.build_instantiation_ranker());
         let policy = self.configure_eager_policy(policy);
         Abstract::new(bmc_depth, self.run_ic3ia, policy, self.profiling_enabled())
+            .with_countermodel_trace_work(self.countermodel_trace_work)
             .with_artifact_capture(self.build_array_artifact_capture())
             .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
             .with_recurrent_product_abstraction(self.abstract_recurrent_products)

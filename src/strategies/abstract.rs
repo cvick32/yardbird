@@ -58,6 +58,8 @@ where
     term_selection_decisions: FxHashMap<String, String>,
     artifact_capture: ArtifactCapture,
     profile: bool,
+    countermodel_trace_work: usize,
+    countermodel_trace_index: Option<crate::transition_index::TransitionIndex>,
     profiling_records: Vec<ProfilingRecord>,
     cone_attempted_depths: HashSet<u16>,
     preprocess_exact_read_after_write: bool,
@@ -90,6 +92,8 @@ where
             term_selection_decisions: FxHashMap::default(),
             artifact_capture: ArtifactCapture::default(),
             profile,
+            countermodel_trace_work: 0,
+            countermodel_trace_index: None,
             profiling_records: vec![],
             cone_attempted_depths: HashSet::new(),
             preprocess_exact_read_after_write: false,
@@ -103,6 +107,11 @@ where
             },
             preparation_error: None,
         }
+    }
+
+    pub fn with_countermodel_trace_work(mut self, work: usize) -> Self {
+        self.countermodel_trace_work = work;
+        self
     }
 
     pub fn with_artifact_capture(mut self, artifact_capture: ArtifactCapture) -> Self {
@@ -149,6 +158,7 @@ where
 /// between searches; a new model receives a fresh graph and search caches.
 pub struct RefinementState {
     pub depth: u16,
+    pub countermodel_trace: Option<crate::countermodel::CountermodelTrace>,
     pub egraph: crate::refinement_graph::RefinementGraph,
     pub candidates: Vec<InstantiationCandidate>,
     pub(crate) guarded_read_updates: Vec<Term>,
@@ -263,6 +273,7 @@ where
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         self.obligations = Default::default();
         self.preparation_error = None;
+        self.countermodel_trace_index = None;
         let prepared = prepare_vmt(
             model.clone(),
             PreparationOptions {
@@ -310,6 +321,12 @@ where
                         );
                     }
                 }
+                self.countermodel_trace_index = (self.countermodel_trace_work > 0).then(|| {
+                    crate::transition_index::TransitionIndex::from_model(
+                        &prepared.model,
+                        &HashSet::new(),
+                    )
+                });
                 self.array = prepared.array;
                 self.quantifier = prepared.quantifier;
                 self.ownership = prepared.ownership;
@@ -375,6 +392,7 @@ where
         };
         self.model_sequence += 1;
         Ok(RefinementState {
+            countermodel_trace: None,
             model_version: self.model_sequence,
             graph_version: 0,
             array_expansion: None,
@@ -706,6 +724,28 @@ where
                 self.absorb_candidates(state, batch);
             }
         })();
+        // Trace after selection: diagnostic model evaluation must not influence
+        // the representative choices made for this refinement pass.
+        if let Some(index) = self
+            .countermodel_trace_index
+            .as_ref()
+            .filter(|_| state.countermodel_trace.is_none())
+        {
+            let start = std::time::Instant::now();
+            state.countermodel_trace = Some(crate::countermodel::trace_violation(
+                index,
+                &state.array_types,
+                state.depth,
+                state.model_version,
+                self.countermodel_trace_work,
+                |term| smt.eval_to_string(term),
+            ));
+            if let Some(profiling) = &profiling {
+                let mut p = profiling.borrow_mut();
+                p.record_countermodel_trace(state.countermodel_trace.clone().unwrap());
+                p.record_timing("countermodel_trace", start.elapsed());
+            }
+        }
         self.finish_profiling_record(profiling);
         pass_result
     }
