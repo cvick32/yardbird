@@ -14,7 +14,7 @@ use yardbird::{
 
 fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
-    let options = YardbirdOptions::parse();
+    let options = YardbirdOptions::parse().resolve()?;
     logger::init_logger(if options.verbose {
         log::Level::Trace
     } else {

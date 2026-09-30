@@ -78,12 +78,20 @@ pub struct ArrayProofPlan {
     pub conditional_history: Option<Box<dyn ProofStrategyExt<RefinementState>>>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(version, about, long_about = None)]
 pub struct YardbirdOptions {
     /// Run a repository-level operation instead of solving one input file.
     #[command(subcommand)]
     pub command: Option<YardbirdCommand>,
+
+    /// Load every other option from this JSON file (a serialized
+    /// `YardbirdOptions`), overriding whatever else was passed on the command
+    /// line. Internal: `garden` uses this instead of reconstructing each flag
+    /// as a subprocess argument.
+    #[arg(long, hide = true)]
+    #[serde(skip)]
+    pub options_json: Option<PathBuf>,
 
     /// Select an executable policy instead of configuring individual policy choices.
     #[arg(long, value_enum, conflicts_with_all = [
@@ -266,6 +274,7 @@ impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
             command: None,
+            options_json: None,
             policy: None,
             filename: None,
             depth: 10,
@@ -313,7 +322,7 @@ impl Default for YardbirdOptions {
     }
 }
 
-#[derive(Subcommand, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 pub enum YardbirdCommand {
     /// Run every VMT benchmark with concrete and abstract strategies in isolated subprocesses.
     Audit {
@@ -408,6 +417,21 @@ impl YardbirdOptions {
             instantiation_provenance: decisions || self.track_instantiations,
             conflicts: self.synthesis_trigger != SynthesisTrigger::Off,
         }
+    }
+
+    /// Resolve `--options-json` if it was given: load every other option from
+    /// that file, replacing whatever else was parsed from the command line.
+    /// `garden` writes a full `YardbirdOptions` there instead of reconstructing
+    /// each flag as a subprocess argument.
+    pub fn resolve(self) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        let Some(path) = &self.options_json else {
+            return Ok(self);
+        };
+        let json = std::fs::read_to_string(path)
+            .with_context(|| format!("reading --options-json {}", path.display()))?;
+        serde_json::from_str(&json)
+            .with_context(|| format!("parsing --options-json {}", path.display()))
     }
 
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
@@ -904,7 +928,7 @@ impl Display for SolverBackend {
 }
 
 /// Describes the instantiation strategies available.
-#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum InstantiationStrategyType {
@@ -926,6 +950,63 @@ impl Display for InstantiationStrategyType {
 #[cfg(test)]
 mod option_tests {
     use super::*;
+
+    #[test]
+    fn resolve_is_a_no_op_without_options_json() {
+        let options = YardbirdOptions::try_parse_from(["yardbird", "-f", "input.vmt", "--depth", "17"])
+            .unwrap();
+        let before = format!("{options:?}");
+        let resolved = options.resolve().unwrap();
+        assert_eq!(format!("{resolved:?}"), before);
+        assert!(resolved.options_json.is_none());
+    }
+
+    #[test]
+    fn resolve_replaces_options_from_options_json() {
+        // Cover distinct field kinds (a flag, a value_enum, a plain number,
+        // Option<T>, a named policy) so a field that can't
+        // round-trip through serde would show up here. `--ranker-model`
+        // conflicts with `--policy` at parse time, so it's set directly
+        // rather than parsed alongside it.
+        let mut written = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--depth",
+            "17",
+            "--run-ic3ia",
+            "--profile",
+            "--policy",
+            "german-fast",
+        ])
+        .unwrap();
+        written.options_json = None;
+        written.ranker_model = Some("model.json".to_string());
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), serde_json::to_string(&written).unwrap()).unwrap();
+
+        let loaded = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--options-json",
+            file.path().to_str().unwrap(),
+        ])
+        .unwrap()
+        .resolve()
+        .unwrap();
+
+        assert_eq!(format!("{loaded:?}"), format!("{written:?}"));
+    }
+
+    #[test]
+    fn resolve_reports_a_missing_options_json_file() {
+        let options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--options-json",
+            "/no/such/file.json",
+        ])
+        .unwrap();
+        assert!(options.resolve().is_err());
+    }
 
     #[test]
     fn property_checks_default_to_assumptions_and_allow_scoped_override() {

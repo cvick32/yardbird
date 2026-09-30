@@ -13,7 +13,9 @@ use crate::policy::term_selection::TermCostFactory;
 pub use effort::{DefaultEffort, ProofEffort};
 
 /// Executable policies selected by name. Each constructs its own proof plan.
-#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 pub enum NamedPolicy {
     /// German's BMC-cost policy with batched winners and property assumptions.
     GermanFast,
