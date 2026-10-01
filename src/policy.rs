@@ -31,6 +31,7 @@ pub(crate) struct PolicyOverrides {
     pub winners_per_group: Option<usize>,
     pub property_check_mode: Option<crate::solver::PropertyCheckMode>,
     pub countermodel_refinement: bool,
+    pub guidance_followup: Option<effort::WorkAllowance>,
 }
 
 impl NamedPolicy {
@@ -46,14 +47,25 @@ impl NamedPolicy {
 
     /// Overrides this policy applies when the ordinary pipeline builds an
     /// abstract-strategy plan. This is the only place that interprets what
-    /// being `CountermodelGuided` means.
-    pub(crate) fn overrides(self, _run: &crate::YardbirdOptions) -> PolicyOverrides {
+    /// being `CountermodelGuided` means; `guidance_schedule` only has an
+    /// effect through this method.
+    pub(crate) fn overrides(self, run: &crate::YardbirdOptions) -> PolicyOverrides {
         match self {
             Self::GermanFast => PolicyOverrides::default(),
             Self::CountermodelGuided => PolicyOverrides {
                 winners_per_group: Some(20),
                 property_check_mode: Some(crate::solver::PropertyCheckMode::Assumptions),
                 countermodel_refinement: true,
+                guidance_followup: (run.guidance_schedule == effort::GuidanceSchedule::Supplement)
+                    .then_some(effort::WorkAllowance {
+                        winners: 20,
+                        dependency_work: 128,
+                        dependency_demands: 16,
+                        dependency_paths: 4,
+                        dependency_links: 4,
+                        dependency_helpers: 32,
+                        ..Default::default()
+                    }),
             },
         }
     }

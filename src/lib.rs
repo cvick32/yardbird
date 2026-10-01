@@ -217,6 +217,12 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = 0)]
     pub countermodel_trace_work: usize,
 
+    /// Return after guided candidates, or supplement them with bounded
+    /// dependency search. Only meaningful with `--policy countermodel-guided`;
+    /// see `NamedPolicy::overrides`.
+    #[arg(long, value_enum, default_value_t = policy::effort::GuidanceSchedule::Immediate, requires = "policy")]
+    pub guidance_schedule: policy::effort::GuidanceSchedule,
+
     /// Write a replayable solver session and its metadata to this directory.
     #[arg(long)]
     pub solver_capture_dir: Option<PathBuf>,
@@ -305,6 +311,7 @@ impl Default for YardbirdOptions {
             verbose: false,
             profile: false,
             countermodel_trace_work: 0,
+            guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
             solver_capture_dir: None,
             record_decisions: false,
             train: false,
@@ -663,6 +670,7 @@ impl YardbirdOptions {
             .with_effort(
                 crate::policy::DefaultEffort::default()
                     .with_countermodel_refinement(overrides.countermodel_refinement)
+                    .with_guidance_followup(overrides.guidance_followup)
                     .with_egraph_builder(self.build_array_egraph_builder())
                     .with_winners_per_group(
                         overrides
@@ -985,8 +993,9 @@ mod option_tests {
 
     #[test]
     fn resolve_is_a_no_op_without_options_json() {
-        let options = YardbirdOptions::try_parse_from(["yardbird", "-f", "input.vmt", "--depth", "17"])
-            .unwrap();
+        let options =
+            YardbirdOptions::try_parse_from(["yardbird", "-f", "input.vmt", "--depth", "17"])
+                .unwrap();
         let before = format!("{options:?}");
         let resolved = options.resolve().unwrap();
         assert_eq!(format!("{resolved:?}"), before);
@@ -996,7 +1005,7 @@ mod option_tests {
     #[test]
     fn resolve_replaces_options_from_options_json() {
         // Cover distinct field kinds (a flag, a value_enum, a plain number,
-        // Option<T>, a named policy) so a field that can't
+        // Option<T>, a policy + the field it gates) so a field that can't
         // round-trip through serde would show up here. `--ranker-model`
         // conflicts with `--policy` at parse time, so it's set directly
         // rather than parsed alongside it.
@@ -1009,7 +1018,9 @@ mod option_tests {
             "--run-ic3ia",
             "--profile",
             "--policy",
-            "german-fast",
+            "countermodel-guided",
+            "--guidance-schedule",
+            "supplement",
         ])
         .unwrap();
         written.options_json = None;
@@ -1031,13 +1042,37 @@ mod option_tests {
 
     #[test]
     fn resolve_reports_a_missing_options_json_file() {
+        let options =
+            YardbirdOptions::try_parse_from(["yardbird", "--options-json", "/no/such/file.json"])
+                .unwrap();
+        assert!(options.resolve().is_err());
+    }
+
+    #[test]
+    fn guidance_schedule_requires_a_policy_instead_of_being_silently_ignored() {
+        assert!(YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--guidance-schedule",
+            "supplement",
+        ])
+        .is_err());
+
         let options = YardbirdOptions::try_parse_from([
             "yardbird",
-            "--options-json",
-            "/no/such/file.json",
+            "-f",
+            "input.vmt",
+            "--policy",
+            "countermodel-guided",
+            "--guidance-schedule",
+            "supplement",
         ])
         .unwrap();
-        assert!(options.resolve().is_err());
+        assert_eq!(
+            options.guidance_schedule,
+            policy::effort::GuidanceSchedule::Supplement
+        );
     }
 
     #[test]
@@ -1057,6 +1092,15 @@ mod option_tests {
             Some(crate::solver::PropertyCheckMode::Assumptions)
         );
         assert!(overrides.countermodel_refinement);
+        assert!(overrides.guidance_followup.is_none());
+
+        let mut supplemented = run.clone();
+        supplemented.guidance_schedule = policy::effort::GuidanceSchedule::Supplement;
+        assert!(policy::NamedPolicy::CountermodelGuided
+            .overrides(&supplemented)
+            .guidance_followup
+            .is_some());
+
         // GermanFast builds its own plan directly and never overrides the
         // generic pipeline through this path.
         assert!(policy::NamedPolicy::GermanFast

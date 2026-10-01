@@ -6,6 +6,13 @@ pub use crate::theories::quantifiers::SearchPhase;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum, Serialize, Deserialize)]
+pub enum GuidanceSchedule {
+    #[default]
+    Immediate,
+    Supplement,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkAllowance {
     pub winners: usize,
@@ -198,6 +205,7 @@ pub trait ProofEffort {
 
 #[derive(Clone, Copy)]
 enum Stage {
+    GuidanceFollowup,
     Dependencies,
     Grow,
     Witnesses,
@@ -215,6 +223,7 @@ enum Stage {
 pub struct DefaultEffort {
     countermodel_refinement: bool,
     countermodel_model: Option<u64>,
+    guidance_followup: Option<WorkAllowance>,
     allowance: WorkAllowance,
     initial_allowance: WorkAllowance,
     retry: bool,
@@ -236,6 +245,7 @@ impl Default for DefaultEffort {
         Self {
             countermodel_refinement: false,
             countermodel_model: None,
+            guidance_followup: None,
             allowance: WorkAllowance::default(),
             initial_allowance: WorkAllowance::default(),
             retry: false,
@@ -255,6 +265,18 @@ impl Default for DefaultEffort {
     }
 }
 impl DefaultEffort {
+    /// After a successful guided batch, allow one bounded dependency search
+    /// before installing the combined batch. None returns immediately instead.
+    pub fn with_guidance_followup(mut self, allowance: Option<WorkAllowance>) -> Self {
+        if let Some(allowance) = allowance {
+            allowance
+                .validate()
+                .expect("valid guidance follow-up allowance");
+        }
+        self.guidance_followup = allowance;
+        self
+    }
+
     pub fn with_countermodel_refinement(mut self, enabled: bool) -> Self {
         self.countermodel_refinement = enabled;
         self
@@ -276,13 +298,28 @@ impl DefaultEffort {
         self.egraph_builder = builder;
         self
     }
-}
-impl ProofEffort for DefaultEffort {
-    fn uses_countermodel_refinement(&self) -> bool {
-        self.countermodel_refinement
-    }
 
-    fn choose(&mut self, context: &EffortContext<'_>) -> EffortDecision {
+    /// Decisions made before the ordinary `Stage` schedule runs at all: the
+    /// countermodel-guided pass (once per model) and its optional bounded
+    /// follow-up. Both return straight to the driver on completion (see
+    /// `observe`'s `Completed` handling) rather than resuming the ordinary
+    /// schedule mid-pass, so neither needs a real slot in `Stage`'s rotation.
+    fn preempt(&self, context: &EffortContext<'_>) -> Option<EffortDecision> {
+        if matches!(self.stage, Stage::GuidanceFollowup) {
+            return Some(
+                match context
+                    .operations
+                    .iter()
+                    .find(|op| op.kind == OperationKind::DiscoverDependencies)
+                {
+                    Some(operation) => EffortDecision::Execute {
+                        operation: operation.id,
+                        allowance: self.guidance_followup.expect("configured follow-up"),
+                    },
+                    None => EffortDecision::ReturnToDriver,
+                },
+            );
+        }
         if self.countermodel_refinement
             && self.countermodel_model != Some(context.model)
             && !matches!(self.stage, Stage::Return)
@@ -292,11 +329,23 @@ impl ProofEffort for DefaultEffort {
                 .iter()
                 .find(|op| op.kind == OperationKind::CountermodelCandidates)
             {
-                return EffortDecision::Execute {
+                return Some(EffortDecision::Execute {
                     operation: operation.id,
                     allowance: self.allowance,
-                };
+                });
             }
+        }
+        None
+    }
+}
+impl ProofEffort for DefaultEffort {
+    fn uses_countermodel_refinement(&self) -> bool {
+        self.countermodel_refinement
+    }
+
+    fn choose(&mut self, context: &EffortContext<'_>) -> EffortDecision {
+        if let Some(decision) = self.preempt(context) {
+            return decision;
         }
         loop {
             let find = |kind| context.operations.iter().find(|op| op.kind == kind);
@@ -325,7 +374,9 @@ impl ProofEffort for DefaultEffort {
                 Stage::Triggered => find(OperationKind::Binder(SearchPhase::TriggeredConflicts)),
                 Stage::Conflicts => find(OperationKind::Binder(SearchPhase::Conflicts)),
                 Stage::Expand => find(OperationKind::Binder(SearchPhase::Expand)),
-                Stage::Return => return EffortDecision::ReturnToDriver,
+                // `GuidanceFollowup` never reaches this loop: `preempt` always
+                // intercepts it first. Listed only for match exhaustiveness.
+                Stage::Return | Stage::GuidanceFollowup => return EffortDecision::ReturnToDriver,
             };
             if let Some(operation) = operation {
                 return EffortDecision::Execute {
@@ -343,7 +394,9 @@ impl ProofEffort for DefaultEffort {
                 Stage::Arrays => Stage::Triggered,
                 Stage::Triggered => Stage::Conflicts,
                 Stage::Conflicts if self.retrying => Stage::Expand,
-                Stage::Conflicts | Stage::Expand | Stage::Return => {
+                // `GuidanceFollowup` never reaches this loop either (see the
+                // arm above); grouped here only so this match stays exhaustive.
+                Stage::Conflicts | Stage::Expand | Stage::Return | Stage::GuidanceFollowup => {
                     if self.array_exhausted {
                         self.retry = true;
                     }
@@ -414,8 +467,16 @@ impl ProofEffort for DefaultEffort {
                 self.next_rule.insert(*phase, (rule + 1) % rule_count);
             }
             EffortEvent::Completed { operation, report } => {
+                if matches!(self.stage, Stage::GuidanceFollowup) {
+                    self.stage = Stage::Return;
+                    return;
+                }
                 if *operation == OperationKind::CountermodelCandidates {
                     self.countermodel_model = Some(self.model);
+                    if report.selected > 0 && self.guidance_followup.is_some() {
+                        self.stage = Stage::GuidanceFollowup;
+                        return;
+                    }
                 }
                 if report.selected > 0 {
                     self.retry = false;
@@ -658,5 +719,84 @@ mod continuation_tests {
             });
         }
         assert!(slices > 1, "a paused agenda must get a continuation");
+    }
+}
+
+#[cfg(test)]
+mod guidance_followup_tests {
+    use super::*;
+
+    #[test]
+    fn policy_controls_whether_and_how_much_to_supplement_guidance() {
+        let allowance = WorkAllowance {
+            dependency_work: 3,
+            winners: 2,
+            ..Default::default()
+        };
+        for supplement in [None, Some(allowance)] {
+            let mut policy = DefaultEffort::default()
+                .with_countermodel_refinement(true)
+                .with_guidance_followup(supplement);
+            policy.observe(&EffortEvent::BeginPass {
+                model: 1,
+                depth: 0,
+                refinement_step: 0,
+            });
+            let operations = [
+                OperationKind::CountermodelCandidates,
+                OperationKind::DiscoverDependencies,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, kind)| EffortOperation {
+                id: OperationId {
+                    model: 1,
+                    offer: 1,
+                    index,
+                },
+                kind,
+                description: String::new(),
+            })
+            .collect::<Vec<_>>();
+            let context = EffortContext {
+                model: 1,
+                graph_version: 0,
+                depth: 0,
+                refinement_step: 0,
+                pending_instances: 1,
+                operations: &operations,
+            };
+            policy.observe(&EffortEvent::Completed {
+                operation: OperationKind::CountermodelCandidates,
+                report: &WorkReport {
+                    selected: 1,
+                    ..Default::default()
+                },
+            });
+            match policy.choose(&context) {
+                EffortDecision::ReturnToDriver => assert!(supplement.is_none()),
+                EffortDecision::Execute {
+                    operation,
+                    allowance: actual,
+                } => {
+                    assert_eq!(supplement, Some(actual));
+                    assert_eq!(operation, operations[1].id);
+                    // Even a continuable, empty supplemental search returns;
+                    // it cannot consume the full ordinary search schedule.
+                    policy.observe(&EffortEvent::Completed {
+                        operation: OperationKind::DiscoverDependencies,
+                        report: &WorkReport {
+                            continuable: true,
+                            budget_exhausted: true,
+                            ..Default::default()
+                        },
+                    });
+                    assert!(matches!(
+                        policy.choose(&context),
+                        EffortDecision::ReturnToDriver
+                    ));
+                }
+            }
+        }
     }
 }

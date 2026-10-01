@@ -289,49 +289,6 @@ fn trace_options_enable_serialization_and_reject_unsupported_modes() {
     assert!(options.validate_countermodel_trace_options().is_err());
 }
 
-#[test]
-fn undetermined_property_sibling_does_not_hide_a_known_violated_read() {
-    let (index, types) = fixture();
-    let trace = trace_violation(&index, &types, 2, 1, 200, |term| {
-        if term.to_string() == "(= (Read_Int_Int b@2 0) 0)" {
-            Ok(ModelEvaluation::Undetermined)
-        } else {
-            observation(term, false, true)
-        }
-    });
-    assert!(trace
-        .nodes
-        .iter()
-        .any(|n| n.status == TraceStatus::ViolatedArrayAxiom));
-    assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression == "(= (Read_Int_Int b@2 0) 0)")));
-    assert!(!trace
-        .nodes
-        .iter()
-        .any(|n| n.expression.to_string().starts_with("(Read_Int_Int b@")));
-    assert!(!trace
-        .nodes
-        .iter()
-        .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
-}
-
-#[test]
-fn unresolved_index_equality_stops_only_the_guided_read_branch() {
-    let (index, types) = fixture();
-    let trace = trace_violation(&index, &types, 2, 1, 200, |term| {
-        if term.to_string().starts_with("(= 2 ") {
-            Ok(ModelEvaluation::Undetermined)
-        } else {
-            observation(term, false, true)
-        }
-    });
-    assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression.starts_with("(= 2 "))));
-    assert!(trace.candidate_pool().instances().is_empty());
-    assert!(!trace
-        .nodes
-        .iter()
-        .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
-}
-
 #[derive(Clone, Debug)]
 struct RejectTracedInstances;
 impl crate::policy::instance_selection::InstantiationRanker for RejectTracedInstances {
@@ -915,4 +872,104 @@ fn opaque_relations_join_traced_atoms_through_shared_ranking() {
             profiled_count = Some(result.total_instantiations_added);
         }
     }
+}
+
+#[test]
+fn undetermined_property_sibling_does_not_hide_a_known_violated_read() {
+    let (index, types) = fixture();
+    let trace = trace_violation(&index, &types, 2, 1, 200, |term| {
+        if term.to_string() == "(= (Read_Int_Int b@2 0) 0)" {
+            Ok(ModelEvaluation::Undetermined)
+        } else {
+            observation(term, false, true)
+        }
+    });
+    assert!(trace
+        .nodes
+        .iter()
+        .any(|n| n.status == TraceStatus::ViolatedArrayAxiom));
+    assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression == "(= (Read_Int_Int b@2 0) 0)")));
+    assert!(!trace
+        .nodes
+        .iter()
+        .any(|n| n.expression.to_string().starts_with("(Read_Int_Int b@")));
+    assert!(!trace
+        .nodes
+        .iter()
+        .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
+}
+
+#[test]
+fn unresolved_index_equality_stops_only_the_guided_read_branch() {
+    let (index, types) = fixture();
+    let trace = trace_violation(&index, &types, 2, 1, 200, |term| {
+        if term.to_string().starts_with("(= 2 ") {
+            Ok(ModelEvaluation::Undetermined)
+        } else {
+            observation(term, false, true)
+        }
+    });
+    assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression.starts_with("(= 2 "))));
+    assert!(trace.candidate_pool().instances().is_empty());
+    assert!(!trace
+        .nodes
+        .iter()
+        .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
+}
+
+#[test]
+fn guided_and_standard_candidates_can_be_installed_in_one_pass() {
+    use crate::{
+        policy::{effort::WorkAllowance, term_selection::array::ArrayBMCCost},
+        SolverBackend, YardbirdOptions,
+    };
+    let input = std::fs::read_to_string(
+        "examples/distributed_protocols/multi_paxos/multi_paxos.encoding.vmt",
+    )
+    .unwrap();
+    let mut options = YardbirdOptions::from_filename("supplement.vmt".into());
+    options.profile = true;
+    let policy = crate::YardbirdPolicy::<ArrayBMCCost>::new(()).with_effort(
+        crate::policy::DefaultEffort::default()
+            .with_countermodel_refinement(true)
+            .with_guidance_followup(Some(WorkAllowance {
+                dependency_work: 128,
+                ..Default::default()
+            })),
+    );
+    let strategy = crate::strategies::Abstract::new(2, false, policy, true)
+        .with_exact_read_after_write_preprocessing(false);
+    let mut driver = crate::Driver::new(
+        model(&input),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_wall_timeout(Some(std::time::Duration::from_secs(60)));
+    let result = driver.check_strategy(2, Box::new(strategy)).unwrap();
+    assert_eq!(
+        result
+            .run_progress
+            .as_ref()
+            .unwrap()
+            .deepest_completed_depth,
+        Some(1)
+    );
+    assert!(result.profiling.cost_records.iter().any(|record| {
+        let operations: Vec<_> = record
+            .effort
+            .iter()
+            .filter(|e| {
+                e.operation == "CountermodelCandidates" || e.operation == "DiscoverDependencies"
+            })
+            .collect();
+        operations.windows(2).any(|pair| {
+            pair[0].operation == "CountermodelCandidates"
+                && pair[0].report.selected > 0
+                && pair[1].operation == "DiscoverDependencies"
+                && pair[1].allowance.unwrap().dependency_work == 128
+                && pair[1].report.selected > 0
+                && record.installations.len() == pair[0].report.selected + pair[1].report.selected
+        })
+    }));
 }
