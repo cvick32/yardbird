@@ -38,6 +38,9 @@ pub trait ProblemContext {
     fn as_any(&self) -> &dyn Any;
     fn has_model(&self) -> bool;
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
+    fn eval_partial(&self, _term: &Term) -> anyhow::Result<crate::solver::api::ModelEvaluation> {
+        Ok(crate::solver::api::ModelEvaluation::Undetermined)
+    }
     fn model_to_string(&self) -> anyhow::Result<String>;
     fn get_all_subterms(&self) -> Vec<&Term>;
     /// Declarations used to type model-equivalence classes, including symbols

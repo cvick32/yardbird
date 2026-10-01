@@ -49,6 +49,34 @@ pub enum SolverCheckResult {
     Unknown,
 }
 
+/// A non-completing model query. Residual expressions are not model values.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModelEvaluation {
+    Known(String),
+    Undetermined,
+}
+
+impl ModelEvaluation {
+    pub fn as_known(&self) -> Option<&str> {
+        match self {
+            Self::Known(value) => Some(value.as_str()),
+            Self::Undetermined => None,
+        }
+    }
+}
+
+impl From<String> for ModelEvaluation {
+    fn from(value: String) -> Self {
+        Self::Known(value)
+    }
+}
+
+impl From<&str> for ModelEvaluation {
+    fn from(value: &str) -> Self {
+        Self::Known(value.to_owned())
+    }
+}
+
 pub trait YardbirdSolver {
     fn backend(&self) -> SolverBackend;
     fn solver_parameters(&self) -> BTreeMap<String, String> {
@@ -128,6 +156,11 @@ pub trait YardbirdSolver {
 
     fn has_model(&self) -> bool;
     fn eval_to_string(&self, term: &Term) -> anyhow::Result<String>;
+    /// Observe without choosing interpretations for unspecified symbols.
+    /// Backends without partial evaluation conservatively return undetermined.
+    fn eval_partial(&self, _term: &Term) -> anyhow::Result<ModelEvaluation> {
+        Ok(ModelEvaluation::Undetermined)
+    }
     fn model_to_string(&self) -> anyhow::Result<String>;
 
     fn get_solver_statistics(&self) -> SolverStatistics;

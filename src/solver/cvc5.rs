@@ -797,6 +797,16 @@ impl YardbirdSolver for Cvc5SolverBackend {
         ))
     }
 
+    fn eval_partial(&self, term: &SmtTerm) -> anyhow::Result<super::api::ModelEvaluation> {
+        anyhow::ensure!(self.model_captured, "no captured model");
+        // Only values materialized during capture are observable here. Do not
+        // issue get-value queries for additional terms from diagnostic analyses.
+        Ok(self.model_value_cache.get(term).cloned().map_or(
+            super::api::ModelEvaluation::Undetermined,
+            super::api::ModelEvaluation::Known,
+        ))
+    }
+
     fn model_to_string(&self) -> anyhow::Result<String> {
         if !self.model_captured {
             return Ok("<no model>".to_string());

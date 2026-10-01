@@ -21,7 +21,7 @@ fn fixture() -> (TransitionIndex, Vec<(String, String)>) {
     (TransitionIndex::from_model(&model, &HashSet::new()), types)
 }
 
-fn observation(term: &Term, choose: bool, violate_axiom: bool) -> anyhow::Result<String> {
+fn observation(term: &Term, choose: bool, violate_axiom: bool) -> anyhow::Result<ModelEvaluation> {
     let text = term.to_string();
     Ok(
         if text.starts_with("(and ") || text.starts_with("(= (Read_Int_Int a@2") {
@@ -278,4 +278,55 @@ fn trace_options_enable_serialization_and_reject_unsupported_modes() {
     options.strategy = crate::Strategy::Abstract;
     options.filename = Some("test.smt2".into());
     assert!(options.validate_countermodel_trace_options().is_err());
+    options.filename = Some("test.vmt".into());
+    options.strategy = crate::Strategy::Concrete;
+    assert!(options.validate_countermodel_trace_options().is_err());
+    options.strategy = crate::Strategy::Abstract;
+    // cvc5's `eval_partial` only answers from an already-captured value and
+    // never issues a fresh query, so guidance would silently find almost
+    // nothing rather than fail; reject the combination instead.
+    options.solver = crate::SolverBackend::Cvc5;
+    assert!(options.validate_countermodel_trace_options().is_err());
+}
+
+#[test]
+fn undetermined_property_sibling_does_not_hide_a_known_violated_read() {
+    let (index, types) = fixture();
+    let trace = trace_violation(&index, &types, 2, 1, 200, |term| {
+        if term.to_string() == "(= (Read_Int_Int b@2 0) 0)" {
+            Ok(ModelEvaluation::Undetermined)
+        } else {
+            observation(term, false, true)
+        }
+    });
+    assert!(trace
+        .nodes
+        .iter()
+        .any(|n| n.status == TraceStatus::ViolatedArrayAxiom));
+    assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression == "(= (Read_Int_Int b@2 0) 0)")));
+    assert!(!trace
+        .nodes
+        .iter()
+        .any(|n| n.expression.to_string().starts_with("(Read_Int_Int b@")));
+    assert!(!trace
+        .nodes
+        .iter()
+        .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
+}
+
+#[test]
+fn unresolved_index_equality_stops_only_the_guided_read_branch() {
+    let (index, types) = fixture();
+    let trace = trace_violation(&index, &types, 2, 1, 200, |term| {
+        if term.to_string().starts_with("(= 2 ") {
+            Ok(ModelEvaluation::Undetermined)
+        } else {
+            observation(term, false, true)
+        }
+    });
+    assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression.starts_with("(= 2 "))));
+    assert!(!trace
+        .nodes
+        .iter()
+        .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
 }

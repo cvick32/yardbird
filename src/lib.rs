@@ -470,6 +470,13 @@ impl YardbirdOptions {
                 self.theory.includes(Theory::Array),
                 "counter-model tracing currently supports array VMT inputs"
             );
+            // cvc5's `eval_partial` only answers from values already captured
+            // for other purposes; it never issues fresh queries. Guidance
+            // would silently find almost nothing rather than fail loudly.
+            anyhow::ensure!(
+                matches!(self.solver, SolverBackend::Z3),
+                "counter-model tracing currently requires the Z3 solver backend"
+            );
         }
         Ok(())
     }

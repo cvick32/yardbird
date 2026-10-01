@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use smt2parser::concrete::Term;
 use std::collections::VecDeque;
 
-use crate::transition_index::TransitionIndex;
+use crate::{solver::api::ModelEvaluation, transition_index::TransitionIndex};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Observation {
@@ -51,6 +51,7 @@ pub enum TraceStatus {
     InitialState { array: String },
     Unsupported { detail: String },
     EvaluationFailed { detail: String },
+    Undetermined { expression: String },
     ViolatedArrayAxiom,
     InconsistentStep,
     Cycle,
@@ -82,6 +83,7 @@ pub struct CountermodelTrace {
 pub(crate) enum TraceError {
     Budget,
     Evaluation(String),
+    Undetermined(String),
 }
 
 /// Both traversal steps and model queries consume work. The caller owns the
@@ -89,7 +91,7 @@ pub(crate) enum TraceError {
 pub(crate) struct TraceContext<'a> {
     pub index: &'a TransitionIndex,
     pub types: &'a [(String, String)],
-    evaluate: &'a mut dyn FnMut(&Term) -> anyhow::Result<String>,
+    evaluate: &'a mut dyn FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
     remaining: usize,
 }
 impl TraceContext<'_> {
@@ -100,6 +102,9 @@ impl TraceContext<'_> {
     pub fn observe(&mut self, term: &Term) -> Result<Observation, TraceError> {
         self.charge()?;
         let value = (self.evaluate)(term).map_err(|e| TraceError::Evaluation(e.to_string()))?;
+        let ModelEvaluation::Known(value) = value else {
+            return Err(TraceError::Undetermined(term.to_string()));
+        };
         Ok(Observation {
             expression: term.clone(),
             value: value.trim().to_owned(),
@@ -143,7 +148,7 @@ pub fn trace_violation(
     depth: u16,
     model_version: u64,
     work_limit: usize,
-    mut evaluate: impl FnMut(&Term) -> anyhow::Result<String>,
+    mut evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
 ) -> CountermodelTrace {
     let mut cx = TraceContext {
         index,
@@ -220,6 +225,9 @@ pub fn trace_violation(
                 node.status = TraceStatus::BudgetExhausted;
                 trace.budget_exhausted = true;
             }
+            Err(TraceError::Undetermined(expression)) => {
+                node.status = TraceStatus::Undetermined { expression };
+            }
             Err(TraceError::Evaluation(detail)) => {
                 node.status = TraceStatus::EvaluationFailed { detail }
             }
@@ -280,8 +288,16 @@ fn expand(cx: &mut TraceContext<'_>, node: &mut TraceNode) -> Result<Vec<TraceSt
         ("and" | "or", args) => {
             let alternatives = (name == "and") != truth;
             for arg in args {
-                let observation = cx.boolean(arg)?;
-                if !alternatives || (observation.value == "true") == truth {
+                let observation = match cx.boolean(arg) {
+                    Ok(value) => Some(value),
+                    // Preserve this frontier without losing known siblings.
+                    Err(TraceError::Undetermined(_)) => None,
+                    Err(error) => return Err(error),
+                };
+                if observation
+                    .as_ref()
+                    .is_none_or(|o| !alternatives || (o.value == "true") == truth)
+                {
                     children.push(TraceStep::child(
                         arg.clone(),
                         TraceReason::BooleanBranch { alternatives },
@@ -290,23 +306,23 @@ fn expand(cx: &mut TraceContext<'_>, node: &mut TraceNode) -> Result<Vec<TraceSt
             }
         }
         ("=>", [left, right]) => {
-            let left_value = cx.boolean(left)?;
-            let right_value = cx.boolean(right)?;
-            if !truth || left_value.value == "false" {
-                children.push(TraceStep::child(
-                    left.clone(),
-                    TraceReason::BooleanBranch {
-                        alternatives: truth,
-                    },
-                ));
-            }
-            if !truth || right_value.value == "true" {
-                children.push(TraceStep::child(
-                    right.clone(),
-                    TraceReason::BooleanBranch {
-                        alternatives: truth,
-                    },
-                ));
+            for (arg, desired) in [(left, false), (right, true)] {
+                let observation = match cx.boolean(arg) {
+                    Ok(value) => Some(value),
+                    Err(TraceError::Undetermined(_)) => None,
+                    Err(error) => return Err(error),
+                };
+                if observation
+                    .as_ref()
+                    .is_none_or(|o| !truth || (o.value == "true") == desired)
+                {
+                    children.push(TraceStep::child(
+                        arg.clone(),
+                        TraceReason::BooleanBranch {
+                            alternatives: truth,
+                        },
+                    ));
+                }
             }
         }
         ("ite", [condition, yes, no]) => {

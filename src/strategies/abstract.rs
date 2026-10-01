@@ -738,7 +738,7 @@ where
                 state.depth,
                 state.model_version,
                 self.countermodel_trace_work,
-                |term| smt.eval_to_string(term),
+                |term| smt.eval_partial(term),
             ));
             if let Some(profiling) = &profiling {
                 let mut p = profiling.borrow_mut();
