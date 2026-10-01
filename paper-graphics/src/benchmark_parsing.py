@@ -45,11 +45,15 @@ class BenchmarkResult:
     total_conflicts: Optional[float] = None
     solver_stats: dict[str, float] = field(default_factory=dict)
     run_progress: Optional[dict] = None
+    policy: Optional[str] = None
+    guidance_schedule: Optional[str] = None
 
     def has_extended_configuration(self) -> bool:
         return any(
             value is not None
             for value in (
+                self.policy,
+                self.guidance_schedule,
                 self.instantiation_ranker,
                 self.candidate_winners_per_group,
                 self.property_check_mode,
@@ -70,6 +74,8 @@ class BenchmarkResult:
 
     def get_configuration(self) -> dict[str, object]:
         return {
+            "policy": self.policy,
+            "guidance_schedule": self.guidance_schedule,
             "solver": self.solver,
             "strategy": self.strategy,
             "cost_function": self.cost_function,
@@ -100,6 +106,8 @@ class BenchmarkResult:
             strategy_id = f"{self.strategy}_{self.cost_function}"
             if self.has_extended_configuration():
                 components: list[tuple[str, object | None]] = [
+                    ("policy", self.policy),
+                    ("guidance", self.guidance_schedule),
                     ("solver", self.solver),
                     ("depth", self.depth),
                     ("egraph", self.egraph_builder),
@@ -115,7 +123,10 @@ class BenchmarkResult:
                         "recurrent-products",
                         "on" if self.abstract_recurrent_products else "off",
                     ),
-                    ("guarded-read-updates", "on" if self.guarded_read_updates else None),
+                    (
+                        "guarded-read-updates",
+                        "on" if self.guarded_read_updates else None,
+                    ),
                     (
                         "synthesis",
                         self.synthesis_trigger
@@ -211,6 +222,10 @@ class BenchmarkResult:
                 if self.depth:
                     name = f"{name} d{self.depth}"
                 details = []
+                if self.policy:
+                    details.append(self.policy)
+                if self.guidance_schedule:
+                    details.append(self.guidance_schedule)
                 if self.solver and self.solver != "z3":
                     details.append(self.solver.upper())
                 egraph_names = {
@@ -555,6 +570,8 @@ class BenchmarkParser:
         solver_stats = extract_solver_stats(result_entry, success)
 
         return BenchmarkResult(
+            policy=result_entry.get("policy"),
+            guidance_schedule=result_entry.get("guidance_schedule"),
             run_progress=run_progress,
             example_name=example_name,
             strategy=strategy,

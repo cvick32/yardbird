@@ -10,6 +10,40 @@ from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
 
 
 class BenchmarkParserTests(unittest.TestCase):
+    def test_named_policies_and_guidance_schedules_remain_separate(self) -> None:
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        results = [
+            parser._parse_single_result(
+                "examples/protocol.vmt",
+                {
+                    "strategy": "abstract",
+                    "cost_function": "bmc-cost",
+                    "policy": policy,
+                    "guidance_schedule": schedule,
+                    "candidate_winners_per_group": 20,
+                    "depth": 20,
+                    "result": {"Timeout": 500000},
+                },
+            )
+            for policy, schedule in [
+                (None, None),
+                ("german-fast", None),
+                ("countermodel-guided", "immediate"),
+                ("countermodel-guided", "supplement"),
+            ]
+        ]
+        grouped, strategy_ids = group_benchmark_results(results)
+        self.assertEqual(len(grouped), 1)
+        self.assertEqual(len(strategy_ids), 4)
+        self.assertEqual(len({r.get_display_name() for r in results}), 4)
+        self.assertEqual(
+            results[3].get_configuration()["policy"], "countermodel-guided"
+        )
+        self.assertEqual(
+            results[3].get_configuration()["guidance_schedule"], "supplement"
+        )
+        self.assertIn("supplement", results[3].get_display_name())
+
     def test_found_proof_is_a_solved_result(self) -> None:
         payload = {
             "benchmarks": [
