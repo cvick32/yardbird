@@ -478,6 +478,8 @@ pub enum EffortRecordKind {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EffortCandidate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub countermodel_origin: Option<crate::rule_matching::provenance::CountermodelOrigin>,
     pub abstract_instantiation_id: String,
     pub selected: bool,
     pub rule: String,
@@ -493,6 +495,7 @@ impl EffortCandidate {
             .candidates
             .iter()
             .map(|candidate| Self {
+                countermodel_origin: candidate.provenance.countermodel_origin().cloned(),
                 abstract_instantiation_id: candidate
                     .provenance
                     .abstract_instantiation_id()

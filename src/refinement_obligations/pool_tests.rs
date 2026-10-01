@@ -1,4 +1,6 @@
 use super::*;
+use crate::instance_installation::assertion_tracker::canonical_instantiation_key;
+use crate::terms::language::expr_to_term;
 use crate::{
     instance_installation::request::{InstantiationInstallResult, InstantiationRequest},
     policy::{

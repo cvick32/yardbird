@@ -9,3 +9,4 @@ pub mod rule;
 pub mod scope;
 pub(crate) mod search;
 pub(crate) mod search_context;
+pub(crate) mod symbolic_pool;
