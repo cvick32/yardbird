@@ -11,7 +11,9 @@ use crate::{
         symbolic_pool::SymbolicCandidatePool,
     },
     solver::api::ModelEvaluation,
-    theories::quantifiers::{countermodel::InitializerSearch, QuantifierPlan},
+    theories::quantifiers::{
+        countermodel::InitializerSearch, countermodel_relations, QuantifierPlan,
+    },
     transition_index::TransitionIndex,
 };
 
@@ -60,6 +62,9 @@ pub enum TraceReason {
     UnresolvedInitialization {
         path: Vec<TraceLemma>,
         expression: String,
+    },
+    QuantifierMatch {
+        anchors: Vec<usize>,
     },
 }
 
@@ -202,7 +207,7 @@ pub(crate) struct TraceStep {
 /// Guided search consumes the same borrowed formulas, model and allowance as
 /// ordinary refinement. Its traversal and partial evaluation remain local.
 pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> CountermodelTrace {
-    trace_refinement(
+    let mut trace = trace_refinement(
         context
             .formulas
             .index
@@ -213,7 +218,9 @@ pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> Coun
         context.allowance.dependency_work,
         |term| context.smt.eval_partial(term),
         Some(context.formulas.quantifiers),
-    )
+    );
+    countermodel_relations::extend(&mut trace, context);
+    trace
 }
 impl TraceStep {
     fn child(term: Term, reason: TraceReason) -> Self {

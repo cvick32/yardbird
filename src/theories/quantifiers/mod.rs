@@ -33,6 +33,7 @@ mod binder_request_tests;
 pub(crate) mod body_matching;
 pub(crate) mod clauses;
 pub(crate) mod countermodel;
+pub(crate) mod countermodel_relations;
 pub(crate) mod dependency_search;
 pub(crate) mod equations;
 pub(crate) mod obligations;

@@ -816,3 +816,103 @@ fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
             .is_empty());
     }
 }
+
+#[test]
+fn opaque_relations_join_traced_atoms_through_shared_ranking() {
+    use crate::{policy::term_selection::array::ArrayAstSize, SolverBackend, YardbirdOptions};
+    let input = r#"
+        (declare-sort item 0)
+        (declare-fun rel (item item) Bool)
+        (declare-fun a () item)
+        (declare-fun b () item)
+        (declare-fun c () item)
+        (assert (forall ((x item) (y item) (z item))
+          (=> (and (rel x y) (rel y z)) (rel x z))))
+        (define-fun init () Bool (! true :init true))
+        (define-fun trans () Bool (! true :trans true))
+        (define-fun prop () Bool
+          (! (and (=> (and (rel a b) (rel b c)) (rel a c))
+                  (=> (and (rel c b) (rel b a)) (rel c a))) :invar-property 0))
+    "#;
+    let mut profiled_count = None;
+    for (profile, reject) in [(true, false), (false, false), (true, true)] {
+        let mut options = YardbirdOptions::from_filename("relations.vmt".into());
+        options.profile = profile;
+        let mut policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+            crate::policy::DefaultEffort::default().with_countermodel_refinement(true),
+        );
+        if reject {
+            policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
+        }
+        let strategy = crate::strategies::Abstract::new(1, false, policy, profile);
+        let mut driver = crate::Driver::new(
+            model(input),
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+        let result = driver.check_strategy(1, Box::new(strategy)).unwrap();
+        assert_eq!(
+            result
+                .run_progress
+                .as_ref()
+                .unwrap()
+                .deepest_completed_depth,
+            Some(0)
+        );
+        assert!(!result.counterexample);
+        if !profile {
+            assert_eq!(profiled_count, Some(result.total_instantiations_added));
+            continue;
+        }
+        let mut produced = 0;
+        let mut models = HashSet::new();
+        let mut selected = 0;
+        for record in &result.profiling.cost_records {
+            let Some(trace) = &record.countermodel_trace else {
+                continue;
+            };
+            assert!(!trace.budget_exhausted);
+            for effort in &record.effort {
+                if effort.operation != "CountermodelCandidates" {
+                    continue;
+                }
+                for candidate in &effort.candidates {
+                    let node = &trace.nodes[candidate.countermodel_origin.as_ref().unwrap().node];
+                    let TraceReason::QuantifierMatch { anchors } = &node.reason else {
+                        continue;
+                    };
+                    produced += 1;
+                    models.insert(trace.model_version);
+                    assert_eq!(node.status, TraceStatus::ViolatedQuantifierInstance);
+                    assert_eq!(
+                        node.lemma.as_ref().unwrap().model_value.as_deref(),
+                        Some("false")
+                    );
+                    assert!(anchors.len() >= 2, "transitivity needs joined trace terms");
+                    assert!(anchors.iter().all(|i| matches!(
+                        trace.nodes[*i].status,
+                        TraceStatus::Unsupported { .. }
+                    )));
+                    if candidate.selected {
+                        selected += 1;
+                        assert!(record
+                            .installations
+                            .iter()
+                            .any(|i| i.abstract_instantiation_id.as_deref()
+                                == Some(&candidate.abstract_instantiation_id)));
+                    }
+                }
+            }
+        }
+        assert!(produced > 0);
+        if reject {
+            assert_eq!(selected, 0);
+        } else {
+            assert!(selected >= 2);
+            assert!(models.len() >= 2);
+            profiled_count = Some(result.total_instantiations_added);
+        }
+    }
+}
