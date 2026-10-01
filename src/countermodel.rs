@@ -102,6 +102,25 @@ pub struct CountermodelTrace {
 }
 
 impl CountermodelTrace {
+    pub(crate) fn unresolved_initializers(
+        &self,
+    ) -> impl Iterator<Item = (SymbolicInstance, CountermodelOrigin)> + '_ {
+        self.nodes.iter().filter_map(|node| {
+            if !matches!(node.reason, TraceReason::UnresolvedInitialization { .. }) {
+                return None;
+            }
+            let instance = node.lemma.as_ref()?.instance.clone()?;
+            Some((
+                instance,
+                CountermodelOrigin {
+                    model_version: self.model_version,
+                    depth: self.depth,
+                    node: node.id,
+                },
+            ))
+        })
+    }
+
     pub(crate) fn candidate_pool(&self) -> SymbolicCandidatePool {
         let mut pool = SymbolicCandidatePool::default();
         for node in &self.nodes {

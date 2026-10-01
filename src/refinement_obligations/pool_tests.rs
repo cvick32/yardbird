@@ -363,3 +363,77 @@ fn cached_pool_preserves_frame_normalization_and_provenance() {
         first
     );
 }
+
+#[test]
+fn initializer_handoff_preserves_origin_and_revalidates_across_models() {
+    use crate::countermodel::{CountermodelTrace, TraceLemma, TraceNode, TraceReason, TraceStatus};
+    let obligation = instance(0);
+    let trace = CountermodelTrace {
+        model_version: 3,
+        depth: 0,
+        work: 1,
+        budget_exhausted: false,
+        nodes: vec![TraceNode {
+            id: 0,
+            parent: None,
+            expression: obligation.term.clone(),
+            model_value: None,
+            reason: TraceReason::UnresolvedInitialization {
+                path: vec![],
+                expression: obligation.term.to_string(),
+            },
+            conditions: vec![],
+            lemma: Some(TraceLemma {
+                rule: obligation.rule.name().into(),
+                formula: obligation.term.clone(),
+                model_value: None,
+                instance: Some(obligation.clone()),
+            }),
+            status: TraceStatus::Undetermined {
+                expression: obligation.term.to_string(),
+            },
+        }],
+    };
+    assert!(trace.candidate_pool().instances().is_empty());
+    let mut pool = RefinementObligations::default();
+    pool.remember_traced(trace.depth, trace.unresolved_initializers());
+    pool.remember_traced(trace.depth, trace.unresolved_initializers());
+    // The first ordinary discovery at this depth must not discard the handoff.
+    pool.prepare_depth(0);
+    assert_eq!(pool.pool.instances().len(), 1);
+    let mut smt = CountingModel::default();
+    smt.values.insert(obligation.term.clone(), "true".into());
+    let pending = HashSet::new();
+    assert_eq!(
+        offer(&mut pool, &smt, 3, 0, &pending, 1)
+            .unwrap()
+            .selected()
+            .count(),
+        0
+    );
+    smt.values.insert(obligation.term.clone(), "false".into());
+    let batch = offer(&mut pool, &smt, 4, 0, &pending, 1).unwrap();
+    let selected = batch.selected().next().unwrap();
+    let origin = selected.provenance.countermodel_origin().unwrap();
+    assert_eq!(origin.model_version, 3);
+    assert_eq!(origin.depth, 0);
+    assert_eq!(origin.node, 0);
+    assert_eq!(expr_to_term(selected.expression.clone()), obligation.term);
+    let pending = HashSet::from([canonical_instantiation_key(&obligation.term)]);
+    assert_eq!(
+        offer(&mut pool, &smt, 4, 0, &pending, 1)
+            .unwrap()
+            .selected()
+            .count(),
+        0
+    );
+    pool.prepare_depth(1);
+    assert!(pool.pool.instances().is_empty());
+    assert_eq!(
+        offer(&mut pool, &smt, 5, 1, &HashSet::new(), 1)
+            .unwrap()
+            .selected()
+            .count(),
+        0
+    );
+}

@@ -175,10 +175,17 @@ impl QuantifierRefinement {
                 .iter()
                 .any(|rule| rule.kind == super::BinderKind::Lambda)
         {
-            return Ok((
-                self.discover(state, context)?,
-                InstantiationBatch::default(),
-            ));
+            // Directed initializer instances remain usable even when structural
+            // dependency transport is unavailable for this encoding.
+            let batch = obligations.candidates(context)?;
+            let mut report = crate::policy::effort::WorkReport::from_batch(&batch);
+            let fallback = self.discover(state, context)?;
+            report.dependency_work = fallback.dependency_work;
+            report.budget_exhausted = fallback.budget_exhausted;
+            // The binder search itself may still have paged work; losing this
+            // would let the effort scheduler treat it as exhausted early.
+            report.continuable = fallback.continuable;
+            return Ok((report, batch));
         }
         let discovery = obligations.discover(
             context.formulas,

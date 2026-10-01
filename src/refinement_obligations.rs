@@ -6,6 +6,7 @@ use crate::{
     problem_context::ProblemContext,
     rule_matching::{
         candidate::{InstantiationBatch, SymbolicInstance},
+        provenance::CountermodelOrigin,
         search_context::{SearchContext, SearchFormulas},
     },
     theories::{
@@ -37,6 +38,29 @@ pub(crate) struct RefinementObligations {
 }
 
 impl RefinementObligations {
+    fn prepare_depth(&mut self, depth: u16) {
+        if self.depth != Some(depth) {
+            *self = Self {
+                depth: Some(depth),
+                ..Self::default()
+            };
+        }
+    }
+
+    pub(crate) fn remember_traced(
+        &mut self,
+        depth: u16,
+        instances: impl IntoIterator<Item = (SymbolicInstance, CountermodelOrigin)>,
+    ) -> usize {
+        self.prepare_depth(depth);
+        let mut count = 0;
+        for (instance, origin) in instances {
+            self.pool.remember_traced(instance, origin);
+            count += 1;
+        }
+        count
+    }
+
     pub(crate) fn remember(&mut self, instances: impl IntoIterator<Item = SymbolicInstance>) {
         self.pool.remember(instances);
     }
@@ -53,12 +77,7 @@ impl RefinementObligations {
             .index
             .ok_or_else(|| anyhow::anyhow!("VMT obligation search requires a formula index"))?;
         let plan = formulas.quantifiers;
-        if self.depth != Some(depth) {
-            *self = Self {
-                depth: Some(depth),
-                ..Self::default()
-            };
-        }
+        self.prepare_depth(depth);
         let current = if let Some((previous, current)) = self.active.filter(|(m, _)| *m == model) {
             debug_assert_eq!(previous, model);
             current

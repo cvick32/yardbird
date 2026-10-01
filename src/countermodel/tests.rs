@@ -529,6 +529,7 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
         }
         let mut selected = 0;
         let mut candidates = 0;
+        let mut handed_off = 0;
         for record in &result.profiling.cost_records {
             let Some(trace) = &record.countermodel_trace else {
                 continue;
@@ -539,6 +540,33 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
                 TraceStatus::EvaluationFailed { .. } | TraceStatus::InconsistentStep
             )));
             for effort in &record.effort {
+                if effort.operation == "DiscoverDependencies" {
+                    for candidate in &effort.candidates {
+                        let Some(origin) = &candidate.countermodel_origin else {
+                            continue;
+                        };
+                        if origin.model_version != trace.model_version {
+                            continue;
+                        }
+                        let node = &trace.nodes[origin.node];
+                        if !matches!(node.reason, TraceReason::UnresolvedInitialization { .. }) {
+                            continue;
+                        }
+                        assert!(matches!(node.status, TraceStatus::Undetermined { .. }));
+                        assert!(node.lemma.as_ref().unwrap().model_value.is_none());
+                        assert_eq!(candidate.selected, !reject);
+                        if candidate.selected {
+                            handed_off += 1;
+                            assert!(record.installations.iter().any(|i| i
+                                .abstract_instantiation_id
+                                .as_deref()
+                                == Some(&candidate.abstract_instantiation_id)
+                                && i.result
+                                    .as_ref()
+                                    .is_some_and(|r| r.solver_assertions_added() > 0)));
+                        }
+                    }
+                }
                 if effort.operation != "CountermodelCandidates" {
                     continue;
                 }
@@ -571,6 +599,7 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
             assert_eq!(selected, 0);
         } else {
             assert!(selected > 0);
+            assert!(handed_off > 0);
         }
     }
 }

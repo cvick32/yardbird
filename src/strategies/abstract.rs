@@ -655,6 +655,9 @@ where
                 OperationKind::CountermodelCandidates => {
                     let trace = crate::countermodel::search(&context);
                     batch = trace.candidate_pool().candidates_partial(&context)?;
+                    let unresolved = self
+                        .obligations
+                        .remember_traced(trace.depth, trace.unresolved_initializers());
                     report = WorkReport::from_batch(&batch);
                     report.dependency_work = trace.work;
                     report.budget_exhausted = trace.budget_exhausted;
@@ -669,6 +672,9 @@ where
                         })
                         .count();
                     if let Some(profiling) = &profiling {
+                        profiling
+                            .borrow_mut()
+                            .add_counter("countermodel_initializer_obligations", unresolved as u64);
                         profiling
                             .borrow_mut()
                             .record_countermodel_trace(trace.clone());
