@@ -100,6 +100,11 @@ fn offer(
     winners: usize,
 ) -> anyhow::Result<InstantiationBatch> {
     pool.candidates(&SearchContext::<ArrayAstSize> {
+        formulas: crate::rule_matching::search_context::SearchFormulas {
+            index: None,
+            quantifiers: &Default::default(),
+        },
+        model_version: model,
         graph: &RefinementGraph::default(),
         graph_version: 0,
         smt,

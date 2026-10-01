@@ -156,17 +156,19 @@ impl QuantifierRefinement {
     }
 
     pub(crate) fn discover_obligations<F: TermCostFactory + 'static>(
-        &mut self,
+        &self,
         state: &mut Option<BinderSearchState>,
         obligations: &mut crate::refinement_obligations::RefinementObligations,
-        index: &crate::transition_index::TransitionIndex,
         context: &SearchContext<'_, F>,
     ) -> anyhow::Result<(crate::policy::effort::WorkReport, InstantiationBatch)> {
         // Structural transport follows explicit stores. Lambda-defined arrays
         // need their equation matcher; do not steer those models with an
         // incomplete structural explanation. SMTLIB/actionless inputs likewise
         // retain their existing dependency search.
-        if index.actions().is_empty()
+        if context
+            .formulas
+            .index
+            .is_none_or(|index| index.actions().is_empty())
             || self
                 .plan
                 .rules
@@ -179,14 +181,10 @@ impl QuantifierRefinement {
             ));
         }
         let discovery = obligations.discover(
-            &self.plan,
-            index,
+            context.formulas,
             context.smt,
             context.depth,
-            context
-                .operation_id
-                .map(|id| id.model)
-                .unwrap_or(context.refinement_step as u64),
+            context.model_version,
             &context.allowance,
         )?;
         let batch = obligations.candidates(context)?;
@@ -211,7 +209,7 @@ impl QuantifierRefinement {
     }
 
     pub(crate) fn discover<F: TermCostFactory + 'static>(
-        &mut self,
+        &self,
         state: &mut Option<BinderSearchState>,
         context: &SearchContext<'_, F>,
     ) -> anyhow::Result<crate::policy::effort::WorkReport> {
@@ -272,7 +270,7 @@ impl QuantifierRefinement {
     }
 
     pub(crate) fn dependency_request<F: TermCostFactory + 'static>(
-        &mut self,
+        &self,
         state: &mut Option<BinderSearchState>,
         index: usize,
         context: &SearchContext<'_, F>,
@@ -344,7 +342,7 @@ impl QuantifierRefinement {
     }
 
     pub(crate) fn candidates<F: TermCostFactory + 'static>(
-        &mut self,
+        &self,
         state: &mut Option<BinderSearchState>,
         phase: crate::theories::quantifiers::SearchPhase,
         context: &SearchContext<'_, F>,

@@ -15,7 +15,7 @@ use crate::{
         },
         provenance::InstantiationProvenance,
         scope::CandidateScope,
-        search_context::SearchContext,
+        search_context::{SearchContext, SearchFormulas},
     },
     terms::language::{expr_to_term, translate_term_with_array_types, TermExpr},
     theories::{
@@ -120,13 +120,16 @@ impl RefinementObligations {
 
     pub(crate) fn discover(
         &mut self,
-        plan: &QuantifierPlan,
-        index: &TransitionIndex,
+        formulas: SearchFormulas<'_>,
         smt: &dyn ProblemContext,
         depth: u16,
         model: u64,
         allowance: &WorkAllowance,
     ) -> anyhow::Result<ObligationDiscovery> {
+        let index = formulas
+            .index
+            .ok_or_else(|| anyhow::anyhow!("VMT obligation search requires a formula index"))?;
+        let plan = formulas.quantifiers;
         if self.depth != Some(depth) {
             *self = Self {
                 depth: Some(depth),
@@ -178,10 +181,7 @@ impl RefinementObligations {
             &self.instances,
             context.smt,
             context.depth,
-            context
-                .operation_id
-                .map(|id| id.model)
-                .unwrap_or(context.refinement_step as u64),
+            context.model_version,
         );
         let mut known = context
             .smt
@@ -394,8 +394,10 @@ mod tests {
         let mut large = RefinementObligations::default();
         let big = large
             .discover(
-                &quantifiers.plan,
-                &index,
+                SearchFormulas {
+                    index: Some(&index),
+                    quantifiers: &quantifiers.plan,
+                },
                 &smt,
                 1,
                 0,
@@ -413,8 +415,10 @@ mod tests {
             // actual model has identical branch choices.
             let report = sliced
                 .discover(
-                    &quantifiers.plan,
-                    &index,
+                    SearchFormulas {
+                        index: Some(&index),
+                        quantifiers: &quantifiers.plan,
+                    },
                     &smt,
                     1,
                     (work / 64) as u64,
@@ -517,7 +521,16 @@ mod tests {
             let allowance = WorkAllowance::default();
             for slice in 0..10_000 {
                 let discovery = obligations
-                    .discover(&quantifiers.plan, &index, &smt, depth, round, &allowance)
+                    .discover(
+                        SearchFormulas {
+                            index: Some(&index),
+                            quantifiers: &quantifiers.plan,
+                        },
+                        &smt,
+                        depth,
+                        round,
+                        &allowance,
+                    )
                     .unwrap();
                 let violated = obligations
                     .instances

@@ -24,7 +24,7 @@ use crate::theory_support::{ArrayTheorySupport, TheorySupport};
 use crate::training::{AbstractInstantiationRecord, DecisionRecord};
 use crate::{driver, ProofLoopResult};
 
-use crate::rule_matching::search_context::SearchContext;
+use crate::rule_matching::search_context::{SearchContext, SearchFormulas};
 use crate::theories::array::refinement::ArrayRefinement;
 use crate::theories::quantifiers::refinement::{BinderSearchState, QuantifierRefinement};
 
@@ -59,7 +59,7 @@ where
     artifact_capture: ArtifactCapture,
     profile: bool,
     countermodel_trace_work: usize,
-    countermodel_trace_index: Option<crate::transition_index::TransitionIndex>,
+    formula_index: Option<crate::transition_index::TransitionIndex>,
     profiling_records: Vec<ProfilingRecord>,
     cone_attempted_depths: HashSet<u16>,
     preprocess_exact_read_after_write: bool,
@@ -93,7 +93,7 @@ where
             artifact_capture: ArtifactCapture::default(),
             profile,
             countermodel_trace_work: 0,
-            countermodel_trace_index: None,
+            formula_index: None,
             profiling_records: vec![],
             cone_attempted_depths: HashSet::new(),
             preprocess_exact_read_after_write: false,
@@ -273,7 +273,7 @@ where
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         self.obligations = Default::default();
         self.preparation_error = None;
-        self.countermodel_trace_index = None;
+        self.formula_index = None;
         let prepared = prepare_vmt(
             model.clone(),
             PreparationOptions {
@@ -321,12 +321,16 @@ where
                         );
                     }
                 }
-                self.countermodel_trace_index = (self.countermodel_trace_work > 0).then(|| {
-                    crate::transition_index::TransitionIndex::from_model(
-                        &prepared.model,
-                        &HashSet::new(),
-                    )
-                });
+                self.formula_index = Some(crate::transition_index::TransitionIndex::from_model(
+                    &prepared.model,
+                    &prepared
+                        .quantifier
+                        .plan
+                        .rules
+                        .iter()
+                        .map(|rule| rule.name.clone())
+                        .collect(),
+                ));
                 self.array = prepared.array;
                 self.quantifier = prepared.quantifier;
                 self.ownership = prepared.ownership;
@@ -616,6 +620,11 @@ where
             }).collect::<HashSet<_>>();
             let (term_config, ranker, effort) = self.policy.parts();
             let context = SearchContext::<F> {
+                formulas: SearchFormulas {
+                    index: self.formula_index.as_ref(),
+                    quantifiers: &self.quantifier.plan,
+                },
+                model_version: state.model_version,
                 graph: &state.egraph,
                 graph_version: state.graph_version,
                 smt,
@@ -638,7 +647,6 @@ where
                     (report, batch) = self.quantifier.discover_obligations(
                         &mut state.binder_search,
                         &mut self.obligations,
-                        self.array.property_cone.provenance.transition_index(),
                         &context,
                     )?;
                     retain = report.selected > 0;
@@ -727,9 +735,9 @@ where
         // Trace after selection: diagnostic model evaluation must not influence
         // the representative choices made for this refinement pass.
         if let Some(index) = self
-            .countermodel_trace_index
+            .formula_index
             .as_ref()
-            .filter(|_| state.countermodel_trace.is_none())
+            .filter(|_| self.countermodel_trace_work > 0 && state.countermodel_trace.is_none())
         {
             let start = std::time::Instant::now();
             state.countermodel_trace = Some(crate::countermodel::trace_violation(
@@ -1003,6 +1011,11 @@ where
             )?;
             let (term_config, ranker, _) = self.policy.parts();
             let context = SearchContext::<F> {
+                formulas: SearchFormulas {
+                    index: self.formula_index.as_ref(),
+                    quantifiers: &self.quantifier.plan,
+                },
+                model_version: state.model_version,
                 graph: &state.egraph,
                 graph_version: state.graph_version,
                 smt,
@@ -1065,6 +1078,11 @@ where
             &mut state.binder_search,
             phase,
             &SearchContext::<F> {
+                formulas: SearchFormulas {
+                    index: self.formula_index.as_ref(),
+                    quantifiers: &self.quantifier.plan,
+                },
+                model_version: state.model_version,
                 graph: &state.egraph,
                 graph_version: state.graph_version,
                 smt,

@@ -56,6 +56,9 @@ pub struct ActionEntry {
 #[derive(Clone, Debug)]
 pub struct TransitionIndex {
     property: Term,
+    initial: Term,
+    transition: Term,
+    axioms: Vec<Term>,
     actions: BTreeMap<String, ActionEntry>,
     updates: BTreeMap<String, Vec<StateUpdatePath>>,
     current_variables: Vec<String>,
@@ -68,6 +71,9 @@ impl Default for TransitionIndex {
     fn default() -> Self {
         Self {
             property: Term::QualIdentifier(QualIdentifier::simple("true")),
+            initial: Term::QualIdentifier(QualIdentifier::simple("true")),
+            transition: Term::QualIdentifier(QualIdentifier::simple("true")),
+            axioms: Vec::new(),
             actions: BTreeMap::new(),
             updates: BTreeMap::new(),
             current_variables: Vec::new(),
@@ -87,6 +93,9 @@ impl TransitionIndex {
         let definitions = model.get_helper_definitions();
         let mut index = Self {
             property: model.get_property_for_yardbird(),
+            initial: model.get_initial_condition_for_yardbird(),
+            transition: model.get_trans_condition_for_yardbird(),
+            axioms: model.get_axioms(),
             actions: model
                 .get_action_variables()
                 .into_iter()
@@ -116,6 +125,18 @@ impl TransitionIndex {
             &mut HashSet::new(),
         );
         index
+    }
+
+    pub fn initial(&self) -> &Term {
+        &self.initial
+    }
+
+    pub fn transition(&self) -> &Term {
+        &self.transition
+    }
+
+    pub fn axioms(&self) -> &[Term] {
+        &self.axioms
     }
 
     pub fn property(&self) -> &Term {
