@@ -11,6 +11,7 @@ use crate::{
         symbolic_pool::SymbolicCandidatePool,
     },
     solver::api::ModelEvaluation,
+    theories::quantifiers::{countermodel::InitializerSearch, QuantifierPlan},
     transition_index::TransitionIndex,
 };
 
@@ -51,6 +52,15 @@ pub enum TraceReason {
         assignment: Term,
     },
     ArrayAxiom,
+    Initialization {
+        path: Vec<TraceLemma>,
+    },
+    /// An exact guarded instance whose truth guidance could not determine.
+    /// Standard generation may validate it; tracing cannot use its equation.
+    UnresolvedInitialization {
+        path: Vec<TraceLemma>,
+        expression: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -63,6 +73,7 @@ pub enum TraceStatus {
     EvaluationFailed { detail: String },
     Undetermined { expression: String },
     ViolatedArrayAxiom,
+    ViolatedQuantifierInstance,
     InconsistentStep,
     Cycle,
     BudgetExhausted,
@@ -96,7 +107,7 @@ impl CountermodelTrace {
         for node in &self.nodes {
             if !matches!(
                 node.status,
-                TraceStatus::ViolatedArrayAxiom
+                TraceStatus::ViolatedArrayAxiom | TraceStatus::ViolatedQuantifierInstance
             ) {
                 continue;
             }
@@ -132,6 +143,7 @@ pub(crate) struct TraceContext<'a> {
     pub types: &'a [(String, String)],
     evaluate: &'a mut dyn FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
     remaining: usize,
+    initializers: Option<InitializerSearch<'a>>,
 }
 impl TraceContext<'_> {
     pub fn charge(&mut self) -> Result<(), TraceError> {
@@ -167,10 +179,11 @@ pub(crate) struct TraceStep {
     pub conditions: Vec<Observation>,
     pub lemma: Option<TraceLemma>,
 }
+
 /// Guided search consumes the same borrowed formulas, model and allowance as
 /// ordinary refinement. Its traversal and partial evaluation remain local.
 pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> CountermodelTrace {
-    trace_violation(
+    trace_refinement(
         context
             .formulas
             .index
@@ -180,6 +193,7 @@ pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> Coun
         context.model_version,
         context.allowance.dependency_work,
         |term| context.smt.eval_partial(term),
+        Some(context.formulas.quantifiers),
     )
 }
 impl TraceStep {
@@ -202,13 +216,35 @@ pub fn trace_violation(
     depth: u16,
     model_version: u64,
     work_limit: usize,
+    evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
+) -> CountermodelTrace {
+    trace_refinement(
+        index,
+        types,
+        depth,
+        model_version,
+        work_limit,
+        evaluate,
+        None,
+    )
+}
+
+pub(crate) fn trace_refinement(
+    index: &TransitionIndex,
+    types: &[(String, String)],
+    depth: u16,
+    model_version: u64,
+    work_limit: usize,
     mut evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
+    plan: Option<&QuantifierPlan>,
 ) -> CountermodelTrace {
     let mut cx = TraceContext {
         index,
         types,
         evaluate: &mut evaluate,
         remaining: work_limit,
+        initializers: plan
+            .map(|plan| InitializerSearch::new(plan, index.index_term(index.initial(), 0))),
     };
     let mut trace = CountermodelTrace {
         model_version,
@@ -245,6 +281,12 @@ pub fn trace_violation(
             if node.status == TraceStatus::Cycle {
                 return Ok(vec![]);
             }
+            if let TraceReason::UnresolvedInitialization { expression, .. } = &node.reason {
+                node.status = TraceStatus::Undetermined {
+                    expression: expression.clone(),
+                };
+                return Ok(vec![]);
+            }
             let value = cx.observe(&node.expression)?.value;
             node.model_value = Some(value.clone());
             if parent.is_none() && value != "false" {
@@ -256,7 +298,11 @@ pub fn trace_violation(
             if let Some(lemma) = &mut node.lemma {
                 lemma.model_value = Some(cx.boolean(&lemma.formula)?.value);
                 if lemma.model_value.as_deref() == Some("false") {
-                    node.status = TraceStatus::ViolatedArrayAxiom;
+                    node.status = if matches!(node.reason, TraceReason::Initialization { .. }) {
+                        TraceStatus::ViolatedQuantifierInstance
+                    } else {
+                        TraceStatus::ViolatedArrayAxiom
+                    };
                     return Ok(vec![]);
                 }
             }
@@ -266,6 +312,7 @@ pub fn trace_violation(
                     | TraceReason::ArrayAxiom
                     | TraceReason::Definition
                     | TraceReason::Conditional
+                    | TraceReason::Initialization { .. }
             ) && parent.is_some_and(|p| trace.nodes[p].model_value.as_ref() != Some(&value))
             {
                 node.status = TraceStatus::InconsistentStep;
@@ -312,6 +359,17 @@ fn expand(cx: &mut TraceContext<'_>, node: &mut TraceNode) -> Result<Vec<TraceSt
             ReadOutcome::Step(step) => Ok(vec![*step]),
             ReadOutcome::Stop(status) => {
                 node.status = status;
+                if matches!(node.status, TraceStatus::InitialState { .. }) {
+                    if let Some(mut search) = cx.initializers.take() {
+                        let result = search.steps(term, cx);
+                        cx.initializers = Some(search);
+                        let children = result?;
+                        if !children.is_empty() {
+                            node.status = TraceStatus::Expanded;
+                        }
+                        return Ok(children);
+                    }
+                }
                 Ok(vec![])
             }
         };

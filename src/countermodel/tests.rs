@@ -483,3 +483,307 @@ fn countermodel_policy_needs_no_numeric_switch_or_profiling() {
     options.strategy = crate::Strategy::Concrete;
     assert!(options.validate_countermodel_trace_options().is_err());
 }
+
+#[test]
+fn quantified_initializers_are_installed_from_the_read_trace() {
+    use crate::{policy::term_selection::array::ArrayAstSize, SolverBackend, YardbirdOptions};
+    let input = r#"
+        (declare-fun a () (Array Int (Array Int Int)))
+        (declare-fun an () (Array Int (Array Int Int)))
+        (define-fun .a () (Array Int (Array Int Int)) (! a :next an))
+        (define-fun initialized () Bool
+          (forall ((x Int)) (forall ((y Int)) (= (select (select a x) y) (+ x y)))))
+        (define-fun init () Bool (! initialized :init true))
+        (define-fun trans () Bool (! (= an a) :trans true))
+        (define-fun prop () Bool (! (= (select (select a 4) 9) 13) :invar-property 0))
+    "#;
+    for (profile, reject) in [(true, false), (false, false), (true, true)] {
+        let mut options = YardbirdOptions::from_filename("initializer.vmt".into());
+        options.profile = profile;
+        let mut policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+            crate::policy::DefaultEffort::default().with_countermodel_refinement(true),
+        );
+        if reject {
+            policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
+        }
+        let strategy = crate::strategies::Abstract::new(3, false, policy, profile);
+        let mut driver = crate::Driver::new(
+            model(input),
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+        let result = driver.check_strategy(3, Box::new(strategy)).unwrap();
+        assert_eq!(
+            result
+                .run_progress
+                .as_ref()
+                .unwrap()
+                .deepest_completed_depth,
+            Some(2)
+        );
+        assert!(!result.counterexample);
+        if !profile {
+            continue;
+        }
+        let mut selected = 0;
+        let mut candidates = 0;
+        for record in &result.profiling.cost_records {
+            let Some(trace) = &record.countermodel_trace else {
+                continue;
+            };
+            assert!(!trace.budget_exhausted);
+            assert!(!trace.nodes.iter().any(|node| matches!(
+                node.status,
+                TraceStatus::EvaluationFailed { .. } | TraceStatus::InconsistentStep
+            )));
+            for effort in &record.effort {
+                if effort.operation != "CountermodelCandidates" {
+                    continue;
+                }
+                for candidate in &effort.candidates {
+                    let node = &trace.nodes[candidate.countermodel_origin.as_ref().unwrap().node];
+                    if node.status != TraceStatus::ViolatedQuantifierInstance {
+                        continue;
+                    }
+                    candidates += 1;
+                    assert!(matches!(node.reason, TraceReason::Initialization { .. }));
+                    assert_eq!(
+                        node.lemma.as_ref().unwrap().model_value.as_deref(),
+                        Some("false")
+                    );
+                    if candidate.selected {
+                        selected += 1;
+                        assert!(record.installations.iter().any(|i| i
+                            .abstract_instantiation_id
+                            .as_deref()
+                            == Some(&candidate.abstract_instantiation_id)
+                            && i.result
+                                .as_ref()
+                                .is_some_and(|r| r.solver_assertions_added() > 0)));
+                    }
+                }
+            }
+        }
+        assert!(candidates > 0);
+        if reject {
+            assert_eq!(selected, 0);
+        } else {
+            assert!(selected > 0);
+        }
+    }
+}
+
+#[test]
+fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
+    use crate::theories::quantifiers::{
+        countermodel::InitializerSearch, BinderKind, BinderRule, QuantifierPlan,
+    };
+    use smt2parser::{concrete::Symbol, vmt::array_abstractor::string_to_sort};
+    let input = r#"
+        (declare-fun a () (Array Int (Array Int Int)))
+        (declare-fun an () (Array Int (Array Int Int)))
+        (declare-fun zero () Int)
+        (declare-fun w ((Array Int (Array Int Int))) Int)
+        (define-fun .a () (Array Int (Array Int Int)) (! a :next an))
+        (define-fun init () Bool (! true :init true))
+        (define-fun trans () Bool (! (= an a) :trans true))
+        (define-fun prop () Bool (! true :invar-property 0))
+    "#;
+    let (model, types) = model(input).abstract_array_theory();
+    let index = TransitionIndex::from_model(&model, &HashSet::new());
+    let arr = string_to_sort("Array_Int_Array_Int_Int");
+    let int = string_to_sort("Int");
+    let fields = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| {
+                (
+                    Symbol((*name).into()),
+                    if *name == "a" {
+                        arr.clone()
+                    } else {
+                        int.clone()
+                    },
+                )
+            })
+            .collect()
+    };
+    let mut plan = QuantifierPlan::default();
+    plan.rules = vec![
+        BinderRule {
+            name: "outer".into(),
+            kind: BinderKind::Forall,
+            captures: fields(&["a", "z"]),
+            variables: fields(&["x"]),
+            body: "(inner a z x)".parse().unwrap(),
+            witnesses: vec![],
+            result_sort: string_to_sort("Bool"),
+            unit_capture: false,
+        },
+        BinderRule {
+            name: "inner".into(),
+            kind: BinderKind::Forall,
+            captures: fields(&["a", "z", "x"]),
+            variables: fields(&["y"]),
+            body: "(= (Read_Int_Int (Read_Int_Array_Int_Int a x) y) (+ z x y))"
+                .parse()
+                .unwrap(),
+            witnesses: vec![],
+            result_sort: string_to_sort("Bool"),
+            unit_capture: false,
+        },
+    ];
+    plan.signatures
+        .insert("w".into(), (vec![arr.clone()], int.clone()));
+    plan.signatures.insert("a".into(), (vec![], arr));
+    plan.signatures.insert("zero".into(), (vec![], int));
+    let root: Term = "(outer a@0 zero)".parse().unwrap();
+    let read: Term = "(Read_Int_Int (Read_Int_Array_Int_Int a@0 (w a@2)) 9)"
+        .parse()
+        .unwrap();
+    for broken in 0..3 {
+        let mut search = InitializerSearch::new(&plan, root.clone());
+        let mut evaluate = |term: &Term| {
+            let s = term.to_string();
+            Ok(if s.starts_with("(=> (outer") {
+                if broken == 0 {
+                    "false"
+                } else {
+                    "true"
+                }
+            } else if s.starts_with("(=> (inner") {
+                if broken == 1 {
+                    "false"
+                } else {
+                    "true"
+                }
+            } else {
+                "true"
+            }
+            .into())
+        };
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: 200,
+            initializers: None,
+        };
+        let steps = search
+            .steps(&read, &mut cx)
+            .unwrap_or_else(|_| panic!("initializer search failed"));
+        assert_eq!(steps.len(), 1);
+        let step = &steps[0];
+        let TraceReason::Initialization { path } = &step.reason else {
+            panic!("missing initialization path")
+        };
+        assert_eq!(path.len(), broken);
+        for lemma in path.iter().chain(step.lemma.iter()) {
+            let text = lemma.formula.to_string();
+            assert!(text.contains("a@0 zero (w a@2)"));
+            assert!(!text.contains("(w a@0)"));
+            assert!(lemma
+                .instance
+                .as_ref()
+                .unwrap()
+                .bindings
+                .iter()
+                .any(|(_, term)| term.to_string() == "zero"));
+        }
+        if broken < 2 {
+            assert_eq!(
+                step.lemma.as_ref().unwrap().rule,
+                if broken == 0 {
+                    "input-binder-outer"
+                } else {
+                    "input-binder-inner"
+                }
+            );
+        } else {
+            assert!(step.lemma.is_none());
+            assert_eq!(step.term.to_string(), "(+ zero (w a@2) 9)");
+        }
+    }
+    // An unknown helper or full implication preserves the exact guarded
+    // instance, but never authorizes following its initializer equation.
+    for (unknown, expected_path) in [("(=> (outer", 0), ("(inner", 1), ("(=> (inner", 1)] {
+        let mut search = InitializerSearch::new(&plan, root.clone());
+        let mut evaluate = |term: &Term| {
+            Ok(if term.to_string().starts_with(unknown) && term != &root {
+                ModelEvaluation::Undetermined
+            } else {
+                "true".into()
+            })
+        };
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: 200,
+            initializers: None,
+        };
+        let steps = search
+            .steps(&read, &mut cx)
+            .unwrap_or_else(|_| panic!("matching failed"));
+        let step = &steps[0];
+        let TraceReason::UnresolvedInitialization { path, expression } = &step.reason else {
+            panic!("missing unresolved initializer");
+        };
+        assert_eq!(path.len(), expected_path);
+        assert!(expression.starts_with(unknown));
+        let lemma = step.lemma.as_ref().unwrap();
+        assert!(lemma.model_value.is_none());
+        assert_eq!(step.term, lemma.instance.as_ref().unwrap().term);
+        assert!(step.term.to_string().contains("a@0 zero (w a@2)"));
+        assert_ne!(step.term.to_string(), "(+ zero (w a@2) 9)");
+    }
+    // Initializer bodies hidden under disjunction are not unconditional.
+    let mut conditional =
+        InitializerSearch::new(&plan, "(or (outer a@0 zero) unrelated)".parse().unwrap());
+    let mut evaluate = |_: &Term| Ok("true".into());
+    let mut cx = TraceContext {
+        index: &index,
+        types: &types,
+        evaluate: &mut evaluate,
+        remaining: 200,
+        initializers: None,
+    };
+    assert!(conditional
+        .steps(&read, &mut cx)
+        .unwrap_or_else(|_| panic!("conditional matching failed"))
+        .is_empty());
+    for budget in 0..4 {
+        let mut search = InitializerSearch::new(&plan, root.clone());
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: budget,
+            initializers: None,
+        };
+        assert!(matches!(
+            search.steps(&read, &mut cx),
+            Err(TraceError::Budget)
+        ));
+    }
+    // A different captured array is not interchangeable, even if a model
+    // might equate it with a@0. A frame-zero initializer also cannot match a@1.
+    for other in ["b@0", "a@1"] {
+        let mut search = InitializerSearch::new(&plan, root.clone());
+        let mut evaluate = |_: &Term| Ok("true".into());
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: 200,
+            initializers: None,
+        };
+        let other_read = read.to_string().replace("a@0", other).parse().unwrap();
+        assert!(search
+            .steps(&other_read, &mut cx)
+            .unwrap_or_else(|_| panic!("matching failed"))
+            .is_empty());
+    }
+}
