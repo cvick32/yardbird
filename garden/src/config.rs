@@ -2,10 +2,36 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use yardbird::{
-    auxiliary_synthesis::AuxSynthesisConfig, solver::PropertyCheckMode, CostFunction,
-    EGraphBuilderStrategy, InstantiationRankerStrategy, InstantiationStrategyType, SolverBackend,
-    Strategy, YardbirdOptions,
+    auxiliary_synthesis::AuxSynthesisConfig,
+    policy::{effort::GuidanceSchedule, NamedPolicy},
+    solver::PropertyCheckMode,
+    CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, InstantiationStrategyType,
+    SolverBackend, Strategy, YardbirdOptions,
 };
+
+/// Use CLI value names in Garden files without changing Yardbird's options JSON.
+pub(crate) mod optional_value_enum {
+    use clap::ValueEnum;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer, T: ValueEnum>(
+        value: &Option<T>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(value) => serializer.serialize_some(value.to_possible_value().unwrap().get_name()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>, T: ValueEnum>(
+        deserializer: D,
+    ) -> Result<Option<T>, D::Error> {
+        Option::<String>::deserialize(deserializer)?
+            .map(|value| T::from_str(&value, false).map_err(serde::de::Error::custom))
+            .transpose()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
@@ -52,6 +78,12 @@ impl Default for GlobalConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParameterMatrix {
+    /// Named policy; its fixed choices take precedence over individual settings.
+    #[serde(default, with = "optional_value_enum")]
+    pub policy: Option<NamedPolicy>,
+    /// Only valid for countermodel-guided; omitted means immediate.
+    #[serde(default, with = "optional_value_enum")]
+    pub guidance_schedule: Option<GuidanceSchedule>,
     pub depths: Vec<u16>,
     #[serde(default = "default_solvers")]
     pub solvers: Vec<SolverBackend>,
@@ -129,6 +161,12 @@ fn default_instantiation_strategies() -> Vec<InstantiationStrategyType> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
+    /// Named policy; its fixed choices take precedence over individual settings.
+    #[serde(default, with = "optional_value_enum")]
+    pub policy: Option<NamedPolicy>,
+    /// Only valid for countermodel-guided; omitted means immediate.
+    #[serde(default, with = "optional_value_enum")]
+    pub guidance_schedule: Option<GuidanceSchedule>,
     pub name: String,
     pub depth: u16,
     #[serde(default = "default_solver")]
@@ -209,6 +247,8 @@ pub struct BenchmarkConfig {
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkRun {
+    pub policy: Option<NamedPolicy>,
+    pub guidance_schedule: Option<GuidanceSchedule>,
     pub name: String,
     pub depth: u16,
     pub solver: SolverBackend,
@@ -316,6 +356,8 @@ impl BenchmarkConfig {
             for config in &self.individual_configs {
                 runs.push(BenchmarkRun {
                     name: config.name.clone(),
+                    policy: config.policy,
+                    guidance_schedule: config.guidance_schedule,
                     depth: config.depth,
                     solver: config.solver,
                     strategy: config.strategy,
@@ -341,13 +383,24 @@ impl BenchmarkConfig {
         }
 
         for run in &runs {
-            YardbirdOptions {
+            anyhow::ensure!(
+                run.guidance_schedule.is_none() || run.policy == Some(NamedPolicy::CountermodelGuided),
+                "Invalid benchmark configuration {}: guidance_schedule requires policy: countermodel-guided",
+                run.name,
+            );
+            let options = YardbirdOptions {
+                // Garden discovers VMT inputs; validate policy compatibility before running them.
+                filename: Some("benchmark.vmt".into()),
+                policy: run.policy,
+                solver: run.solver,
                 strategy: run.strategy,
                 guarded_read_updates: run.guarded_read_updates,
                 ..YardbirdOptions::default()
-            }
-            .validate_guarded_read_updates()
-            .with_context(|| format!("Invalid benchmark configuration: {}", run.name))?;
+            };
+            options
+                .validate_guarded_read_updates()
+                .and_then(|_| options.validate_countermodel_trace_options())
+                .with_context(|| format!("Invalid benchmark configuration: {}", run.name))?;
         }
 
         Ok(runs)
@@ -393,6 +446,8 @@ impl BenchmarkConfig {
                                                     cost_function,
                                                     selection,
                                                 ),
+                                                policy: matrix.policy,
+                                                guidance_schedule: matrix.guidance_schedule,
                                                 depth,
                                                 solver,
                                                 strategy,
@@ -440,6 +495,52 @@ mod tests {
         CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy,
         InstantiationStrategyType, SolverBackend, Strategy,
     };
+
+    #[test]
+    fn rejects_unsupported_guidance_configurations() {
+        for fields in [
+            "guidance_schedule: supplement",
+            "policy: german-fast\n    guidance_schedule: immediate",
+            "policy: countermodel-guided\n    solvers: [cvc5]",
+            "policy: misspelled-policy",
+            "policy: countermodel-guided\n    guidance_schedule: misspelled-schedule",
+        ] {
+            let yaml = format!("parameter_matrices:\n  invalid:\n    depths: [1]\n    strategies: [abstract]\n    cost_functions: [bmc-cost]\n    {fields}\n");
+            let result = serde_yaml::from_str::<BenchmarkConfig>(&yaml)
+                .map_err(anyhow::Error::from)
+                .and_then(|config| config.generate_benchmark_runs(None));
+            assert!(
+                result.is_err(),
+                "accepted unsupported configuration: {fields}"
+            );
+        }
+    }
+
+    #[test]
+    fn protocol_config_contains_six_distinct_singleton_runs() {
+        let config: BenchmarkConfig =
+            serde_yaml::from_str(include_str!("../protocol_encodings_config.yaml")).unwrap();
+        assert_eq!(config.parameter_matrices.len(), 6);
+        for name in config.parameter_matrices.keys() {
+            let runs = config.generate_benchmark_runs(Some(name)).unwrap();
+            assert_eq!(runs.len(), 1, "{name}");
+            assert_eq!(runs[0].depth, 20);
+            assert_eq!(runs[0].timeout_seconds, 500);
+            if runs[0].policy.is_some() {
+                assert_eq!(runs[0].candidate_winners_per_group, 20);
+            }
+        }
+        // CLI spellings also survive config serialization, not just parsing.
+        let roundtrip = serde_yaml::to_string(&config).unwrap();
+        let decoded: BenchmarkConfig = serde_yaml::from_str(&roundtrip).unwrap();
+        let supplemented = decoded
+            .generate_benchmark_runs(Some("protocol-countermodel-supplement"))
+            .unwrap();
+        assert_eq!(
+            supplemented[0].guidance_schedule,
+            Some(yardbird::policy::effort::GuidanceSchedule::Supplement)
+        );
+    }
 
     #[test]
     fn guarded_updates_reject_unsupported_individual_and_matrix_runs() {

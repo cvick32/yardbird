@@ -150,6 +150,16 @@ struct SuiteMetadata {
 
 #[derive(Debug, Serialize)]
 struct StrategyResult {
+    #[serde(
+        with = "config::optional_value_enum",
+        skip_serializing_if = "Option::is_none"
+    )]
+    policy: Option<yardbird::policy::NamedPolicy>,
+    #[serde(
+        with = "config::optional_value_enum",
+        skip_serializing_if = "Option::is_none"
+    )]
+    guidance_schedule: Option<yardbird::policy::effort::GuidanceSchedule>,
     solver: yardbird::SolverBackend,
     strategy: yardbird::Strategy,
     cost_function: yardbird::CostFunction,
@@ -464,6 +474,10 @@ fn run_single(
 
     match status_code {
         Some(result) => Ok(StrategyResult {
+            policy: options.policy,
+            guidance_schedule: (options.policy
+                == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
+            .then_some(options.guidance_schedule),
             solver: options.solver,
             strategy: options.strategy,
             result,
@@ -667,42 +681,13 @@ fn run_config_benchmark(
             .join(format!("{benchmark_idx:04}"))
     });
     let result = run_single(
-        YardbirdOptions {
-            filename: Some(filename.to_string()),
-            depth: run.depth,
-            strategy: run.strategy,
-            run_ic3ia: options.run_ic3ia,
-            cost_function: run.cost_function,
-            egraph_builder: run.egraph_builder,
-            preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
-            abstract_recurrent_products: run.abstract_recurrent_products,
-            guarded_read_updates: run.guarded_read_updates,
-            candidate_winners_per_group: run.candidate_winners_per_group,
-            instantiation_ranker: run.instantiation_ranker,
-            property_check_mode: run.property_check_mode,
-            solver: run.solver,
-            // Required for `parse_yardbird_output` to read a result back.
-            json_output: true,
-            track_instantiations: options.track_instantiations,
-            instantiation_strategy: run.instantiation_strategy,
-            train: options.train,
-            database_url: options.database_url.clone(),
-            training_run_version: training_run_version.clone(),
-            profile: options.profile,
+        configured_yardbird_options(
+            filename,
+            run,
+            options,
+            training_run_version,
             solver_capture_dir,
-            record_decisions: options.record_decisions,
-            synthesis_trigger: run.auxiliary_synthesis.trigger,
-            synthesis_guard_policy: run.auxiliary_synthesis.guard_policy,
-            synthesis_refinement_retention: run.auxiliary_synthesis.refinement_retention,
-            synthesis_predicate_relevance: run.auxiliary_synthesis.predicate_relevance,
-            synthesis_after: run.auxiliary_synthesis.manual_after,
-            synthesis_refinement_limit_window: run.auxiliary_synthesis.refinement_limit_window,
-            synthesis_repeated_pattern_threshold: run
-                .auxiliary_synthesis
-                .repeated_pattern_threshold,
-            ranker_model: options.ranker_model.clone(),
-            ..Default::default()
-        },
+        ),
         retry_count,
         run.timeout_seconds,
     )?;
@@ -710,6 +695,51 @@ fn run_config_benchmark(
         example: filename.to_string(),
         result: vec![result],
     })
+}
+
+fn configured_yardbird_options(
+    filename: &str,
+    run: &config::BenchmarkRun,
+    options: &GardenOptions,
+    training_run_version: &Option<String>,
+    solver_capture_dir: Option<PathBuf>,
+) -> YardbirdOptions {
+    YardbirdOptions {
+        policy: run.policy,
+        guidance_schedule: run.guidance_schedule.unwrap_or_default(),
+        filename: Some(filename.to_string()),
+        depth: run.depth,
+        strategy: run.strategy,
+        run_ic3ia: options.run_ic3ia,
+        cost_function: run.cost_function,
+        egraph_builder: run.egraph_builder,
+        preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
+        abstract_recurrent_products: run.abstract_recurrent_products,
+        guarded_read_updates: run.guarded_read_updates,
+        candidate_winners_per_group: run.candidate_winners_per_group,
+        instantiation_ranker: run.instantiation_ranker,
+        property_check_mode: run.property_check_mode,
+        solver: run.solver,
+        // Required for `parse_yardbird_output` to read a result back.
+        json_output: true,
+        track_instantiations: options.track_instantiations,
+        instantiation_strategy: run.instantiation_strategy,
+        train: options.train,
+        database_url: options.database_url.clone(),
+        training_run_version: training_run_version.clone(),
+        profile: options.profile,
+        solver_capture_dir,
+        record_decisions: options.record_decisions,
+        synthesis_trigger: run.auxiliary_synthesis.trigger,
+        synthesis_guard_policy: run.auxiliary_synthesis.guard_policy,
+        synthesis_refinement_retention: run.auxiliary_synthesis.refinement_retention,
+        synthesis_predicate_relevance: run.auxiliary_synthesis.predicate_relevance,
+        synthesis_after: run.auxiliary_synthesis.manual_after,
+        synthesis_refinement_limit_window: run.auxiliary_synthesis.refinement_limit_window,
+        synthesis_repeated_pattern_threshold: run.auxiliary_synthesis.repeated_pattern_threshold,
+        ranker_model: options.ranker_model.clone(),
+        ..Default::default()
+    }
 }
 
 fn discover_benchmarks(
@@ -1018,6 +1048,42 @@ mod tests {
         ]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn named_policy_config_reaches_subprocess_options() {
+        for (policy, schedule) in [
+            ("german-fast", None),
+            ("countermodel-guided", Some("immediate")),
+            ("countermodel-guided", Some("supplement")),
+        ] {
+            let schedule_yaml = schedule
+                .map(|value| format!("    guidance_schedule: {value}\n"))
+                .unwrap_or_default();
+            for section in [
+                format!("parameter_matrices:\n  test:\n    depths: [1]\n    strategies: [abstract]\n    cost_functions: [bmc-cost]\n    policy: {policy}\n{schedule_yaml}"),
+                format!("individual_configs:\n  - name: test\n    depth: 1\n    strategy: abstract\n    cost_function: bmc-cost\n    policy: {policy}\n{schedule_yaml}"),
+            ] {
+                let config: super::BenchmarkConfig = serde_yaml::from_str(&section).unwrap();
+                let run = config.generate_benchmark_runs(None).unwrap().remove(0);
+                let garden = GardenOptions::try_parse_from(["garden", "--config", "unused.yaml"]).unwrap();
+                let options = super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
+                let directory = tempfile::tempdir().unwrap();
+                let path = write_options_json(&options, &directory.path().join("progress.json"), directory.path()).unwrap();
+                let written: YardbirdOptions = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+                let expected = if policy == "german-fast" {
+                    yardbird::policy::NamedPolicy::GermanFast
+                } else {
+                    yardbird::policy::NamedPolicy::CountermodelGuided
+                };
+                assert_eq!(written.policy, Some(expected));
+                assert_eq!(written.guidance_schedule, if schedule == Some("supplement") {
+                    yardbird::policy::effort::GuidanceSchedule::Supplement
+                } else {
+                    yardbird::policy::effort::GuidanceSchedule::Immediate
+                });
+            }
+        }
     }
 
     #[test]
