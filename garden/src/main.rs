@@ -211,20 +211,6 @@ fn collect_reader(reader: &mut Option<thread::JoinHandle<String>>) -> String {
         .unwrap_or_default()
 }
 
-fn append_refinement_policy_args(command: &mut Command, options: &YardbirdOptions) {
-    command
-        .arg("--candidate-winners-per-group")
-        .arg(options.candidate_winners_per_group.to_string())
-        .arg("--property-check-mode")
-        .arg(options.property_check_mode.to_string())
-        .arg("--instantiation-strategy")
-        .arg(options.instantiation_strategy.to_string())
-        .arg("--synthesis-refinement-retention")
-        .arg(options.synthesis_refinement_retention.to_string())
-        .arg("--synthesis-predicate-relevance")
-        .arg(options.synthesis_predicate_relevance.to_string());
-}
-
 fn parse_yardbird_output(success: bool, stdout: &str, stderr: &str) -> BenchmarkResult {
     if let Ok(result) = serde_json::from_str::<ProofLoopResult>(stdout.trim()) {
         let reason = result
@@ -301,6 +287,25 @@ fn read_progress_checkpoint(path: Option<&Path>) -> Option<yardbird::RunProgress
     }
 }
 
+/// Write `options` (with this attempt's fresh progress file baked in) as
+/// JSON for yardbird's `--options-json` to load. `YardbirdOptions` is the
+/// single source of truth for its own fields; garden passes the whole
+/// struct through rather than reconstructing each flag as an argument.
+fn write_options_json(
+    options: &YardbirdOptions,
+    progress_path: &Path,
+    directory: &Path,
+) -> std::io::Result<PathBuf> {
+    let mut options = options.clone();
+    options.progress_file = Some(progress_path.to_path_buf());
+    let path = directory.join("options.json");
+    fs::write(
+        &path,
+        serde_json::to_vec(&options).expect("YardbirdOptions always serializes"),
+    )?;
+    Ok(path)
+}
+
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> SubprocessOutcome {
     // Get the path to the yardbird binary (in target/release/)
     let yardbird_bin = std::env::current_exe()
@@ -312,106 +317,10 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Subp
         })
         .expect("Failed to find yardbird binary path");
 
-    let filename = options
-        .filename
-        .as_deref()
-        .expect("garden only spawns yardbird with a filename");
-
-    // Build command line arguments for yardbird with JSON output
-    let mut command = Command::new(&yardbird_bin);
-    command
-        .arg("--filename")
-        .arg(filename)
-        .arg("--depth")
-        .arg(options.depth.to_string())
-        .arg("--strategy")
-        .arg(options.strategy.to_string())
-        .arg("--cost-function")
-        .arg(options.cost_function.to_string())
-        .arg("--egraph-builder")
-        .arg(options.egraph_builder.to_string())
-        .arg("--instantiation-ranker")
-        .arg(options.instantiation_ranker.to_string());
-    append_refinement_policy_args(&mut command, options);
-    command
-        .arg("--solver")
-        .arg(options.solver.to_string())
-        .arg("--synthesis-trigger")
-        .arg(options.synthesis_trigger.to_string())
-        .arg("--synthesis-guard-policy")
-        .arg(options.synthesis_guard_policy.to_string())
-        .arg("--json-output");
-
-    if options.preprocess_exact_read_after_write {
-        command.arg("--preprocess-exact-read-after-write");
-    }
-    if options.guarded_read_updates {
-        command.arg("--guarded-read-updates");
-    }
-    if options.abstract_recurrent_products {
-        command.arg("--abstract-recurrent-products");
-    }
-
-    if options.run_ic3ia {
-        command.arg("--run-ic3ia");
-    }
-
-    if let Some(synthesis_after) = options.synthesis_after {
-        command
-            .arg("--synthesis-after")
-            .arg(synthesis_after.to_string());
-    }
-
-    if let Some(window) = options.synthesis_refinement_limit_window {
-        command
-            .arg("--synthesis-refinement-limit-window")
-            .arg(window.to_string());
-    }
-
-    if let Some(threshold) = options.synthesis_repeated_pattern_threshold {
-        command
-            .arg("--synthesis-repeated-pattern-threshold")
-            .arg(threshold.to_string());
-    }
-
-    if options.train {
-        command.arg("--train");
-    }
-
-    if options.track_instantiations {
-        command.arg("--track-instantiations");
-    }
-
-    if options.profile {
-        command.arg("--profile");
-    }
-
-    if let Some(capture_dir) = &options.solver_capture_dir {
-        command.arg("--solver-capture-dir").arg(capture_dir);
-    }
-
-    if options.record_decisions {
-        command.arg("--record-decisions");
-    }
-
-    if matches!(
-        options.cost_function,
-        yardbird::CostFunction::LogisticRegression
-    ) {
-        if let Some(ranker_model) = &options.ranker_model {
-            command.arg("--ranker-model").arg(ranker_model);
-        }
-    }
-
-    if let Some(database_url) = &options.database_url {
-        command.arg("--database-url").arg(database_url);
-    }
-
-    if let Some(training_run_version) = &options.training_run_version {
-        command
-            .arg("--training-run-version")
-            .arg(training_run_version);
-    }
+    assert!(
+        options.filename.is_some(),
+        "garden only spawns yardbird with a filename"
+    );
 
     // A fresh directory per attempt prevents stale progress leaking across retries.
     let directory = match tempfile::tempdir() {
@@ -422,7 +331,14 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Subp
         }
     };
     let progress_path = directory.path().join("progress.json");
-    command.arg("--progress-file").arg(&progress_path);
+    let options_path = match write_options_json(options, &progress_path, directory.path()) {
+        Ok(path) => path,
+        Err(error) => {
+            return BenchmarkResult::Error(format!("Cannot write options JSON: {error}")).into()
+        }
+    };
+    let mut command = Command::new(&yardbird_bin);
+    command.arg("--options-json").arg(&options_path);
     run_command_with_timeout(&mut command, timeout, Some(&progress_path))
 }
 
@@ -752,15 +668,8 @@ fn run_config_benchmark(
     });
     let result = run_single(
         YardbirdOptions {
-            command: None,
-            policy: None,
             filename: Some(filename.to_string()),
             depth: run.depth,
-            wall_timeout_secs: None,
-            progress_file: None,
-            print_file: false,
-            interpolate: false,
-            repl: false,
             strategy: run.strategy,
             run_ic3ia: options.run_ic3ia,
             cost_function: run.cost_function,
@@ -768,22 +677,17 @@ fn run_config_benchmark(
             preprocess_exact_read_after_write: run.preprocess_exact_read_after_write,
             abstract_recurrent_products: run.abstract_recurrent_products,
             guarded_read_updates: run.guarded_read_updates,
-            eager: false,
             candidate_winners_per_group: run.candidate_winners_per_group,
             instantiation_ranker: run.instantiation_ranker,
             property_check_mode: run.property_check_mode,
             solver: run.solver,
-            theory: yardbird::TheorySelection::Auto,
-            json_output: false,
-            dump_solver: None,
+            // Required for `parse_yardbird_output` to read a result back.
+            json_output: true,
             track_instantiations: options.track_instantiations,
-            dump_unsat_core: None,
             instantiation_strategy: run.instantiation_strategy,
             train: options.train,
-            train_reset: false,
             database_url: options.database_url.clone(),
             training_run_version: training_run_version.clone(),
-            verbose: false,
             profile: options.profile,
             solver_capture_dir,
             record_decisions: options.record_decisions,
@@ -797,6 +701,7 @@ fn run_config_benchmark(
                 .auxiliary_synthesis
                 .repeated_pattern_threshold,
             ranker_model: options.ranker_model.clone(),
+            ..Default::default()
         },
         retry_count,
         run.timeout_seconds,
@@ -973,8 +878,7 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        append_refinement_policy_args, array_operation_presence, discover_benchmarks,
-        GardenOptions, Pattern,
+        array_operation_presence, discover_benchmarks, write_options_json, GardenOptions, Pattern,
     };
     use clap::Parser;
     use std::fs;
@@ -1117,35 +1021,46 @@ mod tests {
     }
 
     #[test]
-    fn refinement_policy_options_are_forwarded_to_yardbird() {
+    fn options_json_bakes_in_this_attempts_progress_file_and_preserves_the_rest() {
         let mut options = YardbirdOptions::from_filename("input.vmt".to_string());
         options.candidate_winners_per_group = 48;
         options.property_check_mode = PropertyCheckMode::Assumptions;
         options.instantiation_strategy = InstantiationStrategyType::SchemaBatch;
         options.synthesis_refinement_retention = AuxRefinementRetention::DropSource;
         options.synthesis_predicate_relevance = PredicateRelevancePolicy::CaptureAligned;
-        let mut command = std::process::Command::new("yardbird");
+        // A named policy isn't special-cased here (unlike CLI flags, JSON
+        // never goes through `--policy`'s `conflicts_with_all`).
+        options.policy = Some(yardbird::policy::NamedPolicy::CountermodelGuided);
+        options.guidance_schedule = yardbird::policy::effort::GuidanceSchedule::Supplement;
 
-        append_refinement_policy_args(&mut command, &options);
+        let directory = tempfile::tempdir().unwrap();
+        let progress_path = directory.path().join("progress.json");
+        let options_path = write_options_json(&options, &progress_path, directory.path()).unwrap();
+        let written: YardbirdOptions =
+            serde_json::from_str(&fs::read_to_string(&options_path).unwrap()).unwrap();
 
-        let arguments = command
-            .get_args()
-            .map(|argument| argument.to_string_lossy().into_owned())
-            .collect::<Vec<_>>();
+        assert_eq!(written.progress_file, Some(progress_path));
+        assert_eq!(written.candidate_winners_per_group, 48);
+        assert_eq!(written.property_check_mode, PropertyCheckMode::Assumptions);
         assert_eq!(
-            arguments,
-            [
-                "--candidate-winners-per-group",
-                "48",
-                "--property-check-mode",
-                "assumptions",
-                "--instantiation-strategy",
-                "schema-batch",
-                "--synthesis-refinement-retention",
-                "drop-source",
-                "--synthesis-predicate-relevance",
-                "capture-aligned",
-            ]
+            written.instantiation_strategy,
+            InstantiationStrategyType::SchemaBatch
+        );
+        assert_eq!(
+            written.synthesis_refinement_retention,
+            AuxRefinementRetention::DropSource
+        );
+        assert_eq!(
+            written.synthesis_predicate_relevance,
+            PredicateRelevancePolicy::CaptureAligned
+        );
+        assert_eq!(
+            written.policy,
+            Some(yardbird::policy::NamedPolicy::CountermodelGuided)
+        );
+        assert_eq!(
+            written.guidance_schedule,
+            yardbird::policy::effort::GuidanceSchedule::Supplement
         );
     }
 

@@ -1067,6 +1067,10 @@ impl ProblemContext for VmtBmcSession {
         self.solver.eval_to_string(term)
     }
 
+    fn eval_partial(&self, term: &Term) -> anyhow::Result<crate::solver::api::ModelEvaluation> {
+        self.solver.eval_partial(term)
+    }
+
     fn model_to_string(&self) -> anyhow::Result<String> {
         self.solver.model_to_string()
     }

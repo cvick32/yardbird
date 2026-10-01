@@ -1,6 +1,6 @@
 use smt2parser::concrete::{Command, Sort, Symbol, Term};
 use std::{collections::BTreeMap, time::Duration};
-use z3::ast::Bool;
+use z3::ast::{Ast, Bool};
 
 use super::{z3_ext::ModelExt, z3_var_context::Z3VarContext};
 use crate::{
@@ -219,6 +219,35 @@ impl YardbirdSolver for Z3SolverBackend {
         }
     }
 
+    fn eval_partial(&self, term: &Term) -> anyhow::Result<super::api::ModelEvaluation> {
+        use super::api::ModelEvaluation;
+        anyhow::ensure!(
+            self.model_captured,
+            "no solver model has been captured for the latest check"
+        );
+        let model = self
+            .newest_model
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("no solver model is available"))?;
+        let term = self.z3_var_context.rewrite_term(term);
+        let Some(value) = model.eval(&term, false) else {
+            return Ok(ModelEvaluation::Undetermined);
+        };
+        // An uninterpreted constant is a value only when it belongs to the
+        // captured model's universe. AST shape or printed names are insufficient.
+        let known = value.kind() == z3::AstKind::Numeral
+            || value.as_bool().and_then(|b| b.as_bool()).is_some()
+            || (value.get_sort().kind() == z3::SortKind::Uninterpreted
+                && model
+                    .get_sort_universe(&value.get_sort())
+                    .is_some_and(|universe| (0..universe.len()).any(|i| universe.get(i) == value)));
+        Ok(if known {
+            ModelEvaluation::Known(value.to_string())
+        } else {
+            ModelEvaluation::Undetermined
+        })
+    }
+
     fn get_solver_statistics(&self) -> SolverStatistics {
         self.solver_statistics.clone()
     }
@@ -353,5 +382,89 @@ mod tests {
             SolverCheckResult::Unsat
         );
         assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+    }
+}
+
+#[cfg(test)]
+mod partial_evaluation_tests {
+    use super::*;
+    use crate::solver::api::ModelEvaluation;
+    use smt2parser::{concrete::SyntaxBuilder, CommandStream};
+
+    #[test]
+    fn partial_queries_preserve_model_and_distinguish_residuals_from_values() {
+        let mut solver = Z3SolverBackend::new("ALL").unwrap();
+        let input = "(declare-sort Item 0)
+            (declare-fun a () Item) (declare-fun b () Item) (declare-fun unused () Item)
+            (declare-fun p () Bool) (declare-fun q () Bool)
+            (declare-fun x () Int) (declare-fun y () Int)
+            (declare-fun f (Item) Bool)
+            (assert (not (= a b))) (assert p) (assert (= x (* 10000000000 10000000000)))";
+        for command in CommandStream::new(input.as_bytes(), SyntaxBuilder, None) {
+            match command.unwrap() {
+                Command::Assert { term } => solver.assert_term(&term).unwrap(),
+                command => solver.accept_command(&command).unwrap(),
+            }
+        }
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        solver.capture_model(&[]).unwrap();
+        let before = solver.newest_model.as_ref().unwrap().to_string();
+        let queries = ["q", "y", "(+ y 1)", "unused", "(f a)"];
+        for reverse in [false, true] {
+            let order: Vec<_> = if reverse {
+                queries.iter().rev().collect()
+            } else {
+                queries.iter().collect()
+            };
+            for query in order {
+                assert_eq!(
+                    solver.eval_partial(&query.parse().unwrap()).unwrap(),
+                    ModelEvaluation::Undetermined,
+                    "{query}"
+                );
+            }
+            assert_eq!(
+                solver
+                    .eval_partial(&"p".parse().unwrap())
+                    .unwrap()
+                    .as_known(),
+                Some("true")
+            );
+            assert_eq!(
+                solver
+                    .eval_partial(&"(and p false)".parse().unwrap())
+                    .unwrap()
+                    .as_known(),
+                Some("false")
+            );
+            assert_eq!(
+                solver
+                    .eval_partial(&"x".parse().unwrap())
+                    .unwrap()
+                    .as_known(),
+                Some("100000000000000000000")
+            );
+            assert!(solver
+                .eval_partial(&"a".parse().unwrap())
+                .unwrap()
+                .as_known()
+                .is_some());
+            assert_ne!(
+                solver.eval_partial(&"a".parse().unwrap()).unwrap(),
+                solver.eval_partial(&"b".parse().unwrap()).unwrap()
+            );
+            assert_eq!(solver.newest_model.as_ref().unwrap().to_string(), before);
+        }
+        // Recapture after a new constraint: no observations from the old model survive.
+        solver.assert_term(&"q".parse().unwrap()).unwrap();
+        assert_eq!(solver.check_sat(), SolverCheckResult::Sat);
+        solver.capture_model(&[]).unwrap();
+        assert_eq!(
+            solver
+                .eval_partial(&"q".parse().unwrap())
+                .unwrap()
+                .as_known(),
+            Some("true")
+        );
     }
 }

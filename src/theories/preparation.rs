@@ -19,7 +19,7 @@ use crate::{
     Theory,
 };
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TheorySelection {
     #[default]
     Auto,

@@ -62,6 +62,14 @@ impl EquationCompiler {
     }
 
     pub fn step(&mut self, plan: &QuantifierPlan) {
+        self.step_with_definitions(plan, None);
+    }
+
+    pub(crate) fn step_with_definitions(
+        &mut self,
+        plan: &QuantifierPlan,
+        index: Option<&crate::transition_index::TransitionIndex>,
+    ) {
         let Some(mut frame) = self.queue.pop_front() else {
             return;
         };
@@ -70,6 +78,23 @@ impl EquationCompiler {
         let mut path = frame.path.clone();
         if frame.terms.len() > 0 {
             self.queue.push_front(frame);
+        }
+        let expanded = index
+            .and_then(|index| index.expand_framed_leaf(&term))
+            .or_else(|| {
+                if let Term::Attributes { term, .. } = &term {
+                    Some(*term.clone())
+                } else {
+                    None
+                }
+            });
+        if let Some(expanded) = expanded {
+            self.queue.push_back(CompilationFrame {
+                terms: vec![expanded].into_iter(),
+                variables,
+                path,
+            });
+            return;
         }
         let Term::Application {
             qual_identifier,

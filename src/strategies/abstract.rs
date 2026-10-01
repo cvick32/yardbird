@@ -7,8 +7,9 @@ use smt2parser::{concrete::Term, vmt::VMTModel};
 use crate::ic3ia::{call_ic3ia, ic3ia_output_contains_proof};
 use crate::policy::effort::{
     EffortContext, EffortDecision, EffortEvent, EffortOperation, EffortRecord, OperationId,
-    OperationKind, WorkReport,
+    OperationKind, WorkAllowance, WorkReport,
 };
+use crate::policy::instance_selection::InstantiationRanker;
 use crate::policy::term_selection::TermCostFactory;
 use crate::policy::YardbirdPolicy;
 use crate::profiling::{ProfilingRecord, ProfilingRunRecord, RefinementProfilingCollector};
@@ -24,7 +25,7 @@ use crate::theory_support::{ArrayTheorySupport, TheorySupport};
 use crate::training::{AbstractInstantiationRecord, DecisionRecord};
 use crate::{driver, ProofLoopResult};
 
-use crate::rule_matching::search_context::SearchContext;
+use crate::rule_matching::search_context::{SearchContext, SearchFormulas};
 use crate::theories::array::refinement::ArrayRefinement;
 use crate::theories::quantifiers::refinement::{BinderSearchState, QuantifierRefinement};
 
@@ -36,6 +37,92 @@ fn trace_conflicts_enabled() -> bool {
 
 fn trace_instantiations_enabled() -> bool {
     log::log_enabled!(log::Level::Trace)
+}
+
+/// Assemble one search's read-only inputs. Fields derived purely from `state`
+/// (`model_version`, `graph`, `graph_version`, `depth`) live here so a new one
+/// only needs updating in this function, not at every call site.
+// `state`'s fields are taken individually, not as `&RefinementState`: callers
+// immediately follow this with `&mut state.<other field>` borrows (binder
+// search, guarded reads, the countermodel trace, ...) in the same match arm,
+// and those must stay disjoint from whatever this context borrows.
+#[allow(clippy::too_many_arguments)]
+fn search_context<'a, F: TermCostFactory>(
+    formula_index: Option<&'a crate::transition_index::TransitionIndex>,
+    quantifier_plan: &'a crate::theories::quantifiers::QuantifierPlan,
+    selection_counts: &'a FxHashMap<String, u32>,
+    artifact_capture: ArtifactCapture,
+    model_version: u64,
+    graph: &'a crate::refinement_graph::RefinementGraph,
+    graph_version: u64,
+    depth: u16,
+    smt: &'a dyn crate::problem_context::ProblemContext,
+    term_config: &'a F::Config,
+    ranker: &'a dyn InstantiationRanker,
+    allowance: WorkAllowance,
+    operation_id: Option<OperationId>,
+    pending_instances: &'a HashSet<Term>,
+    refinement_step: u32,
+    profiling: Option<Rc<RefCell<RefinementProfilingCollector>>>,
+) -> SearchContext<'a, F> {
+    SearchContext {
+        formulas: SearchFormulas {
+            index: formula_index,
+            quantifiers: quantifier_plan,
+        },
+        model_version,
+        graph,
+        graph_version,
+        smt,
+        term_config,
+        ranker,
+        allowance,
+        operation_id,
+        pending_instances,
+        selection_counts,
+        artifact_capture,
+        depth,
+        refinement_step,
+        profiling,
+    }
+}
+
+/// Trace the current violation to array/quantifier instances and hand any
+/// undetermined initializers to ordinary obligation discovery. A free function,
+/// not a method: at its call site `effort` is still borrowed out of the same
+/// policy that a `&mut self` receiver would need to reclaim.
+fn countermodel_candidates<F: TermCostFactory>(
+    obligations: &mut crate::refinement_obligations::RefinementObligations,
+    countermodel_trace: &mut Option<crate::countermodel::CountermodelTrace>,
+    context: &SearchContext<'_, F>,
+    profiling: &Option<Rc<RefCell<RefinementProfilingCollector>>>,
+) -> anyhow::Result<(WorkReport, InstantiationBatch)> {
+    let trace = crate::countermodel::search(context);
+    let batch = trace.candidate_pool().candidates_partial(context)?;
+    let unresolved = obligations.remember_traced(trace.depth, trace.unresolved_initializers());
+    let mut report = WorkReport::from_batch(&batch);
+    report.dependency_work = trace.work;
+    report.budget_exhausted = trace.budget_exhausted;
+    report.undetermined_frontiers = trace
+        .nodes
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.status,
+                crate::countermodel::TraceStatus::Undetermined { .. }
+            )
+        })
+        .count();
+    if let Some(profiling) = profiling {
+        profiling
+            .borrow_mut()
+            .add_counter("countermodel_initializer_obligations", unresolved as u64);
+        profiling
+            .borrow_mut()
+            .record_countermodel_trace(trace.clone());
+    }
+    *countermodel_trace = Some(trace);
+    Ok((report, batch))
 }
 
 /// Global state carried across different BMC depths
@@ -58,6 +145,8 @@ where
     term_selection_decisions: FxHashMap<String, String>,
     artifact_capture: ArtifactCapture,
     profile: bool,
+    countermodel_trace_work: usize,
+    formula_index: Option<crate::transition_index::TransitionIndex>,
     profiling_records: Vec<ProfilingRecord>,
     cone_attempted_depths: HashSet<u16>,
     preprocess_exact_read_after_write: bool,
@@ -90,6 +179,8 @@ where
             term_selection_decisions: FxHashMap::default(),
             artifact_capture: ArtifactCapture::default(),
             profile,
+            countermodel_trace_work: 0,
+            formula_index: None,
             profiling_records: vec![],
             cone_attempted_depths: HashSet::new(),
             preprocess_exact_read_after_write: false,
@@ -103,6 +194,11 @@ where
             },
             preparation_error: None,
         }
+    }
+
+    pub fn with_countermodel_trace_work(mut self, work: usize) -> Self {
+        self.countermodel_trace_work = work;
+        self
     }
 
     pub fn with_artifact_capture(mut self, artifact_capture: ArtifactCapture) -> Self {
@@ -149,6 +245,7 @@ where
 /// between searches; a new model receives a fresh graph and search caches.
 pub struct RefinementState {
     pub depth: u16,
+    pub countermodel_trace: Option<crate::countermodel::CountermodelTrace>,
     pub egraph: crate::refinement_graph::RefinementGraph,
     pub candidates: Vec<InstantiationCandidate>,
     pub(crate) guarded_read_updates: Vec<Term>,
@@ -263,6 +360,7 @@ where
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         self.obligations = Default::default();
         self.preparation_error = None;
+        self.formula_index = None;
         let prepared = prepare_vmt(
             model.clone(),
             PreparationOptions {
@@ -310,6 +408,16 @@ where
                         );
                     }
                 }
+                self.formula_index = Some(crate::transition_index::TransitionIndex::from_model(
+                    &prepared.model,
+                    &prepared
+                        .quantifier
+                        .plan
+                        .rules
+                        .iter()
+                        .map(|rule| rule.name.clone())
+                        .collect(),
+                ));
                 self.array = prepared.array;
                 self.quantifier = prepared.quantifier;
                 self.ownership = prepared.ownership;
@@ -375,6 +483,7 @@ where
         };
         self.model_sequence += 1;
         Ok(RefinementState {
+            countermodel_trace: None,
             model_version: self.model_sequence,
             graph_version: 0,
             array_expansion: None,
@@ -473,6 +582,15 @@ where
             }
             self.offer_sequence += 1;
             let mut kinds = Vec::new();
+            if (self.ownership.arrays || self.ownership.quantifiers)
+                && self.policy.effort().uses_countermodel_refinement()
+                && self.formula_index.is_some()
+            {
+                kinds.push((
+                    OperationKind::CountermodelCandidates,
+                    "trace violated properties to array and quantifier instances".into(),
+                ));
+            }
             if !self.quantifier.plan.rules.is_empty() {
                 kinds.push((
                     OperationKind::DiscoverDependencies,
@@ -597,30 +715,41 @@ where
                     .map(|instance| crate::instance_installation::assertion_tracker::canonical_instantiation_key(instance.get_term()))
             }).collect::<HashSet<_>>();
             let (term_config, ranker, effort) = self.policy.parts();
-            let context = SearchContext::<F> {
-                graph: &state.egraph,
-                graph_version: state.graph_version,
+            let context = search_context::<F>(
+                self.formula_index.as_ref(),
+                &self.quantifier.plan,
+                &self.term_selection_counts,
+                self.artifact_capture,
+                state.model_version,
+                &state.egraph,
+                state.graph_version,
+                state.depth,
                 smt,
                 term_config,
                 ranker,
                 allowance,
-                operation_id: Some(operation.id),
-                pending_instances: &pending_instances,
-                selection_counts: &self.term_selection_counts,
-                artifact_capture: self.artifact_capture,
-                depth: state.depth,
+                Some(operation.id),
+                &pending_instances,
                 refinement_step,
-                profiling: profiling.clone(),
-            };
+                profiling.clone(),
+            );
             let mut batch = InstantiationBatch::default();
             let mut report = WorkReport::default();
             let mut retain = false;
             match operation.kind {
+                OperationKind::CountermodelCandidates => {
+                    (report, batch) = countermodel_candidates(
+                        &mut self.obligations,
+                        &mut state.countermodel_trace,
+                        &context,
+                        &profiling,
+                    )?;
+                    retain = report.selected > 0;
+                }
                 OperationKind::DiscoverDependencies => {
                     (report, batch) = self.quantifier.discover_obligations(
                         &mut state.binder_search,
                         &mut self.obligations,
-                        self.array.property_cone.provenance.transition_index(),
                         &context,
                     )?;
                     retain = report.selected > 0;
@@ -706,6 +835,28 @@ where
                 self.absorb_candidates(state, batch);
             }
         })();
+        // Trace after selection: diagnostic model evaluation must not influence
+        // the representative choices made for this refinement pass.
+        if let Some(index) = self
+            .formula_index
+            .as_ref()
+            .filter(|_| self.countermodel_trace_work > 0 && state.countermodel_trace.is_none())
+        {
+            let start = std::time::Instant::now();
+            state.countermodel_trace = Some(crate::countermodel::trace_violation(
+                index,
+                &state.array_types,
+                state.depth,
+                state.model_version,
+                self.countermodel_trace_work,
+                |term| smt.eval_partial(term),
+            ));
+            if let Some(profiling) = &profiling {
+                let mut p = profiling.borrow_mut();
+                p.record_countermodel_trace(state.countermodel_trace.clone().unwrap());
+                p.record_timing("countermodel_trace", start.elapsed());
+            }
+        }
         self.finish_profiling_record(profiling);
         pass_result
     }
@@ -962,21 +1113,25 @@ where
                 &profiling,
             )?;
             let (term_config, ranker, _) = self.policy.parts();
-            let context = SearchContext::<F> {
-                graph: &state.egraph,
-                graph_version: state.graph_version,
+            let no_pending_instances = HashSet::new();
+            let context = search_context::<F>(
+                self.formula_index.as_ref(),
+                &self.quantifier.plan,
+                &self.term_selection_counts,
+                self.artifact_capture,
+                state.model_version,
+                &state.egraph,
+                state.graph_version,
+                state.depth,
                 smt,
                 term_config,
                 ranker,
                 allowance,
-                operation_id: None,
-                pending_instances: &HashSet::new(),
-                selection_counts: &self.term_selection_counts,
-                artifact_capture: self.artifact_capture,
-                depth: state.depth,
+                None,
+                &no_pending_instances,
                 refinement_step,
-                profiling: profiling.clone(),
-            };
+                profiling.clone(),
+            );
             let (batch, report) = match kind {
                 OperationKind::DiscoverDependencies => (
                     InstantiationBatch::default(),
@@ -1021,26 +1176,27 @@ where
             &profiling,
         )?;
         let (term_config, ranker, effort) = self.policy.parts();
-        self.quantifier.candidates(
-            &mut state.binder_search,
-            phase,
-            &SearchContext::<F> {
-                graph: &state.egraph,
-                graph_version: state.graph_version,
-                smt,
-                term_config,
-                ranker,
-                allowance: crate::policy::effort::WorkAllowance::default(),
-                operation_id: None,
-                pending_instances: &HashSet::new(),
-                selection_counts: &self.term_selection_counts,
-                artifact_capture: self.artifact_capture,
-                depth: state.depth,
-                refinement_step,
-                profiling,
-            },
-            effort,
-        )
+        let no_pending_instances = HashSet::new();
+        let context = search_context::<F>(
+            self.formula_index.as_ref(),
+            &self.quantifier.plan,
+            &self.term_selection_counts,
+            self.artifact_capture,
+            state.model_version,
+            &state.egraph,
+            state.graph_version,
+            state.depth,
+            smt,
+            term_config,
+            ranker,
+            WorkAllowance::default(),
+            None,
+            &no_pending_instances,
+            refinement_step,
+            profiling,
+        );
+        self.quantifier
+            .candidates(&mut state.binder_search, phase, &context, effort)
     }
 
     fn absorb_candidates(&mut self, state: &mut RefinementState, batch: InstantiationBatch) {

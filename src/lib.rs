@@ -39,6 +39,7 @@ use crate::training::LogisticRegressionModel;
 
 pub mod audit;
 pub mod auxiliary_synthesis;
+pub mod countermodel;
 mod driver;
 mod egg_utils;
 pub mod ic3ia;
@@ -77,12 +78,20 @@ pub struct ArrayProofPlan {
     pub conditional_history: Option<Box<dyn ProofStrategyExt<RefinementState>>>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(version, about, long_about = None)]
 pub struct YardbirdOptions {
     /// Run a repository-level operation instead of solving one input file.
     #[command(subcommand)]
     pub command: Option<YardbirdCommand>,
+
+    /// Load every other option from this JSON file (a serialized
+    /// `YardbirdOptions`), overriding whatever else was passed on the command
+    /// line. Internal: `garden` uses this instead of reconstructing each flag
+    /// as a subprocess argument.
+    #[arg(long, hide = true)]
+    #[serde(skip)]
+    pub options_json: Option<PathBuf>,
 
     /// Select an executable policy instead of configuring individual policy choices.
     #[arg(long, value_enum, conflicts_with_all = [
@@ -204,6 +213,16 @@ pub struct YardbirdOptions {
     #[arg(long, default_value_t = false)]
     pub profile: bool,
 
+    /// Bound read-only counter-model tracing per refinement (0 disables). Includes JSON profiling.
+    #[arg(long, default_value_t = 0)]
+    pub countermodel_trace_work: usize,
+
+    /// Return after guided candidates, or supplement them with bounded
+    /// dependency search. Only meaningful with `--policy countermodel-guided`;
+    /// see `NamedPolicy::overrides`.
+    #[arg(long, value_enum, default_value_t = policy::effort::GuidanceSchedule::Immediate, requires = "policy")]
+    pub guidance_schedule: policy::effort::GuidanceSchedule,
+
     /// Write a replayable solver session and its metadata to this directory.
     #[arg(long)]
     pub solver_capture_dir: Option<PathBuf>,
@@ -261,6 +280,7 @@ impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
             command: None,
+            options_json: None,
             policy: None,
             filename: None,
             depth: 10,
@@ -290,6 +310,8 @@ impl Default for YardbirdOptions {
             dump_unsat_core: None,
             verbose: false,
             profile: false,
+            countermodel_trace_work: 0,
+            guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
             solver_capture_dir: None,
             record_decisions: false,
             train: false,
@@ -307,7 +329,7 @@ impl Default for YardbirdOptions {
     }
 }
 
-#[derive(Subcommand, Debug, Clone)]
+#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 pub enum YardbirdCommand {
     /// Run every VMT benchmark with concrete and abstract strategies in isolated subprocesses.
     Audit {
@@ -389,7 +411,10 @@ impl YardbirdOptions {
     }
 
     pub(crate) fn profiling_enabled(&self) -> bool {
-        self.profile || self.train || self.solver_capture_dir.is_some()
+        self.profile
+            || self.train
+            || self.solver_capture_dir.is_some()
+            || self.countermodel_trace_work > 0
     }
 
     pub fn build_array_artifact_capture(&self) -> ArtifactCapture {
@@ -399,6 +424,21 @@ impl YardbirdOptions {
             instantiation_provenance: decisions || self.track_instantiations,
             conflicts: self.synthesis_trigger != SynthesisTrigger::Off,
         }
+    }
+
+    /// Resolve `--options-json` if it was given: load every other option from
+    /// that file, replacing whatever else was parsed from the command line.
+    /// `garden` writes a full `YardbirdOptions` there instead of reconstructing
+    /// each flag as a subprocess argument.
+    pub fn resolve(self) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        let Some(path) = &self.options_json else {
+            return Ok(self);
+        };
+        let json = std::fs::read_to_string(path)
+            .with_context(|| format!("reading --options-json {}", path.display()))?;
+        serde_json::from_str(&json)
+            .with_context(|| format!("parsing --options-json {}", path.display()))
     }
 
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
@@ -415,6 +455,39 @@ impl YardbirdOptions {
             anyhow::bail!(
                 "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
                 self.synthesis_trigger
+            );
+        }
+        Ok(())
+    }
+
+    /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
+    pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        if self.countermodel_trace_work > 0
+            || self.policy == Some(policy::NamedPolicy::CountermodelGuided)
+        {
+            anyhow::ensure!(
+                matches!(self.strategy, Strategy::Abstract)
+                    || self
+                        .policy
+                        .is_some_and(policy::NamedPolicy::always_builds_abstract),
+                "counter-model tracing currently requires the abstract strategy"
+            );
+            anyhow::ensure!(
+                self.filename
+                    .as_deref()
+                    .is_some_and(|f| f.ends_with(".vmt")),
+                "counter-model tracing currently requires a VMT input"
+            );
+            anyhow::ensure!(
+                self.theory.includes(Theory::Array) || self.theory.includes(Theory::Quantifiers),
+                "counter-model tracing requires array or quantifier ownership"
+            );
+            // cvc5's `eval_partial` only answers from values already captured
+            // for other purposes; it never issues fresh queries. Guidance
+            // would silently find almost nothing rather than fail loudly.
+            anyhow::ensure!(
+                matches!(self.solver, SolverBackend::Z3),
+                "counter-model tracing currently requires the Z3 solver backend"
             );
         }
         Ok(())
@@ -586,21 +659,39 @@ impl YardbirdOptions {
     where
         F: TermCostFactory + 'static,
     {
+        // The selected policy (if any) is the sole interpreter of what its
+        // name means; everything below reads the resulting overrides rather
+        // than re-checking `self.policy` for each field it touches.
+        let overrides = self
+            .policy
+            .map(|policy| policy.overrides(self))
+            .unwrap_or_default();
         let policy = YardbirdPolicy::new(cost_config)
             .with_effort(
                 crate::policy::DefaultEffort::default()
+                    .with_countermodel_refinement(overrides.countermodel_refinement)
+                    .with_guidance_followup(overrides.guidance_followup)
                     .with_egraph_builder(self.build_array_egraph_builder())
-                    .with_winners_per_group(self.candidate_winners_per_group),
+                    .with_winners_per_group(
+                        overrides
+                            .winners_per_group
+                            .unwrap_or(self.candidate_winners_per_group),
+                    ),
             )
             .with_instantiation_ranker(self.build_instantiation_ranker());
         let policy = self.configure_eager_policy(policy);
         Abstract::new(bmc_depth, self.run_ic3ia, policy, self.profiling_enabled())
+            .with_countermodel_trace_work(self.countermodel_trace_work)
             .with_artifact_capture(self.build_array_artifact_capture())
             .with_exact_read_after_write_preprocessing(self.preprocess_exact_read_after_write)
             .with_recurrent_product_abstraction(self.abstract_recurrent_products)
             .with_guarded_read_updates(self.guarded_read_updates)
             .with_theory_selection(self.theory.clone())
-            .with_property_check_mode(self.property_check_mode)
+            .with_property_check_mode(
+                overrides
+                    .property_check_mode
+                    .unwrap_or(self.property_check_mode),
+            )
     }
 
     fn build_costed_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan
@@ -667,6 +758,10 @@ impl YardbirdOptions {
         if let Some(policy) = self.policy {
             return policy.build_plan(self);
         }
+        self.build_configured_array_proof_plan()
+    }
+
+    pub(crate) fn build_configured_array_proof_plan(&self) -> ArrayProofPlan {
         match self.cost_function {
             CostFunction::LogisticRegression => self.build_costed_array_plan::<LogisticRegression>(
                 LogisticRegressionModel::from_path(
@@ -873,7 +968,7 @@ impl Display for SolverBackend {
 }
 
 /// Describes the instantiation strategies available.
-#[derive(Copy, Clone, Debug, ValueEnum, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
 #[clap(rename_all = "kebab_case")]
 #[serde(rename_all = "kebab-case")]
 pub enum InstantiationStrategyType {
@@ -895,6 +990,124 @@ impl Display for InstantiationStrategyType {
 #[cfg(test)]
 mod option_tests {
     use super::*;
+
+    #[test]
+    fn resolve_is_a_no_op_without_options_json() {
+        let options =
+            YardbirdOptions::try_parse_from(["yardbird", "-f", "input.vmt", "--depth", "17"])
+                .unwrap();
+        let before = format!("{options:?}");
+        let resolved = options.resolve().unwrap();
+        assert_eq!(format!("{resolved:?}"), before);
+        assert!(resolved.options_json.is_none());
+    }
+
+    #[test]
+    fn resolve_replaces_options_from_options_json() {
+        // Cover distinct field kinds (a flag, a value_enum, a plain number,
+        // Option<T>, a policy + the field it gates) so a field that can't
+        // round-trip through serde would show up here. `--ranker-model`
+        // conflicts with `--policy` at parse time, so it's set directly
+        // rather than parsed alongside it.
+        let mut written = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--depth",
+            "17",
+            "--run-ic3ia",
+            "--profile",
+            "--policy",
+            "countermodel-guided",
+            "--guidance-schedule",
+            "supplement",
+        ])
+        .unwrap();
+        written.options_json = None;
+        written.ranker_model = Some("model.json".to_string());
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), serde_json::to_string(&written).unwrap()).unwrap();
+
+        let loaded = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "--options-json",
+            file.path().to_str().unwrap(),
+        ])
+        .unwrap()
+        .resolve()
+        .unwrap();
+
+        assert_eq!(format!("{loaded:?}"), format!("{written:?}"));
+    }
+
+    #[test]
+    fn resolve_reports_a_missing_options_json_file() {
+        let options =
+            YardbirdOptions::try_parse_from(["yardbird", "--options-json", "/no/such/file.json"])
+                .unwrap();
+        assert!(options.resolve().is_err());
+    }
+
+    #[test]
+    fn guidance_schedule_requires_a_policy_instead_of_being_silently_ignored() {
+        assert!(YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--guidance-schedule",
+            "supplement",
+        ])
+        .is_err());
+
+        let options = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--policy",
+            "countermodel-guided",
+            "--guidance-schedule",
+            "supplement",
+        ])
+        .unwrap();
+        assert_eq!(
+            options.guidance_schedule,
+            policy::effort::GuidanceSchedule::Supplement
+        );
+    }
+
+    #[test]
+    fn countermodel_guided_policy_overrides_flow_without_mutating_options() {
+        let run = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--policy",
+            "countermodel-guided",
+        ])
+        .unwrap();
+        let overrides = policy::NamedPolicy::CountermodelGuided.overrides(&run);
+        assert_eq!(overrides.winners_per_group, Some(20));
+        assert_eq!(
+            overrides.property_check_mode,
+            Some(crate::solver::PropertyCheckMode::Assumptions)
+        );
+        assert!(overrides.countermodel_refinement);
+        assert!(overrides.guidance_followup.is_none());
+
+        let mut supplemented = run.clone();
+        supplemented.guidance_schedule = policy::effort::GuidanceSchedule::Supplement;
+        assert!(policy::NamedPolicy::CountermodelGuided
+            .overrides(&supplemented)
+            .guidance_followup
+            .is_some());
+
+        // GermanFast builds its own plan directly and never overrides the
+        // generic pipeline through this path.
+        assert!(policy::NamedPolicy::GermanFast
+            .overrides(&run)
+            .winners_per_group
+            .is_none());
+    }
 
     #[test]
     fn property_checks_default_to_assumptions_and_allow_scoped_override() {

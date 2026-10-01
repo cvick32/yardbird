@@ -288,6 +288,8 @@ pub(crate) struct SolverCheckMeasurement {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfilingRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub countermodel_trace: Option<crate::countermodel::CountermodelTrace>,
     #[serde(default)]
     pub effort: Vec<crate::policy::effort::EffortRecord>,
     #[serde(default)]
@@ -449,6 +451,12 @@ pub struct RefinementProfilingCollector {
 }
 
 impl RefinementProfilingCollector {
+    pub(crate) fn record_countermodel_trace(
+        &mut self,
+        trace: crate::countermodel::CountermodelTrace,
+    ) {
+        self.record.countermodel_trace = Some(trace);
+    }
     pub(crate) fn record_effort(&mut self, record: crate::policy::effort::EffortRecord) {
         self.record.effort.push(record);
     }
@@ -461,6 +469,7 @@ impl RefinementProfilingCollector {
         Self {
             quantifier_phase: None,
             record: ProfilingRecord {
+                countermodel_trace: None,
                 effort: Vec::new(),
                 installations: Vec::new(),
                 scope: scope.into(),

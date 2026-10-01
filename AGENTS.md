@@ -16,6 +16,9 @@ yardbird/                       # Root workspace
     smtlib_problem.rs           # SMTLIB problem parser + simple solver
     smtlib_refinement_session.rs # Adapter: SMTLIB -> ProblemContext
     problem_context.rs         # Trait unifying SMT/SMTLIB problem access
+    countermodel.rs             # Read-only counter-model tracing (TraceReason/TraceStatus)
+    transition_index.rs         # Indexed VMT formulas: property/init/trans/actions/axioms
+    refinement_obligations.rs   # Symbolic obligation pool discovered from source control flow
     theory_support.rs           # TheorySupport trait + Array/List impls
     z3_var_context.rs           # SMT term -> Z3 AST conversion
     z3_ext.rs                   # Z3 model dumping utilities
@@ -38,14 +41,15 @@ yardbird/                       # Root workspace
       language.rs               # TermLanguage, TermExpr, TermPattern, SMT conversion
       preprocess.rs             # Typed operator preprocessing for e-graph syntax
     rule_matching/
-      search_context.rs         # Borrowed graph, policy, and history inputs
+      search_context.rs         # SearchContext/SearchFormulas: borrowed graph, formulas, policy, history
+      symbolic_pool.rs          # SymbolicCandidatePool: cost/validate/select exact theory instances
       compiled_rule.rs          # Shared executable rule representation
       search.rs                 # Match enumeration and search reports
       extractor.rs              # Shared representative extraction
       grounding.rs              # Substitutions and shared grounding primitives
       candidate_builder.rs      # Match-to-candidate construction
       candidate.rs              # Candidate data and model validation
-      rule.rs, provenance.rs    # Shared identities and candidate provenance
+      rule.rs, provenance.rs    # Shared identities and candidate provenance (incl. CountermodelOrigin)
       scope.rs                  # Candidate eligibility scope
     theories/
       array/
@@ -58,6 +62,7 @@ yardbird/                       # Root workspace
         transition_guard.rs     # Array-read guard recognition
         array_egraph_builder.rs # Staged array vocabulary admission
         array_dataflow.rs       # Property cone analysis
+        countermodel.rs         # is_read/read_step: array-read recognition for tracing
         encodings/              # Array preprocessing and abstraction encodings
       quantifiers/
         mod.rs, lowering.rs     # Binder plans and closure conversion
@@ -69,16 +74,18 @@ yardbird/                       # Root workspace
         violation_plan.rs       # Signed violation plans
         provenance.rs, rule.rs  # Source provenance and binder identity
         transition_guard.rs     # Quantified transition conditions and substitution
-      list/, bvlist/            # Existing theory implementations
-    policy.rs                   # YardbirdPolicy composition and named policies
+        countermodel.rs         # InitializerSearch: match demanded reads to quantified equations
+        countermodel_relations.rs # Join quantified clauses against opaque Boolean trace frontiers
+      list/                    # Existing theory implementation
+    policy.rs                   # YardbirdPolicy composition; NamedPolicy (german-fast, countermodel-guided)
     policy/
-      effort.rs                 # Search scheduling and work allowances
+      effort.rs                 # Search scheduling, work allowances, GuidanceSchedule
       instance_selection.rs     # Whole-instance ranking and batch selection
       term_selection/
         mod.rs                  # YardbirdCostFunction and TermCostFactory
         context.rs              # TermCostContext
         array/                  # Array-specific scoring heuristics
-        list/, bvlist/          # Existing cost implementations
+        list/                   # Existing cost implementation
     instance_installation/
       mod.rs                    # Installation mechanics and replay strategy interface
       request.rs, provenance.rs # Requests, outcomes, and absolute-frame substitutions
@@ -160,7 +167,17 @@ Key options:
   -s, --strategy <STR>       abstract | abstract-with-quantifiers | concrete
   -c, --cost-function <CF>   bmc-cost | ast-size | adaptive-cost | split-cost |
                              prefer-read | prefer-write | prefer-constants
-  -t, --theory <TH>          array | list | bv-list
+  -t, --theory <TH>          auto | none | array | quantifiers | array,quantifiers | list
+                             (auto abstracts every supported theory present; see
+                             examples/theories/README.md for details)
+  --policy <NAME>            An executable policy in place of individual choices:
+                             german-fast | countermodel-guided (conflicts with
+                             --strategy/--cost-function/--egraph-builder/etc.;
+                             see `policy::NamedPolicy`)
+  --countermodel-trace-work <N>  Bound read-only counter-model tracing (0 disables);
+                             requires Z3 + the abstract strategy + a VMT input
+  --guidance-schedule <S>    immediate | supplement; only meaningful with
+                             --policy countermodel-guided (requires --policy)
   --instantiation-strategy   full-unroll | no-unroll-on-loop
   --json-output              JSON output for garden integration
   --run-ic3ia                Run IC3IA after BMC
@@ -180,10 +197,12 @@ main()
   │   ├─ Simple mode (Concrete + BmcCost) -> SmtlibCommandExecutor::execute()
   │   └─ Strategy mode -> SmtlibRefinementRunner::execute()
   └─ .vmt extension -> run_vmt_mode()
-      ├─ Theory::Array  -> build_array_proof_plan(); check plan.strategy
-      ├─ Theory::List   -> Driver::check_strategy(build_list_strategy())
-      └─ Theory::BvList -> todo!()
+      ├─ theory.legacy_theory() == None       -> build_array_proof_plan(); check plan.strategy
+      │    (covers auto/array/quantifiers ownership, including --policy)
+      └─ theory.legacy_theory() == Some(List) -> Driver::check_strategy(build_list_strategy())
 ```
+`Theory::BvList` was removed (#84); `Theory` is now `{Array, Quantifiers, List}` and only
+`List` still takes the legacy per-theory dispatch branch.
 
 ### CEGAR Loop (`src/driver.rs`)
 
@@ -406,6 +425,60 @@ All in `src/policy/term_selection/array/`:
 
 ---
 
+## Countermodel Tracing and Guidance
+
+Read-only explanations of one solver counter-model (`src/countermodel.rs`).
+These are diagnostics and search hints, never asserted lemmas: the refinement
+policy's soundness never depends on tracing having run.
+
+### What a trace is
+
+`trace_violation`/`trace_refinement` walk the grounded, false property at one
+depth, expanding it through definitions, Boolean structure, and array reads
+into a tree of `TraceNode`s. Each node records:
+- `reason: TraceReason` — *why* this node exists (`PropertyViolation`,
+  `BooleanBranch`, `ArrayAxiom`, `Initialization`, `QuantifierMatch`, ...).
+- `status: TraceStatus` — what happened expanding it (`Expanded`, `Value`,
+  `ViolatedArrayAxiom`, `ViolatedQuantifierInstance`, `Undetermined`,
+  `InconsistentStep`, `Cycle`, `BudgetExhausted`, ...).
+- `model_value`/`conditions`/`lemma` — the observations that led here.
+
+Both `TraceReason` and `TraceStatus` are `#[serde(tag = "kind", ...)]`
+enums and are part of the JSON emitted with `--profile`/`--countermodel-trace-work`;
+treat new variants as a compatibility-relevant change.
+
+Evaluation is non-completing (`ProblemContext::eval_partial` ->
+`solver::api::ModelEvaluation::{Known, Undetermined}`, `src/solver/api.rs`):
+tracing never forces the solver to pick an interpretation for a symbol it
+hasn't already modeled, so an inconclusive branch becomes an explicit
+`Undetermined` frontier rather than a wrong answer or a fresh solver query.
+Only the Z3 backend implements this (cvc5's `eval_partial` only replays
+already-captured values); `validate_countermodel_trace_options` rejects the
+combination with cvc5 instead of degrading silently.
+
+### Countermodel-guided search
+
+`--policy countermodel-guided` (`src/policy.rs::NamedPolicy`) has
+`DefaultEffort` (`src/policy/effort.rs`) offer one `CountermodelCandidates`
+operation per model before ordinary search: `countermodel::search` runs a
+trace, `CountermodelTrace::candidate_pool()` collects the array/quantifier
+instances it found violated (`ViolatedArrayAxiom`/`ViolatedQuantifierInstance`)
+into a `SymbolicCandidatePool` (`src/rule_matching/symbolic_pool.rs`), and
+those go through the *same* cost/rank/install machinery as everything else
+(`InstantiationCandidate::model_violation_verified` marks them pre-verified,
+skipping `filter_model`'s redundant re-check). `--guidance-schedule
+supplement` additionally runs one bounded ordinary dependency search
+afterward before returning to the driver (`Stage::GuidanceFollowup`).
+
+Quantified initializers whose truth tracing couldn't determine
+(`TraceReason::UnresolvedInitialization`) are handed off to ordinary obligation
+discovery via `RefinementObligations::remember_traced`
+(`src/refinement_obligations.rs`) rather than dropped, carrying a
+`CountermodelOrigin` (`src/rule_matching/provenance.rs`) back to the trace
+node that produced them.
+
+---
+
 ## SMT Problem Handling
 
 ### VmtBmcSession (VMT Mode) (`src/vmt_bmc_session.rs`)
@@ -541,11 +614,15 @@ pub enum Error {
 
 ```rust
 enum Strategy          { Abstract, AbstractWithQuantifiers, Concrete }
-enum CostFunction      { BmcCost, AstSize, AdaptiveCost, SplitCost,
-                         PreferRead, PreferWrite, PreferConstants }
-enum Theory            { Array, BvList, List }
-enum InstantiationStrategyType { FullUnroll, NoUnrollOnLoop }
+enum CostFunction      { BmcCost, ProtocolBmc, AstSize, AdaptiveCost, SplitCost,
+                         PreferRead, PreferWrite, PreferConstants,
+                         IndexAware, Generated, LogisticRegression }
+enum Theory            { Array, Quantifiers, List }        // legacy per-theory dispatch; see TheorySelection
+enum TheorySelection   { Auto, Explicit(Vec<Theory>) }     // what `--theory` actually parses to
+enum InstantiationStrategyType { FullUnroll, NoUnrollOnLoop, SchemaBatch }
 enum ProofAction       { Continue, NextDepth, FoundCounterexample, FoundProof }
+enum NamedPolicy       { GermanFast, CountermodelGuided }  // src/policy.rs; see `--policy`
+enum GuidanceSchedule  { Immediate, Supplement }           // src/policy/effort.rs; only with CountermodelGuided
 ```
 
 ---
@@ -633,18 +710,28 @@ cargo test -p smt2parser
 | SMT2 AST types | `smt2parser/src/concrete.rs` |
 | Cost function trait | `src/policy/term_selection/mod.rs` |
 | Instantiation strategy trait | `src/instance_installation/mod.rs` |
+| Named policies (`--policy`) | `src/policy.rs` |
+| Effort scheduling (`Stage`, `GuidanceSchedule`) | `src/policy/effort.rs` |
+| Countermodel tracing (`TraceReason`/`TraceStatus`) | `src/countermodel.rs` |
+| Countermodel-guided candidate pool | `src/rule_matching/symbolic_pool.rs` |
+| Indexed VMT formulas for tracing | `src/transition_index.rs` |
+| Symbolic obligation discovery | `src/refinement_obligations.rs` |
+| Non-completing model evaluation | `src/solver/api.rs` (`ModelEvaluation`) |
 
 ---
 
 ## Incomplete / TODO Areas
 
-- `Theory::BvList` in VMT mode: `todo!()` at `src/main.rs`
-- BvList cost functions: empty module at `src/policy/term_selection/bvlist/mod.rs`
-- `PreferConstants` for BvList strategy: `todo!()` at `src/lib.rs`
 - List theory: only `AstSize` cost function implemented; other cost functions are `todo!()`
 - `AbstractWithQuantifiers` for List: `todo!()` at `src/lib.rs`
 - Concrete strategy for List: `todo!()` at `src/lib.rs`
 - Decimal, binary, string constants in Z3VarContext: `todo!()` in `z3_var_context.rs`
+- Countermodel-guided tracing (`--countermodel-trace-work`, `--policy
+  countermodel-guided`) requires the Z3 backend; cvc5's `eval_partial` only
+  answers from values already captured for other purposes, so it's rejected
+  by `validate_countermodel_trace_options` rather than silently degrading.
+- `bvlist` support (the `Theory::BvList` VMT branch and its cost/term-selection
+  modules) was removed in #84; earlier revisions of this file described it.
 
 ---
 

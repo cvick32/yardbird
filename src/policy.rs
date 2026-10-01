@@ -13,17 +13,69 @@ use crate::policy::term_selection::TermCostFactory;
 pub use effort::{DefaultEffort, ProofEffort};
 
 /// Executable policies selected by name. Each constructs its own proof plan.
-#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 pub enum NamedPolicy {
     /// German's BMC-cost policy with batched winners and property assumptions.
     GermanFast,
+    /// Try property-connected array axiom instances before general search.
+    CountermodelGuided,
+}
+
+/// Overrides a named policy applies on top of ordinary option-driven
+/// construction; `None`/`false` leaves the option-driven pipeline unchanged.
+/// `GermanFast` builds its own plan directly and never produces one of these.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct PolicyOverrides {
+    pub winners_per_group: Option<usize>,
+    pub property_check_mode: Option<crate::solver::PropertyCheckMode>,
+    pub countermodel_refinement: bool,
+    pub guidance_followup: Option<effort::WorkAllowance>,
 }
 
 impl NamedPolicy {
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
             Self::GermanFast => german_fast(run),
+            // The generic pipeline reads `run.policy` (already `Some(Self)`
+            // here) to compute the same overrides via `Self::overrides`, so
+            // this can hand back the unmodified options.
+            Self::CountermodelGuided => run.build_configured_array_proof_plan(),
         }
+    }
+
+    /// Overrides this policy applies when the ordinary pipeline builds an
+    /// abstract-strategy plan. This is the only place that interprets what
+    /// being `CountermodelGuided` means; `guidance_schedule` only has an
+    /// effect through this method.
+    pub(crate) fn overrides(self, run: &crate::YardbirdOptions) -> PolicyOverrides {
+        match self {
+            Self::GermanFast => PolicyOverrides::default(),
+            Self::CountermodelGuided => PolicyOverrides {
+                winners_per_group: Some(20),
+                property_check_mode: Some(crate::solver::PropertyCheckMode::Assumptions),
+                countermodel_refinement: true,
+                guidance_followup: (run.guidance_schedule == effort::GuidanceSchedule::Supplement)
+                    .then_some(effort::WorkAllowance {
+                        winners: 20,
+                        dependency_work: 128,
+                        dependency_demands: 16,
+                        dependency_paths: 4,
+                        dependency_links: 4,
+                        dependency_helpers: 32,
+                        ..Default::default()
+                    }),
+            },
+        }
+    }
+
+    /// True when this policy always constructs an Abstract-strategy plan
+    /// regardless of `YardbirdOptions::strategy`. `GermanFast` builds one
+    /// directly; `CountermodelGuided` still honors `strategy` through the
+    /// ordinary pipeline, so validation still needs to check it there.
+    pub(crate) fn always_builds_abstract(self) -> bool {
+        matches!(self, Self::GermanFast)
     }
 }
 
@@ -45,6 +97,7 @@ fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         );
     let policy = run.configure_eager_policy(policy);
     let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
+        .with_countermodel_trace_work(run.countermodel_trace_work)
         .with_artifact_capture(run.build_array_artifact_capture())
         .with_theory_selection(run.theory.clone())
         .with_property_check_mode(PropertyCheckMode::Assumptions);

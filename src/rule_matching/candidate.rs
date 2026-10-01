@@ -170,7 +170,7 @@ fn cached_model_value(
 
 /// Exact, valid theory instance discovered without representative extraction.
 /// Terms retain absolute frames until ordinary installation normalizes them.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct SymbolicInstance {
     pub rule: QuantifiedRule,
     pub term: Term,

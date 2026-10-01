@@ -81,6 +81,7 @@ impl ProofStrategy<'_, RefinementState> for ConcreteArrayZ3 {
         depth: u16,
     ) -> driver::Result<RefinementState> {
         Ok(RefinementState {
+            countermodel_trace: None,
             binder_search: None,
             model_version: 0,
             graph_version: 0,

@@ -8,6 +8,14 @@ pub struct InstantiationSubstitution {
     pub term: String,
 }
 
+/// Link to a property-rooted explanation in one solver model.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CountermodelOrigin {
+    pub model_version: u64,
+    pub depth: u16,
+    pub node: usize,
+}
+
 /// Stable provenance carried from whole-candidate selection to solver placement.
 ///
 /// The stored terms use Yardbird's relative frame notation (`a+0`, `i+1`).
@@ -16,6 +24,7 @@ pub struct InstantiationSubstitution {
 pub struct InstantiationProvenance {
     abstract_instantiation_id: String,
     relative_substitution: Vec<(String, Term)>,
+    countermodel_origin: Option<CountermodelOrigin>,
 }
 
 impl InstantiationProvenance {
@@ -26,7 +35,17 @@ impl InstantiationProvenance {
         Self {
             abstract_instantiation_id,
             relative_substitution,
+            countermodel_origin: None,
         }
+    }
+
+    pub(crate) fn with_countermodel_origin(mut self, origin: Option<CountermodelOrigin>) -> Self {
+        self.countermodel_origin = origin;
+        self
+    }
+
+    pub fn countermodel_origin(&self) -> Option<&CountermodelOrigin> {
+        self.countermodel_origin.as_ref()
     }
 
     pub fn abstract_instantiation_id(&self) -> &str {
