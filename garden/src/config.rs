@@ -388,7 +388,7 @@ impl BenchmarkConfig {
                 "Invalid benchmark configuration {}: guidance_schedule requires policy: countermodel-guided",
                 run.name,
             );
-            let options = YardbirdOptions {
+            let mut options = YardbirdOptions {
                 // Garden discovers VMT inputs; validate policy compatibility before running them.
                 filename: Some("benchmark.vmt".into()),
                 policy: run.policy,
@@ -397,6 +397,9 @@ impl BenchmarkConfig {
                 guarded_read_updates: run.guarded_read_updates,
                 ..YardbirdOptions::default()
             };
+            if let Some(policy) = options.policy {
+                policy.apply_to_options(&mut options);
+            }
             options
                 .validate_guarded_read_updates()
                 .and_then(|_| options.validate_countermodel_trace_options())

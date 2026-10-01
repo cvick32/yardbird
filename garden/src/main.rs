@@ -704,7 +704,7 @@ fn configured_yardbird_options(
     training_run_version: &Option<String>,
     solver_capture_dir: Option<PathBuf>,
 ) -> YardbirdOptions {
-    YardbirdOptions {
+    let mut configured = YardbirdOptions {
         policy: run.policy,
         guidance_schedule: run.guidance_schedule.unwrap_or_default(),
         filename: Some(filename.to_string()),
@@ -739,7 +739,11 @@ fn configured_yardbird_options(
         synthesis_repeated_pattern_threshold: run.auxiliary_synthesis.repeated_pattern_threshold,
         ranker_model: options.ranker_model.clone(),
         ..Default::default()
+    };
+    if let Some(policy) = configured.policy {
+        policy.apply_to_options(&mut configured);
     }
+    configured
 }
 
 fn discover_benchmarks(
@@ -915,7 +919,8 @@ mod tests {
     use yardbird::{
         auxiliary_synthesis::{AuxRefinementRetention, PredicateRelevancePolicy},
         solver::PropertyCheckMode,
-        InstantiationStrategyType, YardbirdOptions,
+        CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy,
+        InstantiationStrategyType, SolverBackend, Strategy, YardbirdOptions,
     };
 
     #[test]
@@ -1084,6 +1089,36 @@ mod tests {
                 });
             }
         }
+    }
+
+    #[test]
+    fn german_fast_policy_normalizes_conflicting_garden_settings() {
+        let config: super::BenchmarkConfig = serde_yaml::from_str(
+            "individual_configs:\n  - name: german\n    policy: german-fast\n    depth: 1\n    solver: cvc5\n    strategy: concrete\n    cost_function: ast-size\n    egraph_builder: full\n    instantiation_ranker: term-cost\n    candidate_winners_per_group: 1\n    property_check_mode: scoped\n    instantiation_strategy: schema-batch\n",
+        )
+        .unwrap();
+        let run = config.generate_benchmark_runs(None).unwrap().remove(0);
+        let garden = GardenOptions::try_parse_from(["garden", "--config", "unused.yaml"]).unwrap();
+
+        let options = super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
+
+        assert_eq!(options.solver, SolverBackend::Z3);
+        assert!(matches!(options.strategy, Strategy::Abstract));
+        assert_eq!(options.cost_function, CostFunction::BmcCost);
+        assert_eq!(
+            options.egraph_builder,
+            EGraphBuilderStrategy::SourceThenFull
+        );
+        assert_eq!(
+            options.instantiation_ranker,
+            InstantiationRankerStrategy::PreferSource
+        );
+        assert_eq!(options.candidate_winners_per_group, 20);
+        assert_eq!(options.property_check_mode, PropertyCheckMode::Assumptions);
+        assert_eq!(
+            options.instantiation_strategy,
+            InstantiationStrategyType::FullUnroll
+        );
     }
 
     #[test]

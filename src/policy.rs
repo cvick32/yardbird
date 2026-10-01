@@ -36,12 +36,36 @@ pub(crate) struct PolicyOverrides {
 
 impl NamedPolicy {
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
+        let mut effective = run.clone();
+        self.apply_to_options(&mut effective);
+        effective.build_configured_array_proof_plan()
+    }
+
+    /// Apply the settings owned by this policy to an options value.
+    ///
+    /// This is also used by Garden before serializing a subprocess request, so
+    /// its result metadata describes the configuration that actually runs.
+    pub fn apply_to_options(self, options: &mut crate::YardbirdOptions) {
         match self {
-            Self::GermanFast => german_fast(run),
-            // The generic pipeline reads `run.policy` (already `Some(Self)`
-            // here) to compute the same overrides via `Self::overrides`, so
-            // this can hand back the unmodified options.
-            Self::CountermodelGuided => run.build_configured_array_proof_plan(),
+            Self::GermanFast => {
+                options.solver = crate::SolverBackend::Z3;
+                options.strategy = crate::Strategy::Abstract;
+                options.cost_function = crate::CostFunction::BmcCost;
+                options.egraph_builder = crate::EGraphBuilderStrategy::SourceThenFull;
+                options.instantiation_ranker = crate::InstantiationRankerStrategy::PreferSource;
+                options.candidate_winners_per_group = 20;
+                options.property_check_mode = crate::solver::PropertyCheckMode::Assumptions;
+                options.instantiation_strategy = crate::InstantiationStrategyType::FullUnroll;
+            }
+            Self::CountermodelGuided => {
+                let overrides = self.overrides(options);
+                if let Some(winners) = overrides.winners_per_group {
+                    options.candidate_winners_per_group = winners;
+                }
+                if let Some(mode) = overrides.property_check_mode {
+                    options.property_check_mode = mode;
+                }
+            }
         }
     }
 
@@ -76,41 +100,6 @@ impl NamedPolicy {
     /// ordinary pipeline, so validation still needs to check it there.
     pub(crate) fn always_builds_abstract(self) -> bool {
         matches!(self, Self::GermanFast)
-    }
-}
-
-fn german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
-    use crate::auxiliary_synthesis::ConditionalHistory;
-    use crate::instance_installation::full_unroll::FullUnrollStrategy;
-    use crate::policy::term_selection::array::ArrayBMCCost;
-    use crate::solver::PropertyCheckMode;
-    use crate::strategies::{Abstract, ProofStrategyExt, RefinementState};
-    use crate::theories::array::array_egraph_builder::SourceThenFullEGraphBuilder;
-    use crate::{ArrayProofPlan, SolverBackend};
-
-    let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
-        .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker))
-        .with_effort(
-            DefaultEffort::default()
-                .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
-                .with_winners_per_group(20),
-        );
-    let policy = run.configure_eager_policy(policy);
-    let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
-        .with_countermodel_trace_work(run.countermodel_trace_work)
-        .with_artifact_capture(run.build_array_artifact_capture())
-        .with_theory_selection(run.theory.clone())
-        .with_property_check_mode(PropertyCheckMode::Assumptions);
-    let synthesis = run.build_aux_synthesis_config();
-    let conditional_history = (!synthesis.is_off()).then(|| {
-        Box::new(ConditionalHistory::<ArrayBMCCost>::new(synthesis, ()))
-            as Box<dyn ProofStrategyExt<RefinementState>>
-    });
-    ArrayProofPlan {
-        solver: SolverBackend::Z3,
-        instantiation_strategy: Box::new(FullUnrollStrategy::new()),
-        strategy: Box::new(strategy),
-        conditional_history,
     }
 }
 
