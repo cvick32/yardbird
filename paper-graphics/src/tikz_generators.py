@@ -1068,6 +1068,17 @@ Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
             if strategy_key not in display_names:
                 display_names[strategy_key] = strategy_key
 
+        timeout_limits = sorted({
+            result.timeout_ms / 1000.0
+            for strategies in grouped_results.values()
+            for key, result in strategies.items()
+            if key in strategy_keys and result.timeout_ms is not None
+        })
+        timeout_description = "timeout"
+        if timeout_limits:
+            limits = ", ".join(f"{limit:g}s" for limit in timeout_limits)
+            timeout_description += f" ({limits})"
+
         num_strategies = len(sorted_strategies)
         col_spec = "l" + "r" * num_strategies
 
@@ -1077,7 +1088,7 @@ Strategy & Shared Benchmarks & Avg. Speedup & Avg. Inst. Reduction \\\\
 
         table_code = f"""
 \\begin{{longtable}}{{{col_spec}}}
-\\caption{{Benchmark solve times (seconds) for all strategies. T/O = timeout (120s), ERR = error.}} \\\\
+\\caption{{Benchmark solve times (seconds) for all strategies. T/O = {timeout_description}, ERR = error.}} \\\\
 \\toprule
 {header_row}
 \\midrule

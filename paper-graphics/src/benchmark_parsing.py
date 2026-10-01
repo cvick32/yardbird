@@ -48,6 +48,14 @@ class BenchmarkResult:
     policy: Optional[str] = None
     guidance_schedule: Optional[str] = None
 
+    timeout_ms: Optional[float] = None
+
+    def plot_runtime_ms(self) -> float:
+        """Use the recorded limit for timeouts, elapsed time for other outcomes."""
+        if self.result_type == "Timeout" and self.timeout_ms is not None:
+            return self.timeout_ms
+        return self.runtime_ms
+
     def has_extended_configuration(self) -> bool:
         return any(
             value is not None
@@ -590,6 +598,7 @@ class BenchmarkParser:
             synthesis_after=synthesis_after,
             synthesis_refinement_limit_window=synthesis_refinement_limit_window,
             synthesis_repeated_pattern_threshold=(synthesis_repeated_pattern_threshold),
+            timeout_ms=payload if result_type == "Timeout" else None,
             runtime_ms=runtime_ms,
             depth=depth,
             result_type=result_type,

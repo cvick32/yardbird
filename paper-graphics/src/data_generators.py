@@ -16,7 +16,6 @@ from src.benchmark_parsing import BenchmarkResult
 ABSTRACT_BETTER_COLOR = "softBlue"
 Z3_BETTER_COLOR = "softBrown"
 EQUAL_COLOR = "black"
-TIMEOUT_MS = 120000
 
 
 @dataclass
@@ -58,8 +57,8 @@ class RuntimeScatterPlotGenerator:
             if successful_only and (not result1.success or not result2.success):
                 continue
 
-            time1 = result1.runtime_ms if result1.success else TIMEOUT_MS
-            time2 = result2.runtime_ms if result2.success else TIMEOUT_MS
+            time1 = result1.plot_runtime_ms()
+            time2 = result2.plot_runtime_ms()
 
             # Determine color based on which is faster
             if time2 < time1:
@@ -138,7 +137,7 @@ class CactusPlotGenerator:
         strategy_runtimes = {}
         for result in self.all_results:
             # Add runtime in seconds (convert from ms)
-            runtime_ms = result.runtime_ms if result.success else TIMEOUT_MS
+            runtime_ms = result.plot_runtime_ms()
             runtime_s = runtime_ms / 1000.0
             if result.get_display_name() in strategy_runtimes:
                 strategy_runtimes[result.get_display_name()].append(runtime_s)
