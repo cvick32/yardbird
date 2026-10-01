@@ -325,8 +325,161 @@ fn unresolved_index_equality_stops_only_the_guided_read_branch() {
         }
     });
     assert!(trace.nodes.iter().any(|n| matches!(&n.status, TraceStatus::Undetermined { expression } if expression.starts_with("(= 2 "))));
+    assert!(trace.candidate_pool().instances().is_empty());
     assert!(!trace
         .nodes
         .iter()
         .any(|n| matches!(n.status, TraceStatus::EvaluationFailed { .. })));
+}
+
+#[derive(Clone, Debug)]
+struct RejectTracedInstances;
+impl crate::policy::instance_selection::InstantiationRanker for RejectTracedInstances {
+    fn clone_box(&self) -> Box<dyn crate::policy::instance_selection::InstantiationRanker> {
+        Box::new(self.clone())
+    }
+    fn compare(
+        &self,
+        left: &crate::rule_matching::candidate::InstantiationCandidate,
+        right: &crate::rule_matching::candidate::InstantiationCandidate,
+    ) -> std::cmp::Ordering {
+        left.cost.cmp(&right.cost)
+    }
+    fn is_eligible(
+        &self,
+        candidate: &crate::rule_matching::candidate::InstantiationCandidate,
+        _: crate::rule_matching::scope::CandidateScope,
+    ) -> bool {
+        candidate.provenance.countermodel_origin().is_none()
+    }
+}
+
+#[test]
+fn traced_axioms_reach_shared_ranking_and_installation_without_requiring_profiling() {
+    use crate::{policy::term_selection::array::ArrayAstSize, SolverBackend, YardbirdOptions};
+    // Two distinct instances of the same axiom exercise the ordinary winner
+    // budget, then retracing under the new model after installation.
+    let input = r#"
+        (declare-fun a () (Array Int Int))
+        (declare-fun i () Int)
+        (declare-fun j () Int)
+        (declare-fun v () Int)
+        (define-fun init () Bool (! true :init true))
+        (define-fun trans () Bool (! true :trans true))
+        (define-fun prop () Bool (!
+          (and
+            (=> (not (= i j)) (= (select (store a i v) j) (select a j)))
+            (=> (not (= (+ i 1) j)) (= (select (store a (+ i 1) v) j) (select a j))))
+          :invar-property 0))
+    "#;
+    let mut accepted = None;
+    for (profile, reject, work) in [
+        (true, false, 512),
+        (false, false, 512),
+        (true, true, 512),
+        (true, false, 1),
+    ] {
+        let mut options = YardbirdOptions::from_filename("trace.vmt".into());
+        options.profile = profile;
+        let mut policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+            crate::policy::DefaultEffort::default()
+                .with_countermodel_refinement(true)
+                .with_allowance(crate::policy::effort::WorkAllowance {
+                    dependency_work: work,
+                    ..Default::default()
+                }),
+        );
+        if reject {
+            policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
+        }
+        let strategy = crate::strategies::Abstract::new(1, false, policy, profile)
+            .with_exact_read_after_write_preprocessing(false);
+        let mut driver = crate::Driver::new(
+            model(input),
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+        let result = driver.check_strategy(1, Box::new(strategy)).unwrap();
+        assert!(!result.counterexample);
+        assert!(result.total_instantiations_added > 0);
+        if !profile {
+            assert_eq!(Some(result.total_instantiations_added), accepted);
+            continue;
+        }
+        let mut traced = 0;
+        let mut selected = 0;
+        let mut models = HashSet::new();
+        for record in &result.profiling.cost_records {
+            for effort in &record.effort {
+                if effort.operation != "CountermodelCandidates" {
+                    continue;
+                }
+                let trace = record.countermodel_trace.as_ref().unwrap();
+                models.insert(trace.model_version);
+                assert_eq!(trace.budget_exhausted, work == 1);
+                assert!(effort.report.selected <= 1);
+                for candidate in &effort.candidates {
+                    let origin = candidate.countermodel_origin.as_ref().unwrap();
+                    assert_eq!(origin.model_version, trace.model_version);
+                    let node = &trace.nodes[origin.node];
+                    assert_eq!(node.status, TraceStatus::ViolatedArrayAxiom);
+                    assert_eq!(
+                        node.lemma.as_ref().unwrap().model_value.as_deref(),
+                        Some("false")
+                    );
+                    traced += 1;
+                    selected += usize::from(candidate.selected);
+                    if candidate.selected {
+                        assert!(record
+                            .installations
+                            .iter()
+                            .any(|i| i.abstract_instantiation_id.as_deref()
+                                == Some(candidate.abstract_instantiation_id.as_str())));
+                    }
+                }
+            }
+        }
+        if work == 1 {
+            assert_eq!(traced, 0);
+            assert!(!models.is_empty());
+            continue;
+        }
+        assert!(traced > 0);
+        if reject {
+            assert_eq!(
+                selected, 0,
+                "ranker must be able to reject traced candidates"
+            );
+        } else {
+            assert!(selected >= 2);
+            assert!(
+                models.len() >= 2,
+                "fresh models must get fresh explanations"
+            );
+            accepted = Some(result.total_instantiations_added);
+        }
+    }
+}
+
+#[test]
+fn countermodel_policy_needs_no_numeric_switch_or_profiling() {
+    use clap::Parser;
+    let options = crate::YardbirdOptions::parse_from([
+        "yardbird",
+        "-f",
+        "test.vmt",
+        "--policy",
+        "countermodel-guided",
+    ]);
+    assert_eq!(options.countermodel_trace_work, 0);
+    assert!(!options.profiling_enabled());
+    options.validate_countermodel_trace_options().unwrap();
+    let mut options = options;
+    options.filename = Some("test.smt2".into());
+    assert!(options.validate_countermodel_trace_options().is_err());
+    options.filename = Some("test.vmt".into());
+    options.strategy = crate::Strategy::Concrete;
+    assert!(options.validate_countermodel_trace_options().is_err());
 }

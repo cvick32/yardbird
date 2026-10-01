@@ -81,6 +81,7 @@ pub(crate) fn read_step(term: &Term, cx: &mut TraceContext<'_>) -> Result<ReadOu
                 reason: TraceReason::ArrayAxiom,
                 conditions,
                 lemma: Some(TraceLemma {
+                    instance: Some(instance.clone()),
                     rule: instance.rule.name().to_owned(),
                     formula: instance.term,
                     model_value: None,

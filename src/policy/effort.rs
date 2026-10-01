@@ -102,6 +102,7 @@ pub struct OperationId {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationKind {
+    CountermodelCandidates,
     DiscoverDependencies,
     DependencyRequest(usize),
     Binder(SearchPhase),
@@ -152,6 +153,8 @@ pub struct WorkReport {
     pub budget_exhausted: bool,
     pub continuable: bool,
     pub array_exhausted: bool,
+    #[serde(default)]
+    pub undetermined_frontiers: usize,
     pub selected_instances: Vec<String>,
 }
 pub enum EffortEvent<'a> {
@@ -182,6 +185,10 @@ pub enum EffortEvent<'a> {
 }
 
 pub trait ProofEffort {
+    fn uses_countermodel_refinement(&self) -> bool {
+        false
+    }
+
     fn choose(&mut self, context: &EffortContext<'_>) -> EffortDecision;
     fn choose_binder_rule(&mut self, context: &BinderEffortContext<'_>) -> Option<usize>;
     fn observe(&mut self, _event: &EffortEvent<'_>) {}
@@ -206,6 +213,8 @@ enum Stage {
 /// alternate wider search/selection allowances with bounded vocabulary growth.
 /// Return after each pass so the driver can enforce external limits.
 pub struct DefaultEffort {
+    countermodel_refinement: bool,
+    countermodel_model: Option<u64>,
     allowance: WorkAllowance,
     initial_allowance: WorkAllowance,
     retry: bool,
@@ -225,6 +234,8 @@ pub struct DefaultEffort {
 impl Default for DefaultEffort {
     fn default() -> Self {
         Self {
+            countermodel_refinement: false,
+            countermodel_model: None,
             allowance: WorkAllowance::default(),
             initial_allowance: WorkAllowance::default(),
             retry: false,
@@ -244,6 +255,11 @@ impl Default for DefaultEffort {
     }
 }
 impl DefaultEffort {
+    pub fn with_countermodel_refinement(mut self, enabled: bool) -> Self {
+        self.countermodel_refinement = enabled;
+        self
+    }
+
     pub fn with_winners_per_group(mut self, winners: usize) -> Self {
         assert!(winners > 0, "candidate groups need a winner");
         self.allowance.winners = winners;
@@ -262,7 +278,26 @@ impl DefaultEffort {
     }
 }
 impl ProofEffort for DefaultEffort {
+    fn uses_countermodel_refinement(&self) -> bool {
+        self.countermodel_refinement
+    }
+
     fn choose(&mut self, context: &EffortContext<'_>) -> EffortDecision {
+        if self.countermodel_refinement
+            && self.countermodel_model != Some(context.model)
+            && !matches!(self.stage, Stage::Return)
+        {
+            if let Some(operation) = context
+                .operations
+                .iter()
+                .find(|op| op.kind == OperationKind::CountermodelCandidates)
+            {
+                return EffortDecision::Execute {
+                    operation: operation.id,
+                    allowance: self.allowance,
+                };
+            }
+        }
         loop {
             let find = |kind| context.operations.iter().find(|op| op.kind == kind);
             let operation = match self.stage {
@@ -330,6 +365,7 @@ impl ProofEffort for DefaultEffort {
     fn observe(&mut self, event: &EffortEvent<'_>) {
         match event {
             EffortEvent::NewProblem => {
+                self.countermodel_model = None;
                 self.next_rule.clear();
                 self.dependency_model = None;
                 self.model = 0;
@@ -378,12 +414,16 @@ impl ProofEffort for DefaultEffort {
                 self.next_rule.insert(*phase, (rule + 1) % rule_count);
             }
             EffortEvent::Completed { operation, report } => {
+                if *operation == OperationKind::CountermodelCandidates {
+                    self.countermodel_model = Some(self.model);
+                }
                 if report.selected > 0 {
                     self.retry = false;
                     self.stage = Stage::Return;
                     return;
                 }
                 self.stage = match operation {
+                    OperationKind::CountermodelCandidates => self.stage,
                     OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
                         self.dependency_slices += 1;
@@ -512,6 +552,55 @@ impl EffortCandidate {
 #[cfg(test)]
 mod continuation_tests {
     use super::*;
+
+    #[test]
+    fn countermodel_policy_falls_back_after_a_truncated_trace_and_retries_new_models() {
+        let mut policy = DefaultEffort::default().with_countermodel_refinement(true);
+        for (model, expect_trace) in [(1, true), (1, false), (2, true)] {
+            policy.observe(&EffortEvent::BeginPass {
+                model,
+                depth: 2,
+                refinement_step: 0,
+            });
+            let operations = [
+                OperationKind::CountermodelCandidates,
+                OperationKind::DiscoverDependencies,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, kind)| EffortOperation {
+                id: OperationId {
+                    model,
+                    offer: 1,
+                    index,
+                },
+                kind,
+                description: String::new(),
+            })
+            .collect::<Vec<_>>();
+            let context = EffortContext {
+                model,
+                graph_version: 0,
+                depth: 2,
+                refinement_step: 0,
+                pending_instances: 0,
+                operations: &operations,
+            };
+            let EffortDecision::Execute { operation, .. } = policy.choose(&context) else {
+                panic!("expected search")
+            };
+            assert_eq!(operation, operations[usize::from(!expect_trace)].id);
+            if expect_trace {
+                policy.observe(&EffortEvent::Completed {
+                    operation: OperationKind::CountermodelCandidates,
+                    report: &WorkReport {
+                        budget_exhausted: true,
+                        ..Default::default()
+                    },
+                });
+            }
+        }
+    }
 
     #[test]
     fn unfinished_dependencies_resume_but_eventually_yield_to_general_matching() {

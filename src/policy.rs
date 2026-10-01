@@ -19,13 +19,51 @@ pub use effort::{DefaultEffort, ProofEffort};
 pub enum NamedPolicy {
     /// German's BMC-cost policy with batched winners and property assumptions.
     GermanFast,
+    /// Try property-connected array axiom instances before general search.
+    CountermodelGuided,
+}
+
+/// Overrides a named policy applies on top of ordinary option-driven
+/// construction; `None`/`false` leaves the option-driven pipeline unchanged.
+/// `GermanFast` builds its own plan directly and never produces one of these.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct PolicyOverrides {
+    pub winners_per_group: Option<usize>,
+    pub property_check_mode: Option<crate::solver::PropertyCheckMode>,
+    pub countermodel_refinement: bool,
 }
 
 impl NamedPolicy {
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
             Self::GermanFast => german_fast(run),
+            // The generic pipeline reads `run.policy` (already `Some(Self)`
+            // here) to compute the same overrides via `Self::overrides`, so
+            // this can hand back the unmodified options.
+            Self::CountermodelGuided => run.build_configured_array_proof_plan(),
         }
+    }
+
+    /// Overrides this policy applies when the ordinary pipeline builds an
+    /// abstract-strategy plan. This is the only place that interprets what
+    /// being `CountermodelGuided` means.
+    pub(crate) fn overrides(self, _run: &crate::YardbirdOptions) -> PolicyOverrides {
+        match self {
+            Self::GermanFast => PolicyOverrides::default(),
+            Self::CountermodelGuided => PolicyOverrides {
+                winners_per_group: Some(20),
+                property_check_mode: Some(crate::solver::PropertyCheckMode::Assumptions),
+                countermodel_refinement: true,
+            },
+        }
+    }
+
+    /// True when this policy always constructs an Abstract-strategy plan
+    /// regardless of `YardbirdOptions::strategy`. `GermanFast` builds one
+    /// directly; `CountermodelGuided` still honors `strategy` through the
+    /// ordinary pipeline, so validation still needs to check it there.
+    pub(crate) fn always_builds_abstract(self) -> bool {
+        matches!(self, Self::GermanFast)
     }
 }
 

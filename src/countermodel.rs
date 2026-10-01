@@ -4,7 +4,15 @@ use serde::{Deserialize, Serialize};
 use smt2parser::concrete::Term;
 use std::collections::VecDeque;
 
-use crate::{solver::api::ModelEvaluation, transition_index::TransitionIndex};
+use crate::{
+    policy::term_selection::TermCostFactory,
+    rule_matching::{
+        candidate::SymbolicInstance, provenance::CountermodelOrigin, search_context::SearchContext,
+        symbolic_pool::SymbolicCandidatePool,
+    },
+    solver::api::ModelEvaluation,
+    transition_index::TransitionIndex,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Observation {
@@ -19,6 +27,8 @@ pub struct TraceLemma {
     #[serde(with = "term_text")]
     pub formula: Term,
     pub model_value: Option<String>,
+    #[serde(skip)]
+    pub(crate) instance: Option<SymbolicInstance>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -80,6 +90,35 @@ pub struct CountermodelTrace {
     pub nodes: Vec<TraceNode>,
 }
 
+impl CountermodelTrace {
+    pub(crate) fn candidate_pool(&self) -> SymbolicCandidatePool {
+        let mut pool = SymbolicCandidatePool::default();
+        for node in &self.nodes {
+            if !matches!(
+                node.status,
+                TraceStatus::ViolatedArrayAxiom
+            ) {
+                continue;
+            }
+            if let Some(instance) = node
+                .lemma
+                .as_ref()
+                .and_then(|lemma| lemma.instance.as_ref())
+            {
+                pool.remember_traced(
+                    instance.clone(),
+                    CountermodelOrigin {
+                        model_version: self.model_version,
+                        depth: self.depth,
+                        node: node.id,
+                    },
+                );
+            }
+        }
+        pool
+    }
+}
+
 pub(crate) enum TraceError {
     Budget,
     Evaluation(String),
@@ -127,6 +166,21 @@ pub(crate) struct TraceStep {
     pub reason: TraceReason,
     pub conditions: Vec<Observation>,
     pub lemma: Option<TraceLemma>,
+}
+/// Guided search consumes the same borrowed formulas, model and allowance as
+/// ordinary refinement. Its traversal and partial evaluation remain local.
+pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> CountermodelTrace {
+    trace_violation(
+        context
+            .formulas
+            .index
+            .expect("VMT guidance requires a formula index"),
+        &context.smt.get_array_types(),
+        context.depth,
+        context.model_version,
+        context.allowance.dependency_work,
+        |term| context.smt.eval_partial(term),
+    )
 }
 impl TraceStep {
     fn child(term: Term, reason: TraceReason) -> Self {

@@ -495,6 +495,15 @@ where
             }
             self.offer_sequence += 1;
             let mut kinds = Vec::new();
+            if (self.ownership.arrays || self.ownership.quantifiers)
+                && self.policy.effort().uses_countermodel_refinement()
+                && self.formula_index.is_some()
+            {
+                kinds.push((
+                    OperationKind::CountermodelCandidates,
+                    "trace violated properties to array and quantifier instances".into(),
+                ));
+            }
             if !self.quantifier.plan.rules.is_empty() {
                 kinds.push((
                     OperationKind::DiscoverDependencies,
@@ -643,6 +652,30 @@ where
             let mut report = WorkReport::default();
             let mut retain = false;
             match operation.kind {
+                OperationKind::CountermodelCandidates => {
+                    let trace = crate::countermodel::search(&context);
+                    batch = trace.candidate_pool().candidates_partial(&context)?;
+                    report = WorkReport::from_batch(&batch);
+                    report.dependency_work = trace.work;
+                    report.budget_exhausted = trace.budget_exhausted;
+                    report.undetermined_frontiers = trace
+                        .nodes
+                        .iter()
+                        .filter(|node| {
+                            matches!(
+                                node.status,
+                                crate::countermodel::TraceStatus::Undetermined { .. }
+                            )
+                        })
+                        .count();
+                    if let Some(profiling) = &profiling {
+                        profiling
+                            .borrow_mut()
+                            .record_countermodel_trace(trace.clone());
+                    }
+                    state.countermodel_trace = Some(trace);
+                    retain = report.selected > 0;
+                }
                 OperationKind::DiscoverDependencies => {
                     (report, batch) = self.quantifier.discover_obligations(
                         &mut state.binder_search,
