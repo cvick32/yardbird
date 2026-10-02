@@ -659,6 +659,7 @@ fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
             evaluate: &mut evaluate,
             remaining: 200,
             initializers: None,
+            transitions: None,
         };
         let steps = search
             .steps(&read, &mut cx)
@@ -712,6 +713,7 @@ fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
             evaluate: &mut evaluate,
             remaining: 200,
             initializers: None,
+            transitions: None,
         };
         let steps = search
             .steps(&read, &mut cx)
@@ -738,6 +740,7 @@ fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
         evaluate: &mut evaluate,
         remaining: 200,
         initializers: None,
+        transitions: None,
     };
     assert!(conditional
         .steps(&read, &mut cx)
@@ -751,6 +754,7 @@ fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
             evaluate: &mut evaluate,
             remaining: budget,
             initializers: None,
+            transitions: None,
         };
         assert!(matches!(
             search.steps(&read, &mut cx),
@@ -768,6 +772,7 @@ fn initializer_matching_preserves_captures_and_finds_each_broken_binder_link() {
             evaluate: &mut evaluate,
             remaining: 200,
             initializers: None,
+            transitions: None,
         };
         let other_read = read.to_string().replace("a@0", other).parse().unwrap();
         assert!(search

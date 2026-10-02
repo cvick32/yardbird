@@ -1,0 +1,31 @@
+; A join extends one node's downward-closed set of rounds. The update is
+; pointwise quantified: there is no whole-array assignment for tracing to follow.
+(declare-sort node 0)
+(declare-fun chosen () node)
+(declare-fun chosen_next () node)
+(declare-fun cutoff () Int)
+(declare-fun cutoff_next () Int)
+(declare-fun left () (Array node (Array Int Bool)))
+(declare-fun left_next () (Array node (Array Int Bool)))
+(define-fun .chosen () node (! chosen :next chosen_next))
+(define-fun .cutoff () Int (! cutoff :next cutoff_next))
+(define-fun .left () (Array node (Array Int Bool)) (! left :next left_next))
+(define-fun init () Bool
+  (! (forall ((n node)) (forall ((r Int)) (not (select (select left n) r))))
+     :init true))
+(define-fun trans () Bool
+  (! (forall ((n node))
+       (forall ((r Int))
+         (= (select (select left_next n) r)
+            (ite (= n chosen)
+                 (or (select (select left n) r) (< r cutoff))
+                 (select (select left n) r)))))
+     :trans true))
+; The existential keeps the property on the scoped-quantifier path used by
+; mixed-quantifier protocols, instead of universal-property Herbrandization.
+(define-fun prop () Bool
+  (! (and (forall ((n node)) (forall ((r Int) (s Int))
+            (=> (and (< r s) (select (select left n) s))
+                (select (select left n) r))))
+          (exists ((n node)) (= n chosen)))
+     :invar-property 0))

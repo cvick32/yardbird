@@ -12,7 +12,8 @@ use crate::{
     },
     solver::api::ModelEvaluation,
     theories::quantifiers::{
-        countermodel::InitializerSearch, countermodel_relations, QuantifierPlan,
+        countermodel::{InitializerSearch, TransitionSearch},
+        countermodel_relations, QuantifierPlan,
     },
     transition_index::TransitionIndex,
 };
@@ -62,6 +63,13 @@ pub enum TraceReason {
     UnresolvedInitialization {
         path: Vec<TraceLemma>,
         expression: String,
+    },
+    /// A pointwise transition equation, with every enclosing binder retained.
+    QuantifiedTransition {
+        frame: u16,
+        path: Vec<TraceLemma>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unresolved: Option<String>,
     },
     QuantifierMatch {
         anchors: Vec<usize>,
@@ -115,6 +123,7 @@ impl CountermodelTrace {
         self.nodes.iter().filter_map(|node| {
             let unresolved = match node.reason {
                 TraceReason::UnresolvedInitialization { .. } => true,
+                TraceReason::QuantifiedTransition { ref unresolved, .. } => unresolved.is_some(),
                 TraceReason::QuantifierWitness | TraceReason::QuantifierMatch { .. } => {
                     matches!(node.status, TraceStatus::Undetermined { .. })
                 }
@@ -177,6 +186,7 @@ pub(crate) struct TraceContext<'a> {
     evaluate: &'a mut dyn FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
     remaining: usize,
     initializers: Option<InitializerSearch<'a>>,
+    transitions: Option<TransitionSearch<'a>>,
 }
 impl TraceContext<'_> {
     pub fn charge(&mut self) -> Result<(), TraceError> {
@@ -315,6 +325,7 @@ pub(crate) fn append_trace(
         remaining: work_limit.saturating_sub(trace.work),
         initializers: plan
             .map(|plan| InitializerSearch::new(plan, index.index_term(index.initial(), 0))),
+        transitions: plan.map(TransitionSearch::new),
     };
     let mut queue = VecDeque::from([(parent, step)]);
     while let Some((parent, mut step)) = queue.pop_front() {
@@ -342,7 +353,12 @@ pub(crate) fn append_trace(
             if node.status == TraceStatus::Cycle {
                 return Ok(vec![]);
             }
-            if let TraceReason::UnresolvedInitialization { expression, .. } = &node.reason {
+            if let TraceReason::UnresolvedInitialization { expression, .. }
+            | TraceReason::QuantifiedTransition {
+                unresolved: Some(expression),
+                ..
+            } = &node.reason
+            {
                 node.status = TraceStatus::Undetermined {
                     expression: expression.clone(),
                 };
@@ -362,6 +378,7 @@ pub(crate) fn append_trace(
                     node.status = if matches!(
                         node.reason,
                         TraceReason::Initialization { .. }
+                            | TraceReason::QuantifiedTransition { .. }
                             | TraceReason::QuantifierWitness
                             | TraceReason::QuantifierMatch { .. }
                     ) {
@@ -379,6 +396,7 @@ pub(crate) fn append_trace(
                     | TraceReason::Definition
                     | TraceReason::Conditional
                     | TraceReason::Initialization { .. }
+                    | TraceReason::QuantifiedTransition { .. }
                     | TraceReason::QuantifierWitness
             ) && parent.is_some_and(|p| trace.nodes[p].model_value.as_ref() != Some(&value))
             {
@@ -433,6 +451,17 @@ fn expand(
                     if let Some(mut search) = cx.initializers.take() {
                         let result = search.steps(term, cx);
                         cx.initializers = Some(search);
+                        let children = result?;
+                        if !children.is_empty() {
+                            node.status = TraceStatus::Expanded;
+                        }
+                        return Ok(children);
+                    }
+                }
+                if matches!(node.status, TraceStatus::Unsupported { .. }) {
+                    if let Some(mut search) = cx.transitions.take() {
+                        let result = search.steps(term, cx);
+                        cx.transitions = Some(search);
                         let children = result?;
                         if !children.is_empty() {
                             node.status = TraceStatus::Expanded;

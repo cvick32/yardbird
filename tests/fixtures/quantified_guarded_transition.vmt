@@ -1,0 +1,20 @@
+; Alternate active quantified updates. The inactive helper may have an
+; arbitrary model value; it must not be used to explain the demanded read.
+(declare-fun mode () Bool)
+(declare-fun mode_next () Bool)
+(declare-fun cells () (Array Bool Int))
+(declare-fun cells_next () (Array Bool Int))
+(define-fun .mode () Bool (! mode :next mode_next))
+(define-fun .cells () (Array Bool Int) (! cells :next cells_next))
+(define-fun init () Bool
+  (! (and (not mode) (forall ((i Bool)) (= (select cells i) 0))) :init true))
+(define-fun fill_zero () Bool
+  (forall ((i Bool)) (= (select cells_next i) 0)))
+(define-fun fill_one () Bool
+  (forall ((i Bool)) (= (select cells_next i) 1)))
+(define-fun trans () Bool
+  (! (and (= mode_next (not mode))
+          (=> mode fill_zero)
+          (=> (not mode) fill_one)) :trans true))
+(define-fun prop () Bool
+  (! (= (select cells true) (ite mode 1 0)) :invar-property 0))

@@ -91,15 +91,17 @@ pub(crate) fn witness_step(
     Ok(None)
 }
 
-pub(crate) struct InitializerSearch<'a> {
+pub(crate) struct EquationSearch<'a> {
     plan: &'a QuantifierPlan,
     root: Term,
     root_observation: Option<Observation>,
     compiler: Option<EquationCompiler>,
     equations: Option<QuantifiedEquations>,
+    transition_frame: Option<u16>,
+    conditions: Vec<Observation>,
 }
 
-impl<'a> InitializerSearch<'a> {
+impl<'a> EquationSearch<'a> {
     pub(crate) fn new(plan: &'a QuantifierPlan, root: Term) -> Self {
         Self {
             plan,
@@ -107,6 +109,8 @@ impl<'a> InitializerSearch<'a> {
             root,
             root_observation: None,
             equations: None,
+            transition_frame: None,
+            conditions: Vec::new(),
         }
     }
 
@@ -119,7 +123,7 @@ impl<'a> InitializerSearch<'a> {
             let root = cx.boolean(&self.root)?;
             if root.value != "true" {
                 return Err(TraceError::Evaluation(
-                    "initial condition is not true in the counter-model".into(),
+                    "equation root is not true in the counter-model".into(),
                 ));
             }
             self.root_observation = Some(root);
@@ -152,7 +156,7 @@ impl<'a> InitializerSearch<'a> {
                 let evaluation = (|| {
                     if cx.boolean(&arguments[0])?.value != "true" {
                         return Err(TraceError::Evaluation(
-                            "inactive helper on an asserted initialization path".into(),
+                            "inactive helper on an asserted equation path".into(),
                         ));
                     }
                     Ok(cx.boolean(&instance.term)?.value)
@@ -181,14 +185,181 @@ impl<'a> InitializerSearch<'a> {
                 term: frontier
                     .as_ref()
                     .map_or(replacement, |lemma| lemma.formula.clone()),
-                reason: match unresolved {
-                    Some(expression) => TraceReason::UnresolvedInitialization { path, expression },
-                    None => TraceReason::Initialization { path },
+                reason: match (self.transition_frame, unresolved) {
+                    (Some(frame), unresolved) => TraceReason::QuantifiedTransition {
+                        frame,
+                        path,
+                        unresolved,
+                    },
+                    (None, Some(expression)) => {
+                        TraceReason::UnresolvedInitialization { path, expression }
+                    }
+                    (None, None) => TraceReason::Initialization { path },
                 },
-                conditions: vec![self.root_observation.as_ref().unwrap().clone()],
+                conditions: self
+                    .conditions
+                    .iter()
+                    .cloned()
+                    .chain(self.root_observation.iter().cloned())
+                    .collect(),
                 lemma: frontier,
             });
         }
         Ok(children)
     }
+}
+
+// Preserve the initializer entry point; both sources use the same guarded
+// equation-chain validation and non-completing model evaluation.
+pub(crate) type InitializerSearch<'a> = EquationSearch<'a>;
+
+pub(crate) struct TransitionSearch<'a> {
+    plan: &'a QuantifierPlan,
+    sources: std::collections::HashMap<Term, Vec<EquationSearch<'a>>>,
+}
+
+impl<'a> TransitionSearch<'a> {
+    pub fn new(plan: &'a QuantifierPlan) -> Self {
+        Self {
+            plan,
+            sources: Default::default(),
+        }
+    }
+
+    pub fn steps(
+        &mut self,
+        read: &Term,
+        cx: &mut TraceContext<'_>,
+    ) -> Result<Vec<TraceStep>, TraceError> {
+        // Only peel array reads. A witness's captured array is not the array
+        // being updated and must never determine the predecessor frame.
+        let mut array = read;
+        while crate::theories::array::countermodel::is_read(array, cx.types) {
+            let Term::Application { arguments, .. } = array else {
+                unreachable!()
+            };
+            array = &arguments[0];
+        }
+        let Some((_, frame)) = crate::transition_index::leaf_symbol(array)
+            .and_then(|name| smt2parser::vmt::split_framed_symbol(&name))
+        else {
+            return Ok(vec![]);
+        };
+        let Ok(frame) = u16::try_from(frame) else {
+            return Ok(vec![]);
+        };
+        let Some(previous) = frame.checked_sub(1) else {
+            return Ok(vec![]);
+        };
+        if !self.sources.contains_key(array) {
+            let root = cx.index.index_term(cx.index.transition(), previous);
+            let sources = active_equations(self.plan, root, array, previous, cx)?;
+            self.sources.insert(array.clone(), sources);
+        }
+        let mut children = Vec::new();
+        for source in self.sources.get_mut(array).unwrap() {
+            children.extend(source.steps(read, cx)?);
+        }
+        Ok(children)
+    }
+}
+
+/// Traverse only model-true source branches. Binder bodies remain symbolic
+/// until equation matching supplies the demanded read's exact tuple.
+fn active_equations<'a>(
+    plan: &'a QuantifierPlan,
+    root: Term,
+    array: &Term,
+    frame: u16,
+    cx: &mut TraceContext<'_>,
+) -> Result<Vec<EquationSearch<'a>>, TraceError> {
+    let mut queue = std::collections::VecDeque::from([(root, Vec::<Observation>::new())]);
+    let mut result = Vec::new();
+    while let Some((term, conditions)) = queue.pop_front() {
+        cx.charge()?;
+        if let Some(expanded) = cx.index.expand_framed_leaf(&term) {
+            queue.push_back((expanded, conditions));
+            continue;
+        }
+        if let Term::Attributes { term, .. } = term {
+            queue.push_back((*term, conditions));
+            continue;
+        }
+        let Term::Application {
+            qual_identifier,
+            arguments,
+        } = &term
+        else {
+            continue;
+        };
+        match (qual_identifier.get_name().as_str(), arguments.as_slice()) {
+            ("and", args) => queue.extend(args.iter().cloned().map(|t| (t, conditions.clone()))),
+            ("=>", [guard, body]) => {
+                let observed = cx.boolean(guard)?;
+                if observed.value == "true" {
+                    let mut conditions = conditions;
+                    conditions.push(observed);
+                    queue.push_back((body.clone(), conditions));
+                }
+            }
+            ("ite", [guard, yes, no]) => {
+                let observed = cx.boolean(guard)?;
+                let branch = if observed.value == "true" { yes } else { no };
+                let mut conditions = conditions;
+                conditions.push(observed);
+                queue.push_back((branch.clone(), conditions));
+            }
+            ("or", args) => {
+                // Unknown alternatives cannot hide a known true branch.
+                let mut unknown = None;
+                let mut found = false;
+                for arg in args {
+                    let observed = match cx.boolean(arg) {
+                        Ok(observed) => observed,
+                        Err(TraceError::Undetermined(expression)) => {
+                            unknown = Some(expression);
+                            continue;
+                        }
+                        Err(error) => return Err(error),
+                    };
+                    if observed.value == "true" {
+                        found = true;
+                        let mut conditions = conditions.clone();
+                        conditions.push(observed);
+                        queue.push_back((arg.clone(), conditions));
+                    }
+                }
+                if !found {
+                    if let Some(expression) = unknown {
+                        return Err(TraceError::Undetermined(expression));
+                    }
+                }
+            }
+            (name, _)
+                if plan
+                    .rules
+                    .iter()
+                    .any(|rule| rule.name == name && rule.kind == BinderKind::Forall)
+                    && contains_term(&term, array) =>
+            {
+                let mut search = EquationSearch::new(plan, term);
+                search.transition_frame = Some(frame);
+                search.conditions = conditions;
+                result.push(search);
+            }
+            _ => {}
+        }
+    }
+    Ok(result)
+}
+
+fn contains_term(term: &Term, needle: &Term) -> bool {
+    term == needle
+        || match term {
+            Term::Application { arguments, .. } => {
+                arguments.iter().any(|arg| contains_term(arg, needle))
+            }
+            Term::Attributes { term, .. } => contains_term(term, needle),
+            _ => false,
+        }
 }
