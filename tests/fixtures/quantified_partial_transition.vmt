@@ -1,0 +1,19 @@
+; Every row is unchanged, written as a store of its existing cell value.
+; Matching a demanded row fixes n but leaves r for ordinary binder search.
+(declare-sort node 0)
+(declare-fun chosen () node)
+(declare-fun chosen_next () node)
+(declare-fun table () (Array node (Array Int Bool)))
+(declare-fun table_next () (Array node (Array Int Bool)))
+(define-fun .chosen () node (! chosen :next chosen_next))
+(define-fun .table () (Array node (Array Int Bool)) (! table :next table_next))
+(define-fun init () Bool
+  (! (forall ((n node)) (forall ((r Int)) (not (select (select table n) r))))
+     :init true))
+(define-fun trans () Bool
+  (! (forall ((n node)) (forall ((r Int))
+       (= (select table_next n)
+          (store (select table n) r (select (select table n) r)))))
+     :trans true))
+(define-fun prop () Bool
+  (! (not (select (select table chosen) 0)) :invar-property 0))

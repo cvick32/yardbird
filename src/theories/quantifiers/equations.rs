@@ -219,6 +219,30 @@ impl EquationCursor {
         plan: &QuantifierPlan,
         instances: &mut Vec<SymbolicInstance>,
     ) -> Option<Term> {
+        self.step_with_requests(equations, root, plan, instances, None)
+    }
+
+    /// A matching left-hand side can identify useful binders before every
+    /// variable in their bodies is bound. Ordinary search completes these
+    /// tuples; no replacement or partial formula is asserted.
+    pub(crate) fn step_requests(
+        &mut self,
+        equations: &QuantifiedEquations,
+        root: &Term,
+        plan: &QuantifierPlan,
+        requests: &mut Vec<super::BinderSearchRequest>,
+    ) {
+        self.step_with_requests(equations, root, plan, &mut Vec::new(), Some(requests));
+    }
+
+    fn step_with_requests(
+        &mut self,
+        equations: &QuantifiedEquations,
+        root: &Term,
+        plan: &QuantifierPlan,
+        instances: &mut Vec<SymbolicInstance>,
+        requests: Option<&mut Vec<super::BinderSearchRequest>>,
+    ) -> Option<Term> {
         let mut term = root;
         let mut parents = Vec::new();
         for frame in self.stack.iter().skip(1) {
@@ -256,11 +280,40 @@ impl EquationCursor {
                 &equation.variables,
                 &plan.signatures,
                 &mut bindings,
-            ) || equation.variables.keys().any(|v| !bindings.contains_key(v))
-            {
+            ) {
                 return None;
             }
+            let complete = equation.variables.keys().all(|v| bindings.contains_key(v));
             let bindings = bindings.into_iter().collect::<Vec<_>>();
+            if let Some(requests) = requests {
+                for template in &equation.path {
+                    let crate::rule_matching::rule::QuantifiedRuleProvenance::InputBinder {
+                        helper,
+                    } = template.rule.provenance()
+                    else {
+                        continue;
+                    };
+                    requests.push(super::BinderSearchRequest {
+                        helper: helper.clone(),
+                        phase: super::SearchPhase::Expand,
+                        bindings: template
+                            .bindings
+                            .iter()
+                            .filter_map(|(name, term)| {
+                                let term = substitute(term.clone(), bindings.clone());
+                                // In particular, an inner capture depending on an
+                                // unbound outer variable is not a ground binding.
+                                (!contains_variable(&term, &equation.variables))
+                                    .then(|| (Symbol(name.clone()), term))
+                            })
+                            .collect(),
+                    });
+                }
+                return None;
+            }
+            if !complete {
+                return None;
+            }
             for template in &equation.path {
                 instances.push(SymbolicInstance {
                     rule: template.rule.clone(),
@@ -317,6 +370,23 @@ impl EquationCursor {
             self.stack.pop();
         }
         None
+    }
+}
+
+fn contains_variable(term: &Term, variables: &HashMap<Symbol, Sort>) -> bool {
+    match term {
+        Term::Application {
+            qual_identifier,
+            arguments,
+        } => {
+            (arguments.is_empty() && variables.contains_key(&Symbol(qual_identifier.get_name())))
+                || arguments
+                    .iter()
+                    .any(|term| contains_variable(term, variables))
+        }
+        Term::QualIdentifier(identifier) => variables.contains_key(&Symbol(identifier.get_name())),
+        Term::Attributes { term, .. } => contains_variable(term, variables),
+        _ => false,
     }
 }
 

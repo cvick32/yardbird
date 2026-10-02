@@ -34,6 +34,7 @@ pub(crate) mod body_matching;
 pub(crate) mod clauses;
 pub(crate) mod countermodel;
 pub(crate) mod countermodel_relations;
+mod countermodel_requests;
 pub(crate) mod dependency_search;
 pub(crate) mod equations;
 pub(crate) mod obligations;

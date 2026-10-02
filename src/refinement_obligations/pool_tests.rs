@@ -396,8 +396,8 @@ fn initializer_handoff_preserves_origin_and_revalidates_across_models() {
     };
     assert!(trace.candidate_pool().instances().is_empty());
     let mut pool = RefinementObligations::default();
-    pool.remember_traced(trace.depth, trace.unresolved_initializers());
-    pool.remember_traced(trace.depth, trace.unresolved_initializers());
+    pool.remember_traced(trace.depth, trace.unresolved_instances());
+    pool.remember_traced(trace.depth, trace.unresolved_instances());
     // The first ordinary discovery at this depth must not discard the handoff.
     pool.prepare_depth(0);
     assert_eq!(pool.pool.instances().len(), 1);

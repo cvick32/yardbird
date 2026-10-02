@@ -88,7 +88,7 @@ fn search_context<'a, F: TermCostFactory>(
 }
 
 /// Trace the current violation to array/quantifier instances and hand any
-/// undetermined initializers to ordinary obligation discovery. A free function,
+/// undetermined binder instances to ordinary obligation discovery. A free function,
 /// not a method: at its call site `effort` is still borrowed out of the same
 /// policy that a `&mut self` receiver would need to reclaim.
 fn countermodel_candidates<F: TermCostFactory>(
@@ -99,7 +99,7 @@ fn countermodel_candidates<F: TermCostFactory>(
 ) -> anyhow::Result<(WorkReport, InstantiationBatch)> {
     let trace = crate::countermodel::search(context);
     let batch = trace.candidate_pool().candidates_partial(context)?;
-    let unresolved = obligations.remember_traced(trace.depth, trace.unresolved_initializers());
+    let unresolved = obligations.remember_traced(trace.depth, trace.unresolved_instances());
     let mut report = WorkReport::from_batch(&batch);
     report.dependency_work = trace.work;
     report.budget_exhausted = trace.budget_exhausted;
@@ -114,9 +114,22 @@ fn countermodel_candidates<F: TermCostFactory>(
         })
         .count();
     if let Some(profiling) = profiling {
+        let initializers = trace
+            .unresolved_instances()
+            .filter(|(_, origin)| {
+                matches!(
+                    trace.nodes[origin.node].reason,
+                    crate::countermodel::TraceReason::UnresolvedInitialization { .. }
+                )
+            })
+            .count();
+        // Preserve the initializer-only metric for existing profile consumers.
         profiling
             .borrow_mut()
-            .add_counter("countermodel_initializer_obligations", unresolved as u64);
+            .add_counter("countermodel_initializer_obligations", initializers as u64);
+        profiling
+            .borrow_mut()
+            .add_counter("countermodel_binder_obligations", unresolved as u64);
         profiling
             .borrow_mut()
             .record_countermodel_trace(trace.clone());
@@ -750,6 +763,7 @@ where
                     (report, batch) = self.quantifier.discover_obligations(
                         &mut state.binder_search,
                         &mut self.obligations,
+                        state.countermodel_trace.as_ref(),
                         &context,
                     )?;
                     retain = report.selected > 0;

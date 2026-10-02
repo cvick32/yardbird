@@ -25,11 +25,13 @@ pub(crate) struct BinderSearchState {
     empty_passes: HashMap<crate::theories::quantifiers::SearchPhase, BinderPassContext>,
     pub(crate) requests: Vec<DependencyWork>,
     pub(crate) dependencies_searched: bool,
+    traced: Option<super::countermodel_requests::TracedEquationSearch>,
 }
 
 pub(crate) struct DependencyWork {
     pub(crate) request: crate::theories::quantifiers::BinderSearchRequest,
     pub(crate) description: String,
+    pub(super) origin: Option<crate::rule_matching::provenance::CountermodelOrigin>,
 }
 
 struct BinderPassContext {
@@ -138,6 +140,7 @@ impl QuantifierRefinement {
                 empty_passes: HashMap::new(),
                 dependencies_searched: false,
                 requests: Vec::new(),
+                traced: None,
             });
             if let Some(profiling) = profiling {
                 let mut profiling = profiling.borrow_mut();
@@ -149,13 +152,52 @@ impl QuantifierRefinement {
         if search.prepared.graph_version() != *graph_version {
             search.prepared.refresh_graph(graph, *graph_version);
             search.empty_passes.clear();
-            search.requests.clear();
+            // Symbolic requests keep their indices and exact bindings within
+            // this model; only their prepared match cursors need refreshing.
             search.dependencies_searched = false;
         }
         Ok(())
     }
 
     pub(crate) fn discover_obligations<F: TermCostFactory + 'static>(
+        &self,
+        state: &mut Option<BinderSearchState>,
+        obligations: &mut crate::refinement_obligations::RefinementObligations,
+        trace: Option<&crate::countermodel::CountermodelTrace>,
+        context: &SearchContext<'_, F>,
+    ) -> anyhow::Result<(crate::policy::effort::WorkReport, InstantiationBatch)> {
+        // A frontier supplements ordinary discovery within its policy budget.
+        // It must not replace the action/order/initializer work already queued.
+        let (mut report, batch) =
+            self.discover_ordinary_obligations(state, obligations, context)?;
+        if report.selected > 0 {
+            return Ok((report, batch));
+        }
+        let search = state.as_mut().unwrap();
+        if search.traced.is_none() {
+            if let Some(trace) = trace.filter(|trace| trace.model_version == context.model_version)
+            {
+                search.traced = Some(super::countermodel_requests::TracedEquationSearch::new(
+                    trace,
+                    &self.plan,
+                    context.smt,
+                ));
+            }
+        }
+        if let Some(traced) = &mut search.traced {
+            let remaining = context
+                .allowance
+                .dependency_work
+                .saturating_sub(report.dependency_work);
+            report.dependency_work += traced.advance(&self.plan, remaining, &mut search.requests);
+            report.continuable |= traced.pending();
+            report.budget_exhausted |= traced.pending();
+            search.dependencies_searched = !report.continuable;
+        }
+        Ok((report, batch))
+    }
+
+    fn discover_ordinary_obligations<F: TermCostFactory + 'static>(
         &self,
         state: &mut Option<BinderSearchState>,
         obligations: &mut crate::refinement_obligations::RefinementObligations,
@@ -242,8 +284,11 @@ impl QuantifierRefinement {
                 u64::from(discovery.budget_exhausted),
             );
         }
-        let mut seen = std::collections::HashSet::new();
-        search.requests.clear();
+        let mut seen = search
+            .requests
+            .iter()
+            .map(|work| work.request.clone())
+            .collect::<std::collections::HashSet<_>>();
         for path in discovery.paths {
             let route = path
                 .requests
@@ -264,6 +309,7 @@ impl QuantifierRefinement {
                     search.requests.push(DependencyWork {
                         request,
                         description,
+                        origin: None,
                     });
                 }
             }
@@ -289,6 +335,7 @@ impl QuantifierRefinement {
             .requests
             .get(index)
             .ok_or_else(|| anyhow::anyhow!("unknown dependency request"))?;
+        let origin = request.origin.clone();
         let request = &request.request;
         let prepared = &mut search.prepared;
         let _phase_guard = context.profiling.as_ref().map(|p| {
@@ -314,6 +361,12 @@ impl QuantifierRefinement {
                 },
             },
         )?;
+        for candidate in &mut batch.candidates {
+            candidate.provenance = candidate
+                .provenance
+                .clone()
+                .with_countermodel_origin(origin.clone());
+        }
         let mut known: std::collections::HashSet<_> = context
             .smt
             .get_instantiations()

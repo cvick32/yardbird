@@ -109,11 +109,18 @@ pub struct CountermodelTrace {
 }
 
 impl CountermodelTrace {
-    pub(crate) fn unresolved_initializers(
+    pub(crate) fn unresolved_instances(
         &self,
     ) -> impl Iterator<Item = (SymbolicInstance, CountermodelOrigin)> + '_ {
         self.nodes.iter().filter_map(|node| {
-            if !matches!(node.reason, TraceReason::UnresolvedInitialization { .. }) {
+            let unresolved = match node.reason {
+                TraceReason::UnresolvedInitialization { .. } => true,
+                TraceReason::QuantifierWitness | TraceReason::QuantifierMatch { .. } => {
+                    matches!(node.status, TraceStatus::Undetermined { .. })
+                }
+                _ => false,
+            };
+            if !unresolved {
                 return None;
             }
             let instance = node.lemma.as_ref()?.instance.clone()?;
