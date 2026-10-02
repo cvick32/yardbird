@@ -331,7 +331,11 @@ impl DefaultEffort {
             {
                 return Some(EffortDecision::Execute {
                     operation: operation.id,
-                    allowance: self.allowance,
+                    // Keep guidance work fixed, independent of ordinary-search widening.
+                    allowance: WorkAllowance {
+                        dependency_work: 1024,
+                        ..self.allowance
+                    },
                 });
             }
         }
