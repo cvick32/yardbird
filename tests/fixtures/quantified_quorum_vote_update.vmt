@@ -1,0 +1,33 @@
+; A decision at 0->1 records a quorum's votes. At 1->2 another node votes.
+; The property's quorum remains valid although its captured array has changed.
+; Every quorum contains participant, so erasing that vote is an unsafe control.
+(declare-sort node 0)
+(declare-sort quorum 0)
+(declare-fun member (node quorum) Bool)
+(declare-fun participant () node)
+(declare-fun newcomer () node)
+(declare-fun chosen () quorum)
+(declare-fun chosen_next () quorum)
+(declare-fun votes () (Array node Bool))
+(declare-fun votes_next () (Array node Bool))
+(declare-fun phase () Int)
+(declare-fun phase_next () Int)
+(define-fun .chosen () quorum (! chosen :next chosen_next))
+(define-fun .votes () (Array node Bool) (! votes :next votes_next))
+(define-fun .phase () Int (! phase :next phase_next))
+(assert (forall ((q quorum)) (member participant q)))
+(define-fun init () Bool
+  (! (and (= phase 0) (not (select votes newcomer))) :init true))
+(define-fun trans () Bool
+  (! (or (and (= phase 0) (= phase_next 1)
+              (= votes_next votes)
+              (forall ((n node)) (=> (member n chosen) (select votes n))))
+         (and (= phase 1) (= phase_next 2)
+              (= votes_next (store votes newcomer true)))
+         (and (= phase 2) (= phase_next 2) (= votes_next votes)))
+     :trans true))
+(define-fun prop () Bool
+  (! (=> (>= phase 1)
+         (exists ((q quorum))
+           (forall ((n node)) (=> (member n q) (select votes n)))))
+     :invar-property 0))

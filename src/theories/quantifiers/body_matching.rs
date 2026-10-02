@@ -94,6 +94,13 @@ fn expand(term: &Term, plan: &QuantifierPlan, free: &HashSet<Symbol>, bound: &[S
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MatchMode {
+    Exact,
+    Witness,
+    Candidate,
+}
+
 fn matches(
     pattern: &Body,
     source: &Body,
@@ -101,9 +108,9 @@ fn matches(
     plan: &QuantifierPlan,
     bindings: &mut HashMap<Symbol, Term>,
     evaluate: &mut impl FnMut(&Term) -> anyhow::Result<String>,
-    schematic: bool,
+    mode: MatchMode,
 ) -> anyhow::Result<bool> {
-    if schematic && matches!(pattern, Body::Bound(_)) {
+    if mode == MatchMode::Witness && matches!(pattern, Body::Bound(_)) {
         return Ok(matches!(source, Body::Bound(_)) || source.ground().is_some());
     }
     if let Body::Free(name) = pattern {
@@ -132,16 +139,22 @@ fn matches(
         if sort(&left).is_none() || sort(&left) != sort(&right) {
             return Ok(false);
         }
+        // A compatible body can suggest existential values even when its
+        // captures differ. Keep the demand's captures in the emitted instance;
+        // its body must still be traced and validated in the current model.
+        if mode == MatchMode::Candidate {
+            return Ok(true);
+        }
         return Ok(evaluate(&app("=", vec![left, right]))?.trim() == "true");
     }
     match (pattern, source) {
         (Body::Bound(a), Body::Bound(b)) => Ok(a == b),
         (Body::Binder(a, sa, ba), Body::Binder(b, sb, bb)) if a == b && sa == sb => {
-            matches(ba, bb, variables, plan, bindings, evaluate, schematic)
+            matches(ba, bb, variables, plan, bindings, evaluate, mode)
         }
         (Body::App(a, aa), Body::App(b, bb)) if a == b && aa.len() == bb.len() => {
             for (a, b) in aa.iter().zip(bb) {
-                if !matches(a, b, variables, plan, bindings, evaluate, schematic)? {
+                if !matches(a, b, variables, plan, bindings, evaluate, mode)? {
                     return Ok(false);
                 }
             }
@@ -160,6 +173,7 @@ struct Demand {
 
 enum BodyJob {
     Instance(usize, usize),
+    Candidate(usize, usize),
     Witness {
         join: usize,
         guard: usize,
@@ -208,8 +222,19 @@ pub(crate) struct BodyAgenda {
     witness_joins: Vec<WitnessJoin>,
     witness_join_keys: HashSet<(usize, usize, Vec<Option<Term>>)>,
     witness_roots: HashSet<Term>,
+    candidate_hints: bool,
+    instances: HashSet<Term>,
 }
 impl BodyAgenda {
+    /// Preserve typed candidate tuples for guidance to investigate even when
+    /// the source body and the demanded body have different captured values.
+    pub fn with_candidate_hints() -> Self {
+        Self {
+            candidate_hints: true,
+            ..Self::default()
+        }
+    }
+
     pub fn add_demand(&mut self, plan: &QuantifierPlan, helper: &Term) -> bool {
         let Term::Application {
             qual_identifier,
@@ -394,8 +419,9 @@ impl BodyAgenda {
         let Some(job) = self.queue.pop_front() else {
             return Ok(None);
         };
-        let (d, s) = match job {
-            BodyJob::Instance(d, s) => (d, s),
+        let (d, s, mode) = match job {
+            BodyJob::Instance(d, s) => (d, s, MatchMode::Exact),
+            BodyJob::Candidate(d, s) => (d, s, MatchMode::Candidate),
             BodyJob::Witness { join, guard, atom } => {
                 let partial = &self.witness_joins[join];
                 let pattern_id = partial.pattern;
@@ -418,7 +444,7 @@ impl BodyAgenda {
                     plan,
                     &mut bindings,
                     &mut evaluate,
-                    true,
+                    MatchMode::Witness,
                 )? {
                     self.add_witness_join(plan, pattern_id, next + 1, bindings);
                 }
@@ -446,8 +472,13 @@ impl BodyAgenda {
             plan,
             &mut bindings,
             &mut evaluate,
-            false,
+            mode,
         )? {
+            if self.candidate_hints && mode == MatchMode::Exact {
+                // A separate job charges the fallback to the same work budget
+                // and gives exact matches their turn first.
+                self.queue.push_back(BodyJob::Candidate(d, s));
+            }
             return Ok(None);
         }
         let rule = &plan.rules[demand.rule];
@@ -459,10 +490,14 @@ impl BodyAgenda {
         else {
             return Ok(None);
         };
+        let term = rule.instantiate(&demand.arguments, &values);
+        if !self.instances.insert(term.clone()) {
+            return Ok(None);
+        }
         Ok(Some((
             SymbolicInstance {
                 rule: QuantifiedRule::input_binder(&rule.name),
-                term: rule.instantiate(&demand.arguments, &values),
+                term,
                 bindings: rule
                     .captures
                     .iter()

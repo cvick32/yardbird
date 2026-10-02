@@ -156,7 +156,7 @@ fn extend_bodies<F: TermCostFactory>(
 ) {
     let plan = context.formulas.quantifiers;
     let limit = context.allowance.dependency_work;
-    let mut bodies = BodyAgenda::default();
+    let mut bodies = BodyAgenda::with_candidate_hints();
     let mut helpers = source_helpers(plan, context.smt);
     helpers.sort_by_cached_key(ToString::to_string);
     let mut anchors = Vec::new();
