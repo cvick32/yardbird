@@ -438,6 +438,9 @@ fn countermodel_policy_needs_no_numeric_switch_or_profiling() {
     assert!(options.validate_countermodel_trace_options().is_err());
     options.filename = Some("test.vmt".into());
     options.strategy = crate::Strategy::Concrete;
+    options.validate_countermodel_trace_options().unwrap();
+    options.policy = None;
+    options.countermodel_trace_work = 1;
     assert!(options.validate_countermodel_trace_options().is_err());
 }
 

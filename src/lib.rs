@@ -219,7 +219,7 @@ pub struct YardbirdOptions {
 
     /// Return after guided candidates, or supplement them with bounded
     /// dependency search. Only meaningful with `--policy countermodel-guided`;
-    /// see `NamedPolicy::overrides`.
+    /// see `NamedPolicy::build_plan`.
     #[arg(long, value_enum, default_value_t = policy::effort::GuidanceSchedule::Immediate, requires = "policy")]
     pub guidance_schedule: policy::effort::GuidanceSchedule,
 
@@ -466,10 +466,7 @@ impl YardbirdOptions {
             || self.policy == Some(policy::NamedPolicy::CountermodelGuided)
         {
             anyhow::ensure!(
-                matches!(self.strategy, Strategy::Abstract)
-                    || self
-                        .policy
-                        .is_some_and(policy::NamedPolicy::always_builds_abstract),
+                matches!(self.strategy, Strategy::Abstract) || self.policy.is_some(),
                 "counter-model tracing currently requires the abstract strategy"
             );
             anyhow::ensure!(
@@ -659,24 +656,11 @@ impl YardbirdOptions {
     where
         F: TermCostFactory + 'static,
     {
-        // The selected policy (if any) is the sole interpreter of what its
-        // name means; everything below reads the resulting overrides rather
-        // than re-checking `self.policy` for each field it touches.
-        let overrides = self
-            .policy
-            .map(|policy| policy.overrides(self))
-            .unwrap_or_default();
         let policy = YardbirdPolicy::new(cost_config)
             .with_effort(
                 crate::policy::DefaultEffort::default()
-                    .with_countermodel_refinement(overrides.countermodel_refinement)
-                    .with_guidance_followup(overrides.guidance_followup)
                     .with_egraph_builder(self.build_array_egraph_builder())
-                    .with_winners_per_group(
-                        overrides
-                            .winners_per_group
-                            .unwrap_or(self.candidate_winners_per_group),
-                    ),
+                    .with_winners_per_group(self.candidate_winners_per_group),
             )
             .with_instantiation_ranker(self.build_instantiation_ranker());
         let policy = self.configure_eager_policy(policy);
@@ -687,11 +671,7 @@ impl YardbirdOptions {
             .with_recurrent_product_abstraction(self.abstract_recurrent_products)
             .with_guarded_read_updates(self.guarded_read_updates)
             .with_theory_selection(self.theory.clone())
-            .with_property_check_mode(
-                overrides
-                    .property_check_mode
-                    .unwrap_or(self.property_check_mode),
-            )
+            .with_property_check_mode(self.property_check_mode)
     }
 
     fn build_costed_array_plan<F>(&self, cost_config: F::Config) -> ArrayProofPlan
@@ -761,7 +741,7 @@ impl YardbirdOptions {
         self.build_configured_array_proof_plan()
     }
 
-    pub(crate) fn build_configured_array_proof_plan(&self) -> ArrayProofPlan {
+    fn build_configured_array_proof_plan(&self) -> ArrayProofPlan {
         match self.cost_function {
             CostFunction::LogisticRegression => self.build_costed_array_plan::<LogisticRegression>(
                 LogisticRegressionModel::from_path(
@@ -1076,37 +1056,34 @@ mod option_tests {
     }
 
     #[test]
-    fn countermodel_guided_policy_overrides_flow_without_mutating_options() {
-        let run = YardbirdOptions::try_parse_from([
-            "yardbird",
-            "-f",
-            "input.vmt",
-            "--policy",
-            "countermodel-guided",
-        ])
-        .unwrap();
-        let overrides = policy::NamedPolicy::CountermodelGuided.overrides(&run);
-        assert_eq!(overrides.winners_per_group, Some(20));
-        assert_eq!(
-            overrides.property_check_mode,
-            Some(crate::solver::PropertyCheckMode::Assumptions)
-        );
-        assert!(overrides.countermodel_refinement);
-        assert!(overrides.guidance_followup.is_none());
-
-        let mut supplemented = run.clone();
-        supplemented.guidance_schedule = policy::effort::GuidanceSchedule::Supplement;
-        assert!(policy::NamedPolicy::CountermodelGuided
-            .overrides(&supplemented)
-            .guidance_followup
-            .is_some());
-
-        // GermanFast builds its own plan directly and never overrides the
-        // generic pipeline through this path.
-        assert!(policy::NamedPolicy::GermanFast
-            .overrides(&run)
-            .winners_per_group
-            .is_none());
+    fn named_policies_build_abstract_plans_independently_of_individual_options() {
+        let mut run = YardbirdOptions::from_filename("input.vmt".into());
+        run.strategy = Strategy::Concrete;
+        run.cost_function = CostFunction::LogisticRegression;
+        run.property_check_mode = crate::solver::PropertyCheckMode::Scoped;
+        run.solver = SolverBackend::Cvc5;
+        run.instantiation_strategy = InstantiationStrategyType::NoUnrollOnLoop;
+        let before = format!("{run:?}");
+        for policy in [
+            policy::NamedPolicy::GermanFast,
+            policy::NamedPolicy::CountermodelGuided,
+        ] {
+            let plan = policy.build_plan(&run);
+            assert_eq!(plan.solver, SolverBackend::Z3);
+            assert_eq!(
+                plan.strategy.property_check_mode(),
+                crate::solver::PropertyCheckMode::Assumptions
+            );
+            assert_eq!(plan.strategy.refinement_limit(), None);
+            assert_eq!(
+                format!("{:?}", plan.instantiation_strategy),
+                format!(
+                    "{:?}",
+                    instance_installation::full_unroll::FullUnrollStrategy::new()
+                )
+            );
+        }
+        assert_eq!(format!("{run:?}"), before);
     }
 
     #[test]
