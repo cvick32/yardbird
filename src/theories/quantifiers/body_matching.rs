@@ -210,23 +210,23 @@ pub(crate) struct BodyAgenda {
     witness_roots: HashSet<Term>,
 }
 impl BodyAgenda {
-    pub fn add_demand(&mut self, plan: &QuantifierPlan, helper: &Term) {
+    pub fn add_demand(&mut self, plan: &QuantifierPlan, helper: &Term) -> bool {
         let Term::Application {
             qual_identifier,
             arguments,
         } = helper
         else {
-            return;
+            return false;
         };
         let Some((id, rule)) =
             plan.rules.iter().enumerate().find(|(_, r)| {
                 r.name == qual_identifier.get_name() && r.kind == BinderKind::Exists
             })
         else {
-            return;
+            return false;
         };
         if !self.demand_set.insert(helper.clone()) {
-            return;
+            return false;
         }
         let body = substitute(
             rule.body.clone(),
@@ -246,6 +246,7 @@ impl BodyAgenda {
         });
         self.queue
             .extend((0..self.sources.len()).map(|s| BodyJob::Instance(id_demand, s)));
+        true
     }
     pub fn add_source(&mut self, plan: &QuantifierPlan, helper: &Term) -> Option<usize> {
         let Term::Application {

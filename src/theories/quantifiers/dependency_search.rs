@@ -529,14 +529,34 @@ pub(super) fn unify(
     signatures: &HashMap<String, (Vec<Sort>, Sort)>,
     bindings: &mut HashMap<Symbol, Term>,
 ) -> bool {
+    unify_modulo(
+        pattern,
+        ground,
+        variables,
+        signatures,
+        bindings,
+        &mut |_, _| false,
+    )
+}
+
+/// Equality may help choose a tuple, but never rewrites the demanded captures
+/// or becomes a premise of the emitted binder instance.
+pub(super) fn unify_modulo(
+    pattern: &Term,
+    ground: &Term,
+    variables: &HashMap<Symbol, Sort>,
+    signatures: &HashMap<String, (Vec<Sort>, Sort)>,
+    bindings: &mut HashMap<Symbol, Term>,
+    equivalent: &mut impl FnMut(&Term, &Term) -> bool,
+) -> bool {
     if let Term::QualIdentifier(id) = pattern {
         let name = Symbol(id.get_name());
         if let Some(expected) = variables.get(&name) {
-            if let Some(bound) = bindings.get(&name) {
-                return bound == ground;
-            }
             if term_sort(ground, signatures, &HashMap::new()).ok() != Some(expected.clone()) {
                 return false;
+            }
+            if let Some(bound) = bindings.get(&name) {
+                return bound == ground || equivalent(bound, ground);
             }
             bindings.insert(name, ground.clone());
             return true;
@@ -552,15 +572,38 @@ pub(super) fn unify(
                 qual_identifier: b,
                 arguments: right,
             },
-        ) => {
-            a == b
-                && left.len() == right.len()
-                && left
-                    .iter()
-                    .zip(right)
-                    .all(|(a, b)| unify(a, b, variables, signatures, bindings))
+        ) if a == b && left.len() == right.len() => {
+            // Preserve correlations within matching source applications. Equal
+            // results alone do not identify corresponding argument bindings.
+            left.iter()
+                .zip(right)
+                .all(|(a, b)| unify_modulo(a, b, variables, signatures, bindings, equivalent))
         }
-        _ => pattern == ground,
+        _ => {
+            if pattern == ground {
+                return true;
+            }
+            if has_variable(pattern, variables) {
+                return false;
+            }
+            // Operator-name matching can pair overloaded atoms such as value
+            // and round equalities. Model equality is only defined within a sort.
+            let Ok(sort) = term_sort(pattern, signatures, &HashMap::new()) else {
+                return false;
+            };
+            term_sort(ground, signatures, &HashMap::new()).ok() == Some(sort)
+                && equivalent(pattern, ground)
+        }
+    }
+}
+
+fn has_variable(term: &Term, variables: &HashMap<Symbol, Sort>) -> bool {
+    match term {
+        Term::QualIdentifier(id) => variables.contains_key(&Symbol(id.get_name())),
+        Term::Application { arguments, .. } => {
+            arguments.iter().any(|term| has_variable(term, variables))
+        }
+        _ => false,
     }
 }
 

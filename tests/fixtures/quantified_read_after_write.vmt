@@ -1,0 +1,12 @@
+; A write must be visible at its own index, including under a quantified property.
+; Leave exact-read-after-write preprocessing disabled to exercise refinement.
+; The existential keeps this out of the forall-only Herbrandization shortcut.
+(declare-fun a () (Array Int Int))
+(declare-fun a_next () (Array Int Int))
+(define-fun .a () (Array Int Int) (! a :next a_next))
+(define-fun init () Bool (! true :init true))
+(define-fun trans () Bool (! (= a_next (store a 0 3)) :trans true))
+(define-fun prop () Bool
+  (! (forall ((i Int))
+       (and (= (select (store a i 7) i) 7)
+            (exists ((j Int)) (= j i)))) :invar-property 0))

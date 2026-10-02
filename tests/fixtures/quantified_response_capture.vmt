@@ -1,0 +1,17 @@
+; The outer property's witness p equals reply in the model. An existential
+; instance must retain p as its capture, even when matching the source reply.
+(declare-sort request 0)
+(declare-sort response 0)
+(declare-fun matches (request response) Bool)
+(declare-fun chosen () request)
+(declare-fun chosen_next () request)
+(declare-fun reply () response)
+(declare-fun reply_next () response)
+(define-fun .chosen () request (! chosen :next chosen_next))
+(define-fun .reply () response (! reply :next reply_next))
+(define-fun init () Bool (! (matches chosen reply) :init true))
+(define-fun trans () Bool
+  (! (and (= chosen_next chosen) (= reply_next reply)) :trans true))
+(define-fun prop () Bool
+  (! (forall ((p response))
+       (=> (= p reply) (exists ((r request)) (matches r p)))) :invar-property 0))

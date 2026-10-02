@@ -1,0 +1,26 @@
+; A decision is justified by a quorum in the previous frame. The action's
+; quorum can change afterwards; the property must retain its own vote capture.
+(declare-sort node 0)
+(declare-sort quorum 0)
+(declare-fun member (node quorum) Bool)
+(declare-fun chosen () quorum)
+(declare-fun chosen_next () quorum)
+(declare-fun votes () (Array node Bool))
+(declare-fun votes_next () (Array node Bool))
+(declare-fun decided () Bool)
+(declare-fun decided_next () Bool)
+(define-fun .chosen () quorum (! chosen :next chosen_next))
+(define-fun .votes () (Array node Bool) (! votes :next votes_next))
+(define-fun .decided () Bool (! decided :next decided_next))
+(define-fun init () Bool (! (not decided) :init true))
+(define-fun trans () Bool
+  (! (and (= votes_next votes)
+          (or (and (not decided) decided_next
+                   (forall ((n node)) (or (not (member n chosen)) (select votes n))))
+              (= decided_next decided)))
+     :trans true))
+(define-fun prop () Bool
+  (! (=> decided
+         (exists ((q quorum))
+           (forall ((m node)) (=> (member m q) (select votes m)))))
+     :invar-property 0))

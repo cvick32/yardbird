@@ -1,0 +1,15 @@
+; Two separately lowered universal bodies describe the same quorum condition.
+; Guidance must use chosen as the existential quorum and enter its forall body.
+(declare-sort node 0)
+(declare-sort quorum 0)
+(declare-fun member (node quorum) Bool)
+(declare-fun voted (node) Bool)
+(declare-fun chosen () quorum)
+(declare-fun chosen_next () quorum)
+(define-fun .chosen () quorum (! chosen :next chosen_next))
+(define-fun init () Bool
+  (! (forall ((n node)) (=> (member n chosen) (voted n))) :init true))
+(define-fun trans () Bool (! (= chosen_next chosen) :trans true))
+(define-fun prop () Bool
+  (! (exists ((q quorum)) (forall ((m node)) (=> (member m q) (voted m))))
+     :invar-property 0))

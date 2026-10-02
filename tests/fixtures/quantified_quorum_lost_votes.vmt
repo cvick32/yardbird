@@ -1,0 +1,26 @@
+; Negative control: a decision's old quorum does not justify erased votes.
+(declare-sort node 0)
+(declare-sort quorum 0)
+(declare-fun member (node quorum) Bool)
+(declare-fun participant () node)
+(declare-fun chosen () quorum)
+(declare-fun chosen_next () quorum)
+(declare-fun votes () (Array node Bool))
+(declare-fun votes_next () (Array node Bool))
+(declare-fun decided () Bool)
+(declare-fun decided_next () Bool)
+(define-fun .chosen () quorum (! chosen :next chosen_next))
+(define-fun .votes () (Array node Bool) (! votes :next votes_next))
+(define-fun .decided () Bool (! decided :next decided_next))
+(assert (forall ((q quorum)) (member participant q)))
+(define-fun init () Bool
+  (! (and (not decided) (= votes ((as const (Array node Bool)) true))) :init true))
+(define-fun trans () Bool
+  (! (and (not decided) decided_next
+          (forall ((n node)) (=> (member n chosen) (select votes n)))
+          (= votes_next ((as const (Array node Bool)) false))) :trans true))
+(define-fun prop () Bool
+  (! (=> decided
+         (exists ((q quorum))
+           (forall ((m node)) (=> (member m q) (select votes m)))))
+     :invar-property 0))

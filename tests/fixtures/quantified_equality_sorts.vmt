@@ -1,0 +1,21 @@
+; Equality atoms share an operator but their operands belong to distinct sorts.
+; A partial clause match binds x to a value before seeing a round equality.
+(declare-sort value 0)
+(declare-sort round 0)
+(declare-fun p (value) Bool)
+(declare-fun q (value) Bool)
+(declare-fun chosen () value)
+(declare-fun chosen_next () value)
+(declare-fun current () round)
+(declare-fun current_next () round)
+(declare-fun zero () round)
+(define-fun .chosen () value (! chosen :next chosen_next))
+(define-fun .current () round (! current :next current_next))
+(define-fun init () Bool
+  (! (and (p chosen) (q chosen) (not (= current zero))
+          (forall ((x value) (y value))
+            (=> (and (p x) (q y)) (= x y))))
+     :init true))
+(define-fun trans () Bool
+  (! (and (= chosen_next chosen) (= current_next current)) :trans true))
+(define-fun prop () Bool (! (exists ((x value)) (p x)) :invar-property 0))

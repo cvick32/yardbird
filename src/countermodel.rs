@@ -66,6 +66,8 @@ pub enum TraceReason {
     QuantifierMatch {
         anchors: Vec<usize>,
     },
+    /// Witness implication or justified body for a false forall / true exists.
+    QuantifierWitness,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -261,17 +263,9 @@ pub(crate) fn trace_refinement(
     depth: u16,
     model_version: u64,
     work_limit: usize,
-    mut evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
+    evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
     plan: Option<&QuantifierPlan>,
 ) -> CountermodelTrace {
-    let mut cx = TraceContext {
-        index,
-        types,
-        evaluate: &mut evaluate,
-        remaining: work_limit,
-        initializers: plan
-            .map(|plan| InitializerSearch::new(plan, index.index_term(index.initial(), 0))),
-    };
     let mut trace = CountermodelTrace {
         model_version,
         depth,
@@ -280,8 +274,42 @@ pub(crate) fn trace_refinement(
         nodes: vec![],
     };
     let root = index.index_term(index.property(), depth);
-    let mut queue =
-        VecDeque::from([(None, TraceStep::child(root, TraceReason::PropertyViolation))]);
+    append_trace(
+        &mut trace,
+        index,
+        types,
+        work_limit,
+        evaluate,
+        plan,
+        None,
+        TraceStep::child(root, TraceReason::PropertyViolation),
+    );
+    trace
+}
+
+/// Continue a grounded obligation using the same partial evaluation, witness,
+/// Boolean and array traversal as the property. The caller supplies a valid
+/// binder instance as provenance, not an assumed truth for the new body.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn append_trace(
+    trace: &mut CountermodelTrace,
+    index: &TransitionIndex,
+    types: &[(String, String)],
+    work_limit: usize,
+    mut evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
+    plan: Option<&QuantifierPlan>,
+    parent: Option<usize>,
+    step: TraceStep,
+) {
+    let mut cx = TraceContext {
+        index,
+        types,
+        evaluate: &mut evaluate,
+        remaining: work_limit.saturating_sub(trace.work),
+        initializers: plan
+            .map(|plan| InitializerSearch::new(plan, index.index_term(index.initial(), 0))),
+    };
+    let mut queue = VecDeque::from([(parent, step)]);
     while let Some((parent, mut step)) = queue.pop_front() {
         let id = trace.nodes.len();
         let mut node = TraceNode {
@@ -324,7 +352,12 @@ pub(crate) fn trace_refinement(
             if let Some(lemma) = &mut node.lemma {
                 lemma.model_value = Some(cx.boolean(&lemma.formula)?.value);
                 if lemma.model_value.as_deref() == Some("false") {
-                    node.status = if matches!(node.reason, TraceReason::Initialization { .. }) {
+                    node.status = if matches!(
+                        node.reason,
+                        TraceReason::Initialization { .. }
+                            | TraceReason::QuantifierWitness
+                            | TraceReason::QuantifierMatch { .. }
+                    ) {
                         TraceStatus::ViolatedQuantifierInstance
                     } else {
                         TraceStatus::ViolatedArrayAxiom
@@ -339,12 +372,13 @@ pub(crate) fn trace_refinement(
                     | TraceReason::Definition
                     | TraceReason::Conditional
                     | TraceReason::Initialization { .. }
+                    | TraceReason::QuantifierWitness
             ) && parent.is_some_and(|p| trace.nodes[p].model_value.as_ref() != Some(&value))
             {
                 node.status = TraceStatus::InconsistentStep;
                 return Ok(vec![]);
             }
-            expand(&mut cx, &mut node)
+            expand(&mut cx, &mut node, plan)
         })();
         match result {
             Ok(children) => queue.extend(children.into_iter().map(|child| (Some(id), child))),
@@ -365,10 +399,13 @@ pub(crate) fn trace_refinement(
         }
     }
     trace.work = work_limit - cx.remaining;
-    trace
 }
 
-fn expand(cx: &mut TraceContext<'_>, node: &mut TraceNode) -> Result<Vec<TraceStep>, TraceError> {
+fn expand(
+    cx: &mut TraceContext<'_>,
+    node: &mut TraceNode,
+    plan: Option<&QuantifierPlan>,
+) -> Result<Vec<TraceStep>, TraceError> {
     use crate::theories::array::countermodel::{is_read, read_step, ReadOutcome};
     let term = &node.expression;
     if let Some(expanded) = cx.index.expand_framed_leaf(term) {
@@ -480,6 +517,17 @@ fn expand(cx: &mut TraceContext<'_>, node: &mut TraceNode) -> Result<Vec<TraceSt
                 name.as_str(),
                 "=" | "distinct" | "+" | "-" | "*" | "<" | ">" | "<=" | ">="
             ) {
+                if matches!(node.model_value.as_deref(), Some("true" | "false")) {
+                    if let Some(plan) = plan {
+                        if let Some(step) =
+                            crate::theories::quantifiers::countermodel::witness_step(
+                                plan, node, cx,
+                            )?
+                        {
+                            return Ok(vec![step]);
+                        }
+                    }
+                }
                 node.status = TraceStatus::Unsupported {
                     detail: format!("opaque application {name}"),
                 };

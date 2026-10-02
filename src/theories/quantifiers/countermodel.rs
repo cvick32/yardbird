@@ -1,12 +1,95 @@
-//! Match demanded initial reads to quantified equations, retaining each helper guard.
+//! Explain quantified helpers and initial reads, retaining each helper guard.
 use super::{
+    app,
     equations::{EquationCompiler, EquationCursor, QuantifiedEquations},
-    QuantifierPlan,
+    substitute, BinderKind, QuantifierPlan,
 };
 use crate::countermodel::{
-    Observation, TraceContext, TraceError, TraceLemma, TraceReason, TraceStep,
+    Observation, TraceContext, TraceError, TraceLemma, TraceNode, TraceReason, TraceStep,
 };
+use crate::rule_matching::{candidate::SymbolicInstance, rule::QuantifiedRule};
 use smt2parser::concrete::Term;
+
+/// A false universal or true existential has a source-defined witness tuple.
+/// Follow its body only after checking the active witness implication. Other
+/// polarities require a binding search, not an arbitrary witness substitution.
+pub(crate) fn witness_step(
+    plan: &QuantifierPlan,
+    node: &TraceNode,
+    cx: &mut TraceContext<'_>,
+) -> Result<Option<TraceStep>, TraceError> {
+    let Term::Application {
+        qual_identifier,
+        arguments,
+    } = &node.expression
+    else {
+        return Ok(None);
+    };
+    for rule in &plan.rules {
+        cx.charge()?;
+        if rule.name != qual_identifier.get_name() {
+            continue;
+        }
+        if !matches!(
+            (rule.kind, node.model_value.as_deref()),
+            (BinderKind::Forall, Some("false")) | (BinderKind::Exists, Some("true"))
+        ) {
+            return Ok(None);
+        }
+        if arguments.len() != rule.captures.len() {
+            return Err(TraceError::Evaluation(
+                "quantifier capture arity mismatch".into(),
+            ));
+        }
+        let values = rule
+            .witnesses
+            .iter()
+            .map(|name| app(name, arguments.clone()))
+            .collect::<Vec<_>>();
+        let bindings = rule
+            .captures
+            .iter()
+            .chain(&rule.variables)
+            .map(|(symbol, _)| symbol.clone())
+            .zip(arguments.iter().chain(&values).cloned())
+            .collect::<Vec<_>>();
+        let body = substitute(rule.body.clone(), bindings.clone());
+        let instance = SymbolicInstance {
+            rule: QuantifiedRule::input_binder(&rule.name),
+            term: rule
+                .witness_instance(arguments)
+                .expect("Boolean binder has witnesses"),
+            bindings: bindings
+                .into_iter()
+                .map(|(symbol, term)| (symbol.0, term))
+                .collect(),
+        };
+        let value = match cx.boolean(&instance.term) {
+            Ok(observation) => Some(observation.value),
+            Err(TraceError::Undetermined(_)) => None,
+            Err(error) => return Err(error),
+        };
+        return Ok(Some(TraceStep {
+            term: if value.as_deref() == Some("true") {
+                body
+            } else {
+                instance.term.clone()
+            },
+            reason: TraceReason::QuantifierWitness,
+            conditions: vec![Observation {
+                expression: node.expression.clone(),
+                value: node.model_value.clone().expect("known binder truth"),
+            }],
+            lemma: Some(TraceLemma {
+                rule: instance.rule.name().to_owned(),
+                formula: instance.term.clone(),
+                model_value: value,
+                instance: Some(instance),
+            }),
+        }));
+    }
+    Ok(None)
+}
 
 pub(crate) struct InitializerSearch<'a> {
     plan: &'a QuantifierPlan,

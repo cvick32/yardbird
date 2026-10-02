@@ -1,7 +1,7 @@
-//! Join signed frontier atoms to bind conditional universal instances. This
+//! Join signed frontier atoms to bind universal and existential instances. This
 //! searches atoms already demanded by the explanation, not sort products.
 use super::{
-    dependency_search::{unify, Goal},
+    dependency_search::{unify_modulo, Goal},
     substitute, BinderKind, QuantifierPlan,
 };
 use crate::{
@@ -57,26 +57,54 @@ struct Clause {
 
 impl ClauseAgenda {
     pub fn add_helper(&mut self, plan: &QuantifierPlan, helper: &Term) {
-        if !self.helpers.insert(helper.clone()) {
-            return;
-        }
+        self.add_clause(plan, helper, BinderKind::Forall, 2);
+    }
+
+    /// Search the ordinary instance direction of an observed helper. Captures
+    /// come from that exact application; only quantified variables are joined.
+    pub fn add_demand(&mut self, plan: &QuantifierPlan, helper: &Term, truth: bool) -> bool {
+        self.add_clause(
+            plan,
+            helper,
+            if truth {
+                BinderKind::Forall
+            } else {
+                BinderKind::Exists
+            },
+            1,
+        )
+    }
+
+    fn add_clause(
+        &mut self,
+        plan: &QuantifierPlan,
+        helper: &Term,
+        kind: BinderKind,
+        minimum: usize,
+    ) -> bool {
         let Term::Application {
             qual_identifier,
             arguments,
         } = helper
         else {
-            return;
+            return false;
         };
-        let Some((rule_id, rule)) =
-            plan.rules.iter().enumerate().find(|(_, r)| {
-                r.name == qual_identifier.get_name() && r.kind == BinderKind::Forall
-            })
+        let Some((rule_id, rule)) = plan
+            .rules
+            .iter()
+            .enumerate()
+            .find(|(_, r)| r.name == qual_identifier.get_name() && r.kind == kind)
         else {
-            return;
+            return false;
         };
         let mut patterns = Vec::new();
-        if !literals(&rule.body, true, &mut patterns) || patterns.len() < 2 {
-            return;
+        if !literals(&rule.body, kind == BinderKind::Forall, &mut patterns)
+            || patterns.len() < minimum
+        {
+            return false;
+        }
+        if !self.helpers.insert(helper.clone()) {
+            return true;
         }
         let captures = rule
             .captures
@@ -98,6 +126,19 @@ impl ClauseAgenda {
             seen: HashSet::new(),
         });
         self.schedule_binding(id, 0);
+        true
+    }
+
+    pub fn wants(&self, atom: &Term) -> bool {
+        let Some((name, _)) = Goal::new(atom, true).key() else {
+            return false;
+        };
+        self.clauses.iter().any(|clause| {
+            clause
+                .patterns
+                .iter()
+                .any(|pattern| pattern.key().is_some_and(|(head, _)| head == name))
+        })
     }
 
     pub fn add_goal(&mut self, goal: Goal) {
@@ -141,15 +182,24 @@ impl ClauseAgenda {
     }
 
     pub fn step(&mut self, plan: &QuantifierPlan) -> Option<SymbolicInstance> {
+        self.step_modulo(plan, |_, _| false)
+    }
+
+    pub fn step_modulo(
+        &mut self,
+        plan: &QuantifierPlan,
+        mut equivalent: impl FnMut(&Term, &Term) -> bool,
+    ) -> Option<SymbolicInstance> {
         let (c, b, p, g) = self.queue.pop_front()?;
         let clause = &mut self.clauses[c];
         let mut joined = clause.bindings[b].clone();
-        if !unify(
+        if !unify_modulo(
             &clause.patterns[p].atom,
             &self.goals[g].atom,
             &clause.variables,
             &plan.signatures,
             &mut joined,
+            &mut equivalent,
         ) || joined.len() == clause.bindings[b].len()
         {
             return None;
