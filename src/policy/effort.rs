@@ -24,6 +24,19 @@ pub enum ActionRequirementGuidance {
     Always,
 }
 
+/// Order of quantified equations used to explain a demanded array read.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GuidanceTransitionOrder {
+    /// Use initialization and incoming transitions only (legacy behavior).
+    #[default]
+    PredecessorOnly,
+    /// Try current-frame equations when initialization/incoming updates
+    /// cannot explain the read.
+    PredecessorFirst,
+    /// Prefer current-frame equations to initialization/incoming updates.
+    CurrentFirst,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkAllowance {
     pub winners: usize,
@@ -44,6 +57,8 @@ pub struct WorkAllowance {
     /// Shares the guided operation's dependency-work allowance.
     #[serde(default)]
     pub guidance_action_requirements: ActionRequirementGuidance,
+    #[serde(default)]
+    pub guidance_transition_order: GuidanceTransitionOrder,
 }
 impl Default for WorkAllowance {
     fn default() -> Self {
@@ -60,6 +75,7 @@ impl Default for WorkAllowance {
             dependency_work: 512,
             dependency_helpers: 128,
             guidance_action_requirements: ActionRequirementGuidance::Disabled,
+            guidance_transition_order: GuidanceTransitionOrder::PredecessorOnly,
         }
     }
 }

@@ -87,6 +87,7 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
                 .with_allowance(effort::WorkAllowance {
                     guidance_action_requirements:
                         effort::ActionRequirementGuidance::WhenUnproductive,
+                    guidance_transition_order: effort::GuidanceTransitionOrder::PredecessorFirst,
                     ..Default::default()
                 })
                 .with_guidance_followup(followup)

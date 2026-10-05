@@ -1,5 +1,6 @@
 //! Read-only explanations of one counter-model. These observations are not proofs
 //! or asserted equalities; the refinement policy remains independent of tracing.
+use crate::policy::effort::GuidanceTransitionOrder;
 use serde::{Deserialize, Serialize};
 use smt2parser::concrete::Term;
 use std::collections::VecDeque;
@@ -118,6 +119,8 @@ pub struct TraceNode {
 pub struct CountermodelTrace {
     pub model_version: u64,
     pub depth: u16,
+    #[serde(default)]
+    pub transition_order: GuidanceTransitionOrder,
     pub work: usize,
     pub budget_exhausted: bool,
     pub nodes: Vec<TraceNode>,
@@ -244,6 +247,7 @@ pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> Coun
         context.allowance.dependency_work,
         |term| context.smt.eval_partial(term),
         Some(context.formulas.quantifiers),
+        context.allowance.guidance_transition_order,
     );
     countermodel_relations::extend(&mut trace, context);
     use crate::policy::effort::ActionRequirementGuidance;
@@ -292,9 +296,11 @@ pub fn trace_violation(
         work_limit,
         evaluate,
         None,
+        GuidanceTransitionOrder::PredecessorOnly,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn trace_refinement(
     index: &TransitionIndex,
     types: &[(String, String)],
@@ -303,10 +309,12 @@ pub(crate) fn trace_refinement(
     work_limit: usize,
     evaluate: impl FnMut(&Term) -> anyhow::Result<ModelEvaluation>,
     plan: Option<&QuantifierPlan>,
+    transition_order: GuidanceTransitionOrder,
 ) -> CountermodelTrace {
     let mut trace = CountermodelTrace {
         model_version,
         depth,
+        transition_order,
         work: 0,
         budget_exhausted: false,
         nodes: vec![],
@@ -346,7 +354,8 @@ pub(crate) fn append_trace(
         remaining: work_limit.saturating_sub(trace.work),
         initializers: plan
             .map(|plan| InitializerSearch::new(plan, index.index_term(index.initial(), 0))),
-        transitions: plan.map(TransitionSearch::new),
+        transitions: plan
+            .map(|plan| TransitionSearch::new(plan, trace.depth, trace.transition_order)),
     };
     let mut queue = VecDeque::from([(parent, step)]);
     while let Some((parent, mut step)) = queue.pop_front() {
@@ -448,6 +457,19 @@ pub(crate) fn append_trace(
     trace.work = work_limit - cx.remaining;
 }
 
+fn transition_steps(
+    term: &Term,
+    cx: &mut TraceContext<'_>,
+    current: bool,
+) -> Result<Vec<TraceStep>, TraceError> {
+    let Some(mut search) = cx.transitions.take() else {
+        return Ok(vec![]);
+    };
+    let result = search.steps(term, cx, current);
+    cx.transitions = Some(search);
+    result
+}
+
 fn expand(
     cx: &mut TraceContext<'_>,
     node: &mut TraceNode,
@@ -465,35 +487,45 @@ fn expand(
         )]);
     }
     if is_read(term, cx.types) {
-        return match read_step(term, cx)? {
-            ReadOutcome::Step(step) => Ok(vec![*step]),
-            ReadOutcome::Stop(status) => {
-                node.status = status;
-                if matches!(node.status, TraceStatus::InitialState { .. }) {
-                    if let Some(mut search) = cx.initializers.take() {
-                        let result = search.steps(term, cx);
-                        cx.initializers = Some(search);
-                        let children = result?;
-                        if !children.is_empty() {
-                            node.status = TraceStatus::Expanded;
-                        }
-                        return Ok(children);
-                    }
-                }
-                if matches!(node.status, TraceStatus::Unsupported { .. }) {
-                    if let Some(mut search) = cx.transitions.take() {
-                        let result = search.steps(term, cx);
-                        cx.transitions = Some(search);
-                        let children = result?;
-                        if !children.is_empty() {
-                            node.status = TraceStatus::Expanded;
-                        }
-                        return Ok(children);
-                    }
-                }
-                Ok(vec![])
+        // Current-frame equations may constrain a temporary relation without
+        // assigning its next-state variable. Policy chooses their precedence.
+        let current_first = cx.transitions.as_ref().is_some_and(|s| s.current_first());
+        if current_first {
+            let children = transition_steps(term, cx, true)?;
+            if !children.is_empty() {
+                return Ok(children);
             }
-        };
+        }
+        match read_step(term, cx)? {
+            ReadOutcome::Step(step) => return Ok(vec![*step]),
+            ReadOutcome::Stop(status) => node.status = status,
+        }
+        if matches!(node.status, TraceStatus::InitialState { .. }) {
+            if let Some(mut search) = cx.initializers.take() {
+                let result = search.steps(term, cx);
+                cx.initializers = Some(search);
+                let children = result?;
+                if !children.is_empty() {
+                    node.status = TraceStatus::Expanded;
+                    return Ok(children);
+                }
+            }
+        }
+        if matches!(node.status, TraceStatus::Unsupported { .. }) {
+            let children = transition_steps(term, cx, false)?;
+            if !children.is_empty() {
+                node.status = TraceStatus::Expanded;
+                return Ok(children);
+            }
+        }
+        if !current_first {
+            let children = transition_steps(term, cx, true)?;
+            if !children.is_empty() {
+                node.status = TraceStatus::Expanded;
+                return Ok(children);
+            }
+        }
+        return Ok(vec![]);
     }
     let Term::Application {
         qual_identifier,

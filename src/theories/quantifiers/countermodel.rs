@@ -215,21 +215,34 @@ pub(crate) type InitializerSearch<'a> = EquationSearch<'a>;
 
 pub(crate) struct TransitionSearch<'a> {
     plan: &'a QuantifierPlan,
-    sources: std::collections::HashMap<Term, Vec<EquationSearch<'a>>>,
+    sources: std::collections::HashMap<(Term, u16), Vec<EquationSearch<'a>>>,
+    depth: u16,
+    order: crate::policy::effort::GuidanceTransitionOrder,
 }
 
 impl<'a> TransitionSearch<'a> {
-    pub fn new(plan: &'a QuantifierPlan) -> Self {
+    pub fn new(
+        plan: &'a QuantifierPlan,
+        depth: u16,
+        order: crate::policy::effort::GuidanceTransitionOrder,
+    ) -> Self {
         Self {
             plan,
+            depth,
+            order,
             sources: Default::default(),
         }
+    }
+
+    pub fn current_first(&self) -> bool {
+        self.order == crate::policy::effort::GuidanceTransitionOrder::CurrentFirst
     }
 
     pub fn steps(
         &mut self,
         read: &Term,
         cx: &mut TraceContext<'_>,
+        current: bool,
     ) -> Result<Vec<TraceStep>, TraceError> {
         // Only peel array reads. A witness's captured array is not the array
         // being updated and must never determine the predecessor frame.
@@ -248,16 +261,32 @@ impl<'a> TransitionSearch<'a> {
         let Ok(frame) = u16::try_from(frame) else {
             return Ok(vec![]);
         };
-        let Some(previous) = frame.checked_sub(1) else {
-            return Ok(vec![]);
+        let source_frame = if current {
+            if self.order == crate::policy::effort::GuidanceTransitionOrder::PredecessorOnly
+                || frame >= self.depth
+            {
+                return Ok(vec![]);
+            }
+            frame
+        } else {
+            let Some(previous) = frame.checked_sub(1) else {
+                return Ok(vec![]);
+            };
+            previous
         };
-        if !self.sources.contains_key(array) {
-            let root = cx.index.index_term(cx.index.transition(), previous);
-            let sources = active_equations(self.plan, root, array, previous, cx)?;
-            self.sources.insert(array.clone(), sources);
+        // Only transitions 0..depth are asserted. In particular, a current
+        // equation at the final property frame must not become an explanation.
+        if source_frame >= self.depth {
+            return Ok(vec![]);
+        }
+        let key = (array.clone(), source_frame);
+        if !self.sources.contains_key(&key) {
+            let root = cx.index.index_term(cx.index.transition(), source_frame);
+            let sources = active_equations(self.plan, root, array, source_frame, cx)?;
+            self.sources.insert(key.clone(), sources);
         }
         let mut children = Vec::new();
-        for source in self.sources.get_mut(array).unwrap() {
+        for source in self.sources.get_mut(&key).unwrap() {
             children.extend(source.steps(read, cx)?);
         }
         Ok(children)

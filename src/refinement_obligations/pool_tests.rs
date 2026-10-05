@@ -369,6 +369,7 @@ fn initializer_handoff_preserves_origin_and_revalidates_across_models() {
     use crate::countermodel::{CountermodelTrace, TraceLemma, TraceNode, TraceReason, TraceStatus};
     let obligation = instance(0);
     let trace = CountermodelTrace {
+        transition_order: Default::default(),
         model_version: 3,
         depth: 0,
         work: 1,

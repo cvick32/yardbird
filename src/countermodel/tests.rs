@@ -1144,3 +1144,208 @@ fn action_requirements_obey_effort_and_ranking_without_profiling() {
         }
     }
 }
+
+#[test]
+fn same_frame_equations_obey_assertion_bounds_guards_and_capture_frames() {
+    use crate::theories::quantifiers::refinement::QuantifierRefinement;
+    let input = r#"
+      (declare-fun scratch () (Array Int Int))
+      (declare-fun sn () (Array Int Int))
+      (declare-fun votes () (Array Int Int))
+      (declare-fun vn () (Array Int Int))
+      (declare-fun w ((Array Int Int)) Int)
+      (declare-fun tick () Bool)
+      (define-fun .scratch () (Array Int Int) (! scratch :next sn))
+      (define-fun .votes () (Array Int Int) (! votes :next vn))
+      (define-fun .tick () Bool (! tick :action 0))
+      (define-fun init () Bool (! true :init true))
+      (define-fun trans () Bool (! (=> tick (forall ((i Int)) (= (select scratch i) (select votes i)))) :trans true))
+      (define-fun prop () Bool (! true :invar-property 0))
+    "#;
+    let mut quantifiers = QuantifierRefinement::default();
+    let lowered = quantifiers.configure_model(model(input), false);
+    let (lowered, types) = lowered.abstract_array_theory();
+    let index = TransitionIndex::from_model(
+        &lowered,
+        &quantifiers
+            .plan
+            .rules
+            .iter()
+            .map(|r| r.name.clone())
+            .collect(),
+    );
+    let read: Term = "(Read_Int_Int scratch@0 (w votes@1))".parse().unwrap();
+    for (depth, mode, guard, expected) in [
+        (1, GuidanceTransitionOrder::CurrentFirst, "true", 1),
+        (1, GuidanceTransitionOrder::PredecessorFirst, "true", 1),
+        (1, GuidanceTransitionOrder::PredecessorOnly, "true", 0),
+        (0, GuidanceTransitionOrder::CurrentFirst, "true", 0),
+        (1, GuidanceTransitionOrder::CurrentFirst, "false", 0),
+    ] {
+        let mut search = TransitionSearch::new(&quantifiers.plan, depth, mode);
+        let mut queries = 0;
+        let mut evaluate = |term: &Term| {
+            queries += 1;
+            let text = term.to_string();
+            Ok(if text == "tick@0" {
+                guard
+            } else if text.starts_with("(=>") {
+                "false"
+            } else {
+                "true"
+            }
+            .into())
+        };
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: 512,
+            initializers: None,
+            transitions: None,
+        };
+        let steps = search
+            .steps(&read, &mut cx, true)
+            .unwrap_or_else(|_| panic!("same-frame search failed"));
+        assert_eq!(steps.len(), expected);
+        for step in steps {
+            assert!(matches!(
+                step.reason,
+                TraceReason::QuantifiedTransition { frame: 0, .. }
+            ));
+            let formula = step.lemma.unwrap().formula.to_string();
+            assert!(formula.contains("scratch@0") && formula.contains("(w votes@1)"));
+            assert!(!formula.contains("scratch@1") && !formula.contains("(w votes@0)"));
+        }
+        if depth == 0 || mode == GuidanceTransitionOrder::PredecessorOnly {
+            assert_eq!(queries, 0);
+        }
+    }
+    // The final state has no outgoing transition asserted, even if evaluating
+    // its fresh action flag could accidentally return true in the model.
+    let mut search =
+        TransitionSearch::new(&quantifiers.plan, 1, GuidanceTransitionOrder::CurrentFirst);
+    let mut evaluate = |_: &Term| -> anyhow::Result<ModelEvaluation> {
+        panic!("must not query the unasserted frame")
+    };
+    let mut cx = TraceContext {
+        index: &index,
+        types: &types,
+        evaluate: &mut evaluate,
+        remaining: 512,
+        initializers: None,
+        transitions: None,
+    };
+    assert!(search
+        .steps(
+            &"(Read_Int_Int scratch@1 0)".parse().unwrap(),
+            &mut cx,
+            true
+        )
+        .unwrap_or_else(|_| panic!("search failed"))
+        .is_empty());
+    let mut search =
+        TransitionSearch::new(&quantifiers.plan, 1, GuidanceTransitionOrder::CurrentFirst);
+    let mut evaluate = |_: &Term| Ok(ModelEvaluation::Undetermined);
+    let mut cx = TraceContext {
+        index: &index,
+        types: &types,
+        evaluate: &mut evaluate,
+        remaining: 512,
+        initializers: None,
+        transitions: None,
+    };
+    assert!(matches!(
+        search.steps(&read, &mut cx, true),
+        Err(TraceError::Undetermined(_))
+    ));
+}
+
+#[test]
+fn same_frame_instances_use_shared_ranking_and_work_without_profiling() {
+    use crate::{
+        policy::{
+            effort::{ActionRequirementGuidance, WorkAllowance},
+            term_selection::array::ArrayAstSize,
+        },
+        SolverBackend, YardbirdOptions,
+    };
+    let mut counts = None;
+    for (mode, profile, reject) in [
+        (GuidanceTransitionOrder::CurrentFirst, true, false),
+        (GuidanceTransitionOrder::CurrentFirst, false, false),
+        (GuidanceTransitionOrder::PredecessorFirst, true, false),
+        (GuidanceTransitionOrder::PredecessorOnly, true, false),
+        (GuidanceTransitionOrder::CurrentFirst, true, true),
+    ] {
+        let mut options = YardbirdOptions::from_filename("same-frame.vmt".into());
+        options.profile = profile;
+        let mut policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+            crate::policy::DefaultEffort::default()
+                .with_countermodel_refinement(true)
+                .with_allowance(WorkAllowance {
+                    guidance_action_requirements: ActionRequirementGuidance::WhenUnproductive,
+                    guidance_transition_order: mode,
+                    ..Default::default()
+                }),
+        );
+        if reject {
+            policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
+        }
+        let strategy = crate::strategies::Abstract::new(3, false, policy, profile);
+        let mut driver = crate::Driver::new(
+            model(include_str!(
+                "../../tests/fixtures/same_frame_requirement.vmt"
+            )),
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+        let result = driver.check_strategy(3, Box::new(strategy)).unwrap();
+        assert_eq!(
+            result.run_progress.unwrap().deepest_completed_depth,
+            Some(2)
+        );
+        if !profile {
+            assert_eq!(counts, Some(result.total_instantiations_added));
+            continue;
+        }
+        let mut selected = 0;
+        for record in &result.profiling.cost_records {
+            let Some(trace) = &record.countermodel_trace else {
+                continue;
+            };
+            assert!(trace.work <= 1024);
+            for effort in &record.effort {
+                if effort.operation != "CountermodelCandidates" {
+                    continue;
+                }
+                for candidate in &effort.candidates {
+                    let Some(origin) = &candidate.countermodel_origin else {
+                        continue;
+                    };
+                    let node = &trace.nodes[origin.node];
+                    if matches!(
+                        node.reason,
+                        TraceReason::QuantifiedTransition { frame: 0, .. }
+                    ) && node
+                        .lemma
+                        .as_ref()
+                        .is_some_and(|l| l.formula.to_string().contains("scratch@0"))
+                    {
+                        assert_eq!(origin.model_version, trace.model_version);
+                        selected += usize::from(candidate.selected);
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            selected > 0,
+            !reject && mode != GuidanceTransitionOrder::PredecessorOnly
+        );
+        if mode == GuidanceTransitionOrder::CurrentFirst && !reject {
+            counts = Some(result.total_instantiations_added);
+        }
+    }
+}
