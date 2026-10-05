@@ -29,3 +29,4 @@ tools/training-viewer/backend/dist
 .scratch/
 docs/
 condhist/
+yardbird-benchmark-key.pem

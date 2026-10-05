@@ -10,13 +10,14 @@ from .benchmark_selection import (
     select_formula_research_cohort,
 )
 from .common import (
+    AWS_ACCOUNTS,
     BENCHMARK_ROOT,
     DEFAULT_CONFIG,
     build_report_for_run,
     ensure_dir,
     load_manifest,
     load_dotenv,
-    prefer_aws_dotenv,
+    configure_aws_account,
     print_run_summary,
     resolve_run_id,
 )
@@ -77,6 +78,11 @@ def legacy_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--env", choices=["local", "aws", "lab"], help="Execution environment"
+    )
+    parser.add_argument(
+        "--aws-account",
+        choices=AWS_ACCOUNTS,
+        help="AWS account to use: personal or ut (AWS runs only)",
     )
     parser.add_argument(
         "--benchmark-type",
@@ -331,6 +337,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def resolve_aws_account(account: str | None) -> str:
+    if account:
+        return account
+    if not sys.stdin.isatty():
+        raise RuntimeError(
+            "Choose an AWS account with --aws-account personal or --aws-account ut"
+        )
+    while True:
+        selected = input("AWS account [personal/ut]: ").strip().lower()
+        if selected in AWS_ACCOUNTS:
+            return selected
+        print("Enter personal or ut.")
+
+
+def configure_manifest_aws_account(manifest: dict) -> str:
+    account = manifest.get("aws_account", "personal")
+    configure_aws_account(account)
+    return account
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     args = parse_args(argv)
@@ -343,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "compare_downloaded_instrumentation":
         manifest = load_manifest(args.run_id)
         if manifest.get("env") == "aws":
-            prefer_aws_dotenv()
+            configure_manifest_aws_account(manifest)
         manifest = refresh_existing_run(manifest, args)
         if manifest["status"] != "COMPLETED":
             raise RuntimeError(
@@ -362,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     if existing_run_id:
         manifest = load_manifest(existing_run_id)
         if manifest.get("env") == "aws":
-            prefer_aws_dotenv()
+            configure_manifest_aws_account(manifest)
         if args.teardown_subrun_index is not None:
             manifest = maybe_teardown_subrun(manifest, args)
         else:
@@ -418,7 +444,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         args.benchmark_selection = None
     if args.env == "aws":
-        prefer_aws_dotenv()
+        args.aws_account = resolve_aws_account(args.aws_account)
+        configure_aws_account(args.aws_account)
 
     if args.env == "local":
         manifest = launch_local_run(args)

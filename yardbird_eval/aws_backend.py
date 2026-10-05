@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import tarfile
 from pathlib import Path
@@ -50,8 +51,13 @@ def extract_capture_archive(archive_path: Path, capture_root: Path) -> None:
         archive.extractall(resolved_root, members=members)
 
 
-def terraform_outputs() -> dict[str, str]:
-    result = run_command(["terraform", "output", "-json"], cwd=TERRAFORM_DIR)
+def terraform_outputs(account: str = "personal") -> dict[str, str]:
+    workspace = "default" if account == "personal" else account
+    environment = os.environ.copy()
+    environment["TF_WORKSPACE"] = workspace
+    result = run_command(
+        ["terraform", "output", "-json"], cwd=TERRAFORM_DIR, env=environment
+    )
     parsed = json.loads(result.stdout)
     return {key: value["value"] for key, value in parsed.items()}
 
@@ -132,12 +138,14 @@ def launch_aws_run(args) -> dict[str, Any]:
     )
     run_dir = Path(manifest["run_dir"])
     aws_dir = ensure_dir(run_dir / "aws")
-    outputs = terraform_outputs()
+    account = args.aws_account
+    outputs = terraform_outputs(account)
     region = outputs.get("aws_region", DEFAULT_AWS_REGION)
     launch_template_id = outputs["launch_template_id"]
     bucket = outputs["s3_bucket_name"]
     capture_solver_journals = bool(args.capture_solver_journals)
     manifest["capture_solver_journals"] = capture_solver_journals
+    manifest["aws_account"] = account
     manifest["benchmark_selection"] = args.benchmark_selection
     garden_args = garden_filter_args(args)
 

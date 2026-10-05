@@ -39,6 +39,7 @@ AWS_DOTENV_OVERRIDE_KEYS = AWS_ENVIRONMENT_KEYS | frozenset(
 AWS_CREDENTIAL_SOURCE_KEYS = frozenset(
     {"AWS_ACCESS_KEY_ID", "AWS_PROFILE", "AWS_DEFAULT_PROFILE"}
 )
+AWS_ACCOUNTS = ("personal", "ut")
 
 
 class CommandError(RuntimeError):
@@ -164,6 +165,32 @@ def prefer_aws_dotenv(path: Path | None = None) -> bool:
         os.environ.pop(key, None)
     for key in AWS_DOTENV_OVERRIDE_KEYS.intersection(values):
         os.environ[key] = values[key]
+    return True
+
+
+def configure_aws_account(account: str, path: Path | None = None) -> bool:
+    """Select personal or UT credentials from the project dotenv file."""
+    if account not in AWS_ACCOUNTS:
+        raise ValueError(f"Unknown AWS account: {account}")
+    if account == "personal":
+        return prefer_aws_dotenv(path)
+
+    values = dotenv_values(path)
+    prefix = "UT_"
+    selected = {
+        key: values[f"{prefix}{key}"]
+        for key in AWS_DOTENV_OVERRIDE_KEYS
+        if f"{prefix}{key}" in values
+    }
+    if not AWS_CREDENTIAL_SOURCE_KEYS.intersection(selected):
+        raise RuntimeError(
+            "UT AWS credentials are missing from .env; expected "
+            "UT_AWS_ACCESS_KEY_ID or UT_AWS_PROFILE"
+        )
+
+    for key in AWS_DOTENV_OVERRIDE_KEYS:
+        os.environ.pop(key, None)
+    os.environ.update(selected)
     return True
 
 
