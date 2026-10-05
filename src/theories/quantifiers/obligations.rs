@@ -142,6 +142,24 @@ impl QuantifierPlan {
         })
     }
 
+    /// Polarities where an asserted ground instance constrains its body to the
+    /// helper's truth. Other polarities require the binder's witness rule.
+    pub(crate) fn constrains_ground_bodies(&self, term: &Term, value: Option<&str>) -> bool {
+        let Term::Application {
+            qual_identifier, ..
+        } = term
+        else {
+            return false;
+        };
+        self.rules.iter().any(|rule| {
+            rule.name == qual_identifier.get_name()
+                && matches!(
+                    (rule.kind, value),
+                    (BinderKind::Forall, Some("true")) | (BinderKind::Exists, Some("false"))
+                )
+        })
+    }
+
     pub(crate) fn ground_instance_bodies(
         &self,
         assertions: Vec<&Term>,

@@ -223,6 +223,12 @@ pub struct YardbirdOptions {
     #[arg(long, value_enum, default_value_t = policy::effort::GuidanceSchedule::Immediate, requires = "policy")]
     pub guidance_schedule: policy::effort::GuidanceSchedule,
 
+    /// Work per guided refinement trace (default: 1024). Requires
+    /// --policy countermodel-guided; independent of diagnostic tracing.
+    #[arg(long, requires = "policy")]
+    #[serde(default)]
+    pub guidance_work: Option<usize>,
+
     /// Write a replayable solver session and its metadata to this directory.
     #[arg(long)]
     pub solver_capture_dir: Option<PathBuf>,
@@ -312,6 +318,7 @@ impl Default for YardbirdOptions {
             profile: false,
             countermodel_trace_work: 0,
             guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
+            guidance_work: None,
             solver_capture_dir: None,
             record_decisions: false,
             train: false,
@@ -462,6 +469,12 @@ impl YardbirdOptions {
 
     /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
     pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        if let Some(work) = self.guidance_work {
+            anyhow::ensure!(
+                self.policy == Some(policy::NamedPolicy::CountermodelGuided) && work > 0,
+                "--guidance-work requires --policy countermodel-guided and a positive work limit"
+            );
+        }
         if self.countermodel_trace_work > 0
             || self.policy == Some(policy::NamedPolicy::CountermodelGuided)
         {
@@ -1052,6 +1065,43 @@ mod option_tests {
         assert_eq!(
             options.guidance_schedule,
             policy::effort::GuidanceSchedule::Supplement
+        );
+    }
+
+    #[test]
+    fn guidance_work_requires_a_positive_limit_and_the_guided_policy() {
+        assert!(YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "input.vmt",
+            "--guidance-work",
+            "4096"
+        ])
+        .is_err());
+        for (policy, work, valid) in [
+            ("countermodel-guided", "4096", true),
+            ("countermodel-guided", "0", false),
+            ("german-fast", "4096", false),
+        ] {
+            let options = YardbirdOptions::try_parse_from([
+                "yardbird",
+                "-f",
+                "input.vmt",
+                "--policy",
+                policy,
+                "--guidance-work",
+                work,
+            ])
+            .unwrap();
+            assert_eq!(options.validate_countermodel_trace_options().is_ok(), valid);
+        }
+        let mut old = serde_json::to_value(YardbirdOptions::default()).unwrap();
+        old.as_object_mut().unwrap().remove("guidance_work");
+        assert_eq!(
+            serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .guidance_work,
+            None
         );
     }
 

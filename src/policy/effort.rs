@@ -13,6 +13,17 @@ pub enum GuidanceSchedule {
     Supplement,
 }
 
+/// When to extend value tracing through the requirements of reached actions.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActionRequirementGuidance {
+    #[default]
+    Disabled,
+    /// Extend a completed value/relational explanation with no violated
+    /// instance or unresolved frontier. Ordinary search keeps incomplete ones.
+    WhenUnproductive,
+    Always,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkAllowance {
     pub winners: usize,
@@ -29,6 +40,10 @@ pub struct WorkAllowance {
     pub dependency_links: usize,
     pub dependency_work: usize,
     pub dependency_helpers: usize,
+    /// Follow enabling requirements of actions reached by guided tracing.
+    /// Shares the guided operation's dependency-work allowance.
+    #[serde(default)]
+    pub guidance_action_requirements: ActionRequirementGuidance,
 }
 impl Default for WorkAllowance {
     fn default() -> Self {
@@ -44,6 +59,7 @@ impl Default for WorkAllowance {
             dependency_links: 8,
             dependency_work: 512,
             dependency_helpers: 128,
+            guidance_action_requirements: ActionRequirementGuidance::Disabled,
         }
     }
 }
@@ -222,6 +238,7 @@ enum Stage {
 /// Return after each pass so the driver can enforce external limits.
 pub struct DefaultEffort {
     countermodel_refinement: bool,
+    guidance_work: usize,
     countermodel_model: Option<u64>,
     guidance_followup: Option<WorkAllowance>,
     allowance: WorkAllowance,
@@ -244,6 +261,7 @@ impl Default for DefaultEffort {
     fn default() -> Self {
         Self {
             countermodel_refinement: false,
+            guidance_work: 1024,
             countermodel_model: None,
             guidance_followup: None,
             allowance: WorkAllowance::default(),
@@ -279,6 +297,13 @@ impl DefaultEffort {
 
     pub fn with_countermodel_refinement(mut self, enabled: bool) -> Self {
         self.countermodel_refinement = enabled;
+        self
+    }
+
+    /// Fixed work per guided trace, independent of ordinary-search widening.
+    pub fn with_guidance_work(mut self, work: usize) -> Self {
+        assert!(work > 0, "guided tracing needs a positive work allowance");
+        self.guidance_work = work;
         self
     }
 
@@ -333,7 +358,7 @@ impl DefaultEffort {
                     operation: operation.id,
                     // Keep guidance work fixed, independent of ordinary-search widening.
                     allowance: WorkAllowance {
-                        dependency_work: 1024,
+                        dependency_work: self.guidance_work,
                         ..self.allowance
                     },
                 });

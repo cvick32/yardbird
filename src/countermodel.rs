@@ -76,6 +76,13 @@ pub enum TraceReason {
     },
     /// Witness implication or justified body for a false forall / true exists.
     QuantifierWitness,
+    /// A requirement of an action reached by the value trace, at its source frame.
+    ActionRequirement {
+        frame: u16,
+        action: String,
+    },
+    /// An already asserted body; model-equal captures are recorded as conditions.
+    AssertedQuantifierBody,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -239,6 +246,20 @@ pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> Coun
         Some(context.formulas.quantifiers),
     );
     countermodel_relations::extend(&mut trace, context);
+    use crate::policy::effort::ActionRequirementGuidance;
+    if match context.allowance.guidance_action_requirements {
+        ActionRequirementGuidance::Disabled => false,
+        ActionRequirementGuidance::WhenUnproductive => {
+            !trace.budget_exhausted
+                && trace
+                    .nodes
+                    .iter()
+                    .all(|node| matches!(node.status, TraceStatus::Expanded | TraceStatus::Value))
+        }
+        ActionRequirementGuidance::Always => true,
+    } {
+        requirements::extend(&mut trace, context);
+    }
     trace
 }
 impl TraceStep {
@@ -398,6 +419,7 @@ pub(crate) fn append_trace(
                     | TraceReason::Initialization { .. }
                     | TraceReason::QuantifiedTransition { .. }
                     | TraceReason::QuantifierWitness
+                    | TraceReason::AssertedQuantifierBody
             ) && parent.is_some_and(|p| trace.nodes[p].model_value.as_ref() != Some(&value))
             {
                 node.status = TraceStatus::InconsistentStep;
@@ -600,3 +622,5 @@ mod term_text {
 
 #[cfg(test)]
 mod tests;
+
+mod requirements;

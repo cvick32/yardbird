@@ -83,6 +83,12 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
         .with_effort(
             DefaultEffort::default()
                 .with_countermodel_refinement(true)
+                .with_guidance_work(run.guidance_work.unwrap_or(1024))
+                .with_allowance(effort::WorkAllowance {
+                    guidance_action_requirements:
+                        effort::ActionRequirementGuidance::WhenUnproductive,
+                    ..Default::default()
+                })
                 .with_guidance_followup(followup)
                 .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
                 .with_winners_per_group(20),
@@ -204,6 +210,7 @@ mod tests {
             run.depth = 1;
             run.profile = true;
             run.guidance_schedule = schedule;
+            run.guidance_work = (schedule == effort::GuidanceSchedule::Supplement).then_some(4096);
             // Direct dispatch must work even without run.policy set.
             let plan = NamedPolicy::CountermodelGuided.build_plan(&run);
             let model = VMTModel::checked_from(
@@ -236,6 +243,10 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(record.effort[guided].allowance.unwrap().winners, 20);
+            assert_eq!(
+                record.effort[guided].allowance.unwrap().dependency_work,
+                run.guidance_work.unwrap_or(1024)
+            );
             let followup = record.effort.get(guided + 1);
             if schedule == effort::GuidanceSchedule::Supplement {
                 let followup =

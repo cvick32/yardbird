@@ -1,0 +1,20 @@
+; The only way to write a decision requires a vote, but initially no votes exist.
+(declare-fun votes () (Array Int Bool))
+(declare-fun votes_next () (Array Int Bool))
+(declare-fun decisions () (Array Int Bool))
+(declare-fun decisions_next () (Array Int Bool))
+(define-fun .votes () (Array Int Bool) (! votes :next votes_next))
+(define-fun .decisions () (Array Int Bool) (! decisions :next decisions_next))
+(declare-fun decide () Bool)
+(declare-fun idle () Bool)
+(define-fun .decide () Bool (! decide :action 0))
+(define-fun .idle () Bool (! idle :action 0))
+(define-fun init () Bool (! (and
+  (forall ((i Int)) (= (select votes i) false))
+  (= decisions ((as const (Array Int Bool)) false))) :init true))
+(define-fun trans () Bool (! (and
+  (= votes_next votes)
+  (=> decide (and (= decisions_next (store decisions 0 true)) (select votes 0)))
+  (=> idle (= decisions_next decisions))
+  (or decide idle) (not (and decide idle))) :trans true))
+(define-fun prop () Bool (! (not (select decisions 0)) :invar-property 0))

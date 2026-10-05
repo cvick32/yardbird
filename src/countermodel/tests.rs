@@ -311,6 +311,56 @@ impl crate::policy::instance_selection::InstantiationRanker for RejectTracedInst
     }
 }
 
+// DefaultEffort deliberately fixes guided work independently of its ordinary
+// allowance. Override the actual operation to test small guided budgets.
+struct GuidanceBudget {
+    inner: crate::policy::DefaultEffort,
+    work: usize,
+}
+impl crate::policy::effort::ProofEffort for GuidanceBudget {
+    fn uses_countermodel_refinement(&self) -> bool {
+        true
+    }
+    fn choose(
+        &mut self,
+        context: &crate::policy::effort::EffortContext<'_>,
+    ) -> crate::policy::effort::EffortDecision {
+        use crate::policy::effort::{EffortDecision, OperationKind};
+        let mut decision = self.inner.choose(context);
+        if let EffortDecision::Execute {
+            operation,
+            allowance,
+        } = &mut decision
+        {
+            if context
+                .operations
+                .iter()
+                .any(|op| op.id == *operation && op.kind == OperationKind::CountermodelCandidates)
+            {
+                allowance.dependency_work = self.work;
+            }
+        }
+        decision
+    }
+    fn choose_binder_rule(
+        &mut self,
+        context: &crate::policy::effort::BinderEffortContext<'_>,
+    ) -> Option<usize> {
+        self.inner.choose_binder_rule(context)
+    }
+    fn observe(&mut self, event: &crate::policy::effort::EffortEvent<'_>) {
+        self.inner.observe(event);
+    }
+    fn egraph_builder(
+        &self,
+    ) -> Box<dyn crate::theories::array::array_egraph_builder::ArrayEGraphBuilder> {
+        self.inner.egraph_builder()
+    }
+    fn requires_property_cone(&self) -> bool {
+        self.inner.requires_property_cone()
+    }
+}
+
 #[test]
 fn traced_axioms_reach_shared_ranking_and_installation_without_requiring_profiling() {
     use crate::{policy::term_selection::array::ArrayAstSize, SolverBackend, YardbirdOptions};
@@ -338,14 +388,11 @@ fn traced_axioms_reach_shared_ranking_and_installation_without_requiring_profili
     ] {
         let mut options = YardbirdOptions::from_filename("trace.vmt".into());
         options.profile = profile;
-        let mut policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
-            crate::policy::DefaultEffort::default()
-                .with_countermodel_refinement(true)
-                .with_allowance(crate::policy::effort::WorkAllowance {
-                    dependency_work: work,
-                    ..Default::default()
-                }),
-        );
+        let mut policy =
+            crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(GuidanceBudget {
+                inner: crate::policy::DefaultEffort::default().with_countermodel_refinement(true),
+                work,
+            });
         if reject {
             policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
         }
@@ -980,4 +1027,120 @@ fn guided_and_standard_candidates_can_be_installed_in_one_pass() {
                 && record.installations.len() == pair[0].report.selected + pair[1].report.selected
         })
     }));
+}
+
+#[test]
+fn action_requirements_obey_effort_and_ranking_without_profiling() {
+    use crate::{
+        policy::{
+            effort::{ActionRequirementGuidance, WorkAllowance},
+            term_selection::array::ArrayAstSize,
+        },
+        SolverBackend, YardbirdOptions,
+    };
+    let input = include_str!("../../tests/fixtures/action_requirement_trace.vmt");
+    let mut profiled_count = None;
+    for (profile, mode, reject, work) in [
+        (
+            true,
+            ActionRequirementGuidance::WhenUnproductive,
+            false,
+            1024,
+        ),
+        (
+            false,
+            ActionRequirementGuidance::WhenUnproductive,
+            false,
+            1024,
+        ),
+        (true, ActionRequirementGuidance::Always, false, 1024),
+        (true, ActionRequirementGuidance::Disabled, false, 1024),
+        (true, ActionRequirementGuidance::Always, true, 1024),
+        (true, ActionRequirementGuidance::Always, false, 32),
+    ] {
+        let mut options = YardbirdOptions::from_filename("requirements.vmt".into());
+        options.profile = profile;
+        let mut policy =
+            crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(GuidanceBudget {
+                inner: crate::policy::DefaultEffort::default()
+                    .with_countermodel_refinement(true)
+                    .with_allowance(WorkAllowance {
+                        guidance_action_requirements: mode,
+                        ..Default::default()
+                    }),
+                work,
+            });
+        if reject {
+            policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
+        }
+        let strategy = crate::strategies::Abstract::new(3, false, policy, profile);
+        let mut driver = crate::Driver::new(
+            model(input),
+            options.build_instantiation_strategy(),
+            SolverBackend::Z3,
+        )
+        .with_profiler(options.build_profiler())
+        .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+        let result = driver.check_strategy(3, Box::new(strategy)).unwrap();
+        assert_eq!(
+            result
+                .run_progress
+                .as_ref()
+                .unwrap()
+                .deepest_completed_depth,
+            Some(2)
+        );
+        assert!(!result.counterexample);
+        if !profile {
+            assert_eq!(profiled_count, Some(result.total_instantiations_added));
+            continue;
+        }
+        let mut reached = 0;
+        let mut exhausted = 0;
+        let mut selected = 0;
+        for record in &result.profiling.cost_records {
+            let Some(trace) = &record.countermodel_trace else {
+                continue;
+            };
+            assert!(trace.work <= work);
+            exhausted += usize::from(trace.budget_exhausted);
+            assert!(!trace.nodes.iter().any(|node| matches!(
+                node.status,
+                TraceStatus::InconsistentStep | TraceStatus::EvaluationFailed { .. }
+            )));
+            for effort in &record.effort {
+                if effort.operation != "CountermodelCandidates" {
+                    continue;
+                }
+                for candidate in &effort.candidates {
+                    let Some(origin) = &candidate.countermodel_origin else {
+                        continue;
+                    };
+                    assert_eq!(origin.model_version, trace.model_version);
+                    let mut cursor = Some(origin.node);
+                    while let Some(id) = cursor {
+                        let node = &trace.nodes[id];
+                        if matches!(&node.reason, TraceReason::ActionRequirement { action, .. } if action == "decide")
+                        {
+                            reached += 1;
+                            selected += usize::from(candidate.selected);
+                            break;
+                        }
+                        cursor = node.parent;
+                    }
+                }
+            }
+        }
+        if work == 32 {
+            assert!(exhausted > 0);
+        } else if mode == ActionRequirementGuidance::Disabled {
+            assert_eq!(reached, 0);
+        } else {
+            assert!(reached > 0);
+            assert_eq!(selected == 0, reject);
+        }
+        if mode == ActionRequirementGuidance::WhenUnproductive {
+            profiled_count = Some(result.total_instantiations_added);
+        }
+    }
 }
