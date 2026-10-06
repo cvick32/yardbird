@@ -229,6 +229,18 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guidance_work: Option<usize>,
 
+    /// Order of quantified transition explanations (default: predecessor-first).
+    /// Requires --policy countermodel-guided.
+    #[arg(long, value_enum, requires = "policy")]
+    #[serde(default)]
+    pub guidance_transition_order: Option<policy::effort::GuidanceTransitionOrder>,
+
+    /// When to trace action requirements (default: when-unproductive).
+    /// Requires --policy countermodel-guided.
+    #[arg(long, value_enum, requires = "policy")]
+    #[serde(default)]
+    pub guidance_action_requirements: Option<policy::effort::ActionRequirementGuidance>,
+
     /// Try array and background axioms before the standard refinement search.
     /// Bounded per model; VMT abstract strategy only. Off is the baseline.
     #[arg(long, default_value_t = false)]
@@ -325,6 +337,8 @@ impl Default for YardbirdOptions {
             countermodel_trace_work: 0,
             guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
             guidance_work: None,
+            guidance_transition_order: None,
+            guidance_action_requirements: None,
             prefer_axioms: false,
             solver_capture_dir: None,
             record_decisions: false,
@@ -492,6 +506,12 @@ impl YardbirdOptions {
 
     /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
     pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        if self.guidance_transition_order.is_some() || self.guidance_action_requirements.is_some() {
+            anyhow::ensure!(
+                self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+                "guidance transition order and action requirements require --policy countermodel-guided"
+            );
+        }
         if let Some(work) = self.guidance_work {
             anyhow::ensure!(
                 self.policy == Some(policy::NamedPolicy::CountermodelGuided) && work > 0,
@@ -1151,6 +1171,61 @@ mod option_tests {
                 .guidance_work,
             None
         );
+    }
+
+    #[test]
+    fn guidance_order_and_requirements_cli_validate_policy_and_spelling() {
+        for (flag, values) in [
+            (
+                "--guidance-transition-order",
+                ["predecessor-only", "predecessor-first", "current-first"],
+            ),
+            (
+                "--guidance-action-requirements",
+                ["disabled", "when-unproductive", "always"],
+            ),
+        ] {
+            for value in values {
+                assert!(YardbirdOptions::try_parse_from([
+                    "yardbird",
+                    "-f",
+                    "input.vmt",
+                    flag,
+                    value
+                ])
+                .is_err());
+                for (policy, valid) in [("countermodel-guided", true), ("german-fast", false)] {
+                    let options = YardbirdOptions::try_parse_from([
+                        "yardbird",
+                        "-f",
+                        "input.vmt",
+                        "--policy",
+                        policy,
+                        flag,
+                        value,
+                    ])
+                    .unwrap();
+                    assert_eq!(options.validate_countermodel_trace_options().is_ok(), valid);
+                }
+            }
+            assert!(YardbirdOptions::try_parse_from([
+                "yardbird",
+                "-f",
+                "input.vmt",
+                "--policy",
+                "countermodel-guided",
+                flag,
+                "misspelled"
+            ])
+            .is_err());
+        }
+        let mut old = serde_json::to_value(YardbirdOptions::default()).unwrap();
+        for key in ["guidance_transition_order", "guidance_action_requirements"] {
+            old.as_object_mut().unwrap().remove(key);
+        }
+        let decoded: YardbirdOptions = serde_json::from_value(old).unwrap();
+        assert!(decoded.guidance_transition_order.is_none());
+        assert!(decoded.guidance_action_requirements.is_none());
     }
 
     #[test]

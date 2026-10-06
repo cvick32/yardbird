@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use yardbird::{
     auxiliary_synthesis::AuxSynthesisConfig,
-    policy::{effort::GuidanceSchedule, NamedPolicy},
+    policy::{
+        effort::{ActionRequirementGuidance, GuidanceSchedule, GuidanceTransitionOrder},
+        NamedPolicy,
+    },
     solver::PropertyCheckMode,
     CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, InstantiationStrategyType,
     SolverBackend, Strategy, YardbirdOptions,
@@ -84,6 +87,12 @@ pub struct ParameterMatrix {
     /// Only valid for countermodel-guided; omitted means immediate.
     #[serde(default, with = "optional_value_enum")]
     pub guidance_schedule: Option<GuidanceSchedule>,
+    #[serde(default)]
+    pub guidance_work: Option<usize>,
+    #[serde(default, with = "optional_value_enum")]
+    pub guidance_transition_order: Option<GuidanceTransitionOrder>,
+    #[serde(default, with = "optional_value_enum")]
+    pub guidance_action_requirements: Option<ActionRequirementGuidance>,
     #[serde(default)]
     pub prefer_axioms: bool,
     pub depths: Vec<u16>,
@@ -170,6 +179,12 @@ pub struct IndividualConfig {
     #[serde(default, with = "optional_value_enum")]
     pub guidance_schedule: Option<GuidanceSchedule>,
     #[serde(default)]
+    pub guidance_work: Option<usize>,
+    #[serde(default, with = "optional_value_enum")]
+    pub guidance_transition_order: Option<GuidanceTransitionOrder>,
+    #[serde(default, with = "optional_value_enum")]
+    pub guidance_action_requirements: Option<ActionRequirementGuidance>,
+    #[serde(default)]
     pub prefer_axioms: bool,
     pub name: String,
     pub depth: u16,
@@ -253,6 +268,9 @@ pub struct BenchmarkConfig {
 pub struct BenchmarkRun {
     pub policy: Option<NamedPolicy>,
     pub guidance_schedule: Option<GuidanceSchedule>,
+    pub guidance_work: Option<usize>,
+    pub guidance_transition_order: Option<GuidanceTransitionOrder>,
+    pub guidance_action_requirements: Option<ActionRequirementGuidance>,
     pub prefer_axioms: bool,
     pub name: String,
     pub depth: u16,
@@ -364,6 +382,9 @@ impl BenchmarkConfig {
                     policy: config.policy,
                     guidance_schedule: config.guidance_schedule,
                     prefer_axioms: config.prefer_axioms,
+                    guidance_work: config.guidance_work,
+                    guidance_transition_order: config.guidance_transition_order,
+                    guidance_action_requirements: config.guidance_action_requirements,
                     depth: config.depth,
                     solver: config.solver,
                     strategy: config.strategy,
@@ -399,6 +420,9 @@ impl BenchmarkConfig {
                 filename: Some("benchmark.vmt".into()),
                 policy: run.policy,
                 prefer_axioms: run.prefer_axioms,
+                guidance_work: run.guidance_work,
+                guidance_transition_order: run.guidance_transition_order,
+                guidance_action_requirements: run.guidance_action_requirements,
                 solver: run.solver,
                 strategy: run.strategy,
                 guarded_read_updates: run.guarded_read_updates,
@@ -457,6 +481,11 @@ impl BenchmarkConfig {
                                                 policy: matrix.policy,
                                                 guidance_schedule: matrix.guidance_schedule,
                                                 prefer_axioms: matrix.prefer_axioms,
+                                                guidance_work: matrix.guidance_work,
+                                                guidance_transition_order: matrix
+                                                    .guidance_transition_order,
+                                                guidance_action_requirements: matrix
+                                                    .guidance_action_requirements,
                                                 depth,
                                                 solver,
                                                 strategy,
@@ -509,6 +538,15 @@ mod tests {
     fn rejects_unsupported_guidance_configurations() {
         for fields in [
             "guidance_schedule: supplement",
+            "guidance_work: 256",
+            "guidance_transition_order: current-first",
+            "guidance_action_requirements: always",
+            "policy: german-fast\n    guidance_work: 256",
+            "policy: german-fast\n    guidance_transition_order: predecessor-only",
+            "policy: german-fast\n    guidance_action_requirements: disabled",
+            "policy: countermodel-guided\n    guidance_work: 0",
+            "policy: countermodel-guided\n    guidance_transition_order: misspelled",
+            "policy: countermodel-guided\n    guidance_action_requirements: misspelled",
             "policy: german-fast\n    guidance_schedule: immediate",
             "policy: countermodel-guided\n    solvers: [cvc5]",
             "policy: misspelled-policy",

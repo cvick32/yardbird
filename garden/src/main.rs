@@ -160,6 +160,18 @@ struct StrategyResult {
         skip_serializing_if = "Option::is_none"
     )]
     guidance_schedule: Option<yardbird::policy::effort::GuidanceSchedule>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guidance_work: Option<usize>,
+    #[serde(
+        with = "config::optional_value_enum",
+        skip_serializing_if = "Option::is_none"
+    )]
+    guidance_transition_order: Option<yardbird::policy::effort::GuidanceTransitionOrder>,
+    #[serde(
+        with = "config::optional_value_enum",
+        skip_serializing_if = "Option::is_none"
+    )]
+    guidance_action_requirements: Option<yardbird::policy::effort::ActionRequirementGuidance>,
     prefer_axioms: bool,
     solver: yardbird::SolverBackend,
     strategy: yardbird::Strategy,
@@ -474,31 +486,46 @@ fn run_single(
     }
 
     match status_code {
-        Some(result) => Ok(StrategyResult {
-            policy: options.policy,
-            prefer_axioms: options.prefer_axioms,
-            guidance_schedule: (options.policy
-                == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
-            .then_some(options.guidance_schedule),
-            solver: options.solver,
-            strategy: options.strategy,
-            result,
-            cost_function: options.cost_function,
-            egraph_builder: options.egraph_builder,
-            instantiation_ranker: options.instantiation_ranker,
-            candidate_winners_per_group: options.candidate_winners_per_group,
-            property_check_mode: options.property_check_mode,
-            instantiation_strategy: options.instantiation_strategy,
-            preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
-            abstract_recurrent_products: options.abstract_recurrent_products,
-            guarded_read_updates: options.guarded_read_updates,
-            auxiliary_synthesis,
-            run_time: run_time.as_millis(),
-            run_progress,
-            depth: options.depth,
-            record_decisions: options.record_decisions || options.train,
-            solver_capture_dir: options.solver_capture_dir,
-        }),
+        Some(result) => {
+            Ok(StrategyResult {
+                policy: options.policy,
+                prefer_axioms: options.prefer_axioms,
+                guidance_work: (options.policy
+                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
+                .then_some(options.guidance_work.unwrap_or(1024)),
+                guidance_transition_order: (options.policy
+                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
+                .then_some(options.guidance_transition_order.unwrap_or(
+                    yardbird::policy::effort::GuidanceTransitionOrder::PredecessorFirst,
+                )),
+                guidance_action_requirements: (options.policy
+                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
+                .then_some(options.guidance_action_requirements.unwrap_or(
+                    yardbird::policy::effort::ActionRequirementGuidance::WhenUnproductive,
+                )),
+                guidance_schedule: (options.policy
+                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
+                .then_some(options.guidance_schedule),
+                solver: options.solver,
+                strategy: options.strategy,
+                result,
+                cost_function: options.cost_function,
+                egraph_builder: options.egraph_builder,
+                instantiation_ranker: options.instantiation_ranker,
+                candidate_winners_per_group: options.candidate_winners_per_group,
+                property_check_mode: options.property_check_mode,
+                instantiation_strategy: options.instantiation_strategy,
+                preprocess_exact_read_after_write: options.preprocess_exact_read_after_write,
+                abstract_recurrent_products: options.abstract_recurrent_products,
+                guarded_read_updates: options.guarded_read_updates,
+                auxiliary_synthesis,
+                run_time: run_time.as_millis(),
+                run_progress,
+                depth: options.depth,
+                record_decisions: options.record_decisions || options.train,
+                solver_capture_dir: options.solver_capture_dir,
+            })
+        }
         None => Err(anyhow!("Failed to run")),
     }
 }
@@ -710,6 +737,9 @@ fn configured_yardbird_options(
         policy: run.policy,
         prefer_axioms: run.prefer_axioms,
         guidance_schedule: run.guidance_schedule.unwrap_or_default(),
+        guidance_work: run.guidance_work,
+        guidance_transition_order: run.guidance_transition_order,
+        guidance_action_requirements: run.guidance_action_requirements,
         filename: Some(filename.to_string()),
         depth: run.depth,
         strategy: run.strategy,
@@ -1064,8 +1094,13 @@ mod tests {
                 .map(|value| format!("    guidance_schedule: {value}\n"))
                 .unwrap_or_default();
             for prefer in [false, true] {
+                let guidance_yaml = if schedule.is_some() {
+                    "    guidance_work: 256\n    guidance_transition_order: current-first\n    guidance_action_requirements: always\n"
+                } else {
+                    ""
+                };
                 let fields =
-                    format!("    policy: {policy}\n{schedule_yaml}    prefer_axioms: {prefer}\n");
+                    format!("    policy: {policy}\n{schedule_yaml}{guidance_yaml}    prefer_axioms: {prefer}\n");
                 let sections = [
                     format!("parameter_matrices:\n  test:\n    depths: [1]\n    strategies: [abstract]\n    cost_functions: [bmc-cost]\n{fields}"),
                     format!("individual_configs:\n  - name: test\n    depth: 1\n    strategy: abstract\n    cost_function: bmc-cost\n{fields}"),
@@ -1094,6 +1129,18 @@ mod tests {
                     };
                     assert_eq!(written.policy, Some(expected));
                     assert_eq!(written.prefer_axioms, prefer);
+                    assert_eq!(written.guidance_work, schedule.map(|_| 256));
+                    assert_eq!(
+                        written.guidance_transition_order,
+                        schedule.map(|_| {
+                            yardbird::policy::effort::GuidanceTransitionOrder::CurrentFirst
+                        })
+                    );
+                    assert_eq!(
+                        written.guidance_action_requirements,
+                        schedule
+                            .map(|_| yardbird::policy::effort::ActionRequirementGuidance::Always)
+                    );
                     assert_eq!(
                         written.guidance_schedule,
                         if schedule == Some("supplement") {
@@ -1104,6 +1151,59 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn scheduling_experiments_reach_subprocess_options_as_distinct_configurations() {
+        let config: super::BenchmarkConfig =
+            serde_yaml::from_str(include_str!("../protocol_scheduling_config.yaml")).unwrap();
+        assert_eq!(config.parameter_matrices.len(), 13);
+        let garden = GardenOptions::try_parse_from(["garden", "--config", "unused.yaml"]).unwrap();
+        let mut identities = std::collections::HashSet::new();
+        for name in config.parameter_matrices.keys() {
+            let runs = config.generate_benchmark_runs(Some(name)).unwrap();
+            assert_eq!(runs.len(), 1);
+            let run = &runs[0];
+            assert_eq!(run.depth, 20);
+            assert_eq!(run.timeout_seconds, 500);
+            let options =
+                super::configured_yardbird_options("input.vmt", run, &garden, &None, None);
+            let directory = tempfile::tempdir().unwrap();
+            let path = write_options_json(
+                &options,
+                &directory.path().join("progress.json"),
+                directory.path(),
+            )
+            .unwrap();
+            let written: YardbirdOptions =
+                serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+            assert_eq!(written.guidance_work, run.guidance_work);
+            assert_eq!(
+                written.guidance_transition_order,
+                run.guidance_transition_order
+            );
+            assert_eq!(
+                written.guidance_action_requirements,
+                run.guidance_action_requirements
+            );
+            assert_eq!(written.prefer_axioms, run.prefer_axioms);
+            assert!(
+                identities.insert(format!(
+                    "{:?}",
+                    (
+                        written.policy,
+                        written.strategy,
+                        written.candidate_winners_per_group,
+                        written.guidance_schedule,
+                        written.guidance_work,
+                        written.guidance_transition_order,
+                        written.guidance_action_requirements,
+                        written.prefer_axioms
+                    )
+                )),
+                "duplicate experiment: {name}"
+            );
         }
     }
 

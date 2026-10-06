@@ -88,9 +88,12 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
                 .with_countermodel_refinement(true)
                 .with_guidance_work(run.guidance_work.unwrap_or(1024))
                 .with_allowance(effort::WorkAllowance {
-                    guidance_action_requirements:
-                        effort::ActionRequirementGuidance::WhenUnproductive,
-                    guidance_transition_order: effort::GuidanceTransitionOrder::PredecessorFirst,
+                    guidance_action_requirements: run
+                        .guidance_action_requirements
+                        .unwrap_or(effort::ActionRequirementGuidance::WhenUnproductive),
+                    guidance_transition_order: run
+                        .guidance_transition_order
+                        .unwrap_or(effort::GuidanceTransitionOrder::PredecessorFirst),
                     ..Default::default()
                 })
                 .with_guidance_followup(followup)
@@ -215,6 +218,10 @@ mod tests {
             run.profile = true;
             run.guidance_schedule = schedule;
             run.guidance_work = (schedule == effort::GuidanceSchedule::Supplement).then_some(4096);
+            if schedule == effort::GuidanceSchedule::Supplement {
+                run.guidance_transition_order = Some(effort::GuidanceTransitionOrder::CurrentFirst);
+                run.guidance_action_requirements = Some(effort::ActionRequirementGuidance::Always);
+            }
             // Direct dispatch must work even without run.policy set.
             let plan = NamedPolicy::CountermodelGuided.build_plan(&run);
             let model = VMTModel::checked_from(
@@ -250,6 +257,22 @@ mod tests {
             assert_eq!(
                 record.effort[guided].allowance.unwrap().dependency_work,
                 run.guidance_work.unwrap_or(1024)
+            );
+            assert_eq!(
+                record.effort[guided]
+                    .allowance
+                    .unwrap()
+                    .guidance_transition_order,
+                run.guidance_transition_order
+                    .unwrap_or(effort::GuidanceTransitionOrder::PredecessorFirst)
+            );
+            assert_eq!(
+                record.effort[guided]
+                    .allowance
+                    .unwrap()
+                    .guidance_action_requirements,
+                run.guidance_action_requirements
+                    .unwrap_or(effort::ActionRequirementGuidance::WhenUnproductive)
             );
             let followup = record.effort.get(guided + 1);
             if schedule == effort::GuidanceSchedule::Supplement {

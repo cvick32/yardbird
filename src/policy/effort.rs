@@ -14,7 +14,7 @@ pub enum GuidanceSchedule {
 }
 
 /// When to extend value tracing through the requirements of reached actions.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionRequirementGuidance {
     #[default]
     Disabled,
@@ -25,7 +25,7 @@ pub enum ActionRequirementGuidance {
 }
 
 /// Order of quantified equations used to explain a demanded array read.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GuidanceTransitionOrder {
     /// Use initialization and incoming transitions only (legacy behavior).
     #[default]
