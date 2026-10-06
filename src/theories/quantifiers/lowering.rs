@@ -615,6 +615,7 @@ pub(super) fn lower_model_with_arrays(
     let mut declarations = lowerer.declarations;
     declarations.extend(lowered);
     let model = VMTModel::checked_from(declarations)?;
+    let background_rules = background_rules(&model, &lowerer.rules);
     for rule in &mut lowerer.rules {
         for (_, sort) in rule.captures.iter_mut().chain(&mut rule.variables) {
             *sort = prepared_sort(sort);
@@ -637,10 +638,95 @@ pub(super) fn lower_model_with_arrays(
         model,
         QuantifierPlan {
             rules: lowerer.rules,
+            background_rules,
             native_binders: lowerer.native_binders,
             signatures,
             seeds,
             compiled: Default::default(),
         },
     ))
+}
+
+/// Classify by source reachability rather than diagnostic provenance or names.
+fn background_rules(model: &VMTModel, rules: &[BinderRule]) -> HashSet<String> {
+    let mut definitions = model
+        .as_commands()
+        .into_iter()
+        .filter_map(|command| match command {
+            Command::DefineFun { sig, term } => Some((
+                sig.name.0,
+                (
+                    term,
+                    sig.parameters
+                        .into_iter()
+                        .map(|(name, _)| name.0)
+                        .collect::<HashSet<_>>(),
+                ),
+            )),
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+    definitions.extend(rules.iter().map(|r| {
+        (
+            r.name.clone(),
+            (
+                r.body.clone(),
+                r.captures
+                    .iter()
+                    .chain(&r.variables)
+                    .map(|(name, _)| name.0.clone())
+                    .collect::<HashSet<_>>(),
+            ),
+        )
+    }));
+    let helpers = rules
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect::<HashSet<_>>();
+    let mut queue = model
+        .get_axioms()
+        .into_iter()
+        .map(|t| (t, HashSet::<String>::new()))
+        .collect::<Vec<_>>();
+    let mut visited = HashSet::new();
+    let mut result = HashSet::new();
+    while let Some((term, bound)) = queue.pop() {
+        let name = match term {
+            Term::Application {
+                qual_identifier,
+                arguments,
+            } => {
+                queue.extend(arguments.into_iter().map(|t| (t, bound.clone())));
+                Some(qual_identifier.get_name())
+            }
+            Term::QualIdentifier(id) => Some(id.get_name()),
+            Term::Attributes { term, .. } => {
+                queue.push((*term, bound.clone()));
+                None
+            }
+            Term::Let { var_bindings, term } => {
+                let mut body_bound = bound.clone();
+                for (name, value) in var_bindings {
+                    queue.push((value, bound.clone()));
+                    body_bound.insert(name.0);
+                }
+                queue.push((*term, body_bound));
+                None
+            }
+            _ => None,
+        };
+        if let Some(name) = name.filter(|n| !bound.contains(n) && visited.insert(n.clone())) {
+            if helpers.contains(name.as_str()) {
+                result.insert(
+                    crate::rule_matching::rule::QuantifiedRule::input_binder(&name)
+                        .name()
+                        .to_owned(),
+                );
+            }
+            if let Some(body) = definitions.get(&name) {
+                queue.push(body.clone());
+            }
+        }
+    }
+    result
 }

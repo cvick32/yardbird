@@ -84,6 +84,8 @@ pub struct ParameterMatrix {
     /// Only valid for countermodel-guided; omitted means immediate.
     #[serde(default, with = "optional_value_enum")]
     pub guidance_schedule: Option<GuidanceSchedule>,
+    #[serde(default)]
+    pub prefer_axioms: bool,
     pub depths: Vec<u16>,
     #[serde(default = "default_solvers")]
     pub solvers: Vec<SolverBackend>,
@@ -167,6 +169,8 @@ pub struct IndividualConfig {
     /// Only valid for countermodel-guided; omitted means immediate.
     #[serde(default, with = "optional_value_enum")]
     pub guidance_schedule: Option<GuidanceSchedule>,
+    #[serde(default)]
+    pub prefer_axioms: bool,
     pub name: String,
     pub depth: u16,
     #[serde(default = "default_solver")]
@@ -249,6 +253,7 @@ pub struct BenchmarkConfig {
 pub struct BenchmarkRun {
     pub policy: Option<NamedPolicy>,
     pub guidance_schedule: Option<GuidanceSchedule>,
+    pub prefer_axioms: bool,
     pub name: String,
     pub depth: u16,
     pub solver: SolverBackend,
@@ -358,6 +363,7 @@ impl BenchmarkConfig {
                     name: config.name.clone(),
                     policy: config.policy,
                     guidance_schedule: config.guidance_schedule,
+                    prefer_axioms: config.prefer_axioms,
                     depth: config.depth,
                     solver: config.solver,
                     strategy: config.strategy,
@@ -392,6 +398,7 @@ impl BenchmarkConfig {
                 // Garden discovers VMT inputs; validate policy compatibility before running them.
                 filename: Some("benchmark.vmt".into()),
                 policy: run.policy,
+                prefer_axioms: run.prefer_axioms,
                 solver: run.solver,
                 strategy: run.strategy,
                 guarded_read_updates: run.guarded_read_updates,
@@ -400,6 +407,7 @@ impl BenchmarkConfig {
             options
                 .validate_guarded_read_updates()
                 .and_then(|_| options.validate_countermodel_trace_options())
+                .and_then(|_| options.validate_prefer_axioms_options())
                 .with_context(|| format!("Invalid benchmark configuration: {}", run.name))?;
         }
 
@@ -448,6 +456,7 @@ impl BenchmarkConfig {
                                                 ),
                                                 policy: matrix.policy,
                                                 guidance_schedule: matrix.guidance_schedule,
+                                                prefer_axioms: matrix.prefer_axioms,
                                                 depth,
                                                 solver,
                                                 strategy,

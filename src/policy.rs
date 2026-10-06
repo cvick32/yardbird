@@ -6,6 +6,7 @@
 pub mod eager;
 pub mod effort;
 pub mod instance_selection;
+mod prefer_axioms;
 pub mod term_selection;
 use crate::auxiliary_synthesis::ConditionalHistory;
 use crate::instance_installation::full_unroll::FullUnrollStrategy;
@@ -44,6 +45,7 @@ fn run_german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker))
         .with_effort(
             DefaultEffort::default()
+                .with_prefer_axioms(run.prefer_axioms)
                 .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
                 .with_winners_per_group(20),
         );
@@ -82,6 +84,7 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
         .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker))
         .with_effort(
             DefaultEffort::default()
+                .with_prefer_axioms(run.prefer_axioms)
                 .with_countermodel_refinement(true)
                 .with_guidance_work(run.guidance_work.unwrap_or(1024))
                 .with_allowance(effort::WorkAllowance {

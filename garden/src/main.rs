@@ -160,6 +160,7 @@ struct StrategyResult {
         skip_serializing_if = "Option::is_none"
     )]
     guidance_schedule: Option<yardbird::policy::effort::GuidanceSchedule>,
+    prefer_axioms: bool,
     solver: yardbird::SolverBackend,
     strategy: yardbird::Strategy,
     cost_function: yardbird::CostFunction,
@@ -475,6 +476,7 @@ fn run_single(
     match status_code {
         Some(result) => Ok(StrategyResult {
             policy: options.policy,
+            prefer_axioms: options.prefer_axioms,
             guidance_schedule: (options.policy
                 == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
             .then_some(options.guidance_schedule),
@@ -706,6 +708,7 @@ fn configured_yardbird_options(
 ) -> YardbirdOptions {
     YardbirdOptions {
         policy: run.policy,
+        prefer_axioms: run.prefer_axioms,
         guidance_schedule: run.guidance_schedule.unwrap_or_default(),
         filename: Some(filename.to_string()),
         depth: run.depth,
@@ -1060,28 +1063,46 @@ mod tests {
             let schedule_yaml = schedule
                 .map(|value| format!("    guidance_schedule: {value}\n"))
                 .unwrap_or_default();
-            for section in [
-                format!("parameter_matrices:\n  test:\n    depths: [1]\n    strategies: [abstract]\n    cost_functions: [bmc-cost]\n    policy: {policy}\n{schedule_yaml}"),
-                format!("individual_configs:\n  - name: test\n    depth: 1\n    strategy: abstract\n    cost_function: bmc-cost\n    policy: {policy}\n{schedule_yaml}"),
-            ] {
-                let config: super::BenchmarkConfig = serde_yaml::from_str(&section).unwrap();
-                let run = config.generate_benchmark_runs(None).unwrap().remove(0);
-                let garden = GardenOptions::try_parse_from(["garden", "--config", "unused.yaml"]).unwrap();
-                let options = super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
-                let directory = tempfile::tempdir().unwrap();
-                let path = write_options_json(&options, &directory.path().join("progress.json"), directory.path()).unwrap();
-                let written: YardbirdOptions = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-                let expected = if policy == "german-fast" {
-                    yardbird::policy::NamedPolicy::GermanFast
-                } else {
-                    yardbird::policy::NamedPolicy::CountermodelGuided
-                };
-                assert_eq!(written.policy, Some(expected));
-                assert_eq!(written.guidance_schedule, if schedule == Some("supplement") {
-                    yardbird::policy::effort::GuidanceSchedule::Supplement
-                } else {
-                    yardbird::policy::effort::GuidanceSchedule::Immediate
-                });
+            for prefer in [false, true] {
+                let fields =
+                    format!("    policy: {policy}\n{schedule_yaml}    prefer_axioms: {prefer}\n");
+                let sections = [
+                    format!("parameter_matrices:\n  test:\n    depths: [1]\n    strategies: [abstract]\n    cost_functions: [bmc-cost]\n{fields}"),
+                    format!("individual_configs:\n  - name: test\n    depth: 1\n    strategy: abstract\n    cost_function: bmc-cost\n{fields}"),
+                ];
+                for section in sections {
+                    let config: super::BenchmarkConfig = serde_yaml::from_str(&section).unwrap();
+                    let run = config.generate_benchmark_runs(None).unwrap().remove(0);
+                    let garden =
+                        GardenOptions::try_parse_from(["garden", "--config", "unused.yaml"])
+                            .unwrap();
+                    let options =
+                        super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
+                    let directory = tempfile::tempdir().unwrap();
+                    let path = write_options_json(
+                        &options,
+                        &directory.path().join("progress.json"),
+                        directory.path(),
+                    )
+                    .unwrap();
+                    let written: YardbirdOptions =
+                        serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+                    let expected = if policy == "german-fast" {
+                        yardbird::policy::NamedPolicy::GermanFast
+                    } else {
+                        yardbird::policy::NamedPolicy::CountermodelGuided
+                    };
+                    assert_eq!(written.policy, Some(expected));
+                    assert_eq!(written.prefer_axioms, prefer);
+                    assert_eq!(
+                        written.guidance_schedule,
+                        if schedule == Some("supplement") {
+                            yardbird::policy::effort::GuidanceSchedule::Supplement
+                        } else {
+                            yardbird::policy::effort::GuidanceSchedule::Immediate
+                        }
+                    );
+                }
             }
         }
     }

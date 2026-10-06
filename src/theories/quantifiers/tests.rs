@@ -1327,3 +1327,53 @@ fn binder_pages_skip_completed_rules() {
     assert_eq!(finished.report.rounds, 0);
     assert!(!cursor.can_continue());
 }
+
+#[test]
+fn background_classification_follows_definitions_and_nested_binders_without_profiling() {
+    let input = model(
+        r#"
+      (declare-sort node 0)
+      (declare-sort quorum 0)
+      (declare-fun member (node quorum) Bool)
+      (declare-fun state (node) Bool)
+      (define-fun background () Bool
+        (forall ((q quorum)) (exists ((n node)) (member n q))))
+      (assert background)
+      (define-fun init () Bool (! (forall ((n node)) (state n)) :init true))
+      (define-fun trans () Bool (! true :trans true))
+      (define-fun prop () Bool (! true :invar-property 0))
+    "#,
+    );
+    let mut sets = vec![];
+    for capture in [false, true] {
+        let (scoped, mut provenance) = provenance::scope_model(input.clone(), capture).unwrap();
+        let (_, plan) = lower_model_with_provenance(scoped, &mut provenance).unwrap();
+        assert_eq!(plan.background_rules.len(), 2);
+        for rule in &plan.rules {
+            let classified = plan
+                .background_rules
+                .contains(QuantifiedRule::input_binder(&rule.name).name());
+            assert_eq!(classified, !rule.body.to_string().contains("state"));
+        }
+        sets.push(plan.background_rules);
+    }
+    assert_eq!(sets[0], sets[1]);
+}
+
+#[test]
+fn background_classification_respects_definition_parameter_shadowing() {
+    let input = model(
+        r#"
+      (declare-fun relation (Int) Bool)
+      (define-fun hidden () Bool (forall ((i Int)) (relation i)))
+      (define-fun identity ((hidden Bool)) Bool hidden)
+      (assert (identity true))
+      (define-fun init () Bool (! true :init true))
+      (define-fun trans () Bool (! true :trans true))
+      (define-fun prop () Bool (! true :invar-property 0))
+    "#,
+    );
+    let (_, plan) = lower_model(input).unwrap();
+    assert!(!plan.rules.is_empty());
+    assert!(plan.background_rules.is_empty());
+}

@@ -127,6 +127,32 @@ Library callers select `yardbird::policy::NamedPolicy::GermanFast` and call
 `build_plan(&run_options)`. The returned plan supplies the solver, instantiation
 strategy, proof strategy and optional synthesis extension to execute.
 
+For an axiom-first ablation, add `--prefer-axioms` to the abstract VMT strategy
+or either named policy. Each solver model gets a bounded pass over array axioms
+and quantified background assertions before the existing search resumes:
+
+```bash
+# Standard search order
+yardbird -f problem.vmt --policy countermodel-guided --guidance-schedule supplement
+# Same settings, with array/background axioms tried first
+yardbird -f problem.vmt --policy countermodel-guided --guidance-schedule supplement --prefer-axioms
+```
+
+Background classification follows assertions through definitions and nested
+binders, including existential membership witnesses; initializer, transition,
+and property quantifiers remain in the standard search. The preferred pass uses
+existing matching, validation, ranking and installation, and attempts at most
+one page per background rule per phase (witnesses, then conflicts). It searches
+the available array vocabulary, expanding one stage if necessary. It does not
+saturate all axioms, and always yields to standard search even after selecting
+instances. Profiling is optional; this preference can help or hurt performance.
+
+The default is off. Garden individual configurations and parameter matrices
+accept `prefer_axioms: true` (omit it or use `false` for the baseline), and record
+it in subprocess options and results. Rust policies use
+`DefaultEffort::with_prefer_axioms(true)`. This knob is independent of guided
+trace size (`--guidance-work`, default 1024) and diagnostic tracing.
+
 The [historical experiment](plans/instantiation-prediction.md) used 40 winners;
 the current policy uses the locally selected value of 20. Neither setting
 promises the historical runtime after the policy redesign.

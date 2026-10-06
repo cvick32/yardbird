@@ -229,6 +229,12 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guidance_work: Option<usize>,
 
+    /// Try array and background axioms before the standard refinement search.
+    /// Bounded per model; VMT abstract strategy only. Off is the baseline.
+    #[arg(long, default_value_t = false)]
+    #[serde(default)]
+    pub prefer_axioms: bool,
+
     /// Write a replayable solver session and its metadata to this directory.
     #[arg(long)]
     pub solver_capture_dir: Option<PathBuf>,
@@ -319,6 +325,7 @@ impl Default for YardbirdOptions {
             countermodel_trace_work: 0,
             guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
             guidance_work: None,
+            prefer_axioms: false,
             solver_capture_dir: None,
             record_decisions: false,
             train: false,
@@ -462,6 +469,22 @@ impl YardbirdOptions {
             anyhow::bail!(
                 "SMT-LIB mode does not support --synthesis-trigger {} yet; use --synthesis-trigger off until strategy-based SMT-LIB sessions support auxiliary specs",
                 self.synthesis_trigger
+            );
+        }
+        Ok(())
+    }
+
+    /// Reject search scheduling preferences where no supported search runs.
+    pub fn validate_prefer_axioms_options(&self) -> anyhow::Result<()> {
+        if self.prefer_axioms {
+            anyhow::ensure!(
+                (self.policy.is_some() || matches!(self.strategy, Strategy::Abstract))
+                    && self
+                        .filename
+                        .as_deref()
+                        .is_some_and(|f| f.ends_with(".vmt"))
+                    && self.theory.legacy_theory() != Some(Theory::List),
+                "--prefer-axioms requires a VMT input and the abstract array/quantifier strategy"
             );
         }
         Ok(())
@@ -672,6 +695,7 @@ impl YardbirdOptions {
         let policy = YardbirdPolicy::new(cost_config)
             .with_effort(
                 crate::policy::DefaultEffort::default()
+                    .with_prefer_axioms(self.prefer_axioms)
                     .with_egraph_builder(self.build_array_egraph_builder())
                     .with_winners_per_group(self.candidate_winners_per_group),
             )
@@ -983,6 +1007,30 @@ impl Display for InstantiationStrategyType {
 #[cfg(test)]
 mod option_tests {
     use super::*;
+
+    #[test]
+    fn prefer_axioms_is_opt_in_and_rejects_unsupported_search_modes() {
+        let baseline = YardbirdOptions::from_filename("input.vmt".into());
+        assert!(!baseline.prefer_axioms);
+        let mut options =
+            YardbirdOptions::try_parse_from(["yardbird", "-f", "input.vmt", "--prefer-axioms"])
+                .unwrap();
+        assert!(options.prefer_axioms);
+        options.validate_prefer_axioms_options().unwrap();
+        options.strategy = Strategy::Concrete;
+        assert!(options.validate_prefer_axioms_options().is_err());
+        options.policy = Some(policy::NamedPolicy::GermanFast);
+        options.validate_prefer_axioms_options().unwrap();
+        options.filename = Some("input.smt2".into());
+        assert!(options.validate_prefer_axioms_options().is_err());
+        let mut old = serde_json::to_value(baseline).unwrap();
+        old.as_object_mut().unwrap().remove("prefer_axioms");
+        assert!(
+            !serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .prefer_axioms
+        );
+    }
 
     #[test]
     fn resolve_is_a_no_op_without_options_json() {

@@ -178,6 +178,7 @@ pub struct BinderEffortContext<'a> {
     pub phase: SearchPhase,
     pub pending_rules: &'a [(usize, String)],
     pub rule_count: usize,
+    pub background_rules: &'a HashSet<String>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct WorkReport {
@@ -253,6 +254,8 @@ enum Stage {
 /// alternate wider search/selection allowances with bounded vocabulary growth.
 /// Return after each pass so the driver can enforce external limits.
 pub struct DefaultEffort {
+    prefer_axioms: bool,
+    axiom_prefix: super::prefer_axioms::AxiomPrefix,
     countermodel_refinement: bool,
     guidance_work: usize,
     countermodel_model: Option<u64>,
@@ -276,6 +279,8 @@ pub struct DefaultEffort {
 impl Default for DefaultEffort {
     fn default() -> Self {
         Self {
+            prefer_axioms: false,
+            axiom_prefix: Default::default(),
             countermodel_refinement: false,
             guidance_work: 1024,
             countermodel_model: None,
@@ -299,6 +304,11 @@ impl Default for DefaultEffort {
     }
 }
 impl DefaultEffort {
+    /// Try a bounded array/background-axiom sweep before the standard schedule.
+    pub fn with_prefer_axioms(mut self, enabled: bool) -> Self {
+        self.prefer_axioms = enabled;
+        self
+    }
     /// After a successful guided batch, allow one bounded dependency search
     /// before installing the combined batch. None returns immediately instead.
     pub fn with_guidance_followup(mut self, allowance: Option<WorkAllowance>) -> Self {
@@ -389,6 +399,11 @@ impl ProofEffort for DefaultEffort {
     }
 
     fn choose(&mut self, context: &EffortContext<'_>) -> EffortDecision {
+        if self.prefer_axioms {
+            if let Some(decision) = self.axiom_prefix.choose(context, self.initial_allowance) {
+                return decision;
+            }
+        }
         if let Some(decision) = self.preempt(context) {
             return decision;
         }
@@ -451,6 +466,9 @@ impl ProofEffort for DefaultEffort {
         }
     }
     fn choose_binder_rule(&mut self, context: &BinderEffortContext<'_>) -> Option<usize> {
+        if self.axiom_prefix.active() {
+            return self.axiom_prefix.choose_binder_rule(context);
+        }
         let next = self.next_rule.get(&context.phase).copied().unwrap_or(0);
         context
             .pending_rules
@@ -461,6 +479,9 @@ impl ProofEffort for DefaultEffort {
             .map(|(i, _)| *i)
     }
     fn observe(&mut self, event: &EffortEvent<'_>) {
+        if self.axiom_prefix.observe(event) {
+            return;
+        }
         match event {
             EffortEvent::NewProblem => {
                 self.countermodel_model = None;

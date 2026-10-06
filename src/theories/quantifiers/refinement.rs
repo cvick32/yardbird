@@ -481,6 +481,7 @@ impl QuantifierRefinement {
                 phase,
                 pending_rules: &pending,
                 rule_count: prepared.rule_count(phase),
+                background_rules: &self.plan.background_rules,
             });
             let choice_elapsed_secs = choice_start
                 .map(|start| start.elapsed().as_secs_f64())

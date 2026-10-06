@@ -373,6 +373,9 @@ impl BinderRule {
 #[derive(Default)]
 pub(crate) struct QuantifierPlan {
     pub rules: Vec<BinderRule>,
+    /// Compiled rule identities reachable from background assertions, including
+    /// nested binders and binders inside referenced definitions. Not profiling.
+    pub background_rules: HashSet<String>,
     /// Native binder expressions, with the same alpha-renamed variables as rules.
     pub native_binders: HashMap<String, Term>,
     pub signatures: HashMap<String, (Vec<Sort>, Sort)>,
