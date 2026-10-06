@@ -260,6 +260,249 @@ fn direct_store_hit_and_constant_array_expose_sound_blocking_lemmas() {
     }
 }
 
+fn initial_equality_fixture(initial: &str) -> (TransitionIndex, Vec<(String, String)>) {
+    let text = format!(
+        "(declare-fun a () (Array Int (Array Int Int)))
+         (declare-fun an () (Array Int (Array Int Int)))
+         (declare-fun b () (Array Int (Array Int Int)))
+         (declare-fun bn () (Array Int (Array Int Int)))
+         (declare-fun c () (Array Int (Array Int Int)))
+         (declare-fun cn () (Array Int (Array Int Int)))
+         (declare-fun gate () Bool) (declare-fun gaten () Bool)
+         (declare-fun witness ((Array Int (Array Int Int))) Int)
+         (define-fun .a () (Array Int (Array Int Int)) (! a :next an))
+         (define-fun .b () (Array Int (Array Int Int)) (! b :next bn))
+         (define-fun .c () (Array Int (Array Int Int)) (! c :next cn))
+         (define-fun .gate () Bool (! gate :next gaten))
+         (define-fun empty () (Array Int (Array Int Int))
+           ((as const (Array Int (Array Int Int))) ((as const (Array Int Int)) 0)))
+         (define-fun start () Bool {initial})
+         (define-fun init () Bool (! start :init true))
+         (define-fun trans () Bool
+           (! (and (= an a) (= bn b) (= cn c) (= gaten gate)) :trans true))
+         (define-fun prop () Bool
+           (! (= (select (select a (witness a)) 0) 0) :invar-property 0))"
+    );
+    let (model, types) = model(&text).abstract_array_theory();
+    (TransitionIndex::from_model(&model, &HashSet::new()), types)
+}
+
+fn initial_equality_observation(
+    term: &Term,
+    gate: ModelEvaluation,
+    equality: ModelEvaluation,
+) -> anyhow::Result<ModelEvaluation> {
+    let text = term.to_string();
+    Ok(if text == "gate@0" {
+        gate
+    } else if text.starts_with("(= (Read_") {
+        // A spurious property read and the constant-array instance blocking it.
+        "false".into()
+    } else if text.starts_with("(=") {
+        equality
+    } else if text.starts_with("(Read_") {
+        "7".into()
+    } else if text == "0" {
+        "0".into()
+    } else {
+        anyhow::bail!("unexpected query {text}")
+    })
+}
+
+#[test]
+fn initial_equalities_follow_reversed_definitions_and_alias_cycles_preserving_indices() {
+    for initial in ["(= empty a)", "(and (= a b) (= b c) (= c a) (= empty c))"] {
+        let (index, types) = initial_equality_fixture(initial);
+        let trace = trace_violation(&index, &types, 2, 1, 256, |term| {
+            initial_equality_observation(term, "true".into(), "true".into())
+        });
+        assert!(!trace.budget_exhausted);
+        let initial = trace
+            .nodes
+            .iter()
+            .find(|node| matches!(node.reason, TraceReason::Initialization { .. }))
+            .expect("source equalities should expose the nested constant array");
+        assert!(initial.lemma.is_none());
+        assert!(initial.conditions.iter().all(|c| c.value == "true"));
+        let blocked = trace
+            .nodes
+            .iter()
+            .find(|node| node.status == TraceStatus::ViolatedArrayAxiom)
+            .expect("the existing array rule must supply the blocking lemma");
+        let formula = blocked.lemma.as_ref().unwrap().formula.to_string();
+        assert!(formula.contains("(witness a@2)"), "{formula}");
+        assert!(!formula.contains("(witness a@0)"));
+        assert!(formula.contains("ConstArr_Int_Array_Int_Int"));
+        assert!(trace.nodes.iter().all(|node| !matches!(
+            node.status,
+            TraceStatus::InconsistentStep | TraceStatus::EvaluationFailed { .. }
+        )));
+    }
+}
+
+#[test]
+fn initial_equality_branches_keep_unknown_frontiers_without_hiding_known_paths() {
+    for initial in [
+        "(and (=> gate (= a b)) (= empty a))",
+        "(and (= empty a) (=> gate (= a b)))",
+        "(and (=> gate (= a b)) (= a b) (= b empty))",
+        "(and (= a b) (=> gate (= a b)) (= b empty))",
+        "(and (= a b) (= empty a))",
+    ] {
+        let (index, types) = initial_equality_fixture(initial);
+        let unknown_equality = initial == "(and (= a b) (= empty a))";
+        for limit in [0, 5, 20, 40, 80, 512] {
+            let mut queries = 0;
+            let trace = trace_violation(&index, &types, 2, 1, limit, |term| {
+                queries += 1;
+                if unknown_equality && term.to_string() == "(= a@0 b@0)" {
+                    return Ok(ModelEvaluation::Undetermined);
+                }
+                initial_equality_observation(term, ModelEvaluation::Undetermined, "true".into())
+            });
+            assert!(trace.work <= limit && queries <= limit);
+            if limit != 512 {
+                continue;
+            }
+            assert!(!trace.budget_exhausted, "{initial}");
+            assert!(
+                trace.nodes.iter().any(|node| matches!(
+                    &node.status,
+                    TraceStatus::Undetermined { expression }
+                        if expression == if unknown_equality { "(= a@0 b@0)" } else { "gate@0" }
+                )),
+                "the unknown branch must remain visible: {initial}"
+            );
+            assert!(
+                trace
+                    .nodes
+                    .iter()
+                    .any(|node| node.status == TraceStatus::ViolatedArrayAxiom),
+                "an unknown sibling must not hide the constant initializer: {initial}"
+            );
+            assert!(trace
+                .nodes
+                .iter()
+                .filter(|node| matches!(node.reason, TraceReason::Initialization { .. }))
+                .all(|node| node.lemma.is_none()));
+        }
+    }
+}
+
+#[test]
+fn initial_equality_branches_explore_each_known_initializer() {
+    let (index, types) = initial_equality_fixture(
+        "(and (= a empty) (= a (store empty 1 ((as const (Array Int Int)) 0))))",
+    );
+    let trace = trace_violation(&index, &types, 2, 1, 512, |term| {
+        initial_equality_observation(term, "true".into(), "true".into())
+    });
+    assert!(!trace.budget_exhausted);
+    let blocking = trace
+        .nodes
+        .iter()
+        .filter(|node| node.status == TraceStatus::ViolatedArrayAxiom)
+        .map(|node| node.lemma.as_ref().unwrap().formula.to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        blocking
+            .iter()
+            .any(|formula| formula.contains("Write_Int_Array_Int_Int")),
+        "{blocking:?}"
+    );
+    assert!(
+        blocking
+            .iter()
+            .any(|formula| !formula.contains("Write_Int_Array_Int_Int")),
+        "{blocking:?}"
+    );
+}
+
+#[test]
+fn initial_equalities_respect_guards_and_partial_evaluation_across_models() {
+    let (index, types) = initial_equality_fixture("(=> gate (= a empty))");
+    for (version, gate, equality, blocked, undetermined) in [
+        (1, "true".into(), "true".into(), true, false),
+        (2, "false".into(), "true".into(), false, false),
+        (3, ModelEvaluation::Undetermined, "true".into(), false, true),
+        (4, "true".into(), ModelEvaluation::Undetermined, false, true),
+    ] {
+        let trace = trace_violation(&index, &types, 2, version, 256, |term| {
+            initial_equality_observation(term, gate.clone(), equality.clone())
+        });
+        assert_eq!(
+            trace
+                .nodes
+                .iter()
+                .any(|node| node.status == TraceStatus::ViolatedArrayAxiom),
+            blocked
+        );
+        assert_eq!(
+            trace
+                .nodes
+                .iter()
+                .any(|node| matches!(node.status, TraceStatus::Undetermined { .. })),
+            undetermined
+        );
+        if blocked {
+            let initial = trace
+                .nodes
+                .iter()
+                .find(|node| matches!(node.reason, TraceReason::Initialization { .. }))
+                .unwrap();
+            assert!(initial
+                .conditions
+                .iter()
+                .any(|c| c.expression.to_string() == "gate@0" && c.value == "true"));
+        }
+    }
+}
+
+#[test]
+fn initial_equalities_do_not_follow_negation_or_loop_without_a_value() {
+    for initial in ["(not (= a empty))", "(and (= a b) (= b c) (= c a))"] {
+        let (index, types) = initial_equality_fixture(initial);
+        for limit in [0, 5, 20, 256] {
+            let mut queries = 0;
+            let trace = trace_violation(&index, &types, 2, 1, limit, |term| {
+                queries += 1;
+                initial_equality_observation(term, "true".into(), "true".into())
+            });
+            assert!(trace.work <= limit);
+            assert!(queries <= limit);
+            assert!(!trace.nodes.iter().any(|node| node.lemma.is_some()));
+            if limit == 256 {
+                assert!(!trace.budget_exhausted);
+                assert!(trace
+                    .nodes
+                    .iter()
+                    .any(|node| matches!(node.status, TraceStatus::InitialState { .. })));
+            }
+        }
+    }
+}
+
+#[test]
+fn initial_equalities_retain_the_false_ite_branch_guard() {
+    let (index, types) = initial_equality_fixture("(ite gate (= a b) (= empty a))");
+    let trace = trace_violation(&index, &types, 2, 1, 256, |term| {
+        initial_equality_observation(term, "false".into(), "true".into())
+    });
+    let initial = trace
+        .nodes
+        .iter()
+        .find(|node| matches!(node.reason, TraceReason::Initialization { .. }))
+        .unwrap();
+    assert!(initial
+        .conditions
+        .iter()
+        .any(|c| { c.expression.to_string() == "gate@0" && c.value == "false" }));
+    assert!(trace
+        .nodes
+        .iter()
+        .any(|node| node.status == TraceStatus::ViolatedArrayAxiom));
+}
+
 #[test]
 fn trace_options_enable_serialization_and_reject_unsupported_modes() {
     use clap::Parser;

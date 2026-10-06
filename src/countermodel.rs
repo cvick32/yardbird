@@ -231,6 +231,9 @@ pub(crate) struct TraceStep {
     pub reason: TraceReason,
     pub conditions: Vec<Observation>,
     pub lemma: Option<TraceLemma>,
+    /// A branch-local failure already observed while discovering alternatives.
+    /// Retain it as a trace frontier without repeating the model query.
+    pub frontier: Option<TraceError>,
 }
 
 /// Guided search consumes the same borrowed formulas, model and allowance as
@@ -273,6 +276,7 @@ impl TraceStep {
             reason,
             conditions: vec![],
             lemma: None,
+            frontier: None,
         }
     }
 }
@@ -380,6 +384,9 @@ pub(crate) fn append_trace(
         }
         let result = (|| {
             cx.charge()?;
+            if let Some(frontier) = step.frontier.take() {
+                return Err(frontier);
+            }
             if node.status == TraceStatus::Cycle {
                 return Ok(vec![]);
             }
@@ -498,6 +505,7 @@ fn expand(
         }
         match read_step(term, cx)? {
             ReadOutcome::Step(step) => return Ok(vec![*step]),
+            ReadOutcome::Branches(steps) => return Ok(steps),
             ReadOutcome::Stop(status) => node.status = status,
         }
         if matches!(node.status, TraceStatus::InitialState { .. }) {
@@ -594,6 +602,7 @@ fn expand(
             let observation = cx.boolean(condition)?;
             let branch = if observation.value == "true" { yes } else { no };
             children.push(TraceStep {
+                frontier: None,
                 term: branch.clone(),
                 reason: TraceReason::Conditional,
                 conditions: vec![observation],

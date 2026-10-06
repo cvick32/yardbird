@@ -115,6 +115,7 @@ pub(super) fn extend<F: TermCostFactory>(
                                 Some(plan),
                                 Some(node.id),
                                 TraceStep {
+                                    frontier: None,
                                     term: index.index_term(&requirement.body, frame),
                                     reason: TraceReason::ActionRequirement {
                                         frame,
@@ -244,6 +245,7 @@ fn append_body<F: TermCostFactory>(
         Some(context.formulas.quantifiers),
         Some(node.id),
         TraceStep {
+            frontier: None,
             term: body,
             reason: TraceReason::AssertedQuantifierBody,
             conditions,

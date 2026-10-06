@@ -70,6 +70,7 @@ pub(crate) fn witness_step(
             Err(error) => return Err(error),
         };
         return Ok(Some(TraceStep {
+            frontier: None,
             term: if value.as_deref() == Some("true") {
                 body
             } else {
@@ -182,6 +183,7 @@ impl<'a> EquationSearch<'a> {
                 path.push(lemma);
             }
             children.push(TraceStep {
+                frontier: None,
                 term: frontier
                     .as_ref()
                     .map_or(replacement, |lemma| lemma.formula.clone()),

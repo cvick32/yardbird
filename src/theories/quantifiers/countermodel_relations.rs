@@ -239,6 +239,7 @@ fn extend_bodies<F: TermCostFactory>(
             Some(plan),
             Some(parent),
             TraceStep {
+                frontier: None,
                 term: body,
                 reason: TraceReason::QuantifierMatch { anchors: roots },
                 conditions: vec![],

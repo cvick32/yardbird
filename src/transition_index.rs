@@ -29,6 +29,15 @@ pub struct StateUpdatePath {
     pub action: Option<String>,
 }
 
+/// A source equality available at frame zero, with its Boolean path intact.
+/// These are observations for tracing, never additional asserted lemmas.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct InitialEquality {
+    pub equality: Term,
+    pub value: Term,
+    pub guards: Vec<GuardedPathCondition>,
+}
+
 /// Keep the whole Boolean formula: sibling guards and disjunctions must not be
 /// mistaken for unconditional prerequisites of an individual update.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +70,7 @@ pub struct TransitionIndex {
     axioms: Vec<Term>,
     actions: BTreeMap<String, ActionEntry>,
     updates: BTreeMap<String, Vec<StateUpdatePath>>,
+    initial_equalities: HashMap<String, Vec<InitialEquality>>,
     current_variables: Vec<String>,
     next_to_current: HashMap<String, String>,
     definition_frames: DefinitionFrameInfo,
@@ -76,6 +86,7 @@ impl Default for TransitionIndex {
             axioms: Vec::new(),
             actions: BTreeMap::new(),
             updates: BTreeMap::new(),
+            initial_equalities: HashMap::new(),
             current_variables: Vec::new(),
             next_to_current: HashMap::new(),
             definition_frames: DefinitionFrameInfo::default(),
@@ -105,6 +116,7 @@ impl TransitionIndex {
                 })
                 .collect(),
             updates: BTreeMap::new(),
+            initial_equalities: HashMap::new(),
             definition_frames: DefinitionFrameInfo::new(
                 definitions,
                 &current_variables,
@@ -118,9 +130,21 @@ impl TransitionIndex {
             definitions,
             binder_helpers,
             index: &mut index,
+            formula: IndexedFormula::Transition,
         }
         .collect(
             &model.get_trans_condition_for_yardbird(),
+            &[],
+            &mut HashSet::new(),
+        );
+        Builder {
+            definitions,
+            binder_helpers,
+            index: &mut index,
+            formula: IndexedFormula::Initial,
+        }
+        .collect(
+            &model.get_initial_condition_for_yardbird(),
             &[],
             &mut HashSet::new(),
         );
@@ -151,6 +175,12 @@ impl TransitionIndex {
     pub fn update_paths(&self, state: &str) -> &[StateUpdatePath] {
         self.updates
             .get(state)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+    pub(crate) fn initial_equalities(&self, framed_symbol: &str) -> &[InitialEquality] {
+        self.initial_equalities
+            .get(framed_symbol)
             .map(Vec::as_slice)
             .unwrap_or_default()
     }
@@ -209,10 +239,17 @@ impl TransitionIndex {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum IndexedFormula {
+    Initial,
+    Transition,
+}
+
 struct Builder<'a> {
     definitions: &'a DefinitionGraph,
     binder_helpers: &'a HashSet<String>,
     index: &'a mut TransitionIndex,
+    formula: IndexedFormula,
 }
 
 impl Builder<'_> {
@@ -284,6 +321,10 @@ impl Builder<'_> {
                     (&arguments[0], &arguments[1]),
                     (&arguments[1], &arguments[0]),
                 ] {
+                    if self.formula == IndexedFormula::Initial {
+                        self.record_initial_equality(term, left, right, guards);
+                        continue;
+                    }
                     if let Some(target) =
                         leaf_symbol(left).and_then(|s| self.index.next_to_current.get(&s).cloned())
                     {
@@ -338,6 +379,9 @@ impl Builder<'_> {
         previous: &[GuardedPathCondition],
         guards: &[GuardedPathCondition],
     ) {
+        if self.formula == IndexedFormula::Initial {
+            return;
+        }
         let Some(action) = self.action_for(guards) else {
             return;
         };
@@ -394,6 +438,36 @@ impl Builder<'_> {
             }
             Term::Attributes { term, .. } => self.collect_binders(term, path, active, out),
             _ => {}
+        }
+    }
+
+    fn record_initial_equality(
+        &mut self,
+        equality: &Term,
+        target: &Term,
+        value: &Term,
+        guards: &[GuardedPathCondition],
+    ) {
+        if target == value || leaf_symbol(target).is_none() {
+            return;
+        }
+        let target = leaf_symbol(&self.index.index_term(target, 0)).unwrap();
+        let path = InitialEquality {
+            equality: self.index.index_term(equality, 0),
+            value: self
+                .index
+                .index_term(&expand_leaf_helper(value, self.definitions), 0),
+            guards: guards
+                .iter()
+                .map(|guard| GuardedPathCondition {
+                    expression: self.index.index_term(&guard.expression, 0),
+                    required_value: guard.required_value,
+                })
+                .collect(),
+        };
+        let paths = self.index.initial_equalities.entry(target).or_default();
+        if !paths.contains(&path) {
+            paths.push(path);
         }
     }
 
