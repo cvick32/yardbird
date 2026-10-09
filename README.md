@@ -47,6 +47,22 @@ This will automatically use the BMC Cost strategy.
 ./target/release/yardbird --filename examples/array/array_copy.vmt --depth 10
 ```
 
+With `--json-output`, `run_progress.depth_completions` records when each
+zero-based BMC depth first completed, for example:
+
+```json
+"depth_completions": [
+  {"depth": 0, "elapsed_wall_secs": 0.012},
+  {"depth": 1, "elapsed_wall_secs": 0.031}
+]
+```
+
+Times are cumulative wall-clock seconds from the start of the driver, not
+per-depth durations. This history is captured without `--profile` and is saved
+in `--progress-file` checkpoints so Garden retains it on forced timeouts.
+Attempted but unfinished depths have no entry. Older JSON without this field
+remains readable, but has no recoverable timing history.
+
 For VMT inputs, `--theory` selects what **Yardbird abstracts**. Other constructs
 stay with the selected solver (`--solver z3` by default), provided Yardbird's
 adapter can translate them. See the [tested VMT theory examples](examples/theories/README.md)

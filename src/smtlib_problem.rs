@@ -557,6 +557,7 @@ impl SmtlibRefinementRunner {
             elapsed_wall_secs: 0.0,
             target_depth: 1,
             deepest_completed_depth: None,
+            depth_completions: Vec::new(),
             current_depth: Some(0),
             current_refinement_step: None,
             last_completed_action: None,
@@ -774,13 +775,13 @@ impl SmtlibRefinementRunner {
                         info!("  Action: Found proof!");
                         found_proof = true;
                         progress.termination_reason = "proof".into();
-                        progress.deepest_completed_depth = Some(0);
+                        progress.record_depth_completion(0, run_start.elapsed());
                         strategy.finish(state, &mut smt_problem)?;
                         break;
                     }
                     ProofAction::NextDepth => {
                         progress.termination_reason = "unsat".into();
-                        progress.deepest_completed_depth = Some(0);
+                        progress.record_depth_completion(0, run_start.elapsed());
                         // For SMTLIB (no depths), treat this as completion
                         info!("  Action: Refinement complete");
                         strategy.finish(state, &mut smt_problem)?;

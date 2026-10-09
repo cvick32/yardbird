@@ -41,6 +41,13 @@ pub struct CoreInstantiation {
     pub substitution: Vec<crate::rule_matching::provenance::InstantiationSubstitution>,
 }
 
+/// First completion of a zero-based BMC depth, timed from the start of the run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepthCompletion {
+    pub depth: u16,
+    pub elapsed_wall_secs: f64,
+}
+
 /// Progress uses zero-based BMC depths; `None` means no depth completed/started.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunProgress {
@@ -50,10 +57,31 @@ pub struct RunProgress {
     pub elapsed_wall_secs: f64,
     pub target_depth: u16,
     pub deepest_completed_depth: Option<u16>,
+    /// Ordered completion history, retained in timeout checkpoints without profiling.
+    /// Older JSON has no history; its timestamps cannot be reconstructed.
+    #[serde(default)]
+    pub depth_completions: Vec<DepthCompletion>,
     pub current_depth: Option<u16>,
     pub current_refinement_step: Option<u32>,
     /// Last completed high-level action before termination.
     pub last_completed_action: Option<String>,
+}
+
+impl RunProgress {
+    pub(crate) fn record_depth_completion(&mut self, depth: u16, elapsed: Duration) {
+        // UNSAT and NextDepth can both report the same completion. Keep the
+        // earliest timestamp, including when a deadline is crossed in check().
+        if self
+            .deepest_completed_depth
+            .is_none_or(|previous| depth > previous)
+        {
+            self.deepest_completed_depth = Some(depth);
+            self.depth_completions.push(DepthCompletion {
+                depth,
+                elapsed_wall_secs: elapsed.as_secs_f64(),
+            });
+        }
+    }
 }
 
 /// Small, atomic checkpoint independent of the final proof result and logging.
@@ -680,6 +708,7 @@ impl<'ctx, S> Driver<'ctx, S> {
             elapsed_wall_secs: 0.0,
             target_depth,
             deepest_completed_depth: None,
+            depth_completions: Vec::new(),
             current_depth: None,
             current_refinement_step: None,
             last_completed_action: None,
@@ -841,7 +870,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                     if check_result == SolverCheckResult::Unsat {
                         // A completed check must be recorded even if it crossed
                         // the cooperative deadline before returning.
-                        progress.deepest_completed_depth = Some(depth);
+                        progress.record_depth_completion(depth, driver_start.elapsed());
                         progress.last_completed_action = Some("check".into());
                         progress_checkpoint.write(&progress, driver_start.elapsed(), true, true)?;
                         unsat_event_tracker.record_vmt_event(
@@ -1029,7 +1058,7 @@ impl<'ctx, S> Driver<'ctx, S> {
                             }
                         }
                         ProofAction::NextDepth => {
-                            progress.deepest_completed_depth = Some(depth);
+                            progress.record_depth_completion(depth, driver_start.elapsed());
                             progress.last_completed_action = Some("depth_completed".into());
                             progress_checkpoint.write(
                                 &progress,

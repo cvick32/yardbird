@@ -12,7 +12,7 @@ use crate::auxiliary_synthesis::{
     PredicateRelevancePolicy, SynthesisTrigger,
 };
 use clap::{Parser, Subcommand, ValueEnum};
-pub use driver::{Driver, Error, ProofLoopResult, Result, RunProgress};
+pub use driver::{DepthCompletion, Driver, Error, ProofLoopResult, Result, RunProgress};
 use serde::{Deserialize, Serialize};
 use smt2parser::vmt::VMTModel;
 use strategies::{

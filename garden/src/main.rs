@@ -959,6 +959,11 @@ mod tests {
         let checkpoint = serde_json::json!({
             "termination_reason": "running", "elapsed_wall_secs": 0.01,
             "target_depth": 20, "deepest_completed_depth": 2,
+            "depth_completions": [
+                {"depth": 0, "elapsed_wall_secs": 0.001},
+                {"depth": 1, "elapsed_wall_secs": 0.004},
+                {"depth": 2, "elapsed_wall_secs": 0.009}
+            ],
             "current_depth": 3, "current_refinement_step": 7,
             "last_completed_action": "check"
         });
@@ -982,6 +987,10 @@ mod tests {
         assert_eq!(value["run_progress"]["deepest_completed_depth"], 2);
         assert_eq!(value["run_progress"]["current_depth"], 3);
         assert_eq!(value["run_progress"]["termination_reason"], "timeout");
+        assert_eq!(
+            value["run_progress"]["depth_completions"],
+            checkpoint["depth_completions"]
+        );
     }
 
     #[test]
@@ -1014,6 +1023,10 @@ mod tests {
             if name == "no-completed-depth" {
                 assert_eq!(value["run_progress"]["current_depth"], 0);
                 assert!(value["run_progress"]["deepest_completed_depth"].is_null());
+                assert_eq!(
+                    value["run_progress"]["depth_completions"],
+                    serde_json::json!([])
+                );
             } else {
                 assert!(value.get("run_progress").is_none());
             }
