@@ -545,6 +545,10 @@ impl YardbirdSolver for CapturingSolver {
         self.inner.eval_partial(term)
     }
 
+    fn native_model_to_string(&self) -> anyhow::Result<String> {
+        self.inner.native_model_to_string()
+    }
+
     fn model_to_string(&self) -> anyhow::Result<String> {
         self.inner.model_to_string()
     }

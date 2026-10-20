@@ -1075,6 +1075,10 @@ impl ProblemContext for VmtBmcSession {
         self.solver.model_to_string()
     }
 
+    fn native_model_to_string(&self) -> anyhow::Result<String> {
+        self.solver.native_model_to_string()
+    }
+
     fn get_all_subterms(&self) -> Vec<&Term> {
         self.subterm_handler.get_all_subterms()
     }
