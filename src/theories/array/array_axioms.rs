@@ -89,7 +89,10 @@ where
 
 /// Generate array rules for a specific type pair (index_sort, value_sort).
 /// This creates type-specific versions of the three core array axioms.
-fn array_rules_for_type<N>(index_sort: &str, value_sort: &str) -> Vec<CompiledQuantifiedRule<N>>
+pub(crate) fn array_rules_for_type<N>(
+    index_sort: &str,
+    value_sort: &str,
+) -> Vec<CompiledQuantifiedRule<N>>
 where
     N: Analysis<TermLanguage> + 'static,
 {

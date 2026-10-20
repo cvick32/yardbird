@@ -102,6 +102,10 @@ pub struct YardbirdOptions {
     ])]
     pub policy: Option<policy::NamedPolicy>,
 
+    #[command(flatten)]
+    #[serde(default)]
+    pub decision_model: policy::decision_model::DecisionModelOptions,
+
     /// Name of the VMT file.
     #[arg(short, long)]
     pub filename: Option<String>,
@@ -306,6 +310,7 @@ impl Default for YardbirdOptions {
             command: None,
             options_json: None,
             policy: None,
+            decision_model: Default::default(),
             filename: None,
             depth: 10,
             wall_timeout_secs: None,
@@ -440,6 +445,7 @@ impl YardbirdOptions {
 
     pub(crate) fn profiling_enabled(&self) -> bool {
         self.profile
+            || self.policy == Some(policy::NamedPolicy::DecisionModel)
             || self.train
             || self.solver_capture_dir.is_some()
             || self.countermodel_trace_work > 0

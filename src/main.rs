@@ -45,6 +45,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     options.validate_prefer_axioms_options()?;
+    options.decision_model.validate(&options)?;
     options.validate_countermodel_trace_options()?;
     options.validate_ranker_options()?;
     options.validate_guarded_read_updates()?;

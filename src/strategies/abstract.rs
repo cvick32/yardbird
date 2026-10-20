@@ -11,7 +11,7 @@ use crate::policy::effort::{
 };
 use crate::policy::instance_selection::InstantiationRanker;
 use crate::policy::term_selection::TermCostFactory;
-use crate::policy::YardbirdPolicy;
+use crate::policy::{PolicyParts, YardbirdPolicy};
 use crate::profiling::{ProfilingRecord, ProfilingRunRecord, RefinementProfilingCollector};
 use crate::rule_matching::candidate::{InstantiationBatch, InstantiationCandidate};
 use crate::rule_matching::candidate_builder::ArtifactCapture;
@@ -595,6 +595,12 @@ where
             }
             self.offer_sequence += 1;
             let mut kinds = Vec::new();
+            if self.ownership.arrays && self.policy.has_discovery() {
+                kinds.push((
+                    OperationKind::PolicyCandidates,
+                    "policy-proposed symbolic instances".into(),
+                ));
+            }
             if (self.ownership.arrays || self.ownership.quantifiers)
                 && self.policy.effort().uses_countermodel_refinement()
                 && self.formula_index.is_some()
@@ -727,7 +733,12 @@ where
                 smt.make_unquantified_instance(expr_to_term(candidate.expression.clone()))
                     .map(|instance| crate::instance_installation::assertion_tracker::canonical_instantiation_key(instance.get_term()))
             }).collect::<HashSet<_>>();
-            let (term_config, ranker, effort) = self.policy.parts();
+            let PolicyParts {
+                term_config,
+                ranker,
+                effort,
+                discovery,
+            } = self.policy.parts();
             let context = search_context::<F>(
                 self.formula_index.as_ref(),
                 &self.quantifier.plan,
@@ -750,6 +761,24 @@ where
             let mut report = WorkReport::default();
             let mut retain = false;
             match operation.kind {
+                OperationKind::PolicyCandidates => {
+                    let instances = discovery
+                        .as_mut()
+                        .expect("offered discovery producer")
+                        .discover(&crate::policy::discovery::DiscoveryContext {
+                            smt,
+                            depth: state.depth,
+                            refinement_step,
+                            model_version: state.model_version,
+                            pending: &pending_instances,
+                        })?;
+                    let mut pool =
+                        crate::rule_matching::symbolic_pool::SymbolicCandidatePool::default();
+                    pool.remember(instances);
+                    batch = pool.candidates_partial(&context)?;
+                    report = WorkReport::from_batch(&batch);
+                    retain = report.selected > 0;
+                }
                 OperationKind::CountermodelCandidates => {
                     (report, batch) = countermodel_candidates(
                         &mut self.obligations,
@@ -1126,7 +1155,11 @@ where
                 &mut state.graph_version,
                 &profiling,
             )?;
-            let (term_config, ranker, _) = self.policy.parts();
+            let PolicyParts {
+                term_config,
+                ranker,
+                ..
+            } = self.policy.parts();
             let no_pending_instances = HashSet::new();
             let context = search_context::<F>(
                 self.formula_index.as_ref(),
@@ -1189,7 +1222,12 @@ where
             &mut state.graph_version,
             &profiling,
         )?;
-        let (term_config, ranker, effort) = self.policy.parts();
+        let PolicyParts {
+            term_config,
+            ranker,
+            effort,
+            ..
+        } = self.policy.parts();
         let no_pending_instances = HashSet::new();
         let context = search_context::<F>(
             self.formula_index.as_ref(),

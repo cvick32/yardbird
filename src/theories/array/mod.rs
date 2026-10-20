@@ -7,6 +7,7 @@ pub(crate) mod eager;
 pub(crate) mod eager_source;
 pub(crate) mod encodings;
 pub(crate) mod grounding;
+pub(crate) mod instantiation_schema;
 pub(crate) mod obligations;
 pub(crate) mod refinement;
 pub mod rule;
