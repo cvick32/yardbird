@@ -31,16 +31,25 @@ pub enum NamedPolicy {
     GermanFast,
     /// Try property-connected array axiom instances before general search.
     CountermodelGuided,
-    /// Propose complete array instances using a decision model, with ordinary fallback.
-    DecisionModel,
+    /// Choose all axiom bindings in one Jev request, with ordinary fallback.
+    OneShot,
+    /// Choose axiom bindings sequentially, conditioned on earlier choices.
+    ConditionalBinding,
 }
 
 impl NamedPolicy {
+    pub(crate) fn uses_decision_model(self) -> bool {
+        matches!(self, Self::OneShot | Self::ConditionalBinding)
+    }
+
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
             Self::GermanFast => run_german_fast(run),
             Self::CountermodelGuided => run_countermodel_guided(run),
-            Self::DecisionModel => decision_model::build_plan(run),
+            Self::OneShot => decision_model::build_plan(run, decision_model::BindingMode::OneShot),
+            Self::ConditionalBinding => {
+                decision_model::build_plan(run, decision_model::BindingMode::Conditional)
+            }
         }
     }
 }

@@ -1,6 +1,19 @@
 //! Full-model array-instantiation experiment. Provider I/O, retries and episode
 //! logs live here; the abstract strategy only sees symbolic instance discovery.
+//!
+//! `one-shot` selects an axiom, then asks for all bindings together and searches
+//! their independent distributions. `conditional-binding` selects an axiom,
+//! then requests one binding per retained prefix in a fixed argument order.
+//! Its beam is approximate: completed tuples are ranked within the retained
+//! beam, not globally over all possible conditional paths. Both policies use
+//! the complete model/vocabulary and the same trusted validator/installer.
+//! With k slots and beam width B, conditional search makes at most
+//! 2 + (k - 1) * B API calls per attempt, including axiom selection.
+//! Both modes stop at the first verified violation by default. `--jev-batch`
+//! checks the full retained candidate budget and sends every distinct verified
+//! violation to shared installation, without additional inference requests.
 mod client;
+mod conditional;
 mod feedback;
 mod ranked_bindings;
 mod snapshot;
@@ -37,24 +50,44 @@ use client::{DecisionClient, JevClient};
 use feedback::FailureSummary;
 use snapshot::Snapshot;
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JevPrompt {
+    #[default]
+    Baseline,
+    PropertyDirected,
+}
+
+const PROPERTY_DIRECTED_PROMPT: &str = include_str!("prompts/property-directed.txt");
+
 #[derive(clap::Args, Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct DecisionModelOptions {
     /// Model name sent to TypeSafe (the resolved response name is logged).
     #[arg(long, default_value = "jev-latest")]
     pub jev_model: String,
+    /// Task prompt; property-directed uses the original VMT to prefer relevant terms.
+    #[arg(long, value_enum, default_value_t = JevPrompt::Baseline)]
+    pub jev_prompt: JevPrompt,
     /// New JSONL file for full requests, responses, feedback and episode outcomes.
     #[arg(long)]
     pub jev_log: Option<PathBuf>,
     /// Write complete initial requests and use ordinary refinement without calling Jev.
     #[arg(long)]
     pub jev_dry_run: bool,
-    /// Maximum selection attempts per countermodel; each uses up to two API calls.
+    /// Maximum axiom-and-binding attempts per countermodel.
     #[arg(long, default_value_t = 3)]
     pub jev_attempts: usize,
-    /// Maximum probability-ranked binding tuples checked per response (1: original choice only).
+    /// Maximum completed tuples checked per attempt (one-shot: 1 uses the original choice).
     #[arg(long, default_value_t = 10)]
     pub jev_candidates: usize,
+    /// Check the entire candidate budget and install every new verified violation.
+    /// Without this flag, stop at the first violation.
+    #[arg(long)]
+    pub jev_batch: bool,
+    /// Partial substitutions retained per step by conditional-binding.
+    #[arg(long, default_value_t = 3)]
+    pub jev_beam_width: usize,
     /// Per-request timeout. Solver wall timeouts remain cooperative.
     #[arg(long, default_value_t = 30)]
     pub jev_timeout_secs: u64,
@@ -73,10 +106,13 @@ impl Default for DecisionModelOptions {
     fn default() -> Self {
         Self {
             jev_model: "jev-latest".into(),
+            jev_prompt: JevPrompt::Baseline,
             jev_log: None,
             jev_dry_run: false,
             jev_attempts: 3,
             jev_candidates: 10,
+            jev_batch: false,
+            jev_beam_width: 3,
             jev_timeout_secs: 30,
             jev_max_request_bytes: 2_097_152,
             jev_input_usd_per_million: 0.042,
@@ -87,42 +123,53 @@ impl Default for DecisionModelOptions {
 
 impl DecisionModelOptions {
     pub fn validate(&self, run: &YardbirdOptions) -> anyhow::Result<()> {
-        if run.policy != Some(super::NamedPolicy::DecisionModel) {
+        if !run
+            .policy
+            .is_some_and(super::NamedPolicy::uses_decision_model)
+        {
             anyhow::ensure!(
                 self.jev_log.is_none()
                     && !self.jev_dry_run
                     && self.jev_model == "jev-latest"
+                    && self.jev_prompt == JevPrompt::Baseline
                     && self.jev_attempts == 3
                     && self.jev_candidates == 10
+                    && !self.jev_batch
+                    && self.jev_beam_width == 3
                     && self.jev_timeout_secs == 30
                     && self.jev_max_request_bytes == 2_097_152
                     && self.jev_input_usd_per_million == 0.042
                     && self.jev_output_usd_per_million == 0.0,
-                "--jev-* options require --policy decision-model"
+                "--jev-* options require --policy one-shot or conditional-binding"
             );
             return Ok(());
         }
         anyhow::ensure!(
+            run.policy == Some(super::NamedPolicy::ConditionalBinding) || self.jev_beam_width == 3,
+            "--jev-beam-width requires --policy conditional-binding"
+        );
+        anyhow::ensure!(
             run.filename.as_deref().is_some_and(|f| f.ends_with(".vmt")),
-            "decision-model requires a VMT input"
+            "Jev policies require a VMT input"
         );
         anyhow::ensure!(
             run.solver == SolverBackend::Z3
                 && run.theory.includes(Theory::Array)
                 && run.theory.legacy_theory() != Some(Theory::List),
-            "decision-model requires Z3 and array ownership"
+            "Jev policies require Z3 and array ownership"
         );
         anyhow::ensure!(
             matches!(run.theory, TheorySelection::Auto)
                 || run.theory == TheorySelection::Explicit(vec![Theory::Array]),
-            "decision-model supports --theory auto or --theory array only"
+            "Jev policies support --theory auto or --theory array only"
         );
         anyhow::ensure!(!run.eager && run.countermodel_trace_work == 0
             && run.synthesis_trigger == crate::SynthesisTrigger::Off && !run.prefer_axioms,
-            "decision-model experiments do not support eager seeding, countermodel tracing, auxiliary synthesis, or prefer-axioms");
+            "Jev experiments do not support eager seeding, countermodel tracing, auxiliary synthesis, or prefer-axioms");
         anyhow::ensure!(
             self.jev_attempts > 0
                 && self.jev_candidates > 0
+                && self.jev_beam_width > 0
                 && self.jev_timeout_secs > 0
                 && self.jev_max_request_bytes > 0,
             "Jev limits must be positive"
@@ -143,7 +190,7 @@ impl DecisionModelOptions {
         let log = self
             .jev_log
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("decision-model requires --jev-log <NEW_JSONL_FILE>"))?;
+            .ok_or_else(|| anyhow::anyhow!("Jev policies require --jev-log <NEW_JSONL_FILE>"))?;
         anyhow::ensure!(
             !log.exists(),
             "Jev log already exists: {}; choose a new path",
@@ -159,17 +206,33 @@ impl DecisionModelOptions {
     }
 }
 
-pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub(crate) enum BindingMode {
+    #[serde(rename = "one-shot")]
+    OneShot,
+    #[serde(rename = "conditional-binding")]
+    Conditional,
+}
+
+pub(crate) fn build_plan(run: &YardbirdOptions, mode: BindingMode) -> ArrayProofPlan {
     let options = run.decision_model.clone();
+    let winners = if options.jev_batch {
+        options.jev_candidates
+    } else {
+        1
+    };
     let experiment = Experiment {
+        mode,
+        query_id: 0,
         client: Box::new(JevClient::new(options.jev_timeout_secs)),
         options,
         log: None,
         input: run.filename.clone(),
+        problem_source: None,
     };
     let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
         .with_instantiation_ranker(Box::new(TermCostInstantiationRanker))
-        .with_effort(DiscoveryFirst::default())
+        .with_effort(DiscoveryFirst::default().with_discovery_winners(winners))
         .with_discovery(experiment);
     ArrayProofPlan {
         solver: SolverBackend::Z3,
@@ -185,10 +248,13 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
 }
 
 struct Experiment {
+    mode: BindingMode,
+    query_id: u64,
     options: DecisionModelOptions,
     client: Box<dyn DecisionClient>,
     log: Option<File>,
     input: Option<String>,
+    problem_source: Option<String>,
 }
 
 impl Experiment {
@@ -201,7 +267,9 @@ impl Experiment {
                 .ok_or_else(|| anyhow::anyhow!("missing episode log path"))?;
             self.log = Some(OpenOptions::new().write(true).create_new(true).open(path)?);
         }
-        record["schema_version"] = json!(2);
+        record["schema_version"] = json!(3);
+        record["policy"] = json!(self.mode);
+        record["query_id"] = json!(self.query_id);
         record["input"] = json!(self.input);
         record["depth"] = json!(context.depth);
         record["refinement_step"] = json!(context.refinement_step);
@@ -221,6 +289,7 @@ impl Experiment {
         stage: &str,
         request: &Value,
     ) -> anyhow::Result<Option<(Value, f64)>> {
+        self.query_id += 1;
         let bytes = serde_json::to_vec(request)?.len();
         self.record(context, json!({"event":"request","attempt":attempt,"stage":stage,"request_bytes":bytes,"request":request}))?;
         let skip = if bytes > self.options.jev_max_request_bytes {
@@ -235,7 +304,7 @@ impl Experiment {
             self.finish(
                 context,
                 outcome,
-                if stage == "instantiation" {
+                if stage != "quantifier_selection" {
                     attempt
                 } else {
                     attempt - 1
@@ -273,7 +342,7 @@ impl InstanceDiscovery for Experiment {
         &mut self,
         context: &DiscoveryContext<'_>,
     ) -> anyhow::Result<Vec<SymbolicInstance>> {
-        let snapshot = match Snapshot::capture(context) {
+        let mut snapshot = match Snapshot::capture(context) {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.record(
@@ -284,6 +353,23 @@ impl InstanceDiscovery for Experiment {
                 return Ok(vec![]);
             }
         };
+        // Preserve the complete original problem, before abstraction/lowering.
+        // Cache it so every model in this experiment sees the same source text.
+        if self.problem_source.is_none() {
+            let path = self
+                .input
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("missing original VMT path"))?;
+            self.problem_source = Some(std::fs::read_to_string(path)?);
+        }
+        snapshot.state["problem"] = json!({
+            "format":"VMT", "source":self.problem_source,
+            "notation":"The complete original verification problem. :init marks initialization, :trans the transition relation, :invar-property the property, and :next the current/next variable mapping. For Int arrays, select/store correspond to abstract Read_Int_Int/Write_Int_Int. x@N denotes absolute frame N; next variables denote the following frame. The original problem uses array semantics; the abstract function tables may violate them."
+        });
+        snapshot.state["prompt_variant"] = json!(self.options.jev_prompt);
+        if self.options.jev_prompt == JevPrompt::PropertyDirected {
+            snapshot.state["task"] = json!(PROPERTY_DIRECTED_PROMPT.trim());
+        }
         let mut failures = FailureSummary::default();
         for attempt in 1..=self.options.jev_attempts {
             let axiom_request = match snapshot.axiom_request(&self.options.jev_model, &failures) {
@@ -316,31 +402,61 @@ impl InstanceDiscovery for Experiment {
             )?;
             let request =
                 snapshot.binding_request(&self.options.jev_model, &failures, &schema.id)?;
-            let Some((response, elapsed)) =
-                self.query(context, attempt, "instantiation", &request)?
-            else {
-                return Ok(vec![]);
-            };
-            let (ranked, ranking_error) = match ranked_bindings::top_bindings(
-                &request,
-                &response,
-                self.options.jev_candidates,
-            ) {
-                Ok(ranked) => (ranked, None),
-                Err(error) => (
-                    vec![ranked_bindings::RankedBindings::chosen(&response)],
-                    Some(error.to_string()),
-                ),
+            let (ranked, response, elapsed, ranking_error) = match self.mode {
+                BindingMode::OneShot => {
+                    let Some((response, elapsed)) =
+                        self.query(context, attempt, "instantiation", &request)?
+                    else {
+                        return Ok(vec![]);
+                    };
+                    let (ranked, error) = match ranked_bindings::top_bindings(
+                        &request,
+                        &response,
+                        self.options.jev_candidates,
+                    ) {
+                        Ok(ranked) => (ranked, None),
+                        Err(error) => (
+                            vec![ranked_bindings::RankedBindings::chosen(&response)],
+                            Some(error.to_string()),
+                        ),
+                    };
+                    (ranked, response, elapsed, error)
+                }
+                BindingMode::Conditional => {
+                    match self.conditional_bindings(context, attempt, &snapshot, &request)? {
+                        conditional::Outcome::Complete(ranked) => (ranked, Value::Null, 0.0, None),
+                        conditional::Outcome::Stopped => return Ok(vec![]),
+                        conditional::Outcome::Invalid {
+                            request: failed_request,
+                            response,
+                            error,
+                        } => {
+                            let feedback = json!({"outcome":"invalid", "stage":"instantiation", "rule":schema.name(), "error":error,
+                                "fixed_bindings":failed_request["state"]["fixed_bindings"],"binding_slot":failed_request["state"]["binding_slot"]});
+                            failures.record(&failed_request, &response, &feedback);
+                            self.record(context, json!({"event":"attempt_result", "attempt":attempt, "stage":"instantiation", "api_call":false, "feedback":feedback, "elapsed_secs":0.0}))?;
+                            continue;
+                        }
+                    }
+                }
             };
             let mut feedback = Value::Null;
-            let mut instance = None;
+            let mut instances = Vec::new();
+            let mut pending = context.pending.clone();
+            let mut successful_feedback = None;
             let mut candidates_checked = 0;
-            let mut successful_rank = None;
+            let mut successful_ranks = Vec::new();
             let validation_start = Instant::now();
             for (index, candidate) in ranked.iter().enumerate() {
                 let (mut result, proposed) = match snapshot.proposal(&request, &candidate.response)
                 {
-                    Ok(instance) => validate(context, instance),
+                    Ok(instance) => validate(
+                        &DiscoveryContext {
+                            pending: &pending,
+                            ..*context
+                        },
+                        instance,
+                    ),
                     Err(error) => (json!({"outcome":"invalid","error":error.to_string()}), None),
                 };
                 result["stage"] = json!("instantiation");
@@ -353,22 +469,39 @@ impl InstanceDiscovery for Experiment {
                     failures.record(&request, &candidate.response, &result);
                 }
                 feedback = result;
-                if proposed.is_some() {
-                    successful_rank = Some(index + 1);
-                    instance = proposed;
-                    break;
+                if let Some(instance) = proposed {
+                    // Validation used this same normalization. Reserve the key so
+                    // equivalent tuples cannot consume multiple batch slots.
+                    if let Some(normalized) = context
+                        .smt
+                        .make_unquantified_instance(instance.term.clone())
+                    {
+                        pending.insert(canonical_instantiation_key(normalized.get_term()));
+                    }
+                    successful_ranks.push(index + 1);
+                    successful_feedback.get_or_insert_with(|| feedback.clone());
+                    instances.push(instance);
+                    if !self.options.jev_batch {
+                        break;
+                    }
                 }
+            }
+            if let Some(success) = successful_feedback {
+                feedback = success;
             }
             self.record(
                 context,
                 json!({"event":"attempt_result","attempt":attempt,"stage":"instantiation","selected_axiom":schema.id,"response":response,
-                "feedback":feedback,"elapsed_secs":elapsed,"cost":query_cost(&response, &self.options),
-                "candidates_checked":candidates_checked,"successful_rank":successful_rank,"ranking_error":ranking_error,
+                "feedback":feedback,"elapsed_secs":elapsed,
+                "api_call":self.mode == BindingMode::OneShot,
+                "cost":if self.mode == BindingMode::OneShot { query_cost(&response, &self.options) } else { Value::Null },
+                "candidates_checked":candidates_checked,"successful_rank":successful_ranks.first(),
+                "successful_ranks":successful_ranks,"accepted_instances":instances.len(),"ranking_error":ranking_error,
                 "validation_elapsed_secs":validation_start.elapsed().as_secs_f64()}),
             )?;
-            if let Some(instance) = instance {
+            if !instances.is_empty() {
                 self.finish(context, "violated", attempt)?;
-                return Ok(vec![instance]);
+                return Ok(instances);
             }
         }
         self.finish(context, "attempts_exhausted", self.options.jev_attempts)?;

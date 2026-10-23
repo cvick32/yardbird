@@ -21,7 +21,15 @@ impl FailureSummary {
         self.total_failures += 1;
         *self.failure_counts.entry(reason.into()).or_default() += 1;
         let mut failure = json!({"reason":reason});
-        for field in ["stage", "rule", "instance", "bindings", "error"] {
+        for field in [
+            "stage",
+            "rule",
+            "instance",
+            "bindings",
+            "error",
+            "fixed_bindings",
+            "binding_slot",
+        ] {
             if let Some(value) = feedback.get(field) {
                 failure[field] = value.clone();
             }

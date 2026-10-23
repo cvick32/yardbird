@@ -68,8 +68,9 @@ impl Snapshot {
                 _ => {}
             }
         }
-        // Include all supplied ground subterms and their children. No model
-        // values, property relevance, cost ranking, or e-class pruning here.
+        // Traverse whole formulas first so removing Boolean catalogue entries
+        // cannot discard their integer/array descendants. No model-value,
+        // property-relevance, cost-ranking, or e-class pruning here.
         let mut ground = BTreeMap::new();
         for term in context
             .smt
@@ -83,10 +84,16 @@ impl Snapshot {
         for (expression, term) in ground {
             let sort = term_sort(&term, &signatures, &HashMap::new())
                 .map_err(|e| anyhow::anyhow!("cannot type catalogue term {expression}: {e}"))?;
+            let sort = TermLanguage::sort_to_name(&sort);
+            // None of the supported Int/Int array axiom slots accept Bool.
+            // This only filters substitution options, never the native model.
+            if sort == "Bool" {
+                continue;
+            }
             terms.push(CatalogueTerm {
                 id: format!("t{}", terms.len()),
                 expression,
-                sort: TermLanguage::sort_to_name(&sort),
+                sort,
                 term,
             });
         }
@@ -117,7 +124,7 @@ impl Snapshot {
             "declarations": declarations,
             "terms": terms,
             "axioms": schemas.iter().map(|s| json!({"id":s.id,"name":s.name(),"slots":s.slots,"body":s.formula})).collect::<Vec<_>>(),
-            "catalogue_scope": "all current ground problem/refinement subterms and their children, deduplicated syntactically; no synthesized terms or heuristic shortlist",
+            "catalogue_scope": "all non-Boolean current ground problem/refinement subterms, including children of Boolean formulas, deduplicated syntactically; no synthesized terms or heuristic shortlist; the full model retains Boolean interpretations",
             "successful_instantiations": {
                 "meaning": "Previously installed instances from Jev or ordinary Yardbird refinement. Do not propose these again. These are normalized replay schemas: x+K denotes relative frame offset K, while x@N in the model/catalogue denotes absolute frame N. They are not claims of current-model violations. Choose bindings only from the current catalogue.",
                 "instances": context.smt.get_instantiations().iter().map(ToString::to_string).collect::<std::collections::BTreeSet<_>>(),
@@ -239,6 +246,67 @@ impl Snapshot {
             bindings.insert(slot.clone(), term.term.clone());
         }
         schema.instantiate(&bindings)
+    }
+
+    /// Fixed order follows array constructor arguments, then the read index.
+    pub fn binding_order(&self, request: &Value) -> anyhow::Result<Vec<String>> {
+        let id = request["state"]["selected_axiom"]["id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing selected axiom"))?;
+        let schema = self.schema(id)?;
+        let order = ["a", "idx", "val", "c", "b"]
+            .into_iter()
+            .filter(|slot| schema.slots.contains_key(*slot))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        anyhow::ensure!(
+            order.len() == schema.slots.len(),
+            "unsupported binding order"
+        );
+        Ok(order)
+    }
+
+    pub fn conditional_request(
+        &self,
+        full: &Value,
+        fixed_answers: &Value,
+        slot: &str,
+    ) -> anyhow::Result<Value> {
+        let id = full["state"]["selected_axiom"]["id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("missing selected axiom"))?;
+        let order = self.binding_order(full)?;
+        let mut fixed = serde_json::Map::new();
+        for prior in order.iter().take_while(|prior| prior.as_str() != slot) {
+            let question = format!("{id}_{prior}");
+            let term_id = offered_choice(full, fixed_answers, &question)?;
+            let term = self
+                .terms
+                .iter()
+                .find(|t| t.id == term_id)
+                .ok_or_else(|| anyhow::anyhow!("unknown fixed term {term_id}"))?;
+            fixed.insert(
+                prior.clone(),
+                json!({"id":term.id,"expression":term.expression,"sort":term.sort}),
+            );
+        }
+        let name = format!("{id}_{slot}");
+        let mut question = full["questions"][&name].clone();
+        anyhow::ensure!(question.is_object(), "unknown binding slot {slot}");
+        question["instructions"] = json!(format!("Choose {slot} for state.selected_axiom, conditioned on state.fixed_bindings. Those earlier choices are FIXED: do not change them. Choose a term that permits a completion of the remaining bindings making the COMPLETE axiom false in this model. All terms of the required sort remain eligible. Look up term IDs in state.terms. {}", full["questions"][&name]["instructions"].as_str().unwrap_or_default()));
+        let mut request = full.clone();
+        request["questions"] = json!({name:question});
+        request["state"]["decision_stage"] = json!("conditional_binding");
+        request["state"]["fixed_bindings"] = json!(fixed);
+        request["state"]["binding_order"] = json!(order);
+        request["state"]["binding_slot"] = json!(slot);
+        let task_field = if full["state"]["prompt_variant"] == "property-directed" {
+            "binding_task"
+        } else {
+            "task"
+        };
+        request["state"][task_field] = json!("Find a complete array axiom instantiation that is false in this abstract model. Read/Write/ConstArr are uninterpreted functions whose intended semantics are given by the axioms. The axiom and state.fixed_bindings are already selected. Choose ONLY the requested binding, preserving earlier choices. Later bindings will be selected in subsequent requests. Use only catalogue term IDs; model-domain values are observations, not legal terms.");
+        Ok(request)
     }
 }
 

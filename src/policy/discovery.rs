@@ -28,6 +28,14 @@ pub(crate) struct DiscoveryFirst {
     attempted: Option<u64>,
     model: u64,
     handoff: bool,
+    discovery_winners: Option<usize>,
+}
+
+impl DiscoveryFirst {
+    pub(crate) fn with_discovery_winners(mut self, winners: usize) -> Self {
+        self.discovery_winners = Some(winners.max(1));
+        self
+    }
 }
 
 impl ProofEffort for DiscoveryFirst {
@@ -44,7 +52,10 @@ impl ProofEffort for DiscoveryFirst {
                 self.attempted = Some(context.model);
                 return EffortDecision::Execute {
                     operation: operation.id,
-                    allowance: WorkAllowance::default(),
+                    allowance: WorkAllowance {
+                        winners: self.discovery_winners.unwrap_or(1),
+                        ..WorkAllowance::default()
+                    },
                 };
             }
         }

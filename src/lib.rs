@@ -445,7 +445,9 @@ impl YardbirdOptions {
 
     pub(crate) fn profiling_enabled(&self) -> bool {
         self.profile
-            || self.policy == Some(policy::NamedPolicy::DecisionModel)
+            || self
+                .policy
+                .is_some_and(policy::NamedPolicy::uses_decision_model)
             || self.train
             || self.solver_capture_dir.is_some()
             || self.countermodel_trace_work > 0

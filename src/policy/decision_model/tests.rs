@@ -133,6 +133,8 @@ impl DecisionClient for RetryClient {
 
 fn experiment(path: PathBuf, client: impl DecisionClient + 'static) -> Experiment {
     Experiment {
+        mode: BindingMode::OneShot,
+        query_id: 0,
         options: DecisionModelOptions {
             jev_log: Some(path),
             jev_candidates: 1,
@@ -141,7 +143,82 @@ fn experiment(path: PathBuf, client: impl DecisionClient + 'static) -> Experimen
         client: Box::new(client),
         log: None,
         input: Some("fixture.vmt".into()),
+        problem_source: Some(INPUT.into()),
     }
+}
+
+#[test]
+fn boolean_catalogue_filter_preserves_refinement_children_and_full_model() {
+    let mut smt = fixture_from(
+        r#"
+        (declare-fun a () (Array Int Int))
+        (declare-fun flag () Bool)
+        (define-fun init () Bool (! (and flag (= (select a 0) 5)) :init true))
+        (define-fun trans () Bool (! true :trans true))
+        (define-fun prop () Bool (! false :invar-property 0))
+    "#,
+    );
+    // These numeric/read/write terms enter only via a Boolean refinement.
+    let formula: Term = "(= (Read_Int_Int (Write_Int_Int a@0 2 1234) 2) 1234)"
+        .parse()
+        .unwrap();
+    let normalized = smt.make_unquantified_instance(formula.clone()).unwrap();
+    let installed = normalized.get_term().to_string();
+    let result = smt.add_instantiation(
+        crate::instance_installation::request::InstantiationRequest::untracked(normalized),
+    );
+    assert!(result.abstract_instance_added);
+    assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+    assert!(smt.get_asserted_instantiation_terms().contains(&&formula));
+    assert!(
+        matches!(smt.eval_partial(&"flag@0".parse().unwrap()).unwrap(),
+        ModelEvaluation::Known(value) if value == "true")
+    );
+    let native_model = smt.native_model_to_string().unwrap();
+    assert!(native_model.contains("flag@0"));
+    let pending = HashSet::new();
+    let snapshot = Snapshot::capture(&DiscoveryContext {
+        smt: &smt,
+        depth: 0,
+        refinement_step: 1,
+        model_version: 2,
+        pending: &pending,
+    })
+    .unwrap();
+    assert!(snapshot.terms.iter().all(|t| t.sort != "Bool"));
+    assert!(snapshot
+        .terms
+        .iter()
+        .all(|t| t.expression != formula.to_string()));
+    for expression in [
+        "1234",
+        "2",
+        "a@0",
+        "(Write_Int_Int a@0 2 1234)",
+        "(Read_Int_Int (Write_Int_Int a@0 2 1234) 2)",
+    ] {
+        assert!(
+            snapshot.terms.iter().any(|t| t.expression == expression),
+            "missing {expression}"
+        );
+    }
+    assert_eq!(snapshot.state["model"], native_model);
+    assert_eq!(
+        snapshot.state["successful_instantiations"]["instances"],
+        json!([installed])
+    );
+    let request = binding_request(&snapshot, "read-after-write");
+    assert_eq!(request["state"]["model"], native_model);
+    assert!(request["state"]["terms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|t| t["sort"] != "Bool"));
+    assert!(request["state"]["declarations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|d| d.as_str().unwrap().contains("flag@0 () Bool")));
 }
 
 #[test]
@@ -347,6 +424,256 @@ fn invalid_retry_retains_feedback_without_copying_malformed_answers() {
 
 struct FailingClient;
 
+struct ConditionalClient {
+    requests: Rc<RefCell<Vec<Value>>>,
+    failure: Option<&'static str>,
+}
+impl DecisionClient for ConditionalClient {
+    fn decide(&mut self, request: &Value) -> anyhow::Result<Value> {
+        self.requests.borrow_mut().push(request.clone());
+        if request["questions"].get("axiom").is_some() {
+            return Ok(response(request, "read-after-write"));
+        }
+        assert_eq!(request["questions"].as_object().unwrap().len(), 1);
+        let slot = request["state"]["binding_slot"].as_str().unwrap();
+        if slot == "idx" && self.failure == Some("transport") {
+            anyhow::bail!("simulated conditional timeout");
+        }
+        if slot == "idx" && self.failure == Some("invalid") {
+            return Ok(json!({"answers":{},"usage":{"input_tokens":100}}));
+        }
+        let (name, question) = request["questions"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .next()
+            .unwrap();
+        let fixed = &request["state"]["fixed_bindings"];
+        let mut probabilities = serde_json::Map::new();
+        for id in question["criteria"].as_object().unwrap().keys() {
+            let expression = request["state"]["terms"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["id"] == *id)
+                .unwrap()["expression"]
+                .as_str()
+                .unwrap();
+            let p = match (slot, expression) {
+                ("a", "unused@0") => 0.6,
+                ("a", "a@0") => 0.4,
+                ("idx", "1") => 1.0,
+                ("val", "7") => {
+                    if fixed["a"]["expression"] == "a@0" {
+                        0.9
+                    } else {
+                        0.5
+                    }
+                }
+                ("val", "9") => {
+                    if fixed["a"]["expression"] == "a@0" {
+                        0.1
+                    } else {
+                        0.5
+                    }
+                }
+                _ => 0.0,
+            };
+            probabilities.insert(id.clone(), json!(p));
+        }
+        let choice = probabilities
+            .iter()
+            .max_by(|a, b| a.1.as_f64().unwrap().total_cmp(&b.1.as_f64().unwrap()))
+            .unwrap()
+            .0;
+        let mut answer = json!({"answers":{name:{"type":"choice","choice":choice,"probabilities":probabilities}},"usage":{"input_tokens":100}});
+        // Later responses must not be allowed to change an earlier binding.
+        if slot != "a" {
+            answer["answers"]["q1_a"] = json!({"type":"choice","choice":"malicious-unoffered-id"});
+        }
+        Ok(answer)
+    }
+}
+
+#[test]
+fn conditional_requests_cover_all_array_schemas_without_changing_domains() {
+    let smt = fixture();
+    let pending = HashSet::new();
+    let context = DiscoveryContext {
+        smt: &smt,
+        depth: 0,
+        refinement_step: 0,
+        model_version: 1,
+        pending: &pending,
+    };
+    let snapshot = Snapshot::capture(&context).unwrap();
+    for (name, expected) in [
+        ("read-after-write", vec!["a", "idx", "val"]),
+        ("write-does-not-overwrite", vec!["a", "idx", "val", "c"]),
+        ("constant-array", vec!["a", "b"]),
+    ] {
+        let full = binding_request(&snapshot, name);
+        let order = snapshot.binding_order(&full).unwrap();
+        assert_eq!(order, expected);
+        let id = full["state"]["selected_axiom"]["id"].as_str().unwrap();
+        let mut prefix = json!({"answers":{}});
+        for (index, slot) in order.iter().enumerate() {
+            let request = snapshot.conditional_request(&full, &prefix, slot).unwrap();
+            assert_eq!(
+                request["state"]["fixed_bindings"]
+                    .as_object()
+                    .unwrap()
+                    .len(),
+                index
+            );
+            let question = format!("{id}_{slot}");
+            assert_eq!(
+                request["questions"][&question]["criteria"],
+                full["questions"][&question]["criteria"]
+            );
+            let term_id = full["questions"][&question]["criteria"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .next()
+                .unwrap();
+            prefix["answers"][&question] = json!({"type":"choice","choice":term_id});
+        }
+        assert!(snapshot.proposal(&full, &prefix).is_ok());
+        prefix["answers"][format!("{id}_a")]["choice"] = json!("unoffered-id");
+        assert!(snapshot
+            .conditional_request(&full, &prefix, &order[1])
+            .is_err());
+    }
+}
+
+#[test]
+fn conditional_beam_uses_fixed_prefixes_and_can_select_a_lower_ranked_prefix() {
+    let smt = fixture();
+    let pending = HashSet::new();
+    let context = DiscoveryContext {
+        smt: &smt,
+        depth: 0,
+        refinement_step: 0,
+        model_version: 1,
+        pending: &pending,
+    };
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("episodes.jsonl");
+    let requests = Rc::new(RefCell::new(vec![]));
+    let mut experiment = experiment(
+        path.clone(),
+        ConditionalClient {
+            requests: requests.clone(),
+            failure: None,
+        },
+    );
+    experiment.mode = BindingMode::Conditional;
+    experiment.options.jev_beam_width = 2;
+    experiment.options.jev_candidates = 2;
+    let instances = experiment.discover(&context).unwrap();
+    assert_eq!(instances.len(), 1);
+    assert_eq!(
+        instances[0].term.to_string(),
+        "(= (Read_Int_Int (Write_Int_Int a@0 1 7) 1) 7)"
+    );
+    let requests = requests.borrow();
+    assert_eq!(requests.len(), 6); // axiom + a + two idx prefixes + two val prefixes
+    let snapshot = Snapshot::capture(&context).unwrap();
+    let full = binding_request(&snapshot, "read-after-write");
+    for request in requests.iter().skip(1) {
+        assert_eq!(request["state"]["model"], full["state"]["model"]);
+        assert_eq!(request["state"]["terms"], full["state"]["terms"]);
+        for (name, question) in request["questions"].as_object().unwrap() {
+            assert_eq!(question["criteria"], full["questions"][name]["criteria"]);
+        }
+    }
+    assert_eq!(requests[1]["state"]["fixed_bindings"], json!({}));
+    assert_eq!(
+        requests[2]["state"]["fixed_bindings"]["a"]["expression"],
+        "unused@0"
+    );
+    assert_eq!(
+        requests[3]["state"]["fixed_bindings"]["a"]["expression"],
+        "a@0"
+    );
+    assert_eq!(
+        requests[4]["state"]["fixed_bindings"]["idx"]["expression"],
+        "1"
+    );
+    let records = std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let candidate = records
+        .iter()
+        .find(|r| r["event"] == "candidate_result")
+        .unwrap();
+    assert!((candidate["probability_product"].as_f64().unwrap() - 0.36).abs() < 1e-12);
+    assert_eq!(candidate["matches_model_choice"], false);
+    assert_eq!(candidate["rank"], 1);
+    assert_eq!(records.iter().filter(|r| r["cost"].is_object()).count(), 6);
+    let ids = records
+        .iter()
+        .filter(|r| r["event"] == "request")
+        .map(|r| r["query_id"].as_u64().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec![1, 2, 3, 4, 5, 6]);
+    assert!(records.iter().all(|r| r["policy"] == "conditional-binding"));
+}
+
+#[test]
+fn conditional_partial_failures_never_produce_instances_and_retry_without_fixed_bindings() {
+    let smt = fixture();
+    let pending = HashSet::new();
+    let context = DiscoveryContext {
+        smt: &smt,
+        depth: 0,
+        refinement_step: 0,
+        model_version: 1,
+        pending: &pending,
+    };
+    for failure in ["invalid", "transport"] {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("episodes.jsonl");
+        let requests = Rc::new(RefCell::new(vec![]));
+        let mut experiment = experiment(
+            path.clone(),
+            ConditionalClient {
+                requests: requests.clone(),
+                failure: Some(failure),
+            },
+        );
+        experiment.mode = BindingMode::Conditional;
+        experiment.options.jev_attempts = 2;
+        experiment.options.jev_beam_width = 1;
+        assert!(experiment.discover(&context).unwrap().is_empty());
+        let records = std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert!(!records.iter().any(|r| r["event"] == "candidate_result"));
+        assert_eq!(records.last().unwrap()["ordinary_fallback"], true);
+        let requests = requests.borrow();
+        if failure == "invalid" {
+            assert_eq!(requests.len(), 6);
+            assert_eq!(requests[4]["state"]["fixed_bindings"], json!({}));
+            assert_eq!(requests[3]["state"]["failure_summary"]["total_failures"], 1);
+            assert_eq!(
+                requests[3]["state"]["failure_summary"]["latest_failure"]["failure"]
+                    ["binding_slot"],
+                "idx"
+            );
+            assert_eq!(records.last().unwrap()["outcome"], "attempts_exhausted");
+        } else {
+            assert_eq!(requests.len(), 3);
+            assert_eq!(records.last().unwrap()["outcome"], "transport_error");
+        }
+    }
+}
+
 struct AlternativesClient {
     requests: Rc<RefCell<Vec<Value>>>,
 }
@@ -482,6 +809,133 @@ fn repeated_failures_are_counted_once_without_observation_history() {
         compact["latest_failure"]["failure"]["reason"],
         "already_present"
     );
+}
+
+struct BatchClient;
+impl DecisionClient for BatchClient {
+    fn decide(&mut self, request: &Value) -> anyhow::Result<Value> {
+        let mut answer = response(request, "read-after-write");
+        if request["questions"].get("axiom").is_none() {
+            for (name, question) in request["questions"].as_object().unwrap() {
+                let chosen = answer["answers"][name]["choice"].as_str().unwrap();
+                let probabilities = question["criteria"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(|id| {
+                        let term = request["state"]["terms"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .find(|t| t["id"] == *id)
+                            .unwrap();
+                        let p = if name.ends_with("_val") {
+                            match term["expression"].as_str().unwrap() {
+                                "7" => 0.5,
+                                "8" => 0.3,
+                                "9" => 0.2,
+                                _ => 0.0,
+                            }
+                        } else if id == chosen {
+                            1.0
+                        } else {
+                            0.0
+                        };
+                        (id.clone(), p)
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>();
+                answer["answers"][name]["probabilities"] = json!(probabilities);
+            }
+        }
+        Ok(answer)
+    }
+}
+
+#[test]
+fn batching_installs_multiple_violations_even_when_last_candidate_is_true() {
+    // All three reads are fixed in the abstract model. The first two RAW
+    // instances are false; the third is true and must not mask batch success.
+    let input = r#"
+        (declare-fun a () (Array Int Int))
+        (define-fun init () Bool (! (and
+            (= (select (store a 1 7) 1) 9)
+            (= (select (store a 1 8) 1) 9)
+            (= (select (store a 1 9) 1) 9)) :init true))
+        (define-fun trans () Bool (! true :trans true))
+        (define-fun prop () Bool (! (= (select (store a 1 7) 1) 7) :invar-property 0))
+    "#;
+    for mode in [BindingMode::OneShot, BindingMode::Conditional] {
+        for batch in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("episodes.jsonl");
+            let mut experiment = experiment(path.clone(), BatchClient);
+            experiment.mode = mode;
+            experiment.options.jev_candidates = 3;
+            experiment.options.jev_batch = batch;
+            experiment.problem_source = Some(input.into());
+            experiment.options.jev_prompt = JevPrompt::PropertyDirected;
+            let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
+                .with_instantiation_ranker(Box::new(TermCostInstantiationRanker))
+                .with_effort(DiscoveryFirst::default().with_discovery_winners(if batch {
+                    3
+                } else {
+                    1
+                }))
+                .with_discovery(experiment);
+            let mut options = YardbirdOptions::from_filename("fixture.vmt".into());
+            options.profile = true;
+            let mut driver = crate::Driver::new(
+                model(input),
+                Box::new(FullUnrollStrategy::new()),
+                SolverBackend::Z3,
+            )
+            .with_profiler(options.build_profiler())
+            .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+            let result = driver
+                .check_strategy(1, Box::new(Abstract::new(1, false, policy, true)))
+                .unwrap();
+            let expected = if batch { 2 } else { 1 };
+            assert_eq!(result.total_instantiations_added, expected);
+            let operations = result
+                .profiling
+                .cost_records
+                .iter()
+                .flat_map(|r| &r.effort)
+                .collect::<Vec<_>>();
+            assert!(operations.iter().any(
+                |r| r.operation == "PolicyCandidates" && r.report.selected == expected as usize
+            ));
+            assert!(!operations.iter().any(|r| r.operation == "ArrayCandidates"));
+            let records = std::fs::read_to_string(path)
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .collect::<Vec<_>>();
+            for record in records.iter().filter(|r| r["event"] == "request") {
+                assert_eq!(record["request"]["state"]["problem"]["source"], input);
+                assert_eq!(
+                    record["request"]["state"]["task"],
+                    PROPERTY_DIRECTED_PROMPT.trim()
+                );
+            }
+            let attempt = records
+                .iter()
+                .find(|r| r["event"] == "attempt_result")
+                .unwrap();
+            assert_eq!(attempt["accepted_instances"], expected);
+            assert_eq!(attempt["feedback"]["outcome"], "violated");
+            assert_eq!(
+                attempt["successful_ranks"],
+                if batch { json!([1, 2]) } else { json!([1]) }
+            );
+            assert_eq!(attempt["candidates_checked"], if batch { 3 } else { 1 });
+            assert_eq!(
+                records.iter().filter(|r| r["event"] == "request").count(),
+                if mode == BindingMode::OneShot { 2 } else { 4 }
+            );
+            assert_eq!(records.last().unwrap()["ordinary_fallback"], false);
+        }
+    }
 }
 
 #[test]
@@ -812,8 +1266,9 @@ fn cli_dry_run_needs_no_key_and_options_survive_serialization() {
         "-f",
         "examples/array/array_copy.vmt",
         "--policy",
-        "decision-model",
+        "one-shot",
         "--jev-dry-run",
+        "--jev-batch",
         "--jev-log",
         path.to_str().unwrap(),
     ])
@@ -823,7 +1278,24 @@ fn cli_dry_run_needs_no_key_and_options_survive_serialization() {
     let decoded: YardbirdOptions =
         serde_json::from_value(serde_json::to_value(&options).unwrap()).unwrap();
     assert_eq!(decoded.decision_model.jev_log, Some(path));
+    assert!(decoded.decision_model.jev_batch);
     let mut invalid = options.clone();
+    invalid.policy = Some(crate::policy::NamedPolicy::ConditionalBinding);
+    invalid.decision_model.jev_beam_width = 2;
+    invalid.decision_model.validate(&invalid).unwrap();
+    assert!(invalid.profiling_enabled());
+    invalid.decision_model.jev_beam_width = 0;
+    assert!(invalid.decision_model.validate(&invalid).is_err());
+    assert!(YardbirdOptions::try_parse_from([
+        "yardbird",
+        "-f",
+        "test.vmt",
+        "--policy",
+        "decision-model"
+    ])
+    .is_err());
+    assert!(serde_json::from_value::<crate::policy::NamedPolicy>(json!("DecisionModel")).is_err());
+    invalid = options.clone();
     invalid.decision_model.jev_attempts = 0;
     assert!(invalid.decision_model.validate(&invalid).is_err());
     for rate in [-1.0, f64::NAN, f64::INFINITY] {
