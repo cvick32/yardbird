@@ -8,6 +8,7 @@ pub(crate) mod discovery;
 pub mod eager;
 pub mod effort;
 pub mod instance_selection;
+pub(crate) mod instantiation;
 mod prefer_axioms;
 pub mod term_selection;
 use crate::auxiliary_synthesis::ConditionalHistory;

@@ -1,140 +1,38 @@
-use std::collections::{BTreeMap, HashMap};
+//! JEV-specific prompts, choice domains, and staged response decoding.
+use std::collections::BTreeMap;
 
 use super::feedback::FailureSummary;
-use serde::Serialize;
-use serde_json::{json, Value};
-use smt2parser::concrete::{Command, Sort, Term};
-
 use crate::{
-    policy::discovery::DiscoveryContext,
-    terms::language::TermLanguage,
-    theories::{array::instantiation_schema::ArrayInstantiationSchema, quantifiers::term_sort},
-    theory_support::{ArrayTheorySupport, TheorySupport},
+    policy::{
+        discovery::DiscoveryContext,
+        instantiation::{InstantiationProposal, InstantiationSnapshot},
+    },
+    theories::array::instantiation_schema::ArrayInstantiationSchema,
 };
-
-#[derive(Serialize)]
-pub(super) struct CatalogueTerm {
-    pub id: String,
-    pub expression: String,
-    pub sort: String,
-    #[serde(skip)]
-    pub term: Term,
-}
+use serde_json::{json, Value};
 
 pub(super) struct Snapshot {
     pub state: Value,
-    pub terms: Vec<CatalogueTerm>,
-    pub schemas: Vec<ArrayInstantiationSchema>,
+    pub shared: InstantiationSnapshot,
 }
 
 impl Snapshot {
-    pub fn capture(context: &DiscoveryContext<'_>) -> anyhow::Result<Self> {
-        let types = context.smt.get_array_types();
-        anyhow::ensure!(!types.is_empty(), "no abstract array types");
-        anyhow::ensure!(
-            types.iter().all(|(i, v)| i == "Int" && v == "Int"),
-            "the first decision-model experiment supports Int-indexed, Int-valued arrays only"
-        );
-        let native_model = context.smt.native_model_to_string()?;
-        let mut declarations = context.smt.get_refinement_declarations();
-        declarations.extend(
-            ArrayTheorySupport::new(types.clone())
-                .get_uninterpreted_functions()
-                .iter()
-                .map(|f| f.to_command()),
-        );
-        let mut signatures: HashMap<String, (Vec<Sort>, Sort)> = HashMap::new();
-        for declaration in &declarations {
-            match declaration {
-                Command::DeclareFun {
-                    symbol,
-                    parameters,
-                    sort,
-                } => {
-                    signatures.insert(symbol.0.clone(), (parameters.clone(), sort.clone()));
-                }
-                Command::DefineFun { sig, .. } => {
-                    signatures.insert(
-                        sig.name.0.clone(),
-                        (
-                            sig.parameters
-                                .iter()
-                                .map(|(_, sort)| sort.clone())
-                                .collect(),
-                            sig.result.clone(),
-                        ),
-                    );
-                }
-                _ => {}
-            }
-        }
-        // Traverse whole formulas first so removing Boolean catalogue entries
-        // cannot discard their integer/array descendants. No model-value,
-        // property-relevance, cost-ranking, or e-class pruning here.
-        let mut ground = BTreeMap::new();
-        for term in context
-            .smt
-            .get_all_subterms()
-            .into_iter()
-            .chain(context.smt.get_asserted_instantiation_terms())
-        {
-            collect_ground(term, &mut ground)?;
-        }
-        let mut terms = vec![];
-        for (expression, term) in ground {
-            let sort = term_sort(&term, &signatures, &HashMap::new())
-                .map_err(|e| anyhow::anyhow!("cannot type catalogue term {expression}: {e}"))?;
-            let sort = TermLanguage::sort_to_name(&sort);
-            // None of the supported Int/Int array axiom slots accept Bool.
-            // This only filters substitution options, never the native model.
-            if sort == "Bool" {
-                continue;
-            }
-            terms.push(CatalogueTerm {
-                id: format!("t{}", terms.len()),
-                expression,
-                sort,
-                term,
-            });
-        }
-        let schemas = ArrayInstantiationSchema::all(&types)?;
-        let mut declarations = declarations
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        declarations.extend(
-            types
-                .iter()
-                .map(|(i, v)| format!("(declare-sort Array_{i}_{v} 0)")),
-        );
-        declarations.sort();
-        declarations.dedup();
-        let state = json!({
-            "schema_version": 2,
+    pub fn capture(context: &DiscoveryContext<'_>, problem_source: &str) -> anyhow::Result<Self> {
+        let shared = InstantiationSnapshot::capture(context, problem_source)?;
+        let mut state = shared.state();
+        let instructions = json!({
             "task": "Find a complete array axiom instantiation that is false in this abstract model. Read/Write/ConstArr are uninterpreted functions in the model; their intended semantics are the offered axioms. First select an axiom using the model. A separate request then supplies the term catalogue and chooses all bindings for that selected axiom. Both stages use the same captured model. In the binding stage, select only catalogue term IDs; model universe elements are not legal substitution terms unless represented by a catalogue expression.",
             "axiom_guidance": {
                 "write-does-not-overwrite": "To find a violated instance of write-does-not-overwrite, idx and c MUST evaluate to different values in the supplied model. Different term IDs or different expressions are not enough: their model values must differ. Never choose the same term for idx and c. If idx = c, the antecedent (not (= idx c)) is false and the entire implication is TRUE, so it cannot rule out this countermodel. Unequal indices are necessary but not sufficient: Read(Write(a, idx, val), c) and Read(a, c) must also evaluate to different values so that the consequent is false. Coordinate the idx and c choices with each other and the other bindings."
             },
-            "model_format": "native Z3 model; preserve function defaults and uninterpreted-domain values; absent interpretations are unknown",
-            "frame_notation": "x@N denotes x at absolute BMC frame N; unframed declaration signatures also apply to their framed instances",
-            "depth": context.depth,
-            "refinement_step": context.refinement_step,
-            "model_version": context.model_version,
-            "model": native_model,
-            "declarations": declarations,
-            "terms": terms,
-            "axioms": schemas.iter().map(|s| json!({"id":s.id,"name":s.name(),"slots":s.slots,"body":s.formula})).collect::<Vec<_>>(),
-            "catalogue_scope": "all non-Boolean current ground problem/refinement subterms, including children of Boolean formulas, deduplicated syntactically; no synthesized terms or heuristic shortlist; the full model retains Boolean interpretations",
-            "successful_instantiations": {
-                "meaning": "Previously installed instances from Jev or ordinary Yardbird refinement. Do not propose these again. These are normalized replay schemas: x+K denotes relative frame offset K, while x@N in the model/catalogue denotes absolute frame N. They are not claims of current-model violations. Choose bindings only from the current catalogue.",
-                "instances": context.smt.get_instantiations().iter().map(ToString::to_string).collect::<std::collections::BTreeSet<_>>(),
-            },
         });
-        Ok(Self {
-            state,
-            terms,
-            schemas,
-        })
+        state
+            .as_object_mut()
+            .unwrap()
+            .extend(instructions.as_object().unwrap().clone());
+        // Preserve the existing JEV wire prompt while the common payload is neutral.
+        state["successful_instantiations"]["meaning"] = json!("Previously installed instances from Jev or ordinary Yardbird refinement. Do not propose these again. These are normalized replay schemas: x+K denotes relative frame offset K, while x@N in the model/catalogue denotes absolute frame N. They are not claims of current-model violations. Choose bindings only from the current catalogue.");
+        Ok(Self { state, shared })
     }
 
     fn request_state(&self, failures: &FailureSummary, stage: &str) -> Value {
@@ -146,11 +44,11 @@ impl Snapshot {
 
     pub fn axiom_request(&self, model: &str, failures: &FailureSummary) -> anyhow::Result<Value> {
         let mut choices = serde_json::Map::new();
-        for schema in &self.schemas {
+        for schema in &self.shared.schemas {
             if schema
                 .slots
                 .values()
-                .any(|sort| !self.terms.iter().any(|t| &t.sort == sort))
+                .any(|sort| !self.shared.terms.iter().any(|t| &t.sort == sort))
             {
                 continue;
             }
@@ -181,14 +79,7 @@ impl Snapshot {
         response: &Value,
     ) -> anyhow::Result<&'a ArrayInstantiationSchema> {
         let id = offered_choice(request, response, "axiom")?;
-        self.schema(id)
-    }
-
-    fn schema(&self, id: &str) -> anyhow::Result<&ArrayInstantiationSchema> {
-        self.schemas
-            .iter()
-            .find(|s| s.id == id)
-            .ok_or_else(|| anyhow::anyhow!("unknown axiom {id}"))
+        self.shared.schema(id)
     }
 
     pub fn binding_request(
@@ -197,11 +88,12 @@ impl Snapshot {
         failures: &FailureSummary,
         schema_id: &str,
     ) -> anyhow::Result<Value> {
-        let schema = self.schema(schema_id)?;
+        let schema = self.shared.schema(schema_id)?;
         let correction = failures.instruction();
         let mut questions = serde_json::Map::new();
         for (slot, sort) in &schema.slots {
             let criteria = self
+                .shared
                 .terms
                 .iter()
                 .filter(|t| &t.sort == sort)
@@ -229,23 +121,16 @@ impl Snapshot {
         let schema_id = request["state"]["selected_axiom"]["id"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("binding request has no selected axiom"))?;
-        let schema = self.schema(schema_id)?;
+        let schema = self.shared.schema(schema_id)?;
         let mut bindings = BTreeMap::new();
-        for (slot, sort) in &schema.slots {
+        for slot in schema.slots.keys() {
             let id = offered_choice(request, response, &format!("{}_{}", schema.id, slot))?;
-            let term = self
-                .terms
-                .iter()
-                .find(|t| t.id == id)
-                .ok_or_else(|| anyhow::anyhow!("unknown term {id}"))?;
-            anyhow::ensure!(
-                &term.sort == sort,
-                "wrong sort for {slot}: expected {sort}, got {}",
-                term.sort
-            );
-            bindings.insert(slot.clone(), term.term.clone());
+            bindings.insert(slot.clone(), id.to_owned());
         }
-        schema.instantiate(&bindings)
+        self.shared.resolve(&InstantiationProposal {
+            axiom_id: schema_id.to_owned(),
+            bindings,
+        })
     }
 
     /// Fixed order follows array constructor arguments, then the read index.
@@ -253,7 +138,7 @@ impl Snapshot {
         let id = request["state"]["selected_axiom"]["id"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("missing selected axiom"))?;
-        let schema = self.schema(id)?;
+        let schema = self.shared.schema(id)?;
         let order = ["a", "idx", "val", "c", "b"]
             .into_iter()
             .filter(|slot| schema.slots.contains_key(*slot))
@@ -281,6 +166,7 @@ impl Snapshot {
             let question = format!("{id}_{prior}");
             let term_id = offered_choice(full, fixed_answers, &question)?;
             let term = self
+                .shared
                 .terms
                 .iter()
                 .find(|t| t.id == term_id)
@@ -328,18 +214,4 @@ fn offered_choice<'a>(
         "unoffered choice {id} for {question}"
     );
     Ok(id)
-}
-
-fn collect_ground(term: &Term, terms: &mut BTreeMap<String, Term>) -> anyhow::Result<()> {
-    match term {
-        Term::Application { arguments, .. } => {
-            for argument in arguments {
-                collect_ground(argument, terms)?;
-            }
-        }
-        Term::Constant(_) | Term::QualIdentifier(_) => {}
-        _ => anyhow::bail!("unsupported non-ground or unnormalized catalogue term: {term}"),
-    }
-    terms.insert(term.to_string(), term.clone());
-    Ok(())
 }

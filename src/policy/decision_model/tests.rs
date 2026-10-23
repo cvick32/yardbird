@@ -1,11 +1,15 @@
 use super::*;
 use crate::{
     problem_context::ProblemContext,
-    solver::SolverCheckResult,
+    solver::{api::ModelEvaluation, SolverCheckResult},
     strategies::{ProofStrategy, RefinementState},
     vmt_bmc_session::VmtBmcSession,
 };
-use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
+use smt2parser::{
+    concrete::{SyntaxBuilder, Term},
+    vmt::VMTModel,
+    CommandStream,
+};
 use std::{cell::RefCell, collections::HashSet, rc::Rc};
 
 const INPUT: &str = r#"
@@ -91,6 +95,7 @@ fn response(request: &Value, axiom_name: &str) -> Value {
 
 fn binding_request(snapshot: &Snapshot, name: &str) -> Value {
     let schema = snapshot
+        .shared
         .schemas
         .iter()
         .find(|s| s.name().starts_with(name))
@@ -177,16 +182,20 @@ fn boolean_catalogue_filter_preserves_refinement_children_and_full_model() {
     let native_model = smt.native_model_to_string().unwrap();
     assert!(native_model.contains("flag@0"));
     let pending = HashSet::new();
-    let snapshot = Snapshot::capture(&DiscoveryContext {
-        smt: &smt,
-        depth: 0,
-        refinement_step: 1,
-        model_version: 2,
-        pending: &pending,
-    })
+    let snapshot = Snapshot::capture(
+        &DiscoveryContext {
+            smt: &smt,
+            depth: 0,
+            refinement_step: 1,
+            model_version: 2,
+            pending: &pending,
+        },
+        INPUT,
+    )
     .unwrap();
-    assert!(snapshot.terms.iter().all(|t| t.sort != "Bool"));
+    assert!(snapshot.shared.terms.iter().all(|t| t.sort != "Bool"));
     assert!(snapshot
+        .shared
         .terms
         .iter()
         .all(|t| t.expression != formula.to_string()));
@@ -198,7 +207,11 @@ fn boolean_catalogue_filter_preserves_refinement_children_and_full_model() {
         "(Read_Int_Int (Write_Int_Int a@0 2 1234) 2)",
     ] {
         assert!(
-            snapshot.terms.iter().any(|t| t.expression == expression),
+            snapshot
+                .shared
+                .terms
+                .iter()
+                .any(|t| t.expression == expression),
             "missing {expression}"
         );
     }
@@ -232,18 +245,19 @@ fn full_snapshot_preserves_irrelevant_terms_and_native_model_and_rejects_bad_ids
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context).unwrap();
+    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
     assert_eq!(
         snapshot.state["model"],
         smt.native_model_to_string().unwrap()
     );
-    assert!(snapshot.terms.iter().any(|t| t.expression == "123"));
+    assert!(snapshot.shared.terms.iter().any(|t| t.expression == "123"));
     assert!(snapshot
+        .shared
         .terms
         .iter()
         .any(|t| t.expression == "(Read_Int_Int unused@0 123)"));
     let request = binding_request(&snapshot, "read-after-write");
-    for schema in &snapshot.schemas {
+    for schema in &snapshot.shared.schemas {
         let request = snapshot
             .binding_request("fixture", &FailureSummary::default(), &schema.id)
             .unwrap();
@@ -252,10 +266,29 @@ fn full_snapshot_preserves_irrelevant_terms_and_native_model_and_rejects_bad_ids
             schema.slots.len()
         );
         assert!(request["questions"].get("axiom").is_none());
+        let shared_state = snapshot.shared.state();
+        for field in [
+            "model",
+            "declarations",
+            "terms",
+            "axioms",
+            "problem",
+            "depth",
+            "refinement_step",
+            "model_version",
+            "frame_notation",
+            "catalogue_scope",
+        ] {
+            assert_eq!(
+                request["state"][field], shared_state[field],
+                "changed shared field {field}"
+            );
+        }
         for (slot, sort) in &schema.slots {
             let question = &request["questions"][format!("{}_{}", schema.id, slot)];
             let criteria = question["criteria"].as_object().unwrap();
             let expected = snapshot
+                .shared
                 .terms
                 .iter()
                 .filter(|term| &term.sort == sort)
@@ -299,6 +332,7 @@ fn full_snapshot_preserves_irrelevant_terms_and_native_model_and_rejects_bad_ids
     answer["answers"]["axiom"] = json!({"type":"choice","choice":"q999"});
     assert!(snapshot.proposal(&request, &answer).is_ok());
     let array_id = snapshot
+        .shared
         .terms
         .iter()
         .find(|t| t.expression == "a@0")
@@ -506,7 +540,7 @@ fn conditional_requests_cover_all_array_schemas_without_changing_domains() {
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context).unwrap();
+    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
     for (name, expected) in [
         ("read-after-write", vec!["a", "idx", "val"]),
         ("write-does-not-overwrite", vec!["a", "idx", "val", "c"]),
@@ -579,7 +613,7 @@ fn conditional_beam_uses_fixed_prefixes_and_can_select_a_lower_ranked_prefix() {
     );
     let requests = requests.borrow();
     assert_eq!(requests.len(), 6); // axiom + a + two idx prefixes + two val prefixes
-    let snapshot = Snapshot::capture(&context).unwrap();
+    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
     let full = binding_request(&snapshot, "read-after-write");
     for request in requests.iter().skip(1) {
         assert_eq!(request["state"]["model"], full["state"]["model"]);
@@ -949,7 +983,7 @@ fn snapshot_reports_only_installed_successes_in_normalized_notation() {
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context).unwrap();
+    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
     assert_eq!(
         snapshot.state["successful_instantiations"]["instances"],
         json!([])
@@ -972,7 +1006,7 @@ fn snapshot_reports_only_installed_successes_in_normalized_notation() {
         model_version: 2,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context).unwrap();
+    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
     assert_eq!(
         snapshot.state["successful_instantiations"]["instances"],
         json!([installed])
@@ -1208,8 +1242,9 @@ fn constant_axiom_uses_shared_schema_and_unknown_evaluation_is_not_a_violation()
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context).unwrap();
+    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
     let schema = snapshot
+        .shared
         .schemas
         .iter()
         .find(|s| s.name().starts_with("constant-array"))

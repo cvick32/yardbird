@@ -29,7 +29,6 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use smt2parser::concrete::Term;
 
 use crate::{
     instance_installation::{
@@ -38,11 +37,12 @@ use crate::{
     policy::{
         discovery::{DiscoveryContext, DiscoveryFirst, InstanceDiscovery},
         instance_selection::TermCostInstantiationRanker,
+        instantiation::validate,
         term_selection::array::ArrayBMCCost,
         YardbirdPolicy,
     },
     rule_matching::candidate::SymbolicInstance,
-    solver::{api::ModelEvaluation, PropertyCheckMode},
+    solver::PropertyCheckMode,
     strategies::Abstract,
     ArrayProofPlan, SolverBackend, Theory, TheorySelection, YardbirdOptions,
 };
@@ -342,7 +342,17 @@ impl InstanceDiscovery for Experiment {
         &mut self,
         context: &DiscoveryContext<'_>,
     ) -> anyhow::Result<Vec<SymbolicInstance>> {
-        let mut snapshot = match Snapshot::capture(context) {
+        // Preserve the complete original problem, before abstraction/lowering.
+        // Cache it so every model in this experiment sees the same source text.
+        if self.problem_source.is_none() {
+            let path = self
+                .input
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("missing original VMT path"))?;
+            self.problem_source = Some(std::fs::read_to_string(path)?);
+        }
+        let mut snapshot = match Snapshot::capture(context, self.problem_source.as_deref().unwrap())
+        {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.record(
@@ -353,19 +363,6 @@ impl InstanceDiscovery for Experiment {
                 return Ok(vec![]);
             }
         };
-        // Preserve the complete original problem, before abstraction/lowering.
-        // Cache it so every model in this experiment sees the same source text.
-        if self.problem_source.is_none() {
-            let path = self
-                .input
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("missing original VMT path"))?;
-            self.problem_source = Some(std::fs::read_to_string(path)?);
-        }
-        snapshot.state["problem"] = json!({
-            "format":"VMT", "source":self.problem_source,
-            "notation":"The complete original verification problem. :init marks initialization, :trans the transition relation, :invar-property the property, and :next the current/next variable mapping. For Int arrays, select/store correspond to abstract Read_Int_Int/Write_Int_Int. x@N denotes absolute frame N; next variables denote the following frame. The original problem uses array semantics; the abstract function tables may violate them."
-        });
         snapshot.state["prompt_variant"] = json!(self.options.jev_prompt);
         if self.options.jev_prompt == JevPrompt::PropertyDirected {
             snapshot.state["task"] = json!(PROPERTY_DIRECTED_PROMPT.trim());
@@ -529,98 +526,4 @@ fn query_cost(response: &Value, options: &DecisionModelOptions) -> Value {
         "output_usd_per_million": options.jev_output_usd_per_million,
         "basis": "response_usage_at_configured_rates",
     })
-}
-
-fn validate(
-    context: &DiscoveryContext<'_>,
-    instance: SymbolicInstance,
-) -> (Value, Option<SymbolicInstance>) {
-    let mut feedback = json!({"rule":instance.rule.name(),"instance":instance.term.to_string(),
-        "bindings":instance.bindings.iter().map(|(v,t)| (v.clone(), t.to_string())).collect::<std::collections::BTreeMap<_,_>>()});
-    let Some(normalized) = context
-        .smt
-        .make_unquantified_instance(instance.term.clone())
-    else {
-        feedback["outcome"] = json!("uninstallable");
-        return (feedback, None);
-    };
-    let key = canonical_instantiation_key(normalized.get_term());
-    if context.pending.contains(&key)
-        || context
-            .smt
-            .get_instantiations()
-            .iter()
-            .any(|t| canonical_instantiation_key(t) == key)
-    {
-        feedback["outcome"] = json!("already_present");
-        return (feedback, None);
-    }
-    let evaluation = context.smt.eval_partial(&instance.term);
-    match evaluation {
-        Ok(ModelEvaluation::Known(value)) if value.trim() == "false" => {
-            feedback["outcome"] = json!("violated");
-            feedback["model_value"] = json!(false);
-            (feedback, Some(instance))
-        }
-        result => {
-            let outcome = match &result {
-                Ok(ModelEvaluation::Known(v)) if v.trim() == "true" => "instance_true",
-                Ok(_) => "undetermined",
-                Err(_) => "evaluation_error",
-            };
-            feedback["outcome"] = json!(outcome);
-            if let Err(error) = result {
-                feedback["error"] = json!(error.to_string());
-            }
-            let mut observations = std::collections::BTreeMap::new();
-            observe_subterms(context, &instance.term, &mut observations);
-            let mut reason = outcome;
-            if outcome == "instance_true" {
-                if let Term::Application {
-                    qual_identifier,
-                    arguments,
-                } = &instance.term
-                {
-                    if qual_identifier.to_string() == "=>" && arguments.len() == 2 {
-                        let value = |term: &Term| {
-                            observations
-                                .get(&term.to_string())
-                                .and_then(|v| v["value"].as_str())
-                        };
-                        if value(&arguments[0]) == Some("false") {
-                            reason = "false_antecedent";
-                        } else if value(&arguments[1]) == Some("true") {
-                            reason = "true_consequent";
-                        }
-                    }
-                }
-            }
-            feedback["reason"] = json!(reason);
-            feedback["observations"] = json!(observations);
-            feedback["explanation"] = json!("Only a new, installable instance whose COMPLETE formula evaluates to false excludes this model. A false antecedent makes an implication true. Unknown evaluations are not false. Try a different complete substitution using the original model and this feedback.");
-            (feedback, None)
-        }
-    }
-}
-
-fn observe_subterms(
-    context: &DiscoveryContext<'_>,
-    term: &Term,
-    observations: &mut std::collections::BTreeMap<String, Value>,
-) {
-    let key = term.to_string();
-    if observations.contains_key(&key) {
-        return;
-    }
-    let value = match context.smt.eval_partial(term) {
-        Ok(ModelEvaluation::Known(value)) => json!({"status":"known","value":value}),
-        Ok(ModelEvaluation::Undetermined) => json!({"status":"undetermined"}),
-        Err(error) => json!({"status":"error","error":error.to_string()}),
-    };
-    observations.insert(key, value);
-    if let Term::Application { arguments, .. } = term {
-        for argument in arguments {
-            observe_subterms(context, argument, observations);
-        }
-    }
 }
