@@ -7,6 +7,35 @@ from summarize import summarize
 
 
 class CostSummaryTests(unittest.TestCase):
+    def test_conditional_queries_have_distinct_costs_and_local_attempt_is_not_billed(self):
+        records = []
+        for query_id in (1, 2):
+            records.extend([
+                {"event":"request", "query_id":query_id, "attempt":1, "stage":"conditional_binding", "request_bytes":100, "policy":"conditional-binding"},
+                {"event":"binding_result", "query_id":query_id, "attempt":1, "stage":"conditional_binding", "elapsed_secs":0.1,
+                 "outcome":"selected", "cost":{"status":"estimated", "estimated_usd":0.001}},
+            ])
+        result = self.summary(records + [
+            {"event":"attempt_result", "query_id":2, "attempt":1, "stage":"instantiation", "api_call":False,
+             "feedback":{"outcome":"violated"}, "elapsed_secs":0.0, "cost":None},
+        ])
+        self.assertEqual(result["total_estimated_cost_usd"], 0.002)
+        self.assertEqual(len(result["query_costs"]), 2)
+        self.assertEqual(result["queries_with_unknown_cost"], 0)
+        self.assertEqual(result["attempt_outcomes"], {"violated":1})
+        self.assertEqual(result["policies"], ["conditional-binding"])
+        self.assertAlmostEqual(result["inference_elapsed_secs"], 0.2)
+        interrupted = self.summary(records + [
+            {"event":"request", "query_id":3, "attempt":1, "stage":"conditional_binding", "request_bytes":100}
+        ])
+        self.assertEqual(interrupted["known_estimated_cost_usd"], 0.002)
+        self.assertEqual(interrupted["queries_with_unknown_cost"], 1)
+        skipped = self.summary(records + [
+            {"event":"request", "query_id":3, "attempt":1, "stage":"conditional_binding", "request_bytes":100},
+            {"event":"request_skipped", "query_id":3, "attempt":1, "stage":"conditional_binding", "outcome":"request_too_large"}
+        ])
+        self.assertEqual(skipped["total_estimated_cost_usd"], 0.002)
+
     def test_local_candidates_do_not_add_api_costs_or_attempts(self):
         result = self.summary([
             {"event": "candidate_result", "attempt": 1, "stage": "instantiation", "rank": rank,

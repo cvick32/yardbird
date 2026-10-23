@@ -21,6 +21,7 @@ def summarize(path: Path) -> dict:
     successful_candidate_ranks = Counter()
     candidate_success_sources = Counter()
     validation_latency = 0.0
+    policies = set()
     lines = path.read_text().splitlines()
     for index, line in enumerate(lines):
         try:
@@ -34,6 +35,10 @@ def summarize(path: Path) -> dict:
         event = record["event"]
         stage = record.get("stage", "joint")
         key = (record["model_version"], record.get("attempt"), stage)
+        if "query_id" in record:
+            key += (record["query_id"],)
+        if "policy" in record:
+            policies.add(record["policy"])
         if event == "episode_end":
             episode.update(record)
         elif event == "request":
@@ -43,6 +48,7 @@ def summarize(path: Path) -> dict:
                 "model_version": record["model_version"],
                 "attempt": record["attempt"],
                 "stage": stage,
+                "query_id": record.get("query_id"),
                 "estimated_usd": None,
                 "status": "unknown",
             }
@@ -54,7 +60,7 @@ def summarize(path: Path) -> dict:
             episode["had_answer"] = True
             if outcome == "violated" and record["attempt"] == 1:
                 episode["first_attempt_success"] = True
-        elif event == "axiom_result":
+        elif event in ("axiom_result", "binding_result"):
             latency += record["elapsed_secs"]
             episode["had_answer"] = True
         elif event == "transport_error":
@@ -66,14 +72,16 @@ def summarize(path: Path) -> dict:
                 successful_candidate_ranks[str(record["rank"])] += 1
                 source = "model_choice" if record["matches_model_choice"] else "probability_search"
                 candidate_success_sources[source] += 1
-        if event in ("attempt_result", "axiom_result", "transport_error"):
+        if event in ("attempt_result", "axiom_result", "binding_result", "transport_error"):
             stage_latency[stage] += record["elapsed_secs"]
             outcome = record["feedback"]["outcome"] if event == "attempt_result" else (
-                "selected" if event == "axiom_result" else "transport_error")
+                record.get("outcome", "selected") if event in ("axiom_result", "binding_result") else "transport_error")
             stage_outcomes.setdefault(stage, Counter())[outcome] += 1
-            queries.setdefault(key, {"model_version": key[0], "attempt": key[1], "stage": stage}).update(
-                record.get("cost", {"status": "unknown", "estimated_usd": None})
-            )
+            if record.get("api_call", True):
+                queries.setdefault(key, {"model_version": key[0], "attempt": key[1], "stage": stage,
+                                         "query_id": record.get("query_id")}).update(
+                    record.get("cost") or {"status": "unknown", "estimated_usd": None}
+                )
         elif event == "request_skipped":
             queries.pop(key, None)
         elif event == "episode_end" and record.get("schema_version", 1) < 2 and record["outcome"] in ("dry_run", "request_too_large"):
@@ -92,6 +100,7 @@ def summarize(path: Path) -> dict:
             stage_costs[stage] = stage_costs.get(stage, Decimal(0)) + Decimal(str(amount))
     return {
         "log": str(path),
+        "policies": sorted(policies),
         "episodes": len(episodes),
         "episode_outcomes": dict(outcomes),
         "episodes_with_model_answers": sum(bool(e.get("had_answer")) for e in episodes.values()),
