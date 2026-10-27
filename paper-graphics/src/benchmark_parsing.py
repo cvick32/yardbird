@@ -46,6 +46,7 @@ class BenchmarkResult:
     solver_stats: dict[str, float] = field(default_factory=dict)
     run_progress: Optional[dict] = None
     policy: Optional[str] = None
+    no_guided_fallback: Optional[bool] = None
     guidance_schedule: Optional[str] = None
 
     timeout_ms: Optional[float] = None
@@ -83,6 +84,7 @@ class BenchmarkResult:
     def get_configuration(self) -> dict[str, object]:
         return {
             "policy": self.policy,
+            "no_guided_fallback": self.no_guided_fallback,
             "guidance_schedule": self.guidance_schedule,
             "solver": self.solver,
             "strategy": self.strategy,
@@ -115,6 +117,8 @@ class BenchmarkResult:
             if self.has_extended_configuration():
                 components: list[tuple[str, object | None]] = [
                     ("policy", self.policy),
+                    ("fallback", None if self.no_guided_fallback is None else
+                     "disabled" if self.no_guided_fallback else "ordinary"),
                     ("guidance", self.guidance_schedule),
                     ("solver", self.solver),
                     ("depth", self.depth),
@@ -232,6 +236,8 @@ class BenchmarkResult:
                 details = []
                 if self.policy:
                     details.append(self.policy)
+                if self.no_guided_fallback is not None:
+                    details.append("strict" if self.no_guided_fallback else "ordinary fallback")
                 if self.guidance_schedule:
                     details.append(self.guidance_schedule)
                 if self.solver and self.solver != "z3":
@@ -579,6 +585,8 @@ class BenchmarkParser:
 
         return BenchmarkResult(
             policy=result_entry.get("policy"),
+            no_guided_fallback=(result_entry.get("no_guided_fallback")
+                if result_entry.get("policy") in {"one-shot", "conditional-binding", "llm-one-shot"} else None),
             guidance_schedule=result_entry.get("guidance_schedule"),
             run_progress=run_progress,
             example_name=example_name,
