@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Provider responses resolve to this representation before any formula is built.
-/// IDs are local to the snapshot that supplied the inference request.
+/// Term IDs are stable within a run, but only the current snapshot defines eligibility.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct InstantiationProposal {
@@ -38,7 +38,8 @@ pub(crate) struct InstantiationSnapshot {
     pub terms: Vec<CatalogueTerm>,
     pub schemas: Vec<ArrayInstantiationSchema>,
     model: String,
-    declarations: Vec<String>,
+    pub(super) declarations: Vec<String>,
+    pub(super) prefix: Vec<Value>,
     depth: u16,
     refinement_step: u32,
     model_version: u64,
@@ -47,7 +48,10 @@ pub(crate) struct InstantiationSnapshot {
 }
 
 impl InstantiationSnapshot {
-    pub fn capture(context: &DiscoveryContext<'_>, problem_source: &str) -> anyhow::Result<Self> {
+    pub(super) fn capture(
+        context: &DiscoveryContext<'_>,
+        problem_source: &str,
+    ) -> anyhow::Result<Self> {
         let types = context.smt.get_array_types();
         anyhow::ensure!(!types.is_empty(), "no abstract array types");
         anyhow::ensure!(
@@ -133,6 +137,7 @@ impl InstantiationSnapshot {
             schemas,
             model: native_model,
             declarations,
+            prefix: Vec::new(),
             depth: context.depth,
             refinement_step: context.refinement_step,
             model_version: context.model_version,
@@ -150,7 +155,7 @@ impl InstantiationSnapshot {
     /// protocol without recapturing or filtering the underlying context.
     pub fn state(&self) -> Value {
         let mut state = json!({
-            "schema_version": 2,
+            "schema_version": 3,
             "model_format": "native Z3 model; preserve function defaults and uninterpreted-domain values; absent interpretations are unknown",
             "frame_notation": "x@N denotes x at absolute BMC frame N; unframed declaration signatures also apply to their framed instances",
             "depth": self.depth,
@@ -170,6 +175,23 @@ impl InstantiationSnapshot {
             "format":"VMT", "source":self.problem_source,
             "notation":"The complete original verification problem. :init marks initialization, :trans the transition relation, :invar-property the property, and :next the current/next variable mapping. For Int arrays, select/store correspond to abstract Read_Int_Int/Write_Int_Int. x@N denotes absolute frame N; next variables denote the following frame. The original problem uses array semantics; the abstract function tables may violate them."
         });
+        state
+    }
+
+    /// Ordered immutable static/vocabulary blocks. Each request must carry all
+    /// blocks; this is a full context representation, not a remote delta protocol.
+    pub fn prefix(&self) -> &[Value] {
+        &self.prefix
+    }
+
+    /// Only current-model information. No past model or provider answers persist.
+    pub fn current_state(&self) -> Value {
+        let mut state = self.state();
+        for block in &self.prefix {
+            for field in block.as_object().unwrap().keys() {
+                state.as_object_mut().unwrap().remove(field);
+            }
+        }
         state
     }
 

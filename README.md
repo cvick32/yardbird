@@ -2,6 +2,11 @@
 
 This chicken lays `egg`s...
 
+For the experimental joint LLM instantiation policy, see
+[LLM-guided instantiation](src/policy/llm/README.md). It uses the same captured
+context and trusted validation as the JEV policies, with OpenAI and Anthropic
+adapters and an offline dry-run mode.
+
 # Running with Debug logs
 
 `RUST_LOG='yardbird=debug,smt2parser=debug' cargo run -- ...`

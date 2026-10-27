@@ -22,7 +22,7 @@ const INPUT: &str = r#"
     (define-fun prop () Bool (! (= (select (store a 1 7) 1) 7) :invar-property 0))
 "#;
 
-fn fixture() -> VmtBmcSession {
+pub(super) fn fixture() -> VmtBmcSession {
     let model = VMTModel::checked_from(
         CommandStream::new(INPUT.as_bytes(), SyntaxBuilder, None)
             .collect::<Result<Vec<_>, _>>()
@@ -91,7 +91,9 @@ fn context_is_complete_owned_and_independent_of_provider_request_edits() {
         pending: &pending,
     };
     let mut source = INPUT.to_owned();
-    let snapshot = InstantiationSnapshot::capture(&context, &source).unwrap();
+    let snapshot = InstantiationSession::default()
+        .capture(&context, &source)
+        .unwrap();
     source.clear();
     let state = snapshot.state();
     assert_eq!(state["problem"]["source"], INPUT);
@@ -133,7 +135,9 @@ fn joint_proposals_use_exact_schemas_and_shared_whole_formula_validation() {
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = InstantiationSnapshot::capture(&context, INPUT).unwrap();
+    let snapshot = InstantiationSession::default()
+        .capture(&context, INPUT)
+        .unwrap();
     let instance = snapshot
         .resolve(&proposal(&snapshot, "read-after-write"))
         .unwrap();
@@ -164,7 +168,9 @@ fn joint_proposals_reject_unknown_ids_wrong_sorts_and_inexact_slots() {
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = InstantiationSnapshot::capture(&context, INPUT).unwrap();
+    let snapshot = InstantiationSession::default()
+        .capture(&context, INPUT)
+        .unwrap();
     let valid = proposal(&snapshot, "read-after-write");
     let mut unknown_axiom = valid.clone();
     unknown_axiom.axiom_id = "q999".into();

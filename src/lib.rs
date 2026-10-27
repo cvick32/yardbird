@@ -106,6 +106,14 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub decision_model: policy::decision_model::DecisionModelOptions,
 
+    #[command(flatten)]
+    #[serde(default)]
+    pub llm: policy::llm::LlmOptions,
+    /// Stop with NoProgress if guided instantiation fails; never run ordinary search.
+    #[arg(long)]
+    #[serde(default)]
+    pub no_guided_fallback: bool,
+
     /// Name of the VMT file.
     #[arg(short, long)]
     pub filename: Option<String>,
@@ -311,6 +319,8 @@ impl Default for YardbirdOptions {
             options_json: None,
             policy: None,
             decision_model: Default::default(),
+            llm: Default::default(),
+            no_guided_fallback: false,
             filename: None,
             depth: 10,
             wall_timeout_secs: None,
@@ -447,7 +457,7 @@ impl YardbirdOptions {
         self.profile
             || self
                 .policy
-                .is_some_and(policy::NamedPolicy::uses_decision_model)
+                .is_some_and(|p| p.uses_decision_model() || p == policy::NamedPolicy::LlmOneShot)
             || self.train
             || self.solver_capture_dir.is_some()
             || self.countermodel_trace_work > 0
@@ -493,6 +503,21 @@ impl YardbirdOptions {
                 self.synthesis_trigger
             );
         }
+        Ok(())
+    }
+
+    /// Strict guidance is meaningful only for policies that propose instances.
+    pub fn validate_guided_fallback(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.no_guided_fallback
+                || self.policy.is_some_and(|p| matches!(
+                    p,
+                    policy::NamedPolicy::OneShot
+                        | policy::NamedPolicy::ConditionalBinding
+                        | policy::NamedPolicy::LlmOneShot
+                )),
+            "--no-guided-fallback requires a JEV or LLM policy"
+        );
         Ok(())
     }
 

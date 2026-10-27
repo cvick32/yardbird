@@ -167,6 +167,9 @@ pub struct EffortContext<'a> {
     pub operations: &'a [EffortOperation],
 }
 pub enum EffortDecision {
+    /// The configured producer is exhausted. Stop as inconclusive without
+    /// concrete counterexample validation or another abstract search pass.
+    Stop,
     Execute {
         operation: OperationId,
         allowance: WorkAllowance,
@@ -843,6 +846,7 @@ mod guidance_followup_tests {
                 },
             });
             match policy.choose(&context) {
+                EffortDecision::Stop => panic!("ordinary effort must not stop"),
                 EffortDecision::ReturnToDriver => assert!(supplement.is_none()),
                 EffortDecision::Execute {
                     operation,

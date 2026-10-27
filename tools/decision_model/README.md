@@ -76,3 +76,14 @@ compare expressions and sorts when aligning their logs. JEV continues to send a
 flat snapshot and full binding domains. The LLM serializes equivalent static,
 append-only vocabulary, and current-model blocks for prompt caching; see
 [LLM context caching](../../src/policy/llm/README.md#reusable-context-and-prompt-caching).
+
+
+### Strict comparison mode
+
+Add `--no-guided-fallback` to stop with `NoProgress` when guidance cannot
+produce an installable instance. This disables both ordinary Yardbird search
+and the driver's concrete-array fallback. It never interprets a failed proposal
+as a proof or counterexample. The default retains ordinary fallback.
+
+The four-way Garden experiment, smoke run, AWS secret references, and live
+figure commands are documented in `garden/instantiation_comparison.md`.

@@ -675,6 +675,12 @@ where
                 pending_instances: state.candidates.len() + state.guarded_read_updates.len(),
                 operations: &operations,
             });
+            if matches!(decision, EffortDecision::Stop) {
+                return Err(driver::Error::NoProgress {
+                    depth: state.depth,
+                    instantiations: smt.get_instantiations(),
+                });
+            }
             let choice_elapsed_secs = choice_start
                 .map(|start| start.elapsed().as_secs_f64())
                 .unwrap_or_default();

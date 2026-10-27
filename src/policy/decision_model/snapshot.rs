@@ -5,7 +5,7 @@ use super::feedback::FailureSummary;
 use crate::{
     policy::{
         discovery::DiscoveryContext,
-        instantiation::{InstantiationProposal, InstantiationSnapshot},
+        instantiation::{InstantiationProposal, InstantiationSession, InstantiationSnapshot},
     },
     theories::array::instantiation_schema::ArrayInstantiationSchema,
 };
@@ -17,8 +17,12 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
-    pub fn capture(context: &DiscoveryContext<'_>, problem_source: &str) -> anyhow::Result<Self> {
-        let shared = InstantiationSnapshot::capture(context, problem_source)?;
+    pub fn capture(
+        session: &mut InstantiationSession,
+        context: &DiscoveryContext<'_>,
+        problem_source: &str,
+    ) -> anyhow::Result<Self> {
+        let shared = session.capture(context, problem_source)?;
         let mut state = shared.state();
         let instructions = json!({
             "task": "Find a complete array axiom instantiation that is false in this abstract model. Read/Write/ConstArr are uninterpreted functions in the model; their intended semantics are the offered axioms. First select an axiom using the model. A separate request then supplies the term catalogue and chooses all bindings for that selected axiom. Both stages use the same captured model. In the binding stage, select only catalogue term IDs; model universe elements are not legal substitution terms unless represented by a catalogue expression.",

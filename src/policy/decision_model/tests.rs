@@ -138,8 +138,10 @@ impl DecisionClient for RetryClient {
 
 fn experiment(path: PathBuf, client: impl DecisionClient + 'static) -> Experiment {
     Experiment {
+        no_fallback: false,
         mode: BindingMode::OneShot,
         query_id: 0,
+        session: Default::default(),
         options: DecisionModelOptions {
             jev_log: Some(path),
             jev_candidates: 1,
@@ -183,6 +185,7 @@ fn boolean_catalogue_filter_preserves_refinement_children_and_full_model() {
     assert!(native_model.contains("flag@0"));
     let pending = HashSet::new();
     let snapshot = Snapshot::capture(
+        &mut InstantiationSession::default(),
         &DiscoveryContext {
             smt: &smt,
             depth: 0,
@@ -245,7 +248,8 @@ fn full_snapshot_preserves_irrelevant_terms_and_native_model_and_rejects_bad_ids
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
+    let snapshot =
+        Snapshot::capture(&mut InstantiationSession::default(), &context, INPUT).unwrap();
     assert_eq!(
         snapshot.state["model"],
         smt.native_model_to_string().unwrap()
@@ -540,7 +544,8 @@ fn conditional_requests_cover_all_array_schemas_without_changing_domains() {
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
+    let snapshot =
+        Snapshot::capture(&mut InstantiationSession::default(), &context, INPUT).unwrap();
     for (name, expected) in [
         ("read-after-write", vec!["a", "idx", "val"]),
         ("write-does-not-overwrite", vec!["a", "idx", "val", "c"]),
@@ -613,7 +618,8 @@ fn conditional_beam_uses_fixed_prefixes_and_can_select_a_lower_ranked_prefix() {
     );
     let requests = requests.borrow();
     assert_eq!(requests.len(), 6); // axiom + a + two idx prefixes + two val prefixes
-    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
+    let snapshot =
+        Snapshot::capture(&mut InstantiationSession::default(), &context, INPUT).unwrap();
     let full = binding_request(&snapshot, "read-after-write");
     for request in requests.iter().skip(1) {
         assert_eq!(request["state"]["model"], full["state"]["model"]);
@@ -983,7 +989,8 @@ fn snapshot_reports_only_installed_successes_in_normalized_notation() {
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
+    let snapshot =
+        Snapshot::capture(&mut InstantiationSession::default(), &context, INPUT).unwrap();
     assert_eq!(
         snapshot.state["successful_instantiations"]["instances"],
         json!([])
@@ -1006,7 +1013,8 @@ fn snapshot_reports_only_installed_successes_in_normalized_notation() {
         model_version: 2,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
+    let snapshot =
+        Snapshot::capture(&mut InstantiationSession::default(), &context, INPUT).unwrap();
     assert_eq!(
         snapshot.state["successful_instantiations"]["instances"],
         json!([installed])
@@ -1242,7 +1250,8 @@ fn constant_axiom_uses_shared_schema_and_unknown_evaluation_is_not_a_violation()
         model_version: 1,
         pending: &pending,
     };
-    let snapshot = Snapshot::capture(&context, INPUT).unwrap();
+    let snapshot =
+        Snapshot::capture(&mut InstantiationSession::default(), &context, INPUT).unwrap();
     let schema = snapshot
         .shared
         .schemas
@@ -1359,4 +1368,80 @@ fn query_cost_uses_reported_usage_and_preserves_unknowns() {
     assert!(
         query_cost(&json!({"usage":{"input_tokens":100}}), &options)["estimated_usd"].is_null()
     );
+}
+
+#[test]
+fn staged_requests_share_run_stable_ids_and_the_complete_current_catalogue() {
+    let mut smt = fixture();
+    let pending = HashSet::new();
+    let mut session = InstantiationSession::default();
+    let mut previous = Vec::<Value>::new();
+    for depth in 0..4 {
+        smt.unroll(depth);
+        assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+        let context = DiscoveryContext {
+            smt: &smt,
+            depth,
+            refinement_step: 0,
+            model_version: u64::from(depth) + 1,
+            pending: &pending,
+        };
+        let snapshot = Snapshot::capture(&mut session, &context, INPUT).unwrap();
+        let request = binding_request(&snapshot, "read-after-write");
+        let shared = snapshot.shared.state();
+        assert_eq!(request["state"]["terms"], shared["terms"]);
+        assert_eq!(request["state"]["declarations"], shared["declarations"]);
+        assert_eq!(
+            request["state"]["model"],
+            smt.native_model_to_string().unwrap()
+        );
+        for old in &previous {
+            if let Some(new) =
+                shared["terms"].as_array().unwrap().iter().find(|new| {
+                    new["expression"] == old["expression"] && new["sort"] == old["sort"]
+                })
+            {
+                assert_eq!(new["id"], old["id"]);
+            }
+        }
+        previous = shared["terms"].as_array().unwrap().clone();
+    }
+}
+
+#[test]
+fn strict_guidance_failure_stops_without_installing_ordinary_instances() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("strict.jsonl");
+    let mut discovery = experiment(path.clone(), FailingClient);
+    discovery.no_fallback = true;
+    let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
+        .with_effort(DiscoveryFirst::default().with_no_fallback(true))
+        .with_discovery(discovery);
+    let mut driver = crate::Driver::new(
+        model(INPUT),
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    );
+    let error = driver
+        .check_strategy(1, Box::new(Abstract::new(1, false, policy, true)))
+        .unwrap_err();
+    assert!(
+        matches!(error, crate::driver::Error::NoProgress { ref instantiations, .. }
+        if instantiations.is_empty())
+    );
+    let failed = driver.take_failed_result().unwrap();
+    assert!(!failed.counterexample);
+    assert!(!failed.found_proof);
+    assert_eq!(failed.total_instantiations_added, 0);
+    assert_eq!(
+        failed
+            .solver_statistics
+            .get_f64("concrete_validation_checks")
+            .unwrap(),
+        0.0
+    );
+    let records = std::fs::read_to_string(path).unwrap();
+    let last: Value = serde_json::from_str(records.lines().last().unwrap()).unwrap();
+    assert_eq!(last["ordinary_fallback"], false);
+    assert_eq!(last["no_guided_fallback"], true);
 }

@@ -37,7 +37,7 @@ use crate::{
     policy::{
         discovery::{DiscoveryContext, DiscoveryFirst, InstanceDiscovery},
         instance_selection::TermCostInstantiationRanker,
-        instantiation::validate,
+        instantiation::{validate, InstantiationSession},
         term_selection::array::ArrayBMCCost,
         YardbirdPolicy,
     },
@@ -222,8 +222,10 @@ pub(crate) fn build_plan(run: &YardbirdOptions, mode: BindingMode) -> ArrayProof
         1
     };
     let experiment = Experiment {
+        no_fallback: run.no_guided_fallback,
         mode,
         query_id: 0,
+        session: Default::default(),
         client: Box::new(JevClient::new(options.jev_timeout_secs)),
         options,
         log: None,
@@ -232,7 +234,11 @@ pub(crate) fn build_plan(run: &YardbirdOptions, mode: BindingMode) -> ArrayProof
     };
     let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
         .with_instantiation_ranker(Box::new(TermCostInstantiationRanker))
-        .with_effort(DiscoveryFirst::default().with_discovery_winners(winners))
+        .with_effort(
+            DiscoveryFirst::default()
+                .with_no_fallback(run.no_guided_fallback)
+                .with_discovery_winners(winners),
+        )
         .with_discovery(experiment);
     ArrayProofPlan {
         solver: SolverBackend::Z3,
@@ -248,8 +254,10 @@ pub(crate) fn build_plan(run: &YardbirdOptions, mode: BindingMode) -> ArrayProof
 }
 
 struct Experiment {
+    no_fallback: bool,
     mode: BindingMode,
     query_id: u64,
+    session: InstantiationSession,
     options: DecisionModelOptions,
     client: Box<dyn DecisionClient>,
     log: Option<File>,
@@ -267,6 +275,7 @@ impl Experiment {
                 .ok_or_else(|| anyhow::anyhow!("missing episode log path"))?;
             self.log = Some(OpenOptions::new().write(true).create_new(true).open(path)?);
         }
+        record["no_guided_fallback"] = json!(self.no_fallback);
         record["schema_version"] = json!(3);
         record["policy"] = json!(self.mode);
         record["query_id"] = json!(self.query_id);
@@ -332,7 +341,7 @@ impl Experiment {
         self.record(
             context,
             json!({"event":"episode_end","outcome":outcome,"attempts":attempts,
-            "ordinary_fallback":outcome != "violated", "installation_status":"not_observed_by_discovery"}),
+            "ordinary_fallback":!self.no_fallback && outcome != "violated", "installation_status":"not_observed_by_discovery"}),
         )
     }
 }
@@ -351,8 +360,11 @@ impl InstanceDiscovery for Experiment {
                 .ok_or_else(|| anyhow::anyhow!("missing original VMT path"))?;
             self.problem_source = Some(std::fs::read_to_string(path)?);
         }
-        let mut snapshot = match Snapshot::capture(context, self.problem_source.as_deref().unwrap())
-        {
+        let mut snapshot = match Snapshot::capture(
+            &mut self.session,
+            context,
+            self.problem_source.as_deref().unwrap(),
+        ) {
             Ok(snapshot) => snapshot,
             Err(error) => {
                 self.record(

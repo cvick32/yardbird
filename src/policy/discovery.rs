@@ -20,11 +20,12 @@ pub(crate) trait InstanceDiscovery {
         -> anyhow::Result<Vec<SymbolicInstance>>;
 }
 
-/// Give an optional discovery producer one turn per model, then use ordinary
-/// search. Failure to propose an instance never means search is exhausted.
+/// Give a discovery producer one turn per model. Default mode falls back to
+/// ordinary search; strict mode stops as inconclusive when no candidate remains.
 #[derive(Default)]
 pub(crate) struct DiscoveryFirst {
     ordinary: DefaultEffort,
+    no_fallback: bool,
     attempted: Option<u64>,
     model: u64,
     handoff: bool,
@@ -32,6 +33,11 @@ pub(crate) struct DiscoveryFirst {
 }
 
 impl DiscoveryFirst {
+    pub(crate) fn with_no_fallback(mut self, no_fallback: bool) -> Self {
+        self.no_fallback = no_fallback;
+        self
+    }
+
     pub(crate) fn with_discovery_winners(mut self, winners: usize) -> Self {
         self.discovery_winners = Some(winners.max(1));
         self
@@ -59,7 +65,15 @@ impl ProofEffort for DiscoveryFirst {
                 };
             }
         }
-        self.ordinary.choose(context)
+        if self.no_fallback {
+            if context.pending_instances > 0 {
+                EffortDecision::ReturnToDriver
+            } else {
+                EffortDecision::Stop
+            }
+        } else {
+            self.ordinary.choose(context)
+        }
     }
 
     fn choose_binder_rule(&mut self, context: &BinderEffortContext<'_>) -> Option<usize> {

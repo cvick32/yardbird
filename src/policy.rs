@@ -9,6 +9,7 @@ pub mod eager;
 pub mod effort;
 pub mod instance_selection;
 pub(crate) mod instantiation;
+pub mod llm;
 mod prefer_axioms;
 pub mod term_selection;
 use crate::auxiliary_synthesis::ConditionalHistory;
@@ -36,6 +37,8 @@ pub enum NamedPolicy {
     OneShot,
     /// Choose axiom bindings sequentially, conditioned on earlier choices.
     ConditionalBinding,
+    /// Choose an axiom and every binding in one LLM response, with ordinary fallback.
+    LlmOneShot,
 }
 
 impl NamedPolicy {
@@ -45,6 +48,7 @@ impl NamedPolicy {
 
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
+            Self::LlmOneShot => llm::build_plan(run),
             Self::GermanFast => run_german_fast(run),
             Self::CountermodelGuided => run_countermodel_guided(run),
             Self::OneShot => decision_model::build_plan(run, decision_model::BindingMode::OneShot),
