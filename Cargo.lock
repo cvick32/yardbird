@@ -828,6 +828,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap 4.6.1",
+ "dotenvy",
  "glob",
  "serde",
  "serde_json",
