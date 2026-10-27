@@ -248,6 +248,15 @@ impl YardbirdSolver for Z3SolverBackend {
         })
     }
 
+    fn native_model_to_string(&self) -> anyhow::Result<String> {
+        anyhow::ensure!(self.model_captured, "no current solver model");
+        Ok(self
+            .newest_model
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("no current solver model"))?
+            .to_string())
+    }
+
     fn get_solver_statistics(&self) -> SolverStatistics {
         self.solver_statistics.clone()
     }

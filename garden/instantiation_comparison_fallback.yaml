@@ -1,0 +1,92 @@
+# Five methods, one configuration and one trial per benchmark.
+# Strict JEV and JEV with ordinary Yardbird fallback have identical API budgets.
+global:
+  examples_dir: examples/array
+  timeout_seconds: 600
+  retry_count: 1
+  jobs: 1
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+
+parameter_matrices:
+  jev:
+    policy: conditional-binding
+    no_guided_fallback: true
+    decision_model:
+      jev_model: jev-latest
+      jev_prompt: property-directed
+      jev_attempts: 5
+      jev_candidates: 10
+      jev_batch: true
+      jev_beam_width: 3
+      jev_timeout_secs: 2
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  jev-fallback:
+    policy: conditional-binding
+    no_guided_fallback: false
+    decision_model:
+      jev_model: jev-latest
+      jev_prompt: property-directed
+      jev_attempts: 5
+      jev_candidates: 10
+      jev_batch: true
+      jev_beam_width: 3
+      jev_timeout_secs: 2
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  openai:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-astra
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  yardbird:
+    # Frozen winner from the Aug 31 depth-50 ablation, not a per-input oracle.
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  z3:
+    depths: [50]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]

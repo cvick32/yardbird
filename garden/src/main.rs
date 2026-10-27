@@ -5,7 +5,7 @@ use glob::Pattern;
 use serde::Serialize;
 use std::{
     collections::HashSet,
-    fs::{self, OpenOptions},
+    fs,
     io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -18,6 +18,7 @@ use std::{
 };
 use yardbird::{auxiliary_synthesis::AuxSynthesisConfig, ProofLoopResult, YardbirdOptions};
 
+mod api_usage;
 mod config;
 use config::BenchmarkConfig;
 
@@ -103,6 +104,14 @@ struct GardenOptions {
     #[arg(long)]
     pub solver_capture_root: Option<PathBuf>,
 
+    /// New directory for persistent guided-policy JSONL logs.
+    #[arg(long)]
+    pub guided_log_root: Option<PathBuf>,
+
+    /// Exercise guided request generation without API calls (not an evaluation).
+    #[arg(long)]
+    pub guided_dry_run: bool,
+
     #[arg(long, default_value_t = false)]
     pub record_decisions: bool,
 
@@ -134,9 +143,9 @@ struct Benchmark {
 }
 
 #[derive(Debug, Serialize)]
-struct BenchmarkSuite {
-    metadata: SuiteMetadata,
-    benchmarks: Vec<Benchmark>,
+struct BenchmarkSuite<'a> {
+    metadata: &'a SuiteMetadata,
+    benchmarks: &'a [Benchmark],
 }
 
 #[derive(Debug, Serialize)]
@@ -145,11 +154,18 @@ struct SuiteMetadata {
     git_commit: Option<String>,
     config_name: Option<String>,
     total_benchmarks: usize,
+    planned_runs: Vec<String>,
+    examples: Vec<String>,
     yardbird_version: String,
 }
 
 #[derive(Debug, Serialize)]
 struct StrategyResult {
+    api_usage: api_usage::ApiUsage,
+    run_name: String,
+    no_guided_fallback: bool,
+    decision_model: yardbird::policy::decision_model::DecisionModelOptions,
+    llm: yardbird::policy::llm::LlmOptions,
     #[serde(
         with = "config::optional_value_enum",
         skip_serializing_if = "Option::is_none"
@@ -450,13 +466,14 @@ fn run_single(
     // Captures are immutable, so a captured run cannot reuse its output on retry.
     let retry = if matches!(options.strategy, yardbird::Strategy::Concrete)
         || options.solver_capture_dir.is_some()
+        || is_guided(options.policy)
     {
         1
     } else {
         retry
     };
 
-    for _ in 0..retry {
+    for attempt in 0..retry {
         let now = Instant::now();
         let filename = options
             .filename
@@ -470,6 +487,9 @@ fn run_single(
         status_code = Some(outcome.result);
 
         run_time = now.elapsed();
+        if attempt + 1 == retry {
+            break;
+        }
         // TODO: this is really a hack to try and mitigate z3 model randomness
         if let Some(BenchmarkResult::Timeout(_)) = status_code {
             println!("  retrying: {filename}");
@@ -487,7 +507,40 @@ fn run_single(
 
     match status_code {
         Some(result) => {
+            let log = match options.policy {
+                Some(yardbird::policy::NamedPolicy::LlmOneShot) => options.llm.llm_log.as_deref(),
+                Some(
+                    yardbird::policy::NamedPolicy::OneShot
+                    | yardbird::policy::NamedPolicy::ConditionalBinding,
+                ) => options.decision_model.jev_log.as_deref(),
+                _ => None,
+            };
+            // No SAT checks means discovery could not have made an API call.
+            // Such runs legitimately never create the lazily opened JSONL log.
+            let no_calls =
+                match &result {
+                    BenchmarkResult::Success(proof) | BenchmarkResult::_FoundProof(proof) => {
+                        !proof.profiling.solver_checks.is_empty()
+                            && proof.profiling.solver_checks.iter().all(|check| {
+                                check.result == yardbird::solver::SolverCheckResult::Unsat
+                            })
+                    }
+                    _ => false,
+                };
+            let accounting_log = if no_calls && log.is_some_and(|p| !p.exists()) {
+                None
+            } else {
+                log
+            };
+            let mut api_usage = api_usage::summarize(accounting_log);
+            api_usage.dry_run |= is_guided(options.policy)
+                && (options.decision_model.jev_dry_run || options.llm.llm_dry_run);
             Ok(StrategyResult {
+                api_usage,
+                run_name: String::new(),
+                no_guided_fallback: options.no_guided_fallback,
+                decision_model: options.decision_model.clone(),
+                llm: options.llm.clone(),
                 policy: options.policy,
                 prefer_axioms: options.prefer_axioms,
                 guidance_work: (options.policy
@@ -546,7 +599,7 @@ fn get_git_commit() -> Option<String> {
         })
 }
 
-fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
+fn run_config_based(mut options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
     let runs = config.generate_benchmark_runs(options.matrix.as_deref())?;
     let training_run_version = effective_training_run_version(&options);
 
@@ -606,7 +659,60 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
         },
     );
 
+    if runs.iter().any(|r| is_guided(r.policy)) {
+        let root = options
+            .guided_log_root
+            .clone()
+            .or_else(|| options.output.as_ref().map(|p| p.with_extension("api")))
+            .unwrap_or_else(|| {
+                std::env::temp_dir().join(format!("garden-api-{}", std::process::id()))
+            });
+        // Refuse reuse: an accidental rerun must not overwrite billable-call evidence.
+        if let Some(parent) = root.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::create_dir(&root)?;
+        options.guided_log_root = Some(root);
+    }
+    for run in &runs {
+        let mut configured = configured_yardbird_options(
+            benchmarks
+                .first()
+                .map(String::as_str)
+                .unwrap_or("benchmark.vmt"),
+            run,
+            &options,
+            &training_run_version,
+            None,
+        );
+        if is_guided(run.policy) {
+            let path = options
+                .guided_log_root
+                .as_ref()
+                .unwrap()
+                .join("preflight.jsonl");
+            if run.policy == Some(yardbird::policy::NamedPolicy::LlmOneShot) {
+                configured.llm.llm_log = Some(path);
+                configured.llm.llm_dry_run |= options.guided_dry_run;
+            } else {
+                configured.decision_model.jev_log = Some(path);
+                configured.decision_model.jev_dry_run |= options.guided_dry_run;
+            }
+        }
+        configured.decision_model.validate(&configured)?;
+        configured.llm.validate(&configured)?;
+    }
+    let metadata = SuiteMetadata {
+        timestamp: Utc::now(),
+        git_commit: get_git_commit(),
+        config_name: options.matrix.clone(),
+        total_benchmarks: benchmarks.len() * runs.len(),
+        planned_runs: runs.iter().map(|r| r.name.clone()).collect(),
+        examples: benchmarks.clone(),
+        yardbird_version: env!("CARGO_PKG_VERSION").to_string(),
+    };
     let mut all_benchmarks = Vec::new();
+    write_suite(&options, &config, &metadata, &all_benchmarks)?;
 
     for (run_idx, run) in runs.iter().enumerate() {
         println!(
@@ -619,11 +725,7 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
         let next_index = Arc::new(AtomicUsize::new(0));
         let (result_sender, result_receiver) = mpsc::channel();
         let worker_count = jobs.min(benchmarks.len()).max(1);
-        let mut ordered_results = (0..benchmarks.len())
-            .map(|_| None)
-            .collect::<Vec<Option<anyhow::Result<Benchmark>>>>();
-
-        thread::scope(|scope| {
+        thread::scope(|scope| -> anyhow::Result<()> {
             for _ in 0..worker_count {
                 let next_index = Arc::clone(&next_index);
                 let result_sender = result_sender.clone();
@@ -654,45 +756,55 @@ fn run_config_based(options: GardenOptions, config: BenchmarkConfig) -> anyhow::
             }
             drop(result_sender);
 
-            for (idx, result) in result_receiver {
-                ordered_results[idx] = Some(result);
+            for (_, result) in result_receiver {
+                all_benchmarks.push(result?);
+                write_suite(&options, &config, &metadata, &all_benchmarks)?;
             }
-        });
-
-        let results = ordered_results
-            .into_iter()
-            .map(|result| result.expect("every benchmark worker must return a result"))
-            .collect::<anyhow::Result<Vec<_>>>()?;
-
-        all_benchmarks.extend(results);
+            Ok(())
+        })?;
+    }
+    if options.output.is_none() {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&BenchmarkSuite {
+                metadata: &metadata,
+                benchmarks: &all_benchmarks
+            })?
+        );
     }
 
-    let suite = BenchmarkSuite {
-        metadata: SuiteMetadata {
-            timestamp: Utc::now(),
-            git_commit: get_git_commit(),
-            config_name: options.matrix.clone(),
-            total_benchmarks: all_benchmarks.len(),
-            yardbird_version: env!("CARGO_PKG_VERSION").to_string(),
-        },
-        benchmarks: all_benchmarks,
-    };
+    Ok(())
+}
 
-    if let Some(output) = options.output {
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(output)?;
-        if options.pretty || config.output.pretty_json {
-            serde_json::to_writer_pretty(file, &suite)?;
-        } else {
-            serde_json::to_writer(file, &suite)?;
+fn is_guided(policy: Option<yardbird::policy::NamedPolicy>) -> bool {
+    use yardbird::policy::NamedPolicy::*;
+    matches!(policy, Some(OneShot | ConditionalBinding | LlmOneShot))
+}
+
+/// Atomic snapshots permit readers to render figures while workers are running.
+fn write_suite(
+    options: &GardenOptions,
+    config: &BenchmarkConfig,
+    metadata: &SuiteMetadata,
+    benchmarks: &[Benchmark],
+) -> anyhow::Result<()> {
+    if let Some(output) = &options.output {
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent)?;
         }
-    } else {
-        println!("{}", serde_json::to_string_pretty(&suite)?);
+        let suite = BenchmarkSuite {
+            metadata,
+            benchmarks,
+        };
+        let bytes = if options.pretty || config.output.pretty_json {
+            serde_json::to_vec_pretty(&suite)?
+        } else {
+            serde_json::to_vec(&suite)?
+        };
+        let temporary = output.with_extension("json.tmp");
+        fs::write(&temporary, bytes)?;
+        fs::rename(temporary, output)?;
     }
-
     Ok(())
 }
 
@@ -709,17 +821,29 @@ fn run_config_benchmark(
         root.join(format!("{run_idx:04}"))
             .join(format!("{benchmark_idx:04}"))
     });
-    let result = run_single(
-        configured_yardbird_options(
-            filename,
-            run,
-            options,
-            training_run_version,
-            solver_capture_dir,
-        ),
-        retry_count,
-        run.timeout_seconds,
-    )?;
+    let mut configured = configured_yardbird_options(
+        filename,
+        run,
+        options,
+        training_run_version,
+        solver_capture_dir,
+    );
+    if is_guided(run.policy) {
+        let root = options
+            .guided_log_root
+            .as_ref()
+            .expect("guided log directory prepared");
+        let path = root.join(format!("{run_idx:04}-{benchmark_idx:04}.jsonl"));
+        if run.policy == Some(yardbird::policy::NamedPolicy::LlmOneShot) {
+            configured.llm.llm_log = Some(path);
+            configured.llm.llm_dry_run |= options.guided_dry_run;
+        } else {
+            configured.decision_model.jev_log = Some(path);
+            configured.decision_model.jev_dry_run |= options.guided_dry_run;
+        }
+    }
+    let mut result = run_single(configured, retry_count, run.timeout_seconds)?;
+    result.run_name = run.name.clone();
     Ok(Benchmark {
         example: filename.to_string(),
         result: vec![result],
@@ -735,6 +859,9 @@ fn configured_yardbird_options(
 ) -> YardbirdOptions {
     YardbirdOptions {
         policy: run.policy,
+        no_guided_fallback: run.no_guided_fallback,
+        decision_model: run.decision_model.clone(),
+        llm: run.llm.clone(),
         prefer_axioms: run.prefer_axioms,
         guidance_schedule: run.guidance_schedule.unwrap_or_default(),
         guidance_work: run.guidance_work,
@@ -933,6 +1060,7 @@ fn stable_sample_rank(path: &Path, sample_seed: u64) -> u64 {
 }
 
 fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
     let options = GardenOptions::parse();
     let config = BenchmarkConfig::from_file(&options.config)?;
     run_config_based(options, config)

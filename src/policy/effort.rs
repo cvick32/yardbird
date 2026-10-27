@@ -141,6 +141,7 @@ pub struct OperationId {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationKind {
+    PolicyCandidates,
     CountermodelCandidates,
     DiscoverDependencies,
     DependencyRequest(usize),
@@ -166,6 +167,9 @@ pub struct EffortContext<'a> {
     pub operations: &'a [EffortOperation],
 }
 pub enum EffortDecision {
+    /// The configured producer is exhausted. Stop as inconclusive without
+    /// concrete counterexample validation or another abstract search pass.
+    Stop,
     Execute {
         operation: OperationId,
         allowance: WorkAllowance,
@@ -550,7 +554,9 @@ impl ProofEffort for DefaultEffort {
                     return;
                 }
                 self.stage = match operation {
-                    OperationKind::CountermodelCandidates => self.stage,
+                    OperationKind::CountermodelCandidates | OperationKind::PolicyCandidates => {
+                        self.stage
+                    }
                     OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
                         self.dependency_slices += 1;
@@ -840,6 +846,7 @@ mod guidance_followup_tests {
                 },
             });
             match policy.choose(&context) {
+                EffortDecision::Stop => panic!("ordinary effort must not stop"),
                 EffortDecision::ReturnToDriver => assert!(supplement.is_none()),
                 EffortDecision::Execute {
                     operation,

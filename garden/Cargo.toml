@@ -9,6 +9,7 @@ cvc5-backend = ["yardbird/cvc5-backend"]
 training = ["yardbird/training"]
 
 [dependencies]
+dotenvy = "0.15"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 glob = "0.3.1"

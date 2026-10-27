@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import re
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -70,8 +71,32 @@ def read_user_data(
     benchmark_config_path: str = "garden/benchmark_config.yaml",
     capture_solver_journals: bool = False,
     garden_args: list[str] | None = None,
+    api_key_parameters: dict[str, str] | None = None,
+    region: str = DEFAULT_AWS_REGION,
+    git_ref: str | None = None,
 ) -> str:
+    secret_lines = []
+    for variable, parameter in (api_key_parameters or {}).items():
+        if variable not in {"OPENAI_API_KEY", "JEV_API_KEY", "ANTHROPIC_API_KEY"}:
+            raise ValueError(f"Unsupported API credential environment: {variable}")
+        if not re.fullmatch(r"[A-Za-z0-9_./:-]+", parameter):
+            raise ValueError("Expected an SSM parameter name or ARN")
+        # These are references only. Never read controller API keys.
+        secret_lines.extend([
+            f'{variable}=$(aws ssm get-parameter --name {shlex.quote(parameter)} '
+            f'--with-decryption --query Parameter.Value --output text --region {shlex.quote(region)})',
+            f'test -n "${{{variable}}}"',
+            f'export {variable}',
+        ])
     template = USER_DATA_TEMPLATE.read_text()
+    template = template.replace("${aws_region}", shlex.quote(region))
+    template = template.replace("${api_key_setup}", "\n".join(secret_lines))
+    checkout = ""
+    if git_ref:
+        if not re.fullmatch(r"[A-Za-z0-9_./-]+", git_ref):
+            raise ValueError("Invalid git ref")
+        checkout = f"git fetch origin {shlex.quote(git_ref)}\ngit checkout --detach FETCH_HEAD"
+    template = template.replace("${pinned_checkout}", checkout)
     template = template.replace("${matrix_name}", matrix)
     template = template.replace("${unique_benchmark_name}", unique_name)
     template = template.replace("${s3_bucket_name}", s3_bucket)
@@ -146,8 +171,11 @@ def launch_aws_run(args) -> dict[str, Any]:
     capture_solver_journals = bool(args.capture_solver_journals)
     manifest["capture_solver_journals"] = capture_solver_journals
     manifest["aws_account"] = account
+    manifest["git_ref"] = getattr(args, "git_ref", None) or "main"
     manifest["benchmark_selection"] = args.benchmark_selection
     garden_args = garden_filter_args(args)
+    if getattr(args, "profile", False):
+        garden_args.append("--profile")
 
     for idx, matrix in enumerate(args.benchmark_type, start=1):
         remote_run_name = f"{matrix}-{now_local().strftime('%Y%m%d_%H%M%S')}-{idx:02d}"
@@ -158,6 +186,14 @@ def launch_aws_run(args) -> dict[str, Any]:
             benchmark_config_path=repository_config_path.as_posix(),
             capture_solver_journals=capture_solver_journals,
             garden_args=garden_args,
+            api_key_parameters={
+                env: parameter for env, parameter in {
+                    "OPENAI_API_KEY": getattr(args, "openai_api_key_parameter", None),
+                    "JEV_API_KEY": getattr(args, "jev_api_key_parameter", None),
+                }.items() if parameter
+            },
+            region=region,
+            git_ref=getattr(args, "git_ref", None),
         )
         user_data_path = aws_dir / f"{slugify(matrix)}_user_data.sh"
         user_data_path.write_text(user_data)
@@ -193,6 +229,7 @@ def launch_aws_run(args) -> dict[str, Any]:
             "started_at": iso_now(),
             "completed_at": None,
             "mode": "aws",
+            "requires_completion_marker": True,
             "region": region,
             "instance_id": instance_id,
             "bucket": bucket,
@@ -239,7 +276,7 @@ def refresh_aws_run(manifest: dict[str, Any]) -> dict[str, Any]:
         subrun["last_checked_at"] = iso_now()
 
         new_status = subrun["status"]
-        if results_exist or completion_exists:
+        if completion_exists or (results_exist and not subrun.get("requires_completion_marker", False)):
             new_status = STATUS_COMPLETED
         elif state in {"terminated", "stopped", "stopping"}:
             new_status = STATUS_FAILED
@@ -282,7 +319,7 @@ def download_aws_artifacts(manifest: dict[str, Any]) -> None:
             downloads["captures.tar.gz"] = capture_archive_path
 
         for remote_name, local_path in downloads.items():
-            if local_path.exists():
+            if local_path.exists() and remote_name != "results.json":
                 continue
             remote_key = (
                 str(capture_archive_key)
@@ -305,8 +342,34 @@ def download_aws_artifacts(manifest: dict[str, Any]) -> None:
             subrun["capture_root"] = str(capture_root)
             subrun["capture_archive_path"] = str(capture_archive_path)
 
+        api_root = raw_path.with_suffix(".api")
+        run_command(["aws", "s3", "sync", f"s3://{bucket}/{prefix}/api/",
+                     str(api_root), "--region", region, "--only-show-errors"])
         subrun["downloaded_at"] = iso_now()
         subrun["download_dir"] = str(download_dir)
         subrun["result_path"] = str(raw_path)
 
+    save_manifest(manifest)
+
+
+def sync_partial_aws_artifacts(manifest: dict[str, Any]) -> None:
+    """Download a running snapshot without declaring the subrun complete."""
+    for subrun in manifest["subruns"]:
+        bucket, prefix, region = (subrun[k] for k in ("bucket", "s3_prefix", "region"))
+        raw_path = Path(subrun["result_path"])
+        key = f"{prefix}/results.json"
+        if not s3_object_exists(bucket, key, region):
+            key = f"{prefix}/partial.json"
+        if not s3_object_exists(bucket, key, region):
+            continue
+        ensure_dir(raw_path.parent)
+        temporary = raw_path.with_suffix(".download")
+        object_store_download(bucket, key, temporary, region)
+        # Validate before replacing the last usable snapshot.
+        json.loads(temporary.read_text())
+        temporary.replace(raw_path)
+        run_command(["aws", "s3", "sync", f"s3://{bucket}/{prefix}/api/",
+                     str(raw_path.with_suffix(".api")), "--region", region,
+                     "--only-show-errors"])
+        subrun["partial_synced_at"] = iso_now()
     save_manifest(manifest)

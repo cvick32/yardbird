@@ -4,7 +4,8 @@ import argparse
 import os
 import sys
 
-from .aws_backend import download_aws_artifacts, launch_aws_run, refresh_aws_run
+from .aws_backend import (download_aws_artifacts, launch_aws_run, refresh_aws_run,
+                          sync_partial_aws_artifacts)
 from .benchmark_selection import (
     select_difficult_benchmarks,
     select_formula_research_cohort,
@@ -95,6 +96,11 @@ def legacy_parser() -> argparse.ArgumentParser:
         default=str(DEFAULT_CONFIG),
         help="Path to the garden benchmark config YAML",
     )
+    parser.add_argument("--openai-api-key-parameter", help="SSM SecureString name/ARN, never the key")
+    parser.add_argument("--jev-api-key-parameter", help="SSM SecureString name/ARN, never the key")
+    parser.add_argument("--git-ref", help="Pushed Git ref or commit for AWS workers (default: main)")
+    parser.add_argument("--sync-partial", action="store_true",
+                        help="Download running AWS results and API logs without marking completion")
     parser.add_argument("--name", help="Optional friendly name for the evaluation run")
     parser.add_argument(
         "--ranker-model",
@@ -393,6 +399,10 @@ def main(argv: list[str] | None = None) -> int:
             manifest = maybe_teardown_subrun(manifest, args)
         else:
             manifest = refresh_existing_run(manifest, args)
+        if args.sync_partial:
+            if manifest.get("env") != "aws":
+                raise ValueError("--sync-partial requires an AWS run")
+            sync_partial_aws_artifacts(manifest)
         if args.generate_report:
             maybe_generate_report(manifest)
 
@@ -403,10 +413,12 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("Provide either --env with benchmark types or --run-id")
     if not args.benchmark_type:
         raise RuntimeError("Provide at least one --benchmark-type")
-    if args.env != "local" and (args.ranker_model or args.profile):
+    if args.env != "local" and args.ranker_model:
         raise RuntimeError(
-            "--ranker-model and --profile are currently supported for --env local only"
+            "--ranker-model is currently supported for --env local only"
         )
+    if args.profile and args.env == "lab":
+        raise RuntimeError("--profile is supported for local and AWS runs")
     if args.capture_solver_journals and args.env != "aws":
         raise RuntimeError(
             "--capture-solver-journals is currently supported for --env aws only"

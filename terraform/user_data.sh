@@ -7,12 +7,12 @@ log_status() {
     local status="$1"
     local message="$2"
     echo "[$status] $(date): $message"
-    echo "[$status] $(date): $message" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/status.log --region us-east-2 || true
+    echo "[$status] $(date): $message" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/status.log --region ${aws_region} || true
 }
 
 # Function to upload logs to S3
 upload_logs() {
-    aws s3 cp /var/log/user-data.log s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/user-data.log --region us-east-2 || true
+    aws s3 cp /var/log/user-data.log s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/user-data.log --region ${aws_region} || true
 }
 
 # Trap to upload logs on exit
@@ -55,6 +55,7 @@ set -e
 # Force z3-sys/CMake to use a compiler with C++20 <format> support.
 export CC=gcc-13
 export CXX=g++-13
+export AWS_DEFAULT_REGION=${aws_region}
 
 # Function to log inside ubuntu user context
 log_status() {
@@ -90,6 +91,8 @@ if ! git checkout main || ! git pull --ff-only origin main; then
     log_status "ERROR" "Failed to update to the latest origin/main"
     exit 1
 fi
+
+${pinned_checkout}
 
 benchmark_config_path=${repository_benchmark_config}
 if [ ! -f "$benchmark_config_path" ]; then
@@ -130,9 +133,28 @@ if [ "${capture_solver_journals}" = "true" ]; then
 else
     log_status "INFO" "Solver journal capture is disabled"
 fi
+# Fetch API credentials through the instance role, after sudo changes user.
+# Do not enable shell tracing here.
+${api_key_setup}
+api_root="benchmark_results_${unique_benchmark_name}.api"
+mkdir -p "$api_root"
+# Garden requires a fresh root; the sync process tolerates it not existing yet.
+rmdir "$api_root"
+sync_partial() {
+    if [ -f "benchmark_results_${unique_benchmark_name}.json" ]; then
+        aws s3 cp "benchmark_results_${unique_benchmark_name}.json" "s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/partial.json" --only-show-errors || true
+    fi
+    if [ -d "$api_root" ]; then
+        aws s3 sync "$api_root/" "s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/api/" --only-show-errors || true
+    fi
+}
+(while sleep 15; do sync_partial; done) &
+sync_pid=$!
+trap 'kill "$sync_pid" 2>/dev/null || true; sync_partial' EXIT
 if ! ./target/release/garden \
     --config "$benchmark_config_path" \
     --matrix ${matrix_name} \
+    --guided-log-root "$api_root" \
     --output benchmark_results_${unique_benchmark_name}.json \
     "${garden_args[@]}" \
     "${capture_args[@]}"; then
@@ -149,7 +171,7 @@ log_status "INFO" "Benchmarks completed successfully"
 
 # Upload results
 log_status "INFO" "Uploading results to S3"
-if ! aws s3 cp benchmark_results_${unique_benchmark_name}.json s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/results.json --region us-east-2; then
+if ! aws s3 cp benchmark_results_${unique_benchmark_name}.json s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/results.json --region ${aws_region}; then
     log_status "ERROR" "Failed to upload benchmark results"
     exit 1
 fi
@@ -163,15 +185,19 @@ if [ "${capture_solver_journals}" = "true" ]; then
         log_status "ERROR" "Failed to archive solver captures"
         exit 1
     fi
-    if ! aws s3 cp "$capture_archive" s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/captures.tar.gz --region us-east-2; then
+    if ! aws s3 cp "$capture_archive" s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/captures.tar.gz --region ${aws_region}; then
         log_status "ERROR" "Failed to upload solver captures"
         exit 1
     fi
 fi
 
+if [ -d "$api_root" ]; then
+    aws s3 sync "$api_root/" "s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/api/" --only-show-errors
+fi
+
 # Mark completion
 log_status "INFO" "Marking completion"
-echo "Benchmark completed at $(date)" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/completion.txt --region us-east-2
+echo "Benchmark completed at $(date)" | aws s3 cp - s3://${s3_bucket_name}/benchmarks/${unique_benchmark_name}/completion.txt --region ${aws_region}
 
 log_status "INFO" "Setup and benchmark complete"
 EOF

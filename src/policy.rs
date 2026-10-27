@@ -3,9 +3,13 @@
 //! Cost construction, complete-instance selection and effort settings have one owner.
 //! The effort policy chooses work; the engine validates and executes it.
 
+pub mod decision_model;
+pub(crate) mod discovery;
 pub mod eager;
 pub mod effort;
 pub mod instance_selection;
+pub(crate) mod instantiation;
+pub mod llm;
 mod prefer_axioms;
 pub mod term_selection;
 use crate::auxiliary_synthesis::ConditionalHistory;
@@ -29,13 +33,28 @@ pub enum NamedPolicy {
     GermanFast,
     /// Try property-connected array axiom instances before general search.
     CountermodelGuided,
+    /// Choose all axiom bindings in one Jev request, with ordinary fallback.
+    OneShot,
+    /// Choose axiom bindings sequentially, conditioned on earlier choices.
+    ConditionalBinding,
+    /// Choose an axiom and every binding in one LLM response, with ordinary fallback.
+    LlmOneShot,
 }
 
 impl NamedPolicy {
+    pub(crate) fn uses_decision_model(self) -> bool {
+        matches!(self, Self::OneShot | Self::ConditionalBinding)
+    }
+
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
+            Self::LlmOneShot => llm::build_plan(run),
             Self::GermanFast => run_german_fast(run),
             Self::CountermodelGuided => run_countermodel_guided(run),
+            Self::OneShot => decision_model::build_plan(run, decision_model::BindingMode::OneShot),
+            Self::ConditionalBinding => {
+                decision_model::build_plan(run, decision_model::BindingMode::Conditional)
+            }
         }
     }
 }
@@ -125,6 +144,14 @@ pub struct YardbirdPolicy<F: TermCostFactory> {
     instances: Box<dyn InstantiationRanker>,
     effort: Box<dyn ProofEffort>,
     eager: Option<eager::EagerInstantiation>,
+    discovery: Option<Box<dyn discovery::InstanceDiscovery>>,
+}
+
+pub(crate) struct PolicyParts<'a, C> {
+    pub term_config: &'a C,
+    pub ranker: &'a dyn InstantiationRanker,
+    pub effort: &'a mut dyn ProofEffort,
+    pub discovery: &'a mut Option<Box<dyn discovery::InstanceDiscovery>>,
 }
 
 impl<F: TermCostFactory> YardbirdPolicy<F> {
@@ -134,12 +161,25 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
             instances: Box::new(PreferSourceInstantiationRanker),
             effort: Box::<DefaultEffort>::default(),
             eager: None,
+            discovery: None,
         }
     }
 
     pub fn with_term_config(mut self, config: F::Config) -> Self {
         self.term_config = config;
         self
+    }
+
+    pub(crate) fn with_discovery(
+        mut self,
+        discovery: impl discovery::InstanceDiscovery + 'static,
+    ) -> Self {
+        self.discovery = Some(Box::new(discovery));
+        self
+    }
+
+    pub(crate) fn has_discovery(&self) -> bool {
+        self.discovery.is_some()
     }
 
     pub fn with_eager_instantiation(mut self, config: eager::EagerInstantiation) -> Self {
@@ -183,12 +223,13 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
     pub fn effort_mut(&mut self) -> &mut dyn ProofEffort {
         self.effort.as_mut()
     }
-    pub(crate) fn parts(&mut self) -> (&F::Config, &dyn InstantiationRanker, &mut dyn ProofEffort) {
-        (
-            &self.term_config,
-            self.instances.as_ref(),
-            self.effort.as_mut(),
-        )
+    pub(crate) fn parts(&mut self) -> PolicyParts<'_, F::Config> {
+        PolicyParts {
+            term_config: &self.term_config,
+            ranker: self.instances.as_ref(),
+            effort: self.effort.as_mut(),
+            discovery: &mut self.discovery,
+        }
     }
 }
 

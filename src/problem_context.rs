@@ -42,6 +42,9 @@ pub trait ProblemContext {
         Ok(crate::solver::api::ModelEvaluation::Undetermined)
     }
     fn model_to_string(&self) -> anyhow::Result<String>;
+    fn native_model_to_string(&self) -> anyhow::Result<String> {
+        anyhow::bail!("native model export is unavailable for this problem")
+    }
     fn get_all_subterms(&self) -> Vec<&Term>;
     /// Declarations used to type model-equivalence classes, including symbols
     /// introduced by refinement. Temporal frame suffixes are resolved separately.

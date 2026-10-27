@@ -10,6 +10,17 @@ from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
 
 
 class BenchmarkParserTests(unittest.TestCase):
+    def test_strict_and_fallback_jev_remain_distinct_in_legacy_figures(self):
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        results = [parser._parse_single_result("a.vmt", {
+            "strategy": "abstract", "cost_function": "bmc-cost",
+            "policy": "one-shot", "no_guided_fallback": strict,
+            "result": {"Timeout": 1000},
+        }) for strict in (True, False)]
+        self.assertNotEqual(results[0].get_strategy_id(), results[1].get_strategy_id())
+        self.assertNotEqual(results[0].get_display_name(), results[1].get_display_name())
+
+
     def test_named_policies_and_guidance_schedules_remain_separate(self) -> None:
         parser = BenchmarkParser.__new__(BenchmarkParser)
         results = [

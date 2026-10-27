@@ -162,6 +162,10 @@ pub trait YardbirdSolver {
         Ok(ModelEvaluation::Undetermined)
     }
     fn model_to_string(&self) -> anyhow::Result<String>;
+    /// Unabridged native model, preserving function bodies and default branches.
+    fn native_model_to_string(&self) -> anyhow::Result<String> {
+        anyhow::bail!("native model export is unavailable for this backend")
+    }
 
     fn get_solver_statistics(&self) -> SolverStatistics;
     fn statistics_ref(&self) -> &SolverStatistics;

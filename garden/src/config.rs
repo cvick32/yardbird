@@ -81,6 +81,13 @@ impl Default for GlobalConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParameterMatrix {
+    #[serde(default)]
+    pub no_guided_fallback: bool,
+    #[serde(default)]
+    pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
+    #[serde(default)]
+    pub llm: yardbird::policy::llm::LlmOptions,
+
     /// Named policy; its fixed choices take precedence over individual settings.
     #[serde(default, with = "optional_value_enum")]
     pub policy: Option<NamedPolicy>,
@@ -172,6 +179,13 @@ fn default_instantiation_strategies() -> Vec<InstantiationStrategyType> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
+    #[serde(default)]
+    pub no_guided_fallback: bool,
+    #[serde(default)]
+    pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
+    #[serde(default)]
+    pub llm: yardbird::policy::llm::LlmOptions,
+
     /// Named policy; its fixed choices take precedence over individual settings.
     #[serde(default, with = "optional_value_enum")]
     pub policy: Option<NamedPolicy>,
@@ -266,6 +280,10 @@ pub struct BenchmarkConfig {
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkRun {
+    pub no_guided_fallback: bool,
+    pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
+    pub llm: yardbird::policy::llm::LlmOptions,
+
     pub policy: Option<NamedPolicy>,
     pub guidance_schedule: Option<GuidanceSchedule>,
     pub guidance_work: Option<usize>,
@@ -380,6 +398,9 @@ impl BenchmarkConfig {
                 runs.push(BenchmarkRun {
                     name: config.name.clone(),
                     policy: config.policy,
+                    no_guided_fallback: config.no_guided_fallback,
+                    decision_model: config.decision_model.clone(),
+                    llm: config.llm.clone(),
                     guidance_schedule: config.guidance_schedule,
                     prefer_axioms: config.prefer_axioms,
                     guidance_work: config.guidance_work,
@@ -409,6 +430,7 @@ impl BenchmarkConfig {
             }
         }
 
+        runs.sort_by(|a, b| a.name.cmp(&b.name));
         for run in &runs {
             anyhow::ensure!(
                 run.guidance_schedule.is_none() || run.policy == Some(NamedPolicy::CountermodelGuided),
@@ -419,6 +441,7 @@ impl BenchmarkConfig {
                 // Garden discovers VMT inputs; validate policy compatibility before running them.
                 filename: Some("benchmark.vmt".into()),
                 policy: run.policy,
+                no_guided_fallback: run.no_guided_fallback,
                 prefer_axioms: run.prefer_axioms,
                 guidance_work: run.guidance_work,
                 guidance_transition_order: run.guidance_transition_order,
@@ -429,7 +452,8 @@ impl BenchmarkConfig {
                 ..YardbirdOptions::default()
             };
             options
-                .validate_guarded_read_updates()
+                .validate_guided_fallback()
+                .and_then(|_| options.validate_guarded_read_updates())
                 .and_then(|_| options.validate_countermodel_trace_options())
                 .and_then(|_| options.validate_prefer_axioms_options())
                 .with_context(|| format!("Invalid benchmark configuration: {}", run.name))?;
@@ -479,6 +503,9 @@ impl BenchmarkConfig {
                                                     selection,
                                                 ),
                                                 policy: matrix.policy,
+                                                no_guided_fallback: matrix.no_guided_fallback,
+                                                decision_model: matrix.decision_model.clone(),
+                                                llm: matrix.llm.clone(),
                                                 guidance_schedule: matrix.guidance_schedule,
                                                 prefer_axioms: matrix.prefer_axioms,
                                                 guidance_work: matrix.guidance_work,
@@ -524,7 +551,7 @@ impl BenchmarkConfig {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{matrix_run_name, BenchmarkConfig, RefinementSelection};
+    use super::{matrix_run_name, BenchmarkConfig, NamedPolicy, RefinementSelection};
     use yardbird::{
         auxiliary_synthesis::{
             AuxRefinementRetention, GuardPolicy, PredicateRelevancePolicy, SynthesisTrigger,
@@ -962,5 +989,78 @@ parameter_matrices:
             .count();
 
         assert_eq!(matching_all, selected.len());
+    }
+    #[test]
+    fn comparison_configs_have_exactly_four_matched_single_trial_methods() {
+        for (file, depth) in [
+            ("instantiation_comparison.yaml", 50),
+            ("instantiation_comparison_smoke.yaml", 4),
+        ] {
+            let config =
+                BenchmarkConfig::from_file(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file))
+                    .unwrap();
+            let runs = config.generate_benchmark_runs(None).unwrap();
+            assert_eq!(runs.len(), 4);
+            assert_eq!(config.global.retry_count, 1);
+            assert!(runs
+                .iter()
+                .all(|r| r.depth == depth && r.timeout_seconds == config.global.timeout_seconds));
+            assert!(runs
+                .iter()
+                .filter(|r| r.policy.is_some())
+                .all(|r| r.no_guided_fallback));
+            for name in ["jev", "openai", "yardbird", "z3"] {
+                assert_eq!(config.generate_benchmark_runs(Some(name)).unwrap().len(), 1);
+            }
+            let jev = &runs[0];
+            assert_eq!(jev.policy, Some(NamedPolicy::ConditionalBinding));
+            assert_eq!(jev.decision_model.jev_attempts, 5);
+            assert_eq!(jev.decision_model.jev_candidates, 10);
+            assert!(jev.decision_model.jev_batch);
+            assert_eq!(jev.decision_model.jev_beam_width, 3);
+            assert_eq!(jev.decision_model.jev_timeout_secs, 2);
+            assert_eq!(runs[1].llm.llm_model.as_deref(), Some("gpt-6-astra"));
+            assert_eq!(runs[2].candidate_winners_per_group, 16);
+            assert!(matches!(runs[3].strategy, Strategy::Concrete));
+        }
+    }
+    #[test]
+    fn fallback_comparisons_preserve_the_strict_jev_budget() {
+        for suffix in ["", "_smoke"] {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("instantiation_comparison_fallback{suffix}.yaml"));
+            let config = BenchmarkConfig::from_file(&path).unwrap();
+            assert_eq!(config.generate_benchmark_runs(None).unwrap().len(), 5);
+            let strict = config
+                .generate_benchmark_runs(Some("jev"))
+                .unwrap()
+                .remove(0);
+            let fallback = config
+                .generate_benchmark_runs(Some("jev-fallback"))
+                .unwrap()
+                .remove(0);
+            let original = BenchmarkConfig::from_file(
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join(format!("instantiation_comparison{suffix}.yaml")),
+            )
+            .unwrap()
+            .generate_benchmark_runs(Some("jev"))
+            .unwrap()
+            .remove(0);
+            assert_eq!(strict.policy, Some(NamedPolicy::ConditionalBinding));
+            assert_eq!(fallback.policy, strict.policy);
+            assert_eq!(
+                serde_json::to_value(&strict.decision_model).unwrap(),
+                serde_json::to_value(&original.decision_model).unwrap()
+            );
+            assert!(strict.no_guided_fallback);
+            assert!(!fallback.no_guided_fallback);
+            assert_eq!(strict.depth, fallback.depth);
+            assert_eq!(strict.timeout_seconds, fallback.timeout_seconds);
+            assert_eq!(
+                serde_json::to_value(strict.decision_model).unwrap(),
+                serde_json::to_value(fallback.decision_model).unwrap()
+            );
+        }
     }
 }
