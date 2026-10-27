@@ -31,6 +31,7 @@ WORKED_EXAMPLES = """These are two independent synthetic examples, unrelated to 
 Example 1: u=4, v=4. F has entry (4)->9 and default 6. G has entry (9,4)->12 and default 3. Evaluate G(F(u),v): F(u)=F(4)=9; G(9,4)=12 by an exact tuple match. Thus G(F(u),v)=12 is true. In contrast G(F(u),5)=G(9,5)=3 by the default, so G(F(u),5)=12 is false. Matching just the first argument is insufficient.
 Example 2: p=2, q=2. H has entry (2)->7 and default 0. The formula (p != q) => (H(p)=0) is true: the antecedent is false, even though the consequent is false. The formula (p=q) => (H(p)=0) is false: its antecedent is true and its consequent is false."""
 ABLATIONS = ("property-directed", "procedural", "procedural-examples", "procedural-aliases")
+BINDING_ABLATIONS = ("property-directed", "property-directed-term-values")
 FALSIFICATION_PROMPT = """You are selecting a refinement for an abstract countermodel. Judge each option by its effect in the supplied interpretation, not by whether it looks like a conventional array operation.
 The array axioms describe intended semantics; they are not facts already satisfied by these function tables. Do not use an array axiom to simplify the expression you are evaluating.
 For each complete substitution, evaluate the entire instantiated formula using the supplied function entries and defaults. Always prefer substitutions whose formula is **false**. A true instance cannot eliminate this countermodel. An unknown evaluation is not evidence of a violation.
@@ -274,6 +275,14 @@ def suite():
         "Choose val making this COMPLETE formula false: "
         "(=> (not (= i@0 Z@3)) (= (Read_Int_Int (Write_Int_Int b@0 i@0 val) Z@3) (Read_Int_Int b@0 Z@3))). "
         "Only val may change.", [preservation(value=v) for v in values], values, "false-option")
+    probes[-1]["binding_context"] = {
+        "option_sort": "Int",
+        "fixed_bindings": {
+            "a": {"term": "b@0", "sort": "Array_Int_Int"},
+            "idx": {"term": "i@0", "sort": "Int"},
+            "c": {"term": "Z@3", "sort": "Int"},
+        },
+    }
     return probes
 
 
@@ -288,8 +297,42 @@ def answer_key(model, probe):
     return matches, values
 
 
-def verify_oracle(model, probes, executable):
-    expressions = sorted({e for p in probes for e in p["expressions"]})
+def binding_term_interpretations(model, probe, order):
+    """Annotate every substitution term, never the instantiated formulas."""
+    context = probe.get("binding_context")
+    if probe["category"] != "binding" or context is None:
+        raise ValueError("Term-value context requires a binding probe (use --question choose-value)")
+
+    def interpret(term, sort):
+        try:
+            evaluation = {"status": "known", "value": smt(model.evaluate(term))}
+        except ValueError:
+            # No model completion or guessed value for unsupported/unmodeled terms.
+            evaluation = {"status": "unknown"}
+        return {"term": term, "sort": sort, "evaluation": evaluation}
+
+    return {
+        "meaning": "Current interpretation of EVERY offered substitution term and fixed binding. "
+                   "Known values were evaluated in the supplied abstract model, without assuming array axioms. "
+                   "Unknown means no value is supplied, not false. These values do not evaluate the complete "
+                   "instantiated axiom or identify a preferred option. Choose the original option ID, not a model-domain value.",
+        "options": {f"o{i}": interpret(probe["labels"][j], context["option_sort"])
+                    for i, j in enumerate(order)},
+        "fixed_bindings": {slot: interpret(binding["term"], binding["sort"])
+                           for slot, binding in context["fixed_bindings"].items()},
+    }
+
+
+def verify_oracle(model, probes, executable, verify_binding_terms=False):
+    expressions = {e for p in probes for e in p["expressions"]}
+    if verify_binding_terms:
+        for probe in probes:
+            annotations = binding_term_interpretations(model, probe, range(len(probe["labels"])))
+            expressions.update(entry["term"]
+                               for group in ("options", "fixed_bindings")
+                               for entry in annotations[group].values()
+                               if entry["evaluation"]["status"] == "known")
+    expressions = sorted(expressions)
     script = model.smt_definitions() + "\n(check-sat)\n"
     for expression in expressions:
         value = smt(model.evaluate(expression))
@@ -304,9 +347,9 @@ def verify_oracle(model, probes, executable):
 
 def request_for(model, fixture, probe, presentation, order, provider_model, anonymize=False, task_context="baseline", vmt_source=None, ablation=None):
     if ablation is not None:
-        if ablation not in ABLATIONS or presentation != "native" or anonymize or vmt_source is None:
+        if ablation not in ABLATIONS + BINDING_ABLATIONS or presentation != "native" or anonymize or vmt_source is None:
             raise ValueError("Ablations require a known variant, native presentation, full VMT, and original symbols")
-        task_context = "property-directed" if ablation == "property-directed" else "procedural"
+        task_context = "property-directed" if ablation in BINDING_ABLATIONS else "procedural"
     if anonymize and vmt_source is not None:
         raise ValueError("Verbatim VMT context cannot be combined with symbol anonymization")
     description = {
@@ -340,6 +383,8 @@ def request_for(model, fixture, probe, presentation, order, provider_model, anon
         request["state"]["worked_examples"] = WORKED_EXAMPLES
     elif ablation == "procedural-aliases":
         request["state"]["model_aliases"] = model.aliases()
+    elif ablation == "property-directed-term-values":
+        request["state"]["term_interpretations"] = binding_term_interpretations(model, probe, order)
     if vmt_source is not None:
         request["state"]["problem"] = {
             "format": "VMT", "source": vmt_source,
@@ -505,7 +550,7 @@ def main(argv=None):
     run.add_argument("--vmt", type=Path, help="Include this complete original VMT verbatim, with notation mapping")
     run.add_argument("--task-context", choices=["baseline", "refinement", "falsification", "property-directed", "procedural"], default="baseline",
                      help="Select the task prompt without changing the model or options")
-    run.add_argument("--ablation", nargs="+", choices=ABLATIONS,
+    run.add_argument("--ablation", nargs="+", choices=list(dict.fromkeys(ABLATIONS + BINDING_ABLATIONS)),
                      help="Interleave paired variants on the full native model and VMT; overrides task context")
     run.add_argument("--live", action="store_true")
     run.add_argument("--model", default="jev-latest")
@@ -541,11 +586,14 @@ def main(argv=None):
     probes = [p for p in suite() if args.question is None or p["id"] in args.question]
     presentations = list(dict.fromkeys(args.presentation))
     variants = list(dict.fromkeys(args.ablation)) if args.ablation else [None]
+    verify_binding_terms = "property-directed-term-values" in variants
+    if verify_binding_terms and any(p["category"] != "binding" or "binding_context" not in p for p in probes):
+        parser.error("property-directed-term-values requires binding probes; use --question choose-value")
     count = len(probes) * len(presentations) * args.repeats * len(variants)
     if count > args.max_queries:
         parser.error(f"Experiment needs {count} requests, exceeding --max-queries {args.max_queries}")
     keys = {p["id"]: answer_key(model, p) for p in probes}
-    verification = verify_oracle(model, probes, args.z3)
+    verification = verify_oracle(model, probes, args.z3, verify_binding_terms=verify_binding_terms)
     jobs = [(p, view, trial, variant) for trial in range(args.repeats) for p in probes for view in presentations for variant in variants]
     random.Random(args.seed).shuffle(jobs)
     key = api_key(args.env_file) if args.live else None
@@ -573,7 +621,7 @@ def main(argv=None):
                 request = request_for(model, fixture, probe, view, order, args.model, args.anonymize, args.task_context, vmt_source, variant)
                 record({"event": "request", "query_id": query_id, "live": args.live,
                         "presentation": view, "question": probe["id"], "category": probe["category"], "trial": trial,
-                        "task_context": "property-directed" if variant == "property-directed" else "procedural" if variant else args.task_context,
+                        "task_context": "property-directed" if variant in BINDING_ABLATIONS else "procedural" if variant else args.task_context,
                         "ablation": variant,
                         "expected_choices": correct, "oracle_values": values, "request": request,
                         "chance_accuracy": len(correct) / len(order),

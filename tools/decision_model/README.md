@@ -65,3 +65,14 @@ Test the runner and trace summarizer without running benchmarks:
 ```bash
 python3 -m unittest discover -s tools/decision_model -p 'test_*.py' -v
 ```
+
+### Shared vocabulary identity
+
+JEV and `llm-one-shot` capture through the same run-scoped instantiation session.
+Shared snapshot schema version 3 assigns stable IDs to `(expression, sort)` pairs
+as terms appear. IDs are never reassigned within a run, but only the current
+catalogue is eligible. Different runs can discover terms in different orders;
+compare expressions and sorts when aligning their logs. JEV continues to send a
+flat snapshot and full binding domains. The LLM serializes equivalent static,
+append-only vocabulary, and current-model blocks for prompt caching; see
+[LLM context caching](../../src/policy/llm/README.md#reusable-context-and-prompt-caching).

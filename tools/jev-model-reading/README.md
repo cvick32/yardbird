@@ -10,6 +10,45 @@ last countermodel before ordinary refinement resolved this array-copy run. The
 fixture records the source log's SHA-256 and does not depend on that untracked
 log being present. It contains no API key, prior responses, or feedback.
 
+## New diagnostic: interpreted substitution terms
+
+Compare the current property-directed baseline with the same request plus model
+values for **every offered substitution term and fixed binding**:
+
+```bash
+python3 tools/jev-model-reading/run.py run \
+  --question choose-value \
+  --ablation property-directed property-directed-term-values \
+  --vmt examples/array/array_copy.vmt \
+  --repeats 10 --shuffle-options --seed 0 --max-queries 20 \
+  --output ./jev-reading-term-values-preview.jsonl
+```
+
+This is an offline preview. Add `--live` and choose a new output filename to run
+the 20 inference calls. No live result for this condition has been measured yet.
+
+The new condition adds only `state.term_interpretations`. Each option ID maps to
+its unchanged term, sort, and evaluation (`known` with an SMT value, or `unknown`
+without a value). The fixed bindings receive the same annotations. For example,
+`(Read_Int_Int a@0 i@0)` is supplied with sort `Int` and value `7`. The original
+model, declarations, full VMT, prompt, question, option IDs, and option order are
+otherwise identical. Nothing is filtered, ranked, replaced with a domain value,
+or labeled as a violating instance. Unknown terms remain offered.
+
+This deliberately supplies **host-computed term evaluations**, using the captured
+interpretation without model completion or assumed array axioms. Z3 independently
+checks every supplied known term value before any requests are sent, as well as
+the private complete-formula answer key. Complete-instance truth values, evaluation
+traces, and correctness feedback stay out of the request. This tests QI given
+interpreted terms, rather than unaided evaluation of the raw model.
+
+The variant currently requires the `choose-value` binding probe; it rejects the
+value/truth diagnostic questions rather than annotating their answers. Both `0`
+and the source read remain correct choices (chance accuracy 2/3). Ten paired
+shuffles of this one countermodel measure sensitivity, not generalization. Use
+`run.py summarize <log>` to compare accuracy and probability on acceptable choices
+under the two separately reported variants.
+
 ## Latest completed diagnostic: native versus grouped model tables
 
 The previous prompt, worked-example, alias, and presentation variants are retired
