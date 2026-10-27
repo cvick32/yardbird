@@ -188,5 +188,75 @@ class CaptureArchiveTests(unittest.TestCase):
         save_manifest.assert_called_once_with(manifest)
 
 
+
+class ApiCredentialTests(unittest.TestCase):
+    def test_worker_contains_references_not_controller_secret_values(self):
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "controller-secret-do-not-copy"}):
+            script = read_user_data("openai", "run", "bucket",
+                api_key_parameters={"OPENAI_API_KEY": "/yardbird/openai", "JEV_API_KEY": "/yardbird/jev"},
+                git_ref="abc123", region="us-west-2")
+        self.assertNotIn("controller-secret-do-not-copy", script)
+        self.assertIn("aws ssm get-parameter --name /yardbird/openai", script)
+        self.assertIn("--with-decryption", script)
+        self.assertIn("export OPENAI_API_KEY", script)
+        self.assertNotIn("set -x", script)
+        self.assertIn("git fetch origin abc123", script)
+        self.assertIn("git checkout --detach FETCH_HEAD", script)
+        self.assertIn("partial.json", script)
+        self.assertIn("--guided-log-root", script)
+        self.assertNotIn("${api_key_setup}", script)
+
+    @patch("yardbird_eval.aws_backend.save_manifest")
+    @patch("yardbird_eval.aws_backend.describe_instance_state", return_value="running")
+    @patch("yardbird_eval.aws_backend.s3_object_exists", side_effect=[True, False])
+    def test_new_worker_waits_for_completion_after_final_api_upload(self, exists, state, save):
+        subrun = {"status": STATUS_RUNNING, "bucket": "bucket", "region": "us-east-2",
+                  "s3_prefix": "run", "instance_id": "i-test",
+                  "requires_completion_marker": True}
+        manifest = {"subruns": [subrun], "status": STATUS_RUNNING}
+        refresh_aws_run(manifest)
+        self.assertEqual(subrun["status"], STATUS_RUNNING)
+
+    @patch("yardbird_eval.aws_backend.save_manifest")
+    @patch("yardbird_eval.aws_backend.run_command")
+    def test_final_download_replaces_an_earlier_partial_snapshot(self, command, save):
+        from yardbird_eval.aws_backend import download_aws_artifacts
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw = root / "results.json"
+            raw.write_text('{"benchmarks": []}')
+            subrun = {"status": STATUS_COMPLETED, "bucket": "bucket", "region": "us-east-2",
+                      "s3_prefix": "run", "result_path": str(raw),
+                      "download_dir": str(root / "downloads"), "benchmark_type": "openai"}
+            def download(bucket, key, destination, region):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text("final")
+            with patch("yardbird_eval.aws_backend.object_store_download", side_effect=download):
+                download_aws_artifacts({"subruns": [subrun]})
+            self.assertEqual(raw.read_text(), "final")
+            self.assertIn("downloaded_at", subrun)
+
+    def test_invalid_credential_names_and_refs_are_rejected(self):
+        for parameters in [{"HOME": "/key"}, {"OPENAI_API_KEY": "secret; echo bad"}]:
+            with self.assertRaises(ValueError):
+                read_user_data("openai", "run", "bucket", api_key_parameters=parameters)
+
+    @patch("yardbird_eval.aws_backend.save_manifest")
+    @patch("yardbird_eval.aws_backend.run_command")
+    @patch("yardbird_eval.aws_backend.s3_object_exists", return_value=True)
+    def test_partial_sync_does_not_mark_completion(self, exists, command, save):
+        from yardbird_eval.aws_backend import sync_partial_aws_artifacts
+        with tempfile.TemporaryDirectory() as directory:
+            subrun = {"status": STATUS_RUNNING, "bucket": "bucket", "region": "us-east-2",
+                      "s3_prefix": "run", "result_path": str(Path(directory) / "results.json")}
+            manifest = {"subruns": [subrun]}
+            def download(bucket, key, destination, region):
+                destination.write_text('{"benchmarks": []}')
+            with patch("yardbird_eval.aws_backend.object_store_download", side_effect=download):
+                sync_partial_aws_artifacts(manifest)
+            self.assertEqual(subrun["status"], STATUS_RUNNING)
+            self.assertNotIn("downloaded_at", subrun)
+            self.assertIn("partial_synced_at", subrun)
+
 if __name__ == "__main__":
     unittest.main()
