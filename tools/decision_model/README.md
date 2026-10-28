@@ -66,6 +66,34 @@ Test the runner and trace summarizer without running benchmarks:
 python3 -m unittest discover -s tools/decision_model -p 'test_*.py' -v
 ```
 
+### Replay a recorded request
+
+Extract a single request from a detailed JEV JSONL log by its query ID:
+
+```bash
+python3 tools/decision_model/replay_request.py path/to/jev.jsonl \
+  --query-id 110 --output /tmp/jev-replay.jsonl
+```
+
+The default is offline. Add `--live` to send the recorded request unchanged to
+JEV exactly once, using `JEV_API_KEY` from the environment or repository `.env`.
+Choose a fresh output path for each replay; existing files are never overwritten.
+Live calls may incur API charges. The default timeout is 30 seconds; override with
+`--timeout-secs`. There are no automatic retries.
+
+The output records the request, its SHA-256 hash, HTTP status, response body,
+latency, and usage/cost when reported. Missing usage produces an unknown cost,
+not zero. Response bodies are capped at 4 MiB with a truncation flag. HTTP error
+responses are captured as successful replay operations; inspect `status` in the
+JSONL rather than treating the script's exit status as provider success. The
+recorded model alias is preserved, so replaying `jev-latest` does not pin the
+historical server model.
+
+Local replays of the October 27 depth-50 evaluation reproduced two distinct
+limits: HTTP 422 rejected a choice `criteria` dictionary with 273 entries
+(maximum 255); HTTP 400 returned `max_tokens_exceeded`. Removing prompt feedback
+does not address the choice-count limit.
+
 ### Shared vocabulary identity
 
 JEV and `llm-one-shot` capture through the same run-scoped instantiation session.
@@ -87,3 +115,32 @@ as a proof or counterexample. The default retains ordinary fallback.
 
 The four-way Garden experiment, smoke run, AWS secret references, and live
 figure commands are documented in `garden/instantiation_comparison.md`.
+
+### Large JEV term domains and context
+
+Conditional binding keeps domains of at most 255 terms unchanged. For larger
+domains, it sorts stable term IDs numerically and partitions them into balanced
+contiguous groups (273 terms becomes 137 + 136). A Choice question ranks groups;
+up to `--jev-beam-width` positive-probability groups survive. Their term-selection
+questions are batched in the next API request. Very large groups are split again
+until every question fits 255 choices. All requests retain the full shared state,
+including the model, term catalogue, source, and earlier fixed bindings.
+
+Candidates are ranked by the product of group and term probabilities, then
+combined with the existing conditional-binding beam. Groups have no semantic
+meaning; this is an approximate search heuristic whose arbitrary partition can
+affect outcomes. Stable IDs are reproducible within a run, but discovery order
+can differ across runs. The original `one-shot` policy retains its flat domains.
+
+Every JEV request sends `TypeSafe-Danger-Zone-Long-Context: true`, enabling the
+provider's documented 262k-token per-request and per-question limits. TypeSafe
+reports the same per-token pricing, but warns of slower responses and reduced
+accuracy at long context lengths. This does not raise the 255-choice limit.
+See [model limits](https://docs.typesafe.ai/models#long-context).
+
+JSONL records identify `balanced_numeric_ids_v1` and long-context use in
+`jev_request_policy`. Group-selection requests use stage
+`conditional_binding_group`; each batch has one `binding_result` and one cost
+record, so Garden's embedded `api_usage` and the trace summarizer include the
+additional work. HTTP failures retain the response body for diagnosis. Strict
+mode still stops on failed guidance; it does not enable ordinary fallback.
