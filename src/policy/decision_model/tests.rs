@@ -1445,3 +1445,152 @@ fn strict_guidance_failure_stops_without_installing_ordinary_instances() {
     assert_eq!(last["ordinary_fallback"], false);
     assert_eq!(last["no_guided_fallback"], true);
 }
+
+#[test]
+fn oversized_term_domains_are_balanced_batched_and_keep_lower_ranked_groups() {
+    use super::term_choices::TermChoiceSearch;
+    let criteria = (0..273)
+        .map(|i| (format!("t{i}"), Value::Null))
+        .collect::<serde_json::Map<_, _>>();
+    let original = json!({"model":"fixture","state":{"terms":"full catalogue", "model":"full model", "fixed_bindings":{"a":"t300"}},
+        "questions":{"q0_idx":{"type":"choice","instructions":"Choose idx", "criteria":criteria}}});
+    let mut search = TermChoiceSearch::new(&original, 2, 2).unwrap();
+    let root = search.request();
+    assert_eq!(root["state"], original["state"]);
+    let groups = root["questions"]["q0_idx"]["criteria"].as_object().unwrap();
+    assert_eq!(groups["g0"]["term_ids"].as_array().unwrap().len(), 137);
+    assert_eq!(groups["g1"]["term_ids"].as_array().unwrap().len(), 136);
+    assert_eq!(groups["g0"]["term_ids"][2], "t2");
+    search.advance(&json!({"answers":{"q0_idx":{"type":"choice","choice":"g0","probabilities":{"g0":0.6,"g1":0.4}}}})).unwrap();
+    let leaves = search.request();
+    assert_eq!(leaves["state"], original["state"]);
+    assert_eq!(leaves["questions"].as_object().unwrap().len(), 2);
+    let mut answers = serde_json::Map::new();
+    let mut covered = HashSet::new();
+    for (name, question) in leaves["questions"].as_object().unwrap() {
+        let ids = question["criteria"].as_object().unwrap();
+        assert!(ids.len() <= 255);
+        covered.extend(ids.keys().cloned());
+        let second = ids.contains_key("t272");
+        let chosen = if second { "t272" } else { "t0" };
+        let probs = ids
+            .keys()
+            .map(|id| {
+                (
+                    id.clone(),
+                    if second {
+                        f64::from(id == chosen)
+                    } else {
+                        1.0 / ids.len() as f64
+                    },
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        answers.insert(
+            name.clone(),
+            json!({"type":"choice","choice":chosen,"probabilities":probs}),
+        );
+    }
+    assert_eq!(covered.len(), 273);
+    search.advance(&json!({"answers":answers})).unwrap();
+    assert!(search.is_complete());
+    let ranked = search.results();
+    assert_eq!(ranked[0].response["answers"]["q0_idx"]["choice"], "t272");
+    assert!((ranked[0].probability_product.unwrap() - 0.4).abs() < 1e-12);
+    assert!(!ranked[0].matches_model_choice);
+}
+
+struct GroupClient {
+    requests: Rc<RefCell<Vec<Value>>>,
+    failure: Option<&'static str>,
+}
+impl DecisionClient for GroupClient {
+    fn decide(&mut self, request: &Value) -> anyhow::Result<Value> {
+        self.requests.borrow_mut().push(request.clone());
+        if self.requests.borrow().len() == 2 {
+            match self.failure {
+                Some("transport") => anyhow::bail!("simulated grouped request timeout"),
+                Some("invalid") => return Ok(json!({"answers":{},"usage":{"input_tokens":100}})),
+                _ => {}
+            }
+        }
+        let mut answers = serde_json::Map::new();
+        for (name, question) in request["questions"].as_object().unwrap() {
+            let criteria = question["criteria"].as_object().unwrap();
+            assert!(criteria.len() <= 255);
+            answers.insert(name.clone(), json!({"type":"choice","choice":criteria.keys().next().unwrap(),
+                "probabilities":criteria.keys().map(|id| (id.clone(), 1.0 / criteria.len() as f64)).collect::<std::collections::BTreeMap<_,_>>() }));
+        }
+        Ok(json!({"answers":answers,"usage":{"input_tokens":100}}))
+    }
+}
+
+#[test]
+fn split_binding_calls_are_batched_accounted_and_fail_without_partial_candidates() {
+    let smt = fixture();
+    let pending = HashSet::new();
+    let context = DiscoveryContext {
+        smt: &smt,
+        depth: 0,
+        refinement_step: 0,
+        model_version: 1,
+        pending: &pending,
+    };
+    let criteria = (0..273)
+        .map(|i| (format!("t{i}"), Value::Null))
+        .collect::<serde_json::Map<_, _>>();
+    let request = json!({"model":"fixture", "state":{"binding_slot":"idx","fixed_bindings":{"a":"t300"}},
+        "questions":{"q0_idx":{"type":"choice","criteria":criteria}}});
+    for failure in [None, Some("invalid"), Some("transport")] {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("grouped.jsonl");
+        let requests = Rc::new(RefCell::new(vec![]));
+        let mut experiment = experiment(
+            path.clone(),
+            GroupClient {
+                requests: requests.clone(),
+                failure,
+            },
+        );
+        experiment.mode = BindingMode::Conditional;
+        experiment.no_fallback = true;
+        let outcome = experiment
+            .binding_choices(&context, 1, &request, 2)
+            .unwrap();
+        match (failure, outcome) {
+            (None, conditional::Outcome::Complete(ranked)) => {
+                assert_eq!(ranked.len(), 2);
+                for r in ranked {
+                    assert!(request["questions"]["q0_idx"]["criteria"]
+                        .get(r.response["answers"]["q0_idx"]["choice"].as_str().unwrap())
+                        .is_some());
+                }
+            }
+            (Some("invalid"), conditional::Outcome::Invalid { .. }) => {}
+            (Some("transport"), conditional::Outcome::Stopped) => {}
+            _ => panic!("unexpected grouped outcome"),
+        }
+        let requests = requests.borrow();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1]["questions"].as_object().unwrap().len(), 2);
+        assert!(requests.iter().all(|r| r["state"] == request["state"]));
+        let records = std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        let costs = records
+            .iter()
+            .filter(|r| r["cost"].is_object())
+            .collect::<Vec<_>>();
+        assert_eq!(costs.len(), 2);
+        assert_eq!(costs[0]["stage"], "conditional_binding_group");
+        assert_eq!(costs[1]["stage"], "conditional_binding");
+        assert_eq!(costs[0]["query_id"], 1);
+        assert_eq!(costs[1]["query_id"], 2);
+        if failure == Some("transport") {
+            assert_eq!(records.last().unwrap()["ordinary_fallback"], false);
+            assert!(costs[1]["cost"]["estimated_usd"].is_null());
+        }
+    }
+}

@@ -2,9 +2,7 @@
 use serde_json::{json, Value};
 
 use super::{
-    ranked_bindings::{top_bindings, RankedBindings},
-    snapshot::Snapshot,
-    Experiment,
+    ranked_bindings::RankedBindings, snapshot::Snapshot, term_choices::TermChoiceSearch, Experiment,
 };
 use crate::policy::discovery::DiscoveryContext;
 
@@ -25,6 +23,38 @@ struct Prefix {
 }
 
 impl Experiment {
+    pub(super) fn binding_choices(
+        &mut self,
+        context: &DiscoveryContext<'_>,
+        attempt: usize,
+        original: &Value,
+        keep: usize,
+    ) -> anyhow::Result<Outcome> {
+        let mut search = TermChoiceSearch::new(original, self.options.jev_beam_width, keep)?;
+        while !search.is_complete() {
+            let stage = search.stage();
+            let request = search.request();
+            let Some((response, elapsed)) = self.query(context, attempt, stage, &request)? else {
+                return Ok(Outcome::Stopped);
+            };
+            let result = search.advance(&response);
+            let error = result.as_ref().err().map(ToString::to_string);
+            self.record(context, json!({"event":"binding_result", "attempt":attempt,
+                "stage":stage, "slot":original["state"]["binding_slot"],
+                "fixed_bindings":request["state"]["fixed_bindings"],
+                "response":response,"elapsed_secs":elapsed,"cost":super::query_cost(&response, &self.options),
+                "outcome":if error.is_some() { "invalid" } else { "selected" },"error":error}))?;
+            if let Err(error) = result {
+                return Ok(Outcome::Invalid {
+                    request,
+                    response,
+                    error: error.to_string(),
+                });
+            }
+        }
+        Ok(Outcome::Complete(search.results()))
+    }
+
     pub(super) fn conditional_bindings(
         &mut self,
         context: &DiscoveryContext<'_>,
@@ -48,28 +78,9 @@ impl Experiment {
             let mut expanded = Vec::new();
             for prefix in &beam {
                 let request = snapshot.conditional_request(full_request, &prefix.response, slot)?;
-                let Some((response, elapsed)) =
-                    self.query(context, attempt, "conditional_binding", &request)?
-                else {
-                    return Ok(Outcome::Stopped);
-                };
-                // Ask the ranking helper for at least two entries to require a
-                // probability table even when the beam/candidate limit is one.
-                let ranked = top_bindings(&request, &response, keep.max(2));
-                let error = ranked.as_ref().err().map(ToString::to_string);
-                self.record(context, json!({"event":"binding_result", "attempt":attempt,
-                    "stage":"conditional_binding", "slot":slot, "fixed_bindings":request["state"]["fixed_bindings"],
-                    "response":response,"elapsed_secs":elapsed,"cost":super::query_cost(&response, &self.options),
-                    "outcome":if error.is_some() { "invalid" } else { "selected" },"error":error}))?;
-                let ranked = match ranked {
-                    Ok(ranked) => ranked,
-                    Err(error) => {
-                        return Ok(Outcome::Invalid {
-                            request,
-                            response,
-                            error: error.to_string(),
-                        })
-                    }
+                let ranked = match self.binding_choices(context, attempt, &request, keep)? {
+                    Outcome::Complete(ranked) => ranked,
+                    outcome => return Ok(outcome),
                 };
                 for candidate in ranked.into_iter().take(keep) {
                     let p = candidate

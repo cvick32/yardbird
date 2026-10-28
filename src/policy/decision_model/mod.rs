@@ -8,7 +8,9 @@
 //! beam, not globally over all possible conditional paths. Both policies use
 //! the complete model/vocabulary and the same trusted validator/installer.
 //! With k slots and beam width B, conditional search makes at most
-//! 2 + (k - 1) * B API calls per attempt, including axiom selection.
+//! 2 + (k - 1) * B API calls per attempt, including axiom selection, when
+//! domains fit 255 options. Larger domains add balanced group-selection rounds
+//! with retained groups batched per round; all shared context is preserved.
 //! Both modes stop at the first verified violation by default. `--jev-batch`
 //! checks the full retained candidate budget and sends every distinct verified
 //! violation to shared installation, without additional inference requests.
@@ -17,6 +19,7 @@ mod conditional;
 mod feedback;
 mod ranked_bindings;
 mod snapshot;
+mod term_choices;
 #[cfg(test)]
 mod tests;
 
@@ -284,6 +287,7 @@ impl Experiment {
         record["refinement_step"] = json!(context.refinement_step);
         record["model_version"] = json!(context.model_version);
         record["configuration"] = json!(self.options);
+        record["jev_request_policy"] = json!({"long_context":true, "term_grouping":"balanced_numeric_ids_v1", "max_choices":255});
         let log = self.log.as_mut().unwrap();
         serde_json::to_writer(&mut *log, &record)?;
         writeln!(log)?;
