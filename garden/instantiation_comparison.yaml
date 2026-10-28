@@ -2,7 +2,7 @@
 # API policies share full context and stop when guidance fails.
 global:
   examples_dir: examples/array
-  timeout_seconds: 600
+  timeout_seconds: 120
   retry_count: 1
   jobs: 1
   output_format: json
