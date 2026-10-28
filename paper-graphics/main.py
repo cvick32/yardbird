@@ -367,7 +367,9 @@ def generate_figures(
             title="Runtime Performance Comparison",
             xlabel="Number of Solved Instances",
             ylabel="Runtime (s)",
-            caption="Cactus plot comparing runtime performance across all strategies (lower lines are better).",
+            caption=("Successful runs only, sorted independently by runtime. "
+                     "Timeouts, no-progress outcomes, and errors are excluded. "
+                     "Curve endpoints show solve counts; lower runtimes are better."),
             use_log_scale=True,
             series_styles=series_styles,
         )

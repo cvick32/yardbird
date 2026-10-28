@@ -12,27 +12,29 @@ class RuntimeTimeoutTests(unittest.TestCase):
             {"strategy": "concrete", "run_time": elapsed, "result": outcome},
         )
 
-    def test_plots_use_each_recorded_timeout(self):
+    def test_cactus_excludes_timeouts_but_scatter_uses_recorded_limits(self):
         first = self.parse({"Timeout": 500000}, 500123)
         second = self.parse({"Timeout": 30000}, 30100)
         self.assertEqual(
             CactusPlotGenerator([first, second]).generate_data(),
-            {"Z3 Array Theory": [30.0, 500.0]},
+            {"Z3 Array Theory": []},
         )
         point = RuntimeScatterPlotGenerator(
             {"example": {"a": first, "b": second}}
         ).generate_points("a", "b")[0]
         self.assertEqual((point.x, point.y), (500.0, 30.0))
 
-    def test_other_results_keep_elapsed_runtime(self):
+    def test_cactus_counts_only_solved_results(self):
         results = [
             self.parse({"Success": {"solver_statistics": {"stats": {}}}}, 250),
             self.parse({"Error": "failed"}, 1500),
             self.parse({"Timeout": None}, 31000),
+            self.parse({"NoProgress": {}}, 2000),
+            self.parse({"_FoundProof": {"solver_statistics": {"stats": {}}}}, 500),
         ]
         self.assertEqual(
             CactusPlotGenerator(results).generate_data(),
-            {"Z3 Array Theory": [0.25, 1.5, 31.0]},
+            {"Z3 Array Theory": [0.25, 0.5]},
         )
 
     def test_caption_uses_observed_timeout_limits(self):

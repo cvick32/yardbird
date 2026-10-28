@@ -132,17 +132,14 @@ class CactusPlotGenerator:
             cost_functions: Optional list of cost functions for abstract strategies
 
         Returns:
-            Dict mapping display names to sorted runtimes in seconds
+            Dict mapping display names to sorted successful runtimes in seconds.
+            Unsolved runs contribute no point; keep their series for the legend.
         """
         strategy_runtimes = {}
         for result in self.all_results:
-            # Add runtime in seconds (convert from ms)
-            runtime_ms = result.plot_runtime_ms()
-            runtime_s = runtime_ms / 1000.0
-            if result.get_display_name() in strategy_runtimes:
-                strategy_runtimes[result.get_display_name()].append(runtime_s)
-            else:
-                strategy_runtimes[result.get_display_name()] = [runtime_s]
+            runtimes = strategy_runtimes.setdefault(result.get_display_name(), [])
+            if result.success:
+                runtimes.append(result.runtime_ms / 1000.0)
 
         # Sort each strategy's runtimes for cactus plot
         for display_name in strategy_runtimes:

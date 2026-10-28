@@ -182,8 +182,8 @@ class CactusPlotTikzGenerator:
 
         # Find values for axis bounds
         max_instances = max(len(runtimes) for runtimes in strategy_data.values())
-        max_time = max(max(runtimes) for runtimes in strategy_data.values() if runtimes)
-        min_time = min(min(runtimes) for runtimes in strategy_data.values() if runtimes)
+        max_time = max((max(runtimes) for runtimes in strategy_data.values() if runtimes), default=1.0)
+        min_time = min((min(runtimes) for runtimes in strategy_data.values() if runtimes), default=1.0)
 
         # Determine axis type and bounds
         if use_log_scale:
@@ -194,7 +194,7 @@ class CactusPlotTikzGenerator:
             y_axis = "axis"
             y_max = max_time * 1.05
             y_min = 0
-        x_max = max_instances * 1.05
+        x_max = max(max_instances * 1.05, 1)
         # Color mapping for strategies
         strategy_colors = {
             "Z3 Array Theory": "softRed",

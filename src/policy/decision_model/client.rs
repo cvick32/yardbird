@@ -32,11 +32,12 @@ impl DecisionClient for JevClient {
                 .build()?;
             let mut response = client
                 .post("https://api.typesafe.ai/v1/systemone")
-                .bearer_auth(key)
+                .bearer_auth(&key)
+                .header("TypeSafe-Danger-Zone-Long-Context", "true")
                 .json(request)
                 .send()
-                .await?
-                .error_for_status()?;
+                .await?;
+            let status = response.status();
             let mut body = Vec::new();
             while let Some(chunk) = response.chunk().await? {
                 anyhow::ensure!(
@@ -45,6 +46,12 @@ impl DecisionClient for JevClient {
                 );
                 body.extend_from_slice(&chunk);
             }
+            anyhow::ensure!(
+                status.is_success(),
+                "Jev HTTP {}: {}",
+                status,
+                String::from_utf8_lossy(&body).replace(&key, "[REDACTED]")
+            );
             Ok(serde_json::from_slice(&body)?)
         })
     }
