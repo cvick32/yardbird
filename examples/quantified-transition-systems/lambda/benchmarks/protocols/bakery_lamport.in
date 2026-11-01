@@ -1,0 +1,112 @@
+:comment from mcmt distribution
+:comment SOURCE:      Abdulla et al., CAV 2007
+
+:smt (define-type locations (subrange 1 4))
+
+:local a locations
+:local u int
+:local t int
+:global m nat
+
+
+
+:initial 
+:var x
+:cnj (= a[x] 1)  (= t[x] 0) (= m[x] 1) (= u[x] 0)
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= a[x] 4)  (= a[y] 4)
+
+ 
+
+:comment t0
+:transition
+:var j
+:guard true 
+:numcases 1
+:case 
+ :val a[j]
+ :val m[j]
+ :val t[j]
+ :val (+ m[j] 1)
+
+
+
+
+:comment t1
+:transition
+:var x
+:var j
+:guard (= a[x] 1) 
+:uguard (< t[j] m[j])
+:numcases 2
+:case (= x j)
+ :val 2
+ :val m[j]
+ :val t[j]
+ :val m[j] 
+:case  
+ :val a[j]
+ :val u[j]
+ :val t[j]
+ :val m[j] 
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 2) 
+:numcases 2
+:case (= x j)
+ :val 3
+ :val u[j]
+ :val u[j]
+ :val m[j]
+:case  
+ :val a[j]
+ :val u[j]
+ :val t[j]
+ :val m[j] 
+
+
+:comment t3
+:transition
+:var x
+:var j
+:guard (= a[x] 3) 
+:uguard (not (= a[j] 2)) (= t[j] 0) 
+:uguard (not (= a[j] 2)) (> t[j] t[x])  
+:uguard (not (= a[j] 2)) (= t[j] t[x]) (> j x)
+:numcases 2
+:case (= x j)
+ :val 4
+ :val u[j]
+ :val t[j]
+ :val m[j]
+:case 
+ :val a[j]
+ :val u[j]
+ :val t[j]
+ :val m[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 4)
+:numcases 2
+:case (= x j)
+ :val 1
+ :val u[j]
+ :val 0
+ :val m[j]
+:case   
+ :val a[j]
+ :val u[j]
+ :val t[j]
+ :val m[j]
+
+
+

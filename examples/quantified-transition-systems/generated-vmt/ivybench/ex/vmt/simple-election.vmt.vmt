@@ -1,0 +1,162 @@
+; Generated offline from ivybench/ex/vmt/simple-election.vmt
+; Source SHA-256: 2e641db4d33ad1bf3977226ddb322c85543e572f92c3aa5f0c8bdee9ac3d3379
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_acceptor 0)
+(declare-sort s_proposer 0)
+(declare-sort s_quorum 0)
+(declare-fun s__5f__5f_chosenAt () (Array s_quorum (Array s_proposer Bool)))
+(declare-fun s__5f__5f_chosenAt_next () (Array s_quorum (Array s_proposer Bool)))
+(declare-fun s__5f__5f_didNotPromise () (Array s_acceptor Bool))
+(declare-fun s__5f__5f_didNotPromise_next () (Array s_acceptor Bool))
+(declare-fun s__5f__5f_leader () (Array s_proposer Bool))
+(declare-fun s__5f__5f_leader_next () (Array s_proposer Bool))
+(declare-fun s__5f__5f_promise () (Array s_acceptor (Array s_proposer Bool)))
+(declare-fun s__5f__5f_promise_next () (Array s_acceptor (Array s_proposer Bool)))
+(declare-fun s__5f__5f_start () (Array s_proposer Bool))
+(declare-fun s__5f__5f_start_next () (Array s_proposer Bool))
+(declare-fun s_member () (Array s_acceptor (Array s_quorum Bool)))
+(declare-fun s_member_next () (Array s_acceptor (Array s_quorum Bool)))
+; source symbol: __chosenAt
+(define-fun link_0 () (Array s_quorum (Array s_proposer Bool)) (! s__5f__5f_chosenAt :next s__5f__5f_chosenAt_next))
+; source symbol: __didNotPromise
+(define-fun link_1 () (Array s_acceptor Bool) (! s__5f__5f_didNotPromise :next s__5f__5f_didNotPromise_next))
+; source symbol: __leader
+(define-fun link_2 () (Array s_proposer Bool) (! s__5f__5f_leader :next s__5f__5f_leader_next))
+; source symbol: __promise
+(define-fun link_3 () (Array s_acceptor (Array s_proposer Bool)) (! s__5f__5f_promise :next s__5f__5f_promise_next))
+; source symbol: __start
+(define-fun link_4 () (Array s_proposer Bool) (! s__5f__5f_start :next s__5f__5f_start_next))
+; source symbol: member
+(define-fun link_5 () (Array s_acceptor (Array s_quorum Bool)) (! s_member :next s_member_next))
+; action: ext:decide
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_15_s_V_5f__5f_fml_3a_p s_proposer) (q_16_s_V_5f__5f_fml_3a_q s_quorum))
+        (and
+          (forall ((q_17_s_V0 s_proposer))
+            (=
+              (select s__5f__5f_leader_next q_17_s_V0)
+              (ite (= q_17_s_V0 q_15_s_V_5f__5f_fml_3a_p) true (select s__5f__5f_leader q_17_s_V0))))
+          (select (select s__5f__5f_chosenAt q_16_s_V_5f__5f_fml_3a_q) q_15_s_V_5f__5f_fml_3a_p))))
+    (= s__5f__5f_promise_next s__5f__5f_promise)
+    (= s__5f__5f_start_next s__5f__5f_start)))
+; action: ext:send_1a
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_18_s_V_5f__5f_fml_3a_p s_proposer))
+        (forall ((q_19_s_V0 s_proposer))
+          (=
+            (select s__5f__5f_start_next q_19_s_V0)
+            (ite (= q_19_s_V0 q_18_s_V_5f__5f_fml_3a_p) true (select s__5f__5f_start q_19_s_V0))))))
+    (= s__5f__5f_leader_next s__5f__5f_leader)
+    (= s__5f__5f_promise_next s__5f__5f_promise)))
+; action: ext:send_1b
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_20_s_V_5f__5f_fml_3a_a s_acceptor) (q_21_s_V_5f__5f_fml_3a_p s_proposer))
+        (and
+          (forall ((q_22_s_V0 s_acceptor) (q_23_s_V1 s_proposer))
+            (=
+              (select (select s__5f__5f_promise_next q_22_s_V0) q_23_s_V1)
+              (ite
+                (and (= q_22_s_V0 q_20_s_V_5f__5f_fml_3a_a) (= q_23_s_V1 q_21_s_V_5f__5f_fml_3a_p))
+                true
+                (select (select s__5f__5f_promise q_22_s_V0) q_23_s_V1))))
+          (select s__5f__5f_start q_21_s_V_5f__5f_fml_3a_p)
+          (select s__5f__5f_didNotPromise q_20_s_V_5f__5f_fml_3a_a))))
+    (= s__5f__5f_leader_next s__5f__5f_leader)
+    (= s__5f__5f_start_next s__5f__5f_start)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_11_s_V0 s_proposer)) (= (select s__5f__5f_start q_11_s_V0) false))
+          (forall ((q_12_s_V0 s_acceptor) (q_13_s_V1 s_proposer))
+            (= (select (select s__5f__5f_promise q_12_s_V0) q_13_s_V1) false))
+          (forall ((q_14_s_V0 s_proposer)) (= (select s__5f__5f_leader q_14_s_V0) false))))
+      (and
+        (forall ((q_1_s_V0 s_quorum) (q_2_s_V1 s_proposer))
+          (=
+            (select (select s__5f__5f_chosenAt q_1_s_V0) q_2_s_V1)
+            (forall ((q_3_s_A s_acceptor))
+              (=>
+                (select (select s_member q_3_s_A) q_1_s_V0)
+                (select (select s__5f__5f_promise q_3_s_A) q_2_s_V1))))))
+      (and
+        (forall ((q_4_s_V0 s_acceptor))
+          (=
+            (select s__5f__5f_didNotPromise q_4_s_V0)
+            (forall ((q_5_s_P s_proposer))
+              (not (select (select s__5f__5f_promise q_4_s_V0) q_5_s_P))))))
+      (and
+        (forall ((q_8_s_Q1 s_quorum) (q_9_s_Q2 s_quorum))
+          (exists ((q_10_s_A s_acceptor))
+            (and
+              (select (select s_member q_10_s_A) q_8_s_Q1)
+              (select (select s_member q_10_s_A) q_9_s_Q2))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2)
+      (= s_member_next s_member)
+      (and
+        (forall ((q_1_s_V0 s_quorum) (q_2_s_V1 s_proposer))
+          (=
+            (select (select s__5f__5f_chosenAt q_1_s_V0) q_2_s_V1)
+            (forall ((q_3_s_A s_acceptor))
+              (=>
+                (select (select s_member q_3_s_A) q_1_s_V0)
+                (select (select s__5f__5f_promise q_3_s_A) q_2_s_V1))))))
+      (and
+        (forall ((q_4_s_V0 s_acceptor))
+          (=
+            (select s__5f__5f_didNotPromise q_4_s_V0)
+            (forall ((q_5_s_P s_proposer))
+              (not (select (select s__5f__5f_promise q_4_s_V0) q_5_s_P))))))
+      (and
+        (forall ((q_8_s_Q1 s_quorum) (q_9_s_Q2 s_quorum))
+          (exists ((q_10_s_A s_acceptor))
+            (and
+              (select (select s_member q_10_s_A) q_8_s_Q1)
+              (select (select s_member q_10_s_A) q_9_s_Q2)))))
+      (and
+        (forall ((q_1_s_V0 s_quorum) (q_2_s_V1 s_proposer))
+          (=
+            (select (select s__5f__5f_chosenAt_next q_1_s_V0) q_2_s_V1)
+            (forall ((q_3_s_A s_acceptor))
+              (=>
+                (select (select s_member q_3_s_A) q_1_s_V0)
+                (select (select s__5f__5f_promise_next q_3_s_A) q_2_s_V1))))))
+      (and
+        (forall ((q_4_s_V0 s_acceptor))
+          (=
+            (select s__5f__5f_didNotPromise_next q_4_s_V0)
+            (forall ((q_5_s_P s_proposer))
+              (not (select (select s__5f__5f_promise_next q_4_s_V0) q_5_s_P))))))
+      (and
+        (forall ((q_8_s_Q1 s_quorum) (q_9_s_Q2 s_quorum))
+          (exists ((q_10_s_A s_acceptor))
+            (and
+              (select (select s_member q_10_s_A) q_8_s_Q1)
+              (select (select s_member q_10_s_A) q_9_s_Q2))))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_6_s_P1 s_proposer) (q_7_s_P2 s_proposer))
+        (=>
+          (and (select s__5f__5f_leader q_6_s_P1) (select s__5f__5f_leader q_7_s_P2))
+          (= q_6_s_P1 q_7_s_P2))))
+    :invar-property
+    0))

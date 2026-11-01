@@ -1,0 +1,1363 @@
+:comment index_arrays m n
+:comment index_arrays_extra m -2 -1
+:comment index_arrays_extra n -2 -1
+
+
+
+:comment see F. Alberti, S. Ghilardi, E. Pagani, S. Ranise, G. Rossi Automated Support for the Design and Validation of Fault Tolerant Parameterized Systems - a case study 
+:comment DISC 2010 and AVOCS 2010
+
+
+:index nat
+
+
+
+
+:comment ---------- FUNCTIONS and PREDICATES -----------
+
+
+:comment  round
+:global a nat
+:comment  estimate
+:local b bool
+:comment  state
+:local c bool
+:comment  coord
+:local d bool
+:comment  aCoord
+:local e bool
+:comment  done
+:local f bool
+:comment  request
+:global g bool
+:comment  decisionValue
+:local h bool
+:comment  faulty
+:local i bool
+:comment  received
+:local k bool
+:comment  nack
+:local l bool
+:comment  id
+:local m int
+:comment  maxId
+:global n int
+:comment  tmpEstimate
+:global o bool
+:comment  processReceivedEstimate
+:local p bool
+:comment  sh
+:global q bool
+
+
+
+:key_search a
+
+
+
+:comment ----------------------axioms--------------------------
+
+:system_axiom
+:var x
+:cnj (and (<  a[x]  8)   (> (+  n[x]  3)  0)   (> (+  m[x]  2)  0))
+
+
+
+
+:comment ----------------------axioms--------------------------
+
+
+
+
+:comment :suggested_negated_invariants
+:comment :var z1
+:comment :var z2
+:comment :cnj (=  d[z1]  true) (=  d[z2]  true) 
+:comment :cnj (=  d[z1]  true) (=  e[z2]  false) (< z2 z1) 
+:comment :cnj (=  d[z1]  true) (>  m[z1] z1) 
+:comment :cnj (=  d[z1]  true) (>  m[z2] z1) 
+:comment :cnj (=  a[z1]  1) (=  d[z1]  true) (=  m[z2] z1) 
+:comment :cnj (=  i[z1]  false) (=  l[z1]  true) 
+:comment :cnj (=  d[z1]  true) (=  e[z2]  true) (> z2 z1) 
+:comment 
+:comment :end_of_suggested_negated_invariants
+
+:initial
+:var x
+:cnj (=  a[x]  1) (=  c[x]  false) (=  d[x]  false) (=  e[x]  false) (=  f[x]  false) (=  k[x]  false) (=  l[x]  false) (=  m[x]  -1) (=  n[x]  -2) (=  p[x]  false) (=  q[x]  false) 
+
+
+:unsafe
+:var z1
+:var z2
+:comment :var z3
+
+:comment ---------------------------------------------------------------------
+:comment :suggested_negated_invariants
+
+:comment :cnj (=  d[z1]  true) (=  d[z2]  true) 
+:comment :cnj (=  d[z1]  true) (=  e[z2]  false) (< z2 z1) 
+:comment :cnj (=  d[z1]  true) (>  m[z1] z1) 
+:comment :cnj (=  d[z1]  true) (>  m[z2] z1) 
+:comment :cnj (=  a[z1]  1) (=  d[z1]  true) (=  m[z2] z1) 
+:comment :cnj (=  i[z1]  false) (=  l[z1]  true) 
+:cnj (=  d[z1]  true) (=  e[z2]  true) (> z2 z1)
+
+:comment ---------------------------------------------------------------------
+:comment originally :u_cnj
+
+:comment :cnj (=  c[z1]  true) (=  k[z1]  true) (=  d[z2]  true) (=  c[z3]  false) (=  i[z3]  false) (not (=  b[z2]  b[z3]) ) 
+
+:comment :cnj (>  a[z1]  1) (=  c[z1]  false) (=  i[z1]  false) (=  p[z1]  true) (=  d[z2]  true) (not (=  b[z1]  b[z2]) ) 
+
+:comment :cnj (=  d[z1]  true) (=  i[z1]  false) (=  a[z1]  6) (=  c[z2]  false) (=  i[z2]  false) 
+
+:comment :cnj (=  q[z1]  false) (=  c[z1]  true) (=  i[z1]  false) (=  c[z2]  true) (=  i[z2]  false) (not (=  h[z1]  h[z2]) ) 
+
+:comment :cnj (=  c[z1]  true) (=  i[z1]  false) (=  c[z2]  true) (=  i[z2]  false) (not (=  h[z1]  h[z2]) ) 
+
+:comment ---------------------------------------------------------------------
+
+
+ :inv_search_max_index_var 4 
+
+
+
+:comment T 1
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  1) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) (>  m[x]  n[x]) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val  m[x]
+ :val  b[x]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val  m[x]
+ :val  b[x]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 2
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  1) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) (<=  m[x]  n[x]) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 3
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  1) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) (=  i[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+
+
+
+:comment T 4
+:transition
+:var x
+:var j
+:guard (=  a[x]  1) (=  f[x]  false) (=  c[x]  false) (=  d[x]  true) (>  m[x]  n[x]) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val  m[x]
+ :val  b[x]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val  m[x]
+ :val  b[x]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 5
+:transition
+:var x
+:var j
+:guard (=  a[x]  1) (=  f[x]  false) (=  c[x]  false) (=  d[x]  true) (<=  m[x]  n[x]) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 6
+:transition
+:var x
+:var j
+:guard (=  a[x]  1) (=  f[x]  false) (=  c[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 7
+:transition
+:var x
+:var j
+:guard (=  a[x]  1) (>  n[x]  -2) (=  f[x]  true) (=  d[x]  true) 
+:uguard (=  f[j]  true) 
+:numcases 2
+:case (= x j)
+ :val  2
+ :val  o[x]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  2
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 8
+:transition
+:var x
+:var j
+:guard (=  a[x]  1) (=  n[x]  -2) (=  f[x]  true) (=  d[x]  true) 
+:uguard (=  f[j]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val  false
+ :val  true
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 9
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  2) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val  b[y]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val  true
+ :val l[j]
+ :val y
+ :val n[j]
+ :val o[j]
+ :val  true
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 10
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  2) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) (=  i[y]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+
+
+
+:comment T 11
+:transition
+:var x
+:var j
+:guard (=  a[x]  2) (=  f[x]  false) (=  c[x]  false) (=  d[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val  true
+ :val l[j]
+ :val x
+ :val n[j]
+ :val o[j]
+ :val  true
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 12
+:transition
+:var x
+:var j
+:guard (=  a[x]  2) (=  f[x]  false) (=  c[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 13
+:transition
+:var x
+:var j
+:guard (=  a[x]  2) (=  f[x]  true) (=  d[x]  true) 
+:uguard (=  f[j]  true) 
+:numcases 2
+:case (= x j)
+ :val  3
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  3
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 14
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  3) (=  c[x]  false) (=  f[x]  false) (=  k[x]  false) (=  d[y]  true) 
+:numcases 3
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val  l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case (= j y) (not(= x j))
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val  true
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case (not (= x j)) (not (= j y) ) 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val  l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 15
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  3) (=  c[x]  false) (=  f[x]  false) (=  k[x]  false) (=  d[y]  true) (=  i[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+
+
+
+:comment T 16
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  3) (=  c[x]  false) (=  f[x]  false) (=  k[x]  true) (=  d[y]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 17
+:transition
+:var x
+:var j
+:guard (=  a[x]  3) (=  f[x]  false) (=  d[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 18
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  3) (=  c[x]  true) (=  f[x]  false) (=  d[y]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 19
+:transition
+:var x
+:var j
+:guard (=  a[x]  3) (=  f[x]  true) (=  d[x]  true) 
+:uguard (=  f[j]  true) 
+:numcases 2
+:case (= x j)
+ :val  4
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  4
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 20
+:transition
+:var x
+:var j
+:guard (=  a[x]  4) (=  d[x]  false) 
+:uguard (=  l[j]  false) 
+:numcases 2
+:case (= x j)
+ :val  5
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  5
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 21
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  5) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val  true
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val  b[x]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 22
+:transition
+:var x
+:var y
+:var j
+:guard (=  a[x]  5) (=  f[x]  false) (=  c[x]  false) (=  d[y]  true) (=  i[y]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val  true
+
+
+
+:comment T 23
+:transition
+:var x
+:var j
+:guard (=  a[x]  5) (=  f[x]  false) (=  c[x]  false) (=  d[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val  true
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val  b[x]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 24
+:transition
+:var x
+:var j
+:guard (=  a[x]  5) (=  f[x]  false) (=  c[x]  true) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  true
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 25
+:transition
+:var x
+:var j
+:guard (=  a[x]  5) (=  f[x]  true) (=  d[x]  true) 
+:uguard (=  f[j]  true) 
+:numcases 2
+:case (= x j)
+ :val  6
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  6
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 26
+:transition
+:var x
+:var j
+:guard (=  a[x]  6) (=  d[x]  true) 
+:numcases 2
+:case (= x j)
+ :val  7
+ :val b[j]
+ :val c[j]
+ :val  false
+ :val  true
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  7
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 27
+:transition
+:var x
+:var j
+:guard (=  d[x]  false) 
+:uguard (=  d[j]  false) 
+:numcases 2
+:case (= x j)
+ :val  7
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  7
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val k[j]
+ :val l[j]
+ :val m[j]
+ :val n[j]
+ :val o[j]
+ :val p[j]
+ :val q[j]
+
+
+
+:comment T 28
+:transition
+:var x
+:var j
+:guard (=  d[x]  false) (=  e[x]  false) (=  a[x]  7) 
+:uguard (>= j x) 
+:uguard (< j x) (=  e[j]  true) 
+:numcases 2
+:case (= x j)
+ :val  1
+ :val b[j]
+ :val c[j]
+ :val  true
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val  false
+ :val  false
+ :val m[j]
+ :val  -2
+ :val o[j]
+ :val p[j]
+ :val q[j]
+:case 
+ :val  1
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val  false
+ :val g[j]
+ :val h[j]
+ :val i[j]
+ :val  false
+ :val  false
+ :val m[j]
+ :val  -2
+ :val o[j]
+ :val p[j]
+ :val q[j]

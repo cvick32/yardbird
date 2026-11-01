@@ -1,0 +1,96 @@
+; Generated offline from mypyvy/examples/learning_switch_forall.pyv
+; Source SHA-256: 62e9a0815c42148033884ba321e1c3b4702bf0bc101153bf10ec2cb6315d0134
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-fun s_table () (Array s_node (Array s_node (Array s_node Bool))))
+(declare-fun s_table_next () (Array s_node (Array s_node (Array s_node Bool))))
+(declare-fun s_pending () (Array s_node (Array s_node (Array s_node (Array s_node Bool)))))
+(declare-fun s_pending_next () (Array s_node (Array s_node (Array s_node (Array s_node Bool)))))
+; source symbol: table
+(define-fun link_0 () (Array s_node (Array s_node (Array s_node Bool))) (! s_table :next s_table_next))
+; source symbol: pending
+(define-fun link_1 () (Array s_node (Array s_node (Array s_node (Array s_node Bool)))) (! s_pending :next s_pending_next))
+; action: new_packet
+(define-fun action_0 () Bool
+  (exists ((q_8_s_ps s_node) (q_9_s_pd s_node))
+    (and
+      (forall ((q_10_s_PS s_node) (q_11_s_PD s_node) (q_12_s_S s_node) (q_13_s_D s_node))
+        (=
+          (select (select (select (select s_pending_next q_10_s_PS) q_11_s_PD) q_12_s_S) q_13_s_D)
+          (or
+            (select (select (select (select s_pending q_10_s_PS) q_11_s_PD) q_12_s_S) q_13_s_D)
+            (and
+              (= q_10_s_PS q_8_s_ps)
+              (= q_11_s_PD q_9_s_pd)
+              (= q_12_s_S q_8_s_ps)
+              (= q_13_s_D q_8_s_ps)))))
+      (forall ((q_14_s_x0 s_node) (q_15_s_x1 s_node) (q_16_s_x2 s_node))
+        (=
+          (select (select (select s_table_next q_14_s_x0) q_15_s_x1) q_16_s_x2)
+          (select (select (select s_table q_14_s_x0) q_15_s_x1) q_16_s_x2))))))
+; action: forward
+(define-fun action_1 () Bool
+  (exists ((q_17_s_ps s_node) (q_18_s_pd s_node) (q_19_s_sw0 s_node) (q_20_s_sw1 s_node) (q_21_s_nondet s_node))
+    (and
+      (select (select (select (select s_pending q_17_s_ps) q_18_s_pd) q_19_s_sw0) q_20_s_sw1)
+      (forall ((q_22_s_PS s_node) (q_23_s_PD s_node) (q_24_s_S s_node) (q_25_s_D s_node))
+        (=
+          (select (select (select (select s_pending_next q_22_s_PS) q_23_s_PD) q_24_s_S) q_25_s_D)
+          (or
+            (and
+              (select (select (select (select s_pending q_22_s_PS) q_23_s_PD) q_24_s_S) q_25_s_D)
+              (= q_22_s_PS q_21_s_nondet))
+            (and (= q_22_s_PS q_17_s_ps) (= q_23_s_PD q_18_s_pd) (= q_24_s_S q_20_s_sw1)))))
+      (forall ((q_26_s_T s_node) (q_27_s_N1 s_node) (q_28_s_N2 s_node))
+        (=
+          (select (select (select s_table_next q_26_s_T) q_27_s_N1) q_28_s_N2)
+          (or
+            (select (select (select s_table q_26_s_T) q_27_s_N1) q_28_s_N2)
+            (and
+              (= q_26_s_T q_17_s_ps)
+              (not (= q_17_s_ps q_20_s_sw1))
+              (forall ((q_29_s_W s_node))
+                (=>
+                  (not (= q_29_s_W q_20_s_sw1))
+                  (not (select (select (select s_table q_26_s_T) q_20_s_sw1) q_29_s_W))))
+              (select (select (select s_table q_26_s_T) q_27_s_N1) q_20_s_sw1)
+              (select (select (select s_table q_26_s_T) q_19_s_sw0) q_28_s_N2))))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_T s_node) (q_2_s_N1 s_node) (q_3_s_N2 s_node))
+        (= (select (select (select s_table q_1_s_T) q_2_s_N1) q_3_s_N2) (= q_2_s_N1 q_3_s_N2)))
+      (forall ((q_4_s_PS s_node) (q_5_s_PD s_node) (q_6_s_S s_node) (q_7_s_D s_node))
+        (not (select (select (select (select s_pending q_4_s_PS) q_5_s_PD) q_6_s_S) q_7_s_D))))
+    :init
+    true))
+(define-fun trans () Bool (! (or action_0 action_1) :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_30_s_T s_node) (q_31_s_X s_node))
+        (select (select (select s_table q_30_s_T) q_31_s_X) q_31_s_X))
+      (forall ((q_32_s_T s_node) (q_33_s_X s_node) (q_34_s_Y s_node) (q_35_s_Z s_node))
+        (=>
+          (and
+            (select (select (select s_table q_32_s_T) q_33_s_X) q_34_s_Y)
+            (select (select (select s_table q_32_s_T) q_34_s_Y) q_35_s_Z))
+          (select (select (select s_table q_32_s_T) q_33_s_X) q_35_s_Z)))
+      (forall ((q_36_s_T s_node) (q_37_s_X s_node) (q_38_s_Y s_node))
+        (=>
+          (and
+            (select (select (select s_table q_36_s_T) q_37_s_X) q_38_s_Y)
+            (select (select (select s_table q_36_s_T) q_38_s_Y) q_37_s_X))
+          (= q_37_s_X q_38_s_Y)))
+      (forall ((q_39_s_T s_node) (q_40_s_X s_node) (q_41_s_Y s_node) (q_42_s_Z s_node))
+        (=>
+          (and
+            (select (select (select s_table q_39_s_T) q_40_s_X) q_41_s_Y)
+            (select (select (select s_table q_39_s_T) q_40_s_X) q_42_s_Z))
+          (or
+            (select (select (select s_table q_39_s_T) q_41_s_Y) q_42_s_Z)
+            (select (select (select s_table q_39_s_T) q_42_s_Z) q_41_s_Y)))))
+    :invar-property
+    0))

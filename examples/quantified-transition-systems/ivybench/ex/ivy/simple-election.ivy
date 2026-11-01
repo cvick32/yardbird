@@ -1,0 +1,61 @@
+#lang ivy1.7
+
+# Source: I4
+
+################################################################################
+#
+# Types, relations and functions describing state of the network
+#
+################################################################################
+
+type acceptor
+type quorum
+type proposer
+
+# rounds are totally ordered with a least element called zero
+relation member(X: acceptor, Y: quorum)
+axiom forall Q1, Q2. exists A:acceptor. member(A, Q1) & member(A, Q2)
+
+relation start(P: proposer)
+relation promise(A: acceptor, P: proposer)
+
+relation leader(P: proposer)
+################################################################################
+#
+# Protocol description
+#
+################################################################################
+
+relation didNotPromise(A:acceptor) = forall P. ~promise(A, P)
+relation chosenAt(Q:quorum, P: proposer) = forall A. member(A, Q) -> promise(A, P)
+
+after init {
+    start(P) := false;
+    promise(A, P) := false;
+    leader(P) := false;
+}
+
+action send_1a(p: proposer) = {
+    start(p) := true;
+}
+
+action send_1b(a: acceptor, p: proposer) = {
+    require start(p);
+    require didNotPromise(a);
+    promise(a, p) := true;
+}
+
+action decide(p: proposer, q: quorum) = {
+    require chosenAt(q, p);
+    leader(p) := true;
+}
+
+export send_1a
+export send_1b
+export decide
+
+# the safety property
+invariant leader(P1) & leader(P2) -> P1 = P2
+
+#invariant [manual_1] promise(A, P1) & promise(A, P2) -> P1 = P2
+#invariant [manual_2] leader(P) -> ( exists Q. forall A. (member(A,Q) -> promise(A, P)) )

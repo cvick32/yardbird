@@ -1,0 +1,520 @@
+; Generated offline from ivybench/multisig/ivy/multisig-majority.ivy
+; Source SHA-256: 32c02c57bb63b5b8e3a1bf089c18b852da1a21e42cb3b8c030e815afa8be84f6
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+; Ivy multisig subset: Boolean point/slice updates; missing initializers remain unconstrained.
+(declare-sort s_validator 0)
+(declare-sort s_destination 0)
+(declare-sort s_value 0)
+(declare-sort s_deadline 0)
+(declare-sort s_signature 0)
+(declare-sort s_quorum 0)
+(declare-fun s_holding () (Array s_validator Bool))
+(declare-fun s_holding_next () (Array s_validator Bool))
+(declare-fun s_collect () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_collect_next () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_sig () (Array s_validator (Array s_destination (Array s_value (Array s_deadline (Array s_signature Bool))))))
+(declare-fun s_sig_next () (Array s_validator (Array s_destination (Array s_value (Array s_deadline (Array s_signature Bool))))))
+(declare-fun s_sig_5f_auth () (Array s_signature Bool))
+(declare-fun s_sig_5f_auth_next () (Array s_signature Bool))
+(declare-fun s_proposed () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_proposed_next () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_paid () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_paid_next () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_cancelled () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_cancelled_next () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_expired () (Array s_deadline Bool))
+(declare-fun s_expired_next () (Array s_deadline Bool))
+(declare-fun s_member () (Array s_signature (Array s_quorum Bool)))
+(declare-fun s_member_next () (Array s_signature (Array s_quorum Bool)))
+(declare-fun s_chosenAt () (Array s_quorum (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool))))))
+(declare-fun s_chosenAt_next () (Array s_quorum (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool))))))
+(declare-fun s_chosen () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+(declare-fun s_chosen_next () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))))
+; source symbol: holding
+(define-fun link_0 () (Array s_validator Bool) (! s_holding :next s_holding_next))
+; source symbol: collect
+(define-fun link_1 () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))) (! s_collect :next s_collect_next))
+; source symbol: sig
+(define-fun link_2 () (Array s_validator (Array s_destination (Array s_value (Array s_deadline (Array s_signature Bool))))) (! s_sig :next s_sig_next))
+; source symbol: sig_auth
+(define-fun link_3 () (Array s_signature Bool) (! s_sig_5f_auth :next s_sig_5f_auth_next))
+; source symbol: proposed
+(define-fun link_4 () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))) (! s_proposed :next s_proposed_next))
+; source symbol: paid
+(define-fun link_5 () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))) (! s_paid :next s_paid_next))
+; source symbol: cancelled
+(define-fun link_6 () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))) (! s_cancelled :next s_cancelled_next))
+; source symbol: expired
+(define-fun link_7 () (Array s_deadline Bool) (! s_expired :next s_expired_next))
+; source symbol: member
+(define-fun link_8 () (Array s_signature (Array s_quorum Bool)) (! s_member :next s_member_next))
+; source symbol: chosenAt
+(define-fun link_9 () (Array s_quorum (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool))))) (! s_chosenAt :next s_chosenAt_next))
+; source symbol: chosen
+(define-fun link_10 () (Array s_validator (Array s_destination (Array s_value (Array s_deadline Bool)))) (! s_chosen :next s_chosen_next))
+; action: propose
+(define-fun action_0 () Bool
+  (exists ((q_37_s_n s_validator) (q_38_s_k s_destination) (q_39_s_v s_value) (q_40_s_d s_deadline))
+    (and
+      (and
+        (select s_holding q_37_s_n)
+        (not (select (select (select (select s_collect q_37_s_n) q_38_s_k) q_39_s_v) q_40_s_d))
+        (not (select (select (select (select s_paid q_37_s_n) q_38_s_k) q_39_s_v) q_40_s_d))
+        (forall ((q_41_s_update_5f_0 s_validator))
+          (=
+            (select s_holding_next q_41_s_update_5f_0)
+            (ite (= q_41_s_update_5f_0 q_37_s_n) false (select s_holding q_41_s_update_5f_0))))
+        (forall ((q_42_s_update_5f_0 s_validator) (q_43_s_update_5f_1 s_destination) (q_44_s_update_5f_2 s_value) (q_45_s_update_5f_3 s_deadline))
+          (=
+            (select
+              (select
+                (select (select s_collect_next q_42_s_update_5f_0) q_43_s_update_5f_1)
+                q_44_s_update_5f_2)
+              q_45_s_update_5f_3)
+            (ite
+              (and
+                (= q_42_s_update_5f_0 q_37_s_n)
+                (= q_43_s_update_5f_1 q_38_s_k)
+                (= q_44_s_update_5f_2 q_39_s_v)
+                (= q_45_s_update_5f_3 q_40_s_d))
+              true
+              (select
+                (select
+                  (select (select s_collect q_42_s_update_5f_0) q_43_s_update_5f_1)
+                  q_44_s_update_5f_2)
+                q_45_s_update_5f_3))))
+        (forall ((q_46_s_update_5f_0 s_validator) (q_47_s_update_5f_1 s_destination) (q_48_s_update_5f_2 s_value) (q_49_s_update_5f_3 s_deadline) (q_50_s_update_5f_4 s_signature))
+          (=
+            (select
+              (select
+                (select
+                  (select (select s_sig_next q_46_s_update_5f_0) q_47_s_update_5f_1)
+                  q_48_s_update_5f_2)
+                q_49_s_update_5f_3)
+              q_50_s_update_5f_4)
+            (ite
+              (and
+                (= q_46_s_update_5f_0 q_37_s_n)
+                (= q_47_s_update_5f_1 q_38_s_k)
+                (= q_48_s_update_5f_2 q_39_s_v)
+                (= q_49_s_update_5f_3 q_40_s_d))
+              false
+              (select
+                (select
+                  (select
+                    (select (select s_sig q_46_s_update_5f_0) q_47_s_update_5f_1)
+                    q_48_s_update_5f_2)
+                  q_49_s_update_5f_3)
+                q_50_s_update_5f_4))))
+        (forall ((q_51_s_update_5f_0 s_validator) (q_52_s_update_5f_1 s_destination) (q_53_s_update_5f_2 s_value) (q_54_s_update_5f_3 s_deadline))
+          (=
+            (select
+              (select
+                (select (select s_proposed_next q_51_s_update_5f_0) q_52_s_update_5f_1)
+                q_53_s_update_5f_2)
+              q_54_s_update_5f_3)
+            (ite
+              (and
+                (= q_51_s_update_5f_0 q_37_s_n)
+                (= q_52_s_update_5f_1 q_38_s_k)
+                (= q_53_s_update_5f_2 q_39_s_v)
+                (= q_54_s_update_5f_3 q_40_s_d))
+              true
+              (select
+                (select
+                  (select (select s_proposed q_51_s_update_5f_0) q_52_s_update_5f_1)
+                  q_53_s_update_5f_2)
+                q_54_s_update_5f_3)))))
+      (forall ((q_55_s_x0 s_validator) (q_56_s_x1 s_destination) (q_57_s_x2 s_value) (q_58_s_x3 s_deadline))
+        (=
+          (select (select (select (select s_paid_next q_55_s_x0) q_56_s_x1) q_57_s_x2) q_58_s_x3)
+          (select (select (select (select s_paid q_55_s_x0) q_56_s_x1) q_57_s_x2) q_58_s_x3)))
+      (forall ((q_59_s_x0 s_validator) (q_60_s_x1 s_destination) (q_61_s_x2 s_value) (q_62_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_cancelled_next q_59_s_x0) q_60_s_x1) q_61_s_x2)
+            q_62_s_x3)
+          (select (select (select (select s_cancelled q_59_s_x0) q_60_s_x1) q_61_s_x2) q_62_s_x3)))
+      (forall ((q_63_s_x0 s_deadline))
+        (= (select s_expired_next q_63_s_x0) (select s_expired q_63_s_x0))))))
+; action: add_sig
+(define-fun action_1 () Bool
+  (exists ((q_64_s_n s_validator) (q_65_s_k s_destination) (q_66_s_v s_value) (q_67_s_d s_deadline) (q_68_s_s s_signature))
+    (and
+      (and
+        (select (select (select (select s_collect q_64_s_n) q_65_s_k) q_66_s_v) q_67_s_d)
+        (not (select s_expired q_67_s_d))
+        (select s_sig_5f_auth q_68_s_s)
+        (forall ((q_69_s_update_5f_0 s_validator) (q_70_s_update_5f_1 s_destination) (q_71_s_update_5f_2 s_value) (q_72_s_update_5f_3 s_deadline) (q_73_s_update_5f_4 s_signature))
+          (=
+            (select
+              (select
+                (select
+                  (select (select s_sig_next q_69_s_update_5f_0) q_70_s_update_5f_1)
+                  q_71_s_update_5f_2)
+                q_72_s_update_5f_3)
+              q_73_s_update_5f_4)
+            (ite
+              (and
+                (= q_69_s_update_5f_0 q_64_s_n)
+                (= q_70_s_update_5f_1 q_65_s_k)
+                (= q_71_s_update_5f_2 q_66_s_v)
+                (= q_72_s_update_5f_3 q_67_s_d)
+                (= q_73_s_update_5f_4 q_68_s_s))
+              true
+              (select
+                (select
+                  (select
+                    (select (select s_sig q_69_s_update_5f_0) q_70_s_update_5f_1)
+                    q_71_s_update_5f_2)
+                  q_72_s_update_5f_3)
+                q_73_s_update_5f_4)))))
+      (forall ((q_74_s_x0 s_validator))
+        (= (select s_holding_next q_74_s_x0) (select s_holding q_74_s_x0)))
+      (forall ((q_75_s_x0 s_validator) (q_76_s_x1 s_destination) (q_77_s_x2 s_value) (q_78_s_x3 s_deadline))
+        (=
+          (select (select (select (select s_collect_next q_75_s_x0) q_76_s_x1) q_77_s_x2) q_78_s_x3)
+          (select (select (select (select s_collect q_75_s_x0) q_76_s_x1) q_77_s_x2) q_78_s_x3)))
+      (forall ((q_79_s_x0 s_validator) (q_80_s_x1 s_destination) (q_81_s_x2 s_value) (q_82_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_proposed_next q_79_s_x0) q_80_s_x1) q_81_s_x2)
+            q_82_s_x3)
+          (select (select (select (select s_proposed q_79_s_x0) q_80_s_x1) q_81_s_x2) q_82_s_x3)))
+      (forall ((q_83_s_x0 s_validator) (q_84_s_x1 s_destination) (q_85_s_x2 s_value) (q_86_s_x3 s_deadline))
+        (=
+          (select (select (select (select s_paid_next q_83_s_x0) q_84_s_x1) q_85_s_x2) q_86_s_x3)
+          (select (select (select (select s_paid q_83_s_x0) q_84_s_x1) q_85_s_x2) q_86_s_x3)))
+      (forall ((q_87_s_x0 s_validator) (q_88_s_x1 s_destination) (q_89_s_x2 s_value) (q_90_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_cancelled_next q_87_s_x0) q_88_s_x1) q_89_s_x2)
+            q_90_s_x3)
+          (select (select (select (select s_cancelled q_87_s_x0) q_88_s_x1) q_89_s_x2) q_90_s_x3)))
+      (forall ((q_91_s_x0 s_deadline))
+        (= (select s_expired_next q_91_s_x0) (select s_expired q_91_s_x0))))))
+; action: pay
+(define-fun action_2 () Bool
+  (exists ((q_92_s_n s_validator) (q_93_s_k s_destination) (q_94_s_v s_value) (q_95_s_d s_deadline))
+    (and
+      (and
+        (select (select (select (select s_collect q_92_s_n) q_93_s_k) q_94_s_v) q_95_s_d)
+        (not (select s_expired q_95_s_d))
+        (select (select (select (select s_chosen q_92_s_n) q_93_s_k) q_94_s_v) q_95_s_d)
+        (forall ((q_96_s_update_5f_0 s_validator) (q_97_s_update_5f_1 s_destination) (q_98_s_update_5f_2 s_value) (q_99_s_update_5f_3 s_deadline))
+          (=
+            (select
+              (select
+                (select (select s_paid_next q_96_s_update_5f_0) q_97_s_update_5f_1)
+                q_98_s_update_5f_2)
+              q_99_s_update_5f_3)
+            (ite
+              (and
+                (= q_96_s_update_5f_0 q_92_s_n)
+                (= q_97_s_update_5f_1 q_93_s_k)
+                (= q_98_s_update_5f_2 q_94_s_v)
+                (= q_99_s_update_5f_3 q_95_s_d))
+              true
+              (select
+                (select
+                  (select (select s_paid q_96_s_update_5f_0) q_97_s_update_5f_1)
+                  q_98_s_update_5f_2)
+                q_99_s_update_5f_3))))
+        (forall ((q_100_s_update_5f_0 s_validator))
+          (=
+            (select s_holding_next q_100_s_update_5f_0)
+            (ite (= q_100_s_update_5f_0 q_92_s_n) true (select s_holding q_100_s_update_5f_0))))
+        (forall ((q_101_s_update_5f_0 s_validator) (q_102_s_update_5f_1 s_destination) (q_103_s_update_5f_2 s_value) (q_104_s_update_5f_3 s_deadline))
+          (=
+            (select
+              (select
+                (select (select s_collect_next q_101_s_update_5f_0) q_102_s_update_5f_1)
+                q_103_s_update_5f_2)
+              q_104_s_update_5f_3)
+            (ite
+              (and
+                (= q_101_s_update_5f_0 q_92_s_n)
+                (= q_102_s_update_5f_1 q_93_s_k)
+                (= q_103_s_update_5f_2 q_94_s_v)
+                (= q_104_s_update_5f_3 q_95_s_d))
+              false
+              (select
+                (select
+                  (select (select s_collect q_101_s_update_5f_0) q_102_s_update_5f_1)
+                  q_103_s_update_5f_2)
+                q_104_s_update_5f_3)))))
+      (forall ((q_105_s_x0 s_validator) (q_106_s_x1 s_destination) (q_107_s_x2 s_value) (q_108_s_x3 s_deadline) (q_109_s_x4 s_signature))
+        (=
+          (select
+            (select
+              (select (select (select s_sig_next q_105_s_x0) q_106_s_x1) q_107_s_x2)
+              q_108_s_x3)
+            q_109_s_x4)
+          (select
+            (select (select (select (select s_sig q_105_s_x0) q_106_s_x1) q_107_s_x2) q_108_s_x3)
+            q_109_s_x4)))
+      (forall ((q_110_s_x0 s_validator) (q_111_s_x1 s_destination) (q_112_s_x2 s_value) (q_113_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_proposed_next q_110_s_x0) q_111_s_x1) q_112_s_x2)
+            q_113_s_x3)
+          (select (select (select (select s_proposed q_110_s_x0) q_111_s_x1) q_112_s_x2) q_113_s_x3)))
+      (forall ((q_114_s_x0 s_validator) (q_115_s_x1 s_destination) (q_116_s_x2 s_value) (q_117_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_cancelled_next q_114_s_x0) q_115_s_x1) q_116_s_x2)
+            q_117_s_x3)
+          (select
+            (select (select (select s_cancelled q_114_s_x0) q_115_s_x1) q_116_s_x2)
+            q_117_s_x3)))
+      (forall ((q_118_s_x0 s_deadline))
+        (= (select s_expired_next q_118_s_x0) (select s_expired q_118_s_x0))))))
+; action: cancel
+(define-fun action_3 () Bool
+  (exists ((q_119_s_n s_validator) (q_120_s_k s_destination) (q_121_s_v s_value) (q_122_s_d s_deadline))
+    (and
+      (and
+        (select (select (select (select s_collect q_119_s_n) q_120_s_k) q_121_s_v) q_122_s_d)
+        (select s_expired q_122_s_d)
+        (forall ((q_123_s_update_5f_0 s_validator) (q_124_s_update_5f_1 s_destination) (q_125_s_update_5f_2 s_value) (q_126_s_update_5f_3 s_deadline))
+          (=
+            (select
+              (select
+                (select (select s_cancelled_next q_123_s_update_5f_0) q_124_s_update_5f_1)
+                q_125_s_update_5f_2)
+              q_126_s_update_5f_3)
+            (ite
+              (and
+                (= q_123_s_update_5f_0 q_119_s_n)
+                (= q_124_s_update_5f_1 q_120_s_k)
+                (= q_125_s_update_5f_2 q_121_s_v)
+                (= q_126_s_update_5f_3 q_122_s_d))
+              true
+              (select
+                (select
+                  (select (select s_cancelled q_123_s_update_5f_0) q_124_s_update_5f_1)
+                  q_125_s_update_5f_2)
+                q_126_s_update_5f_3))))
+        (forall ((q_127_s_update_5f_0 s_validator))
+          (=
+            (select s_holding_next q_127_s_update_5f_0)
+            (ite (= q_127_s_update_5f_0 q_119_s_n) true (select s_holding q_127_s_update_5f_0))))
+        (forall ((q_128_s_update_5f_0 s_validator) (q_129_s_update_5f_1 s_destination) (q_130_s_update_5f_2 s_value) (q_131_s_update_5f_3 s_deadline))
+          (=
+            (select
+              (select
+                (select (select s_collect_next q_128_s_update_5f_0) q_129_s_update_5f_1)
+                q_130_s_update_5f_2)
+              q_131_s_update_5f_3)
+            (ite
+              (and
+                (= q_128_s_update_5f_0 q_119_s_n)
+                (= q_129_s_update_5f_1 q_120_s_k)
+                (= q_130_s_update_5f_2 q_121_s_v)
+                (= q_131_s_update_5f_3 q_122_s_d))
+              false
+              (select
+                (select
+                  (select (select s_collect q_128_s_update_5f_0) q_129_s_update_5f_1)
+                  q_130_s_update_5f_2)
+                q_131_s_update_5f_3)))))
+      (forall ((q_132_s_x0 s_validator) (q_133_s_x1 s_destination) (q_134_s_x2 s_value) (q_135_s_x3 s_deadline) (q_136_s_x4 s_signature))
+        (=
+          (select
+            (select
+              (select (select (select s_sig_next q_132_s_x0) q_133_s_x1) q_134_s_x2)
+              q_135_s_x3)
+            q_136_s_x4)
+          (select
+            (select (select (select (select s_sig q_132_s_x0) q_133_s_x1) q_134_s_x2) q_135_s_x3)
+            q_136_s_x4)))
+      (forall ((q_137_s_x0 s_validator) (q_138_s_x1 s_destination) (q_139_s_x2 s_value) (q_140_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_proposed_next q_137_s_x0) q_138_s_x1) q_139_s_x2)
+            q_140_s_x3)
+          (select (select (select (select s_proposed q_137_s_x0) q_138_s_x1) q_139_s_x2) q_140_s_x3)))
+      (forall ((q_141_s_x0 s_validator) (q_142_s_x1 s_destination) (q_143_s_x2 s_value) (q_144_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_paid_next q_141_s_x0) q_142_s_x1) q_143_s_x2)
+            q_144_s_x3)
+          (select (select (select (select s_paid q_141_s_x0) q_142_s_x1) q_143_s_x2) q_144_s_x3)))
+      (forall ((q_145_s_x0 s_deadline))
+        (= (select s_expired_next q_145_s_x0) (select s_expired q_145_s_x0))))))
+; action: expire
+(define-fun action_4 () Bool
+  (exists ((q_146_s_d s_deadline))
+    (and
+      (forall ((q_147_s_update_5f_0 s_deadline))
+        (=
+          (select s_expired_next q_147_s_update_5f_0)
+          (ite (= q_147_s_update_5f_0 q_146_s_d) true (select s_expired q_147_s_update_5f_0))))
+      (forall ((q_148_s_x0 s_validator))
+        (= (select s_holding_next q_148_s_x0) (select s_holding q_148_s_x0)))
+      (forall ((q_149_s_x0 s_validator) (q_150_s_x1 s_destination) (q_151_s_x2 s_value) (q_152_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_collect_next q_149_s_x0) q_150_s_x1) q_151_s_x2)
+            q_152_s_x3)
+          (select (select (select (select s_collect q_149_s_x0) q_150_s_x1) q_151_s_x2) q_152_s_x3)))
+      (forall ((q_153_s_x0 s_validator) (q_154_s_x1 s_destination) (q_155_s_x2 s_value) (q_156_s_x3 s_deadline) (q_157_s_x4 s_signature))
+        (=
+          (select
+            (select
+              (select (select (select s_sig_next q_153_s_x0) q_154_s_x1) q_155_s_x2)
+              q_156_s_x3)
+            q_157_s_x4)
+          (select
+            (select (select (select (select s_sig q_153_s_x0) q_154_s_x1) q_155_s_x2) q_156_s_x3)
+            q_157_s_x4)))
+      (forall ((q_158_s_x0 s_validator) (q_159_s_x1 s_destination) (q_160_s_x2 s_value) (q_161_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_proposed_next q_158_s_x0) q_159_s_x1) q_160_s_x2)
+            q_161_s_x3)
+          (select (select (select (select s_proposed q_158_s_x0) q_159_s_x1) q_160_s_x2) q_161_s_x3)))
+      (forall ((q_162_s_x0 s_validator) (q_163_s_x1 s_destination) (q_164_s_x2 s_value) (q_165_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_paid_next q_162_s_x0) q_163_s_x1) q_164_s_x2)
+            q_165_s_x3)
+          (select (select (select (select s_paid q_162_s_x0) q_163_s_x1) q_164_s_x2) q_165_s_x3)))
+      (forall ((q_166_s_x0 s_validator) (q_167_s_x1 s_destination) (q_168_s_x2 s_value) (q_169_s_x3 s_deadline))
+        (=
+          (select
+            (select (select (select s_cancelled_next q_166_s_x0) q_167_s_x1) q_168_s_x2)
+            q_169_s_x3)
+          (select
+            (select (select (select s_cancelled q_166_s_x0) q_167_s_x1) q_168_s_x2)
+            q_169_s_x3))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_N s_validator)) (= (select s_holding q_1_s_N) true))
+      (forall ((q_2_s_N s_validator) (q_3_s_K s_destination) (q_4_s_V s_value) (q_5_s_D s_deadline))
+        (= (select (select (select (select s_collect q_2_s_N) q_3_s_K) q_4_s_V) q_5_s_D) false))
+      (forall ((q_6_s_N s_validator) (q_7_s_K s_destination) (q_8_s_V s_value) (q_9_s_D s_deadline))
+        (= (select (select (select (select s_proposed q_6_s_N) q_7_s_K) q_8_s_V) q_9_s_D) false))
+      (forall ((q_10_s_N s_validator) (q_11_s_K s_destination) (q_12_s_V s_value) (q_13_s_D s_deadline))
+        (= (select (select (select (select s_paid q_10_s_N) q_11_s_K) q_12_s_V) q_13_s_D) false))
+      (forall ((q_14_s_N s_validator) (q_15_s_K s_destination) (q_16_s_V s_value) (q_17_s_D s_deadline))
+        (=
+          (select (select (select (select s_cancelled q_14_s_N) q_15_s_K) q_16_s_V) q_17_s_D)
+          false))
+      (forall ((q_18_s_N s_validator) (q_19_s_K s_destination) (q_20_s_V s_value) (q_21_s_D s_deadline) (q_22_s_S s_signature))
+        (=
+          (select
+            (select (select (select (select s_sig q_18_s_N) q_19_s_K) q_20_s_V) q_21_s_D)
+            q_22_s_S)
+          false))
+      (forall ((q_23_s_Q1 s_quorum) (q_24_s_Q2 s_quorum))
+        (exists ((q_25_s_S s_signature))
+          (and
+            (select (select s_member q_25_s_S) q_23_s_Q1)
+            (select (select s_member q_25_s_S) q_24_s_Q2))))
+      (forall ((q_26_s_Q s_quorum) (q_27_s_N s_validator) (q_28_s_K s_destination) (q_29_s_V s_value) (q_30_s_D s_deadline))
+        (=
+          (select
+            (select (select (select (select s_chosenAt q_26_s_Q) q_27_s_N) q_28_s_K) q_29_s_V)
+            q_30_s_D)
+          (forall ((q_31_s_S s_signature))
+            (=>
+              (select (select s_member q_31_s_S) q_26_s_Q)
+              (select
+                (select (select (select (select s_sig q_27_s_N) q_28_s_K) q_29_s_V) q_30_s_D)
+                q_31_s_S)))))
+      (forall ((q_32_s_N s_validator) (q_33_s_K s_destination) (q_34_s_V s_value) (q_35_s_D s_deadline))
+        (=
+          (select (select (select (select s_chosen q_32_s_N) q_33_s_K) q_34_s_V) q_35_s_D)
+          (exists ((q_36_s_Q s_quorum))
+            (select
+              (select (select (select (select s_chosenAt q_36_s_Q) q_32_s_N) q_33_s_K) q_34_s_V)
+              q_35_s_D)))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4)
+      (= s_sig_5f_auth_next s_sig_5f_auth)
+      (= s_member_next s_member)
+      (forall ((q_23_s_Q1 s_quorum) (q_24_s_Q2 s_quorum))
+        (exists ((q_25_s_S s_signature))
+          (and
+            (select (select s_member q_25_s_S) q_23_s_Q1)
+            (select (select s_member q_25_s_S) q_24_s_Q2))))
+      (forall ((q_26_s_Q s_quorum) (q_27_s_N s_validator) (q_28_s_K s_destination) (q_29_s_V s_value) (q_30_s_D s_deadline))
+        (=
+          (select
+            (select (select (select (select s_chosenAt q_26_s_Q) q_27_s_N) q_28_s_K) q_29_s_V)
+            q_30_s_D)
+          (forall ((q_31_s_S s_signature))
+            (=>
+              (select (select s_member q_31_s_S) q_26_s_Q)
+              (select
+                (select (select (select (select s_sig q_27_s_N) q_28_s_K) q_29_s_V) q_30_s_D)
+                q_31_s_S)))))
+      (forall ((q_32_s_N s_validator) (q_33_s_K s_destination) (q_34_s_V s_value) (q_35_s_D s_deadline))
+        (=
+          (select (select (select (select s_chosen q_32_s_N) q_33_s_K) q_34_s_V) q_35_s_D)
+          (exists ((q_36_s_Q s_quorum))
+            (select
+              (select (select (select (select s_chosenAt q_36_s_Q) q_32_s_N) q_33_s_K) q_34_s_V)
+              q_35_s_D))))
+      (forall ((q_23_s_Q1 s_quorum) (q_24_s_Q2 s_quorum))
+        (exists ((q_25_s_S s_signature))
+          (and
+            (select (select s_member q_25_s_S) q_23_s_Q1)
+            (select (select s_member q_25_s_S) q_24_s_Q2))))
+      (forall ((q_26_s_Q s_quorum) (q_27_s_N s_validator) (q_28_s_K s_destination) (q_29_s_V s_value) (q_30_s_D s_deadline))
+        (=
+          (select
+            (select (select (select (select s_chosenAt_next q_26_s_Q) q_27_s_N) q_28_s_K) q_29_s_V)
+            q_30_s_D)
+          (forall ((q_31_s_S s_signature))
+            (=>
+              (select (select s_member q_31_s_S) q_26_s_Q)
+              (select
+                (select (select (select (select s_sig_next q_27_s_N) q_28_s_K) q_29_s_V) q_30_s_D)
+                q_31_s_S)))))
+      (forall ((q_32_s_N s_validator) (q_33_s_K s_destination) (q_34_s_V s_value) (q_35_s_D s_deadline))
+        (=
+          (select (select (select (select s_chosen_next q_32_s_N) q_33_s_K) q_34_s_V) q_35_s_D)
+          (exists ((q_36_s_Q s_quorum))
+            (select
+              (select
+                (select (select (select s_chosenAt_next q_36_s_Q) q_32_s_N) q_33_s_K)
+                q_34_s_V)
+              q_35_s_D)))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_170_s_N s_validator) (q_171_s_K s_destination) (q_172_s_V s_value) (q_173_s_D s_deadline))
+        (=>
+          (select (select (select (select s_cancelled q_170_s_N) q_171_s_K) q_172_s_V) q_173_s_D)
+          (select s_expired q_173_s_D)))
+      (forall ((q_174_s_N s_validator) (q_175_s_K s_destination) (q_176_s_V s_value) (q_177_s_D s_deadline))
+        (=>
+          (select (select (select (select s_paid q_174_s_N) q_175_s_K) q_176_s_V) q_177_s_D)
+          (exists ((q_178_s_Q s_quorum))
+            (forall ((q_179_s_S s_signature))
+              (=>
+                (select (select s_member q_179_s_S) q_178_s_Q)
+                (and
+                  (select
+                    (select
+                      (select (select (select s_sig q_174_s_N) q_175_s_K) q_176_s_V)
+                      q_177_s_D)
+                    q_179_s_S)
+                  (select s_sig_5f_auth q_179_s_S)))))))
+      (forall ((q_180_s_N s_validator) (q_181_s_K s_destination) (q_182_s_V s_value) (q_183_s_D s_deadline))
+        (=>
+          (select (select (select (select s_paid q_180_s_N) q_181_s_K) q_182_s_V) q_183_s_D)
+          (select (select (select (select s_proposed q_180_s_N) q_181_s_K) q_182_s_V) q_183_s_D))))
+    :invar-property
+    0))

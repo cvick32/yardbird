@@ -1,0 +1,4330 @@
+:comment Input model:
+:comment | system implementation sys.impl
+:comment |     parameters
+:comment |         C0: set of indices;
+:comment |         trustedClients0: set indexed by C0 of bool;
+:comment |         connectedTo0: set indexed by C0 of index;
+:comment |         C1: set of indices;
+:comment |         connectedTo1: set indexed by C1 of index;
+:comment |         C2: set of indices;
+:comment |         connectedTo2: set indexed by C2 of index;
+:comment |         C3: set of indices;
+:comment |         connectedTo3: set indexed by C3 of index;
+:comment |         C4: set of indices;
+:comment |         connectedTo4: set indexed by C4 of index;
+:comment |         C5: set of indices;
+:comment |         connectedTo5: set indexed by C5 of index;
+:comment |         S: set of indices;
+:comment |         trustedServers: set indexed by S of bool;
+:comment | 
+:comment |     initial
+:comment |         forall(c in C0, forall (s in S, (not trustedClients0[c] and s = connectedTo0[c]) -> (not trustedServers[s])))
+:comment |         and forall(c in C1, forall (d in C0, d = connectedTo1[c] -> (not trustedClients0[d])))
+:comment |         and forall(c in C0, forall (s not in S, s != connectedTo0[c]))
+:comment |         and forall(c in C1, forall (d not in C0, d != connectedTo1[c]))
+:comment |         and forall(c in C2, forall (d not in C1, d != connectedTo2[c]))
+:comment |         and forall(c in C3, forall (d not in C2, d != connectedTo3[c]))
+:comment |         and forall(c in C4, forall (d not in C3, d != connectedTo4[c]))
+:comment |         and forall(c in C5, forall (d not in C4, d != connectedTo5[c]));
+:comment | 
+:comment |     subcomponents
+:comment |         d: system databaseServer;
+:comment |         servers: set indexed by S of system applicationServer;
+:comment |         clients0: set indexed by C0 of system Client;
+:comment |         clients1: set indexed by C1 of system Client;
+:comment |         clients2: set indexed by C2 of system Client;
+:comment |         clients3: set indexed by C3 of system Client;
+:comment |         clients4: set indexed by C4 of system Client;
+:comment |         clients5: set indexed by C5 of system Client;
+:comment |         e: system Evil;
+:comment | 
+:comment |     connections
+:comment |         d -> servers[s] if trustedServers[s] for s in S;
+:comment |         servers[s] -> clients0[c] if s = connectedTo0[c] for s in S, c in C0;
+:comment |         clients0[c] -> clients1[d] if c = connectedTo1[d] for c in C0, d in C1;
+:comment |         clients1[c] -> clients2[d] if c = connectedTo2[d] for c in C1, d in C2;
+:comment |         clients2[c] -> clients3[d] if c = connectedTo3[d] for c in C2, d in C3;
+:comment |         clients3[c] -> clients4[d] if c = connectedTo4[d] for c in C3, d in C4;
+:comment |         clients4[c] -> clients5[d] if c = connectedTo5[d] for c in C4, d in C5;
+:comment |         clients0[c] -> clients0[d] if not trustedClients0[c] for c in C0, d in C0;
+:comment |         clients1[c] -> clients1[d] for c in C1, d in C1;
+:comment |         clients2[c] -> clients2[d] for c in C2, d in C2;
+:comment |         clients3[c] -> clients3[d] for c in C3, d in C3;
+:comment |         clients4[c] -> clients4[d] for c in C4, d in C4;
+:comment |         clients5[c] -> clients5[d] for c in C5, d in C5;
+:comment |         clients5[c] -> e for c in C5;
+:comment | 
+:comment |     reconfigurations
+:comment |         exists(s not in S, next(S) = add(S, s) and next(trustedServers[s]) = true);
+:comment |         exists(s in S, next(trustedServers[s]) = false);
+:comment | 
+:comment |         exists(s in S, exists (c not in C0, not trustedServers[s] and next(C0) = add(C0, c) and next(connectedTo0[c]) = s and next(trustedClients0[c]) = false));
+:comment |         exists(c in C0, exists (d not in C1, not trustedClients0[c] and next(C1) = add(C1, d) and next(connectedTo1[d]) = c));
+:comment |         exists(c in C1, exists (d not in C2, next(C2) = add(C2, d) and next(connectedTo2[d]) = c));
+:comment |         exists(c in C2, exists (d not in C3, next(C3) = add(C3, d) and next(connectedTo3[d]) = c));
+:comment |         exists(c in C3, exists (d not in C4, next(C4) = add(C4, d) and next(connectedTo4[d]) = c));
+:comment |         exists(c in C4, exists (d not in C5, next(C5) = add(C5, d) and next(connectedTo5[d]) = c));
+:comment | 
+:comment |         exists(s in S, exists (c not in C0, trustedServers[s] and next(C0) = add(C0, c) and next(connectedTo0[c]) = s and next(trustedClients0[c]) = true));
+:comment | 
+:comment |         exists(s in S, exists (c in C0, trustedClients0[c] and next(connectedTo0[c]) = s));
+:comment | 
+:comment |         exists(s in S, exists (c in C0, not trustedClients0[c] and not trustedServers[s] and next(connectedTo0[c]) = s));
+:comment |         exists(c in C0, exists (d in C1, not trustedClients0[c] and next(connectedTo1[d]) = c));
+:comment |         exists(c in C1, exists (d in C2, next(connectedTo2[d]) = c));
+:comment |         exists(c in C2, exists (d in C3, next(connectedTo3[d]) = c));
+:comment |         exists(c in C3, exists (d in C4, next(connectedTo4[d]) = c));
+:comment |         exists(c in C4, exists (d in C5, next(connectedTo5[d]) = c));
+:comment | 
+:comment |         exists(s in S, exists (c in C0, not trustedClients0[c] and next(connectedTo0[c]) = s and next(trustedServers[s]) = false));
+:comment | 
+:comment |         exists(s in S, exists (c in C0, trustedClients0[c] and s = connectedTo0[c] and next(trustedClients0[c]) = false and next(trustedServers[s]) = false));
+:comment | end sys.impl;
+
+:comment Source components: d
+:comment Destination components: e
+
+:index int
+:max_transitions_number 1000
+
+:local _C0 bool
+:local _C1 bool
+:local _C2 bool
+:local _C3 bool
+:local _C4 bool
+:local _C5 bool
+:local _S bool
+:local _trustedClients0 bool
+:local _connectedTo0 int
+:local _connectedTo1 int
+:local _connectedTo2 int
+:local _connectedTo3 int
+:local _connectedTo4 int
+:local _connectedTo5 int
+:local _trustedServers bool
+:global _d_token bool
+:local _servers_token bool
+:local _clients0_token bool
+:local _clients1_token bool
+:local _clients2_token bool
+:local _clients3_token bool
+:local _clients4_token bool
+:local _clients5_token bool
+:global _e_token bool
+
+:initial
+:var x
+:var y
+:cnj (and (and (and (and (and (and (and (=> _C0[x] (=> _S[y] (=> (and (= _trustedClients0[x] false) (= y _connectedTo0[x])) (= _trustedServers[y] false)))) (=> _C1[x] (=> _C0[y] (=> (= y _connectedTo1[x]) (= _trustedClients0[y] false))))) (=> _C0[x] (=> (not _S[y]) (not (= y _connectedTo0[x]))))) (=> _C1[x] (=> (not _C0[y]) (not (= y _connectedTo1[x]))))) (=> _C2[x] (=> (not _C1[y]) (not (= y _connectedTo2[x]))))) (=> _C3[x] (=> (not _C2[y]) (not (= y _connectedTo3[x]))))) (=> _C4[x] (=> (not _C3[y]) (not (= y _connectedTo4[x]))))) (=> _C5[x] (=> (not _C4[y]) (not (= y _connectedTo5[x]))))) (= _d_token true) (= _servers_token[x] false) (= _clients0_token[x] false) (= _clients1_token[x] false) (= _clients2_token[x] false) (= _clients3_token[x] false) (= _clients4_token[x] false) (= _clients5_token[x] false) (= _e_token false)
+
+:unsafe
+:var x
+:cnj (= _e_token true)
+
+:comment transition t1
+:comment connection 1, case 5
+:transition
+:var x
+:var j
+:guard true (= _trustedServers[x] true) true true (= _d_token true) (= _S[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val true
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t2
+:comment connection 2, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= x _connectedTo0[x]) true true (= _S[x] true) (= _servers_token[x] true) (= _C0[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val true
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t3
+:comment connection 2, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= x _connectedTo0[y]) true true (= _S[x] true) (= _servers_token[x] true) (= _C0[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val true
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t4
+:comment connection 3, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= x _connectedTo1[x]) true true (= _C0[x] true) (= _clients0_token[x] true) (= _C1[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val true
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t5
+:comment connection 3, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= x _connectedTo1[y]) true true (= _C0[x] true) (= _clients0_token[x] true) (= _C1[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val true
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t6
+:comment connection 4, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= x _connectedTo2[x]) true true (= _C1[x] true) (= _clients1_token[x] true) (= _C2[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val true
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t7
+:comment connection 4, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= x _connectedTo2[y]) true true (= _C1[x] true) (= _clients1_token[x] true) (= _C2[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val true
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t8
+:comment connection 5, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= x _connectedTo3[x]) true true (= _C2[x] true) (= _clients2_token[x] true) (= _C3[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val true
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t9
+:comment connection 5, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= x _connectedTo3[y]) true true (= _C2[x] true) (= _clients2_token[x] true) (= _C3[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val true
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t10
+:comment connection 6, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= x _connectedTo4[x]) true true (= _C3[x] true) (= _clients3_token[x] true) (= _C4[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val true
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t11
+:comment connection 6, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= x _connectedTo4[y]) true true (= _C3[x] true) (= _clients3_token[x] true) (= _C4[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val true
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t12
+:comment connection 7, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= x _connectedTo5[x]) true true (= _C4[x] true) (= _clients4_token[x] true) (= _C5[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val true
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t13
+:comment connection 7, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= x _connectedTo5[y]) true true (= _C4[x] true) (= _clients4_token[x] true) (= _C5[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val true
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t14
+:comment connection 8, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true (= _trustedClients0[x] false) true true (= _C0[x] true) (= _clients0_token[x] true) (= _C0[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val true
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t15
+:comment connection 8, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true (= _trustedClients0[x] false) true true (= _C0[x] true) (= _clients0_token[x] true) (= _C0[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val true
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t16
+:comment connection 9, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C1[x] true) (= _clients1_token[x] true) (= _C1[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val true
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t17
+:comment connection 9, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C1[x] true) (= _clients1_token[x] true) (= _C1[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val true
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t18
+:comment connection 10, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C2[x] true) (= _clients2_token[x] true) (= _C2[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val true
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t19
+:comment connection 10, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C2[x] true) (= _clients2_token[x] true) (= _C2[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val true
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t20
+:comment connection 11, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C3[x] true) (= _clients3_token[x] true) (= _C3[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val true
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t21
+:comment connection 11, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C3[x] true) (= _clients3_token[x] true) (= _C3[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val true
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t22
+:comment connection 12, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C4[x] true) (= _clients4_token[x] true) (= _C4[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val true
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t23
+:comment connection 12, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C4[x] true) (= _clients4_token[x] true) (= _C4[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val true
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t24
+:comment connection 13, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C5[x] true) (= _clients5_token[x] true) (= _C5[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val true
+:val _e_token
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t25
+:comment connection 13, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C5[x] true) (= _clients5_token[x] true) (= _C5[y] true)
+:numcases 3
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+:case (not (= j x)) (= j y)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val true
+:val _e_token
+:case (not (= j x)) (not (= j y))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val _e_token
+
+:comment transition t26
+:comment connection 14, case 7
+:transition
+:var x
+:var j
+:guard true true true true (= _C5[x] true) (= _clients5_token[x] true)
+:numcases 2
+:case (= j x)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val true
+:case (not (= j x))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val _d_token
+:val _servers_token[j]
+:val _clients0_token[j]
+:val _clients1_token[j]
+:val _clients2_token[j]
+:val _clients3_token[j]
+:val _clients4_token[j]
+:val _clients5_token[j]
+:val true
+
+:comment transition t27
+:comment reconfiguration 1, case 2, transition 1 of 1, s -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] false) (= _S[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val true
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val true
+:val true
+:val false
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t28
+:comment reconfiguration 2, case 2, transition 1 of 1, s -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val false
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t29
+:comment reconfiguration 3, case 3, transition 1 of 2, s -> x, c -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true) (= _C0[x] false) (= _trustedServers[x] false) (= _C0[x] false)
+:numcases 2
+:case (= x j)
+:val true
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val false
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val false
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t30
+:comment reconfiguration 3, case 3, transition 2 of 2, s -> x, c -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _S[x] true) (= _C0[y] false) (= _trustedServers[x] false) (= _C0[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val true
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val false
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val false
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t31
+:comment reconfiguration 4, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C0[x] true) (= _C1[x] false) (= _trustedClients0[x] false) (= _C1[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val true
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val x
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val false
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t32
+:comment reconfiguration 4, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C0[x] true) (= _C1[y] false) (= _trustedClients0[x] false) (= _C1[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val true
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val x
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val false
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t33
+:comment reconfiguration 5, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C1[x] true) (= _C2[x] false) (= _C2[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val true
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val x
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val false
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t34
+:comment reconfiguration 5, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C1[x] true) (= _C2[y] false) (= _C2[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val true
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val x
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val false
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t35
+:comment reconfiguration 6, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C2[x] true) (= _C3[x] false) (= _C3[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val true
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val x
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val false
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t36
+:comment reconfiguration 6, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C2[x] true) (= _C3[y] false) (= _C3[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val true
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val x
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val false
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t37
+:comment reconfiguration 7, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C3[x] true) (= _C4[x] false) (= _C4[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val true
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val x
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val false
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t38
+:comment reconfiguration 7, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C3[x] true) (= _C4[y] false) (= _C4[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val true
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val x
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val false
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t39
+:comment reconfiguration 8, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C4[x] true) (= _C5[x] false) (= _C5[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val true
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val x
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val false
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t40
+:comment reconfiguration 8, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C4[x] true) (= _C5[y] false) (= _C5[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val true
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val x
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val false
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t41
+:comment reconfiguration 9, case 3, transition 1 of 2, s -> x, c -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true) (= _C0[x] false) (= _trustedServers[x] true) (= _C0[x] false)
+:numcases 2
+:case (= x j)
+:val true
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val true
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val false
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t42
+:comment reconfiguration 9, case 3, transition 2 of 2, s -> x, c -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _S[x] true) (= _C0[y] false) (= _trustedServers[x] true) (= _C0[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val true
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val true
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val false
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t43
+:comment reconfiguration 10, case 3, transition 1 of 2, s -> x, c -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true) (= _C0[x] true) (= _trustedClients0[x] true)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t44
+:comment reconfiguration 10, case 3, transition 2 of 2, s -> x, c -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _S[x] true) (= _C0[y] true) (= _trustedClients0[y] true)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t45
+:comment reconfiguration 11, case 3, transition 1 of 2, s -> x, c -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true) (= _C0[x] true) (= _trustedClients0[x] false) (= _trustedServers[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t46
+:comment reconfiguration 11, case 3, transition 2 of 2, s -> x, c -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _S[x] true) (= _C0[y] true) (= _trustedClients0[y] false) (= _trustedServers[x] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t47
+:comment reconfiguration 12, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C0[x] true) (= _C1[x] true) (= _trustedClients0[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val x
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t48
+:comment reconfiguration 12, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C0[x] true) (= _C1[y] true) (= _trustedClients0[x] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val x
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t49
+:comment reconfiguration 13, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C1[x] true) (= _C2[x] true)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val x
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t50
+:comment reconfiguration 13, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C1[x] true) (= _C2[y] true)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val x
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t51
+:comment reconfiguration 14, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C2[x] true) (= _C3[x] true)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val x
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t52
+:comment reconfiguration 14, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C2[x] true) (= _C3[y] true)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val x
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t53
+:comment reconfiguration 15, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C3[x] true) (= _C4[x] true)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val x
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t54
+:comment reconfiguration 15, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C3[x] true) (= _C4[y] true)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val x
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t55
+:comment reconfiguration 16, case 3, transition 1 of 2, c -> x, d -> x
+:transition
+:var j
+:var x
+:guard true (= _C4[x] true) (= _C5[x] true)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val x
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t56
+:comment reconfiguration 16, case 3, transition 2 of 2, c -> x, d -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _C4[x] true) (= _C5[y] true)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val x
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t57
+:comment reconfiguration 17, case 3, transition 1 of 2, s -> x, c -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true) (= _C0[x] true) (= _trustedClients0[x] false)
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val false
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t58
+:comment reconfiguration 17, case 3, transition 2 of 2, s -> x, c -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _S[x] true) (= _C0[y] true) (= _trustedClients0[y] false)
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val false
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val x
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t59
+:comment reconfiguration 18, case 3, transition 1 of 2, s -> x, c -> x
+:transition
+:var j
+:var x
+:guard true (= _S[x] true) (= _C0[x] true) (= _trustedClients0[x] true) (= x _connectedTo0[x])
+:numcases 2
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val false
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val false
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+
+:comment transition t60
+:comment reconfiguration 18, case 3, transition 2 of 2, s -> x, c -> y
+:transition
+:var j
+:var x
+:var y
+:guard true (= _S[x] true) (= _C0[y] true) (= _trustedClients0[y] true) (= x _connectedTo0[y])
+:numcases 3
+:case (= x j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val false
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (= y j)
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val false
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)
+:case (not (= x j)) (not (= y j))
+:val _C0[j]
+:val _C1[j]
+:val _C2[j]
+:val _C3[j]
+:val _C4[j]
+:val _C5[j]
+:val _S[j]
+:val _trustedClients0[j]
+:val _connectedTo0[j]
+:val _connectedTo1[j]
+:val _connectedTo2[j]
+:val _connectedTo3[j]
+:val _connectedTo4[j]
+:val _connectedTo5[j]
+:val _trustedServers[j]
+:val true
+:val (and _servers_token[j] true)
+:val (and _clients0_token[j] true)
+:val (and _clients1_token[j] true)
+:val (and _clients2_token[j] true)
+:val (and _clients3_token[j] true)
+:val (and _clients4_token[j] true)
+:val (and _clients5_token[j] true)
+:val (and _e_token true)

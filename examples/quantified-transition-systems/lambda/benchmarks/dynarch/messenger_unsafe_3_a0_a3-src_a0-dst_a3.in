@@ -1,0 +1,1743 @@
+:comment Input model:
+:comment | system implementation sys.impl
+:comment |     parameters
+:comment |         A0: set of indices;
+:comment |         A1: set of indices;
+:comment |         A2: set of indices;
+:comment |         A3: set of indices;
+:comment |         m0_conn_a0: int;
+:comment |         m0_conn_a1: int;
+:comment |         m0_present: bool;
+:comment |         m1_conn_a1: int;
+:comment |         m1_conn_a2: int;
+:comment |         m1_present: bool;
+:comment |         m2_conn_a2: int;
+:comment |         m2_conn_a3: int;
+:comment |         m2_present: bool;
+:comment | 
+:comment |     initial
+:comment |         m0_conn_a0 = 0 and m0_conn_a1 = 0 and m1_conn_a1 = 0 and m1_conn_a2 = 0 and m2_conn_a2 = 0 and m2_conn_a3 = 0 and forall(x in A0, x > 0) and forall(x in A1, x > 0) and forall(x in A2, x > 0) and forall(x in A3, x > 0);
+:comment | 
+:comment |     subcomponents
+:comment |         a0: set indexed by A0;
+:comment |         a1: set indexed by A1;
+:comment |         a2: set indexed by A2;
+:comment |         a3: set indexed by A3;
+:comment |         m0: single if m0_present;
+:comment |         m1: single if m1_present;
+:comment |         m2: single if m2_present;
+:comment | 
+:comment |     connections
+:comment |         a0[x] -> m0 if x = m0_conn_a0 for x in A0;
+:comment |         m0 -> a0[x] if x = m0_conn_a0 for x in A0;
+:comment |         a1[x] -> m0 if x = m0_conn_a1 for x in A1;
+:comment |         m0 -> a1[x] if x = m0_conn_a1 for x in A1;
+:comment |         a1[x] -> m1 if x = m1_conn_a1 for x in A1;
+:comment |         m1 -> a1[x] if x = m1_conn_a1 for x in A1;
+:comment |         a2[x] -> m1 if x = m1_conn_a2 for x in A2;
+:comment |         m1 -> a2[x] if x = m1_conn_a2 for x in A2;
+:comment |         a2[x] -> m2 if x = m2_conn_a2 for x in A2;
+:comment |         m2 -> a2[x] if x = m2_conn_a2 for x in A2;
+:comment |         a3[x] -> m2 if x = m2_conn_a3 for x in A3;
+:comment |         m2 -> a3[x] if x = m2_conn_a3 for x in A3;
+:comment | 
+:comment |     reconfigurations
+:comment |         exists(x not in A0, x > 0 and next(A0) = add(A0, x));
+:comment |         exists(x not in A1, x > 0 and next(A1) = add(A1, x));
+:comment |         exists(x not in A2, x > 0 and next(A2) = add(A2, x));
+:comment |         exists(x not in A3, x > 0 and next(A3) = add(A3, x));
+:comment |         exists(x in A0, next(A0) = remove(A0, x) and m0_conn_a0 != x);
+:comment |         exists(x in A1, next(A1) = remove(A1, x) and m0_conn_a1 != x and m1_conn_a1 != x);
+:comment |         exists(x in A2, next(A2) = remove(A2, x) and m1_conn_a2 != x and m2_conn_a2 != x);
+:comment |         exists(x in A3, next(A3) = remove(A3, x) and m2_conn_a3 != x);
+:comment |         exists(x in A0, m0_conn_a1 = 0 and m0_conn_a0 = 0 and next(m0_conn_a0) = x);
+:comment |         exists(x in A1, m0_conn_a0 = 0 and m0_conn_a1 = 0 and next(m0_conn_a1) = x);
+:comment |         exists(x in A1, m1_conn_a2 = 0 and m1_conn_a1 = 0 and next(m1_conn_a1) = x);
+:comment |         exists(x in A2, m1_conn_a1 = 0 and m1_conn_a2 = 0 and next(m1_conn_a2) = x);
+:comment |         exists(x in A2, m2_conn_a3 = 0 and m2_conn_a2 = 0 and next(m2_conn_a2) = x);
+:comment |         exists(x in A3, m2_conn_a2 = 0 and m2_conn_a3 = 0 and next(m2_conn_a3) = x);
+:comment |         next(m0_conn_a0) = 0;
+:comment |         next(m0_conn_a1) = 0;
+:comment |         next(m1_conn_a1) = 0;
+:comment |         next(m1_conn_a2) = 0;
+:comment |         next(m2_conn_a2) = 0;
+:comment |         next(m2_conn_a3) = 0;
+:comment |         m0_conn_a0 = 0 and m0_conn_a1 = 0 and next(m0_present) = false;
+:comment |         m1_conn_a1 = 0 and m1_conn_a2 = 0 and next(m1_present) = false;
+:comment |         m2_conn_a2 = 0 and m2_conn_a3 = 0 and next(m2_present) = false;
+:comment |         next(m0_present) = true;
+:comment |         next(m1_present) = true;
+:comment |         next(m2_present) = true;
+:comment | end sys.impl;
+
+:comment Source components: a0
+:comment Destination components: a3
+
+:index int
+:max_transitions_number 1000
+
+:local _A0 bool
+:local _A1 bool
+:local _A2 bool
+:local _A3 bool
+:global _m0_conn_a0 int
+:global _m0_conn_a1 int
+:global _m0_present bool
+:global _m1_conn_a1 int
+:global _m1_conn_a2 int
+:global _m1_present bool
+:global _m2_conn_a2 int
+:global _m2_conn_a3 int
+:global _m2_present bool
+:local _a0_token bool
+:local _a1_token bool
+:local _a2_token bool
+:local _a3_token bool
+:global _m0_token bool
+:global _m1_token bool
+:global _m2_token bool
+
+:initial
+:var x
+:var y
+:cnj (and (and (and (and (and (and (and (and (and (= _m0_conn_a0 0) (= _m0_conn_a1 0)) (= _m1_conn_a1 0)) (= _m1_conn_a2 0)) (= _m2_conn_a2 0)) (= _m2_conn_a3 0)) (=> _A0[x] (> x 0))) (=> _A1[x] (> x 0))) (=> _A2[x] (> x 0))) (=> _A3[x] (> x 0))) (= _a0_token[x] true) (= _a1_token[x] false) (= _a2_token[x] false) (= _a3_token[x] false) (= _m0_token false) (= _m1_token false) (= _m2_token false)
+
+:unsafe
+:var x
+:cnj (= _a3_token[x] true)
+
+:comment transition t1
+:comment connection 1, case 7
+:transition
+:var x
+:var j
+:guard true (= x _m0_conn_a0) true (= _m0_present true) (= _A0[x] true) (= _a0_token[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val true
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val true
+:val _m1_token
+:val _m2_token
+
+:comment transition t2
+:comment connection 2, case 5
+:transition
+:var x
+:var j
+:guard true (= x _m0_conn_a0) (= _m0_present true) true (= _m0_token true) (= _A0[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+
+:comment transition t3
+:comment connection 3, case 7
+:transition
+:var x
+:var j
+:guard true (= x _m0_conn_a1) true (= _m0_present true) (= _A1[x] true) (= _a1_token[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val true
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val true
+:val _m1_token
+:val _m2_token
+
+:comment transition t4
+:comment connection 4, case 5
+:transition
+:var x
+:var j
+:guard true (= x _m0_conn_a1) (= _m0_present true) true (= _m0_token true) (= _A1[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val true
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+
+:comment transition t5
+:comment connection 5, case 7
+:transition
+:var x
+:var j
+:guard true (= x _m1_conn_a1) true (= _m1_present true) (= _A1[x] true) (= _a1_token[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val true
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val true
+:val _m2_token
+
+:comment transition t6
+:comment connection 6, case 5
+:transition
+:var x
+:var j
+:guard true (= x _m1_conn_a1) (= _m1_present true) true (= _m1_token true) (= _A1[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val true
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+
+:comment transition t7
+:comment connection 7, case 7
+:transition
+:var x
+:var j
+:guard true (= x _m1_conn_a2) true (= _m1_present true) (= _A2[x] true) (= _a2_token[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val true
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val true
+:val _m2_token
+
+:comment transition t8
+:comment connection 8, case 5
+:transition
+:var x
+:var j
+:guard true (= x _m1_conn_a2) (= _m1_present true) true (= _m1_token true) (= _A2[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val true
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+
+:comment transition t9
+:comment connection 9, case 7
+:transition
+:var x
+:var j
+:guard true (= x _m2_conn_a2) true (= _m2_present true) (= _A2[x] true) (= _a2_token[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val true
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val true
+
+:comment transition t10
+:comment connection 10, case 5
+:transition
+:var x
+:var j
+:guard true (= x _m2_conn_a2) (= _m2_present true) true (= _m2_token true) (= _A2[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val true
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+
+:comment transition t11
+:comment connection 11, case 7
+:transition
+:var x
+:var j
+:guard true (= x _m2_conn_a3) true (= _m2_present true) (= _A3[x] true) (= _a3_token[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val true
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val true
+
+:comment transition t12
+:comment connection 12, case 5
+:transition
+:var x
+:var j
+:guard true (= x _m2_conn_a3) (= _m2_present true) true (= _m2_token true) (= _A3[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val true
+:val _m0_token
+:val _m1_token
+:val _m2_token
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _m0_token
+:val _m1_token
+:val _m2_token
+
+:comment transition t13
+:comment reconfiguration 1, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A0[x] false) (> x 0) (= _A0[x] false)
+:numcases 2
+:case (= x j)
+:val true
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t14
+:comment reconfiguration 2, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A1[x] false) (> x 0) (= _A1[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val true
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val false
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t15
+:comment reconfiguration 3, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A2[x] false) (> x 0) (= _A2[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val true
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val false
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t16
+:comment reconfiguration 4, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A3[x] false) (> x 0) (= _A3[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val true
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val false
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t17
+:comment reconfiguration 5, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A0[x] true) (= _A0[x] true) (not (= _m0_conn_a0 x))
+:numcases 2
+:case (= x j)
+:val false
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t18
+:comment reconfiguration 6, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A1[x] true) (= _A1[x] true) (not (= _m0_conn_a1 x)) (not (= _m1_conn_a1 x))
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val false
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val false
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t19
+:comment reconfiguration 7, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A2[x] true) (= _A2[x] true) (not (= _m1_conn_a2 x)) (not (= _m2_conn_a2 x))
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val false
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val false
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t20
+:comment reconfiguration 8, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A3[x] true) (= _A3[x] true) (not (= _m2_conn_a3 x))
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val false
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val false
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t21
+:comment reconfiguration 9, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A0[x] true) (= _m0_conn_a1 0) (= _m0_conn_a0 0)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val x
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val x
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t22
+:comment reconfiguration 10, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A1[x] true) (= _m0_conn_a0 0) (= _m0_conn_a1 0)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val x
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val x
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t23
+:comment reconfiguration 11, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A1[x] true) (= _m1_conn_a2 0) (= _m1_conn_a1 0)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val x
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val x
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t24
+:comment reconfiguration 12, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A2[x] true) (= _m1_conn_a1 0) (= _m1_conn_a2 0)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val x
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val x
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t25
+:comment reconfiguration 13, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A2[x] true) (= _m2_conn_a3 0) (= _m2_conn_a2 0)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val x
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val x
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t26
+:comment reconfiguration 14, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A3[x] true) (= _m2_conn_a2 0) (= _m2_conn_a3 0)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val x
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val x
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t27
+:comment reconfiguration 15, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val 0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t28
+:comment reconfiguration 16, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val 0
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t29
+:comment reconfiguration 17, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val 0
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t30
+:comment reconfiguration 18, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val 0
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t31
+:comment reconfiguration 19, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val 0
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t32
+:comment reconfiguration 20, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val 0
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t33
+:comment reconfiguration 21, case 1
+:transition
+:var j
+:guard true (= _m0_conn_a0 0) (= _m0_conn_a1 0)
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val false
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= false true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t34
+:comment reconfiguration 22, case 1
+:transition
+:var j
+:guard true (= _m1_conn_a1 0) (= _m1_conn_a2 0)
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val false
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= false true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t35
+:comment reconfiguration 23, case 1
+:transition
+:var j
+:guard true (= _m2_conn_a2 0) (= _m2_conn_a3 0)
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val false
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= false true))
+
+:comment transition t36
+:comment reconfiguration 24, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val true
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= true true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t37
+:comment reconfiguration 25, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val true
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val _m2_present
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= true true))
+:val (and _m2_token  (= _m2_present true))
+
+:comment transition t38
+:comment reconfiguration 26, case 1
+:transition
+:var j
+:guard true
+:numcases 1
+:case true
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _m0_conn_a0
+:val _m0_conn_a1
+:val _m0_present
+:val _m1_conn_a1
+:val _m1_conn_a2
+:val _m1_present
+:val _m2_conn_a2
+:val _m2_conn_a3
+:val true
+:val true
+:val (and _a1_token[j] true)
+:val (and _a2_token[j] true)
+:val (and _a3_token[j] true)
+:val (and _m0_token  (= _m0_present true))
+:val (and _m1_token  (= _m1_present true))
+:val (and _m2_token  (= true true))

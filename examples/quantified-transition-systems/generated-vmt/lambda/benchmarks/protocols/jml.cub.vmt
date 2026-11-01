@@ -1,0 +1,264 @@
+; Generated offline from lambda/benchmarks/protocols/jml.cub
+; Source SHA-256: 403d2953bfe16fcc73e5f2aebf6b9defc7ec747fd01e4dd12f78a0a2d435f13d
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-sort s_lock 0)
+(declare-fun s_Idle () s_location)
+(declare-fun s_Idle_next () s_location)
+(declare-fun s_Owner () s_location)
+(declare-fun s_Owner_next () s_location)
+(declare-fun s_Handin () s_location)
+(declare-fun s_Handin_next () s_location)
+(declare-fun s_Handout () s_location)
+(declare-fun s_Handout_next () s_location)
+(declare-fun s_Waiting () s_location)
+(declare-fun s_Waiting_next () s_location)
+(declare-fun s_C0 () s_lock)
+(declare-fun s_C0_next () s_lock)
+(declare-fun s_C1 () s_lock)
+(declare-fun s_C1_next () s_lock)
+(declare-fun s_C2 () s_lock)
+(declare-fun s_C2_next () s_lock)
+(declare-fun s_C3 () s_lock)
+(declare-fun s_C3_next () s_lock)
+(declare-fun s_Busy () Bool)
+(declare-fun s_Busy_next () Bool)
+(declare-fun s_H () s_lock)
+(declare-fun s_H_next () s_lock)
+(declare-fun s_C () Int)
+(declare-fun s_C_next () Int)
+(declare-fun s_A () (Array Proc s_location))
+(declare-fun s_A_next () (Array Proc s_location))
+; source symbol: Idle
+(define-fun link_0 () s_location (! s_Idle :next s_Idle_next))
+; source symbol: Owner
+(define-fun link_1 () s_location (! s_Owner :next s_Owner_next))
+; source symbol: Handin
+(define-fun link_2 () s_location (! s_Handin :next s_Handin_next))
+; source symbol: Handout
+(define-fun link_3 () s_location (! s_Handout :next s_Handout_next))
+; source symbol: Waiting
+(define-fun link_4 () s_location (! s_Waiting :next s_Waiting_next))
+; source symbol: C0
+(define-fun link_5 () s_lock (! s_C0 :next s_C0_next))
+; source symbol: C1
+(define-fun link_6 () s_lock (! s_C1 :next s_C1_next))
+; source symbol: C2
+(define-fun link_7 () s_lock (! s_C2 :next s_C2_next))
+; source symbol: C3
+(define-fun link_8 () s_lock (! s_C3 :next s_C3_next))
+; source symbol: Busy
+(define-fun link_9 () Bool (! s_Busy :next s_Busy_next))
+; source symbol: H
+(define-fun link_10 () s_lock (! s_H :next s_H_next))
+; source symbol: C
+(define-fun link_11 () Int (! s_C :next s_C_next))
+; source symbol: A
+(define-fun link_12 () (Array Proc s_location) (! s_A :next s_A_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_6_s_x Proc))
+    (and
+      (and (= (select s_A q_6_s_x) s_Idle) (and (= s_Busy false) (< 0 s_C)))
+      (= s_Busy_next true)
+      (forall ((q_7_s_j Proc))
+        (= (select s_A_next q_7_s_j) (ite (= q_7_s_j q_6_s_x) s_Owner (select s_A q_7_s_j))))
+      (= s_H_next s_H)
+      (= s_C_next s_C))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_8_s_x Proc))
+    (and
+      (and (= (select s_A q_8_s_x) s_Idle) (and (= s_Busy true) (< 0 s_C)))
+      (= s_C_next (+ s_C 1))
+      (forall ((q_9_s_j Proc))
+        (= (select s_A_next q_9_s_j) (ite (= q_9_s_j q_8_s_x) s_Handin (select s_A q_9_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_H_next s_H))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_10_s_x Proc))
+    (and
+      (and (= (select s_A q_10_s_x) s_Owner) (and (= s_Busy true) (= s_C 0)))
+      (= s_Busy_next false)
+      (forall ((q_11_s_j Proc))
+        (= (select s_A_next q_11_s_j) (ite (= q_11_s_j q_10_s_x) s_Idle (select s_A q_11_s_j))))
+      (= s_H_next s_H)
+      (= s_C_next s_C))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_12_s_x Proc))
+    (and
+      (and (= (select s_A q_12_s_x) s_Owner) (and (= s_Busy true) (< 0 s_C)))
+      (= s_C_next (- s_C 1))
+      (forall ((q_13_s_j Proc))
+        (= (select s_A_next q_13_s_j) (ite (= q_13_s_j q_12_s_x) s_Handout (select s_A q_13_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_H_next s_H))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_14_s_x Proc))
+    (and
+      (and (= (select s_A q_14_s_x) s_Handin) (and (= s_H s_C0) (< 0 s_C)))
+      (= s_H_next s_C1)
+      (forall ((q_15_s_j Proc))
+        (= (select s_A_next q_15_s_j) (ite (= q_15_s_j q_14_s_x) s_Waiting (select s_A q_15_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_C_next s_C))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_16_s_x Proc))
+    (and
+      (and (= (select s_A q_16_s_x) s_Handout) (and (= s_H s_C0) (< 0 s_C)))
+      (= s_H_next s_C2)
+      (forall ((q_17_s_j Proc))
+        (= (select s_A_next q_17_s_j) (ite (= q_17_s_j q_16_s_x) s_Idle (select s_A q_17_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_C_next s_C))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_18_s_x Proc))
+    (and
+      (and (= (select s_A q_18_s_x) s_Handout) (and (= s_H s_C1) (< 0 s_C)))
+      (= s_H_next s_C3)
+      (forall ((q_19_s_j Proc))
+        (= (select s_A_next q_19_s_j) (ite (= q_19_s_j q_18_s_x) s_Idle (select s_A q_19_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_C_next s_C))))
+; action: t8
+(define-fun action_7 () Bool
+  (exists ((q_20_s_x Proc))
+    (and
+      (and (= (select s_A q_20_s_x) s_Handin) (and (= s_H s_C2) (< 0 s_C)))
+      (= s_H_next s_C3)
+      (forall ((q_21_s_j Proc))
+        (= (select s_A_next q_21_s_j) (ite (= q_21_s_j q_20_s_x) s_Waiting (select s_A q_21_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_C_next s_C))))
+; action: t9
+(define-fun action_8 () Bool
+  (exists ((q_22_s_x Proc))
+    (and
+      (and (= (select s_A q_22_s_x) s_Waiting) (and (= s_H s_C3) (< 0 s_C)))
+      (= s_H_next s_C0)
+      (forall ((q_23_s_j Proc))
+        (= (select s_A_next q_23_s_j) (ite (= q_23_s_j q_22_s_x) s_Owner (select s_A q_23_s_j))))
+      (= s_Busy_next s_Busy)
+      (= s_C_next s_C))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_3_s_z Proc))
+        (and (= (select s_A q_3_s_z) s_Idle) (and (= s_Busy false) (and (= s_H s_C0) (< 0 s_C)))))
+      (and
+        (not (= s_Idle s_Owner))
+        (not (= s_Idle s_Handin))
+        (not (= s_Idle s_Handout))
+        (not (= s_Idle s_Waiting))
+        (not (= s_Owner s_Handin))
+        (not (= s_Owner s_Handout))
+        (not (= s_Owner s_Waiting))
+        (not (= s_Handin s_Handout))
+        (not (= s_Handin s_Waiting))
+        (not (= s_Handout s_Waiting)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Owner)
+          (= q_1_s_enum s_Handin)
+          (= q_1_s_enum s_Handout)
+          (= q_1_s_enum s_Waiting)))
+      (and
+        (not (= s_C0 s_C1))
+        (not (= s_C0 s_C2))
+        (not (= s_C0 s_C3))
+        (not (= s_C1 s_C2))
+        (not (= s_C1 s_C3))
+        (not (= s_C2 s_C3)))
+      (forall ((q_2_s_enum s_lock))
+        (or (= q_2_s_enum s_C0) (= q_2_s_enum s_C1) (= q_2_s_enum s_C2) (= q_2_s_enum s_C3))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6 action_7 action_8)
+      (= s_Idle_next s_Idle)
+      (= s_Owner_next s_Owner)
+      (= s_Handin_next s_Handin)
+      (= s_Handout_next s_Handout)
+      (= s_Waiting_next s_Waiting)
+      (= s_C0_next s_C0)
+      (= s_C1_next s_C1)
+      (= s_C2_next s_C2)
+      (= s_C3_next s_C3)
+      (and
+        (not (= s_Idle s_Owner))
+        (not (= s_Idle s_Handin))
+        (not (= s_Idle s_Handout))
+        (not (= s_Idle s_Waiting))
+        (not (= s_Owner s_Handin))
+        (not (= s_Owner s_Handout))
+        (not (= s_Owner s_Waiting))
+        (not (= s_Handin s_Handout))
+        (not (= s_Handin s_Waiting))
+        (not (= s_Handout s_Waiting)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Owner)
+          (= q_1_s_enum s_Handin)
+          (= q_1_s_enum s_Handout)
+          (= q_1_s_enum s_Waiting)))
+      (and
+        (not (= s_C0 s_C1))
+        (not (= s_C0 s_C2))
+        (not (= s_C0 s_C3))
+        (not (= s_C1 s_C2))
+        (not (= s_C1 s_C3))
+        (not (= s_C2 s_C3)))
+      (forall ((q_2_s_enum s_lock))
+        (or (= q_2_s_enum s_C0) (= q_2_s_enum s_C1) (= q_2_s_enum s_C2) (= q_2_s_enum s_C3)))
+      (and
+        (not (= s_Idle s_Owner))
+        (not (= s_Idle s_Handin))
+        (not (= s_Idle s_Handout))
+        (not (= s_Idle s_Waiting))
+        (not (= s_Owner s_Handin))
+        (not (= s_Owner s_Handout))
+        (not (= s_Owner s_Waiting))
+        (not (= s_Handin s_Handout))
+        (not (= s_Handin s_Waiting))
+        (not (= s_Handout s_Waiting)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Owner)
+          (= q_1_s_enum s_Handin)
+          (= q_1_s_enum s_Handout)
+          (= q_1_s_enum s_Waiting)))
+      (and
+        (not (= s_C0 s_C1))
+        (not (= s_C0 s_C2))
+        (not (= s_C0 s_C3))
+        (not (= s_C1 s_C2))
+        (not (= s_C1 s_C3))
+        (not (= s_C2 s_C3)))
+      (forall ((q_2_s_enum s_lock))
+        (or (= q_2_s_enum s_C0) (= q_2_s_enum s_C1) (= q_2_s_enum s_C2) (= q_2_s_enum s_C3))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_4_s_z1 Proc) (q_5_s_z2 Proc))
+      (=>
+        (not (= q_4_s_z1 q_5_s_z2))
+        (not (and (= (select s_A q_4_s_z1) s_Owner) (= (select s_A q_5_s_z2) s_Owner)))))
+    :invar-property
+    0))

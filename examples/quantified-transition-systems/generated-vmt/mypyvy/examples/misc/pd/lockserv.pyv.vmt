@@ -1,0 +1,132 @@
+; Generated offline from mypyvy/examples/misc/pd/lockserv.pyv
+; Source SHA-256: 37e4e36c6544a467b7fc1c1d5d3b7fca1e14479582d2c3f12f0786952d2cd726
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-fun s_lock_5f_msg () (Array s_node Bool))
+(declare-fun s_lock_5f_msg_next () (Array s_node Bool))
+(declare-fun s_grant_5f_msg () (Array s_node Bool))
+(declare-fun s_grant_5f_msg_next () (Array s_node Bool))
+(declare-fun s_unlock_5f_msg () (Array s_node Bool))
+(declare-fun s_unlock_5f_msg_next () (Array s_node Bool))
+(declare-fun s_holds_5f_lock () (Array s_node Bool))
+(declare-fun s_holds_5f_lock_next () (Array s_node Bool))
+(declare-fun s_server_5f_holds_5f_lock () Bool)
+(declare-fun s_server_5f_holds_5f_lock_next () Bool)
+; source symbol: lock_msg
+(define-fun link_0 () (Array s_node Bool) (! s_lock_5f_msg :next s_lock_5f_msg_next))
+; source symbol: grant_msg
+(define-fun link_1 () (Array s_node Bool) (! s_grant_5f_msg :next s_grant_5f_msg_next))
+; source symbol: unlock_msg
+(define-fun link_2 () (Array s_node Bool) (! s_unlock_5f_msg :next s_unlock_5f_msg_next))
+; source symbol: holds_lock
+(define-fun link_3 () (Array s_node Bool) (! s_holds_5f_lock :next s_holds_5f_lock_next))
+; source symbol: server_holds_lock
+(define-fun link_4 () Bool (! s_server_5f_holds_5f_lock :next s_server_5f_holds_5f_lock_next))
+; action: send_lock
+(define-fun action_0 () Bool
+  (exists ((q_5_s_n s_node))
+    (and
+      (forall ((q_6_s_N s_node))
+        (=
+          (select s_lock_5f_msg_next q_6_s_N)
+          (or (select s_lock_5f_msg q_6_s_N) (= q_6_s_N q_5_s_n))))
+      (forall ((q_7_s_x0 s_node))
+        (= (select s_grant_5f_msg_next q_7_s_x0) (select s_grant_5f_msg q_7_s_x0)))
+      (forall ((q_8_s_x0 s_node))
+        (= (select s_unlock_5f_msg_next q_8_s_x0) (select s_unlock_5f_msg q_8_s_x0)))
+      (forall ((q_9_s_x0 s_node))
+        (= (select s_holds_5f_lock_next q_9_s_x0) (select s_holds_5f_lock q_9_s_x0)))
+      (= s_server_5f_holds_5f_lock_next s_server_5f_holds_5f_lock))))
+; action: recv_lock
+(define-fun action_1 () Bool
+  (exists ((q_10_s_n s_node))
+    (and
+      (forall ((q_11_s_N s_node))
+        (and
+          s_server_5f_holds_5f_lock
+          (select s_lock_5f_msg q_10_s_n)
+          (not s_server_5f_holds_5f_lock_next)
+          (=
+            (select s_lock_5f_msg_next q_11_s_N)
+            (and (select s_lock_5f_msg q_11_s_N) (not (= q_11_s_N q_10_s_n))))
+          (=
+            (select s_grant_5f_msg_next q_11_s_N)
+            (or (select s_grant_5f_msg q_11_s_N) (= q_11_s_N q_10_s_n)))))
+      (forall ((q_12_s_x0 s_node))
+        (= (select s_unlock_5f_msg_next q_12_s_x0) (select s_unlock_5f_msg q_12_s_x0)))
+      (forall ((q_13_s_x0 s_node))
+        (= (select s_holds_5f_lock_next q_13_s_x0) (select s_holds_5f_lock q_13_s_x0))))))
+; action: recv_grant
+(define-fun action_2 () Bool
+  (exists ((q_14_s_n s_node))
+    (and
+      (forall ((q_15_s_N s_node))
+        (and
+          (select s_grant_5f_msg q_14_s_n)
+          (=
+            (select s_grant_5f_msg_next q_15_s_N)
+            (and (select s_grant_5f_msg q_15_s_N) (not (= q_15_s_N q_14_s_n))))
+          (=
+            (select s_holds_5f_lock_next q_15_s_N)
+            (or (select s_holds_5f_lock q_15_s_N) (= q_15_s_N q_14_s_n)))))
+      (forall ((q_16_s_x0 s_node))
+        (= (select s_lock_5f_msg_next q_16_s_x0) (select s_lock_5f_msg q_16_s_x0)))
+      (forall ((q_17_s_x0 s_node))
+        (= (select s_unlock_5f_msg_next q_17_s_x0) (select s_unlock_5f_msg q_17_s_x0)))
+      (= s_server_5f_holds_5f_lock_next s_server_5f_holds_5f_lock))))
+; action: unlock
+(define-fun action_3 () Bool
+  (exists ((q_18_s_n s_node))
+    (and
+      (forall ((q_19_s_N s_node))
+        (and
+          (select s_holds_5f_lock q_18_s_n)
+          (=
+            (select s_holds_5f_lock_next q_19_s_N)
+            (and (select s_holds_5f_lock q_19_s_N) (not (= q_19_s_N q_18_s_n))))
+          (=
+            (select s_unlock_5f_msg_next q_19_s_N)
+            (or (select s_unlock_5f_msg q_19_s_N) (= q_19_s_N q_18_s_n)))))
+      (forall ((q_20_s_x0 s_node))
+        (= (select s_lock_5f_msg_next q_20_s_x0) (select s_lock_5f_msg q_20_s_x0)))
+      (forall ((q_21_s_x0 s_node))
+        (= (select s_grant_5f_msg_next q_21_s_x0) (select s_grant_5f_msg q_21_s_x0)))
+      (= s_server_5f_holds_5f_lock_next s_server_5f_holds_5f_lock))))
+; action: recv_unlock
+(define-fun action_4 () Bool
+  (exists ((q_22_s_n s_node))
+    (and
+      (forall ((q_23_s_N s_node))
+        (and
+          (select s_unlock_5f_msg q_22_s_n)
+          (=
+            (select s_unlock_5f_msg_next q_23_s_N)
+            (and (select s_unlock_5f_msg q_23_s_N) (not (= q_23_s_N q_22_s_n))))
+          s_server_5f_holds_5f_lock_next))
+      (forall ((q_24_s_x0 s_node))
+        (= (select s_lock_5f_msg_next q_24_s_x0) (select s_lock_5f_msg q_24_s_x0)))
+      (forall ((q_25_s_x0 s_node))
+        (= (select s_grant_5f_msg_next q_25_s_x0) (select s_grant_5f_msg q_25_s_x0)))
+      (forall ((q_26_s_x0 s_node))
+        (= (select s_holds_5f_lock_next q_26_s_x0) (select s_holds_5f_lock q_26_s_x0))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_N s_node)) (not (select s_lock_5f_msg q_1_s_N)))
+      (forall ((q_2_s_N s_node)) (not (select s_grant_5f_msg q_2_s_N)))
+      (forall ((q_3_s_N s_node)) (not (select s_unlock_5f_msg q_3_s_N)))
+      (forall ((q_4_s_N s_node)) (not (select s_holds_5f_lock q_4_s_N)))
+      s_server_5f_holds_5f_lock)
+    :init
+    true))
+(define-fun trans () Bool (! (or action_0 action_1 action_2 action_3 action_4) :trans true))
+(define-fun property () Bool
+  (!
+    (forall ((q_27_s_N1 s_node) (q_28_s_N2 s_node))
+      (=>
+        (and (select s_holds_5f_lock q_27_s_N1) (select s_holds_5f_lock q_28_s_N2))
+        (= q_27_s_N1 q_28_s_N2)))
+    :invar-property
+    0))

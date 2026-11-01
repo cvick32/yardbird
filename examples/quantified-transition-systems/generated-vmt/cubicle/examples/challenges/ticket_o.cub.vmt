@@ -1,0 +1,132 @@
+; Generated offline from cubicle/examples/challenges/ticket_o.cub
+; Source SHA-256: 34320ff9055c8b8699e879b009bb140451674829301798db60a923bd763fbc92
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-fun s_L1 () s_location)
+(declare-fun s_L1_next () s_location)
+(declare-fun s_L2 () s_location)
+(declare-fun s_L2_next () s_location)
+(declare-fun s_L3 () s_location)
+(declare-fun s_L3_next () s_location)
+(declare-fun s_C1 () s_location)
+(declare-fun s_C1_next () s_location)
+(declare-fun s_C2 () s_location)
+(declare-fun s_C2_next () s_location)
+(declare-fun s_A () Int)
+(declare-fun s_A_next () Int)
+(declare-fun s_B () Int)
+(declare-fun s_B_next () Int)
+(declare-fun s_T () Int)
+(declare-fun s_T_next () Int)
+(declare-fun s_S () Int)
+(declare-fun s_S_next () Int)
+; source symbol: L1
+(define-fun link_0 () s_location (! s_L1 :next s_L1_next))
+; source symbol: L2
+(define-fun link_1 () s_location (! s_L2 :next s_L2_next))
+; source symbol: L3
+(define-fun link_2 () s_location (! s_L3 :next s_L3_next))
+; source symbol: C1
+(define-fun link_3 () s_location (! s_C1 :next s_C1_next))
+; source symbol: C2
+(define-fun link_4 () s_location (! s_C2 :next s_C2_next))
+; source symbol: A
+(define-fun link_5 () Int (! s_A :next s_A_next))
+; source symbol: B
+(define-fun link_6 () Int (! s_B :next s_B_next))
+; source symbol: T
+(define-fun link_7 () Int (! s_T :next s_T_next))
+; source symbol: S
+(define-fun link_8 () Int (! s_S :next s_S_next))
+; action: t1
+(define-fun action_0 () Bool
+  (and
+    (= s_C1 s_L1)
+    (= s_C1_next s_L2)
+    (= s_A_next s_T)
+    (= s_T_next (+ s_T 1))
+    (= s_C2_next s_C2)
+    (= s_B_next s_B)
+    (= s_S_next s_S)))
+; action: t2
+(define-fun action_1 () Bool
+  (and
+    (and (= s_C1 s_L2) (<= s_A s_S))
+    (= s_C1_next s_L3)
+    (= s_C2_next s_C2)
+    (= s_A_next s_A)
+    (= s_B_next s_B)
+    (= s_T_next s_T)
+    (= s_S_next s_S)))
+; action: t3
+(define-fun action_2 () Bool
+  (and
+    (= s_C1 s_L3)
+    (= s_C1_next s_L1)
+    (= s_S_next (+ s_S 1))
+    (= s_C2_next s_C2)
+    (= s_A_next s_A)
+    (= s_B_next s_B)
+    (= s_T_next s_T)))
+; action: t4
+(define-fun action_3 () Bool
+  (and
+    (= s_C2 s_L1)
+    (= s_C2_next s_L2)
+    (= s_B_next s_T)
+    (= s_T_next (+ s_T 1))
+    (= s_C1_next s_C1)
+    (= s_A_next s_A)
+    (= s_S_next s_S)))
+; action: t5
+(define-fun action_4 () Bool
+  (and
+    (and (= s_C2 s_L2) (<= s_B s_S))
+    (= s_C2_next s_L3)
+    (= s_C1_next s_C1)
+    (= s_A_next s_A)
+    (= s_B_next s_B)
+    (= s_T_next s_T)
+    (= s_S_next s_S)))
+; action: t6
+(define-fun action_5 () Bool
+  (and
+    (= s_C2 s_L3)
+    (= s_C2_next s_L1)
+    (= s_S_next (+ s_S 1))
+    (= s_C1_next s_C1)
+    (= s_A_next s_A)
+    (= s_B_next s_B)
+    (= s_T_next s_T)))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_x Proc)) (and (= s_T 0) (and (= s_S 0) (and (= s_C1 s_L1) (= s_C2 s_L1)))))
+      (and (not (= s_L1 s_L2)) (not (= s_L1 s_L3)) (not (= s_L2 s_L3)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5)
+      (= s_L1_next s_L1)
+      (= s_L2_next s_L2)
+      (= s_L3_next s_L3)
+      (and (not (= s_L1 s_L2)) (not (= s_L1 s_L3)) (not (= s_L2 s_L3)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3)))
+      (and (not (= s_L1 s_L2)) (not (= s_L1 s_L3)) (not (= s_L2 s_L3)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3))))
+    :trans
+    true))
+(define-fun property () Bool
+  (! (=> true (not (and (= s_C1 s_L3) (= s_C2 s_L3)))) :invar-property 0))

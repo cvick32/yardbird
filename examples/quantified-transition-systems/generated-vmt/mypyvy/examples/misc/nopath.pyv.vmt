@@ -1,0 +1,51 @@
+; Generated offline from mypyvy/examples/misc/nopath.pyv
+; Source SHA-256: 61a57e1d0308308aa0f66e8982e056316e0a532d85f1573a2bef2ce9880f8fcf
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-sort s_set 0)
+(declare-fun s_edge () (Array s_node (Array s_node Bool)))
+(declare-fun s_edge_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_destination () s_node)
+(declare-fun s_destination_next () s_node)
+(declare-fun s_current () s_node)
+(declare-fun s_current_next () s_node)
+(declare-fun s_member () (Array s_node (Array s_set Bool)))
+(declare-fun s_member_next () (Array s_node (Array s_set Bool)))
+; source symbol: edge
+(define-fun link_0 () (Array s_node (Array s_node Bool)) (! s_edge :next s_edge_next))
+; source symbol: destination
+(define-fun link_1 () s_node (! s_destination :next s_destination_next))
+; source symbol: current
+(define-fun link_2 () s_node (! s_current :next s_current_next))
+; source symbol: member
+(define-fun link_3 () (Array s_node (Array s_set Bool)) (! s_member :next s_member_next))
+; action: follow_edge
+(define-fun action_0 () Bool
+  (exists ((q_4_s_x s_node))
+    (and (select (select s_edge s_current) q_4_s_x) (= s_current_next q_4_s_x))))
+(define-fun init () Bool
+  (!
+    (exists ((q_1_s_s s_set))
+      (and
+        (select (select s_member s_current) q_1_s_s)
+        (not (select (select s_member s_destination) q_1_s_s))
+        (forall ((q_2_s_X s_node) (q_3_s_Y s_node))
+          (=>
+            (select (select s_edge q_2_s_X) q_3_s_Y)
+            (=
+              (select (select s_member q_2_s_X) q_1_s_s)
+              (select (select s_member q_3_s_Y) q_1_s_s))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      action_0
+      (= s_edge_next s_edge)
+      (= s_destination_next s_destination)
+      (= s_member_next s_member))
+    :trans
+    true))
+(define-fun property () Bool (! (not (= s_current s_destination)) :invar-property 0))

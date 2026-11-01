@@ -1,0 +1,130 @@
+; Generated offline from mypyvy/examples/misc/sll-reverse.pyv
+; Source SHA-256: 3a9b46597698f3a0c538115b97b53f1656ccc45dfaaf31cde70bfcb16003d4f7
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-fun s_nrtc () (Array s_node (Array s_node Bool)))
+(declare-fun s_nrtc_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_h () s_node)
+(declare-fun s_h_next () s_node)
+(declare-fun s_i () s_node)
+(declare-fun s_i_next () s_node)
+(declare-fun s_j () s_node)
+(declare-fun s_j_next () s_node)
+(declare-fun s_null () s_node)
+(declare-fun s_null_next () s_node)
+(declare-fun s_u () s_node)
+(declare-fun s_u_next () s_node)
+(declare-fun s_v () s_node)
+(declare-fun s_v_next () s_node)
+; source symbol: nrtc
+(define-fun link_0 () (Array s_node (Array s_node Bool)) (! s_nrtc :next s_nrtc_next))
+; source symbol: h
+(define-fun link_1 () s_node (! s_h :next s_h_next))
+; source symbol: i
+(define-fun link_2 () s_node (! s_i :next s_i_next))
+; source symbol: j
+(define-fun link_3 () s_node (! s_j :next s_j_next))
+; source symbol: null
+(define-fun link_4 () s_node (! s_null :next s_null_next))
+; source symbol: u
+(define-fun link_5 () s_node (! s_u :next s_u_next))
+; source symbol: v
+(define-fun link_6 () s_node (! s_v :next s_v_next))
+; action: step
+(define-fun action_0 () Bool
+  (and
+    (forall ((q_12_s_U s_node) (q_13_s_V s_node))
+      (and
+        (not (= s_i s_null))
+        (=
+          (select (select s_nrtc_next q_12_s_U) q_13_s_V)
+          (or
+            (and
+              (select (select s_nrtc q_12_s_U) q_13_s_V)
+              (not
+                (and
+                  (select (select s_nrtc q_12_s_U) s_i)
+                  (select (select s_nrtc s_i) q_13_s_V)
+                  (not (= s_i q_13_s_V)))))
+            (and (select (select s_nrtc q_12_s_U) s_i) (select (select s_nrtc s_j) q_13_s_V))))
+        (exists ((q_14_s_K s_node))
+          (and
+            (= q_14_s_K s_i_next)
+            (and
+              (select (select s_nrtc s_i) q_14_s_K)
+              (not (= s_i q_14_s_K))
+              (forall ((q_15_s_Z s_node))
+                (=>
+                  (and (select (select s_nrtc s_i) q_15_s_Z) (not (= s_i q_15_s_Z)))
+                  (select (select s_nrtc q_14_s_K) q_15_s_Z))))))
+        (= s_j_next s_i)))
+    (= s_h_next s_h)
+    (= s_null_next s_null)))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_X s_node)) (select (select s_nrtc q_1_s_X) q_1_s_X))
+      (forall ((q_2_s_X s_node) (q_3_s_Y s_node) (q_4_s_Z s_node))
+        (=>
+          (and (select (select s_nrtc q_2_s_X) q_3_s_Y) (select (select s_nrtc q_3_s_Y) q_4_s_Z))
+          (select (select s_nrtc q_2_s_X) q_4_s_Z)))
+      (forall ((q_5_s_X s_node) (q_6_s_Y s_node))
+        (=>
+          (and (select (select s_nrtc q_5_s_X) q_6_s_Y) (select (select s_nrtc q_6_s_Y) q_5_s_X))
+          (= q_5_s_X q_6_s_Y)))
+      (forall ((q_7_s_X s_node) (q_8_s_Y s_node) (q_9_s_Z s_node))
+        (=>
+          (and (select (select s_nrtc q_7_s_X) q_8_s_Y) (select (select s_nrtc q_7_s_X) q_9_s_Z))
+          (or (select (select s_nrtc q_8_s_Y) q_9_s_Z) (select (select s_nrtc q_9_s_Z) q_8_s_Y))))
+      (forall ((q_10_s_X s_node))
+        (=>
+          (not (= q_10_s_X s_null))
+          (and
+            (not (select (select s_nrtc q_10_s_X) s_null))
+            (not (select (select s_nrtc s_null) q_10_s_X)))))
+      (not (= s_u s_null))
+      (not (= s_v s_null))
+      (select (select s_nrtc s_h) s_u)
+      (not (= s_h s_u))
+      (select (select s_nrtc s_u) s_v)
+      (forall ((q_11_s_Z s_node))
+        (=>
+          (and (select (select s_nrtc s_u) q_11_s_Z) (not (= s_u q_11_s_Z)))
+          (select (select s_nrtc s_v) q_11_s_Z)))
+      (= s_i s_h)
+      (= s_j s_null)
+      (not (= s_u s_v)))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and action_0 (= s_u_next s_u) (= s_v_next s_v) (not (= s_u s_v)) (not (= s_u s_v)))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_16_s_X s_node)) (select (select s_nrtc q_16_s_X) q_16_s_X))
+      (forall ((q_17_s_X s_node) (q_18_s_Y s_node) (q_19_s_Z s_node))
+        (=>
+          (and
+            (select (select s_nrtc q_17_s_X) q_18_s_Y)
+            (select (select s_nrtc q_18_s_Y) q_19_s_Z))
+          (select (select s_nrtc q_17_s_X) q_19_s_Z)))
+      (forall ((q_20_s_X s_node) (q_21_s_Y s_node))
+        (=>
+          (and
+            (select (select s_nrtc q_20_s_X) q_21_s_Y)
+            (select (select s_nrtc q_21_s_Y) q_20_s_X))
+          (= q_20_s_X q_21_s_Y)))
+      (forall ((q_22_s_X s_node) (q_23_s_Y s_node) (q_24_s_Z s_node))
+        (=>
+          (and
+            (select (select s_nrtc q_22_s_X) q_23_s_Y)
+            (select (select s_nrtc q_22_s_X) q_24_s_Z))
+          (or (select (select s_nrtc q_23_s_Y) q_24_s_Z) (select (select s_nrtc q_24_s_Z) q_23_s_Y))))
+      (=> (and (select (select s_nrtc s_v) s_i) (not (= s_v s_i))) (select (select s_nrtc s_v) s_u)))
+    :invar-property
+    0))

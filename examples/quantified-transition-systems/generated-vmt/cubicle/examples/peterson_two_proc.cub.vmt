@@ -1,0 +1,268 @@
+; Generated offline from cubicle/examples/peterson_two_proc.cub
+; Source SHA-256: fda537445af7520feeef64002062042ebc4e92022c6443786f430802442d77f0
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_loc 0)
+(declare-fun s__23_1 () Proc)
+(declare-fun s__23_1_next () Proc)
+(declare-fun s__23_2 () Proc)
+(declare-fun s__23_2_next () Proc)
+(declare-fun s_L1 () s_loc)
+(declare-fun s_L1_next () s_loc)
+(declare-fun s_L2 () s_loc)
+(declare-fun s_L2_next () s_loc)
+(declare-fun s_Wait () s_loc)
+(declare-fun s_Wait_next () s_loc)
+(declare-fun s_Crit () s_loc)
+(declare-fun s_Crit_next () s_loc)
+(declare-fun s_L3 () s_loc)
+(declare-fun s_L3_next () s_loc)
+(declare-fun s_PC () (Array Proc s_loc))
+(declare-fun s_PC_next () (Array Proc s_loc))
+(declare-fun s_Want () (Array Proc Bool))
+(declare-fun s_Want_next () (Array Proc Bool))
+(declare-fun s_Turn () Int)
+(declare-fun s_Turn_next () Int)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: #1
+(define-fun link_0 () Proc (! s__23_1 :next s__23_1_next))
+; source symbol: #2
+(define-fun link_1 () Proc (! s__23_2 :next s__23_2_next))
+; source symbol: L1
+(define-fun link_2 () s_loc (! s_L1 :next s_L1_next))
+; source symbol: L2
+(define-fun link_3 () s_loc (! s_L2 :next s_L2_next))
+; source symbol: Wait
+(define-fun link_4 () s_loc (! s_Wait :next s_Wait_next))
+; source symbol: Crit
+(define-fun link_5 () s_loc (! s_Crit :next s_Crit_next))
+; source symbol: L3
+(define-fun link_6 () s_loc (! s_L3 :next s_L3_next))
+; source symbol: PC
+(define-fun link_7 () (Array Proc s_loc) (! s_PC :next s_PC_next))
+; source symbol: Want
+(define-fun link_8 () (Array Proc Bool) (! s_Want :next s_Want_next))
+; source symbol: Turn
+(define-fun link_9 () Int (! s_Turn :next s_Turn_next))
+; source symbol: __proc_rank
+(define-fun link_10 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: req_P1
+(define-fun action_0 () Bool
+  (and
+    (= (select s_PC s__23_1) s_L1)
+    (forall ((q_3_s_j Proc))
+      (= (select s_Want_next q_3_s_j) (ite (= q_3_s_j s__23_1) true (select s_Want q_3_s_j))))
+    (forall ((q_4_s_j Proc))
+      (= (select s_PC_next q_4_s_j) (ite (= q_4_s_j s__23_1) s_L2 (select s_PC q_4_s_j))))
+    (= s_Turn_next s_Turn)))
+; action: myturn_P1
+(define-fun action_1 () Bool
+  (and
+    (= (select s_PC s__23_1) s_L2)
+    (= s_Turn_next (select s__5f__5f_proc_5f_rank s__23_1))
+    (forall ((q_5_s_j Proc))
+      (= (select s_PC_next q_5_s_j) (ite (= q_5_s_j s__23_1) s_Wait (select s_PC q_5_s_j))))
+    (= s_Want_next s_Want)))
+; action: enter1_P1
+(define-fun action_2 () Bool
+  (and
+    (and (= (select s_PC s__23_1) s_Wait) (= (select s_Want s__23_2) false))
+    (forall ((q_6_s_j Proc))
+      (= (select s_PC_next q_6_s_j) (ite (= q_6_s_j s__23_1) s_Crit (select s_PC q_6_s_j))))
+    (= s_Want_next s_Want)
+    (= s_Turn_next s_Turn)))
+; action: enter2_P1
+(define-fun action_3 () Bool
+  (and
+    (and (= (select s_PC s__23_1) s_Wait) (= s_Turn (select s__5f__5f_proc_5f_rank s__23_2)))
+    (forall ((q_7_s_j Proc))
+      (= (select s_PC_next q_7_s_j) (ite (= q_7_s_j s__23_1) s_Crit (select s_PC q_7_s_j))))
+    (= s_Want_next s_Want)
+    (= s_Turn_next s_Turn)))
+; action: exit_P1
+(define-fun action_4 () Bool
+  (and
+    (= (select s_PC s__23_1) s_Crit)
+    (forall ((q_8_s_j Proc))
+      (= (select s_PC_next q_8_s_j) (ite (= q_8_s_j s__23_1) s_L3 (select s_PC q_8_s_j))))
+    (= s_Want_next s_Want)
+    (= s_Turn_next s_Turn)))
+; action: not_want_P1
+(define-fun action_5 () Bool
+  (and
+    (= (select s_PC s__23_1) s_L3)
+    (forall ((q_9_s_j Proc))
+      (= (select s_Want_next q_9_s_j) (ite (= q_9_s_j s__23_1) false (select s_Want q_9_s_j))))
+    (forall ((q_10_s_j Proc))
+      (= (select s_PC_next q_10_s_j) (ite (= q_10_s_j s__23_1) s_L1 (select s_PC q_10_s_j))))
+    (= s_Turn_next s_Turn)))
+; action: req_P2
+(define-fun action_6 () Bool
+  (and
+    (= (select s_PC s__23_2) s_L1)
+    (forall ((q_11_s_j Proc))
+      (= (select s_Want_next q_11_s_j) (ite (= q_11_s_j s__23_2) true (select s_Want q_11_s_j))))
+    (forall ((q_12_s_j Proc))
+      (= (select s_PC_next q_12_s_j) (ite (= q_12_s_j s__23_2) s_L2 (select s_PC q_12_s_j))))
+    (= s_Turn_next s_Turn)))
+; action: myturn_P2
+(define-fun action_7 () Bool
+  (and
+    (= (select s_PC s__23_2) s_L2)
+    (= s_Turn_next (select s__5f__5f_proc_5f_rank s__23_2))
+    (forall ((q_13_s_j Proc))
+      (= (select s_PC_next q_13_s_j) (ite (= q_13_s_j s__23_2) s_Wait (select s_PC q_13_s_j))))
+    (= s_Want_next s_Want)))
+; action: enter1_P2
+(define-fun action_8 () Bool
+  (and
+    (and (= (select s_PC s__23_2) s_Wait) (= (select s_Want s__23_1) false))
+    (forall ((q_14_s_j Proc))
+      (= (select s_PC_next q_14_s_j) (ite (= q_14_s_j s__23_2) s_Crit (select s_PC q_14_s_j))))
+    (= s_Want_next s_Want)
+    (= s_Turn_next s_Turn)))
+; action: enter2_P2
+(define-fun action_9 () Bool
+  (and
+    (and (= (select s_PC s__23_2) s_Wait) (= s_Turn (select s__5f__5f_proc_5f_rank s__23_1)))
+    (forall ((q_15_s_j Proc))
+      (= (select s_PC_next q_15_s_j) (ite (= q_15_s_j s__23_2) s_Crit (select s_PC q_15_s_j))))
+    (= s_Want_next s_Want)
+    (= s_Turn_next s_Turn)))
+; action: exit_P2
+(define-fun action_10 () Bool
+  (and
+    (= (select s_PC s__23_2) s_Crit)
+    (forall ((q_16_s_j Proc))
+      (= (select s_PC_next q_16_s_j) (ite (= q_16_s_j s__23_2) s_L3 (select s_PC q_16_s_j))))
+    (= s_Want_next s_Want)
+    (= s_Turn_next s_Turn)))
+; action: not_want_P2
+(define-fun action_11 () Bool
+  (and
+    (= (select s_PC s__23_2) s_L3)
+    (forall ((q_17_s_j Proc))
+      (= (select s_Want_next q_17_s_j) (ite (= q_17_s_j s__23_2) false (select s_Want q_17_s_j))))
+    (forall ((q_18_s_j Proc))
+      (= (select s_PC_next q_18_s_j) (ite (= q_18_s_j s__23_2) s_L1 (select s_PC q_18_s_j))))
+    (= s_Turn_next s_Turn)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (= (select s_PC s__23_1) s_L1)
+        (and
+          (= (select s_PC s__23_2) s_L1)
+          (and (= (select s_Want s__23_1) false) (= (select s_Want s__23_2) false))))
+      (not (= s__23_1 s__23_2))
+      (forall ((enum_proc Proc)) (or (= enum_proc s__23_1) (= enum_proc s__23_2)))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_Wait))
+        (not (= s_L1 s_Crit))
+        (not (= s_L1 s_L3))
+        (not (= s_L2 s_Wait))
+        (not (= s_L2 s_Crit))
+        (not (= s_L2 s_L3))
+        (not (= s_Wait s_Crit))
+        (not (= s_Wait s_L3))
+        (not (= s_Crit s_L3)))
+      (forall ((q_1_s_enum s_loc))
+        (or
+          (= q_1_s_enum s_L1)
+          (= q_1_s_enum s_L2)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Crit)
+          (= q_1_s_enum s_L3)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11)
+      (= s__23_1_next s__23_1)
+      (= s__23_2_next s__23_2)
+      (= s_L1_next s_L1)
+      (= s_L2_next s_L2)
+      (= s_Wait_next s_Wait)
+      (= s_Crit_next s_Crit)
+      (= s_L3_next s_L3)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (not (= s__23_1 s__23_2))
+      (forall ((enum_proc Proc)) (or (= enum_proc s__23_1) (= enum_proc s__23_2)))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_Wait))
+        (not (= s_L1 s_Crit))
+        (not (= s_L1 s_L3))
+        (not (= s_L2 s_Wait))
+        (not (= s_L2 s_Crit))
+        (not (= s_L2 s_L3))
+        (not (= s_Wait s_Crit))
+        (not (= s_Wait s_L3))
+        (not (= s_Crit s_L3)))
+      (forall ((q_1_s_enum s_loc))
+        (or
+          (= q_1_s_enum s_L1)
+          (= q_1_s_enum s_L2)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Crit)
+          (= q_1_s_enum s_L3)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (not (= s__23_1 s__23_2))
+      (forall ((enum_proc Proc)) (or (= enum_proc s__23_1) (= enum_proc s__23_2)))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_Wait))
+        (not (= s_L1 s_Crit))
+        (not (= s_L1 s_L3))
+        (not (= s_L2 s_Wait))
+        (not (= s_L2 s_Crit))
+        (not (= s_L2 s_L3))
+        (not (= s_Wait s_Crit))
+        (not (= s_Wait s_L3))
+        (not (= s_Crit s_L3)))
+      (forall ((q_1_s_enum s_loc))
+        (or
+          (= q_1_s_enum s_L1)
+          (= q_1_s_enum s_L2)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Crit)
+          (= q_1_s_enum s_L3)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_2_s_z Proc))
+      (=> true (not (and (= (select s_PC s__23_1) s_Crit) (= (select s_PC s__23_2) s_Crit)))))
+    :invar-property
+    0))

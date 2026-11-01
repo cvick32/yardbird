@@ -1,0 +1,348 @@
+; Generated offline from cubicle/examples/germanish3.cub
+; Source SHA-256: b7e93dda97120f7d67ecfb09d4bf11b5e28b712cf3582b8d1a8f29ec431fc905
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_req 0)
+(declare-sort s_cstate 0)
+(declare-fun s_Empty () s_req)
+(declare-fun s_Empty_next () s_req)
+(declare-fun s_Reqs () s_req)
+(declare-fun s_Reqs_next () s_req)
+(declare-fun s_Reqe () s_req)
+(declare-fun s_Reqe_next () s_req)
+(declare-fun s_Inv () s_req)
+(declare-fun s_Inv_next () s_req)
+(declare-fun s_Invack () s_req)
+(declare-fun s_Invack_next () s_req)
+(declare-fun s_Invalid () s_cstate)
+(declare-fun s_Invalid_next () s_cstate)
+(declare-fun s_Shared () s_cstate)
+(declare-fun s_Shared_next () s_cstate)
+(declare-fun s_Exclusive () s_cstate)
+(declare-fun s_Exclusive_next () s_cstate)
+(declare-fun s_Exgntd () Bool)
+(declare-fun s_Exgntd_next () Bool)
+(declare-fun s_Curcmd () s_req)
+(declare-fun s_Curcmd_next () s_req)
+(declare-fun s_Curptr () Int)
+(declare-fun s_Curptr_next () Int)
+(declare-fun s_Cache () (Array Proc s_cstate))
+(declare-fun s_Cache_next () (Array Proc s_cstate))
+(declare-fun s_Shrset () (Array Proc Bool))
+(declare-fun s_Shrset_next () (Array Proc Bool))
+(declare-fun s_Chan () (Array Proc s_req))
+(declare-fun s_Chan_next () (Array Proc s_req))
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: Empty
+(define-fun link_0 () s_req (! s_Empty :next s_Empty_next))
+; source symbol: Reqs
+(define-fun link_1 () s_req (! s_Reqs :next s_Reqs_next))
+; source symbol: Reqe
+(define-fun link_2 () s_req (! s_Reqe :next s_Reqe_next))
+; source symbol: Inv
+(define-fun link_3 () s_req (! s_Inv :next s_Inv_next))
+; source symbol: Invack
+(define-fun link_4 () s_req (! s_Invack :next s_Invack_next))
+; source symbol: Invalid
+(define-fun link_5 () s_cstate (! s_Invalid :next s_Invalid_next))
+; source symbol: Shared
+(define-fun link_6 () s_cstate (! s_Shared :next s_Shared_next))
+; source symbol: Exclusive
+(define-fun link_7 () s_cstate (! s_Exclusive :next s_Exclusive_next))
+; source symbol: Exgntd
+(define-fun link_8 () Bool (! s_Exgntd :next s_Exgntd_next))
+; source symbol: Curcmd
+(define-fun link_9 () s_req (! s_Curcmd :next s_Curcmd_next))
+; source symbol: Curptr
+(define-fun link_10 () Int (! s_Curptr :next s_Curptr_next))
+; source symbol: Cache
+(define-fun link_11 () (Array Proc s_cstate) (! s_Cache :next s_Cache_next))
+; source symbol: Shrset
+(define-fun link_12 () (Array Proc Bool) (! s_Shrset :next s_Shrset_next))
+; source symbol: Chan
+(define-fun link_13 () (Array Proc s_req) (! s_Chan :next s_Chan_next))
+; source symbol: __proc_rank
+(define-fun link_14 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: send_shared
+(define-fun action_0 () Bool
+  (exists ((q_6_s_n Proc))
+    (and
+      (and (= (select s_Chan q_6_s_n) s_Empty) (= (select s_Cache q_6_s_n) s_Invalid))
+      (forall ((q_7_s_j Proc))
+        (= (select s_Chan_next q_7_s_j) (ite (= q_7_s_j q_6_s_n) s_Reqs (select s_Chan q_7_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Cache_next s_Cache)
+      (= s_Shrset_next s_Shrset))))
+; action: recv_shared
+(define-fun action_1 () Bool
+  (exists ((q_8_s_n Proc))
+    (and
+      (and (= s_Curcmd s_Empty) (= (select s_Chan q_8_s_n) s_Reqs))
+      (= s_Curcmd_next s_Reqs)
+      (= s_Curptr_next (select s__5f__5f_proc_5f_rank q_8_s_n))
+      (forall ((q_9_s_j Proc))
+        (= (select s_Chan_next q_9_s_j) (ite (= q_9_s_j q_8_s_n) s_Empty (select s_Chan q_9_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Cache_next s_Cache)
+      (= s_Shrset_next s_Shrset))))
+; action: send_exclusive
+(define-fun action_2 () Bool
+  (exists ((q_10_s_n Proc))
+    (and
+      (and (= (select s_Chan q_10_s_n) s_Empty) (not (= (select s_Cache q_10_s_n) s_Exclusive)))
+      (forall ((q_11_s_j Proc))
+        (=
+          (select s_Chan_next q_11_s_j)
+          (ite (= q_11_s_j q_10_s_n) s_Reqe (select s_Chan q_11_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Cache_next s_Cache)
+      (= s_Shrset_next s_Shrset))))
+; action: recv_exclusive
+(define-fun action_3 () Bool
+  (exists ((q_12_s_n Proc))
+    (and
+      (and (= s_Curcmd s_Empty) (= (select s_Chan q_12_s_n) s_Reqe))
+      (= s_Curcmd_next s_Reqe)
+      (= s_Curptr_next (select s__5f__5f_proc_5f_rank q_12_s_n))
+      (forall ((q_13_s_j Proc))
+        (=
+          (select s_Chan_next q_13_s_j)
+          (ite (= q_13_s_j q_12_s_n) s_Empty (select s_Chan q_13_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Cache_next s_Cache)
+      (= s_Shrset_next s_Shrset))))
+; action: sendinv_1
+(define-fun action_4 () Bool
+  (exists ((q_14_s_n Proc))
+    (and
+      (and
+        (= (select s_Chan q_14_s_n) s_Empty)
+        (and (= (select s_Shrset q_14_s_n) true) (= s_Curcmd s_Reqe)))
+      (forall ((q_15_s_j Proc))
+        (= (select s_Chan_next q_15_s_j) (ite (= q_15_s_j q_14_s_n) s_Inv (select s_Chan q_15_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Cache_next s_Cache)
+      (= s_Shrset_next s_Shrset))))
+; action: sendinv_2
+(define-fun action_5 () Bool
+  (exists ((q_16_s_n Proc))
+    (and
+      (and
+        (= (select s_Chan q_16_s_n) s_Empty)
+        (and (= (select s_Shrset q_16_s_n) true) (and (= s_Curcmd s_Reqs) (= s_Exgntd true))))
+      (forall ((q_17_s_j Proc))
+        (= (select s_Chan_next q_17_s_j) (ite (= q_17_s_j q_16_s_n) s_Inv (select s_Chan q_17_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Cache_next s_Cache)
+      (= s_Shrset_next s_Shrset))))
+; action: recv_inv
+(define-fun action_6 () Bool
+  (exists ((q_18_s_n Proc))
+    (and
+      (= (select s_Chan q_18_s_n) s_Inv)
+      (forall ((q_19_s_j Proc))
+        (=
+          (select s_Chan_next q_19_s_j)
+          (ite (= q_19_s_j q_18_s_n) s_Invack (select s_Chan q_19_s_j))))
+      (forall ((q_20_s_j Proc))
+        (=
+          (select s_Cache_next q_20_s_j)
+          (ite (= q_20_s_j q_18_s_n) s_Invalid (select s_Cache q_20_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset))))
+; action: recv_invack
+(define-fun action_7 () Bool
+  (exists ((q_21_s_n Proc))
+    (and
+      (and (= (select s_Chan q_21_s_n) s_Invack) (not (= s_Curcmd s_Empty)))
+      (= s_Exgntd_next false)
+      (forall ((q_22_s_j Proc))
+        (=
+          (select s_Chan_next q_22_s_j)
+          (ite (= q_22_s_j q_21_s_n) s_Empty (select s_Chan q_22_s_j))))
+      (forall ((q_23_s_j Proc))
+        (=
+          (select s_Shrset_next q_23_s_j)
+          (ite (= q_23_s_j q_21_s_n) false (select s_Shrset q_23_s_j))))
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Cache_next s_Cache))))
+; action: gnt_shared
+(define-fun action_8 () Bool
+  (exists ((q_24_s_n Proc))
+    (and
+      (and
+        (= s_Curptr (select s__5f__5f_proc_5f_rank q_24_s_n))
+        (and (= s_Curcmd s_Reqs) (= s_Exgntd false)))
+      (= s_Curcmd_next s_Empty)
+      (forall ((q_25_s_j Proc))
+        (=
+          (select s_Shrset_next q_25_s_j)
+          (ite (= q_25_s_j q_24_s_n) true (select s_Shrset q_25_s_j))))
+      (forall ((q_26_s_j Proc))
+        (=
+          (select s_Cache_next q_26_s_j)
+          (ite (= q_26_s_j q_24_s_n) s_Shared (select s_Cache q_26_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curptr_next s_Curptr)
+      (= s_Chan_next s_Chan))))
+; action: gnt_exclusive
+(define-fun action_9 () Bool
+  (exists ((q_27_s_n Proc))
+    (and
+      (and
+        (= (select s_Shrset q_27_s_n) false)
+        (and
+          (= s_Curcmd s_Reqe)
+          (and
+            (= s_Exgntd false)
+            (and
+              (= s_Curptr (select s__5f__5f_proc_5f_rank q_27_s_n))
+              (forall ((q_28_s_l Proc))
+                (=> (not (= q_28_s_l q_27_s_n)) (= (select s_Shrset q_28_s_l) false)))))))
+      (= s_Curcmd_next s_Empty)
+      (= s_Exgntd_next true)
+      (forall ((q_29_s_j Proc))
+        (=
+          (select s_Shrset_next q_29_s_j)
+          (ite (= q_29_s_j q_27_s_n) true (select s_Shrset q_29_s_j))))
+      (forall ((q_30_s_j Proc))
+        (=
+          (select s_Cache_next q_30_s_j)
+          (ite (= q_30_s_j q_27_s_n) s_Exclusive (select s_Cache q_30_s_j))))
+      (= s_Curptr_next s_Curptr)
+      (= s_Chan_next s_Chan))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_3_s_z Proc))
+        (and
+          (= (select s_Cache q_3_s_z) s_Invalid)
+          (and
+            (= (select s_Shrset q_3_s_z) false)
+            (and (= s_Exgntd false) (and (= s_Curcmd s_Empty) (= (select s_Chan q_3_s_z) s_Empty))))))
+      (and
+        (not (= s_Empty s_Reqs))
+        (not (= s_Empty s_Reqe))
+        (not (= s_Empty s_Inv))
+        (not (= s_Empty s_Invack))
+        (not (= s_Reqs s_Reqe))
+        (not (= s_Reqs s_Inv))
+        (not (= s_Reqs s_Invack))
+        (not (= s_Reqe s_Inv))
+        (not (= s_Reqe s_Invack))
+        (not (= s_Inv s_Invack)))
+      (forall ((q_1_s_enum s_req))
+        (or
+          (= q_1_s_enum s_Empty)
+          (= q_1_s_enum s_Reqs)
+          (= q_1_s_enum s_Reqe)
+          (= q_1_s_enum s_Inv)
+          (= q_1_s_enum s_Invack)))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_2_s_enum s_cstate))
+        (or (= q_2_s_enum s_Invalid) (= q_2_s_enum s_Shared) (= q_2_s_enum s_Exclusive)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6 action_7 action_8 action_9)
+      (= s_Empty_next s_Empty)
+      (= s_Reqs_next s_Reqs)
+      (= s_Reqe_next s_Reqe)
+      (= s_Inv_next s_Inv)
+      (= s_Invack_next s_Invack)
+      (= s_Invalid_next s_Invalid)
+      (= s_Shared_next s_Shared)
+      (= s_Exclusive_next s_Exclusive)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_Empty s_Reqs))
+        (not (= s_Empty s_Reqe))
+        (not (= s_Empty s_Inv))
+        (not (= s_Empty s_Invack))
+        (not (= s_Reqs s_Reqe))
+        (not (= s_Reqs s_Inv))
+        (not (= s_Reqs s_Invack))
+        (not (= s_Reqe s_Inv))
+        (not (= s_Reqe s_Invack))
+        (not (= s_Inv s_Invack)))
+      (forall ((q_1_s_enum s_req))
+        (or
+          (= q_1_s_enum s_Empty)
+          (= q_1_s_enum s_Reqs)
+          (= q_1_s_enum s_Reqe)
+          (= q_1_s_enum s_Inv)
+          (= q_1_s_enum s_Invack)))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_2_s_enum s_cstate))
+        (or (= q_2_s_enum s_Invalid) (= q_2_s_enum s_Shared) (= q_2_s_enum s_Exclusive)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_Empty s_Reqs))
+        (not (= s_Empty s_Reqe))
+        (not (= s_Empty s_Inv))
+        (not (= s_Empty s_Invack))
+        (not (= s_Reqs s_Reqe))
+        (not (= s_Reqs s_Inv))
+        (not (= s_Reqs s_Invack))
+        (not (= s_Reqe s_Inv))
+        (not (= s_Reqe s_Invack))
+        (not (= s_Inv s_Invack)))
+      (forall ((q_1_s_enum s_req))
+        (or
+          (= q_1_s_enum s_Empty)
+          (= q_1_s_enum s_Reqs)
+          (= q_1_s_enum s_Reqe)
+          (= q_1_s_enum s_Inv)
+          (= q_1_s_enum s_Invack)))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_2_s_enum s_cstate))
+        (or (= q_2_s_enum s_Invalid) (= q_2_s_enum s_Shared) (= q_2_s_enum s_Exclusive)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_4_s_z1 Proc) (q_5_s_z2 Proc))
+      (=>
+        (not (= q_4_s_z1 q_5_s_z2))
+        (not (and (= (select s_Cache q_4_s_z1) s_Exclusive) (= (select s_Cache q_5_s_z2) s_Shared)))))
+    :invar-property
+    0))

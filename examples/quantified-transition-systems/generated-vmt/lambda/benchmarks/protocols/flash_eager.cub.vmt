@@ -1,0 +1,171 @@
+; Generated offline from lambda/benchmarks/protocols/flash_eager.cub
+; Source SHA-256: 84282a47a50027b8e1893764bff28d80871204be5ca0ef87abee78e73d6cc0c5
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_state 0)
+(declare-sort s_data 0)
+(declare-fun s_Invalid () s_state)
+(declare-fun s_Invalid_next () s_state)
+(declare-fun s_Shared () s_state)
+(declare-fun s_Shared_next () s_state)
+(declare-fun s_Exclusive () s_state)
+(declare-fun s_Exclusive_next () s_state)
+(declare-fun s_Memory () s_data)
+(declare-fun s_Memory_next () s_data)
+(declare-fun s_CacheState () (Array Proc s_state))
+(declare-fun s_CacheState_next () (Array Proc s_state))
+(declare-fun s_CacheData () (Array Proc s_data))
+(declare-fun s_CacheData_next () (Array Proc s_data))
+; source symbol: Invalid
+(define-fun link_0 () s_state (! s_Invalid :next s_Invalid_next))
+; source symbol: Shared
+(define-fun link_1 () s_state (! s_Shared :next s_Shared_next))
+; source symbol: Exclusive
+(define-fun link_2 () s_state (! s_Exclusive :next s_Exclusive_next))
+; source symbol: Memory
+(define-fun link_3 () s_data (! s_Memory :next s_Memory_next))
+; source symbol: CacheState
+(define-fun link_4 () (Array Proc s_state) (! s_CacheState :next s_CacheState_next))
+; source symbol: CacheData
+(define-fun link_5 () (Array Proc s_data) (! s_CacheData :next s_CacheData_next))
+; action: atom_WB
+(define-fun action_0 () Bool
+  (exists ((q_5_s_p Proc))
+    (and
+      (= (select s_CacheState q_5_s_p) s_Exclusive)
+      (= s_Memory_next (select s_CacheData q_5_s_p))
+      (forall ((q_6_s_j Proc))
+        (=
+          (select s_CacheState_next q_6_s_j)
+          (ite (= q_6_s_j q_5_s_p) s_Invalid (select s_CacheState q_6_s_j))))
+      (= s_CacheData_next s_CacheData))))
+; action: atom_Invalidate
+(define-fun action_1 () Bool
+  (exists ((q_7_s_p Proc))
+    (and
+      (not (= (select s_CacheState q_7_s_p) s_Exclusive))
+      (forall ((q_8_s_j Proc))
+        (=
+          (select s_CacheState_next q_8_s_j)
+          (ite (= q_8_s_j q_7_s_p) s_Invalid (select s_CacheState q_8_s_j))))
+      (= s_Memory_next s_Memory)
+      (= s_CacheData_next s_CacheData))))
+; action: atom_Get_1
+(define-fun action_2 () Bool
+  (exists ((q_9_s_p Proc))
+    (and
+      (and
+        (not (= (select s_CacheState q_9_s_p) s_Exclusive))
+        (forall ((q_10_s_i Proc))
+          (=> (not (= q_10_s_i q_9_s_p)) (not (= (select s_CacheState q_10_s_i) s_Exclusive)))))
+      (forall ((q_11_s_j Proc))
+        (=
+          (select s_CacheState_next q_11_s_j)
+          (ite (= q_11_s_j q_9_s_p) s_Shared (select s_CacheState q_11_s_j))))
+      (forall ((q_12_s_j Proc))
+        (=
+          (select s_CacheData_next q_12_s_j)
+          (ite (= q_12_s_j q_9_s_p) s_Memory (select s_CacheData q_12_s_j))))
+      (= s_Memory_next s_Memory))))
+; action: atom_Get_2
+(define-fun action_3 () Bool
+  (exists ((q_13_s_p1 Proc) (q_14_s_p2 Proc))
+    (and
+      (not (= q_13_s_p1 q_14_s_p2))
+      (= (select s_CacheState q_13_s_p1) s_Exclusive)
+      (= s_Memory_next (select s_CacheData q_13_s_p1))
+      (forall ((q_15_s_j Proc))
+        (=
+          (select s_CacheState_next q_15_s_j)
+          (ite
+            (= q_15_s_j q_13_s_p1)
+            s_Shared
+            (ite (= q_15_s_j q_14_s_p2) s_Shared (select s_CacheState q_15_s_j)))))
+      (forall ((q_16_s_j Proc))
+        (=
+          (select s_CacheData_next q_16_s_j)
+          (ite (= q_16_s_j q_14_s_p2) (select s_CacheData q_13_s_p1) (select s_CacheData q_16_s_j)))))))
+; action: atom_GetX_1
+(define-fun action_4 () Bool
+  (exists ((q_17_s_p2 Proc))
+    (and
+      (and
+        (not (= (select s_CacheState q_17_s_p2) s_Exclusive))
+        (forall ((q_18_s_i Proc))
+          (=> (not (= q_18_s_i q_17_s_p2)) (not (= (select s_CacheState q_18_s_i) s_Exclusive)))))
+      (forall ((q_19_s_j Proc))
+        (=
+          (select s_CacheState_next q_19_s_j)
+          (ite (= q_19_s_j q_17_s_p2) s_Exclusive (select s_CacheState q_19_s_j))))
+      (forall ((q_20_s_j Proc))
+        (=
+          (select s_CacheData_next q_20_s_j)
+          (ite (= q_20_s_j q_17_s_p2) s_Memory (select s_CacheData q_20_s_j))))
+      (= s_Memory_next s_Memory))))
+; action: atom_GetX_2
+(define-fun action_5 () Bool
+  (exists ((q_21_s_p1 Proc) (q_22_s_p2 Proc))
+    (and
+      (not (= q_21_s_p1 q_22_s_p2))
+      (= (select s_CacheState q_21_s_p1) s_Exclusive)
+      (forall ((q_23_s_j Proc))
+        (=
+          (select s_CacheState_next q_23_s_j)
+          (ite
+            (= q_23_s_j q_21_s_p1)
+            s_Invalid
+            (ite (= q_23_s_j q_22_s_p2) s_Exclusive (select s_CacheState q_23_s_j)))))
+      (forall ((q_24_s_j Proc))
+        (=
+          (select s_CacheData_next q_24_s_j)
+          (ite (= q_24_s_j q_22_s_p2) (select s_CacheData q_21_s_p1) (select s_CacheData q_24_s_j))))
+      (= s_Memory_next s_Memory))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_p Proc)) (= (select s_CacheState q_2_s_p) s_Invalid))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Invalid) (= q_1_s_enum s_Shared) (= q_1_s_enum s_Exclusive))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5)
+      (= s_Invalid_next s_Invalid)
+      (= s_Shared_next s_Shared)
+      (= s_Exclusive_next s_Exclusive)
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Invalid) (= q_1_s_enum s_Shared) (= q_1_s_enum s_Exclusive)))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Invalid) (= q_1_s_enum s_Shared) (= q_1_s_enum s_Exclusive))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_p1 Proc) (q_4_s_p2 Proc))
+      (=>
+        (not (= q_3_s_p1 q_4_s_p2))
+        (not
+          (and
+            (= (select s_CacheState q_3_s_p1) s_Exclusive)
+            (= (select s_CacheState q_4_s_p2) s_Exclusive)))))
+    :invar-property
+    0))

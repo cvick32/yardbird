@@ -1,0 +1,4085 @@
+; Generated offline from cubicle/examples/flash_buggy.cub
+; Source SHA-256: 709654417400fb7acba322a0ac6f43d769efc9139dfaf7c626c3450b0b78c9f3
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_cache_5f_state 0)
+(declare-sort s_node_5f_cmd 0)
+(declare-sort s_uni_5f_cmd 0)
+(declare-sort s_inv_5f_cmd 0)
+(declare-sort s_rp_5f_cmd 0)
+(declare-sort s_wb_5f_cmd 0)
+(declare-sort s_shwb_5f_cmd 0)
+(declare-sort s_nakc_5f_cmd 0)
+(declare-fun s_CACHE_5f_I () s_cache_5f_state)
+(declare-fun s_CACHE_5f_I_next () s_cache_5f_state)
+(declare-fun s_CACHE_5f_S () s_cache_5f_state)
+(declare-fun s_CACHE_5f_S_next () s_cache_5f_state)
+(declare-fun s_CACHE_5f_E () s_cache_5f_state)
+(declare-fun s_CACHE_5f_E_next () s_cache_5f_state)
+(declare-fun s_NODE_5f_None () s_node_5f_cmd)
+(declare-fun s_NODE_5f_None_next () s_node_5f_cmd)
+(declare-fun s_NODE_5f_Get () s_node_5f_cmd)
+(declare-fun s_NODE_5f_Get_next () s_node_5f_cmd)
+(declare-fun s_NODE_5f_GetX () s_node_5f_cmd)
+(declare-fun s_NODE_5f_GetX_next () s_node_5f_cmd)
+(declare-fun s_UNI_5f_None () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_None_next () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_Get () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_Get_next () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_GetX () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_GetX_next () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_Put () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_Put_next () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_PutX () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_PutX_next () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_Nak () s_uni_5f_cmd)
+(declare-fun s_UNI_5f_Nak_next () s_uni_5f_cmd)
+(declare-fun s_INV_5f_None () s_inv_5f_cmd)
+(declare-fun s_INV_5f_None_next () s_inv_5f_cmd)
+(declare-fun s_INV_5f_Inv () s_inv_5f_cmd)
+(declare-fun s_INV_5f_Inv_next () s_inv_5f_cmd)
+(declare-fun s_INV_5f_InvAck () s_inv_5f_cmd)
+(declare-fun s_INV_5f_InvAck_next () s_inv_5f_cmd)
+(declare-fun s_RP_5f_None () s_rp_5f_cmd)
+(declare-fun s_RP_5f_None_next () s_rp_5f_cmd)
+(declare-fun s_RP_5f_Replace () s_rp_5f_cmd)
+(declare-fun s_RP_5f_Replace_next () s_rp_5f_cmd)
+(declare-fun s_WB_5f_None () s_wb_5f_cmd)
+(declare-fun s_WB_5f_None_next () s_wb_5f_cmd)
+(declare-fun s_WB_5f_Wb () s_wb_5f_cmd)
+(declare-fun s_WB_5f_Wb_next () s_wb_5f_cmd)
+(declare-fun s_SHWB_5f_None () s_shwb_5f_cmd)
+(declare-fun s_SHWB_5f_None_next () s_shwb_5f_cmd)
+(declare-fun s_SHWB_5f_ShWb () s_shwb_5f_cmd)
+(declare-fun s_SHWB_5f_ShWb_next () s_shwb_5f_cmd)
+(declare-fun s_SHWB_5f_FAck () s_shwb_5f_cmd)
+(declare-fun s_SHWB_5f_FAck_next () s_shwb_5f_cmd)
+(declare-fun s_NAKC_5f_None () s_nakc_5f_cmd)
+(declare-fun s_NAKC_5f_None_next () s_nakc_5f_cmd)
+(declare-fun s_NAKC_5f_Nakc () s_nakc_5f_cmd)
+(declare-fun s_NAKC_5f_Nakc_next () s_nakc_5f_cmd)
+(declare-fun s_Home () Int)
+(declare-fun s_Home_next () Int)
+(declare-fun s_ProcCmd_5f_home () s_node_5f_cmd)
+(declare-fun s_ProcCmd_5f_home_next () s_node_5f_cmd)
+(declare-fun s_InvMarked_5f_home () Bool)
+(declare-fun s_InvMarked_5f_home_next () Bool)
+(declare-fun s_CacheState_5f_home () s_cache_5f_state)
+(declare-fun s_CacheState_5f_home_next () s_cache_5f_state)
+(declare-fun s_UniMsg_5f_Cmd_5f_home () s_uni_5f_cmd)
+(declare-fun s_UniMsg_5f_Cmd_5f_home_next () s_uni_5f_cmd)
+(declare-fun s_UniMsg_5f_Proc_5f_home () Int)
+(declare-fun s_UniMsg_5f_Proc_5f_home_next () Int)
+(declare-fun s_InvMsg_5f_Cmd_5f_home () s_inv_5f_cmd)
+(declare-fun s_InvMsg_5f_Cmd_5f_home_next () s_inv_5f_cmd)
+(declare-fun s_RpMsg_5f_Cmd_5f_home () s_rp_5f_cmd)
+(declare-fun s_RpMsg_5f_Cmd_5f_home_next () s_rp_5f_cmd)
+(declare-fun s_ProcCmd () (Array Proc s_node_5f_cmd))
+(declare-fun s_ProcCmd_next () (Array Proc s_node_5f_cmd))
+(declare-fun s_InvMarked () (Array Proc Bool))
+(declare-fun s_InvMarked_next () (Array Proc Bool))
+(declare-fun s_CacheState () (Array Proc s_cache_5f_state))
+(declare-fun s_CacheState_next () (Array Proc s_cache_5f_state))
+(declare-fun s_Dir_5f_Pending () Bool)
+(declare-fun s_Dir_5f_Pending_next () Bool)
+(declare-fun s_Dir_5f_Local () Bool)
+(declare-fun s_Dir_5f_Local_next () Bool)
+(declare-fun s_Dir_5f_Dirty () Bool)
+(declare-fun s_Dir_5f_Dirty_next () Bool)
+(declare-fun s_Dir_5f_HeadVld () Bool)
+(declare-fun s_Dir_5f_HeadVld_next () Bool)
+(declare-fun s_Dir_5f_HeadPtr () Int)
+(declare-fun s_Dir_5f_HeadPtr_next () Int)
+(declare-fun s_Dir_5f_ShrVld () Bool)
+(declare-fun s_Dir_5f_ShrVld_next () Bool)
+(declare-fun s_Dir_5f_ShrSet () (Array Proc Bool))
+(declare-fun s_Dir_5f_ShrSet_next () (Array Proc Bool))
+(declare-fun s_Dir_5f_InvSet () (Array Proc Bool))
+(declare-fun s_Dir_5f_InvSet_next () (Array Proc Bool))
+(declare-fun s_Dir_5f_ShrSet_5f_home () Bool)
+(declare-fun s_Dir_5f_ShrSet_5f_home_next () Bool)
+(declare-fun s_Dir_5f_InvSet_5f_home () Bool)
+(declare-fun s_Dir_5f_InvSet_5f_home_next () Bool)
+(declare-fun s_UniMsg_5f_Cmd () (Array Proc s_uni_5f_cmd))
+(declare-fun s_UniMsg_5f_Cmd_next () (Array Proc s_uni_5f_cmd))
+(declare-fun s_UniMsg_5f_Proc () (Array Proc Int))
+(declare-fun s_UniMsg_5f_Proc_next () (Array Proc Int))
+(declare-fun s_InvMsg_5f_Cmd () (Array Proc s_inv_5f_cmd))
+(declare-fun s_InvMsg_5f_Cmd_next () (Array Proc s_inv_5f_cmd))
+(declare-fun s_RpMsg_5f_Cmd () (Array Proc s_rp_5f_cmd))
+(declare-fun s_RpMsg_5f_Cmd_next () (Array Proc s_rp_5f_cmd))
+(declare-fun s_WbMsg_5f_Cmd () s_wb_5f_cmd)
+(declare-fun s_WbMsg_5f_Cmd_next () s_wb_5f_cmd)
+(declare-fun s_WbMsg_5f_Proc () Int)
+(declare-fun s_WbMsg_5f_Proc_next () Int)
+(declare-fun s_ShWbMsg_5f_Cmd () s_shwb_5f_cmd)
+(declare-fun s_ShWbMsg_5f_Cmd_next () s_shwb_5f_cmd)
+(declare-fun s_ShWbMsg_5f_Proc () Int)
+(declare-fun s_ShWbMsg_5f_Proc_next () Int)
+(declare-fun s_NakcMsg_5f_Cmd () s_nakc_5f_cmd)
+(declare-fun s_NakcMsg_5f_Cmd_next () s_nakc_5f_cmd)
+(declare-fun s_Collecting () Bool)
+(declare-fun s_Collecting_next () Bool)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: CACHE_I
+(define-fun link_0 () s_cache_5f_state (! s_CACHE_5f_I :next s_CACHE_5f_I_next))
+; source symbol: CACHE_S
+(define-fun link_1 () s_cache_5f_state (! s_CACHE_5f_S :next s_CACHE_5f_S_next))
+; source symbol: CACHE_E
+(define-fun link_2 () s_cache_5f_state (! s_CACHE_5f_E :next s_CACHE_5f_E_next))
+; source symbol: NODE_None
+(define-fun link_3 () s_node_5f_cmd (! s_NODE_5f_None :next s_NODE_5f_None_next))
+; source symbol: NODE_Get
+(define-fun link_4 () s_node_5f_cmd (! s_NODE_5f_Get :next s_NODE_5f_Get_next))
+; source symbol: NODE_GetX
+(define-fun link_5 () s_node_5f_cmd (! s_NODE_5f_GetX :next s_NODE_5f_GetX_next))
+; source symbol: UNI_None
+(define-fun link_6 () s_uni_5f_cmd (! s_UNI_5f_None :next s_UNI_5f_None_next))
+; source symbol: UNI_Get
+(define-fun link_7 () s_uni_5f_cmd (! s_UNI_5f_Get :next s_UNI_5f_Get_next))
+; source symbol: UNI_GetX
+(define-fun link_8 () s_uni_5f_cmd (! s_UNI_5f_GetX :next s_UNI_5f_GetX_next))
+; source symbol: UNI_Put
+(define-fun link_9 () s_uni_5f_cmd (! s_UNI_5f_Put :next s_UNI_5f_Put_next))
+; source symbol: UNI_PutX
+(define-fun link_10 () s_uni_5f_cmd (! s_UNI_5f_PutX :next s_UNI_5f_PutX_next))
+; source symbol: UNI_Nak
+(define-fun link_11 () s_uni_5f_cmd (! s_UNI_5f_Nak :next s_UNI_5f_Nak_next))
+; source symbol: INV_None
+(define-fun link_12 () s_inv_5f_cmd (! s_INV_5f_None :next s_INV_5f_None_next))
+; source symbol: INV_Inv
+(define-fun link_13 () s_inv_5f_cmd (! s_INV_5f_Inv :next s_INV_5f_Inv_next))
+; source symbol: INV_InvAck
+(define-fun link_14 () s_inv_5f_cmd (! s_INV_5f_InvAck :next s_INV_5f_InvAck_next))
+; source symbol: RP_None
+(define-fun link_15 () s_rp_5f_cmd (! s_RP_5f_None :next s_RP_5f_None_next))
+; source symbol: RP_Replace
+(define-fun link_16 () s_rp_5f_cmd (! s_RP_5f_Replace :next s_RP_5f_Replace_next))
+; source symbol: WB_None
+(define-fun link_17 () s_wb_5f_cmd (! s_WB_5f_None :next s_WB_5f_None_next))
+; source symbol: WB_Wb
+(define-fun link_18 () s_wb_5f_cmd (! s_WB_5f_Wb :next s_WB_5f_Wb_next))
+; source symbol: SHWB_None
+(define-fun link_19 () s_shwb_5f_cmd (! s_SHWB_5f_None :next s_SHWB_5f_None_next))
+; source symbol: SHWB_ShWb
+(define-fun link_20 () s_shwb_5f_cmd (! s_SHWB_5f_ShWb :next s_SHWB_5f_ShWb_next))
+; source symbol: SHWB_FAck
+(define-fun link_21 () s_shwb_5f_cmd (! s_SHWB_5f_FAck :next s_SHWB_5f_FAck_next))
+; source symbol: NAKC_None
+(define-fun link_22 () s_nakc_5f_cmd (! s_NAKC_5f_None :next s_NAKC_5f_None_next))
+; source symbol: NAKC_Nakc
+(define-fun link_23 () s_nakc_5f_cmd (! s_NAKC_5f_Nakc :next s_NAKC_5f_Nakc_next))
+; source symbol: Home
+(define-fun link_24 () Int (! s_Home :next s_Home_next))
+; source symbol: ProcCmd_home
+(define-fun link_25 () s_node_5f_cmd (! s_ProcCmd_5f_home :next s_ProcCmd_5f_home_next))
+; source symbol: InvMarked_home
+(define-fun link_26 () Bool (! s_InvMarked_5f_home :next s_InvMarked_5f_home_next))
+; source symbol: CacheState_home
+(define-fun link_27 () s_cache_5f_state (! s_CacheState_5f_home :next s_CacheState_5f_home_next))
+; source symbol: UniMsg_Cmd_home
+(define-fun link_28 () s_uni_5f_cmd (! s_UniMsg_5f_Cmd_5f_home :next s_UniMsg_5f_Cmd_5f_home_next))
+; source symbol: UniMsg_Proc_home
+(define-fun link_29 () Int (! s_UniMsg_5f_Proc_5f_home :next s_UniMsg_5f_Proc_5f_home_next))
+; source symbol: InvMsg_Cmd_home
+(define-fun link_30 () s_inv_5f_cmd (! s_InvMsg_5f_Cmd_5f_home :next s_InvMsg_5f_Cmd_5f_home_next))
+; source symbol: RpMsg_Cmd_home
+(define-fun link_31 () s_rp_5f_cmd (! s_RpMsg_5f_Cmd_5f_home :next s_RpMsg_5f_Cmd_5f_home_next))
+; source symbol: ProcCmd
+(define-fun link_32 () (Array Proc s_node_5f_cmd) (! s_ProcCmd :next s_ProcCmd_next))
+; source symbol: InvMarked
+(define-fun link_33 () (Array Proc Bool) (! s_InvMarked :next s_InvMarked_next))
+; source symbol: CacheState
+(define-fun link_34 () (Array Proc s_cache_5f_state) (! s_CacheState :next s_CacheState_next))
+; source symbol: Dir_Pending
+(define-fun link_35 () Bool (! s_Dir_5f_Pending :next s_Dir_5f_Pending_next))
+; source symbol: Dir_Local
+(define-fun link_36 () Bool (! s_Dir_5f_Local :next s_Dir_5f_Local_next))
+; source symbol: Dir_Dirty
+(define-fun link_37 () Bool (! s_Dir_5f_Dirty :next s_Dir_5f_Dirty_next))
+; source symbol: Dir_HeadVld
+(define-fun link_38 () Bool (! s_Dir_5f_HeadVld :next s_Dir_5f_HeadVld_next))
+; source symbol: Dir_HeadPtr
+(define-fun link_39 () Int (! s_Dir_5f_HeadPtr :next s_Dir_5f_HeadPtr_next))
+; source symbol: Dir_ShrVld
+(define-fun link_40 () Bool (! s_Dir_5f_ShrVld :next s_Dir_5f_ShrVld_next))
+; source symbol: Dir_ShrSet
+(define-fun link_41 () (Array Proc Bool) (! s_Dir_5f_ShrSet :next s_Dir_5f_ShrSet_next))
+; source symbol: Dir_InvSet
+(define-fun link_42 () (Array Proc Bool) (! s_Dir_5f_InvSet :next s_Dir_5f_InvSet_next))
+; source symbol: Dir_ShrSet_home
+(define-fun link_43 () Bool (! s_Dir_5f_ShrSet_5f_home :next s_Dir_5f_ShrSet_5f_home_next))
+; source symbol: Dir_InvSet_home
+(define-fun link_44 () Bool (! s_Dir_5f_InvSet_5f_home :next s_Dir_5f_InvSet_5f_home_next))
+; source symbol: UniMsg_Cmd
+(define-fun link_45 () (Array Proc s_uni_5f_cmd) (! s_UniMsg_5f_Cmd :next s_UniMsg_5f_Cmd_next))
+; source symbol: UniMsg_Proc
+(define-fun link_46 () (Array Proc Int) (! s_UniMsg_5f_Proc :next s_UniMsg_5f_Proc_next))
+; source symbol: InvMsg_Cmd
+(define-fun link_47 () (Array Proc s_inv_5f_cmd) (! s_InvMsg_5f_Cmd :next s_InvMsg_5f_Cmd_next))
+; source symbol: RpMsg_Cmd
+(define-fun link_48 () (Array Proc s_rp_5f_cmd) (! s_RpMsg_5f_Cmd :next s_RpMsg_5f_Cmd_next))
+; source symbol: WbMsg_Cmd
+(define-fun link_49 () s_wb_5f_cmd (! s_WbMsg_5f_Cmd :next s_WbMsg_5f_Cmd_next))
+; source symbol: WbMsg_Proc
+(define-fun link_50 () Int (! s_WbMsg_5f_Proc :next s_WbMsg_5f_Proc_next))
+; source symbol: ShWbMsg_Cmd
+(define-fun link_51 () s_shwb_5f_cmd (! s_ShWbMsg_5f_Cmd :next s_ShWbMsg_5f_Cmd_next))
+; source symbol: ShWbMsg_Proc
+(define-fun link_52 () Int (! s_ShWbMsg_5f_Proc :next s_ShWbMsg_5f_Proc_next))
+; source symbol: NakcMsg_Cmd
+(define-fun link_53 () s_nakc_5f_cmd (! s_NakcMsg_5f_Cmd :next s_NakcMsg_5f_Cmd_next))
+; source symbol: Collecting
+(define-fun link_54 () Bool (! s_Collecting :next s_Collecting_next))
+; source symbol: __proc_rank
+(define-fun link_55 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: pi_Remote_Get
+(define-fun action_0 () Bool
+  (exists ((q_13_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_13_s_src)))
+        (and
+          (= (select s_ProcCmd q_13_s_src) s_NODE_5f_None)
+          (= (select s_CacheState q_13_s_src) s_CACHE_5f_I)))
+      (forall ((q_14_s_index0 Proc))
+        (=
+          (select s_ProcCmd_next q_14_s_index0)
+          (ite (= q_14_s_index0 q_13_s_src) s_NODE_5f_Get (select s_ProcCmd q_14_s_index0))))
+      (forall ((q_15_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_15_s_index0)
+          (ite (= q_15_s_index0 q_13_s_src) s_UNI_5f_Get (select s_UniMsg_5f_Cmd q_15_s_index0))))
+      (forall ((q_16_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_16_s_index0)
+          (ite (= q_16_s_index0 q_13_s_src) s_Home (select s_UniMsg_5f_Proc q_16_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: pi_Local_Get_Get
+(define-fun action_1 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and
+        (= s_CacheState_5f_home s_CACHE_5f_I)
+        (and (= s_Dir_5f_Pending false) (= s_Dir_5f_Dirty true))))
+    (= s_ProcCmd_5f_home_next s_NODE_5f_Get)
+    (= s_Dir_5f_Pending_next true)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_Get)
+    (= s_UniMsg_5f_Proc_5f_home_next s_Dir_5f_HeadPtr)
+    (= s_Collecting_next false)
+    (= s_Home_next s_Home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)))
+; action: pi_Local_Get_Put_InvM
+(define-fun action_2 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and
+        (= s_CacheState_5f_home s_CACHE_5f_I)
+        (and (= s_Dir_5f_Pending false) (and (= s_Dir_5f_Dirty false) (= s_InvMarked_5f_home true)))))
+    (= s_Dir_5f_Local_next true)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_InvMarked_5f_home_next false)
+    (= s_CacheState_5f_home_next s_CACHE_5f_I)
+    (= s_Home_next s_Home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: pi_Local_Get_Put
+(define-fun action_3 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and
+        (= s_CacheState_5f_home s_CACHE_5f_I)
+        (and
+          (= s_Dir_5f_Pending false)
+          (and (= s_Dir_5f_Dirty false) (= s_InvMarked_5f_home false)))))
+    (= s_Dir_5f_Local_next true)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_CacheState_5f_home_next s_CACHE_5f_S)
+    (= s_Home_next s_Home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: pi_Remote_GetX
+(define-fun action_4 () Bool
+  (exists ((q_17_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_17_s_src)))
+        (and
+          (= (select s_ProcCmd q_17_s_src) s_NODE_5f_None)
+          (= (select s_CacheState q_17_s_src) s_CACHE_5f_I)))
+      (forall ((q_18_s_index0 Proc))
+        (=
+          (select s_ProcCmd_next q_18_s_index0)
+          (ite (= q_18_s_index0 q_17_s_src) s_NODE_5f_GetX (select s_ProcCmd q_18_s_index0))))
+      (forall ((q_19_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_19_s_index0)
+          (ite (= q_19_s_index0 q_17_s_src) s_UNI_5f_GetX (select s_UniMsg_5f_Cmd q_19_s_index0))))
+      (forall ((q_20_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_20_s_index0)
+          (ite (= q_20_s_index0 q_17_s_src) s_Home (select s_UniMsg_5f_Proc q_20_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: pi_Local_GetX_GetX
+(define-fun action_5 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and
+        (not (= s_CacheState_5f_home s_CACHE_5f_E))
+        (and (= s_Dir_5f_Pending false) (= s_Dir_5f_Dirty true))))
+    (= s_ProcCmd_5f_home_next s_NODE_5f_GetX)
+    (= s_Dir_5f_Pending_next true)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_GetX)
+    (= s_UniMsg_5f_Proc_5f_home_next s_Dir_5f_HeadPtr)
+    (= s_Collecting_next false)
+    (= s_Home_next s_Home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)))
+; action: pi_Local_GetX_PutX_HeadVld
+(define-fun action_6 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and
+        (not (= s_CacheState_5f_home s_CACHE_5f_E))
+        (and (= s_Dir_5f_Pending false) (and (= s_Dir_5f_Dirty false) (= s_Dir_5f_HeadVld true)))))
+    (= s_Dir_5f_Local_next true)
+    (= s_Dir_5f_Dirty_next true)
+    (= s_Dir_5f_Pending_next true)
+    (= s_Dir_5f_HeadVld_next false)
+    (= s_Dir_5f_ShrVld_next false)
+    (= s_Dir_5f_ShrSet_5f_home_next false)
+    (forall ((q_21_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_21_s_p) false))
+    (= s_Dir_5f_InvSet_5f_home_next false)
+    (forall ((q_22_s_p Proc))
+      (=
+        (select s_Dir_5f_InvSet_next q_22_s_p)
+        (ite
+          (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_22_s_p))
+          true
+          (ite (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_22_s_p) true)) true false))))
+    (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+    (forall ((q_23_s_p Proc))
+      (=
+        (select s_InvMsg_5f_Cmd_next q_23_s_p)
+        (ite
+          (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_23_s_p))
+          s_INV_5f_Inv
+          (ite
+            (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_23_s_p) true))
+            s_INV_5f_Inv
+            s_INV_5f_None))))
+    (= s_Collecting_next true)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_InvMarked_5f_home_next false)
+    (= s_CacheState_5f_home_next s_CACHE_5f_E)
+    (= s_Home_next s_Home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)))
+; action: pi_Local_GetX_PutX
+(define-fun action_7 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and
+        (not (= s_CacheState_5f_home s_CACHE_5f_E))
+        (and (= s_Dir_5f_Pending false) (and (= s_Dir_5f_Dirty false) (= s_Dir_5f_HeadVld false)))))
+    (= s_Dir_5f_Local_next true)
+    (= s_Dir_5f_Dirty_next true)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_InvMarked_5f_home_next false)
+    (= s_CacheState_5f_home_next s_CACHE_5f_E)
+    (= s_Home_next s_Home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: pi_Remote_PutX
+(define-fun action_8 () Bool
+  (exists ((q_24_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_24_s_dst)))
+        (and
+          (= (select s_ProcCmd q_24_s_dst) s_NODE_5f_None)
+          (= (select s_CacheState q_24_s_dst) s_CACHE_5f_E)))
+      (forall ((q_25_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_25_s_index0)
+          (ite (= q_25_s_index0 q_24_s_dst) s_CACHE_5f_I (select s_CacheState q_25_s_index0))))
+      (= s_WbMsg_5f_Cmd_next s_WB_5f_Wb)
+      (= s_WbMsg_5f_Proc_next (select s__5f__5f_proc_5f_rank q_24_s_dst))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: pi_Local_PutX_pending
+(define-fun action_9 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and (= s_CacheState_5f_home s_CACHE_5f_E) (= s_Dir_5f_Pending true)))
+    (= s_CacheState_5f_home_next s_CACHE_5f_I)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: pi_Local_PutX
+(define-fun action_10 () Bool
+  (and
+    (and
+      (= s_ProcCmd_5f_home s_NODE_5f_None)
+      (and (= s_CacheState_5f_home s_CACHE_5f_E) (= s_Dir_5f_Pending false)))
+    (= s_CacheState_5f_home_next s_CACHE_5f_I)
+    (= s_Dir_5f_Local_next false)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: pi_Remote_Replace
+(define-fun action_11 () Bool
+  (exists ((q_26_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_26_s_src)))
+        (and
+          (= (select s_ProcCmd q_26_s_src) s_NODE_5f_None)
+          (= (select s_CacheState q_26_s_src) s_CACHE_5f_S)))
+      (forall ((q_27_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_27_s_index0)
+          (ite (= q_27_s_index0 q_26_s_src) s_CACHE_5f_I (select s_CacheState q_27_s_index0))))
+      (forall ((q_28_s_index0 Proc))
+        (=
+          (select s_RpMsg_5f_Cmd_next q_28_s_index0)
+          (ite (= q_28_s_index0 q_26_s_src) s_RP_5f_Replace (select s_RpMsg_5f_Cmd q_28_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: pi_Local_Replace
+(define-fun action_12 () Bool
+  (and
+    (and (= s_ProcCmd_5f_home s_NODE_5f_None) (= s_CacheState_5f_home s_CACHE_5f_S))
+    (= s_Dir_5f_Local_next false)
+    (= s_CacheState_5f_home_next s_CACHE_5f_I)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Nak
+(define-fun action_13 () Bool
+  (exists ((q_29_s_dst Proc))
+    (and
+      (= (select s_UniMsg_5f_Cmd q_29_s_dst) s_UNI_5f_Nak)
+      (forall ((q_30_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_30_s_index0)
+          (ite (= q_30_s_index0 q_29_s_dst) s_UNI_5f_None (select s_UniMsg_5f_Cmd q_30_s_index0))))
+      (forall ((q_31_s_index0 Proc))
+        (=
+          (select s_ProcCmd_next q_31_s_index0)
+          (ite (= q_31_s_index0 q_29_s_dst) s_NODE_5f_None (select s_ProcCmd q_31_s_index0))))
+      (forall ((q_32_s_index0 Proc))
+        (=
+          (select s_InvMarked_next q_32_s_index0)
+          (ite (= q_32_s_index0 q_29_s_dst) false (select s_InvMarked q_32_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Nak_home
+(define-fun action_14 () Bool
+  (and
+    (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_Nak)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_None)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_InvMarked_5f_home_next false)
+    (= s_Home_next s_Home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Nak_Clear
+(define-fun action_15 () Bool
+  (and
+    (= s_NakcMsg_5f_Cmd s_NAKC_5f_Nakc)
+    (= s_NakcMsg_5f_Cmd_next s_NAKC_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Local_Get_Nak1
+(define-fun action_16 () Bool
+  (exists ((q_33_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_33_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_33_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_33_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_33_s_src) s_RP_5f_Replace))
+              (= s_Dir_5f_Pending true)))))
+      (forall ((q_34_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_34_s_index0)
+          (ite (= q_34_s_index0 q_33_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_34_s_index0))))
+      (forall ((q_35_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_35_s_index0)
+          (ite (= q_35_s_index0 q_33_s_src) s_Home (select s_UniMsg_5f_Proc q_35_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_Get_Nak
+(define-fun action_17 () Bool
+  (exists ((q_36_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_36_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_36_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_36_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_36_s_src) s_RP_5f_Replace))
+              (and
+                (= s_Dir_5f_Dirty true)
+                (and (= s_Dir_5f_Local true) (not (= s_CacheState_5f_home s_CACHE_5f_E))))))))
+      (forall ((q_37_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_37_s_index0)
+          (ite (= q_37_s_index0 q_36_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_37_s_index0))))
+      (forall ((q_38_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_38_s_index0)
+          (ite (= q_38_s_index0 q_36_s_src) s_Home (select s_UniMsg_5f_Proc q_38_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_Get_Nak
+(define-fun action_18 () Bool
+  (exists ((q_39_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_39_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_39_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_39_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_39_s_src) s_RP_5f_Replace))
+              (and
+                (= s_Dir_5f_Dirty true)
+                (and
+                  (= s_Dir_5f_Local false)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_39_s_src))))))))
+      (forall ((q_40_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_40_s_index0)
+          (ite (= q_40_s_index0 q_39_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_40_s_index0))))
+      (forall ((q_41_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_41_s_index0)
+          (ite (= q_41_s_index0 q_39_s_src) s_Home (select s_UniMsg_5f_Proc q_41_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_Get_Get
+(define-fun action_19 () Bool
+  (exists ((q_42_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_42_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_42_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_42_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_42_s_src) s_RP_5f_Replace))
+              (and
+                (= s_Dir_5f_Pending false)
+                (and
+                  (= s_Dir_5f_Dirty true)
+                  (and
+                    (= s_Dir_5f_Local false)
+                    (not (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_42_s_src))))))))))
+      (= s_Dir_5f_Pending_next true)
+      (forall ((q_43_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_43_s_index0)
+          (ite (= q_43_s_index0 q_42_s_src) s_UNI_5f_Get (select s_UniMsg_5f_Cmd q_43_s_index0))))
+      (forall ((q_44_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_44_s_index0)
+          (ite
+            (= q_44_s_index0 q_42_s_src)
+            s_Dir_5f_HeadPtr
+            (select s_UniMsg_5f_Proc q_44_s_index0))))
+      (= s_Collecting_next false)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_Get_Put1_Head
+(define-fun action_20 () Bool
+  (exists ((q_45_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_45_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_45_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_45_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_45_s_src) s_RP_5f_Replace))
+              (and
+                (= s_Dir_5f_Pending false)
+                (and (= s_Dir_5f_Dirty false) (= s_Dir_5f_HeadVld true)))))))
+      (= s_Dir_5f_ShrVld_next true)
+      (forall ((q_46_s_index0 Proc))
+        (=
+          (select s_Dir_5f_ShrSet_next q_46_s_index0)
+          (ite (= q_46_s_index0 q_45_s_src) true (select s_Dir_5f_ShrSet q_46_s_index0))))
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (forall ((q_47_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_47_s_p)
+          (ite (= q_47_s_p q_45_s_src) true (select s_Dir_5f_ShrSet q_47_s_p))))
+      (forall ((q_48_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_48_s_index0)
+          (ite (= q_48_s_index0 q_45_s_src) s_UNI_5f_Put (select s_UniMsg_5f_Cmd q_48_s_index0))))
+      (forall ((q_49_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_49_s_index0)
+          (ite (= q_49_s_index0 q_45_s_src) s_Home (select s_UniMsg_5f_Proc q_49_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_Get_Put1
+(define-fun action_21 () Bool
+  (exists ((q_50_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_50_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_50_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_50_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_50_s_src) s_RP_5f_Replace))
+              (and
+                (= s_Dir_5f_Pending false)
+                (and (= s_Dir_5f_Dirty false) (= s_Dir_5f_HeadVld false)))))))
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_50_s_src))
+      (forall ((q_51_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_51_s_index0)
+          (ite (= q_51_s_index0 q_50_s_src) s_UNI_5f_Put (select s_UniMsg_5f_Cmd q_51_s_index0))))
+      (forall ((q_52_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_52_s_index0)
+          (ite (= q_52_s_index0 q_50_s_src) s_Home (select s_UniMsg_5f_Proc q_52_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_Get_Put2_dirty
+(define-fun action_22 () Bool
+  (exists ((q_53_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_53_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_53_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_53_s_src) s_Home)
+            (and
+              (not (= (select s_RpMsg_5f_Cmd q_53_s_src) s_RP_5f_Replace))
+              (and
+                (= s_Dir_5f_Pending false)
+                (and
+                  (= s_Dir_5f_Dirty true)
+                  (and (= s_Dir_5f_Local true) (= s_CacheState_5f_home s_CACHE_5f_E))))))))
+      (= s_Dir_5f_Dirty_next false)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_53_s_src))
+      (= s_CacheState_5f_home_next s_CACHE_5f_S)
+      (forall ((q_54_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_54_s_index0)
+          (ite (= q_54_s_index0 q_53_s_src) s_UNI_5f_Put (select s_UniMsg_5f_Cmd q_54_s_index0))))
+      (forall ((q_55_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_55_s_index0)
+          (ite (= q_55_s_index0 q_53_s_src) s_Home (select s_UniMsg_5f_Proc q_55_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_Get_Nak
+(define-fun action_23 () Bool
+  (exists ((q_56_s_src Proc) (q_57_s_dst Proc))
+    (and
+      (not (= q_56_s_src q_57_s_dst))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_57_s_dst)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_56_s_src) s_UNI_5f_Get)
+          (and
+            (= (select s_UniMsg_5f_Proc q_56_s_src) (select s__5f__5f_proc_5f_rank q_57_s_dst))
+            (not (= (select s_CacheState q_57_s_dst) s_CACHE_5f_E)))))
+      (forall ((q_58_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_58_s_index0)
+          (ite (= q_58_s_index0 q_56_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_58_s_index0))))
+      (forall ((q_59_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_59_s_index0)
+          (ite
+            (= q_59_s_index0 q_56_s_src)
+            (select s__5f__5f_proc_5f_rank q_57_s_dst)
+            (select s_UniMsg_5f_Proc q_59_s_index0))))
+      (= s_NakcMsg_5f_Cmd_next s_NAKC_5f_Nakc)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_Get_Put
+(define-fun action_24 () Bool
+  (exists ((q_60_s_src Proc) (q_61_s_dst Proc))
+    (and
+      (not (= q_60_s_src q_61_s_dst))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_61_s_dst)))
+        (and
+          (not (= s_Home (select s__5f__5f_proc_5f_rank q_60_s_src)))
+          (and
+            (= (select s_UniMsg_5f_Cmd q_60_s_src) s_UNI_5f_Get)
+            (and
+              (= (select s_UniMsg_5f_Proc q_60_s_src) (select s__5f__5f_proc_5f_rank q_61_s_dst))
+              (= (select s_CacheState q_61_s_dst) s_CACHE_5f_E)))))
+      (forall ((q_62_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_62_s_index0)
+          (ite (= q_62_s_index0 q_61_s_dst) s_CACHE_5f_S (select s_CacheState q_62_s_index0))))
+      (forall ((q_63_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_63_s_index0)
+          (ite (= q_63_s_index0 q_60_s_src) s_UNI_5f_Put (select s_UniMsg_5f_Cmd q_63_s_index0))))
+      (forall ((q_64_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_64_s_index0)
+          (ite
+            (= q_64_s_index0 q_60_s_src)
+            (select s__5f__5f_proc_5f_rank q_61_s_dst)
+            (select s_UniMsg_5f_Proc q_64_s_index0))))
+      (= s_ShWbMsg_5f_Cmd_next s_SHWB_5f_ShWb)
+      (= s_ShWbMsg_5f_Proc_next (select s__5f__5f_proc_5f_rank q_60_s_src))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_Get_Put_home
+(define-fun action_25 () Bool
+  (exists ((q_65_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_65_s_dst)))
+        (and
+          (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_Get)
+          (and
+            (= s_UniMsg_5f_Proc_5f_home (select s__5f__5f_proc_5f_rank q_65_s_dst))
+            (= (select s_CacheState q_65_s_dst) s_CACHE_5f_E))))
+      (forall ((q_66_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_66_s_index0)
+          (ite (= q_66_s_index0 q_65_s_dst) s_CACHE_5f_S (select s_CacheState q_66_s_index0))))
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_Put)
+      (= s_UniMsg_5f_Proc_5f_home_next (select s__5f__5f_proc_5f_rank q_65_s_dst))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_Nak1
+(define-fun action_26 () Bool
+  (exists ((q_67_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_67_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_67_s_src) s_UNI_5f_GetX)
+          (and (= (select s_UniMsg_5f_Proc q_67_s_src) s_Home) (= s_Dir_5f_Pending true))))
+      (forall ((q_68_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_68_s_index0)
+          (ite (= q_68_s_index0 q_67_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_68_s_index0))))
+      (forall ((q_69_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_69_s_index0)
+          (ite (= q_69_s_index0 q_67_s_src) s_Home (select s_UniMsg_5f_Proc q_69_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_Nak
+(define-fun action_27 () Bool
+  (exists ((q_70_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_70_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_70_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_70_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Dirty true)
+              (and (= s_Dir_5f_Local true) (not (= s_CacheState_5f_home s_CACHE_5f_E)))))))
+      (forall ((q_71_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_71_s_index0)
+          (ite (= q_71_s_index0 q_70_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_71_s_index0))))
+      (forall ((q_72_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_72_s_index0)
+          (ite (= q_72_s_index0 q_70_s_src) s_Home (select s_UniMsg_5f_Proc q_72_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_Nak
+(define-fun action_28 () Bool
+  (exists ((q_73_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_73_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_73_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_73_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Dirty true)
+              (and
+                (= s_Dir_5f_Local false)
+                (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_73_s_src)))))))
+      (forall ((q_74_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_74_s_index0)
+          (ite (= q_74_s_index0 q_73_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_74_s_index0))))
+      (forall ((q_75_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_75_s_index0)
+          (ite (= q_75_s_index0 q_73_s_src) s_Home (select s_UniMsg_5f_Proc q_75_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_GetX
+(define-fun action_29 () Bool
+  (exists ((q_76_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_76_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_76_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_76_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty true)
+                (and
+                  (= s_Dir_5f_Local false)
+                  (not (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_76_s_src)))))))))
+      (= s_Dir_5f_Pending_next true)
+      (forall ((q_77_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_77_s_index0)
+          (ite (= q_77_s_index0 q_76_s_src) s_UNI_5f_GetX (select s_UniMsg_5f_Cmd q_77_s_index0))))
+      (forall ((q_78_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_78_s_index0)
+          (ite
+            (= q_78_s_index0 q_76_s_src)
+            s_Dir_5f_HeadPtr
+            (select s_UniMsg_5f_Proc q_78_s_index0))))
+      (= s_Collecting_next false)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_1
+(define-fun action_30 () Bool
+  (exists ((q_79_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_79_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_79_s_src) s_UNI_5f_GetX)
+          (and (= (select s_UniMsg_5f_Proc q_79_s_src) s_Home) (= s_ProcCmd_5f_home s_NODE_5f_Get))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_79_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_80_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_80_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_81_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_81_s_p) false))
+      (forall ((q_82_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_82_s_index0)
+          (ite (= q_82_s_index0 q_79_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_82_s_index0))))
+      (forall ((q_83_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_83_s_index0)
+          (ite (= q_83_s_index0 q_79_s_src) s_Home (select s_UniMsg_5f_Proc q_83_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_InvMarked_5f_home_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_PutX_2
+(define-fun action_31 () Bool
+  (exists ((q_84_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_84_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_84_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_84_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld false)
+                  (and (= s_Dir_5f_Local true) (not (= s_ProcCmd_5f_home s_NODE_5f_Get)))))))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_84_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_85_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_85_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_86_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_86_s_p) false))
+      (forall ((q_87_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_87_s_index0)
+          (ite (= q_87_s_index0 q_84_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_87_s_index0))))
+      (forall ((q_88_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_88_s_index0)
+          (ite (= q_88_s_index0 q_84_s_src) s_Home (select s_UniMsg_5f_Proc q_88_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_PutX_3
+(define-fun action_32 () Bool
+  (exists ((q_89_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_89_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_89_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_89_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and (= s_Dir_5f_HeadVld false) (= s_Dir_5f_Local false)))))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_89_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_90_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_90_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_91_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_91_s_p) false))
+      (forall ((q_92_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_92_s_index0)
+          (ite (= q_92_s_index0 q_89_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_92_s_index0))))
+      (forall ((q_93_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_93_s_index0)
+          (ite (= q_93_s_index0 q_89_s_src) s_Home (select s_UniMsg_5f_Proc q_93_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_PutX_4
+(define-fun action_33 () Bool
+  (exists ((q_94_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_94_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_94_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_94_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_94_s_src))
+                  (and
+                    (= s_Dir_5f_Local true)
+                    (and
+                      (= s_ProcCmd_5f_home s_NODE_5f_Get)
+                      (and
+                        (= s_Dir_5f_ShrSet_5f_home false)
+                        (forall ((q_95_s_p Proc))
+                          (=>
+                            (not (= q_95_s_p q_94_s_src))
+                            (= (select s_Dir_5f_ShrSet q_95_s_p) false))))))))))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_94_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_96_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_96_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_97_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_97_s_p) false))
+      (forall ((q_98_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_98_s_index0)
+          (ite (= q_98_s_index0 q_94_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_98_s_index0))))
+      (forall ((q_99_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_99_s_index0)
+          (ite (= q_99_s_index0 q_94_s_src) s_Home (select s_UniMsg_5f_Proc q_99_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_InvMarked_5f_home_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_PutX_5
+(define-fun action_34 () Bool
+  (exists ((q_100_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_100_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_100_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_100_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_100_s_src))
+                  (and
+                    (= s_Dir_5f_Local true)
+                    (and
+                      (not (= s_ProcCmd_5f_home s_NODE_5f_Get))
+                      (and
+                        (= s_Dir_5f_ShrSet_5f_home false)
+                        (forall ((q_101_s_p Proc))
+                          (=>
+                            (not (= q_101_s_p q_100_s_src))
+                            (= (select s_Dir_5f_ShrSet q_101_s_p) false))))))))))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_100_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_102_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_102_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_103_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_103_s_p) false))
+      (forall ((q_104_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_104_s_index0)
+          (ite (= q_104_s_index0 q_100_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_104_s_index0))))
+      (forall ((q_105_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_105_s_index0)
+          (ite (= q_105_s_index0 q_100_s_src) s_Home (select s_UniMsg_5f_Proc q_105_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_PutX_6
+(define-fun action_35 () Bool
+  (exists ((q_106_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_106_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_106_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_106_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_106_s_src))
+                  (and
+                    (= s_Dir_5f_Local false)
+                    (and
+                      (= s_Dir_5f_ShrSet_5f_home false)
+                      (forall ((q_107_s_p Proc))
+                        (=>
+                          (not (= q_107_s_p q_106_s_src))
+                          (= (select s_Dir_5f_ShrSet q_107_s_p) false)))))))))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_106_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_108_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_108_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_109_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_109_s_p) false))
+      (forall ((q_110_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_110_s_index0)
+          (ite (= q_110_s_index0 q_106_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_110_s_index0))))
+      (forall ((q_111_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_111_s_index0)
+          (ite (= q_111_s_index0 q_106_s_src) s_Home (select s_UniMsg_5f_Proc q_111_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_GetX_PutX_7
+(define-fun action_36 () Bool
+  (exists ((q_112_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_112_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_112_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_112_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (and
+                    (not (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_112_s_src)))
+                    (and (= s_Dir_5f_Local true) (not (= s_ProcCmd_5f_home s_NODE_5f_Get))))))))))
+      (= s_Dir_5f_Pending_next true)
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_112_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_113_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_113_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_114_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_114_s_p)
+          (ite
+            (= q_114_s_p q_112_s_src)
+            false
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_114_s_p) true))
+              true
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_114_s_p)))
+                true
+                false)))))
+      (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+      (forall ((q_115_s_p Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_115_s_p)
+          (ite
+            (= q_115_s_p q_112_s_src)
+            s_INV_5f_None
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_115_s_p) true))
+              s_INV_5f_Inv
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_115_s_p)))
+                s_INV_5f_Inv
+                s_INV_5f_None)))))
+      (forall ((q_116_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_116_s_index0)
+          (ite (= q_116_s_index0 q_112_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_116_s_index0))))
+      (forall ((q_117_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_117_s_index0)
+          (ite (= q_117_s_index0 q_112_s_src) s_Home (select s_UniMsg_5f_Proc q_117_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Collecting_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_8
+(define-fun action_37 () Bool
+  (exists ((q_118_s_src Proc) (q_119_s_pp Proc))
+    (and
+      (not (= q_118_s_src q_119_s_pp))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_118_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_118_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_118_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (and
+                    (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_118_s_src))
+                    (and
+                      (= (select s_Dir_5f_ShrSet q_119_s_pp) true)
+                      (and (= s_Dir_5f_Local true) (not (= s_ProcCmd_5f_home s_NODE_5f_Get)))))))))))
+      (= s_Dir_5f_Pending_next true)
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_118_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_120_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_120_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_121_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_121_s_p)
+          (ite
+            (= q_121_s_p q_118_s_src)
+            false
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_121_s_p) true))
+              true
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_121_s_p)))
+                true
+                false)))))
+      (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+      (forall ((q_122_s_p Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_122_s_p)
+          (ite
+            (= q_122_s_p q_118_s_src)
+            s_INV_5f_None
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_122_s_p) true))
+              s_INV_5f_Inv
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_122_s_p)))
+                s_INV_5f_Inv
+                s_INV_5f_None)))))
+      (forall ((q_123_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_123_s_index0)
+          (ite (= q_123_s_index0 q_118_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_123_s_index0))))
+      (forall ((q_124_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_124_s_index0)
+          (ite (= q_124_s_index0 q_118_s_src) s_Home (select s_UniMsg_5f_Proc q_124_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Collecting_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_8_home
+(define-fun action_38 () Bool
+  (exists ((q_125_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_125_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_125_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_125_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (and
+                    (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_125_s_src))
+                    (and
+                      (= s_Dir_5f_ShrSet_5f_home true)
+                      (and (= s_Dir_5f_Local true) (not (= s_ProcCmd_5f_home s_NODE_5f_Get)))))))))))
+      (= s_Dir_5f_Pending_next true)
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_125_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_126_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_126_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_127_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_127_s_p)
+          (ite
+            (= q_127_s_p q_125_s_src)
+            false
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_127_s_p) true))
+              true
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_127_s_p)))
+                true
+                false)))))
+      (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+      (forall ((q_128_s_p Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_128_s_p)
+          (ite
+            (= q_128_s_p q_125_s_src)
+            s_INV_5f_None
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_128_s_p) true))
+              s_INV_5f_Inv
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_128_s_p)))
+                s_INV_5f_Inv
+                s_INV_5f_None)))))
+      (forall ((q_129_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_129_s_index0)
+          (ite (= q_129_s_index0 q_125_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_129_s_index0))))
+      (forall ((q_130_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_130_s_index0)
+          (ite (= q_130_s_index0 q_125_s_src) s_Home (select s_UniMsg_5f_Proc q_130_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Collecting_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_9
+(define-fun action_39 () Bool
+  (exists ((q_131_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_131_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_131_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_131_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (and
+                    (not (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_131_s_src)))
+                    (= s_Dir_5f_Local false))))))))
+      (= s_Dir_5f_Pending_next true)
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_131_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_132_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_132_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_133_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_133_s_p)
+          (ite
+            (= q_133_s_p q_131_s_src)
+            false
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_133_s_p) true))
+              true
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_133_s_p)))
+                true
+                false)))))
+      (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+      (forall ((q_134_s_p Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_134_s_p)
+          (ite
+            (= q_134_s_p q_131_s_src)
+            s_INV_5f_None
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_134_s_p) true))
+              s_INV_5f_Inv
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_134_s_p)))
+                s_INV_5f_Inv
+                s_INV_5f_None)))))
+      (forall ((q_135_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_135_s_index0)
+          (ite (= q_135_s_index0 q_131_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_135_s_index0))))
+      (forall ((q_136_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_136_s_index0)
+          (ite (= q_136_s_index0 q_131_s_src) s_Home (select s_UniMsg_5f_Proc q_136_s_index0))))
+      (= s_Collecting_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_10
+(define-fun action_40 () Bool
+  (exists ((q_137_s_src Proc) (q_138_s_pp Proc))
+    (and
+      (not (= q_137_s_src q_138_s_pp))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_137_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_137_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_137_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (and
+                    (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_137_s_src))
+                    (and (= (select s_Dir_5f_ShrSet q_138_s_pp) true) (= s_Dir_5f_Local false)))))))))
+      (= s_Dir_5f_Pending_next true)
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_137_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_139_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_139_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_140_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_140_s_p)
+          (ite
+            (= q_140_s_p q_137_s_src)
+            false
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_140_s_p) true))
+              true
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_140_s_p)))
+                true
+                false)))))
+      (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+      (forall ((q_141_s_p Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_141_s_p)
+          (ite
+            (= q_141_s_p q_137_s_src)
+            s_INV_5f_None
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_141_s_p) true))
+              s_INV_5f_Inv
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_141_s_p)))
+                s_INV_5f_Inv
+                s_INV_5f_None)))))
+      (forall ((q_142_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_142_s_index0)
+          (ite (= q_142_s_index0 q_137_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_142_s_index0))))
+      (forall ((q_143_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_143_s_index0)
+          (ite (= q_143_s_index0 q_137_s_src) s_Home (select s_UniMsg_5f_Proc q_143_s_index0))))
+      (= s_Collecting_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_10_home
+(define-fun action_41 () Bool
+  (exists ((q_144_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_144_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_144_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_144_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (and
+                    (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_144_s_src))
+                    (and (= s_Dir_5f_ShrSet_5f_home true) (= s_Dir_5f_Local false)))))))))
+      (= s_Dir_5f_Pending_next true)
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_144_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_145_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_145_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_146_s_p Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_146_s_p)
+          (ite
+            (= q_146_s_p q_144_s_src)
+            false
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_146_s_p) true))
+              true
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_146_s_p)))
+                true
+                false)))))
+      (= s_InvMsg_5f_Cmd_5f_home_next s_INV_5f_None)
+      (forall ((q_147_s_p Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_147_s_p)
+          (ite
+            (= q_147_s_p q_144_s_src)
+            s_INV_5f_None
+            (ite
+              (and (= s_Dir_5f_ShrVld true) (= (select s_Dir_5f_ShrSet q_147_s_p) true))
+              s_INV_5f_Inv
+              (ite
+                (and
+                  (= s_Dir_5f_HeadVld true)
+                  (= s_Dir_5f_HeadPtr (select s__5f__5f_proc_5f_rank q_147_s_p)))
+                s_INV_5f_Inv
+                s_INV_5f_None)))))
+      (forall ((q_148_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_148_s_index0)
+          (ite (= q_148_s_index0 q_144_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_148_s_index0))))
+      (forall ((q_149_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_149_s_index0)
+          (ite (= q_149_s_index0 q_144_s_src) s_Home (select s_UniMsg_5f_Proc q_149_s_index0))))
+      (= s_Collecting_next true)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Local_GetX_PutX_11
+(define-fun action_42 () Bool
+  (exists ((q_150_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_150_s_src)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_150_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_150_s_src) s_Home)
+            (and
+              (= s_Dir_5f_Pending false)
+              (and
+                (= s_Dir_5f_Dirty true)
+                (and (= s_Dir_5f_Local true) (= s_CacheState_5f_home s_CACHE_5f_E)))))))
+      (= s_Dir_5f_Local_next false)
+      (= s_Dir_5f_Dirty_next true)
+      (= s_Dir_5f_HeadVld_next true)
+      (= s_Dir_5f_HeadPtr_next (select s__5f__5f_proc_5f_rank q_150_s_src))
+      (= s_Dir_5f_ShrVld_next false)
+      (= s_Dir_5f_ShrSet_5f_home_next false)
+      (forall ((q_151_s_p Proc)) (= (select s_Dir_5f_ShrSet_next q_151_s_p) false))
+      (= s_Dir_5f_InvSet_5f_home_next false)
+      (forall ((q_152_s_p Proc)) (= (select s_Dir_5f_InvSet_next q_152_s_p) false))
+      (forall ((q_153_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_153_s_index0)
+          (ite (= q_153_s_index0 q_150_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_153_s_index0))))
+      (forall ((q_154_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_154_s_index0)
+          (ite (= q_154_s_index0 q_150_s_src) s_Home (select s_UniMsg_5f_Proc q_154_s_index0))))
+      (= s_CacheState_5f_home_next s_CACHE_5f_I)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_GetX_Nak
+(define-fun action_43 () Bool
+  (exists ((q_155_s_src Proc) (q_156_s_dst Proc))
+    (and
+      (not (= q_155_s_src q_156_s_dst))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_156_s_dst)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_155_s_src) s_UNI_5f_GetX)
+          (and
+            (= (select s_UniMsg_5f_Proc q_155_s_src) (select s__5f__5f_proc_5f_rank q_156_s_dst))
+            (not (= (select s_CacheState q_156_s_dst) s_CACHE_5f_E)))))
+      (forall ((q_157_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_157_s_index0)
+          (ite (= q_157_s_index0 q_155_s_src) s_UNI_5f_Nak (select s_UniMsg_5f_Cmd q_157_s_index0))))
+      (forall ((q_158_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_158_s_index0)
+          (ite
+            (= q_158_s_index0 q_155_s_src)
+            (select s__5f__5f_proc_5f_rank q_156_s_dst)
+            (select s_UniMsg_5f_Proc q_158_s_index0))))
+      (= s_NakcMsg_5f_Cmd_next s_NAKC_5f_Nakc)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_GetX_Nak_home
+(define-fun action_44 () Bool
+  (exists ((q_159_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_159_s_dst)))
+        (and
+          (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_GetX)
+          (and
+            (= s_UniMsg_5f_Proc_5f_home (select s__5f__5f_proc_5f_rank q_159_s_dst))
+            (not (= (select s_CacheState q_159_s_dst) s_CACHE_5f_E)))))
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_Nak)
+      (= s_UniMsg_5f_Proc_5f_home_next (select s__5f__5f_proc_5f_rank q_159_s_dst))
+      (= s_NakcMsg_5f_Cmd_next s_NAKC_5f_Nakc)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_GetX_PutX_home
+(define-fun action_45 () Bool
+  (exists ((q_160_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_160_s_dst)))
+        (and
+          (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_GetX)
+          (and
+            (= s_UniMsg_5f_Proc_5f_home (select s__5f__5f_proc_5f_rank q_160_s_dst))
+            (= (select s_CacheState q_160_s_dst) s_CACHE_5f_E))))
+      (forall ((q_161_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_161_s_index0)
+          (ite (= q_161_s_index0 q_160_s_dst) s_CACHE_5f_I (select s_CacheState q_161_s_index0))))
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_PutX)
+      (= s_UniMsg_5f_Proc_5f_home_next (select s__5f__5f_proc_5f_rank q_160_s_dst))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_GetX_PutX
+(define-fun action_46 () Bool
+  (exists ((q_162_s_src Proc) (q_163_s_dst Proc))
+    (and
+      (not (= q_162_s_src q_163_s_dst))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_163_s_dst)))
+        (and
+          (not (= s_Home (select s__5f__5f_proc_5f_rank q_162_s_src)))
+          (and
+            (= (select s_UniMsg_5f_Cmd q_162_s_src) s_UNI_5f_GetX)
+            (and
+              (= (select s_UniMsg_5f_Proc q_162_s_src) (select s__5f__5f_proc_5f_rank q_163_s_dst))
+              (= (select s_CacheState q_163_s_dst) s_CACHE_5f_E)))))
+      (forall ((q_164_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_164_s_index0)
+          (ite (= q_164_s_index0 q_163_s_dst) s_CACHE_5f_I (select s_CacheState q_164_s_index0))))
+      (forall ((q_165_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_165_s_index0)
+          (ite (= q_165_s_index0 q_162_s_src) s_UNI_5f_PutX (select s_UniMsg_5f_Cmd q_165_s_index0))))
+      (forall ((q_166_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Proc_next q_166_s_index0)
+          (ite
+            (= q_166_s_index0 q_162_s_src)
+            (select s__5f__5f_proc_5f_rank q_163_s_dst)
+            (select s_UniMsg_5f_Proc q_166_s_index0))))
+      (= s_ShWbMsg_5f_Cmd_next s_SHWB_5f_FAck)
+      (= s_ShWbMsg_5f_Proc_next (select s__5f__5f_proc_5f_rank q_162_s_src))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_Put_inv
+(define-fun action_47 () Bool
+  (and
+    (and (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_Put) (= s_InvMarked_5f_home true))
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Dir_5f_Local_next true)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_InvMarked_5f_home_next false)
+    (= s_CacheState_5f_home_next s_CACHE_5f_I)
+    (= s_Home_next s_Home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Local_Put
+(define-fun action_48 () Bool
+  (and
+    (and (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_Put) (= s_InvMarked_5f_home false))
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Dir_5f_Local_next true)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_CacheState_5f_home_next s_CACHE_5f_S)
+    (= s_Home_next s_Home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Remote_Put_inv
+(define-fun action_49 () Bool
+  (exists ((q_167_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_167_s_dst)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_167_s_dst) s_UNI_5f_Put)
+          (= (select s_InvMarked q_167_s_dst) true)))
+      (forall ((q_168_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_168_s_index0)
+          (ite (= q_168_s_index0 q_167_s_dst) s_UNI_5f_None (select s_UniMsg_5f_Cmd q_168_s_index0))))
+      (forall ((q_169_s_index0 Proc))
+        (=
+          (select s_ProcCmd_next q_169_s_index0)
+          (ite (= q_169_s_index0 q_167_s_dst) s_NODE_5f_None (select s_ProcCmd q_169_s_index0))))
+      (forall ((q_170_s_index0 Proc))
+        (=
+          (select s_InvMarked_next q_170_s_index0)
+          (ite (= q_170_s_index0 q_167_s_dst) false (select s_InvMarked q_170_s_index0))))
+      (forall ((q_171_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_171_s_index0)
+          (ite (= q_171_s_index0 q_167_s_dst) s_CACHE_5f_I (select s_CacheState q_171_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Remote_Put
+(define-fun action_50 () Bool
+  (exists ((q_172_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_172_s_dst)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_172_s_dst) s_UNI_5f_Put)
+          (= (select s_InvMarked q_172_s_dst) false)))
+      (forall ((q_173_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_173_s_index0)
+          (ite (= q_173_s_index0 q_172_s_dst) s_UNI_5f_None (select s_UniMsg_5f_Cmd q_173_s_index0))))
+      (forall ((q_174_s_index0 Proc))
+        (=
+          (select s_ProcCmd_next q_174_s_index0)
+          (ite (= q_174_s_index0 q_172_s_dst) s_NODE_5f_None (select s_ProcCmd q_174_s_index0))))
+      (forall ((q_175_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_175_s_index0)
+          (ite (= q_175_s_index0 q_172_s_dst) s_CACHE_5f_S (select s_CacheState q_175_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Local_PutXAcksDone
+(define-fun action_51 () Bool
+  (and
+    (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_PutX)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UNI_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Dir_5f_Local_next true)
+    (= s_Dir_5f_HeadVld_next false)
+    (= s_ProcCmd_5f_home_next s_NODE_5f_None)
+    (= s_InvMarked_5f_home_next false)
+    (= s_CacheState_5f_home_next s_CACHE_5f_E)
+    (= s_Home_next s_Home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Remote_PutX
+(define-fun action_52 () Bool
+  (exists ((q_176_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_176_s_dst)))
+        (and
+          (= (select s_UniMsg_5f_Cmd q_176_s_dst) s_UNI_5f_PutX)
+          (= (select s_ProcCmd q_176_s_dst) s_NODE_5f_GetX)))
+      (forall ((q_177_s_index0 Proc))
+        (=
+          (select s_UniMsg_5f_Cmd_next q_177_s_index0)
+          (ite (= q_177_s_index0 q_176_s_dst) s_UNI_5f_None (select s_UniMsg_5f_Cmd q_177_s_index0))))
+      (forall ((q_178_s_index0 Proc))
+        (=
+          (select s_ProcCmd_next q_178_s_index0)
+          (ite (= q_178_s_index0 q_176_s_dst) s_NODE_5f_None (select s_ProcCmd q_178_s_index0))))
+      (forall ((q_179_s_index0 Proc))
+        (=
+          (select s_InvMarked_next q_179_s_index0)
+          (ite (= q_179_s_index0 q_176_s_dst) false (select s_InvMarked q_179_s_index0))))
+      (forall ((q_180_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_180_s_index0)
+          (ite (= q_180_s_index0 q_176_s_dst) s_CACHE_5f_E (select s_CacheState q_180_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Inv_get
+(define-fun action_53 () Bool
+  (exists ((q_181_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_181_s_dst)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_181_s_dst) s_INV_5f_Inv)
+          (= (select s_ProcCmd q_181_s_dst) s_NODE_5f_Get)))
+      (forall ((q_182_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_182_s_index0)
+          (ite
+            (= q_182_s_index0 q_181_s_dst)
+            s_INV_5f_InvAck
+            (select s_InvMsg_5f_Cmd q_182_s_index0))))
+      (forall ((q_183_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_183_s_index0)
+          (ite (= q_183_s_index0 q_181_s_dst) s_CACHE_5f_I (select s_CacheState q_183_s_index0))))
+      (forall ((q_184_s_index0 Proc))
+        (=
+          (select s_InvMarked_next q_184_s_index0)
+          (ite (= q_184_s_index0 q_181_s_dst) true (select s_InvMarked q_184_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Inv
+(define-fun action_54 () Bool
+  (exists ((q_185_s_dst Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_185_s_dst)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_185_s_dst) s_INV_5f_Inv)
+          (not (= (select s_ProcCmd q_185_s_dst) s_NODE_5f_Get))))
+      (forall ((q_186_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_186_s_index0)
+          (ite
+            (= q_186_s_index0 q_185_s_dst)
+            s_INV_5f_InvAck
+            (select s_InvMsg_5f_Cmd q_186_s_index0))))
+      (forall ((q_187_s_index0 Proc))
+        (=
+          (select s_CacheState_next q_187_s_index0)
+          (ite (= q_187_s_index0 q_185_s_dst) s_CACHE_5f_I (select s_CacheState q_187_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_InvAck_exists
+(define-fun action_55 () Bool
+  (exists ((q_188_s_src Proc) (q_189_s_pp Proc))
+    (and
+      (not (= q_188_s_src q_189_s_pp))
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_188_s_src)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_188_s_src) s_INV_5f_InvAck)
+          (and
+            (= s_Dir_5f_Pending true)
+            (and
+              (= (select s_Dir_5f_InvSet q_188_s_src) true)
+              (= (select s_Dir_5f_InvSet q_189_s_pp) true)))))
+      (forall ((q_190_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_190_s_index0)
+          (ite (= q_190_s_index0 q_188_s_src) s_INV_5f_None (select s_InvMsg_5f_Cmd q_190_s_index0))))
+      (forall ((q_191_s_index0 Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_191_s_index0)
+          (ite (= q_191_s_index0 q_188_s_src) false (select s_Dir_5f_InvSet q_191_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_InvAck_exists_home
+(define-fun action_56 () Bool
+  (exists ((q_192_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_192_s_src)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_192_s_src) s_INV_5f_InvAck)
+          (and
+            (= s_Dir_5f_Pending true)
+            (and (= (select s_Dir_5f_InvSet q_192_s_src) true) (= s_Dir_5f_InvSet_5f_home true)))))
+      (forall ((q_193_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_193_s_index0)
+          (ite (= q_193_s_index0 q_192_s_src) s_INV_5f_None (select s_InvMsg_5f_Cmd q_193_s_index0))))
+      (forall ((q_194_s_index0 Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_194_s_index0)
+          (ite (= q_194_s_index0 q_192_s_src) false (select s_Dir_5f_InvSet q_194_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_InvAck_done_1
+(define-fun action_57 () Bool
+  (exists ((q_195_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_195_s_src)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_195_s_src) s_INV_5f_InvAck)
+          (and
+            (= s_Dir_5f_Pending true)
+            (and
+              (= (select s_Dir_5f_InvSet q_195_s_src) true)
+              (and
+                (= s_Dir_5f_Local true)
+                (and
+                  (= s_Dir_5f_Dirty false)
+                  (and
+                    (= s_Dir_5f_InvSet_5f_home false)
+                    (forall ((q_196_s_p Proc))
+                      (=>
+                        (not (= q_196_s_p q_195_s_src))
+                        (= (select s_Dir_5f_InvSet q_196_s_p) false))))))))))
+      (forall ((q_197_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_197_s_index0)
+          (ite (= q_197_s_index0 q_195_s_src) s_INV_5f_None (select s_InvMsg_5f_Cmd q_197_s_index0))))
+      (forall ((q_198_s_index0 Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_198_s_index0)
+          (ite (= q_198_s_index0 q_195_s_src) false (select s_Dir_5f_InvSet q_198_s_index0))))
+      (= s_Dir_5f_Pending_next false)
+      (= s_Dir_5f_Local_next false)
+      (= s_Collecting_next false)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_InvAck_done_2
+(define-fun action_58 () Bool
+  (exists ((q_199_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_199_s_src)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_199_s_src) s_INV_5f_InvAck)
+          (and
+            (= s_Dir_5f_Pending true)
+            (and
+              (= (select s_Dir_5f_InvSet q_199_s_src) true)
+              (and
+                (= s_Dir_5f_Local false)
+                (and
+                  (= s_Dir_5f_InvSet_5f_home false)
+                  (forall ((q_200_s_p Proc))
+                    (=>
+                      (not (= q_200_s_p q_199_s_src))
+                      (= (select s_Dir_5f_InvSet q_200_s_p) false)))))))))
+      (forall ((q_201_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_201_s_index0)
+          (ite (= q_201_s_index0 q_199_s_src) s_INV_5f_None (select s_InvMsg_5f_Cmd q_201_s_index0))))
+      (forall ((q_202_s_index0 Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_202_s_index0)
+          (ite (= q_202_s_index0 q_199_s_src) false (select s_Dir_5f_InvSet q_202_s_index0))))
+      (= s_Dir_5f_Pending_next false)
+      (= s_Collecting_next false)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_InvAck_done_3
+(define-fun action_59 () Bool
+  (exists ((q_203_s_src Proc))
+    (and
+      (and
+        (not (= s_Home (select s__5f__5f_proc_5f_rank q_203_s_src)))
+        (and
+          (= (select s_InvMsg_5f_Cmd q_203_s_src) s_INV_5f_InvAck)
+          (and
+            (= s_Dir_5f_Pending true)
+            (and
+              (= (select s_Dir_5f_InvSet q_203_s_src) true)
+              (and
+                (= s_Dir_5f_Dirty true)
+                (and
+                  (= s_Dir_5f_InvSet_5f_home false)
+                  (forall ((q_204_s_p Proc))
+                    (=>
+                      (not (= q_204_s_p q_203_s_src))
+                      (= (select s_Dir_5f_InvSet q_204_s_p) false)))))))))
+      (forall ((q_205_s_index0 Proc))
+        (=
+          (select s_InvMsg_5f_Cmd_next q_205_s_index0)
+          (ite (= q_205_s_index0 q_203_s_src) s_INV_5f_None (select s_InvMsg_5f_Cmd q_205_s_index0))))
+      (forall ((q_206_s_index0 Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_206_s_index0)
+          (ite (= q_206_s_index0 q_203_s_src) false (select s_Dir_5f_InvSet q_206_s_index0))))
+      (= s_Dir_5f_Pending_next false)
+      (= s_Collecting_next false)
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd))))
+; action: ni_Wb
+(define-fun action_60 () Bool
+  (and
+    (= s_WbMsg_5f_Cmd s_WB_5f_Wb)
+    (= s_WbMsg_5f_Cmd_next s_WB_5f_None)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Dir_5f_HeadVld_next false)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_FAck_dirty
+(define-fun action_61 () Bool
+  (and
+    (and (= s_ShWbMsg_5f_Cmd s_SHWB_5f_FAck) (= s_Dir_5f_Dirty true))
+    (= s_ShWbMsg_5f_Cmd_next s_SHWB_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Dir_5f_HeadPtr_next s_ShWbMsg_5f_Proc)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_FAck
+(define-fun action_62 () Bool
+  (and
+    (and (= s_ShWbMsg_5f_Cmd s_SHWB_5f_FAck) (= s_Dir_5f_Dirty false))
+    (= s_ShWbMsg_5f_Cmd_next s_SHWB_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_ShWb_home
+(define-fun action_63 () Bool
+  (and
+    (and (= s_ShWbMsg_5f_Cmd s_SHWB_5f_ShWb) (= s_ShWbMsg_5f_Proc s_Home))
+    (= s_ShWbMsg_5f_Cmd_next s_SHWB_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Dir_5f_ShrVld_next true)
+    (= s_Dir_5f_ShrSet_5f_home_next true)
+    (= s_Dir_5f_InvSet_5f_home_next true)
+    (forall ((q_207_s_p Proc))
+      (= (select s_Dir_5f_InvSet_next q_207_s_p) (select s_Dir_5f_ShrSet q_207_s_p)))
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_ShWb
+(define-fun action_64 () Bool
+  (and
+    (and (= s_ShWbMsg_5f_Cmd s_SHWB_5f_ShWb) (not (= s_ShWbMsg_5f_Proc s_Home)))
+    (= s_ShWbMsg_5f_Cmd_next s_SHWB_5f_None)
+    (= s_Dir_5f_Pending_next false)
+    (= s_Dir_5f_Dirty_next false)
+    (= s_Dir_5f_ShrVld_next true)
+    (forall ((q_208_s_p Proc))
+      (=
+        (select s_Dir_5f_ShrSet_next q_208_s_p)
+        (ite
+          (= (select s__5f__5f_proc_5f_rank q_208_s_p) s_ShWbMsg_5f_Proc)
+          true
+          (select s_Dir_5f_ShrSet q_208_s_p))))
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (forall ((q_209_s_p Proc))
+      (=
+        (select s_Dir_5f_InvSet_next q_209_s_p)
+        (ite
+          (= (select s__5f__5f_proc_5f_rank q_209_s_p) s_ShWbMsg_5f_Proc)
+          true
+          (select s_Dir_5f_ShrSet q_209_s_p))))
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Replace_shrvld
+(define-fun action_65 () Bool
+  (exists ((q_210_s_src Proc))
+    (and
+      (and (= (select s_RpMsg_5f_Cmd q_210_s_src) s_RP_5f_Replace) (= s_Dir_5f_ShrVld true))
+      (forall ((q_211_s_index0 Proc))
+        (=
+          (select s_RpMsg_5f_Cmd_next q_211_s_index0)
+          (ite (= q_211_s_index0 q_210_s_src) s_RP_5f_None (select s_RpMsg_5f_Cmd q_211_s_index0))))
+      (forall ((q_212_s_index0 Proc))
+        (=
+          (select s_Dir_5f_ShrSet_next q_212_s_index0)
+          (ite (= q_212_s_index0 q_210_s_src) false (select s_Dir_5f_ShrSet q_212_s_index0))))
+      (forall ((q_213_s_index0 Proc))
+        (=
+          (select s_Dir_5f_InvSet_next q_213_s_index0)
+          (ite (= q_213_s_index0 q_210_s_src) false (select s_Dir_5f_InvSet q_213_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Replace_shrvld_home
+(define-fun action_66 () Bool
+  (and
+    (and (= s_RpMsg_5f_Cmd_5f_home s_RP_5f_Replace) (= s_Dir_5f_ShrVld true))
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RP_5f_None)
+    (= s_Dir_5f_ShrSet_5f_home_next false)
+    (= s_Dir_5f_InvSet_5f_home_next false)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+; action: ni_Replace
+(define-fun action_67 () Bool
+  (exists ((q_214_s_src Proc))
+    (and
+      (and (= (select s_RpMsg_5f_Cmd q_214_s_src) s_RP_5f_Replace) (= s_Dir_5f_ShrVld false))
+      (forall ((q_215_s_index0 Proc))
+        (=
+          (select s_RpMsg_5f_Cmd_next q_215_s_index0)
+          (ite (= q_215_s_index0 q_214_s_src) s_RP_5f_None (select s_RpMsg_5f_Cmd q_215_s_index0))))
+      (= s_Home_next s_Home)
+      (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+      (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+      (= s_CacheState_5f_home_next s_CacheState_5f_home)
+      (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+      (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+      (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+      (= s_RpMsg_5f_Cmd_5f_home_next s_RpMsg_5f_Cmd_5f_home)
+      (= s_ProcCmd_next s_ProcCmd)
+      (= s_InvMarked_next s_InvMarked)
+      (= s_CacheState_next s_CacheState)
+      (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+      (= s_Dir_5f_Local_next s_Dir_5f_Local)
+      (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+      (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+      (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+      (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+      (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+      (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+      (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+      (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+      (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+      (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+      (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+      (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+      (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+      (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+      (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+      (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+      (= s_Collecting_next s_Collecting))))
+; action: ni_Replace_home
+(define-fun action_68 () Bool
+  (and
+    (and (= s_RpMsg_5f_Cmd_5f_home s_RP_5f_Replace) (= s_Dir_5f_ShrVld false))
+    (= s_RpMsg_5f_Cmd_5f_home_next s_RP_5f_None)
+    (= s_Home_next s_Home)
+    (= s_ProcCmd_5f_home_next s_ProcCmd_5f_home)
+    (= s_InvMarked_5f_home_next s_InvMarked_5f_home)
+    (= s_CacheState_5f_home_next s_CacheState_5f_home)
+    (= s_UniMsg_5f_Cmd_5f_home_next s_UniMsg_5f_Cmd_5f_home)
+    (= s_UniMsg_5f_Proc_5f_home_next s_UniMsg_5f_Proc_5f_home)
+    (= s_InvMsg_5f_Cmd_5f_home_next s_InvMsg_5f_Cmd_5f_home)
+    (= s_ProcCmd_next s_ProcCmd)
+    (= s_InvMarked_next s_InvMarked)
+    (= s_CacheState_next s_CacheState)
+    (= s_Dir_5f_Pending_next s_Dir_5f_Pending)
+    (= s_Dir_5f_Local_next s_Dir_5f_Local)
+    (= s_Dir_5f_Dirty_next s_Dir_5f_Dirty)
+    (= s_Dir_5f_HeadVld_next s_Dir_5f_HeadVld)
+    (= s_Dir_5f_HeadPtr_next s_Dir_5f_HeadPtr)
+    (= s_Dir_5f_ShrVld_next s_Dir_5f_ShrVld)
+    (= s_Dir_5f_ShrSet_next s_Dir_5f_ShrSet)
+    (= s_Dir_5f_InvSet_next s_Dir_5f_InvSet)
+    (= s_Dir_5f_ShrSet_5f_home_next s_Dir_5f_ShrSet_5f_home)
+    (= s_Dir_5f_InvSet_5f_home_next s_Dir_5f_InvSet_5f_home)
+    (= s_UniMsg_5f_Cmd_next s_UniMsg_5f_Cmd)
+    (= s_UniMsg_5f_Proc_next s_UniMsg_5f_Proc)
+    (= s_InvMsg_5f_Cmd_next s_InvMsg_5f_Cmd)
+    (= s_RpMsg_5f_Cmd_next s_RpMsg_5f_Cmd)
+    (= s_WbMsg_5f_Cmd_next s_WbMsg_5f_Cmd)
+    (= s_WbMsg_5f_Proc_next s_WbMsg_5f_Proc)
+    (= s_ShWbMsg_5f_Cmd_next s_ShWbMsg_5f_Cmd)
+    (= s_ShWbMsg_5f_Proc_next s_ShWbMsg_5f_Proc)
+    (= s_NakcMsg_5f_Cmd_next s_NakcMsg_5f_Cmd)
+    (= s_Collecting_next s_Collecting)))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_9_s_p Proc))
+        (and
+          (not (= s_Home (select s__5f__5f_proc_5f_rank q_9_s_p)))
+          (and
+            (= s_Dir_5f_Pending false)
+            (and
+              (= s_Dir_5f_Local false)
+              (and
+                (= s_Dir_5f_Dirty false)
+                (and
+                  (= s_Dir_5f_HeadVld false)
+                  (and
+                    (= s_Dir_5f_ShrVld false)
+                    (and
+                      (= s_WbMsg_5f_Cmd s_WB_5f_None)
+                      (and
+                        (= s_ShWbMsg_5f_Cmd s_SHWB_5f_None)
+                        (and
+                          (= s_NakcMsg_5f_Cmd s_NAKC_5f_None)
+                          (and
+                            (= (select s_ProcCmd q_9_s_p) s_NODE_5f_None)
+                            (and
+                              (= (select s_InvMarked q_9_s_p) false)
+                              (and
+                                (= (select s_CacheState q_9_s_p) s_CACHE_5f_I)
+                                (and
+                                  (= (select s_Dir_5f_ShrSet q_9_s_p) false)
+                                  (and
+                                    (= (select s_Dir_5f_InvSet q_9_s_p) false)
+                                    (and
+                                      (= (select s_UniMsg_5f_Cmd q_9_s_p) s_UNI_5f_None)
+                                      (and
+                                        (= (select s_InvMsg_5f_Cmd q_9_s_p) s_INV_5f_None)
+                                        (and
+                                          (= (select s_RpMsg_5f_Cmd q_9_s_p) s_RP_5f_None)
+                                          (and
+                                            (= s_ProcCmd_5f_home s_NODE_5f_None)
+                                            (and
+                                              (= s_InvMarked_5f_home false)
+                                              (and
+                                                (= s_CacheState_5f_home s_CACHE_5f_I)
+                                                (and
+                                                  (= s_Dir_5f_ShrSet_5f_home false)
+                                                  (and
+                                                    (= s_Dir_5f_InvSet_5f_home false)
+                                                    (and
+                                                      (= s_UniMsg_5f_Cmd_5f_home s_UNI_5f_None)
+                                                      (and
+                                                        (= s_InvMsg_5f_Cmd_5f_home s_INV_5f_None)
+                                                        (and
+                                                          (= s_RpMsg_5f_Cmd_5f_home s_RP_5f_None)
+                                                          (= s_Collecting false)))))))))))))))))))))))))))
+      (and
+        (not (= s_CACHE_5f_I s_CACHE_5f_S))
+        (not (= s_CACHE_5f_I s_CACHE_5f_E))
+        (not (= s_CACHE_5f_S s_CACHE_5f_E)))
+      (forall ((q_1_s_enum s_cache_5f_state))
+        (or (= q_1_s_enum s_CACHE_5f_I) (= q_1_s_enum s_CACHE_5f_S) (= q_1_s_enum s_CACHE_5f_E)))
+      (and
+        (not (= s_NODE_5f_None s_NODE_5f_Get))
+        (not (= s_NODE_5f_None s_NODE_5f_GetX))
+        (not (= s_NODE_5f_Get s_NODE_5f_GetX)))
+      (forall ((q_2_s_enum s_node_5f_cmd))
+        (or
+          (= q_2_s_enum s_NODE_5f_None)
+          (= q_2_s_enum s_NODE_5f_Get)
+          (= q_2_s_enum s_NODE_5f_GetX)))
+      (and
+        (not (= s_UNI_5f_None s_UNI_5f_Get))
+        (not (= s_UNI_5f_None s_UNI_5f_GetX))
+        (not (= s_UNI_5f_None s_UNI_5f_Put))
+        (not (= s_UNI_5f_None s_UNI_5f_PutX))
+        (not (= s_UNI_5f_None s_UNI_5f_Nak))
+        (not (= s_UNI_5f_Get s_UNI_5f_GetX))
+        (not (= s_UNI_5f_Get s_UNI_5f_Put))
+        (not (= s_UNI_5f_Get s_UNI_5f_PutX))
+        (not (= s_UNI_5f_Get s_UNI_5f_Nak))
+        (not (= s_UNI_5f_GetX s_UNI_5f_Put))
+        (not (= s_UNI_5f_GetX s_UNI_5f_PutX))
+        (not (= s_UNI_5f_GetX s_UNI_5f_Nak))
+        (not (= s_UNI_5f_Put s_UNI_5f_PutX))
+        (not (= s_UNI_5f_Put s_UNI_5f_Nak))
+        (not (= s_UNI_5f_PutX s_UNI_5f_Nak)))
+      (forall ((q_3_s_enum s_uni_5f_cmd))
+        (or
+          (= q_3_s_enum s_UNI_5f_None)
+          (= q_3_s_enum s_UNI_5f_Get)
+          (= q_3_s_enum s_UNI_5f_GetX)
+          (= q_3_s_enum s_UNI_5f_Put)
+          (= q_3_s_enum s_UNI_5f_PutX)
+          (= q_3_s_enum s_UNI_5f_Nak)))
+      (and
+        (not (= s_INV_5f_None s_INV_5f_Inv))
+        (not (= s_INV_5f_None s_INV_5f_InvAck))
+        (not (= s_INV_5f_Inv s_INV_5f_InvAck)))
+      (forall ((q_4_s_enum s_inv_5f_cmd))
+        (or (= q_4_s_enum s_INV_5f_None) (= q_4_s_enum s_INV_5f_Inv) (= q_4_s_enum s_INV_5f_InvAck)))
+      (not (= s_RP_5f_None s_RP_5f_Replace))
+      (forall ((q_5_s_enum s_rp_5f_cmd))
+        (or (= q_5_s_enum s_RP_5f_None) (= q_5_s_enum s_RP_5f_Replace)))
+      (not (= s_WB_5f_None s_WB_5f_Wb))
+      (forall ((q_6_s_enum s_wb_5f_cmd)) (or (= q_6_s_enum s_WB_5f_None) (= q_6_s_enum s_WB_5f_Wb)))
+      (and
+        (not (= s_SHWB_5f_None s_SHWB_5f_ShWb))
+        (not (= s_SHWB_5f_None s_SHWB_5f_FAck))
+        (not (= s_SHWB_5f_ShWb s_SHWB_5f_FAck)))
+      (forall ((q_7_s_enum s_shwb_5f_cmd))
+        (or
+          (= q_7_s_enum s_SHWB_5f_None)
+          (= q_7_s_enum s_SHWB_5f_ShWb)
+          (= q_7_s_enum s_SHWB_5f_FAck)))
+      (not (= s_NAKC_5f_None s_NAKC_5f_Nakc))
+      (forall ((q_8_s_enum s_nakc_5f_cmd))
+        (or (= q_8_s_enum s_NAKC_5f_None) (= q_8_s_enum s_NAKC_5f_Nakc)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13
+        action_14
+        action_15
+        action_16
+        action_17
+        action_18
+        action_19
+        action_20
+        action_21
+        action_22
+        action_23
+        action_24
+        action_25
+        action_26
+        action_27
+        action_28
+        action_29
+        action_30
+        action_31
+        action_32
+        action_33
+        action_34
+        action_35
+        action_36
+        action_37
+        action_38
+        action_39
+        action_40
+        action_41
+        action_42
+        action_43
+        action_44
+        action_45
+        action_46
+        action_47
+        action_48
+        action_49
+        action_50
+        action_51
+        action_52
+        action_53
+        action_54
+        action_55
+        action_56
+        action_57
+        action_58
+        action_59
+        action_60
+        action_61
+        action_62
+        action_63
+        action_64
+        action_65
+        action_66
+        action_67
+        action_68)
+      (= s_CACHE_5f_I_next s_CACHE_5f_I)
+      (= s_CACHE_5f_S_next s_CACHE_5f_S)
+      (= s_CACHE_5f_E_next s_CACHE_5f_E)
+      (= s_NODE_5f_None_next s_NODE_5f_None)
+      (= s_NODE_5f_Get_next s_NODE_5f_Get)
+      (= s_NODE_5f_GetX_next s_NODE_5f_GetX)
+      (= s_UNI_5f_None_next s_UNI_5f_None)
+      (= s_UNI_5f_Get_next s_UNI_5f_Get)
+      (= s_UNI_5f_GetX_next s_UNI_5f_GetX)
+      (= s_UNI_5f_Put_next s_UNI_5f_Put)
+      (= s_UNI_5f_PutX_next s_UNI_5f_PutX)
+      (= s_UNI_5f_Nak_next s_UNI_5f_Nak)
+      (= s_INV_5f_None_next s_INV_5f_None)
+      (= s_INV_5f_Inv_next s_INV_5f_Inv)
+      (= s_INV_5f_InvAck_next s_INV_5f_InvAck)
+      (= s_RP_5f_None_next s_RP_5f_None)
+      (= s_RP_5f_Replace_next s_RP_5f_Replace)
+      (= s_WB_5f_None_next s_WB_5f_None)
+      (= s_WB_5f_Wb_next s_WB_5f_Wb)
+      (= s_SHWB_5f_None_next s_SHWB_5f_None)
+      (= s_SHWB_5f_ShWb_next s_SHWB_5f_ShWb)
+      (= s_SHWB_5f_FAck_next s_SHWB_5f_FAck)
+      (= s_NAKC_5f_None_next s_NAKC_5f_None)
+      (= s_NAKC_5f_Nakc_next s_NAKC_5f_Nakc)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_CACHE_5f_I s_CACHE_5f_S))
+        (not (= s_CACHE_5f_I s_CACHE_5f_E))
+        (not (= s_CACHE_5f_S s_CACHE_5f_E)))
+      (forall ((q_1_s_enum s_cache_5f_state))
+        (or (= q_1_s_enum s_CACHE_5f_I) (= q_1_s_enum s_CACHE_5f_S) (= q_1_s_enum s_CACHE_5f_E)))
+      (and
+        (not (= s_NODE_5f_None s_NODE_5f_Get))
+        (not (= s_NODE_5f_None s_NODE_5f_GetX))
+        (not (= s_NODE_5f_Get s_NODE_5f_GetX)))
+      (forall ((q_2_s_enum s_node_5f_cmd))
+        (or
+          (= q_2_s_enum s_NODE_5f_None)
+          (= q_2_s_enum s_NODE_5f_Get)
+          (= q_2_s_enum s_NODE_5f_GetX)))
+      (and
+        (not (= s_UNI_5f_None s_UNI_5f_Get))
+        (not (= s_UNI_5f_None s_UNI_5f_GetX))
+        (not (= s_UNI_5f_None s_UNI_5f_Put))
+        (not (= s_UNI_5f_None s_UNI_5f_PutX))
+        (not (= s_UNI_5f_None s_UNI_5f_Nak))
+        (not (= s_UNI_5f_Get s_UNI_5f_GetX))
+        (not (= s_UNI_5f_Get s_UNI_5f_Put))
+        (not (= s_UNI_5f_Get s_UNI_5f_PutX))
+        (not (= s_UNI_5f_Get s_UNI_5f_Nak))
+        (not (= s_UNI_5f_GetX s_UNI_5f_Put))
+        (not (= s_UNI_5f_GetX s_UNI_5f_PutX))
+        (not (= s_UNI_5f_GetX s_UNI_5f_Nak))
+        (not (= s_UNI_5f_Put s_UNI_5f_PutX))
+        (not (= s_UNI_5f_Put s_UNI_5f_Nak))
+        (not (= s_UNI_5f_PutX s_UNI_5f_Nak)))
+      (forall ((q_3_s_enum s_uni_5f_cmd))
+        (or
+          (= q_3_s_enum s_UNI_5f_None)
+          (= q_3_s_enum s_UNI_5f_Get)
+          (= q_3_s_enum s_UNI_5f_GetX)
+          (= q_3_s_enum s_UNI_5f_Put)
+          (= q_3_s_enum s_UNI_5f_PutX)
+          (= q_3_s_enum s_UNI_5f_Nak)))
+      (and
+        (not (= s_INV_5f_None s_INV_5f_Inv))
+        (not (= s_INV_5f_None s_INV_5f_InvAck))
+        (not (= s_INV_5f_Inv s_INV_5f_InvAck)))
+      (forall ((q_4_s_enum s_inv_5f_cmd))
+        (or (= q_4_s_enum s_INV_5f_None) (= q_4_s_enum s_INV_5f_Inv) (= q_4_s_enum s_INV_5f_InvAck)))
+      (not (= s_RP_5f_None s_RP_5f_Replace))
+      (forall ((q_5_s_enum s_rp_5f_cmd))
+        (or (= q_5_s_enum s_RP_5f_None) (= q_5_s_enum s_RP_5f_Replace)))
+      (not (= s_WB_5f_None s_WB_5f_Wb))
+      (forall ((q_6_s_enum s_wb_5f_cmd)) (or (= q_6_s_enum s_WB_5f_None) (= q_6_s_enum s_WB_5f_Wb)))
+      (and
+        (not (= s_SHWB_5f_None s_SHWB_5f_ShWb))
+        (not (= s_SHWB_5f_None s_SHWB_5f_FAck))
+        (not (= s_SHWB_5f_ShWb s_SHWB_5f_FAck)))
+      (forall ((q_7_s_enum s_shwb_5f_cmd))
+        (or
+          (= q_7_s_enum s_SHWB_5f_None)
+          (= q_7_s_enum s_SHWB_5f_ShWb)
+          (= q_7_s_enum s_SHWB_5f_FAck)))
+      (not (= s_NAKC_5f_None s_NAKC_5f_Nakc))
+      (forall ((q_8_s_enum s_nakc_5f_cmd))
+        (or (= q_8_s_enum s_NAKC_5f_None) (= q_8_s_enum s_NAKC_5f_Nakc)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_CACHE_5f_I s_CACHE_5f_S))
+        (not (= s_CACHE_5f_I s_CACHE_5f_E))
+        (not (= s_CACHE_5f_S s_CACHE_5f_E)))
+      (forall ((q_1_s_enum s_cache_5f_state))
+        (or (= q_1_s_enum s_CACHE_5f_I) (= q_1_s_enum s_CACHE_5f_S) (= q_1_s_enum s_CACHE_5f_E)))
+      (and
+        (not (= s_NODE_5f_None s_NODE_5f_Get))
+        (not (= s_NODE_5f_None s_NODE_5f_GetX))
+        (not (= s_NODE_5f_Get s_NODE_5f_GetX)))
+      (forall ((q_2_s_enum s_node_5f_cmd))
+        (or
+          (= q_2_s_enum s_NODE_5f_None)
+          (= q_2_s_enum s_NODE_5f_Get)
+          (= q_2_s_enum s_NODE_5f_GetX)))
+      (and
+        (not (= s_UNI_5f_None s_UNI_5f_Get))
+        (not (= s_UNI_5f_None s_UNI_5f_GetX))
+        (not (= s_UNI_5f_None s_UNI_5f_Put))
+        (not (= s_UNI_5f_None s_UNI_5f_PutX))
+        (not (= s_UNI_5f_None s_UNI_5f_Nak))
+        (not (= s_UNI_5f_Get s_UNI_5f_GetX))
+        (not (= s_UNI_5f_Get s_UNI_5f_Put))
+        (not (= s_UNI_5f_Get s_UNI_5f_PutX))
+        (not (= s_UNI_5f_Get s_UNI_5f_Nak))
+        (not (= s_UNI_5f_GetX s_UNI_5f_Put))
+        (not (= s_UNI_5f_GetX s_UNI_5f_PutX))
+        (not (= s_UNI_5f_GetX s_UNI_5f_Nak))
+        (not (= s_UNI_5f_Put s_UNI_5f_PutX))
+        (not (= s_UNI_5f_Put s_UNI_5f_Nak))
+        (not (= s_UNI_5f_PutX s_UNI_5f_Nak)))
+      (forall ((q_3_s_enum s_uni_5f_cmd))
+        (or
+          (= q_3_s_enum s_UNI_5f_None)
+          (= q_3_s_enum s_UNI_5f_Get)
+          (= q_3_s_enum s_UNI_5f_GetX)
+          (= q_3_s_enum s_UNI_5f_Put)
+          (= q_3_s_enum s_UNI_5f_PutX)
+          (= q_3_s_enum s_UNI_5f_Nak)))
+      (and
+        (not (= s_INV_5f_None s_INV_5f_Inv))
+        (not (= s_INV_5f_None s_INV_5f_InvAck))
+        (not (= s_INV_5f_Inv s_INV_5f_InvAck)))
+      (forall ((q_4_s_enum s_inv_5f_cmd))
+        (or (= q_4_s_enum s_INV_5f_None) (= q_4_s_enum s_INV_5f_Inv) (= q_4_s_enum s_INV_5f_InvAck)))
+      (not (= s_RP_5f_None s_RP_5f_Replace))
+      (forall ((q_5_s_enum s_rp_5f_cmd))
+        (or (= q_5_s_enum s_RP_5f_None) (= q_5_s_enum s_RP_5f_Replace)))
+      (not (= s_WB_5f_None s_WB_5f_Wb))
+      (forall ((q_6_s_enum s_wb_5f_cmd)) (or (= q_6_s_enum s_WB_5f_None) (= q_6_s_enum s_WB_5f_Wb)))
+      (and
+        (not (= s_SHWB_5f_None s_SHWB_5f_ShWb))
+        (not (= s_SHWB_5f_None s_SHWB_5f_FAck))
+        (not (= s_SHWB_5f_ShWb s_SHWB_5f_FAck)))
+      (forall ((q_7_s_enum s_shwb_5f_cmd))
+        (or
+          (= q_7_s_enum s_SHWB_5f_None)
+          (= q_7_s_enum s_SHWB_5f_ShWb)
+          (= q_7_s_enum s_SHWB_5f_FAck)))
+      (not (= s_NAKC_5f_None s_NAKC_5f_Nakc))
+      (forall ((q_8_s_enum s_nakc_5f_cmd))
+        (or (= q_8_s_enum s_NAKC_5f_None) (= q_8_s_enum s_NAKC_5f_Nakc)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_10_s_p Proc))
+        (=>
+          true
+          (not
+            (and
+              (= s_CacheState_5f_home s_CACHE_5f_E)
+              (= (select s_CacheState q_10_s_p) s_CACHE_5f_E)))))
+      (forall ((q_11_s_i Proc) (q_12_s_j Proc))
+        (=>
+          (not (= q_11_s_i q_12_s_j))
+          (not
+            (and
+              (= (select s_CacheState q_11_s_i) s_CACHE_5f_E)
+              (= (select s_CacheState q_12_s_j) s_CACHE_5f_E))))))
+    :invar-property
+    0))

@@ -1,0 +1,196 @@
+
+
+:comment   Ticket mutual exclusion algorithm with 2 processes
+:comment   ---------------------------------------------------
+:comment   
+:comment   Taken from Monika Maidl, "Using Model Checking for System
+:comment   Verification", 2000, PhD Thesis.  Table 5.1, page 123.
+:comment   
+:comment   The program consists of two components having local variables a, c1,
+:comment   b, and c2 and shared variables t and s.  There are three program
+:comment   locations: trying (T, renamed below as 1), when the program issues a
+:comment   request for the critical section, waiting (W, renamed below as 2), and
+:comment   critical section (C, renamed below as 3).  The property to verify is
+:comment   that of mutual exclusion:
+:comment   
+:comment                   [] (c1 = C /\ c2 = C)  .
+:comment   
+:comment   The system enters an infinite loop regardless with most options.  The
+:comment   solution is to manually add 
+:comment   
+:comment   :dynamic_predicate_abstraction
+:comment   
+:comment   to the translated file and then use the -I option.  With this
+:comment   settings, MCMT quickly tells you that the system is safe.
+
+
+
+:smt (define-type locations ( subrange 1 3))
+
+
+
+:comment c1
+:local a locations
+:comment c2
+:local b locations
+:comment a
+:global c int
+:comment b
+:global d int
+:comment t
+:global e int
+:comment s
+:global f int
+
+
+
+:initial
+:var x
+:cnj (=  e[x]  f[x]) (=  a[x]  1) (=  b[x]  1) 
+
+
+:unsafe
+:var z1
+:cnj (=  a[z1]  3) (=  b[z1]  3) 
+
+
+
+
+:comment T 1
+:transition
+:var x
+:var j
+:guard (=  a[x]  1) 
+:numcases 2
+:case (= x j)
+ :val  2
+ :val b[j]
+ :val  e[x]
+ :val d[j]
+ :val (+  e[x]  1)
+ :val f[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val  e[x]
+ :val d[j]
+ :val (+  e[x]  1)
+ :val f[j]
+
+
+
+:comment T 2
+:transition
+:var x
+:var j
+:guard (=  a[x]  2) (<=  c[x]  f[x]) 
+:numcases 2
+:case (= x j)
+ :val  3
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+
+
+
+:comment T 3
+:transition
+:var x
+:var j
+:guard (=  a[x]  3) 
+:numcases 2
+:case (= x j)
+ :val  1
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val (+  f[x]  1)
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val (+  f[x]  1)
+
+
+
+:comment T 4
+:transition
+:var x
+:var j
+:guard (=  b[x]  1) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val  2
+ :val c[j]
+ :val  e[x]
+ :val (+  e[x]  1)
+ :val f[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val  e[x]
+ :val (+  e[x]  1)
+ :val f[j]
+
+
+
+:comment T 5
+:transition
+:var x
+:var j
+:guard (=  b[x]  2) (<=  d[x]  f[x]) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val  3
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val f[j]
+
+
+
+:comment T 6
+:transition
+:var x
+:var j
+:guard (=  b[x]  3) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val  1
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val (+  f[x]  1)
+:case 
+ :val a[j]
+ :val b[j]
+ :val c[j]
+ :val d[j]
+ :val e[j]
+ :val (+  f[x]  1)
+
+:dynamic_predicate_abstraction
+

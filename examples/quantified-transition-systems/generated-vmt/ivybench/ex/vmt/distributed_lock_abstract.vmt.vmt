@@ -1,0 +1,193 @@
+; Generated offline from ivybench/ex/vmt/distributed_lock_abstract.vmt
+; Source SHA-256: bd49bca11a1b8d991914d51226397e9e10b0fc7b40d8e257f0676a7b688db5c3
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_epoch 0)
+(declare-sort s_node 0)
+(declare-fun s__5f__5f_gt () (Array s_epoch (Array s_node Bool)))
+(declare-fun s__5f__5f_gt_next () (Array s_epoch (Array s_node Bool)))
+(declare-fun s__5f__5f_held () (Array s_node Bool))
+(declare-fun s__5f__5f_held_next () (Array s_node Bool))
+(declare-fun s__5f__5f_locked () (Array s_epoch (Array s_node Bool)))
+(declare-fun s__5f__5f_locked_next () (Array s_epoch (Array s_node Bool)))
+(declare-fun s__5f__5f_transfer_5f_msg () (Array s_epoch (Array s_node Bool)))
+(declare-fun s__5f__5f_transfer_5f_msg_next () (Array s_epoch (Array s_node Bool)))
+(declare-fun s_first () s_node)
+(declare-fun s_first_next () s_node)
+(declare-fun s_le () (Array s_epoch (Array s_epoch Bool)))
+(declare-fun s_le_next () (Array s_epoch (Array s_epoch Bool)))
+(declare-fun s_max () s_epoch)
+(declare-fun s_max_next () s_epoch)
+(declare-fun s_zero () s_epoch)
+(declare-fun s_zero_next () s_epoch)
+(declare-fun s__5f__5f_ts0_5f_a () Bool)
+(declare-fun s__5f__5f_ts0_5f_a_next () Bool)
+; source symbol: __gt
+(define-fun link_0 () (Array s_epoch (Array s_node Bool)) (! s__5f__5f_gt :next s__5f__5f_gt_next))
+; source symbol: __held
+(define-fun link_1 () (Array s_node Bool) (! s__5f__5f_held :next s__5f__5f_held_next))
+; source symbol: __locked
+(define-fun link_2 () (Array s_epoch (Array s_node Bool)) (! s__5f__5f_locked :next s__5f__5f_locked_next))
+; source symbol: __transfer_msg
+(define-fun link_3 () (Array s_epoch (Array s_node Bool)) (! s__5f__5f_transfer_5f_msg :next s__5f__5f_transfer_5f_msg_next))
+; source symbol: first
+(define-fun link_4 () s_node (! s_first :next s_first_next))
+; source symbol: le
+(define-fun link_5 () (Array s_epoch (Array s_epoch Bool)) (! s_le :next s_le_next))
+; source symbol: max
+(define-fun link_6 () s_epoch (! s_max :next s_max_next))
+; source symbol: zero
+(define-fun link_7 () s_epoch (! s_zero :next s_zero_next))
+; source symbol: __ts0_a
+(define-fun link_8 () Bool (! s__5f__5f_ts0_5f_a :next s__5f__5f_ts0_5f_a_next))
+; action: ext:accept
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_21_s_V_5f__5f_fml_3a_dst s_node) (q_22_s_V_5f__5f_fml_3a_e s_epoch))
+        (and
+          (forall ((q_23_s_V0 s_node))
+            (=
+              (select s__5f__5f_held_next q_23_s_V0)
+              (ite
+                s__5f__5f_ts0_5f_a
+                (ite
+                  (= q_23_s_V0 q_21_s_V_5f__5f_fml_3a_dst)
+                  true
+                  (select s__5f__5f_held q_23_s_V0))
+                (select s__5f__5f_held q_23_s_V0))))
+          (forall ((q_24_s_V0 s_epoch) (q_25_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_locked_next q_24_s_V0) q_25_s_V1)
+              (ite
+                s__5f__5f_ts0_5f_a
+                (ite
+                  (and
+                    (= q_24_s_V0 q_22_s_V_5f__5f_fml_3a_e)
+                    (= q_25_s_V1 q_21_s_V_5f__5f_fml_3a_dst))
+                  true
+                  (select (select s__5f__5f_locked q_24_s_V0) q_25_s_V1))
+                (select (select s__5f__5f_locked q_24_s_V0) q_25_s_V1))))
+          (forall ((q_26_s_V0 s_epoch) (q_27_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_gt_next q_26_s_V0) q_27_s_V1)
+              (ite
+                s__5f__5f_ts0_5f_a
+                (ite
+                  (= q_27_s_V1 q_21_s_V_5f__5f_fml_3a_dst)
+                  (ite (not (select (select s_le q_26_s_V0) q_22_s_V_5f__5f_fml_3a_e)) true false)
+                  (select (select s__5f__5f_gt q_26_s_V0) q_27_s_V1))
+                (select (select s__5f__5f_gt q_26_s_V0) q_27_s_V1))))
+          (=
+            s__5f__5f_ts0_5f_a
+            (select (select s__5f__5f_gt q_22_s_V_5f__5f_fml_3a_e) q_21_s_V_5f__5f_fml_3a_dst))
+          (select
+            (select s__5f__5f_transfer_5f_msg q_22_s_V_5f__5f_fml_3a_e)
+            q_21_s_V_5f__5f_fml_3a_dst))))
+    (= s__5f__5f_transfer_5f_msg_next s__5f__5f_transfer_5f_msg)))
+; action: ext:grant
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_28_s_V_5f__5f_fml_3a_dst s_node) (q_29_s_V_5f__5f_fml_3a_e s_epoch) (q_30_s_V_5f__5f_fml_3a_src s_node))
+        (and
+          (forall ((q_31_s_V0 s_node))
+            (=
+              (select s__5f__5f_held_next q_31_s_V0)
+              (ite (= q_31_s_V0 q_30_s_V_5f__5f_fml_3a_src) false (select s__5f__5f_held q_31_s_V0))))
+          (forall ((q_32_s_V0 s_epoch) (q_33_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_transfer_5f_msg_next q_32_s_V0) q_33_s_V1)
+              (ite
+                (and
+                  (= q_32_s_V0 q_29_s_V_5f__5f_fml_3a_e)
+                  (= q_33_s_V1 q_28_s_V_5f__5f_fml_3a_dst))
+                true
+                (select (select s__5f__5f_transfer_5f_msg q_32_s_V0) q_33_s_V1))))
+          (select s__5f__5f_held q_30_s_V_5f__5f_fml_3a_src)
+          (select (select s__5f__5f_gt q_29_s_V_5f__5f_fml_3a_e) q_30_s_V_5f__5f_fml_3a_src))))
+    (= s__5f__5f_gt_next s__5f__5f_gt)
+    (= s__5f__5f_locked_next s__5f__5f_locked)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_14_s_V0 s_node)) (= (select s__5f__5f_held q_14_s_V0) (= q_14_s_V0 s_first)))
+          (forall ((q_15_s_V0 s_epoch) (q_16_s_V1 s_node))
+            (= (select (select s__5f__5f_gt q_15_s_V0) q_16_s_V1) (not (= q_15_s_V0 s_zero))))
+          (forall ((q_17_s_V0 s_epoch) (q_18_s_V1 s_node))
+            (= (select (select s__5f__5f_transfer_5f_msg q_17_s_V0) q_18_s_V1) false))
+          (forall ((q_19_s_V0 s_epoch) (q_20_s_V1 s_node))
+            (= (select (select s__5f__5f_locked q_19_s_V0) q_20_s_V1) false))))
+      (and
+        (and
+          (forall ((q_4_s_X s_epoch)) (select (select s_le q_4_s_X) q_4_s_X))
+          (forall ((q_5_s_X s_epoch) (q_6_s_Y s_epoch) (q_7_s_Z s_epoch))
+            (=>
+              (and (select (select s_le q_5_s_X) q_6_s_Y) (select (select s_le q_6_s_Y) q_7_s_Z))
+              (select (select s_le q_5_s_X) q_7_s_Z)))
+          (forall ((q_8_s_X s_epoch) (q_9_s_Y s_epoch))
+            (=>
+              (and (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_8_s_X))
+              (= q_8_s_X q_9_s_Y)))
+          (forall ((q_10_s_X s_epoch) (q_11_s_Y s_epoch))
+            (or (select (select s_le q_10_s_X) q_11_s_Y) (select (select s_le q_11_s_Y) q_10_s_X)))
+          (forall ((q_12_s_X s_epoch)) (select (select s_le s_zero) q_12_s_X))
+          (forall ((q_13_s_X s_epoch)) (select (select s_le q_13_s_X) s_max)))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1)
+      (= s_first_next s_first)
+      (= s_le_next s_le)
+      (= s_max_next s_max)
+      (= s_zero_next s_zero)
+      (and
+        (and
+          (forall ((q_4_s_X s_epoch)) (select (select s_le q_4_s_X) q_4_s_X))
+          (forall ((q_5_s_X s_epoch) (q_6_s_Y s_epoch) (q_7_s_Z s_epoch))
+            (=>
+              (and (select (select s_le q_5_s_X) q_6_s_Y) (select (select s_le q_6_s_Y) q_7_s_Z))
+              (select (select s_le q_5_s_X) q_7_s_Z)))
+          (forall ((q_8_s_X s_epoch) (q_9_s_Y s_epoch))
+            (=>
+              (and (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_8_s_X))
+              (= q_8_s_X q_9_s_Y)))
+          (forall ((q_10_s_X s_epoch) (q_11_s_Y s_epoch))
+            (or (select (select s_le q_10_s_X) q_11_s_Y) (select (select s_le q_11_s_Y) q_10_s_X)))
+          (forall ((q_12_s_X s_epoch)) (select (select s_le s_zero) q_12_s_X))
+          (forall ((q_13_s_X s_epoch)) (select (select s_le q_13_s_X) s_max))))
+      (and
+        (and
+          (forall ((q_4_s_X s_epoch)) (select (select s_le q_4_s_X) q_4_s_X))
+          (forall ((q_5_s_X s_epoch) (q_6_s_Y s_epoch) (q_7_s_Z s_epoch))
+            (=>
+              (and (select (select s_le q_5_s_X) q_6_s_Y) (select (select s_le q_6_s_Y) q_7_s_Z))
+              (select (select s_le q_5_s_X) q_7_s_Z)))
+          (forall ((q_8_s_X s_epoch) (q_9_s_Y s_epoch))
+            (=>
+              (and (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_8_s_X))
+              (= q_8_s_X q_9_s_Y)))
+          (forall ((q_10_s_X s_epoch) (q_11_s_Y s_epoch))
+            (or (select (select s_le q_10_s_X) q_11_s_Y) (select (select s_le q_11_s_Y) q_10_s_X)))
+          (forall ((q_12_s_X s_epoch)) (select (select s_le s_zero) q_12_s_X))
+          (forall ((q_13_s_X s_epoch)) (select (select s_le q_13_s_X) s_max)))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_E s_epoch) (q_2_s_N1 s_node) (q_3_s_N2 s_node))
+        (=>
+          (and
+            (select (select s__5f__5f_locked q_1_s_E) q_2_s_N1)
+            (select (select s__5f__5f_locked q_1_s_E) q_3_s_N2))
+          (= q_2_s_N1 q_3_s_N2))))
+    :invar-property
+    0))

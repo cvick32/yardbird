@@ -1,0 +1,40 @@
+; Generated offline from mypyvy/examples/misc/bank.pyv
+; Source SHA-256: 3377228d8e23af7ea80f827e0d2570a46a258224e6ef0c77e9c59d4a2dfb7c16
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_account 0)
+(declare-fun s_balance () (Array s_account Int))
+(declare-fun s_balance_next () (Array s_account Int))
+; source symbol: balance
+(define-fun link_0 () (Array s_account Int) (! s_balance :next s_balance_next))
+; action: deposit
+(define-fun action_0 () Bool
+  (exists ((q_2_s_a s_account) (q_3_s_amount Int))
+    (and
+      (>= q_3_s_amount 0)
+      (forall ((q_4_s_A s_account))
+        (=
+          (select s_balance_next q_4_s_A)
+          (ite
+            (= q_4_s_A q_2_s_a)
+            (+ (select s_balance q_2_s_a) q_3_s_amount)
+            (select s_balance q_4_s_A)))))))
+; action: withdraw
+(define-fun action_1 () Bool
+  (exists ((q_5_s_a s_account) (q_6_s_amount Int))
+    (and
+      (>= q_6_s_amount 0)
+      (<= q_6_s_amount (select s_balance q_5_s_a))
+      (forall ((q_7_s_A s_account))
+        (=
+          (select s_balance_next q_7_s_A)
+          (ite
+            (= q_7_s_A q_5_s_a)
+            (- (select s_balance q_5_s_a) q_6_s_amount)
+            (select s_balance q_7_s_A)))))))
+(define-fun init () Bool
+  (! (forall ((q_1_s_A s_account)) (= (select s_balance q_1_s_A) 0)) :init true))
+(define-fun trans () Bool (! (or action_0 action_1) :trans true))
+(define-fun property () Bool
+  (! (forall ((q_8_s_A s_account)) (>= (select s_balance q_8_s_A) 0)) :invar-property 0))

@@ -1,0 +1,197 @@
+; Generated offline from ivybench/mypyv/vmt/ticket.vmt
+; Source SHA-256: eb6796f973e5f33e2da302e76ce5b403d8b21112961e2a55abb03914d34a360c
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_thread 0)
+(declare-sort s_ticket 0)
+(declare-fun s__5f__5f_m () (Array s_thread (Array s_ticket Bool)))
+(declare-fun s__5f__5f_m_next () (Array s_thread (Array s_ticket Bool)))
+(declare-fun s__5f__5f_next_5f_ticket () s_ticket)
+(declare-fun s__5f__5f_next_5f_ticket_next () s_ticket)
+(declare-fun s__5f__5f_pc1 () (Array s_thread Bool))
+(declare-fun s__5f__5f_pc1_next () (Array s_thread Bool))
+(declare-fun s__5f__5f_pc2 () (Array s_thread Bool))
+(declare-fun s__5f__5f_pc2_next () (Array s_thread Bool))
+(declare-fun s__5f__5f_pc3 () (Array s_thread Bool))
+(declare-fun s__5f__5f_pc3_next () (Array s_thread Bool))
+(declare-fun s__5f__5f_service () s_ticket)
+(declare-fun s__5f__5f_service_next () s_ticket)
+(declare-fun s_le () (Array s_ticket (Array s_ticket Bool)))
+(declare-fun s_le_next () (Array s_ticket (Array s_ticket Bool)))
+(declare-fun s_max () s_ticket)
+(declare-fun s_max_next () s_ticket)
+(declare-fun s_zero () s_ticket)
+(declare-fun s_zero_next () s_ticket)
+; source symbol: __m
+(define-fun link_0 () (Array s_thread (Array s_ticket Bool)) (! s__5f__5f_m :next s__5f__5f_m_next))
+; source symbol: __next_ticket
+(define-fun link_1 () s_ticket (! s__5f__5f_next_5f_ticket :next s__5f__5f_next_5f_ticket_next))
+; source symbol: __pc1
+(define-fun link_2 () (Array s_thread Bool) (! s__5f__5f_pc1 :next s__5f__5f_pc1_next))
+; source symbol: __pc2
+(define-fun link_3 () (Array s_thread Bool) (! s__5f__5f_pc2 :next s__5f__5f_pc2_next))
+; source symbol: __pc3
+(define-fun link_4 () (Array s_thread Bool) (! s__5f__5f_pc3 :next s__5f__5f_pc3_next))
+; source symbol: __service
+(define-fun link_5 () s_ticket (! s__5f__5f_service :next s__5f__5f_service_next))
+; source symbol: le
+(define-fun link_6 () (Array s_ticket (Array s_ticket Bool)) (! s_le :next s_le_next))
+; source symbol: max
+(define-fun link_7 () s_ticket (! s_max :next s_max_next))
+; source symbol: zero
+(define-fun link_8 () s_ticket (! s_zero :next s_zero_next))
+; action: ext:step12
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_18_s_V_5f__5f_fml_3a_t s_thread) (q_19_s_V_5f__5f_fml_3a_y s_ticket))
+        (and
+          (forall ((q_20_s_V0 s_thread) (q_21_s_V1 s_ticket))
+            (=
+              (select (select s__5f__5f_m_next q_20_s_V0) q_21_s_V1)
+              (ite
+                (= q_20_s_V0 q_18_s_V_5f__5f_fml_3a_t)
+                (= q_21_s_V1 s__5f__5f_next_5f_ticket)
+                (select (select s__5f__5f_m q_20_s_V0) q_21_s_V1))))
+          (forall ((q_22_s_V0 s_thread))
+            (=
+              (select s__5f__5f_pc1_next q_22_s_V0)
+              (ite (= q_22_s_V0 q_18_s_V_5f__5f_fml_3a_t) false (select s__5f__5f_pc1 q_22_s_V0))))
+          (forall ((q_23_s_V0 s_thread))
+            (=
+              (select s__5f__5f_pc2_next q_23_s_V0)
+              (ite (= q_23_s_V0 q_18_s_V_5f__5f_fml_3a_t) true (select s__5f__5f_pc2 q_23_s_V0))))
+          (= s__5f__5f_next_5f_ticket_next q_19_s_V_5f__5f_fml_3a_y)
+          (select s__5f__5f_pc1 q_18_s_V_5f__5f_fml_3a_t)
+          (not (select (select s_le q_19_s_V_5f__5f_fml_3a_y) s__5f__5f_next_5f_ticket))
+          (forall ((q_24_s_Z s_ticket))
+            (=>
+              (not (select (select s_le q_24_s_Z) s__5f__5f_next_5f_ticket))
+              (select (select s_le q_19_s_V_5f__5f_fml_3a_y) q_24_s_Z))))))
+    (= s__5f__5f_pc3_next s__5f__5f_pc3)
+    (= s__5f__5f_service_next s__5f__5f_service)))
+; action: ext:step23
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_25_s_V_5f__5f_fml_3a_k s_ticket) (q_26_s_V_5f__5f_fml_3a_t s_thread))
+        (and
+          (forall ((q_27_s_V0 s_thread))
+            (=
+              (select s__5f__5f_pc2_next q_27_s_V0)
+              (ite (= q_27_s_V0 q_26_s_V_5f__5f_fml_3a_t) false (select s__5f__5f_pc2 q_27_s_V0))))
+          (forall ((q_28_s_V0 s_thread))
+            (=
+              (select s__5f__5f_pc3_next q_28_s_V0)
+              (ite (= q_28_s_V0 q_26_s_V_5f__5f_fml_3a_t) true (select s__5f__5f_pc3 q_28_s_V0))))
+          (select s__5f__5f_pc2 q_26_s_V_5f__5f_fml_3a_t)
+          (select (select s__5f__5f_m q_26_s_V_5f__5f_fml_3a_t) q_25_s_V_5f__5f_fml_3a_k)
+          (select (select s_le q_25_s_V_5f__5f_fml_3a_k) s__5f__5f_service))))
+    (= s__5f__5f_m_next s__5f__5f_m)
+    (= s__5f__5f_next_5f_ticket_next s__5f__5f_next_5f_ticket)
+    (= s__5f__5f_pc1_next s__5f__5f_pc1)
+    (= s__5f__5f_service_next s__5f__5f_service)))
+; action: ext:step31
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_29_s_V_5f__5f_fml_3a_t s_thread) (q_30_s_V_5f__5f_fml_3a_y s_ticket))
+        (and
+          (forall ((q_31_s_V0 s_thread))
+            (=
+              (select s__5f__5f_pc3_next q_31_s_V0)
+              (ite (= q_31_s_V0 q_29_s_V_5f__5f_fml_3a_t) false (select s__5f__5f_pc3 q_31_s_V0))))
+          (forall ((q_32_s_V0 s_thread))
+            (=
+              (select s__5f__5f_pc1_next q_32_s_V0)
+              (ite (= q_32_s_V0 q_29_s_V_5f__5f_fml_3a_t) true (select s__5f__5f_pc1 q_32_s_V0))))
+          (= s__5f__5f_service_next q_30_s_V_5f__5f_fml_3a_y)
+          (select s__5f__5f_pc3 q_29_s_V_5f__5f_fml_3a_t)
+          (not (select (select s_le q_30_s_V_5f__5f_fml_3a_y) s__5f__5f_service))
+          (forall ((q_33_s_Z s_ticket))
+            (=>
+              (not (select (select s_le q_33_s_Z) s__5f__5f_service))
+              (select (select s_le q_30_s_V_5f__5f_fml_3a_y) q_33_s_Z))))))
+    (= s__5f__5f_m_next s__5f__5f_m)
+    (= s__5f__5f_next_5f_ticket_next s__5f__5f_next_5f_ticket)
+    (= s__5f__5f_pc2_next s__5f__5f_pc2)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_13_s_V0 s_thread)) (= (select s__5f__5f_pc1 q_13_s_V0) true))
+          (forall ((q_14_s_V0 s_thread)) (= (select s__5f__5f_pc2 q_14_s_V0) false))
+          (forall ((q_15_s_V0 s_thread)) (= (select s__5f__5f_pc3 q_15_s_V0) false))
+          (= s__5f__5f_service s_zero)
+          (= s__5f__5f_next_5f_ticket s_zero)
+          (forall ((q_16_s_V0 s_thread) (q_17_s_V1 s_ticket))
+            (= (select (select s__5f__5f_m q_16_s_V0) q_17_s_V1) (= q_17_s_V1 s_zero)))))
+      (and
+        (and
+          (forall ((q_3_s_X s_ticket)) (select (select s_le q_3_s_X) q_3_s_X))
+          (forall ((q_4_s_X s_ticket) (q_5_s_Y s_ticket) (q_6_s_Z s_ticket))
+            (=>
+              (and (select (select s_le q_4_s_X) q_5_s_Y) (select (select s_le q_5_s_Y) q_6_s_Z))
+              (select (select s_le q_4_s_X) q_6_s_Z)))
+          (forall ((q_7_s_X s_ticket) (q_8_s_Y s_ticket))
+            (=>
+              (and (select (select s_le q_7_s_X) q_8_s_Y) (select (select s_le q_8_s_Y) q_7_s_X))
+              (= q_7_s_X q_8_s_Y)))
+          (forall ((q_9_s_X s_ticket) (q_10_s_Y s_ticket))
+            (or (select (select s_le q_9_s_X) q_10_s_Y) (select (select s_le q_10_s_Y) q_9_s_X)))
+          (forall ((q_11_s_X s_ticket)) (select (select s_le s_zero) q_11_s_X))
+          (forall ((q_12_s_X s_ticket)) (select (select s_le q_12_s_X) s_max)))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2)
+      (= s_le_next s_le)
+      (= s_max_next s_max)
+      (= s_zero_next s_zero)
+      (and
+        (and
+          (forall ((q_3_s_X s_ticket)) (select (select s_le q_3_s_X) q_3_s_X))
+          (forall ((q_4_s_X s_ticket) (q_5_s_Y s_ticket) (q_6_s_Z s_ticket))
+            (=>
+              (and (select (select s_le q_4_s_X) q_5_s_Y) (select (select s_le q_5_s_Y) q_6_s_Z))
+              (select (select s_le q_4_s_X) q_6_s_Z)))
+          (forall ((q_7_s_X s_ticket) (q_8_s_Y s_ticket))
+            (=>
+              (and (select (select s_le q_7_s_X) q_8_s_Y) (select (select s_le q_8_s_Y) q_7_s_X))
+              (= q_7_s_X q_8_s_Y)))
+          (forall ((q_9_s_X s_ticket) (q_10_s_Y s_ticket))
+            (or (select (select s_le q_9_s_X) q_10_s_Y) (select (select s_le q_10_s_Y) q_9_s_X)))
+          (forall ((q_11_s_X s_ticket)) (select (select s_le s_zero) q_11_s_X))
+          (forall ((q_12_s_X s_ticket)) (select (select s_le q_12_s_X) s_max))))
+      (and
+        (and
+          (forall ((q_3_s_X s_ticket)) (select (select s_le q_3_s_X) q_3_s_X))
+          (forall ((q_4_s_X s_ticket) (q_5_s_Y s_ticket) (q_6_s_Z s_ticket))
+            (=>
+              (and (select (select s_le q_4_s_X) q_5_s_Y) (select (select s_le q_5_s_Y) q_6_s_Z))
+              (select (select s_le q_4_s_X) q_6_s_Z)))
+          (forall ((q_7_s_X s_ticket) (q_8_s_Y s_ticket))
+            (=>
+              (and (select (select s_le q_7_s_X) q_8_s_Y) (select (select s_le q_8_s_Y) q_7_s_X))
+              (= q_7_s_X q_8_s_Y)))
+          (forall ((q_9_s_X s_ticket) (q_10_s_Y s_ticket))
+            (or (select (select s_le q_9_s_X) q_10_s_Y) (select (select s_le q_10_s_Y) q_9_s_X)))
+          (forall ((q_11_s_X s_ticket)) (select (select s_le s_zero) q_11_s_X))
+          (forall ((q_12_s_X s_ticket)) (select (select s_le q_12_s_X) s_max)))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_T1 s_thread) (q_2_s_T2 s_thread))
+        (=>
+          (and (select s__5f__5f_pc3 q_1_s_T1) (select s__5f__5f_pc3 q_2_s_T2))
+          (= q_1_s_T1 q_2_s_T2))))
+    :invar-property
+    0))

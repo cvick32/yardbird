@@ -1,0 +1,20 @@
+; Generated offline from mypyvy/examples/misc/crawler.pyv
+; Source SHA-256: 37a1c82ca10188ea1ff7d213d9f913438413361fc4962a81b7a232fbc7e69cb5
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-fun s_x () Int)
+(declare-fun s_x_next () Int)
+(declare-fun s_y () Int)
+(declare-fun s_y_next () Int)
+; source symbol: x
+(define-fun link_0 () Int (! s_x :next s_x_next))
+; source symbol: y
+(define-fun link_1 () Int (! s_y :next s_y_next))
+; action: north
+(define-fun action_0 () Bool (and (= s_y_next (+ s_y 1)) (= s_x_next s_x)))
+; action: south_east
+(define-fun action_1 () Bool (and (= s_x_next (+ s_x 1)) (= s_y_next (- s_y 1))))
+(define-fun init () Bool (! (and (= s_x 0) (= s_y 5)) :init true))
+(define-fun trans () Bool (! (or action_0 action_1) :trans true))
+(define-fun property () Bool (! (> (+ (* s_x s_x) (* s_y s_y)) 9) :invar-property 0))

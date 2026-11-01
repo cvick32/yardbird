@@ -1,0 +1,1079 @@
+; Generated offline from lambda/benchmarks/dynarch/network_safe_1_d_e-src_d-dst_e.in
+; Source SHA-256: 85d19d4486ea010f93f724a0ce8a15a7e6d2d0d593eee0e5d31e238ba4a7cdd3
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Semantics profile: pinned CADE 2021 Lambda MCMT frontend and its index-sort proof export.
+; nat/subrange data use Int, matching Lambda; source range bounds are not additional axioms.
+; Process indices use an injective integer embedding; infinite process domains are admitted.
+; First x-case and special y-case are local updates; remaining cases are guarded constraints.
+(declare-sort Proc 0)
+(declare-fun s__5f__5f_index_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_index_5f_rank_next () (Array Proc Int))
+(declare-fun s__5f_C0 () (Array Proc Bool))
+(declare-fun s__5f_C0_next () (Array Proc Bool))
+(declare-fun s__5f_S () (Array Proc Bool))
+(declare-fun s__5f_S_next () (Array Proc Bool))
+(declare-fun s__5f_trustedClients0 () (Array Proc Bool))
+(declare-fun s__5f_trustedClients0_next () (Array Proc Bool))
+(declare-fun s__5f_connectedTo0 () (Array Proc Int))
+(declare-fun s__5f_connectedTo0_next () (Array Proc Int))
+(declare-fun s__5f_trustedServers () (Array Proc Bool))
+(declare-fun s__5f_trustedServers_next () (Array Proc Bool))
+(declare-fun s__5f_protected () Bool)
+(declare-fun s__5f_protected_next () Bool)
+(declare-fun s__5f_d_5f_token () Bool)
+(declare-fun s__5f_d_5f_token_next () Bool)
+(declare-fun s__5f_servers_5f_token () (Array Proc Bool))
+(declare-fun s__5f_servers_5f_token_next () (Array Proc Bool))
+(declare-fun s__5f_clients0_5f_token () (Array Proc Bool))
+(declare-fun s__5f_clients0_5f_token_next () (Array Proc Bool))
+(declare-fun s__5f_e_5f_token () Bool)
+(declare-fun s__5f_e_5f_token_next () Bool)
+; source symbol: __index_rank
+(define-fun link_0 () (Array Proc Int) (! s__5f__5f_index_5f_rank :next s__5f__5f_index_5f_rank_next))
+; source symbol: _C0
+(define-fun link_1 () (Array Proc Bool) (! s__5f_C0 :next s__5f_C0_next))
+; source symbol: _S
+(define-fun link_2 () (Array Proc Bool) (! s__5f_S :next s__5f_S_next))
+; source symbol: _trustedClients0
+(define-fun link_3 () (Array Proc Bool) (! s__5f_trustedClients0 :next s__5f_trustedClients0_next))
+; source symbol: _connectedTo0
+(define-fun link_4 () (Array Proc Int) (! s__5f_connectedTo0 :next s__5f_connectedTo0_next))
+; source symbol: _trustedServers
+(define-fun link_5 () (Array Proc Bool) (! s__5f_trustedServers :next s__5f_trustedServers_next))
+; source symbol: _protected
+(define-fun link_6 () Bool (! s__5f_protected :next s__5f_protected_next))
+; source symbol: _d_token
+(define-fun link_7 () Bool (! s__5f_d_5f_token :next s__5f_d_5f_token_next))
+; source symbol: _servers_token
+(define-fun link_8 () (Array Proc Bool) (! s__5f_servers_5f_token :next s__5f_servers_5f_token_next))
+; source symbol: _clients0_token
+(define-fun link_9 () (Array Proc Bool) (! s__5f_clients0_5f_token :next s__5f_clients0_5f_token_next))
+; source symbol: _e_token
+(define-fun link_10 () Bool (! s__5f_e_5f_token :next s__5f_e_5f_token_next))
+; action: transition_0
+(define-fun action_0 () Bool
+  (exists ((q_4_s_x Proc))
+    (and
+      (and
+        (= s__5f_protected true)
+        (= (select s__5f_trustedServers q_4_s_x) true)
+        (= s__5f_d_5f_token true)
+        (= (select s__5f_S q_4_s_x) true))
+      (and
+        (= (select s__5f_C0_next q_4_s_x) (select s__5f_C0 q_4_s_x))
+        (= (select s__5f_S_next q_4_s_x) (select s__5f_S q_4_s_x))
+        (= (select s__5f_trustedClients0_next q_4_s_x) (select s__5f_trustedClients0 q_4_s_x))
+        (= (select s__5f_connectedTo0_next q_4_s_x) (select s__5f_connectedTo0 q_4_s_x))
+        (= (select s__5f_trustedServers_next q_4_s_x) (select s__5f_trustedServers q_4_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next s__5f_d_5f_token)
+        (= (select s__5f_servers_5f_token_next q_4_s_x) true)
+        (= (select s__5f_clients0_5f_token_next q_4_s_x) (select s__5f_clients0_5f_token q_4_s_x))
+        (= s__5f_e_5f_token_next s__5f_e_5f_token))
+      (forall ((q_5_s_j Proc))
+        (=>
+          (and (not (= q_5_s_j q_4_s_x)) (not (= q_5_s_j q_4_s_x)))
+          (and
+            (= (select s__5f_C0_next q_5_s_j) (select s__5f_C0 q_5_s_j))
+            (= (select s__5f_S_next q_5_s_j) (select s__5f_S q_5_s_j))
+            (= (select s__5f_trustedClients0_next q_5_s_j) (select s__5f_trustedClients0 q_5_s_j))
+            (= (select s__5f_connectedTo0_next q_5_s_j) (select s__5f_connectedTo0 q_5_s_j))
+            (= (select s__5f_trustedServers_next q_5_s_j) (select s__5f_trustedServers q_5_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (= (select s__5f_servers_5f_token_next q_5_s_j) (select s__5f_servers_5f_token q_5_s_j))
+            (=
+              (select s__5f_clients0_5f_token_next q_5_s_j)
+              (select s__5f_clients0_5f_token q_5_s_j))
+            (= s__5f_e_5f_token_next s__5f_e_5f_token)))))))
+; action: transition_1
+(define-fun action_1 () Bool
+  (exists ((q_6_s_x Proc))
+    (and
+      (and
+        (= (select s__5f__5f_index_5f_rank q_6_s_x) (select s__5f_connectedTo0 q_6_s_x))
+        (= (select s__5f_S q_6_s_x) true)
+        (= (select s__5f_servers_5f_token q_6_s_x) true)
+        (= (select s__5f_C0 q_6_s_x) true))
+      (and
+        (= (select s__5f_C0_next q_6_s_x) (select s__5f_C0 q_6_s_x))
+        (= (select s__5f_S_next q_6_s_x) (select s__5f_S q_6_s_x))
+        (= (select s__5f_trustedClients0_next q_6_s_x) (select s__5f_trustedClients0 q_6_s_x))
+        (= (select s__5f_connectedTo0_next q_6_s_x) (select s__5f_connectedTo0 q_6_s_x))
+        (= (select s__5f_trustedServers_next q_6_s_x) (select s__5f_trustedServers q_6_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next s__5f_d_5f_token)
+        (= (select s__5f_servers_5f_token_next q_6_s_x) (select s__5f_servers_5f_token q_6_s_x))
+        (= (select s__5f_clients0_5f_token_next q_6_s_x) true)
+        (= s__5f_e_5f_token_next s__5f_e_5f_token))
+      (forall ((q_7_s_j Proc))
+        (=>
+          (and (not (= q_7_s_j q_6_s_x)) (not (= q_7_s_j q_6_s_x)))
+          (and
+            (= (select s__5f_C0_next q_7_s_j) (select s__5f_C0 q_7_s_j))
+            (= (select s__5f_S_next q_7_s_j) (select s__5f_S q_7_s_j))
+            (= (select s__5f_trustedClients0_next q_7_s_j) (select s__5f_trustedClients0 q_7_s_j))
+            (= (select s__5f_connectedTo0_next q_7_s_j) (select s__5f_connectedTo0 q_7_s_j))
+            (= (select s__5f_trustedServers_next q_7_s_j) (select s__5f_trustedServers q_7_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (= (select s__5f_servers_5f_token_next q_7_s_j) (select s__5f_servers_5f_token q_7_s_j))
+            (=
+              (select s__5f_clients0_5f_token_next q_7_s_j)
+              (select s__5f_clients0_5f_token q_7_s_j))
+            (= s__5f_e_5f_token_next s__5f_e_5f_token)))))))
+; action: transition_2
+(define-fun action_2 () Bool
+  (exists ((q_8_s_x Proc) (q_9_s_y Proc))
+    (and
+      (and
+        (= (select s__5f__5f_index_5f_rank q_8_s_x) (select s__5f_connectedTo0 q_9_s_y))
+        (= (select s__5f_S q_8_s_x) true)
+        (= (select s__5f_servers_5f_token q_8_s_x) true)
+        (= (select s__5f_C0 q_9_s_y) true))
+      (and
+        (= (select s__5f_C0_next q_8_s_x) (select s__5f_C0 q_8_s_x))
+        (= (select s__5f_S_next q_8_s_x) (select s__5f_S q_8_s_x))
+        (= (select s__5f_trustedClients0_next q_8_s_x) (select s__5f_trustedClients0 q_8_s_x))
+        (= (select s__5f_connectedTo0_next q_8_s_x) (select s__5f_connectedTo0 q_8_s_x))
+        (= (select s__5f_trustedServers_next q_8_s_x) (select s__5f_trustedServers q_8_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next s__5f_d_5f_token)
+        (= (select s__5f_servers_5f_token_next q_8_s_x) (select s__5f_servers_5f_token q_8_s_x))
+        (= (select s__5f_clients0_5f_token_next q_8_s_x) (select s__5f_clients0_5f_token q_8_s_x))
+        (= s__5f_e_5f_token_next s__5f_e_5f_token))
+      (forall ((q_10_s_j Proc))
+        (=>
+          (and (not (= q_10_s_j q_8_s_x)) (= q_10_s_j q_9_s_y) (not (= q_10_s_j q_8_s_x)))
+          (and
+            (= (select s__5f_C0_next q_10_s_j) (select s__5f_C0 q_10_s_j))
+            (= (select s__5f_S_next q_10_s_j) (select s__5f_S q_10_s_j))
+            (= (select s__5f_trustedClients0_next q_10_s_j) (select s__5f_trustedClients0 q_10_s_j))
+            (= (select s__5f_connectedTo0_next q_10_s_j) (select s__5f_connectedTo0 q_10_s_j))
+            (= (select s__5f_trustedServers_next q_10_s_j) (select s__5f_trustedServers q_10_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (=
+              (select s__5f_servers_5f_token_next q_10_s_j)
+              (select s__5f_servers_5f_token q_10_s_j))
+            (= (select s__5f_clients0_5f_token_next q_10_s_j) true)
+            (= s__5f_e_5f_token_next s__5f_e_5f_token))))
+      (forall ((q_10_s_j Proc))
+        (=>
+          (and (not (= q_10_s_j q_8_s_x)) (not (= q_10_s_j q_9_s_y)) (not (= q_10_s_j q_8_s_x)))
+          (and
+            (= (select s__5f_C0_next q_10_s_j) (select s__5f_C0 q_10_s_j))
+            (= (select s__5f_S_next q_10_s_j) (select s__5f_S q_10_s_j))
+            (= (select s__5f_trustedClients0_next q_10_s_j) (select s__5f_trustedClients0 q_10_s_j))
+            (= (select s__5f_connectedTo0_next q_10_s_j) (select s__5f_connectedTo0 q_10_s_j))
+            (= (select s__5f_trustedServers_next q_10_s_j) (select s__5f_trustedServers q_10_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (=
+              (select s__5f_servers_5f_token_next q_10_s_j)
+              (select s__5f_servers_5f_token q_10_s_j))
+            (=
+              (select s__5f_clients0_5f_token_next q_10_s_j)
+              (select s__5f_clients0_5f_token q_10_s_j))
+            (= s__5f_e_5f_token_next s__5f_e_5f_token)))))))
+; action: transition_3
+(define-fun action_3 () Bool
+  (exists ((q_11_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_trustedClients0 q_11_s_x) false)
+        (= (select s__5f_C0 q_11_s_x) true)
+        (= (select s__5f_clients0_5f_token q_11_s_x) true)
+        (= (select s__5f_C0 q_11_s_x) true))
+      (and
+        (= (select s__5f_C0_next q_11_s_x) (select s__5f_C0 q_11_s_x))
+        (= (select s__5f_S_next q_11_s_x) (select s__5f_S q_11_s_x))
+        (= (select s__5f_trustedClients0_next q_11_s_x) (select s__5f_trustedClients0 q_11_s_x))
+        (= (select s__5f_connectedTo0_next q_11_s_x) (select s__5f_connectedTo0 q_11_s_x))
+        (= (select s__5f_trustedServers_next q_11_s_x) (select s__5f_trustedServers q_11_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next s__5f_d_5f_token)
+        (= (select s__5f_servers_5f_token_next q_11_s_x) (select s__5f_servers_5f_token q_11_s_x))
+        (= (select s__5f_clients0_5f_token_next q_11_s_x) true)
+        (= s__5f_e_5f_token_next s__5f_e_5f_token))
+      (forall ((q_12_s_j Proc))
+        (=>
+          (and (not (= q_12_s_j q_11_s_x)) (not (= q_12_s_j q_11_s_x)))
+          (and
+            (= (select s__5f_C0_next q_12_s_j) (select s__5f_C0 q_12_s_j))
+            (= (select s__5f_S_next q_12_s_j) (select s__5f_S q_12_s_j))
+            (= (select s__5f_trustedClients0_next q_12_s_j) (select s__5f_trustedClients0 q_12_s_j))
+            (= (select s__5f_connectedTo0_next q_12_s_j) (select s__5f_connectedTo0 q_12_s_j))
+            (= (select s__5f_trustedServers_next q_12_s_j) (select s__5f_trustedServers q_12_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (=
+              (select s__5f_servers_5f_token_next q_12_s_j)
+              (select s__5f_servers_5f_token q_12_s_j))
+            (=
+              (select s__5f_clients0_5f_token_next q_12_s_j)
+              (select s__5f_clients0_5f_token q_12_s_j))
+            (= s__5f_e_5f_token_next s__5f_e_5f_token)))))))
+; action: transition_4
+(define-fun action_4 () Bool
+  (exists ((q_13_s_x Proc) (q_14_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_trustedClients0 q_13_s_x) false)
+        (= (select s__5f_C0 q_13_s_x) true)
+        (= (select s__5f_clients0_5f_token q_13_s_x) true)
+        (= (select s__5f_C0 q_14_s_y) true))
+      (and
+        (= (select s__5f_C0_next q_13_s_x) (select s__5f_C0 q_13_s_x))
+        (= (select s__5f_S_next q_13_s_x) (select s__5f_S q_13_s_x))
+        (= (select s__5f_trustedClients0_next q_13_s_x) (select s__5f_trustedClients0 q_13_s_x))
+        (= (select s__5f_connectedTo0_next q_13_s_x) (select s__5f_connectedTo0 q_13_s_x))
+        (= (select s__5f_trustedServers_next q_13_s_x) (select s__5f_trustedServers q_13_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next s__5f_d_5f_token)
+        (= (select s__5f_servers_5f_token_next q_13_s_x) (select s__5f_servers_5f_token q_13_s_x))
+        (= (select s__5f_clients0_5f_token_next q_13_s_x) (select s__5f_clients0_5f_token q_13_s_x))
+        (= s__5f_e_5f_token_next s__5f_e_5f_token))
+      (forall ((q_15_s_j Proc))
+        (=>
+          (and (not (= q_15_s_j q_13_s_x)) (= q_15_s_j q_14_s_y) (not (= q_15_s_j q_13_s_x)))
+          (and
+            (= (select s__5f_C0_next q_15_s_j) (select s__5f_C0 q_15_s_j))
+            (= (select s__5f_S_next q_15_s_j) (select s__5f_S q_15_s_j))
+            (= (select s__5f_trustedClients0_next q_15_s_j) (select s__5f_trustedClients0 q_15_s_j))
+            (= (select s__5f_connectedTo0_next q_15_s_j) (select s__5f_connectedTo0 q_15_s_j))
+            (= (select s__5f_trustedServers_next q_15_s_j) (select s__5f_trustedServers q_15_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (=
+              (select s__5f_servers_5f_token_next q_15_s_j)
+              (select s__5f_servers_5f_token q_15_s_j))
+            (= (select s__5f_clients0_5f_token_next q_15_s_j) true)
+            (= s__5f_e_5f_token_next s__5f_e_5f_token))))
+      (forall ((q_15_s_j Proc))
+        (=>
+          (and (not (= q_15_s_j q_13_s_x)) (not (= q_15_s_j q_14_s_y)) (not (= q_15_s_j q_13_s_x)))
+          (and
+            (= (select s__5f_C0_next q_15_s_j) (select s__5f_C0 q_15_s_j))
+            (= (select s__5f_S_next q_15_s_j) (select s__5f_S q_15_s_j))
+            (= (select s__5f_trustedClients0_next q_15_s_j) (select s__5f_trustedClients0 q_15_s_j))
+            (= (select s__5f_connectedTo0_next q_15_s_j) (select s__5f_connectedTo0 q_15_s_j))
+            (= (select s__5f_trustedServers_next q_15_s_j) (select s__5f_trustedServers q_15_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (=
+              (select s__5f_servers_5f_token_next q_15_s_j)
+              (select s__5f_servers_5f_token q_15_s_j))
+            (=
+              (select s__5f_clients0_5f_token_next q_15_s_j)
+              (select s__5f_clients0_5f_token q_15_s_j))
+            (= s__5f_e_5f_token_next s__5f_e_5f_token)))))))
+; action: transition_5
+(define-fun action_5 () Bool
+  (exists ((q_16_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_trustedClients0 q_16_s_x) false)
+        (= (select s__5f_C0 q_16_s_x) true)
+        (= (select s__5f_clients0_5f_token q_16_s_x) true))
+      (and
+        (= (select s__5f_C0_next q_16_s_x) (select s__5f_C0 q_16_s_x))
+        (= (select s__5f_S_next q_16_s_x) (select s__5f_S q_16_s_x))
+        (= (select s__5f_trustedClients0_next q_16_s_x) (select s__5f_trustedClients0 q_16_s_x))
+        (= (select s__5f_connectedTo0_next q_16_s_x) (select s__5f_connectedTo0 q_16_s_x))
+        (= (select s__5f_trustedServers_next q_16_s_x) (select s__5f_trustedServers q_16_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next s__5f_d_5f_token)
+        (= (select s__5f_servers_5f_token_next q_16_s_x) (select s__5f_servers_5f_token q_16_s_x))
+        (= (select s__5f_clients0_5f_token_next q_16_s_x) (select s__5f_clients0_5f_token q_16_s_x))
+        (= s__5f_e_5f_token_next true))
+      (forall ((q_17_s_j Proc))
+        (=>
+          (and (not (= q_17_s_j q_16_s_x)) (not (= q_17_s_j q_16_s_x)))
+          (and
+            (= (select s__5f_C0_next q_17_s_j) (select s__5f_C0 q_17_s_j))
+            (= (select s__5f_S_next q_17_s_j) (select s__5f_S q_17_s_j))
+            (= (select s__5f_trustedClients0_next q_17_s_j) (select s__5f_trustedClients0 q_17_s_j))
+            (= (select s__5f_connectedTo0_next q_17_s_j) (select s__5f_connectedTo0 q_17_s_j))
+            (= (select s__5f_trustedServers_next q_17_s_j) (select s__5f_trustedServers q_17_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next s__5f_d_5f_token)
+            (=
+              (select s__5f_servers_5f_token_next q_17_s_j)
+              (select s__5f_servers_5f_token q_17_s_j))
+            (=
+              (select s__5f_clients0_5f_token_next q_17_s_j)
+              (select s__5f_clients0_5f_token q_17_s_j))
+            (= s__5f_e_5f_token_next true)))))))
+; action: transition_6
+(define-fun action_6 () Bool
+  (forall ((q_18_s_j Proc))
+    (=>
+      true
+      (and
+        (= (select s__5f_C0_next q_18_s_j) (select s__5f_C0 q_18_s_j))
+        (= (select s__5f_S_next q_18_s_j) (select s__5f_S q_18_s_j))
+        (= (select s__5f_trustedClients0_next q_18_s_j) (select s__5f_trustedClients0 q_18_s_j))
+        (= (select s__5f_connectedTo0_next q_18_s_j) (select s__5f_connectedTo0 q_18_s_j))
+        (= (select s__5f_trustedServers_next q_18_s_j) (select s__5f_trustedServers q_18_s_j))
+        (= s__5f_protected_next true)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_18_s_j)
+          (and (select s__5f_servers_5f_token q_18_s_j) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_18_s_j)
+          (and (select s__5f_clients0_5f_token q_18_s_j) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))
+; action: transition_7
+(define-fun action_7 () Bool
+  (exists ((q_20_s_x Proc))
+    (and
+      (and (= (select s__5f_S q_20_s_x) false) (= (select s__5f_S q_20_s_x) false))
+      (and
+        (= (select s__5f_C0_next q_20_s_x) (select s__5f_C0 q_20_s_x))
+        (= (select s__5f_S_next q_20_s_x) true)
+        (= (select s__5f_trustedClients0_next q_20_s_x) (select s__5f_trustedClients0 q_20_s_x))
+        (= (select s__5f_connectedTo0_next q_20_s_x) (select s__5f_connectedTo0 q_20_s_x))
+        (= (select s__5f_trustedServers_next q_20_s_x) true)
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (= (select s__5f_servers_5f_token_next q_20_s_x) false)
+        (=
+          (select s__5f_clients0_5f_token_next q_20_s_x)
+          (and (select s__5f_clients0_5f_token q_20_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_19_s_j Proc))
+        (=>
+          (and (not (= q_20_s_x q_19_s_j)) (not (= q_19_s_j q_20_s_x)))
+          (and
+            (= (select s__5f_C0_next q_19_s_j) (select s__5f_C0 q_19_s_j))
+            (= (select s__5f_S_next q_19_s_j) (select s__5f_S q_19_s_j))
+            (= (select s__5f_trustedClients0_next q_19_s_j) (select s__5f_trustedClients0 q_19_s_j))
+            (= (select s__5f_connectedTo0_next q_19_s_j) (select s__5f_connectedTo0 q_19_s_j))
+            (= (select s__5f_trustedServers_next q_19_s_j) (select s__5f_trustedServers q_19_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_19_s_j)
+              (and (select s__5f_servers_5f_token q_19_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_19_s_j)
+              (and (select s__5f_clients0_5f_token q_19_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_8
+(define-fun action_8 () Bool
+  (exists ((q_22_s_x Proc))
+    (and
+      (and (= (select s__5f_S q_22_s_x) true) (= s__5f_protected false))
+      (and
+        (= (select s__5f_C0_next q_22_s_x) (select s__5f_C0 q_22_s_x))
+        (= (select s__5f_S_next q_22_s_x) (select s__5f_S q_22_s_x))
+        (= (select s__5f_trustedClients0_next q_22_s_x) (select s__5f_trustedClients0 q_22_s_x))
+        (= (select s__5f_connectedTo0_next q_22_s_x) (select s__5f_connectedTo0 q_22_s_x))
+        (= (select s__5f_trustedServers_next q_22_s_x) false)
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_22_s_x)
+          (and (select s__5f_servers_5f_token q_22_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_22_s_x)
+          (and (select s__5f_clients0_5f_token q_22_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_21_s_j Proc))
+        (=>
+          (and (not (= q_22_s_x q_21_s_j)) (not (= q_21_s_j q_22_s_x)))
+          (and
+            (= (select s__5f_C0_next q_21_s_j) (select s__5f_C0 q_21_s_j))
+            (= (select s__5f_S_next q_21_s_j) (select s__5f_S q_21_s_j))
+            (= (select s__5f_trustedClients0_next q_21_s_j) (select s__5f_trustedClients0 q_21_s_j))
+            (= (select s__5f_connectedTo0_next q_21_s_j) (select s__5f_connectedTo0 q_21_s_j))
+            (= (select s__5f_trustedServers_next q_21_s_j) (select s__5f_trustedServers q_21_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_21_s_j)
+              (and (select s__5f_servers_5f_token q_21_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_21_s_j)
+              (and (select s__5f_clients0_5f_token q_21_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_9
+(define-fun action_9 () Bool
+  (exists ((q_24_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_S q_24_s_x) true)
+        (= (select s__5f_C0 q_24_s_x) false)
+        (= (select s__5f_trustedServers q_24_s_x) false)
+        (= (select s__5f_C0 q_24_s_x) false))
+      (and
+        (= (select s__5f_C0_next q_24_s_x) true)
+        (= (select s__5f_S_next q_24_s_x) (select s__5f_S q_24_s_x))
+        (= (select s__5f_trustedClients0_next q_24_s_x) false)
+        (= (select s__5f_connectedTo0_next q_24_s_x) (select s__5f__5f_index_5f_rank q_24_s_x))
+        (= (select s__5f_trustedServers_next q_24_s_x) (select s__5f_trustedServers q_24_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_24_s_x)
+          (and (select s__5f_servers_5f_token q_24_s_x) true))
+        (= (select s__5f_clients0_5f_token_next q_24_s_x) false)
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_23_s_j Proc))
+        (=>
+          (and (not (= q_24_s_x q_23_s_j)) (not (= q_23_s_j q_24_s_x)))
+          (and
+            (= (select s__5f_C0_next q_23_s_j) (select s__5f_C0 q_23_s_j))
+            (= (select s__5f_S_next q_23_s_j) (select s__5f_S q_23_s_j))
+            (= (select s__5f_trustedClients0_next q_23_s_j) (select s__5f_trustedClients0 q_23_s_j))
+            (= (select s__5f_connectedTo0_next q_23_s_j) (select s__5f_connectedTo0 q_23_s_j))
+            (= (select s__5f_trustedServers_next q_23_s_j) (select s__5f_trustedServers q_23_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_23_s_j)
+              (and (select s__5f_servers_5f_token q_23_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_23_s_j)
+              (and (select s__5f_clients0_5f_token q_23_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_10
+(define-fun action_10 () Bool
+  (exists ((q_26_s_x Proc) (q_27_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_S q_26_s_x) true)
+        (= (select s__5f_C0 q_27_s_y) false)
+        (= (select s__5f_trustedServers q_26_s_x) false)
+        (= (select s__5f_C0 q_27_s_y) false))
+      (and
+        (= (select s__5f_C0_next q_26_s_x) (select s__5f_C0 q_26_s_x))
+        (= (select s__5f_S_next q_26_s_x) (select s__5f_S q_26_s_x))
+        (= (select s__5f_trustedClients0_next q_26_s_x) (select s__5f_trustedClients0 q_26_s_x))
+        (= (select s__5f_connectedTo0_next q_26_s_x) (select s__5f_connectedTo0 q_26_s_x))
+        (= (select s__5f_trustedServers_next q_26_s_x) (select s__5f_trustedServers q_26_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_26_s_x)
+          (and (select s__5f_servers_5f_token q_26_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_26_s_x)
+          (and (select s__5f_clients0_5f_token q_26_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_25_s_j Proc))
+        (=>
+          (and (not (= q_26_s_x q_25_s_j)) (= q_27_s_y q_25_s_j) (not (= q_25_s_j q_26_s_x)))
+          (and
+            (= (select s__5f_C0_next q_25_s_j) true)
+            (= (select s__5f_S_next q_25_s_j) (select s__5f_S q_25_s_j))
+            (= (select s__5f_trustedClients0_next q_25_s_j) false)
+            (= (select s__5f_connectedTo0_next q_25_s_j) (select s__5f__5f_index_5f_rank q_26_s_x))
+            (= (select s__5f_trustedServers_next q_25_s_j) (select s__5f_trustedServers q_25_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_25_s_j)
+              (and (select s__5f_servers_5f_token q_25_s_j) true))
+            (= (select s__5f_clients0_5f_token_next q_25_s_j) false)
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))))
+      (forall ((q_25_s_j Proc))
+        (=>
+          (and (not (= q_26_s_x q_25_s_j)) (not (= q_27_s_y q_25_s_j)) (not (= q_25_s_j q_26_s_x)))
+          (and
+            (= (select s__5f_C0_next q_25_s_j) (select s__5f_C0 q_25_s_j))
+            (= (select s__5f_S_next q_25_s_j) (select s__5f_S q_25_s_j))
+            (= (select s__5f_trustedClients0_next q_25_s_j) (select s__5f_trustedClients0 q_25_s_j))
+            (= (select s__5f_connectedTo0_next q_25_s_j) (select s__5f_connectedTo0 q_25_s_j))
+            (= (select s__5f_trustedServers_next q_25_s_j) (select s__5f_trustedServers q_25_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_25_s_j)
+              (and (select s__5f_servers_5f_token q_25_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_25_s_j)
+              (and (select s__5f_clients0_5f_token q_25_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_11
+(define-fun action_11 () Bool
+  (exists ((q_29_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_S q_29_s_x) true)
+        (= (select s__5f_C0 q_29_s_x) false)
+        (= (select s__5f_trustedServers q_29_s_x) true)
+        (= (select s__5f_C0 q_29_s_x) false))
+      (and
+        (= (select s__5f_C0_next q_29_s_x) true)
+        (= (select s__5f_S_next q_29_s_x) (select s__5f_S q_29_s_x))
+        (= (select s__5f_trustedClients0_next q_29_s_x) true)
+        (= (select s__5f_connectedTo0_next q_29_s_x) (select s__5f__5f_index_5f_rank q_29_s_x))
+        (= (select s__5f_trustedServers_next q_29_s_x) (select s__5f_trustedServers q_29_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_29_s_x)
+          (and (select s__5f_servers_5f_token q_29_s_x) true))
+        (= (select s__5f_clients0_5f_token_next q_29_s_x) false)
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_28_s_j Proc))
+        (=>
+          (and (not (= q_29_s_x q_28_s_j)) (not (= q_28_s_j q_29_s_x)))
+          (and
+            (= (select s__5f_C0_next q_28_s_j) (select s__5f_C0 q_28_s_j))
+            (= (select s__5f_S_next q_28_s_j) (select s__5f_S q_28_s_j))
+            (= (select s__5f_trustedClients0_next q_28_s_j) (select s__5f_trustedClients0 q_28_s_j))
+            (= (select s__5f_connectedTo0_next q_28_s_j) (select s__5f_connectedTo0 q_28_s_j))
+            (= (select s__5f_trustedServers_next q_28_s_j) (select s__5f_trustedServers q_28_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_28_s_j)
+              (and (select s__5f_servers_5f_token q_28_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_28_s_j)
+              (and (select s__5f_clients0_5f_token q_28_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_12
+(define-fun action_12 () Bool
+  (exists ((q_31_s_x Proc) (q_32_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_S q_31_s_x) true)
+        (= (select s__5f_C0 q_32_s_y) false)
+        (= (select s__5f_trustedServers q_31_s_x) true)
+        (= (select s__5f_C0 q_32_s_y) false))
+      (and
+        (= (select s__5f_C0_next q_31_s_x) (select s__5f_C0 q_31_s_x))
+        (= (select s__5f_S_next q_31_s_x) (select s__5f_S q_31_s_x))
+        (= (select s__5f_trustedClients0_next q_31_s_x) (select s__5f_trustedClients0 q_31_s_x))
+        (= (select s__5f_connectedTo0_next q_31_s_x) (select s__5f_connectedTo0 q_31_s_x))
+        (= (select s__5f_trustedServers_next q_31_s_x) (select s__5f_trustedServers q_31_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_31_s_x)
+          (and (select s__5f_servers_5f_token q_31_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_31_s_x)
+          (and (select s__5f_clients0_5f_token q_31_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_30_s_j Proc))
+        (=>
+          (and (not (= q_31_s_x q_30_s_j)) (= q_32_s_y q_30_s_j) (not (= q_30_s_j q_31_s_x)))
+          (and
+            (= (select s__5f_C0_next q_30_s_j) true)
+            (= (select s__5f_S_next q_30_s_j) (select s__5f_S q_30_s_j))
+            (= (select s__5f_trustedClients0_next q_30_s_j) true)
+            (= (select s__5f_connectedTo0_next q_30_s_j) (select s__5f__5f_index_5f_rank q_31_s_x))
+            (= (select s__5f_trustedServers_next q_30_s_j) (select s__5f_trustedServers q_30_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_30_s_j)
+              (and (select s__5f_servers_5f_token q_30_s_j) true))
+            (= (select s__5f_clients0_5f_token_next q_30_s_j) false)
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))))
+      (forall ((q_30_s_j Proc))
+        (=>
+          (and (not (= q_31_s_x q_30_s_j)) (not (= q_32_s_y q_30_s_j)) (not (= q_30_s_j q_31_s_x)))
+          (and
+            (= (select s__5f_C0_next q_30_s_j) (select s__5f_C0 q_30_s_j))
+            (= (select s__5f_S_next q_30_s_j) (select s__5f_S q_30_s_j))
+            (= (select s__5f_trustedClients0_next q_30_s_j) (select s__5f_trustedClients0 q_30_s_j))
+            (= (select s__5f_connectedTo0_next q_30_s_j) (select s__5f_connectedTo0 q_30_s_j))
+            (= (select s__5f_trustedServers_next q_30_s_j) (select s__5f_trustedServers q_30_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_30_s_j)
+              (and (select s__5f_servers_5f_token q_30_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_30_s_j)
+              (and (select s__5f_clients0_5f_token q_30_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_13
+(define-fun action_13 () Bool
+  (exists ((q_34_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_S q_34_s_x) true)
+        (= (select s__5f_C0 q_34_s_x) true)
+        (= (select s__5f_trustedClients0 q_34_s_x) true))
+      (and
+        (= (select s__5f_C0_next q_34_s_x) (select s__5f_C0 q_34_s_x))
+        (= (select s__5f_S_next q_34_s_x) (select s__5f_S q_34_s_x))
+        (= (select s__5f_trustedClients0_next q_34_s_x) (select s__5f_trustedClients0 q_34_s_x))
+        (= (select s__5f_connectedTo0_next q_34_s_x) (select s__5f__5f_index_5f_rank q_34_s_x))
+        (= (select s__5f_trustedServers_next q_34_s_x) (select s__5f_trustedServers q_34_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_34_s_x)
+          (and (select s__5f_servers_5f_token q_34_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_34_s_x)
+          (and (select s__5f_clients0_5f_token q_34_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_33_s_j Proc))
+        (=>
+          (and (not (= q_34_s_x q_33_s_j)) (not (= q_33_s_j q_34_s_x)))
+          (and
+            (= (select s__5f_C0_next q_33_s_j) (select s__5f_C0 q_33_s_j))
+            (= (select s__5f_S_next q_33_s_j) (select s__5f_S q_33_s_j))
+            (= (select s__5f_trustedClients0_next q_33_s_j) (select s__5f_trustedClients0 q_33_s_j))
+            (= (select s__5f_connectedTo0_next q_33_s_j) (select s__5f_connectedTo0 q_33_s_j))
+            (= (select s__5f_trustedServers_next q_33_s_j) (select s__5f_trustedServers q_33_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_33_s_j)
+              (and (select s__5f_servers_5f_token q_33_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_33_s_j)
+              (and (select s__5f_clients0_5f_token q_33_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_14
+(define-fun action_14 () Bool
+  (exists ((q_36_s_x Proc) (q_37_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_S q_36_s_x) true)
+        (= (select s__5f_C0 q_37_s_y) true)
+        (= (select s__5f_trustedClients0 q_37_s_y) true))
+      (and
+        (= (select s__5f_C0_next q_36_s_x) (select s__5f_C0 q_36_s_x))
+        (= (select s__5f_S_next q_36_s_x) (select s__5f_S q_36_s_x))
+        (= (select s__5f_trustedClients0_next q_36_s_x) (select s__5f_trustedClients0 q_36_s_x))
+        (= (select s__5f_connectedTo0_next q_36_s_x) (select s__5f_connectedTo0 q_36_s_x))
+        (= (select s__5f_trustedServers_next q_36_s_x) (select s__5f_trustedServers q_36_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_36_s_x)
+          (and (select s__5f_servers_5f_token q_36_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_36_s_x)
+          (and (select s__5f_clients0_5f_token q_36_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_35_s_j Proc))
+        (=>
+          (and (not (= q_36_s_x q_35_s_j)) (= q_37_s_y q_35_s_j) (not (= q_35_s_j q_36_s_x)))
+          (and
+            (= (select s__5f_C0_next q_35_s_j) (select s__5f_C0 q_35_s_j))
+            (= (select s__5f_S_next q_35_s_j) (select s__5f_S q_35_s_j))
+            (= (select s__5f_trustedClients0_next q_35_s_j) (select s__5f_trustedClients0 q_35_s_j))
+            (= (select s__5f_connectedTo0_next q_35_s_j) (select s__5f__5f_index_5f_rank q_36_s_x))
+            (= (select s__5f_trustedServers_next q_35_s_j) (select s__5f_trustedServers q_35_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_35_s_j)
+              (and (select s__5f_servers_5f_token q_35_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_35_s_j)
+              (and (select s__5f_clients0_5f_token q_35_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))))
+      (forall ((q_35_s_j Proc))
+        (=>
+          (and (not (= q_36_s_x q_35_s_j)) (not (= q_37_s_y q_35_s_j)) (not (= q_35_s_j q_36_s_x)))
+          (and
+            (= (select s__5f_C0_next q_35_s_j) (select s__5f_C0 q_35_s_j))
+            (= (select s__5f_S_next q_35_s_j) (select s__5f_S q_35_s_j))
+            (= (select s__5f_trustedClients0_next q_35_s_j) (select s__5f_trustedClients0 q_35_s_j))
+            (= (select s__5f_connectedTo0_next q_35_s_j) (select s__5f_connectedTo0 q_35_s_j))
+            (= (select s__5f_trustedServers_next q_35_s_j) (select s__5f_trustedServers q_35_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_35_s_j)
+              (and (select s__5f_servers_5f_token q_35_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_35_s_j)
+              (and (select s__5f_clients0_5f_token q_35_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_15
+(define-fun action_15 () Bool
+  (exists ((q_39_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_S q_39_s_x) true)
+        (= (select s__5f_C0 q_39_s_x) true)
+        (= (select s__5f_trustedClients0 q_39_s_x) false)
+        (= (select s__5f_trustedServers q_39_s_x) false))
+      (and
+        (= (select s__5f_C0_next q_39_s_x) (select s__5f_C0 q_39_s_x))
+        (= (select s__5f_S_next q_39_s_x) (select s__5f_S q_39_s_x))
+        (= (select s__5f_trustedClients0_next q_39_s_x) (select s__5f_trustedClients0 q_39_s_x))
+        (= (select s__5f_connectedTo0_next q_39_s_x) (select s__5f__5f_index_5f_rank q_39_s_x))
+        (= (select s__5f_trustedServers_next q_39_s_x) (select s__5f_trustedServers q_39_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_39_s_x)
+          (and (select s__5f_servers_5f_token q_39_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_39_s_x)
+          (and (select s__5f_clients0_5f_token q_39_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_38_s_j Proc))
+        (=>
+          (and (not (= q_39_s_x q_38_s_j)) (not (= q_38_s_j q_39_s_x)))
+          (and
+            (= (select s__5f_C0_next q_38_s_j) (select s__5f_C0 q_38_s_j))
+            (= (select s__5f_S_next q_38_s_j) (select s__5f_S q_38_s_j))
+            (= (select s__5f_trustedClients0_next q_38_s_j) (select s__5f_trustedClients0 q_38_s_j))
+            (= (select s__5f_connectedTo0_next q_38_s_j) (select s__5f_connectedTo0 q_38_s_j))
+            (= (select s__5f_trustedServers_next q_38_s_j) (select s__5f_trustedServers q_38_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_38_s_j)
+              (and (select s__5f_servers_5f_token q_38_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_38_s_j)
+              (and (select s__5f_clients0_5f_token q_38_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_16
+(define-fun action_16 () Bool
+  (exists ((q_41_s_x Proc) (q_42_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_S q_41_s_x) true)
+        (= (select s__5f_C0 q_42_s_y) true)
+        (= (select s__5f_trustedClients0 q_42_s_y) false)
+        (= (select s__5f_trustedServers q_41_s_x) false))
+      (and
+        (= (select s__5f_C0_next q_41_s_x) (select s__5f_C0 q_41_s_x))
+        (= (select s__5f_S_next q_41_s_x) (select s__5f_S q_41_s_x))
+        (= (select s__5f_trustedClients0_next q_41_s_x) (select s__5f_trustedClients0 q_41_s_x))
+        (= (select s__5f_connectedTo0_next q_41_s_x) (select s__5f_connectedTo0 q_41_s_x))
+        (= (select s__5f_trustedServers_next q_41_s_x) (select s__5f_trustedServers q_41_s_x))
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_41_s_x)
+          (and (select s__5f_servers_5f_token q_41_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_41_s_x)
+          (and (select s__5f_clients0_5f_token q_41_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_40_s_j Proc))
+        (=>
+          (and (not (= q_41_s_x q_40_s_j)) (= q_42_s_y q_40_s_j) (not (= q_40_s_j q_41_s_x)))
+          (and
+            (= (select s__5f_C0_next q_40_s_j) (select s__5f_C0 q_40_s_j))
+            (= (select s__5f_S_next q_40_s_j) (select s__5f_S q_40_s_j))
+            (= (select s__5f_trustedClients0_next q_40_s_j) (select s__5f_trustedClients0 q_40_s_j))
+            (= (select s__5f_connectedTo0_next q_40_s_j) (select s__5f__5f_index_5f_rank q_41_s_x))
+            (= (select s__5f_trustedServers_next q_40_s_j) (select s__5f_trustedServers q_40_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_40_s_j)
+              (and (select s__5f_servers_5f_token q_40_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_40_s_j)
+              (and (select s__5f_clients0_5f_token q_40_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))))
+      (forall ((q_40_s_j Proc))
+        (=>
+          (and (not (= q_41_s_x q_40_s_j)) (not (= q_42_s_y q_40_s_j)) (not (= q_40_s_j q_41_s_x)))
+          (and
+            (= (select s__5f_C0_next q_40_s_j) (select s__5f_C0 q_40_s_j))
+            (= (select s__5f_S_next q_40_s_j) (select s__5f_S q_40_s_j))
+            (= (select s__5f_trustedClients0_next q_40_s_j) (select s__5f_trustedClients0 q_40_s_j))
+            (= (select s__5f_connectedTo0_next q_40_s_j) (select s__5f_connectedTo0 q_40_s_j))
+            (= (select s__5f_trustedServers_next q_40_s_j) (select s__5f_trustedServers q_40_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_40_s_j)
+              (and (select s__5f_servers_5f_token q_40_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_40_s_j)
+              (and (select s__5f_clients0_5f_token q_40_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_17
+(define-fun action_17 () Bool
+  (exists ((q_44_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_S q_44_s_x) true)
+        (= (select s__5f_C0 q_44_s_x) true)
+        (= (select s__5f_trustedClients0 q_44_s_x) false)
+        (= s__5f_protected false))
+      (and
+        (= (select s__5f_C0_next q_44_s_x) (select s__5f_C0 q_44_s_x))
+        (= (select s__5f_S_next q_44_s_x) (select s__5f_S q_44_s_x))
+        (= (select s__5f_trustedClients0_next q_44_s_x) (select s__5f_trustedClients0 q_44_s_x))
+        (= (select s__5f_connectedTo0_next q_44_s_x) (select s__5f__5f_index_5f_rank q_44_s_x))
+        (= (select s__5f_trustedServers_next q_44_s_x) false)
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_44_s_x)
+          (and (select s__5f_servers_5f_token q_44_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_44_s_x)
+          (and (select s__5f_clients0_5f_token q_44_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_43_s_j Proc))
+        (=>
+          (and (not (= q_44_s_x q_43_s_j)) (not (= q_43_s_j q_44_s_x)))
+          (and
+            (= (select s__5f_C0_next q_43_s_j) (select s__5f_C0 q_43_s_j))
+            (= (select s__5f_S_next q_43_s_j) (select s__5f_S q_43_s_j))
+            (= (select s__5f_trustedClients0_next q_43_s_j) (select s__5f_trustedClients0 q_43_s_j))
+            (= (select s__5f_connectedTo0_next q_43_s_j) (select s__5f_connectedTo0 q_43_s_j))
+            (= (select s__5f_trustedServers_next q_43_s_j) (select s__5f_trustedServers q_43_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_43_s_j)
+              (and (select s__5f_servers_5f_token q_43_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_43_s_j)
+              (and (select s__5f_clients0_5f_token q_43_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_18
+(define-fun action_18 () Bool
+  (exists ((q_46_s_x Proc) (q_47_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_S q_46_s_x) true)
+        (= (select s__5f_C0 q_47_s_y) true)
+        (= (select s__5f_trustedClients0 q_47_s_y) false)
+        (= s__5f_protected false))
+      (and
+        (= (select s__5f_C0_next q_46_s_x) (select s__5f_C0 q_46_s_x))
+        (= (select s__5f_S_next q_46_s_x) (select s__5f_S q_46_s_x))
+        (= (select s__5f_trustedClients0_next q_46_s_x) (select s__5f_trustedClients0 q_46_s_x))
+        (= (select s__5f_connectedTo0_next q_46_s_x) (select s__5f_connectedTo0 q_46_s_x))
+        (= (select s__5f_trustedServers_next q_46_s_x) false)
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_46_s_x)
+          (and (select s__5f_servers_5f_token q_46_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_46_s_x)
+          (and (select s__5f_clients0_5f_token q_46_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_45_s_j Proc))
+        (=>
+          (and (not (= q_46_s_x q_45_s_j)) (= q_47_s_y q_45_s_j) (not (= q_45_s_j q_46_s_x)))
+          (and
+            (= (select s__5f_C0_next q_45_s_j) (select s__5f_C0 q_45_s_j))
+            (= (select s__5f_S_next q_45_s_j) (select s__5f_S q_45_s_j))
+            (= (select s__5f_trustedClients0_next q_45_s_j) (select s__5f_trustedClients0 q_45_s_j))
+            (= (select s__5f_connectedTo0_next q_45_s_j) (select s__5f__5f_index_5f_rank q_46_s_x))
+            (= (select s__5f_trustedServers_next q_45_s_j) (select s__5f_trustedServers q_45_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_45_s_j)
+              (and (select s__5f_servers_5f_token q_45_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_45_s_j)
+              (and (select s__5f_clients0_5f_token q_45_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))))
+      (forall ((q_45_s_j Proc))
+        (=>
+          (and (not (= q_46_s_x q_45_s_j)) (not (= q_47_s_y q_45_s_j)) (not (= q_45_s_j q_46_s_x)))
+          (and
+            (= (select s__5f_C0_next q_45_s_j) (select s__5f_C0 q_45_s_j))
+            (= (select s__5f_S_next q_45_s_j) (select s__5f_S q_45_s_j))
+            (= (select s__5f_trustedClients0_next q_45_s_j) (select s__5f_trustedClients0 q_45_s_j))
+            (= (select s__5f_connectedTo0_next q_45_s_j) (select s__5f_connectedTo0 q_45_s_j))
+            (= (select s__5f_trustedServers_next q_45_s_j) (select s__5f_trustedServers q_45_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_45_s_j)
+              (and (select s__5f_servers_5f_token q_45_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_45_s_j)
+              (and (select s__5f_clients0_5f_token q_45_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_19
+(define-fun action_19 () Bool
+  (exists ((q_49_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_S q_49_s_x) true)
+        (= (select s__5f_C0 q_49_s_x) true)
+        (= (select s__5f_trustedClients0 q_49_s_x) true)
+        (= (select s__5f__5f_index_5f_rank q_49_s_x) (select s__5f_connectedTo0 q_49_s_x))
+        (= s__5f_protected false))
+      (and
+        (= (select s__5f_C0_next q_49_s_x) (select s__5f_C0 q_49_s_x))
+        (= (select s__5f_S_next q_49_s_x) (select s__5f_S q_49_s_x))
+        (= (select s__5f_trustedClients0_next q_49_s_x) false)
+        (= (select s__5f_connectedTo0_next q_49_s_x) (select s__5f_connectedTo0 q_49_s_x))
+        (= (select s__5f_trustedServers_next q_49_s_x) false)
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_49_s_x)
+          (and (select s__5f_servers_5f_token q_49_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_49_s_x)
+          (and (select s__5f_clients0_5f_token q_49_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_48_s_j Proc))
+        (=>
+          (and (not (= q_49_s_x q_48_s_j)) (not (= q_48_s_j q_49_s_x)))
+          (and
+            (= (select s__5f_C0_next q_48_s_j) (select s__5f_C0 q_48_s_j))
+            (= (select s__5f_S_next q_48_s_j) (select s__5f_S q_48_s_j))
+            (= (select s__5f_trustedClients0_next q_48_s_j) (select s__5f_trustedClients0 q_48_s_j))
+            (= (select s__5f_connectedTo0_next q_48_s_j) (select s__5f_connectedTo0 q_48_s_j))
+            (= (select s__5f_trustedServers_next q_48_s_j) (select s__5f_trustedServers q_48_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_48_s_j)
+              (and (select s__5f_servers_5f_token q_48_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_48_s_j)
+              (and (select s__5f_clients0_5f_token q_48_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+; action: transition_20
+(define-fun action_20 () Bool
+  (exists ((q_51_s_x Proc) (q_52_s_y Proc))
+    (and
+      (and
+        (= (select s__5f_S q_51_s_x) true)
+        (= (select s__5f_C0 q_52_s_y) true)
+        (= (select s__5f_trustedClients0 q_52_s_y) true)
+        (= (select s__5f__5f_index_5f_rank q_51_s_x) (select s__5f_connectedTo0 q_52_s_y))
+        (= s__5f_protected false))
+      (and
+        (= (select s__5f_C0_next q_51_s_x) (select s__5f_C0 q_51_s_x))
+        (= (select s__5f_S_next q_51_s_x) (select s__5f_S q_51_s_x))
+        (= (select s__5f_trustedClients0_next q_51_s_x) (select s__5f_trustedClients0 q_51_s_x))
+        (= (select s__5f_connectedTo0_next q_51_s_x) (select s__5f_connectedTo0 q_51_s_x))
+        (= (select s__5f_trustedServers_next q_51_s_x) false)
+        (= s__5f_protected_next s__5f_protected)
+        (= s__5f_d_5f_token_next true)
+        (=
+          (select s__5f_servers_5f_token_next q_51_s_x)
+          (and (select s__5f_servers_5f_token q_51_s_x) true))
+        (=
+          (select s__5f_clients0_5f_token_next q_51_s_x)
+          (and (select s__5f_clients0_5f_token q_51_s_x) true))
+        (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))
+      (forall ((q_50_s_j Proc))
+        (=>
+          (and (not (= q_51_s_x q_50_s_j)) (= q_52_s_y q_50_s_j) (not (= q_50_s_j q_51_s_x)))
+          (and
+            (= (select s__5f_C0_next q_50_s_j) (select s__5f_C0 q_50_s_j))
+            (= (select s__5f_S_next q_50_s_j) (select s__5f_S q_50_s_j))
+            (= (select s__5f_trustedClients0_next q_50_s_j) false)
+            (= (select s__5f_connectedTo0_next q_50_s_j) (select s__5f_connectedTo0 q_50_s_j))
+            (= (select s__5f_trustedServers_next q_50_s_j) (select s__5f_trustedServers q_50_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_50_s_j)
+              (and (select s__5f_servers_5f_token q_50_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_50_s_j)
+              (and (select s__5f_clients0_5f_token q_50_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true)))))
+      (forall ((q_50_s_j Proc))
+        (=>
+          (and (not (= q_51_s_x q_50_s_j)) (not (= q_52_s_y q_50_s_j)) (not (= q_50_s_j q_51_s_x)))
+          (and
+            (= (select s__5f_C0_next q_50_s_j) (select s__5f_C0 q_50_s_j))
+            (= (select s__5f_S_next q_50_s_j) (select s__5f_S q_50_s_j))
+            (= (select s__5f_trustedClients0_next q_50_s_j) (select s__5f_trustedClients0 q_50_s_j))
+            (= (select s__5f_connectedTo0_next q_50_s_j) (select s__5f_connectedTo0 q_50_s_j))
+            (= (select s__5f_trustedServers_next q_50_s_j) (select s__5f_trustedServers q_50_s_j))
+            (= s__5f_protected_next s__5f_protected)
+            (= s__5f_d_5f_token_next true)
+            (=
+              (select s__5f_servers_5f_token_next q_50_s_j)
+              (and (select s__5f_servers_5f_token q_50_s_j) true))
+            (=
+              (select s__5f_clients0_5f_token_next q_50_s_j)
+              (and (select s__5f_clients0_5f_token q_50_s_j) true))
+            (= s__5f_e_5f_token_next (and s__5f_e_5f_token true))))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_x Proc) (q_2_s_y Proc))
+        (and
+          (and
+            (and
+              (= s__5f_protected false)
+              (=>
+                (select s__5f_C0 q_1_s_x)
+                (=>
+                  (select s__5f_S q_2_s_y)
+                  (=>
+                    (and
+                      (= (select s__5f_trustedClients0 q_1_s_x) false)
+                      (=
+                        (select s__5f__5f_index_5f_rank q_2_s_y)
+                        (select s__5f_connectedTo0 q_1_s_x)))
+                    (= (select s__5f_trustedServers q_2_s_y) false)))))
+            (=>
+              (select s__5f_C0 q_1_s_x)
+              (=>
+                (not (select s__5f_S q_2_s_y))
+                (not
+                  (= (select s__5f__5f_index_5f_rank q_2_s_y) (select s__5f_connectedTo0 q_1_s_x))))))
+          (= s__5f_d_5f_token true)
+          (= (select s__5f_servers_5f_token q_1_s_x) false)
+          (= (select s__5f_clients0_5f_token q_1_s_x) false)
+          (= s__5f_e_5f_token false)))
+      (forall ((q_53_s_a Proc) (q_54_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_53_s_a) (select s__5f__5f_index_5f_rank q_54_s_b))
+          (= q_53_s_a q_54_s_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13
+        action_14
+        action_15
+        action_16
+        action_17
+        action_18
+        action_19
+        action_20)
+      (= s__5f__5f_index_5f_rank_next s__5f__5f_index_5f_rank)
+      (forall ((q_53_s_a Proc) (q_54_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_53_s_a) (select s__5f__5f_index_5f_rank q_54_s_b))
+          (= q_53_s_a q_54_s_b)))
+      (forall ((q_53_s_a Proc) (q_54_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_53_s_a) (select s__5f__5f_index_5f_rank q_54_s_b))
+          (= q_53_s_a q_54_s_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (! (forall ((q_3_s_x Proc)) (=> true (not (= s__5f_e_5f_token true)))) :invar-property 0))

@@ -1,0 +1,298 @@
+; Generated offline from mypyvy/examples/misc/indigo_tournament.pyv
+; Source SHA-256: e6ce99909b6e6d5ab2c2d26835fdc9ff1ddfe064e7a4f103e56e6491779f5349
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; No safety annotation; checking all declared invariants as properties.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_player 0)
+(declare-sort s_tournament 0)
+(declare-fun s_capacity () Int)
+(declare-fun s_capacity_next () Int)
+(declare-fun s_enrolled () (Array s_player (Array s_tournament Bool)))
+(declare-fun s_enrolled_next () (Array s_player (Array s_tournament Bool)))
+(declare-fun s_isPlayer () (Array s_player Bool))
+(declare-fun s_isPlayer_next () (Array s_player Bool))
+(declare-fun s_isTournament () (Array s_tournament Bool))
+(declare-fun s_isTournament_next () (Array s_tournament Bool))
+(declare-fun s_active () (Array s_tournament Bool))
+(declare-fun s_active_next () (Array s_tournament Bool))
+(declare-fun s_participant () (Array s_player (Array s_tournament Bool)))
+(declare-fun s_participant_next () (Array s_player (Array s_tournament Bool)))
+(declare-fun s_budget () (Array s_player Int))
+(declare-fun s_budget_next () (Array s_player Int))
+(declare-fun s_nrPlayers () (Array s_tournament Int))
+(declare-fun s_nrPlayers_next () (Array s_tournament Int))
+; source symbol: capacity
+(define-fun link_0 () Int (! s_capacity :next s_capacity_next))
+; source symbol: enrolled
+(define-fun link_1 () (Array s_player (Array s_tournament Bool)) (! s_enrolled :next s_enrolled_next))
+; source symbol: isPlayer
+(define-fun link_2 () (Array s_player Bool) (! s_isPlayer :next s_isPlayer_next))
+; source symbol: isTournament
+(define-fun link_3 () (Array s_tournament Bool) (! s_isTournament :next s_isTournament_next))
+; source symbol: active
+(define-fun link_4 () (Array s_tournament Bool) (! s_active :next s_active_next))
+; source symbol: participant
+(define-fun link_5 () (Array s_player (Array s_tournament Bool)) (! s_participant :next s_participant_next))
+; source symbol: budget
+(define-fun link_6 () (Array s_player Int) (! s_budget :next s_budget_next))
+; source symbol: nrPlayers
+(define-fun link_7 () (Array s_tournament Int) (! s_nrPlayers :next s_nrPlayers_next))
+; action: addPlayer
+(define-fun action_0 () Bool
+  (exists ((q_10_s_p s_player))
+    (and
+      (forall ((q_11_s_P s_player))
+        (=
+          (select s_isPlayer_next q_11_s_P)
+          (or (select s_isPlayer q_11_s_P) (= q_11_s_P q_10_s_p))))
+      (forall ((q_12_s_x0 s_player) (q_13_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_12_s_x0) q_13_s_x1)
+          (select (select s_enrolled q_12_s_x0) q_13_s_x1)))
+      (forall ((q_14_s_x0 s_tournament))
+        (= (select s_isTournament_next q_14_s_x0) (select s_isTournament q_14_s_x0)))
+      (forall ((q_15_s_x0 s_tournament))
+        (= (select s_active_next q_15_s_x0) (select s_active q_15_s_x0)))
+      (forall ((q_16_s_x0 s_player) (q_17_s_x1 s_tournament))
+        (=
+          (select (select s_participant_next q_16_s_x0) q_17_s_x1)
+          (select (select s_participant q_16_s_x0) q_17_s_x1)))
+      (forall ((q_18_s_x0 s_player))
+        (= (select s_budget_next q_18_s_x0) (select s_budget q_18_s_x0)))
+      (forall ((q_19_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_19_s_x0) (select s_nrPlayers q_19_s_x0))))))
+; action: removePlayer
+(define-fun action_1 () Bool
+  (exists ((q_20_s_p s_player))
+    (and
+      (and
+        (forall ((q_21_s_T s_tournament)) (not (select (select s_enrolled q_20_s_p) q_21_s_T)))
+        (forall ((q_22_s_P s_player))
+          (=
+            (select s_isPlayer_next q_22_s_P)
+            (and (select s_isPlayer q_22_s_P) (not (= q_22_s_P q_20_s_p))))))
+      (forall ((q_23_s_x0 s_player) (q_24_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_23_s_x0) q_24_s_x1)
+          (select (select s_enrolled q_23_s_x0) q_24_s_x1)))
+      (forall ((q_25_s_x0 s_tournament))
+        (= (select s_isTournament_next q_25_s_x0) (select s_isTournament q_25_s_x0)))
+      (forall ((q_26_s_x0 s_tournament))
+        (= (select s_active_next q_26_s_x0) (select s_active q_26_s_x0)))
+      (forall ((q_27_s_x0 s_player) (q_28_s_x1 s_tournament))
+        (=
+          (select (select s_participant_next q_27_s_x0) q_28_s_x1)
+          (select (select s_participant q_27_s_x0) q_28_s_x1)))
+      (forall ((q_29_s_x0 s_player))
+        (= (select s_budget_next q_29_s_x0) (select s_budget q_29_s_x0)))
+      (forall ((q_30_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_30_s_x0) (select s_nrPlayers q_30_s_x0))))))
+; action: addTournament
+(define-fun action_2 () Bool
+  (exists ((q_31_s_t s_tournament))
+    (and
+      (forall ((q_32_s_T s_tournament))
+        (=
+          (select s_isTournament_next q_32_s_T)
+          (or (select s_isTournament q_32_s_T) (= q_32_s_T q_31_s_t))))
+      (forall ((q_33_s_x0 s_player) (q_34_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_33_s_x0) q_34_s_x1)
+          (select (select s_enrolled q_33_s_x0) q_34_s_x1)))
+      (forall ((q_35_s_x0 s_player))
+        (= (select s_isPlayer_next q_35_s_x0) (select s_isPlayer q_35_s_x0)))
+      (forall ((q_36_s_x0 s_tournament))
+        (= (select s_active_next q_36_s_x0) (select s_active q_36_s_x0)))
+      (forall ((q_37_s_x0 s_player) (q_38_s_x1 s_tournament))
+        (=
+          (select (select s_participant_next q_37_s_x0) q_38_s_x1)
+          (select (select s_participant q_37_s_x0) q_38_s_x1)))
+      (forall ((q_39_s_x0 s_player))
+        (= (select s_budget_next q_39_s_x0) (select s_budget q_39_s_x0)))
+      (forall ((q_40_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_40_s_x0) (select s_nrPlayers q_40_s_x0))))))
+; action: removeTournament
+(define-fun action_3 () Bool
+  (exists ((q_41_s_t s_tournament))
+    (and
+      (and
+        (forall ((q_42_s_P s_player)) (not (select (select s_enrolled q_42_s_P) q_41_s_t)))
+        (forall ((q_43_s_T s_tournament))
+          (=
+            (select s_isTournament_next q_43_s_T)
+            (and (select s_isTournament q_43_s_T) (not (= q_43_s_T q_41_s_t))))))
+      (forall ((q_44_s_x0 s_player) (q_45_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_44_s_x0) q_45_s_x1)
+          (select (select s_enrolled q_44_s_x0) q_45_s_x1)))
+      (forall ((q_46_s_x0 s_player))
+        (= (select s_isPlayer_next q_46_s_x0) (select s_isPlayer q_46_s_x0)))
+      (forall ((q_47_s_x0 s_tournament))
+        (= (select s_active_next q_47_s_x0) (select s_active q_47_s_x0)))
+      (forall ((q_48_s_x0 s_player) (q_49_s_x1 s_tournament))
+        (=
+          (select (select s_participant_next q_48_s_x0) q_49_s_x1)
+          (select (select s_participant q_48_s_x0) q_49_s_x1)))
+      (forall ((q_50_s_x0 s_player))
+        (= (select s_budget_next q_50_s_x0) (select s_budget q_50_s_x0)))
+      (forall ((q_51_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_51_s_x0) (select s_nrPlayers q_51_s_x0))))))
+; action: enrollTournament
+(define-fun action_4 () Bool
+  (exists ((q_52_s_p s_player) (q_53_s_t s_tournament))
+    (and
+      (and
+        (> (select s_budget q_52_s_p) 0)
+        (select s_isPlayer q_52_s_p)
+        (select s_isTournament q_53_s_t)
+        (< (+ (select s_nrPlayers q_53_s_t) 1) s_capacity)
+        (not (select s_active q_53_s_t))
+        (forall ((q_54_s_P s_player) (q_55_s_T s_tournament))
+          (=
+            (select (select s_enrolled_next q_54_s_P) q_55_s_T)
+            (or
+              (select (select s_enrolled q_54_s_P) q_55_s_T)
+              (and (= q_54_s_P q_52_s_p) (= q_55_s_T q_53_s_t)))))
+        (forall ((q_56_s_P s_player) (q_57_s_T s_tournament))
+          (=
+            (select (select s_participant_next q_56_s_P) q_57_s_T)
+            (and
+              (select (select s_participant q_56_s_P) q_57_s_T)
+              (not (and (= q_56_s_P q_52_s_p) (= q_57_s_T q_53_s_t))))))
+        (forall ((q_58_s_T s_tournament))
+          (=
+            (select s_nrPlayers_next q_58_s_T)
+            (ite
+              (= q_58_s_T q_53_s_t)
+              (+ (select s_nrPlayers q_53_s_t) 1)
+              (select s_nrPlayers q_58_s_T))))
+        (forall ((q_59_s_P s_player))
+          (=
+            (select s_budget_next q_59_s_P)
+            (ite (= q_59_s_P q_52_s_p) (- (select s_budget q_52_s_p) 1) (select s_budget q_59_s_P)))))
+      (forall ((q_60_s_x0 s_player))
+        (= (select s_isPlayer_next q_60_s_x0) (select s_isPlayer q_60_s_x0)))
+      (forall ((q_61_s_x0 s_tournament))
+        (= (select s_isTournament_next q_61_s_x0) (select s_isTournament q_61_s_x0)))
+      (forall ((q_62_s_x0 s_tournament))
+        (= (select s_active_next q_62_s_x0) (select s_active q_62_s_x0))))))
+; action: beginTournament
+(define-fun action_5 () Bool
+  (exists ((q_63_s_t s_tournament))
+    (and
+      (and
+        (>= (select s_nrPlayers q_63_s_t) 1)
+        (forall ((q_64_s_T s_tournament))
+          (= (select s_active_next q_64_s_T) (or (select s_active q_64_s_T) (= q_64_s_T q_63_s_t))))
+        (forall ((q_65_s_P s_player) (q_66_s_T s_tournament))
+          (=
+            (select (select s_participant_next q_65_s_P) q_66_s_T)
+            (or (select (select s_participant q_65_s_P) q_66_s_T) (= q_66_s_T q_63_s_t)))))
+      (forall ((q_67_s_x0 s_player) (q_68_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_67_s_x0) q_68_s_x1)
+          (select (select s_enrolled q_67_s_x0) q_68_s_x1)))
+      (forall ((q_69_s_x0 s_player))
+        (= (select s_isPlayer_next q_69_s_x0) (select s_isPlayer q_69_s_x0)))
+      (forall ((q_70_s_x0 s_tournament))
+        (= (select s_isTournament_next q_70_s_x0) (select s_isTournament q_70_s_x0)))
+      (forall ((q_71_s_x0 s_player))
+        (= (select s_budget_next q_71_s_x0) (select s_budget q_71_s_x0)))
+      (forall ((q_72_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_72_s_x0) (select s_nrPlayers q_72_s_x0))))))
+; action: endTournament
+(define-fun action_6 () Bool
+  (exists ((q_73_s_t s_tournament))
+    (and
+      (forall ((q_74_s_T s_tournament))
+        (=
+          (select s_active_next q_74_s_T)
+          (and (select s_active q_74_s_T) (not (= q_74_s_T q_73_s_t)))))
+      (forall ((q_75_s_x0 s_player) (q_76_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_75_s_x0) q_76_s_x1)
+          (select (select s_enrolled q_75_s_x0) q_76_s_x1)))
+      (forall ((q_77_s_x0 s_player))
+        (= (select s_isPlayer_next q_77_s_x0) (select s_isPlayer q_77_s_x0)))
+      (forall ((q_78_s_x0 s_tournament))
+        (= (select s_isTournament_next q_78_s_x0) (select s_isTournament q_78_s_x0)))
+      (forall ((q_79_s_x0 s_player) (q_80_s_x1 s_tournament))
+        (=
+          (select (select s_participant_next q_79_s_x0) q_80_s_x1)
+          (select (select s_participant q_79_s_x0) q_80_s_x1)))
+      (forall ((q_81_s_x0 s_player))
+        (= (select s_budget_next q_81_s_x0) (select s_budget q_81_s_x0)))
+      (forall ((q_82_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_82_s_x0) (select s_nrPlayers q_82_s_x0))))))
+; action: addFunds
+(define-fun action_7 () Bool
+  (exists ((q_83_s_p s_player) (q_84_s_amount Int))
+    (and
+      (and
+        (>= q_84_s_amount 0)
+        (forall ((q_85_s_P s_player))
+          (=
+            (select s_budget_next q_85_s_P)
+            (ite
+              (= q_85_s_P q_83_s_p)
+              (+ (select s_budget q_83_s_p) q_84_s_amount)
+              (select s_budget q_85_s_P)))))
+      (forall ((q_86_s_x0 s_player) (q_87_s_x1 s_tournament))
+        (=
+          (select (select s_enrolled_next q_86_s_x0) q_87_s_x1)
+          (select (select s_enrolled q_86_s_x0) q_87_s_x1)))
+      (forall ((q_88_s_x0 s_player))
+        (= (select s_isPlayer_next q_88_s_x0) (select s_isPlayer q_88_s_x0)))
+      (forall ((q_89_s_x0 s_tournament))
+        (= (select s_isTournament_next q_89_s_x0) (select s_isTournament q_89_s_x0)))
+      (forall ((q_90_s_x0 s_tournament))
+        (= (select s_active_next q_90_s_x0) (select s_active q_90_s_x0)))
+      (forall ((q_91_s_x0 s_player) (q_92_s_x1 s_tournament))
+        (=
+          (select (select s_participant_next q_91_s_x0) q_92_s_x1)
+          (select (select s_participant q_91_s_x0) q_92_s_x1)))
+      (forall ((q_93_s_x0 s_tournament))
+        (= (select s_nrPlayers_next q_93_s_x0) (select s_nrPlayers q_93_s_x0))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_P s_player) (q_2_s_T s_tournament))
+        (not (select (select s_enrolled q_1_s_P) q_2_s_T)))
+      (forall ((q_3_s_P s_player)) (not (select s_isPlayer q_3_s_P)))
+      (forall ((q_4_s_T s_tournament)) (not (select s_isTournament q_4_s_T)))
+      (forall ((q_5_s_T s_tournament)) (not (select s_active q_5_s_T)))
+      (forall ((q_6_s_P s_player) (q_7_s_T s_tournament))
+        (not (select (select s_participant q_6_s_P) q_7_s_T)))
+      (forall ((q_8_s_P s_player)) (= (select s_budget q_8_s_P) 0))
+      (forall ((q_9_s_T s_tournament)) (= (select s_nrPlayers q_9_s_T) 0))
+      (> s_capacity 0))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6 action_7)
+      (= s_capacity_next s_capacity)
+      (> s_capacity 0)
+      (> s_capacity 0))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_94_s_P s_player) (q_95_s_T s_tournament))
+        (=>
+          (select (select s_enrolled q_94_s_P) q_95_s_T)
+          (and (select s_isPlayer q_94_s_P) (select s_isTournament q_95_s_T))))
+      (forall ((q_96_s_P s_player)) (>= (select s_budget q_96_s_P) 0))
+      (forall ((q_97_s_T s_tournament)) (<= (select s_nrPlayers q_97_s_T) s_capacity))
+      (forall ((q_98_s_T s_tournament))
+        (=> (select s_active q_98_s_T) (>= (select s_nrPlayers q_98_s_T) 1)))
+      (forall ((q_99_s_T s_tournament) (q_100_s_P s_player))
+        (=>
+          (and (select s_active q_99_s_T) (select (select s_enrolled q_100_s_P) q_99_s_T))
+          (select (select s_participant q_100_s_P) q_99_s_T)))
+      (forall ((q_101_s_T s_tournament)) (>= (select s_nrPlayers q_101_s_T) 0)))
+    :invar-property
+    0))

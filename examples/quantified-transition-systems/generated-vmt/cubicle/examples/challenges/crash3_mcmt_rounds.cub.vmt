@@ -1,0 +1,797 @@
+; Generated offline from cubicle/examples/challenges/crash3_mcmt_rounds.cub
+; Source SHA-256: 5d37fc4f863538ccfd01be91a1bc1653f1cb95a89c11761e4feb33e4ef6b0059
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_round 0)
+(declare-fun s_R1 () s_round)
+(declare-fun s_R1_next () s_round)
+(declare-fun s_R2 () s_round)
+(declare-fun s_R2_next () s_round)
+(declare-fun s_R3 () s_round)
+(declare-fun s_R3_next () s_round)
+(declare-fun s_R4 () s_round)
+(declare-fun s_R4_next () s_round)
+(declare-fun s_R5 () s_round)
+(declare-fun s_R5_next () s_round)
+(declare-fun s_R6 () s_round)
+(declare-fun s_R6_next () s_round)
+(declare-fun s_Round () s_round)
+(declare-fun s_Round_next () s_round)
+(declare-fun s_Estimate () (Array Proc Bool))
+(declare-fun s_Estimate_next () (Array Proc Bool))
+(declare-fun s_State () (Array Proc Bool))
+(declare-fun s_State_next () (Array Proc Bool))
+(declare-fun s_Coord () (Array Proc Bool))
+(declare-fun s_Coord_next () (Array Proc Bool))
+(declare-fun s_ACoord () (Array Proc Bool))
+(declare-fun s_ACoord_next () (Array Proc Bool))
+(declare-fun s_Done () (Array Proc Bool))
+(declare-fun s_Done_next () (Array Proc Bool))
+(declare-fun s_Request () Bool)
+(declare-fun s_Request_next () Bool)
+(declare-fun s_DecisionValue () (Array Proc Bool))
+(declare-fun s_DecisionValue_next () (Array Proc Bool))
+(declare-fun s_Faulty () (Array Proc Bool))
+(declare-fun s_Faulty_next () (Array Proc Bool))
+(declare-fun s_Received () (Array Proc Bool))
+(declare-fun s_Received_next () (Array Proc Bool))
+(declare-fun s_Nack () (Array Proc Bool))
+(declare-fun s_Nack_next () (Array Proc Bool))
+; source symbol: R1
+(define-fun link_0 () s_round (! s_R1 :next s_R1_next))
+; source symbol: R2
+(define-fun link_1 () s_round (! s_R2 :next s_R2_next))
+; source symbol: R3
+(define-fun link_2 () s_round (! s_R3 :next s_R3_next))
+; source symbol: R4
+(define-fun link_3 () s_round (! s_R4 :next s_R4_next))
+; source symbol: R5
+(define-fun link_4 () s_round (! s_R5 :next s_R5_next))
+; source symbol: R6
+(define-fun link_5 () s_round (! s_R6 :next s_R6_next))
+; source symbol: Round
+(define-fun link_6 () s_round (! s_Round :next s_Round_next))
+; source symbol: Estimate
+(define-fun link_7 () (Array Proc Bool) (! s_Estimate :next s_Estimate_next))
+; source symbol: State
+(define-fun link_8 () (Array Proc Bool) (! s_State :next s_State_next))
+; source symbol: Coord
+(define-fun link_9 () (Array Proc Bool) (! s_Coord :next s_Coord_next))
+; source symbol: ACoord
+(define-fun link_10 () (Array Proc Bool) (! s_ACoord :next s_ACoord_next))
+; source symbol: Done
+(define-fun link_11 () (Array Proc Bool) (! s_Done :next s_Done_next))
+; source symbol: Request
+(define-fun link_12 () Bool (! s_Request :next s_Request_next))
+; source symbol: DecisionValue
+(define-fun link_13 () (Array Proc Bool) (! s_DecisionValue :next s_DecisionValue_next))
+; source symbol: Faulty
+(define-fun link_14 () (Array Proc Bool) (! s_Faulty :next s_Faulty_next))
+; source symbol: Received
+(define-fun link_15 () (Array Proc Bool) (! s_Received :next s_Received_next))
+; source symbol: Nack
+(define-fun link_16 () (Array Proc Bool) (! s_Nack :next s_Nack_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_5_s_x Proc) (q_6_s_y Proc))
+    (and
+      (not (= q_5_s_x q_6_s_y))
+      (and
+        (= s_Round s_R1)
+        (and
+          (= (select s_Done q_5_s_x) false)
+          (and (= (select s_State q_5_s_x) false) (= (select s_Coord q_6_s_y) true))))
+      (= s_Request_next true)
+      (forall ((q_7_s_index0 Proc))
+        (=
+          (select s_Done_next q_7_s_index0)
+          (ite (= q_7_s_index0 q_5_s_x) true (select s_Done q_7_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_8_s_x Proc) (q_9_s_y Proc))
+    (and
+      (not (= q_8_s_x q_9_s_y))
+      (and
+        (= s_Round s_R1)
+        (and
+          (= (select s_Done q_8_s_x) false)
+          (and (= (select s_State q_8_s_x) false) (= (select s_Coord q_9_s_y) true))))
+      (forall ((q_10_s_index0 Proc))
+        (=
+          (select s_Faulty_next q_10_s_index0)
+          (ite (= q_10_s_index0 q_8_s_x) true (select s_Faulty q_10_s_index0))))
+      (forall ((q_11_s_index0 Proc))
+        (=
+          (select s_Done_next q_11_s_index0)
+          (ite (= q_11_s_index0 q_8_s_x) true (select s_Done q_11_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_12_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R1)
+        (and
+          (= (select s_Done q_12_s_x) false)
+          (and (= (select s_State q_12_s_x) false) (= (select s_Coord q_12_s_x) true))))
+      (= s_Request_next true)
+      (forall ((q_13_s_index0 Proc))
+        (=
+          (select s_Done_next q_13_s_index0)
+          (ite (= q_13_s_index0 q_12_s_x) true (select s_Done q_13_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_14_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R1)
+        (and
+          (= s_Request true)
+          (and
+            (= (select s_Done q_14_s_x) true)
+            (and
+              (= (select s_Coord q_14_s_x) true)
+              (forall ((q_15_s_j Proc))
+                (=> (not (= q_15_s_j q_14_s_x)) (= (select s_Done q_15_s_j) true)))))))
+      (= s_Round_next s_R2)
+      (forall ((q_16_s_j Proc)) (= (select s_Done_next q_16_s_j) false))
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_17_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R1)
+        (and
+          (= s_Request false)
+          (and
+            (= (select s_Done q_17_s_x) true)
+            (and
+              (= (select s_Coord q_17_s_x) true)
+              (forall ((q_18_s_j Proc))
+                (=> (not (= q_18_s_j q_17_s_x)) (= (select s_Done q_18_s_j) true)))))))
+      (forall ((q_19_s_index0 Proc))
+        (=
+          (select s_Coord_next q_19_s_index0)
+          (ite (= q_19_s_index0 q_17_s_x) false (select s_Coord q_19_s_index0))))
+      (forall ((q_20_s_index0 Proc))
+        (=
+          (select s_ACoord_next q_20_s_index0)
+          (ite (= q_20_s_index0 q_17_s_x) true (select s_ACoord q_20_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Done_next s_Done)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_21_s_x Proc) (q_22_s_y Proc))
+    (and
+      (not (= q_21_s_x q_22_s_y))
+      (and
+        (= s_Round s_R2)
+        (and
+          (= (select s_Done q_21_s_x) false)
+          (and (= (select s_State q_21_s_x) false) (= (select s_Coord q_22_s_y) true))))
+      (forall ((q_23_s_index0 Proc))
+        (=
+          (select s_Estimate_next q_23_s_index0)
+          (ite
+            (= q_23_s_index0 q_21_s_x)
+            (select s_Estimate q_22_s_y)
+            (select s_Estimate q_23_s_index0))))
+      (forall ((q_24_s_index0 Proc))
+        (=
+          (select s_Done_next q_24_s_index0)
+          (ite (= q_24_s_index0 q_21_s_x) true (select s_Done q_24_s_index0))))
+      (forall ((q_25_s_index0 Proc))
+        (=
+          (select s_Received_next q_25_s_index0)
+          (ite (= q_25_s_index0 q_21_s_x) true (select s_Received q_25_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Nack_next s_Nack))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_26_s_x Proc) (q_27_s_y Proc))
+    (and
+      (not (= q_26_s_x q_27_s_y))
+      (and
+        (= s_Round s_R2)
+        (and
+          (= (select s_Done q_26_s_x) false)
+          (and (= (select s_State q_26_s_x) false) (= (select s_Coord q_27_s_y) true))))
+      (forall ((q_28_s_index0 Proc))
+        (=
+          (select s_Done_next q_28_s_index0)
+          (ite (= q_28_s_index0 q_26_s_x) true (select s_Done q_28_s_index0))))
+      (forall ((q_29_s_index0 Proc))
+        (=
+          (select s_Faulty_next q_29_s_index0)
+          (ite (= q_29_s_index0 q_27_s_y) true (select s_Faulty q_29_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t8
+(define-fun action_7 () Bool
+  (exists ((q_30_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R2)
+        (and
+          (= (select s_Done q_30_s_x) false)
+          (and (= (select s_State q_30_s_x) false) (= (select s_Coord q_30_s_x) true))))
+      (forall ((q_31_s_index0 Proc))
+        (=
+          (select s_Done_next q_31_s_index0)
+          (ite (= q_31_s_index0 q_30_s_x) true (select s_Done q_31_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t9
+(define-fun action_8 () Bool
+  (exists ((q_32_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R2)
+        (and
+          (= (select s_Done q_32_s_x) true)
+          (and
+            (= (select s_Coord q_32_s_x) true)
+            (forall ((q_33_s_j Proc))
+              (=> (not (= q_33_s_j q_32_s_x)) (= (select s_Done q_33_s_j) true))))))
+      (= s_Round_next s_R3)
+      (forall ((q_34_s_j Proc)) (= (select s_Done_next q_34_s_j) false))
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t10
+(define-fun action_9 () Bool
+  (exists ((q_35_s_x Proc) (q_36_s_y Proc))
+    (and
+      (not (= q_35_s_x q_36_s_y))
+      (and
+        (= s_Round s_R3)
+        (and
+          (= (select s_State q_35_s_x) false)
+          (and
+            (= (select s_Done q_35_s_x) false)
+            (and (= (select s_Received q_35_s_x) false) (= (select s_Coord q_36_s_y) true)))))
+      (forall ((q_37_s_index0 Proc))
+        (=
+          (select s_Done_next q_37_s_index0)
+          (ite (= q_37_s_index0 q_35_s_x) true (select s_Done q_37_s_index0))))
+      (forall ((q_38_s_index0 Proc))
+        (=
+          (select s_Nack_next q_38_s_index0)
+          (ite (= q_38_s_index0 q_36_s_y) true (select s_Nack q_38_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received))))
+; action: t11
+(define-fun action_10 () Bool
+  (exists ((q_39_s_x Proc) (q_40_s_y Proc))
+    (and
+      (not (= q_39_s_x q_40_s_y))
+      (and
+        (= s_Round s_R3)
+        (and
+          (= (select s_State q_39_s_x) false)
+          (and
+            (= (select s_Done q_39_s_x) false)
+            (and (= (select s_Received q_39_s_x) false) (= (select s_Coord q_40_s_y) true)))))
+      (forall ((q_41_s_index0 Proc))
+        (=
+          (select s_Faulty_next q_41_s_index0)
+          (ite (= q_41_s_index0 q_39_s_x) true (select s_Faulty q_41_s_index0))))
+      (forall ((q_42_s_index0 Proc))
+        (=
+          (select s_Done_next q_42_s_index0)
+          (ite (= q_42_s_index0 q_39_s_x) true (select s_Done q_42_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t12
+(define-fun action_11 () Bool
+  (exists ((q_43_s_x Proc) (q_44_s_y Proc))
+    (and
+      (not (= q_43_s_x q_44_s_y))
+      (and
+        (= s_Round s_R3)
+        (and
+          (= (select s_State q_43_s_x) false)
+          (and
+            (= (select s_Done q_43_s_x) false)
+            (and (= (select s_Received q_43_s_x) true) (= (select s_Coord q_44_s_y) true)))))
+      (forall ((q_45_s_index0 Proc))
+        (=
+          (select s_Done_next q_45_s_index0)
+          (ite (= q_45_s_index0 q_43_s_x) true (select s_Done q_45_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t13
+(define-fun action_12 () Bool
+  (exists ((q_46_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R3)
+        (and
+          (= (select s_State q_46_s_x) false)
+          (and (= (select s_Done q_46_s_x) false) (= (select s_Coord q_46_s_x) true))))
+      (forall ((q_47_s_index0 Proc))
+        (=
+          (select s_Done_next q_47_s_index0)
+          (ite (= q_47_s_index0 q_46_s_x) true (select s_Done q_47_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t14
+(define-fun action_13 () Bool
+  (exists ((q_48_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R3)
+        (and
+          (= (select s_Done q_48_s_x) true)
+          (and
+            (= (select s_Coord q_48_s_x) true)
+            (forall ((q_49_s_j Proc))
+              (=> (not (= q_49_s_j q_48_s_x)) (= (select s_Done q_49_s_j) true))))))
+      (= s_Round_next s_R4)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Done_next s_Done)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t15
+(define-fun action_14 () Bool
+  (exists ((q_50_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R4)
+        (and
+          (= (select s_Coord q_50_s_x) false)
+          (forall ((q_51_s_j Proc))
+            (=> (not (= q_51_s_j q_50_s_x)) (= (select s_Nack q_51_s_j) false)))))
+      (= s_Round_next s_R5)
+      (forall ((q_52_s_j Proc)) (= (select s_Done_next q_52_s_j) false))
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t16
+(define-fun action_15 () Bool
+  (exists ((q_53_s_x Proc) (q_54_s_y Proc))
+    (and
+      (not (= q_53_s_x q_54_s_y))
+      (and
+        (= s_Round s_R5)
+        (and
+          (= (select s_Done q_53_s_x) false)
+          (and (= (select s_State q_53_s_x) false) (= (select s_Coord q_54_s_y) true))))
+      (forall ((q_55_s_index0 Proc))
+        (=
+          (select s_State_next q_55_s_index0)
+          (ite (= q_55_s_index0 q_53_s_x) true (select s_State q_55_s_index0))))
+      (forall ((q_56_s_index0 Proc))
+        (=
+          (select s_Done_next q_56_s_index0)
+          (ite (= q_56_s_index0 q_53_s_x) true (select s_Done q_56_s_index0))))
+      (forall ((q_57_s_index0 Proc))
+        (=
+          (select s_DecisionValue_next q_57_s_index0)
+          (ite
+            (= q_57_s_index0 q_53_s_x)
+            (select s_Estimate q_53_s_x)
+            (select s_DecisionValue q_57_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t17
+(define-fun action_16 () Bool
+  (exists ((q_58_s_x Proc) (q_59_s_y Proc))
+    (and
+      (not (= q_58_s_x q_59_s_y))
+      (and
+        (= s_Round s_R5)
+        (and
+          (= (select s_Done q_58_s_x) false)
+          (and (= (select s_State q_58_s_x) false) (= (select s_Coord q_59_s_y) true))))
+      (forall ((q_60_s_index0 Proc))
+        (=
+          (select s_Done_next q_60_s_index0)
+          (ite (= q_60_s_index0 q_58_s_x) true (select s_Done q_60_s_index0))))
+      (forall ((q_61_s_index0 Proc))
+        (=
+          (select s_Faulty_next q_61_s_index0)
+          (ite (= q_61_s_index0 q_59_s_y) true (select s_Faulty q_61_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t18
+(define-fun action_17 () Bool
+  (exists ((q_62_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R5)
+        (and
+          (= (select s_Done q_62_s_x) false)
+          (and (= (select s_State q_62_s_x) false) (= (select s_Coord q_62_s_x) true))))
+      (forall ((q_63_s_index0 Proc))
+        (=
+          (select s_State_next q_63_s_index0)
+          (ite (= q_63_s_index0 q_62_s_x) true (select s_State q_63_s_index0))))
+      (forall ((q_64_s_index0 Proc))
+        (=
+          (select s_Done_next q_64_s_index0)
+          (ite (= q_64_s_index0 q_62_s_x) true (select s_Done q_64_s_index0))))
+      (forall ((q_65_s_index0 Proc))
+        (=
+          (select s_DecisionValue_next q_65_s_index0)
+          (ite
+            (= q_65_s_index0 q_62_s_x)
+            (select s_Estimate q_62_s_x)
+            (select s_DecisionValue q_65_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t19
+(define-fun action_18 () Bool
+  (exists ((q_66_s_x Proc))
+    (and
+      (and
+        (= s_Round s_R5)
+        (and
+          (= (select s_Done q_66_s_x) true)
+          (and
+            (= (select s_Coord q_66_s_x) true)
+            (forall ((q_67_s_j Proc))
+              (=> (not (= q_67_s_j q_66_s_x)) (= (select s_Done q_67_s_j) true))))))
+      (= s_Round_next s_R6)
+      (forall ((q_68_s_j Proc)) (= (select s_Done_next q_68_s_j) false))
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+; action: t20
+(define-fun action_19 () Bool
+  (exists ((q_69_s_x Proc) (q_70_s_y Proc))
+    (and
+      (not (= q_69_s_x q_70_s_y))
+      (and
+        (= s_Round s_R6)
+        (and
+          (= (select s_Coord q_69_s_x) true)
+          (and (= (select s_Coord q_70_s_y) false) (= (select s_ACoord q_70_s_y) false))))
+      (= s_Round_next s_R1)
+      (forall ((q_71_s_j Proc))
+        (=
+          (select s_Coord_next q_71_s_j)
+          (ite
+            (= q_71_s_j q_69_s_x)
+            false
+            (ite (= q_71_s_j q_70_s_y) true (select s_Coord q_71_s_j)))))
+      (forall ((q_72_s_index0 Proc))
+        (=
+          (select s_ACoord_next q_72_s_index0)
+          (ite (= q_72_s_index0 q_69_s_x) true (select s_ACoord q_72_s_index0))))
+      (forall ((q_73_s_j Proc)) (= (select s_Received_next q_73_s_j) false))
+      (= s_Request_next false)
+      (forall ((q_74_s_j Proc)) (= (select s_Done_next q_74_s_j) false))
+      (forall ((q_75_s_j Proc)) (= (select s_Nack_next q_75_s_j) false))
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty))))
+; action: t21
+(define-fun action_20 () Bool
+  (exists ((q_76_s_x Proc))
+    (and
+      (and
+        (= (select s_Coord q_76_s_x) false)
+        (and
+          (= (select s_ACoord q_76_s_x) false)
+          (forall ((q_77_s_j Proc))
+            (=> (not (= q_77_s_j q_76_s_x)) (= (select s_Coord q_77_s_j) false)))))
+      (= s_Round_next s_R1)
+      (forall ((q_78_s_index0 Proc))
+        (=
+          (select s_Coord_next q_78_s_index0)
+          (ite (= q_78_s_index0 q_76_s_x) true (select s_Coord q_78_s_index0))))
+      (forall ((q_79_s_j Proc)) (= (select s_Done_next q_79_s_j) false))
+      (= s_Request_next false)
+      (forall ((q_80_s_j Proc)) (= (select s_Received_next q_80_s_j) false))
+      (forall ((q_81_s_j Proc)) (= (select s_Nack_next q_81_s_j) false))
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_ACoord_next s_ACoord)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty))))
+; action: t22
+(define-fun action_21 () Bool
+  (exists ((q_82_s_x Proc))
+    (and
+      (and (= (select s_State q_82_s_x) true) (= (select s_Done q_82_s_x) false))
+      (forall ((q_83_s_index0 Proc))
+        (=
+          (select s_Done_next q_83_s_index0)
+          (ite (= q_83_s_index0 q_82_s_x) true (select s_Done q_83_s_index0))))
+      (= s_Round_next s_Round)
+      (= s_Estimate_next s_Estimate)
+      (= s_State_next s_State)
+      (= s_Coord_next s_Coord)
+      (= s_ACoord_next s_ACoord)
+      (= s_Request_next s_Request)
+      (= s_DecisionValue_next s_DecisionValue)
+      (= s_Faulty_next s_Faulty)
+      (= s_Received_next s_Received)
+      (= s_Nack_next s_Nack))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_x Proc))
+        (and
+          (= s_Round s_R1)
+          (and
+            (= (select s_State q_2_s_x) false)
+            (and
+              (= (select s_Coord q_2_s_x) false)
+              (and
+                (= (select s_ACoord q_2_s_x) false)
+                (and
+                  (= (select s_Done q_2_s_x) false)
+                  (and
+                    (= s_Request false)
+                    (and
+                      (= (select s_Faulty q_2_s_x) false)
+                      (and (= (select s_Received q_2_s_x) false) (= (select s_Nack q_2_s_x) false))))))))))
+      (and
+        (not (= s_R1 s_R2))
+        (not (= s_R1 s_R3))
+        (not (= s_R1 s_R4))
+        (not (= s_R1 s_R5))
+        (not (= s_R1 s_R6))
+        (not (= s_R2 s_R3))
+        (not (= s_R2 s_R4))
+        (not (= s_R2 s_R5))
+        (not (= s_R2 s_R6))
+        (not (= s_R3 s_R4))
+        (not (= s_R3 s_R5))
+        (not (= s_R3 s_R6))
+        (not (= s_R4 s_R5))
+        (not (= s_R4 s_R6))
+        (not (= s_R5 s_R6)))
+      (forall ((q_1_s_enum s_round))
+        (or
+          (= q_1_s_enum s_R1)
+          (= q_1_s_enum s_R2)
+          (= q_1_s_enum s_R3)
+          (= q_1_s_enum s_R4)
+          (= q_1_s_enum s_R5)
+          (= q_1_s_enum s_R6))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13
+        action_14
+        action_15
+        action_16
+        action_17
+        action_18
+        action_19
+        action_20
+        action_21)
+      (= s_R1_next s_R1)
+      (= s_R2_next s_R2)
+      (= s_R3_next s_R3)
+      (= s_R4_next s_R4)
+      (= s_R5_next s_R5)
+      (= s_R6_next s_R6)
+      (and
+        (not (= s_R1 s_R2))
+        (not (= s_R1 s_R3))
+        (not (= s_R1 s_R4))
+        (not (= s_R1 s_R5))
+        (not (= s_R1 s_R6))
+        (not (= s_R2 s_R3))
+        (not (= s_R2 s_R4))
+        (not (= s_R2 s_R5))
+        (not (= s_R2 s_R6))
+        (not (= s_R3 s_R4))
+        (not (= s_R3 s_R5))
+        (not (= s_R3 s_R6))
+        (not (= s_R4 s_R5))
+        (not (= s_R4 s_R6))
+        (not (= s_R5 s_R6)))
+      (forall ((q_1_s_enum s_round))
+        (or
+          (= q_1_s_enum s_R1)
+          (= q_1_s_enum s_R2)
+          (= q_1_s_enum s_R3)
+          (= q_1_s_enum s_R4)
+          (= q_1_s_enum s_R5)
+          (= q_1_s_enum s_R6)))
+      (and
+        (not (= s_R1 s_R2))
+        (not (= s_R1 s_R3))
+        (not (= s_R1 s_R4))
+        (not (= s_R1 s_R5))
+        (not (= s_R1 s_R6))
+        (not (= s_R2 s_R3))
+        (not (= s_R2 s_R4))
+        (not (= s_R2 s_R5))
+        (not (= s_R2 s_R6))
+        (not (= s_R3 s_R4))
+        (not (= s_R3 s_R5))
+        (not (= s_R3 s_R6))
+        (not (= s_R4 s_R5))
+        (not (= s_R4 s_R6))
+        (not (= s_R5 s_R6)))
+      (forall ((q_1_s_enum s_round))
+        (or
+          (= q_1_s_enum s_R1)
+          (= q_1_s_enum s_R2)
+          (= q_1_s_enum s_R3)
+          (= q_1_s_enum s_R4)
+          (= q_1_s_enum s_R5)
+          (= q_1_s_enum s_R6))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_x Proc) (q_4_s_y Proc))
+      (=>
+        (not (= q_3_s_x q_4_s_y))
+        (not
+          (and
+            (= (select s_State q_3_s_x) true)
+            (and
+              (= (select s_Faulty q_3_s_x) false)
+              (and
+                (= (select s_State q_4_s_y) true)
+                (and
+                  (= (select s_Faulty q_4_s_y) false)
+                  (not (= (select s_DecisionValue q_3_s_x) (select s_DecisionValue q_4_s_y))))))))))
+    :invar-property
+    0))

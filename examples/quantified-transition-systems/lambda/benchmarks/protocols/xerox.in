@@ -1,0 +1,434 @@
+
+
+:smt (define-type locations (subrange 1 6))
+
+
+:local a locations
+:global f bool
+:global g bool
+:global h bool
+
+:initial 
+:var x
+:cnj (= a[x] 1) (= f[x] false) (= g[x] false) (= h[x] false) 
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= a[x] 2) (= a[y] 5) (not (= x y)) (= f[x] false) (= g[x] false) (= h[x] false) (= f[y] false) (= g[y] false) (= h[y] false)
+ 
+
+
+:comment t1
+:transition
+:var x
+:var j
+:guard (= a[x] 1) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 3
+:case (= x j)
+ :val 4
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (not (= a[j] 1))
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (= a[j] 1)
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t2
+:transition
+:var x
+:var y
+:var j
+:guard (not (= a[y] 6)) (not (= a[y] 1)) (not (= x y)) (= a[x] 1) (= f[x] false) (= g[x] false) (= h[x] false)   
+:numcases 2
+:case (= x j)
+ :val 4
+ :val f[j]
+ :val true
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val true
+ :val h[j]
+
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 4) (= f[x] false) (= g[x] true) (= h[x] false)
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case      
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 5) (= f[x] false) (= g[x] true) (= h[x] false)
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 2) (= f[x] false) (= g[x] true) (= h[x] false)
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 1) (= f[x] false) (= g[x] true) (= h[x] false)
+:numcases 4
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val false
+ :val h[j]
+:case (= a[j] 1)
+ :val a[j]
+ :val f[j]
+ :val false
+ :val h[j]
+:case (= a[j] 3)    
+ :val a[j]
+ :val f[j]
+ :val false
+ :val h[j]
+:case (not (= a[j] 1)) (not (= a[j] 3)) 
+ :val 6
+ :val f[j]
+ :val false
+ :val h[j]
+
+:comment t3
+:transition
+:var x
+:var j
+:guard (= a[x] 4) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 2
+:case (= x j)
+ :val 2
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 3
+:case (= x j)
+ :val 2
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (not (= a[j] 5)) (not (= a[j] 3))
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (= a[j] 5)
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 3
+:case (= x j)
+ :val 2
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (not (= a[j] 5)) (not (= a[j] 3))
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (= a[j] 3)
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 3
+:case (= x j)
+ :val 2
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (not (= a[j] 5)) (not (= a[j] 3))
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (= a[j] 5)
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 3
+:case (= x j)
+ :val 2
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (not (= a[j] 5)) (not (= a[j] 3))
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case (= a[j] 3)
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y)) (not (= a[y] 3))  (not (= a[y] 6)) (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] false)  
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y))  (not (= a[y] 5)) (not (= a[y] 6)) (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] false) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y))  (not (= a[y] 3)) (not (= a[y] 6)) (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] false) 
+:numcases 2
+:case (= x j)
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard  (not (= x y))  (not (= a[y] 5)) (not (= a[y] 6)) (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] false)
+:numcases 2
+:case (= x j) 
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val true
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y))  (not (= a[y] 3)) (not (= a[y] 6)) (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] true) 
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y))  (not (= a[y] 5)) (not (= a[y] 6)) (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] true) 
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y))  (not (= a[y] 3)) (not (= a[y] 6)) (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] true) 
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (not (= x y))  (not (= a[y] 5)) (not (= a[y] 6)) (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] true) 
+:numcases 2
+:case (= x j)
+ :val 3
+ :val f[j]
+ :val g[j]
+ :val h[j]
+:case     
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val h[j]
+
+:comment t6
+:transition
+:var x
+:var j
+:guard (= a[x] 5) (= f[x] false) (= g[x] false) (= h[x] true)
+:numcases 3
+:case (= x j)
+ :val 5
+ :val f[j]
+ :val g[j]
+ :val false
+:case (not (= a[j] 5))    
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val false
+:case (= a[j] 5)    
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val false
+
+:comment t6
+:transition
+:var x
+:var j
+:guard (= a[x] 3) (= f[x] false) (= g[x] false) (= h[x] true)
+:numcases 3
+:case (= x j)
+ :val 5
+ :val f[j]
+ :val g[j]
+ :val false
+:case (not (= a[j] 5))    
+ :val a[j]
+ :val f[j]
+ :val g[j]
+ :val false
+:case (= a[j] 5)    
+ :val 6
+ :val f[j]
+ :val g[j]
+ :val false
+
+
+

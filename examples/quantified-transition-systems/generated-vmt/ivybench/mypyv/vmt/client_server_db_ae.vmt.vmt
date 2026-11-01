@@ -1,0 +1,231 @@
+; Generated offline from ivybench/mypyv/vmt/client_server_db_ae.vmt
+; Source SHA-256: 840295063bd87d77a4c298467bb475fba15b2920779ad3ca06d17f64dbeddbed
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_db_5f_request_5f_id 0)
+(declare-sort s_node 0)
+(declare-sort s_request 0)
+(declare-sort s_response 0)
+(declare-fun s__5f__5f_db_5f_request_5f_sent () (Array s_db_5f_request_5f_id (Array s_request Bool)))
+(declare-fun s__5f__5f_db_5f_request_5f_sent_next () (Array s_db_5f_request_5f_id (Array s_request Bool)))
+(declare-fun s__5f__5f_db_5f_response_5f_sent () (Array s_db_5f_request_5f_id (Array s_response Bool)))
+(declare-fun s__5f__5f_db_5f_response_5f_sent_next () (Array s_db_5f_request_5f_id (Array s_response Bool)))
+(declare-fun s__5f__5f_noneWithId () (Array s_db_5f_request_5f_id Bool))
+(declare-fun s__5f__5f_noneWithId_next () (Array s_db_5f_request_5f_id Bool))
+(declare-fun s__5f__5f_request_5f_sent () (Array s_node (Array s_request Bool)))
+(declare-fun s__5f__5f_request_5f_sent_next () (Array s_node (Array s_request Bool)))
+(declare-fun s__5f__5f_responseMatched () (Array s_node (Array s_response Bool)))
+(declare-fun s__5f__5f_responseMatched_next () (Array s_node (Array s_response Bool)))
+(declare-fun s__5f__5f_response_5f_received () (Array s_node (Array s_response Bool)))
+(declare-fun s__5f__5f_response_5f_received_next () (Array s_node (Array s_response Bool)))
+(declare-fun s__5f__5f_response_5f_sent () (Array s_node (Array s_response Bool)))
+(declare-fun s__5f__5f_response_5f_sent_next () (Array s_node (Array s_response Bool)))
+(declare-fun s__5f__5f_t () (Array s_db_5f_request_5f_id (Array s_node Bool)))
+(declare-fun s__5f__5f_t_next () (Array s_db_5f_request_5f_id (Array s_node Bool)))
+(declare-fun s_match () (Array s_request (Array s_response Bool)))
+(declare-fun s_match_next () (Array s_request (Array s_response Bool)))
+; source symbol: __db_request_sent
+(define-fun link_0 () (Array s_db_5f_request_5f_id (Array s_request Bool)) (! s__5f__5f_db_5f_request_5f_sent :next s__5f__5f_db_5f_request_5f_sent_next))
+; source symbol: __db_response_sent
+(define-fun link_1 () (Array s_db_5f_request_5f_id (Array s_response Bool)) (! s__5f__5f_db_5f_response_5f_sent :next s__5f__5f_db_5f_response_5f_sent_next))
+; source symbol: __noneWithId
+(define-fun link_2 () (Array s_db_5f_request_5f_id Bool) (! s__5f__5f_noneWithId :next s__5f__5f_noneWithId_next))
+; source symbol: __request_sent
+(define-fun link_3 () (Array s_node (Array s_request Bool)) (! s__5f__5f_request_5f_sent :next s__5f__5f_request_5f_sent_next))
+; source symbol: __responseMatched
+(define-fun link_4 () (Array s_node (Array s_response Bool)) (! s__5f__5f_responseMatched :next s__5f__5f_responseMatched_next))
+; source symbol: __response_received
+(define-fun link_5 () (Array s_node (Array s_response Bool)) (! s__5f__5f_response_5f_received :next s__5f__5f_response_5f_received_next))
+; source symbol: __response_sent
+(define-fun link_6 () (Array s_node (Array s_response Bool)) (! s__5f__5f_response_5f_sent :next s__5f__5f_response_5f_sent_next))
+; source symbol: __t
+(define-fun link_7 () (Array s_db_5f_request_5f_id (Array s_node Bool)) (! s__5f__5f_t :next s__5f__5f_t_next))
+; source symbol: match
+(define-fun link_8 () (Array s_request (Array s_response Bool)) (! s_match :next s_match_next))
+; action: ext:db_process_request
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_20_s_V_5f__5f_fml_3a_i s_db_5f_request_5f_id) (q_21_s_V_5f__5f_fml_3a_p s_response) (q_22_s_V_5f__5f_fml_3a_r s_request))
+        (and
+          (forall ((q_23_s_V0 s_db_5f_request_5f_id) (q_24_s_V1 s_response))
+            (=
+              (select (select s__5f__5f_db_5f_response_5f_sent_next q_23_s_V0) q_24_s_V1)
+              (ite
+                (and (= q_23_s_V0 q_20_s_V_5f__5f_fml_3a_i) (= q_24_s_V1 q_21_s_V_5f__5f_fml_3a_p))
+                true
+                (select (select s__5f__5f_db_5f_response_5f_sent q_23_s_V0) q_24_s_V1))))
+          (select
+            (select s__5f__5f_db_5f_request_5f_sent q_20_s_V_5f__5f_fml_3a_i)
+            q_22_s_V_5f__5f_fml_3a_r)
+          (select (select s_match q_22_s_V_5f__5f_fml_3a_r) q_21_s_V_5f__5f_fml_3a_p))))
+    (= s__5f__5f_db_5f_request_5f_sent_next s__5f__5f_db_5f_request_5f_sent)
+    (= s__5f__5f_request_5f_sent_next s__5f__5f_request_5f_sent)
+    (= s__5f__5f_response_5f_received_next s__5f__5f_response_5f_received)
+    (= s__5f__5f_response_5f_sent_next s__5f__5f_response_5f_sent)
+    (= s__5f__5f_t_next s__5f__5f_t)))
+; action: ext:new_request
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_25_s_V_5f__5f_fml_3a_n s_node) (q_26_s_V_5f__5f_fml_3a_r s_request))
+        (forall ((q_27_s_V0 s_node) (q_28_s_V1 s_request))
+          (=
+            (select (select s__5f__5f_request_5f_sent_next q_27_s_V0) q_28_s_V1)
+            (ite
+              (and (= q_27_s_V0 q_25_s_V_5f__5f_fml_3a_n) (= q_28_s_V1 q_26_s_V_5f__5f_fml_3a_r))
+              true
+              (select (select s__5f__5f_request_5f_sent q_27_s_V0) q_28_s_V1))))))
+    (= s__5f__5f_db_5f_request_5f_sent_next s__5f__5f_db_5f_request_5f_sent)
+    (= s__5f__5f_db_5f_response_5f_sent_next s__5f__5f_db_5f_response_5f_sent)
+    (= s__5f__5f_response_5f_received_next s__5f__5f_response_5f_received)
+    (= s__5f__5f_response_5f_sent_next s__5f__5f_response_5f_sent)
+    (= s__5f__5f_t_next s__5f__5f_t)))
+; action: ext:receive_response
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_29_s_V_5f__5f_fml_3a_n s_node) (q_30_s_V_5f__5f_fml_3a_p s_response))
+        (and
+          (forall ((q_31_s_V0 s_node) (q_32_s_V1 s_response))
+            (=
+              (select (select s__5f__5f_response_5f_received_next q_31_s_V0) q_32_s_V1)
+              (ite
+                (and (= q_31_s_V0 q_29_s_V_5f__5f_fml_3a_n) (= q_32_s_V1 q_30_s_V_5f__5f_fml_3a_p))
+                true
+                (select (select s__5f__5f_response_5f_received q_31_s_V0) q_32_s_V1))))
+          (select
+            (select s__5f__5f_response_5f_sent q_29_s_V_5f__5f_fml_3a_n)
+            q_30_s_V_5f__5f_fml_3a_p))))
+    (= s__5f__5f_db_5f_request_5f_sent_next s__5f__5f_db_5f_request_5f_sent)
+    (= s__5f__5f_db_5f_response_5f_sent_next s__5f__5f_db_5f_response_5f_sent)
+    (= s__5f__5f_request_5f_sent_next s__5f__5f_request_5f_sent)
+    (= s__5f__5f_response_5f_sent_next s__5f__5f_response_5f_sent)
+    (= s__5f__5f_t_next s__5f__5f_t)))
+; action: ext:server_process_db_response
+(define-fun action_3 () Bool
+  (and
+    (and
+      (exists ((q_33_s_V_5f__5f_fml_3a_i s_db_5f_request_5f_id) (q_34_s_V_5f__5f_fml_3a_n s_node) (q_35_s_V_5f__5f_fml_3a_p s_response))
+        (and
+          (forall ((q_36_s_V0 s_node) (q_37_s_V1 s_response))
+            (=
+              (select (select s__5f__5f_response_5f_sent_next q_36_s_V0) q_37_s_V1)
+              (ite
+                (and (= q_36_s_V0 q_34_s_V_5f__5f_fml_3a_n) (= q_37_s_V1 q_35_s_V_5f__5f_fml_3a_p))
+                true
+                (select (select s__5f__5f_response_5f_sent q_36_s_V0) q_37_s_V1))))
+          (select
+            (select s__5f__5f_db_5f_response_5f_sent q_33_s_V_5f__5f_fml_3a_i)
+            q_35_s_V_5f__5f_fml_3a_p)
+          (select (select s__5f__5f_t q_33_s_V_5f__5f_fml_3a_i) q_34_s_V_5f__5f_fml_3a_n))))
+    (= s__5f__5f_db_5f_request_5f_sent_next s__5f__5f_db_5f_request_5f_sent)
+    (= s__5f__5f_db_5f_response_5f_sent_next s__5f__5f_db_5f_response_5f_sent)
+    (= s__5f__5f_request_5f_sent_next s__5f__5f_request_5f_sent)
+    (= s__5f__5f_response_5f_received_next s__5f__5f_response_5f_received)
+    (= s__5f__5f_t_next s__5f__5f_t)))
+; action: ext:server_process_request
+(define-fun action_4 () Bool
+  (and
+    (and
+      (exists ((q_38_s_V_5f__5f_fml_3a_i s_db_5f_request_5f_id) (q_39_s_V_5f__5f_fml_3a_n s_node) (q_40_s_V_5f__5f_fml_3a_r s_request))
+        (and
+          (forall ((q_41_s_V0 s_db_5f_request_5f_id) (q_42_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_t_next q_41_s_V0) q_42_s_V1)
+              (ite
+                (and (= q_41_s_V0 q_38_s_V_5f__5f_fml_3a_i) (= q_42_s_V1 q_39_s_V_5f__5f_fml_3a_n))
+                true
+                (select (select s__5f__5f_t q_41_s_V0) q_42_s_V1))))
+          (forall ((q_43_s_V0 s_db_5f_request_5f_id) (q_44_s_V1 s_request))
+            (=
+              (select (select s__5f__5f_db_5f_request_5f_sent_next q_43_s_V0) q_44_s_V1)
+              (ite
+                (and (= q_43_s_V0 q_38_s_V_5f__5f_fml_3a_i) (= q_44_s_V1 q_40_s_V_5f__5f_fml_3a_r))
+                true
+                (select (select s__5f__5f_db_5f_request_5f_sent q_43_s_V0) q_44_s_V1))))
+          (select
+            (select s__5f__5f_request_5f_sent q_39_s_V_5f__5f_fml_3a_n)
+            q_40_s_V_5f__5f_fml_3a_r)
+          (select s__5f__5f_noneWithId q_38_s_V_5f__5f_fml_3a_i))))
+    (= s__5f__5f_db_5f_response_5f_sent_next s__5f__5f_db_5f_response_5f_sent)
+    (= s__5f__5f_request_5f_sent_next s__5f__5f_request_5f_sent)
+    (= s__5f__5f_response_5f_received_next s__5f__5f_response_5f_received)
+    (= s__5f__5f_response_5f_sent_next s__5f__5f_response_5f_sent)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_8_s_V0 s_node) (q_9_s_V1 s_request))
+            (= (select (select s__5f__5f_request_5f_sent q_8_s_V0) q_9_s_V1) false))
+          (forall ((q_10_s_V0 s_node) (q_11_s_V1 s_response))
+            (= (select (select s__5f__5f_response_5f_sent q_10_s_V0) q_11_s_V1) false))
+          (forall ((q_12_s_V0 s_node) (q_13_s_V1 s_response))
+            (= (select (select s__5f__5f_response_5f_received q_12_s_V0) q_13_s_V1) false))
+          (forall ((q_14_s_V0 s_db_5f_request_5f_id) (q_15_s_V1 s_request))
+            (= (select (select s__5f__5f_db_5f_request_5f_sent q_14_s_V0) q_15_s_V1) false))
+          (forall ((q_16_s_V0 s_db_5f_request_5f_id) (q_17_s_V1 s_response))
+            (= (select (select s__5f__5f_db_5f_response_5f_sent q_16_s_V0) q_17_s_V1) false))
+          (forall ((q_18_s_V0 s_db_5f_request_5f_id) (q_19_s_V1 s_node))
+            (= (select (select s__5f__5f_t q_18_s_V0) q_19_s_V1) false))))
+      (and
+        (forall ((q_1_s_V0 s_db_5f_request_5f_id))
+          (=
+            (select s__5f__5f_noneWithId q_1_s_V0)
+            (forall ((q_2_s_N s_node)) (not (select (select s__5f__5f_t q_1_s_V0) q_2_s_N))))))
+      (and
+        (forall ((q_3_s_V0 s_node) (q_4_s_V1 s_response))
+          (=
+            (select (select s__5f__5f_responseMatched q_3_s_V0) q_4_s_V1)
+            (exists ((q_5_s_R s_request))
+              (and
+                (select (select s__5f__5f_request_5f_sent q_3_s_V0) q_5_s_R)
+                (select (select s_match q_5_s_R) q_4_s_V1)))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4)
+      (= s_match_next s_match)
+      (and
+        (forall ((q_1_s_V0 s_db_5f_request_5f_id))
+          (=
+            (select s__5f__5f_noneWithId q_1_s_V0)
+            (forall ((q_2_s_N s_node)) (not (select (select s__5f__5f_t q_1_s_V0) q_2_s_N))))))
+      (and
+        (forall ((q_3_s_V0 s_node) (q_4_s_V1 s_response))
+          (=
+            (select (select s__5f__5f_responseMatched q_3_s_V0) q_4_s_V1)
+            (exists ((q_5_s_R s_request))
+              (and
+                (select (select s__5f__5f_request_5f_sent q_3_s_V0) q_5_s_R)
+                (select (select s_match q_5_s_R) q_4_s_V1))))))
+      (and
+        (forall ((q_1_s_V0 s_db_5f_request_5f_id))
+          (=
+            (select s__5f__5f_noneWithId_next q_1_s_V0)
+            (forall ((q_2_s_N s_node)) (not (select (select s__5f__5f_t_next q_1_s_V0) q_2_s_N))))))
+      (and
+        (forall ((q_3_s_V0 s_node) (q_4_s_V1 s_response))
+          (=
+            (select (select s__5f__5f_responseMatched_next q_3_s_V0) q_4_s_V1)
+            (exists ((q_5_s_R s_request))
+              (and
+                (select (select s__5f__5f_request_5f_sent_next q_3_s_V0) q_5_s_R)
+                (select (select s_match q_5_s_R) q_4_s_V1)))))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_6_s_N s_node) (q_7_s_P s_response))
+        (=>
+          (select (select s__5f__5f_response_5f_received q_6_s_N) q_7_s_P)
+          (select (select s__5f__5f_responseMatched q_6_s_N) q_7_s_P))))
+    :invar-property
+    0))
