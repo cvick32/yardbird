@@ -109,6 +109,9 @@ pub struct YardbirdOptions {
     #[command(flatten)]
     #[serde(default)]
     pub llm: policy::llm::LlmOptions,
+    #[command(flatten)]
+    #[serde(default)]
+    pub random: policy::random::RandomOptions,
     /// Stop with NoProgress if guided instantiation fails; never run ordinary search.
     #[arg(long)]
     #[serde(default)]
@@ -320,6 +323,7 @@ impl Default for YardbirdOptions {
             policy: None,
             decision_model: Default::default(),
             llm: Default::default(),
+            random: Default::default(),
             no_guided_fallback: false,
             filename: None,
             depth: 10,
@@ -455,9 +459,13 @@ impl YardbirdOptions {
 
     pub(crate) fn profiling_enabled(&self) -> bool {
         self.profile
-            || self
-                .policy
-                .is_some_and(|p| p.uses_decision_model() || p == policy::NamedPolicy::LlmOneShot)
+            || self.policy.is_some_and(|p| {
+                p.uses_decision_model()
+                    || matches!(
+                        p,
+                        policy::NamedPolicy::LlmOneShot | policy::NamedPolicy::RandomInstantiation
+                    )
+            })
             || self.train
             || self.solver_capture_dir.is_some()
             || self.countermodel_trace_work > 0
@@ -515,8 +523,9 @@ impl YardbirdOptions {
                     policy::NamedPolicy::OneShot
                         | policy::NamedPolicy::ConditionalBinding
                         | policy::NamedPolicy::LlmOneShot
+                        | policy::NamedPolicy::RandomInstantiation
                 )),
-            "--no-guided-fallback requires a JEV or LLM policy"
+            "--no-guided-fallback requires a JEV, LLM, or random-instantiation policy"
         );
         Ok(())
     }

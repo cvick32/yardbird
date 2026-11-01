@@ -47,6 +47,7 @@ fn main() -> anyhow::Result<()> {
     options.validate_prefer_axioms_options()?;
     options.decision_model.validate(&options)?;
     options.llm.validate(&options)?;
+    options.random.validate(&options)?;
     options.validate_guided_fallback()?;
     options.validate_countermodel_trace_options()?;
     options.validate_ranker_options()?;

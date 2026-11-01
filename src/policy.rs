@@ -11,6 +11,7 @@ pub mod instance_selection;
 pub(crate) mod instantiation;
 pub mod llm;
 mod prefer_axioms;
+pub mod random;
 pub mod term_selection;
 use crate::auxiliary_synthesis::ConditionalHistory;
 use crate::instance_installation::full_unroll::FullUnrollStrategy;
@@ -39,6 +40,8 @@ pub enum NamedPolicy {
     ConditionalBinding,
     /// Choose an axiom and every binding in one LLM response, with ordinary fallback.
     LlmOneShot,
+    /// Uniformly sample well-sorted array-axiom proposals from the shared catalogue.
+    RandomInstantiation,
 }
 
 impl NamedPolicy {
@@ -48,6 +51,7 @@ impl NamedPolicy {
 
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
+            Self::RandomInstantiation => random::build_plan(run),
             Self::LlmOneShot => llm::build_plan(run),
             Self::GermanFast => run_german_fast(run),
             Self::CountermodelGuided => run_countermodel_guided(run),
