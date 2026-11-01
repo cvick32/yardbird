@@ -195,6 +195,14 @@ fn rates(
                 25.0,
                 "https://developers.openai.com/api/docs/models/gpt-6-astra",
             ),
+            (LlmProvider::Openai, "gpt-6-luna") => (
+                0.1,
+                0.5,
+                0.01,
+                0.125,
+                0.25,
+                "https://developers.openai.com/api/docs/models/gpt-6-luna",
+            ),
             (LlmProvider::Anthropic, "claude-sonnet-5-5") => (
                 2.0,
                 10.0,
@@ -237,7 +245,9 @@ fn rates(
             llm_cache_write_usd_per_million: Some(short),
             llm_long_cache_write_usd_per_million: Some(long),
         },
-        json!({"basis":"published_standard_rates", "model":model, "as_of":"2026-10-23", "source":source, "long_context":long_context}),
+        json!({"basis":"published_standard_rates", "model":model,
+            "as_of": if model == "gpt-6-luna" { "2026-10-31" } else { "2026-10-23" },
+            "source":source, "long_context":long_context}),
     ))
 }
 
