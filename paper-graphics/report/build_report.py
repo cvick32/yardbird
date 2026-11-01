@@ -25,6 +25,7 @@ from src.benchmark_parsing import (  # noqa: E402
 from report.instrumentation import build_instrumentation_report  # noqa: E402
 from report.typst import typst_table  # noqa: E402
 from report.protocol_depths import protocol_depth_sections  # noqa: E402
+from guided_tables import generate as generate_guided_tables, supports as supports_guided_tables  # noqa: E402
 
 
 FIGURE_PREFIXES = (
@@ -702,6 +703,10 @@ def build_report_from_manifest(
     analysis = build_analysis(grouped, strategy_keys, baseline_strategy)
     data_exports = write_analysis_exports(report_dir, analysis)
     instrumentation_report = build_instrumentation_report(manifest, report_dir)
+    guided_tables = (
+        generate_guided_tables(json_files, report_dir / "guided_tables")
+        if supports_guided_tables(json_files) else None
+    )
     include_pairwise = pairwise_figures == "all" or (
         pairwise_figures == "auto" and len(strategy_keys) <= 8
     )
@@ -715,6 +720,8 @@ def build_report_from_manifest(
 
     figure_sources = figure_tex_paths(tex_dir)
     table_sources = table_tex_paths(tex_dir)
+    if guided_tables:
+        table_sources.extend(guided_tables["tex_paths"])
     compiled_assets = [
         compile_figure_fragment(path, assets_dir) for path in figure_sources
     ]
@@ -728,7 +735,7 @@ def build_report_from_manifest(
             compiled_assets,
             table_sources,
             instrumentation_report.sections,
-            protocol_depth_sections(grouped),
+            protocol_depth_sections(grouped) + guided_table_sections(guided_tables),
         )
     )
     run_command(
@@ -745,11 +752,25 @@ def build_report_from_manifest(
         "figure_assets": [str(path) for path in compiled_assets],
         "table_tex": [str(path) for path in table_sources],
         "pairwise_figures": include_pairwise,
+        "guided_table_data": str(report_dir / "guided_tables" / "table_data.json") if guided_tables else None,
         **instrumentation_report.exports,
         **data_exports,
     }
     write_json(report_dir / "report_metadata.json", report_metadata)
     return report_metadata
+
+
+def guided_table_sections(generated: dict | None) -> list[str]:
+    """Use the same cells and definitions in the workbook and TeX exports."""
+    sections = []
+    for spec in generated["specs"] if generated else []:
+        columns = "(" + ", ".join(["2fr", *(["1fr"] * (len(spec["headers"]) - 1))]) + ")"
+        sections.extend([
+            "#pagebreak()", "", "= " + spec["caption"], "",
+            typst_table(spec["headers"], spec["rows"], columns=columns), "",
+            "#text(size: 8pt, " + json.dumps(spec["notes"]) + ")", "",
+        ])
+    return sections
 
 
 def build_report(

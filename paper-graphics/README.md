@@ -76,3 +76,36 @@ python3 comparison_figure_generator.py results.json --strategy1 concrete --strat
 - `results_table.tikz` - LaTeX table of results
 
 **LaTeX Requirements:** `pgfplots`, `longtable`, `booktabs`
+
+## Instantiation evaluation tables
+
+Generate TeX tables directly from a four-way instantiation `main_eval` manifest
+(or one or more Garden JSON files):
+
+```bash
+paper-graphics/.venv/bin/python paper-graphics/guided_tables.py \
+  benchmark_results/main_eval/<run-id>/run.json \
+  --output-dir benchmark_results/main_eval/<run-id>/report/guided_tables
+```
+
+The output includes `evaluation_summary.tex`, `runtime_details.tex`,
+`instantiation_stats.tex`, and `api_usage.tex`, plus exact values in
+`table_data.json`, `summary.csv`, and `benchmarks.csv`. Load `booktabs` and
+`\input{...}` the desired fragments. They use full-width `table*` environments
+for two-column papers. Compile `preview.tex` from the output directory to
+inspect all tables together. Regular main_eval report generation automatically
+exports these tables and adds their contents to the workbook for compatible
+instantiation configurations.
+
+Cost totals use embedded Garden `api_usage`; detailed JSONL supplies proposal
+validation counts without billing the same calls twice. Missing logs leave
+validation counters unknown (except confirmed zero-call runs). Installed
+schemas count distinct `used_instances` within each benchmark; indexed
+assertions use `total_instantiations_added`. These are separate from validated
+proposals and successful guidance episodes. Timed-out runs often lack final
+installation counters, so totals include explicit coverage and `*` markers.
+Unknown charges are not zero. Spending excludes AWS compute, and runtime sums
+are not the parallel AWS job duration. Common-solve medians use the intersection
+of solved benchmarks across all displayed methods. Missing cores are reported
+as missing evidence, never zero core utilization. The generator makes no solver
+or model calls and rejects duplicate method/benchmark trials.
