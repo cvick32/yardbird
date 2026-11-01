@@ -1,0 +1,218 @@
+# End-to-end reasoning-effort sweep. One trial per invocation; retries are not repeats.
+# Matched joint-proposal interface, ranking, installation, and timeout.
+# Run with --guided-dry-run for an offline wiring check (not evaluation data).
+global:
+  examples_dir: examples/array
+  timeout_seconds: 120
+  retry_count: 1
+  jobs: 1
+  output_format: json
+  include_patterns: []
+  exclude_patterns: []
+
+parameter_matrices:
+
+  # Uniform axiom, then uniform independent well-sorted bindings, with replacement.
+  random-1:
+    policy: random-instantiation
+    no_guided_fallback: true
+    random:
+      random_seed: 0
+      random_samples: 1
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  # Uniform axiom, then uniform independent well-sorted bindings, with replacement.
+  random-1000:
+    policy: random-instantiation
+    no_guided_fallback: true
+    random:
+      random_seed: 0
+      random_samples: 1000
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  astra-low:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-astra
+      llm_reasoning_effort: low
+      llm_max_output_tokens: 32768
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  astra-high:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-astra
+      llm_reasoning_effort: high
+      llm_max_output_tokens: 32768
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  astra-max:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-astra
+      llm_reasoning_effort: max
+      llm_max_output_tokens: 32768
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  luna-low:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-luna
+      llm_reasoning_effort: low
+      llm_max_output_tokens: 32768
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  luna-medium:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-luna
+      llm_reasoning_effort: medium
+      llm_max_output_tokens: 32768
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  luna-high:
+    policy: llm-one-shot
+    no_guided_fallback: true
+    llm:
+      llm_provider: openai
+      llm_model: gpt-6-luna
+      llm_reasoning_effort: high
+      llm_max_output_tokens: 32768
+      llm_attempts: 1
+      llm_explicit_cache: true
+      llm_timeout_secs: 120
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  # Reference only: retain the historical conditional-binding budget.
+  jev:
+    policy: conditional-binding
+    no_guided_fallback: true
+    decision_model:
+      jev_model: jev-1.14.0
+      jev_prompt: property-directed
+      jev_attempts: 5
+      jev_candidates: 10
+      jev_batch: true
+      jev_beam_width: 3
+      jev_timeout_secs: 2
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  # Matched term-cost, one-winner baseline used in the revised paper.
+  yardbird:
+    depths: [50]
+    solvers: [z3]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+
+  z3:
+    depths: [50]
+    solvers: [z3]
+    strategies: [concrete]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [term-cost]
+    candidate_winners_per_group: [1]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
