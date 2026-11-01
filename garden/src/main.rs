@@ -47,6 +47,10 @@ struct GardenOptions {
     #[arg(long)]
     pub sample_seed: Option<u64>,
 
+    /// Override the proposal seed for random-instantiation matrices (not corpus sampling).
+    #[arg(long)]
+    pub random_seed: Option<u64>,
+
     /// Only run VMT benchmarks containing at least one array read and one array write.
     #[arg(long, default_value_t = false)]
     pub require_array_reads_and_writes: bool,
@@ -166,6 +170,7 @@ struct StrategyResult {
     no_guided_fallback: bool,
     decision_model: yardbird::policy::decision_model::DecisionModelOptions,
     llm: yardbird::policy::llm::LlmOptions,
+    random: yardbird::policy::random::RandomOptions,
     #[serde(
         with = "config::optional_value_enum",
         skip_serializing_if = "Option::is_none"
@@ -513,6 +518,8 @@ fn run_single(
                     yardbird::policy::NamedPolicy::OneShot
                     | yardbird::policy::NamedPolicy::ConditionalBinding,
                 ) => options.decision_model.jev_log.as_deref(),
+                // Local random proposal logs are retained in `random`, but cannot
+                // imply API charges, even if the process dies before writing them.
                 _ => None,
             };
             // No SAT checks means discovery could not have made an API call.
@@ -541,6 +548,7 @@ fn run_single(
                 no_guided_fallback: options.no_guided_fallback,
                 decision_model: options.decision_model.clone(),
                 llm: options.llm.clone(),
+                random: options.random.clone(),
                 policy: options.policy,
                 prefer_axioms: options.prefer_axioms,
                 guidance_work: (options.policy
@@ -694,6 +702,8 @@ fn run_config_based(mut options: GardenOptions, config: BenchmarkConfig) -> anyh
             if run.policy == Some(yardbird::policy::NamedPolicy::LlmOneShot) {
                 configured.llm.llm_log = Some(path);
                 configured.llm.llm_dry_run |= options.guided_dry_run;
+            } else if run.policy == Some(yardbird::policy::NamedPolicy::RandomInstantiation) {
+                configured.random.random_log = Some(path);
             } else {
                 configured.decision_model.jev_log = Some(path);
                 configured.decision_model.jev_dry_run |= options.guided_dry_run;
@@ -701,6 +711,8 @@ fn run_config_based(mut options: GardenOptions, config: BenchmarkConfig) -> anyh
         }
         configured.decision_model.validate(&configured)?;
         configured.llm.validate(&configured)?;
+        configured.random.validate(&configured)?;
+        configured.validate_guided_fallback()?;
     }
     let metadata = SuiteMetadata {
         timestamp: Utc::now(),
@@ -778,7 +790,10 @@ fn run_config_based(mut options: GardenOptions, config: BenchmarkConfig) -> anyh
 
 fn is_guided(policy: Option<yardbird::policy::NamedPolicy>) -> bool {
     use yardbird::policy::NamedPolicy::*;
-    matches!(policy, Some(OneShot | ConditionalBinding | LlmOneShot))
+    matches!(
+        policy,
+        Some(OneShot | ConditionalBinding | LlmOneShot | RandomInstantiation)
+    )
 }
 
 /// Atomic snapshots permit readers to render figures while workers are running.
@@ -837,6 +852,8 @@ fn run_config_benchmark(
         if run.policy == Some(yardbird::policy::NamedPolicy::LlmOneShot) {
             configured.llm.llm_log = Some(path);
             configured.llm.llm_dry_run |= options.guided_dry_run;
+        } else if run.policy == Some(yardbird::policy::NamedPolicy::RandomInstantiation) {
+            configured.random.random_log = Some(path);
         } else {
             configured.decision_model.jev_log = Some(path);
             configured.decision_model.jev_dry_run |= options.guided_dry_run;
@@ -857,11 +874,18 @@ fn configured_yardbird_options(
     training_run_version: &Option<String>,
     solver_capture_dir: Option<PathBuf>,
 ) -> YardbirdOptions {
+    let mut random = run.random.clone();
+    if run.policy == Some(yardbird::policy::NamedPolicy::RandomInstantiation) {
+        if let Some(seed) = options.random_seed {
+            random.random_seed = seed;
+        }
+    }
     YardbirdOptions {
         policy: run.policy,
         no_guided_fallback: run.no_guided_fallback,
         decision_model: run.decision_model.clone(),
         llm: run.llm.clone(),
+        random,
         prefer_axioms: run.prefer_axioms,
         guidance_schedule: run.guidance_schedule.unwrap_or_default(),
         guidance_work: run.guidance_work,
@@ -1078,6 +1102,81 @@ mod tests {
         solver::PropertyCheckMode,
         InstantiationStrategyType, YardbirdOptions,
     };
+
+    #[test]
+    fn random_matrix_seed_override_reaches_subprocess_without_affecting_other_policies() {
+        for file in ["reasoning_sweep.yaml", "reasoning_sweep_smoke.yaml"] {
+            let config = super::BenchmarkConfig::from_file(
+                &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file),
+            )
+            .unwrap();
+            let garden = GardenOptions::try_parse_from([
+                "garden",
+                "--config",
+                "unused.yaml",
+                "--random-seed",
+                "73",
+            ])
+            .unwrap();
+            for (name, samples) in [("random-1", 1), ("random-1000", 1000)] {
+                let run = config
+                    .generate_benchmark_runs(Some(name))
+                    .unwrap()
+                    .remove(0);
+                assert_eq!(
+                    run.policy,
+                    Some(yardbird::policy::NamedPolicy::RandomInstantiation)
+                );
+                assert!(run.no_guided_fallback);
+                assert_eq!(run.random.random_seed, 0);
+                let options =
+                    super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
+                let directory = tempfile::tempdir().unwrap();
+                let path = write_options_json(
+                    &options,
+                    &directory.path().join("progress.json"),
+                    directory.path(),
+                )
+                .unwrap();
+                let decoded: YardbirdOptions =
+                    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+                assert_eq!(decoded.random.random_seed, 73);
+                assert_eq!(decoded.random.random_samples, samples);
+                assert!(super::is_guided(decoded.policy)); // Fresh logs and no silent retries.
+                decoded.validate_guided_fallback().unwrap();
+            }
+            let run = config
+                .generate_benchmark_runs(Some("yardbird"))
+                .unwrap()
+                .remove(0);
+            let options =
+                super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
+            assert_eq!(
+                options.random,
+                yardbird::policy::random::RandomOptions::default()
+            );
+        }
+
+        // The individual-config path also preserves sampler options.
+        let config: super::BenchmarkConfig = serde_yaml::from_str(
+            r#"
+individual_configs:
+  - name: random-test
+    policy: random-instantiation
+    no_guided_fallback: true
+    depth: 2
+    strategy: abstract
+    cost_function: bmc-cost
+    random:
+      random_seed: 19
+      random_samples: 23
+"#,
+        )
+        .unwrap();
+        let run = config.generate_benchmark_runs(None).unwrap().remove(0);
+        assert_eq!(run.random.random_seed, 19);
+        assert_eq!(run.random.random_samples, 23);
+    }
 
     #[test]
     #[cfg(unix)]

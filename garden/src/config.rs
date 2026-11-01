@@ -87,6 +87,8 @@ pub struct ParameterMatrix {
     pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
     #[serde(default)]
     pub llm: yardbird::policy::llm::LlmOptions,
+    #[serde(default)]
+    pub random: yardbird::policy::random::RandomOptions,
 
     /// Named policy; its fixed choices take precedence over individual settings.
     #[serde(default, with = "optional_value_enum")]
@@ -185,6 +187,8 @@ pub struct IndividualConfig {
     pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
     #[serde(default)]
     pub llm: yardbird::policy::llm::LlmOptions,
+    #[serde(default)]
+    pub random: yardbird::policy::random::RandomOptions,
 
     /// Named policy; its fixed choices take precedence over individual settings.
     #[serde(default, with = "optional_value_enum")]
@@ -283,6 +287,7 @@ pub struct BenchmarkRun {
     pub no_guided_fallback: bool,
     pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
     pub llm: yardbird::policy::llm::LlmOptions,
+    pub random: yardbird::policy::random::RandomOptions,
 
     pub policy: Option<NamedPolicy>,
     pub guidance_schedule: Option<GuidanceSchedule>,
@@ -401,6 +406,7 @@ impl BenchmarkConfig {
                     no_guided_fallback: config.no_guided_fallback,
                     decision_model: config.decision_model.clone(),
                     llm: config.llm.clone(),
+                    random: config.random.clone(),
                     guidance_schedule: config.guidance_schedule,
                     prefer_axioms: config.prefer_axioms,
                     guidance_work: config.guidance_work,
@@ -506,6 +512,7 @@ impl BenchmarkConfig {
                                                 no_guided_fallback: matrix.no_guided_fallback,
                                                 decision_model: matrix.decision_model.clone(),
                                                 llm: matrix.llm.clone(),
+                                                random: matrix.random.clone(),
                                                 guidance_schedule: matrix.guidance_schedule,
                                                 prefer_axioms: matrix.prefer_axioms,
                                                 guidance_work: matrix.guidance_work,
