@@ -621,8 +621,16 @@ def workbook_body(
         detail = f"- `{subrun['benchmark_type']}`: `{subrun['status']}`"
         if subrun.get("mode") == "aws":
             detail += f" via `{subrun.get('instance_id', 'unknown-instance')}`"
+        if subrun["status"] != "COMPLETED":
+            detail += " (excluded from analysis)"
         lines.append(detail)
     lines.append("")
+    if any(subrun["status"] != "COMPLETED" for subrun in manifest["subruns"]):
+        lines.extend([
+            "*Incomplete evaluation:* Analysis includes only completed subruns. "
+            "Failed or interrupted subruns and their partial snapshots are excluded.",
+            "",
+        ])
 
     runtime_cactus = [
         asset for asset in figure_assets if asset.stem == "runtime_cactus_plot"
@@ -695,7 +703,11 @@ def build_report_from_manifest(
     clear_generated_files(assets_dir, GENERATED_ASSET_PATTERNS)
     (report_dir / "template.typ").write_text(TEMPLATE_PATH.read_text())
 
-    json_files = [Path(subrun["result_path"]) for subrun in manifest["subruns"]]
+    json_files = [
+        Path(subrun["result_path"])
+        for subrun in manifest["subruns"]
+        if subrun["status"] == "COMPLETED"
+    ]
     grouped, strategy_keys, all_results = benchmark_groupings(json_files)
     baseline_strategy = choose_baseline_strategy(strategy_keys)
     if baseline_strategy is None:

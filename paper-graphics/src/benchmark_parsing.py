@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -8,6 +9,24 @@ CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
 ABSTRACT_WITH_QUANTIFIERS = ["quant instantiations"]
 SOLVED_RESULT_TYPES = {"Success", "_FoundProof"}
 JSON_READ_CHUNK_SIZE = 1024 * 1024
+
+GUIDED_SETTINGS_SECTION = {
+    "llm-one-shot": "llm",
+    "one-shot": "decision_model",
+    "conditional-binding": "decision_model",
+    "random-instantiation": "random",
+}
+
+
+def guided_configuration(entry: dict) -> dict:
+    """Keep active policy settings, excluding per-example logs and billing rates."""
+    section = GUIDED_SETTINGS_SECTION.get(entry.get("policy"))
+    settings = {
+        key: value for key, value in (entry.get(section) or {}).items()
+        if value is not None and not key.endswith("_log")
+        and key != "pricing" and "_usd_per_million" not in key
+    }
+    return {section: settings} if settings else {}
 
 
 def _slug(value: str) -> str:
@@ -50,6 +69,7 @@ class BenchmarkResult:
     guidance_schedule: Optional[str] = None
 
     timeout_ms: Optional[float] = None
+    guided_settings: dict = field(default_factory=dict)
 
     def plot_runtime_ms(self) -> float:
         """Use the recorded limit for timeouts, elapsed time for other outcomes."""
@@ -83,6 +103,7 @@ class BenchmarkResult:
 
     def get_configuration(self) -> dict[str, object]:
         return {
+            **self.guided_settings,
             "policy": self.policy,
             "no_guided_fallback": self.no_guided_fallback,
             "guidance_schedule": self.guidance_schedule,
@@ -166,6 +187,11 @@ class BenchmarkResult:
                     for name, value in components
                     if value is not None
                 )
+                if self.guided_settings:
+                    # Bound filenames while preserving all active policy settings.
+                    encoded = json.dumps(self.guided_settings, sort_keys=True, separators=(",", ":"))
+                    digest = hashlib.sha256(encoded.encode()).hexdigest()[:16]
+                    suffix += f"__guided-{digest}"
                 return f"{strategy_id}__{suffix}"
             if self.egraph_builder and self.egraph_builder != "full":
                 strategy_id = f"{strategy_id}_{self.egraph_builder}"
@@ -236,6 +262,19 @@ class BenchmarkResult:
                 details = []
                 if self.policy:
                     details.append(self.policy)
+                llm = self.guided_settings.get("llm", {})
+                if llm.get("llm_model"):
+                    details.append(llm["llm_model"])
+                if llm.get("llm_reasoning_effort"):
+                    details.append(llm["llm_reasoning_effort"])
+                decision = self.guided_settings.get("decision_model", {})
+                if decision.get("jev_model"):
+                    details.append(decision["jev_model"])
+                random = self.guided_settings.get("random", {})
+                if "random_samples" in random:
+                    details.append(f"samples={random['random_samples']}")
+                if "random_seed" in random:
+                    details.append(f"seed={random['random_seed']}")
                 if self.no_guided_fallback is not None:
                     details.append("strict" if self.no_guided_fallback else "ordinary fallback")
                 if self.guidance_schedule:
@@ -588,9 +627,10 @@ class BenchmarkParser:
         solver_stats = extract_solver_stats(result_entry, success)
 
         return BenchmarkResult(
+            guided_settings=guided_configuration(result_entry),
             policy=result_entry.get("policy"),
             no_guided_fallback=(result_entry.get("no_guided_fallback")
-                if result_entry.get("policy") in {"one-shot", "conditional-binding", "llm-one-shot"} else None),
+                if result_entry.get("policy") in GUIDED_SETTINGS_SECTION else None),
             guidance_schedule=result_entry.get("guidance_schedule"),
             run_progress=run_progress,
             example_name=example_name,

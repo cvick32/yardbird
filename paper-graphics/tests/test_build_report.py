@@ -5,10 +5,12 @@ import unittest
 import contextlib
 import io
 from pathlib import Path
+from unittest.mock import patch
 
 from main import generate_figures, strategy_artifact_key
 from src.benchmark_parsing import BenchmarkResult, group_benchmark_results
 from report.build_report import (
+    build_report_from_manifest,
     figure_tex_paths,
     standalone_manifest,
     table_tex_paths,
@@ -16,6 +18,18 @@ from report.build_report import (
 
 
 class ReportFragmentDiscoveryTests(unittest.TestCase):
+    def test_failed_subrun_snapshot_is_excluded_from_report_analysis(self) -> None:
+        manifest = {"subruns": [
+            {"status": "COMPLETED", "result_path": "/completed.json"},
+            {"status": "FAILED", "result_path": "/partial.json"},
+        ]}
+        with tempfile.TemporaryDirectory() as temporary, patch(
+            "report.build_report.benchmark_groupings", side_effect=RuntimeError("stop at analysis")
+        ) as groupings:
+            with self.assertRaisesRegex(RuntimeError, "stop at analysis"):
+                build_report_from_manifest(manifest, Path(temporary))
+        groupings.assert_called_once_with([Path("/completed.json")])
+
     def test_artifact_keys_preserve_short_names_and_bound_utf8_bytes(self) -> None:
         self.assertEqual(
             strategy_artifact_key("abstract_bmc-cost"), "abstract_bmc-cost"

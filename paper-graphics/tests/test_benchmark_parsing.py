@@ -10,6 +10,46 @@ from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
 
 
 class BenchmarkParserTests(unittest.TestCase):
+    def test_reasoning_sweep_configurations_remain_distinct(self):
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        results = [parser._parse_single_result("a.vmt", {
+            "strategy": "abstract", "cost_function": "bmc-cost",
+            "policy": "llm-one-shot", "no_guided_fallback": True,
+            "llm": {"llm_provider": "openai", "llm_model": model,
+                    "llm_reasoning_effort": effort, "llm_max_output_tokens": 32768},
+            "result": {"Timeout": 120000},
+        }) for model, effort in [
+            ("gpt-6-astra", "low"), ("gpt-6-astra", "high"), ("gpt-6-astra", "max"),
+            ("gpt-6-luna", "low"), ("gpt-6-luna", "medium"), ("gpt-6-luna", "high"),
+        ]]
+        _, keys = group_benchmark_results(results)
+        self.assertEqual(len(keys), 6)
+        self.assertEqual(len({r.get_display_name() for r in results}), 6)
+        self.assertEqual(results[0].get_configuration()["llm"]["llm_reasoning_effort"], "low")
+
+    def test_guided_identity_uses_behavior_not_log_paths_or_pricing(self):
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        def parse(policy, section, settings):
+            return parser._parse_single_result("a.vmt", {
+                "strategy": "abstract", "cost_function": "bmc-cost", "policy": policy,
+                section: settings, "result": {"Timeout": 120000},
+            })
+        for policy, section, field, first, second in [
+            ("llm-one-shot", "llm", "llm_max_output_tokens", 4096, 32768),
+            ("conditional-binding", "decision_model", "jev_attempts", 1, 5),
+            ("random-instantiation", "random", "random_samples", 1, 1000),
+            ("random-instantiation", "random", "random_seed", 0, 1),
+        ]:
+            with self.subTest(field=field):
+                a = parse(policy, section, {field: first})
+                b = parse(policy, section, {field: second})
+                self.assertNotEqual(a.get_strategy_id(), b.get_strategy_id())
+        a = parse("llm-one-shot", "llm", {"llm_model": "model", "llm_log": "a.jsonl"})
+        b = parse("llm-one-shot", "llm", {"llm_model": "model", "llm_log": "b.jsonl", "pricing": {"rate": 1}})
+        self.assertEqual(a.get_strategy_id(), b.get_strategy_id())
+        with self.assertRaisesRegex(ValueError, "Duplicate benchmark/configuration"):
+            group_benchmark_results([a, b])
+
     def test_strict_and_fallback_jev_remain_distinct_in_legacy_figures(self):
         parser = BenchmarkParser.__new__(BenchmarkParser)
         results = [parser._parse_single_result("a.vmt", {

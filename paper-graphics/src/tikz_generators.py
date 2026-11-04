@@ -212,7 +212,9 @@ class CactusPlotTikzGenerator:
 
         legend_options = (
             "legend columns=2,\n"
-            "    legend style={font=\\tiny, at={(0.5,-0.2)}, anchor=north},"
+            "    legend style={font=\\tiny, at={(0.5,-0.2)}, anchor=north},\n"
+            "    legend cell align=left,\n"
+            "    legend style={cells={text width=0.38\\columnwidth, align=left, text height=, text depth=}, row sep=4pt},"
             if len(strategy_data) > 8
             else "legend style={font=\\scriptsize},\n    legend pos=south east,"
         )
@@ -325,7 +327,9 @@ class InstCactusPlotTikzGenerator:
 
         legend_options = (
             "legend columns=2,\n"
-            "    legend style={font=\\tiny, at={(0.5,-0.2)}, anchor=north},"
+            "    legend style={font=\\tiny, at={(0.5,-0.2)}, anchor=north},\n"
+            "    legend cell align=left,\n"
+            "    legend style={cells={text width=0.38\\columnwidth, align=left, text height=, text depth=}, row sep=4pt},"
             if len(strategy_data) > 8
             else "legend style={font=\\scriptsize},\n    legend pos=south east,"
         )
