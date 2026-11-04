@@ -10,6 +10,7 @@ from typing import Any
 
 from .benchmark_selection import garden_filter_args
 from .common import (
+    CommandError,
     ROOT,
     STATUS_COMPLETED,
     STATUS_FAILED,
@@ -134,7 +135,11 @@ def describe_instance_state(instance_id: str, region: str) -> str | None:
         check=False,
     )
     if result.returncode != 0:
-        return None
+        if "(InvalidInstanceID.NotFound)" in result.stderr:
+            return None
+        raise CommandError(
+            f"Cannot query AWS instance {instance_id}: {result.stderr.strip()}"
+        )
 
     payload = json.loads(result.stdout)
     reservations = payload.get("Reservations", [])
@@ -278,7 +283,10 @@ def refresh_aws_run(manifest: dict[str, Any]) -> dict[str, Any]:
         new_status = subrun["status"]
         if completion_exists or (results_exist and not subrun.get("requires_completion_marker", False)):
             new_status = STATUS_COMPLETED
-        elif state in {"terminated", "stopped", "stopping"}:
+        elif state in {"shutting-down", "terminated", "stopped", "stopping"}:
+            new_status = STATUS_FAILED
+        elif state is None and subrun["status"] == STATUS_FAILED:
+            # A previously observed terminal failure survives EC2 record expiry.
             new_status = STATUS_FAILED
         else:
             new_status = STATUS_RUNNING
@@ -295,6 +303,8 @@ def refresh_aws_run(manifest: dict[str, Any]) -> dict[str, Any]:
 
 def download_aws_artifacts(manifest: dict[str, Any]) -> None:
     for subrun in manifest["subruns"]:
+        if subrun["status"] == STATUS_FAILED:
+            continue
         if subrun["status"] != STATUS_COMPLETED:
             raise RuntimeError(
                 f"Cannot download artifacts for incomplete benchmark type {subrun['benchmark_type']}"

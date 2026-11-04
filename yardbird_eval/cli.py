@@ -21,6 +21,7 @@ from .common import (
     configure_aws_account,
     print_run_summary,
     resolve_run_id,
+    require_reportable_run,
 )
 from .lab_backend import (
     DEFAULT_LAB_R2_PREFIX,
@@ -52,10 +53,11 @@ def refresh_existing_run(manifest: dict, args: argparse.Namespace) -> dict:
 
 
 def maybe_generate_report(manifest: dict) -> None:
-    if manifest["status"] != "COMPLETED":
-        raise RuntimeError(
-            f"Run {manifest['run_id']} is not complete yet; current status is {manifest['status']}"
-        )
+    require_reportable_run(manifest)
+
+    failed = [s["benchmark_type"] for s in manifest["subruns"] if s["status"] == "FAILED"]
+    if failed:
+        print(f"Report excludes failed subruns: {', '.join(failed)}", flush=True)
 
     if manifest["env"] == "aws":
         download_aws_artifacts(manifest)

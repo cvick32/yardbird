@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .common import ensure_dir, run_command
+from .common import CommandError, ensure_dir, run_command
 
 
 def r2_aws_env() -> dict[str, str] | None:
@@ -46,7 +46,13 @@ def object_store_head_object(
     result = run_command(
         command, check=False, env=r2_aws_env() if endpoint_url else None
     )
-    return result.returncode == 0
+    if result.returncode == 0:
+        return True
+    if any(code in result.stderr for code in ("(404)", "(NoSuchKey)", "(NotFound)")):
+        return False
+    raise CommandError(
+        f"Cannot check object s3://{bucket}/{key}: {result.stderr.strip()}"
+    )
 
 
 def object_store_download(

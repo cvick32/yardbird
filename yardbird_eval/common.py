@@ -315,11 +315,19 @@ def relative_to_root(path: Path) -> str:
         return str(path)
 
 
-def build_report_for_run(manifest: dict[str, Any]) -> None:
-    if manifest["status"] != STATUS_COMPLETED:
+def require_reportable_run(manifest: dict[str, Any]) -> None:
+    statuses = [subrun["status"] for subrun in manifest["subruns"]]
+    if any(status not in {STATUS_COMPLETED, STATUS_FAILED} for status in statuses):
         raise RuntimeError(
-            f"Run {manifest['run_id']} is not complete yet; current status is {manifest['status']}"
+            f"Run {manifest['run_id']} still has unfinished subruns; "
+            f"current status is {manifest['status']}"
         )
+    if STATUS_COMPLETED not in statuses:
+        raise RuntimeError(f"Run {manifest['run_id']} has no completed subruns to report")
+
+
+def build_report_for_run(manifest: dict[str, Any]) -> None:
+    require_reportable_run(manifest)
 
     run_dir = Path(manifest["run_dir"])
     report_dir = ensure_dir(run_dir / "report")
