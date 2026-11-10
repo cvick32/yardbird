@@ -1,0 +1,226 @@
+; Generated offline from mypyvy/examples/peterson.pyv
+; Source SHA-256: 8327259186201ba0707e6a52f3331623e7afed9bc743d63fc2b24c6fabd61950
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_proc 0)
+(declare-sort s_loc 0)
+(declare-fun s_a1 () s_loc)
+(declare-fun s_a1_next () s_loc)
+(declare-fun s_a2 () s_loc)
+(declare-fun s_a2_next () s_loc)
+(declare-fun s_a3 () s_loc)
+(declare-fun s_a3_next () s_loc)
+(declare-fun s_a4 () s_loc)
+(declare-fun s_a4_next () s_loc)
+(declare-fun s_cs () s_loc)
+(declare-fun s_cs_next () s_loc)
+(declare-fun s_a5 () s_loc)
+(declare-fun s_a5_next () s_loc)
+(declare-fun s_pc () (Array s_proc s_loc))
+(declare-fun s_pc_next () (Array s_proc s_loc))
+(declare-fun s_flag () (Array s_proc Bool))
+(declare-fun s_flag_next () (Array s_proc Bool))
+(declare-fun s_turn () s_proc)
+(declare-fun s_turn_next () s_proc)
+; source symbol: a1
+(define-fun link_0 () s_loc (! s_a1 :next s_a1_next))
+; source symbol: a2
+(define-fun link_1 () s_loc (! s_a2 :next s_a2_next))
+; source symbol: a3
+(define-fun link_2 () s_loc (! s_a3 :next s_a3_next))
+; source symbol: a4
+(define-fun link_3 () s_loc (! s_a4 :next s_a4_next))
+; source symbol: cs
+(define-fun link_4 () s_loc (! s_cs :next s_cs_next))
+; source symbol: a5
+(define-fun link_5 () s_loc (! s_a5 :next s_a5_next))
+; source symbol: pc
+(define-fun link_6 () (Array s_proc s_loc) (! s_pc :next s_pc_next))
+; source symbol: flag
+(define-fun link_7 () (Array s_proc Bool) (! s_flag :next s_flag_next))
+; source symbol: turn
+(define-fun link_8 () s_proc (! s_turn :next s_turn_next))
+; action: a1_trans
+(define-fun action_0 () Bool
+  (exists ((q_7_s_p s_proc) (q_8_s_other s_proc))
+    (and
+      (and
+        (not (= q_7_s_p q_8_s_other))
+        (= (select s_pc q_7_s_p) s_a1)
+        (= (select s_pc_next q_7_s_p) s_a2)
+        (= (select s_pc_next q_8_s_other) (select s_pc q_8_s_other)))
+      (forall ((q_9_s_x0 s_proc)) (= (select s_flag_next q_9_s_x0) (select s_flag q_9_s_x0)))
+      (= s_turn_next s_turn))))
+; action: a2_trans
+(define-fun action_1 () Bool
+  (exists ((q_10_s_p s_proc) (q_11_s_other s_proc))
+    (and
+      (and
+        (not (= q_10_s_p q_11_s_other))
+        (= (select s_pc q_10_s_p) s_a2)
+        (= (select s_pc_next q_10_s_p) s_a3)
+        (= (select s_pc_next q_11_s_other) (select s_pc q_11_s_other))
+        (select s_flag_next q_10_s_p)
+        (= (select s_flag_next q_11_s_other) (select s_flag q_11_s_other)))
+      (= s_turn_next s_turn))))
+; action: a3_trans
+(define-fun action_2 () Bool
+  (exists ((q_12_s_p s_proc) (q_13_s_other s_proc))
+    (and
+      (and
+        (not (= q_12_s_p q_13_s_other))
+        (= (select s_pc q_12_s_p) s_a3)
+        (= (select s_pc_next q_12_s_p) s_a4)
+        (= (select s_pc_next q_13_s_other) (select s_pc q_13_s_other))
+        (= s_turn_next q_13_s_other))
+      (forall ((q_14_s_x0 s_proc)) (= (select s_flag_next q_14_s_x0) (select s_flag q_14_s_x0))))))
+; action: a4_trans
+(define-fun action_3 () Bool
+  (exists ((q_15_s_p s_proc) (q_16_s_other s_proc))
+    (and
+      (and
+        (not (= q_15_s_p q_16_s_other))
+        (= (select s_pc q_15_s_p) s_a4)
+        (or (not (select s_flag q_16_s_other)) (= s_turn q_15_s_p))
+        (= (select s_pc_next q_15_s_p) s_cs)
+        (= (select s_pc_next q_16_s_other) (select s_pc q_16_s_other)))
+      (forall ((q_17_s_x0 s_proc)) (= (select s_flag_next q_17_s_x0) (select s_flag q_17_s_x0)))
+      (= s_turn_next s_turn))))
+; action: cs_trans
+(define-fun action_4 () Bool
+  (exists ((q_18_s_p s_proc) (q_19_s_other s_proc))
+    (and
+      (and
+        (not (= q_18_s_p q_19_s_other))
+        (= (select s_pc q_18_s_p) s_cs)
+        (= (select s_pc_next q_18_s_p) s_a5)
+        (= (select s_pc_next q_19_s_other) (select s_pc q_19_s_other)))
+      (forall ((q_20_s_x0 s_proc)) (= (select s_flag_next q_20_s_x0) (select s_flag q_20_s_x0)))
+      (= s_turn_next s_turn))))
+; action: a5_trans
+(define-fun action_5 () Bool
+  (exists ((q_21_s_p s_proc) (q_22_s_other s_proc))
+    (and
+      (and
+        (not (= q_21_s_p q_22_s_other))
+        (= (select s_pc q_21_s_p) s_a5)
+        (= (select s_pc_next q_21_s_p) s_a1)
+        (= (select s_pc_next q_22_s_other) (select s_pc q_22_s_other))
+        (= (select s_flag_next q_21_s_p) false)
+        (= (select s_flag_next q_22_s_other) (select s_flag q_22_s_other)))
+      (= s_turn_next s_turn))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_P s_proc)) (= (select s_flag q_1_s_P) false))
+      (forall ((q_2_s_P s_proc)) (= (select s_pc q_2_s_P) s_a1))
+      (forall ((q_3_s_x s_proc))
+        (exists ((q_4_s_y s_proc))
+          (and
+            (not (= q_3_s_x q_4_s_y))
+            (forall ((q_5_s_z s_proc)) (=> (not (= q_5_s_z q_4_s_y)) (= q_5_s_z q_3_s_x))))))
+      (and
+        (not (= s_a1 s_a2))
+        (not (= s_a1 s_a3))
+        (not (= s_a1 s_a4))
+        (not (= s_a1 s_cs))
+        (not (= s_a1 s_a5))
+        (not (= s_a2 s_a3))
+        (not (= s_a2 s_a4))
+        (not (= s_a2 s_cs))
+        (not (= s_a2 s_a5))
+        (not (= s_a3 s_a4))
+        (not (= s_a3 s_cs))
+        (not (= s_a3 s_a5))
+        (not (= s_a4 s_cs))
+        (not (= s_a4 s_a5))
+        (not (= s_cs s_a5)))
+      (forall ((q_6_s_L s_loc))
+        (or
+          (= q_6_s_L s_a1)
+          (= q_6_s_L s_a2)
+          (= q_6_s_L s_a3)
+          (= q_6_s_L s_a4)
+          (= q_6_s_L s_cs)
+          (= q_6_s_L s_a5))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5)
+      (= s_a1_next s_a1)
+      (= s_a2_next s_a2)
+      (= s_a3_next s_a3)
+      (= s_a4_next s_a4)
+      (= s_cs_next s_cs)
+      (= s_a5_next s_a5)
+      (forall ((q_3_s_x s_proc))
+        (exists ((q_4_s_y s_proc))
+          (and
+            (not (= q_3_s_x q_4_s_y))
+            (forall ((q_5_s_z s_proc)) (=> (not (= q_5_s_z q_4_s_y)) (= q_5_s_z q_3_s_x))))))
+      (and
+        (not (= s_a1 s_a2))
+        (not (= s_a1 s_a3))
+        (not (= s_a1 s_a4))
+        (not (= s_a1 s_cs))
+        (not (= s_a1 s_a5))
+        (not (= s_a2 s_a3))
+        (not (= s_a2 s_a4))
+        (not (= s_a2 s_cs))
+        (not (= s_a2 s_a5))
+        (not (= s_a3 s_a4))
+        (not (= s_a3 s_cs))
+        (not (= s_a3 s_a5))
+        (not (= s_a4 s_cs))
+        (not (= s_a4 s_a5))
+        (not (= s_cs s_a5)))
+      (forall ((q_6_s_L s_loc))
+        (or
+          (= q_6_s_L s_a1)
+          (= q_6_s_L s_a2)
+          (= q_6_s_L s_a3)
+          (= q_6_s_L s_a4)
+          (= q_6_s_L s_cs)
+          (= q_6_s_L s_a5)))
+      (forall ((q_3_s_x s_proc))
+        (exists ((q_4_s_y s_proc))
+          (and
+            (not (= q_3_s_x q_4_s_y))
+            (forall ((q_5_s_z s_proc)) (=> (not (= q_5_s_z q_4_s_y)) (= q_5_s_z q_3_s_x))))))
+      (and
+        (not (= s_a1 s_a2))
+        (not (= s_a1 s_a3))
+        (not (= s_a1 s_a4))
+        (not (= s_a1 s_cs))
+        (not (= s_a1 s_a5))
+        (not (= s_a2 s_a3))
+        (not (= s_a2 s_a4))
+        (not (= s_a2 s_cs))
+        (not (= s_a2 s_a5))
+        (not (= s_a3 s_a4))
+        (not (= s_a3 s_cs))
+        (not (= s_a3 s_a5))
+        (not (= s_a4 s_cs))
+        (not (= s_a4 s_a5))
+        (not (= s_cs s_a5)))
+      (forall ((q_6_s_L s_loc))
+        (or
+          (= q_6_s_L s_a1)
+          (= q_6_s_L s_a2)
+          (= q_6_s_L s_a3)
+          (= q_6_s_L s_a4)
+          (= q_6_s_L s_cs)
+          (= q_6_s_L s_a5))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_23_s_P s_proc) (q_24_s_Q s_proc))
+      (=>
+        (and (= (select s_pc q_23_s_P) s_cs) (= (select s_pc q_24_s_Q) s_cs))
+        (= q_23_s_P q_24_s_Q)))
+    :invar-property
+    0))

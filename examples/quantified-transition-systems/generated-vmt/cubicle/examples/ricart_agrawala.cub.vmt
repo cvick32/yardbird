@@ -1,0 +1,439 @@
+; Generated offline from cubicle/examples/ricart_agrawala.cub
+; Source SHA-256: 2736aa93bc15a8ad6261a4efa3c3af47eb1900afe34d419b31ae87fda79e8961
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-fun s_L1 () s_location)
+(declare-fun s_L1_next () s_location)
+(declare-fun s_L2 () s_location)
+(declare-fun s_L2_next () s_location)
+(declare-fun s_L3 () s_location)
+(declare-fun s_L3_next () s_location)
+(declare-fun s_L4 () s_location)
+(declare-fun s_L4_next () s_location)
+(declare-fun s_Timer () Real)
+(declare-fun s_Timer_next () Real)
+(declare-fun s_State () (Array Proc s_location))
+(declare-fun s_State_next () (Array Proc s_location))
+(declare-fun s_Sender () (Array Proc Int))
+(declare-fun s_Sender_next () (Array Proc Int))
+(declare-fun s_Receiver () (Array Proc Int))
+(declare-fun s_Receiver_next () (Array Proc Int))
+(declare-fun s_Clock () (Array Proc Real))
+(declare-fun s_Clock_next () (Array Proc Real))
+(declare-fun s_Last () (Array Proc Real))
+(declare-fun s_Last_next () (Array Proc Real))
+(declare-fun s_Is_5f_proc () (Array Proc Bool))
+(declare-fun s_Is_5f_proc_next () (Array Proc Bool))
+(declare-fun s_Tick () Real)
+(declare-fun s_Tick_next () Real)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: L1
+(define-fun link_0 () s_location (! s_L1 :next s_L1_next))
+; source symbol: L2
+(define-fun link_1 () s_location (! s_L2 :next s_L2_next))
+; source symbol: L3
+(define-fun link_2 () s_location (! s_L3 :next s_L3_next))
+; source symbol: L4
+(define-fun link_3 () s_location (! s_L4 :next s_L4_next))
+; source symbol: Timer
+(define-fun link_4 () Real (! s_Timer :next s_Timer_next))
+; source symbol: State
+(define-fun link_5 () (Array Proc s_location) (! s_State :next s_State_next))
+; source symbol: Sender
+(define-fun link_6 () (Array Proc Int) (! s_Sender :next s_Sender_next))
+; source symbol: Receiver
+(define-fun link_7 () (Array Proc Int) (! s_Receiver :next s_Receiver_next))
+; source symbol: Clock
+(define-fun link_8 () (Array Proc Real) (! s_Clock :next s_Clock_next))
+; source symbol: Last
+(define-fun link_9 () (Array Proc Real) (! s_Last :next s_Last_next))
+; source symbol: Is_proc
+(define-fun link_10 () (Array Proc Bool) (! s_Is_5f_proc :next s_Is_5f_proc_next))
+; source symbol: Tick
+(define-fun link_11 () Real (! s_Tick :next s_Tick_next))
+; source symbol: __proc_rank
+(define-fun link_12 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_7_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_7_s_z) s_L1)
+        (and
+          (= (select s_Sender q_7_s_z) (select s_Receiver q_7_s_z))
+          (< (/ (to_real 0) (to_real 10)) s_Tick)))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_8_s_j Proc))
+        (=
+          (select s_State_next q_8_s_j)
+          (ite
+            (= q_8_s_j q_7_s_z)
+            s_L2
+            (ite
+              (and
+                (= (select s_State q_8_s_j) s_L1)
+                (= (select s_Sender q_8_s_j) (select s__5f__5f_proc_5f_rank q_7_s_z)))
+              s_L2
+              (select s_State q_8_s_j)))))
+      (forall ((q_9_s_j Proc))
+        (=
+          (select s_Clock_next q_9_s_j)
+          (ite
+            (= q_9_s_j q_7_s_z)
+            s_Timer
+            (ite
+              (and
+                (= (select s_State q_9_s_j) s_L1)
+                (= (select s_Sender q_9_s_j) (select s__5f__5f_proc_5f_rank q_7_s_z)))
+              s_Timer
+              (select s_Clock q_9_s_j)))))
+      (forall ((q_10_s_j Proc))
+        (=
+          (select s_Last_next q_10_s_j)
+          (ite (= q_10_s_j q_7_s_z) s_Timer (select s_Last q_10_s_j))))
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_11_s_z Proc) (q_12_s_other Proc))
+    (and
+      (not (= q_11_s_z q_12_s_other))
+      (and
+        (= (select s_State q_11_s_z) s_L2)
+        (and
+          (= (select s_Sender q_11_s_z) (select s_Receiver q_11_s_z))
+          (and
+            (not (= (select s_Sender q_12_s_other) (select s_Receiver q_12_s_other)))
+            (and
+              (= (select s_State q_12_s_other) s_L3)
+              (and
+                (= (select s_Sender q_12_s_other) (select s__5f__5f_proc_5f_rank q_11_s_z))
+                (< (/ (to_real 0) (to_real 10)) s_Tick))))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_13_s_j Proc))
+        (=
+          (select s_State_next q_13_s_j)
+          (ite
+            (= q_13_s_j q_11_s_z)
+            s_L2
+            (ite (= q_13_s_j q_12_s_other) s_L4 (select s_State q_13_s_j)))))
+      (forall ((q_14_s_j Proc))
+        (=
+          (select s_Clock_next q_14_s_j)
+          (ite
+            (= q_14_s_j q_11_s_z)
+            s_Timer
+            (ite (= q_14_s_j q_12_s_other) s_Timer (select s_Clock q_14_s_j)))))
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_15_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_15_s_z) s_L2)
+        (and
+          (= (select s_Sender q_15_s_z) (select s_Receiver q_15_s_z))
+          (forall ((q_16_s_j Proc))
+            (=>
+              (not (= q_16_s_j q_15_s_z))
+              (or
+                (= (select s_Sender q_16_s_j) (select s_Receiver q_16_s_j))
+                (or
+                  (not (= (select s_Sender q_16_s_j) (select s__5f__5f_proc_5f_rank q_15_s_z)))
+                  (= (select s_State q_16_s_j) s_L4)))))))
+      (forall ((q_17_s_j Proc))
+        (=
+          (select s_State_next q_17_s_j)
+          (ite (= q_17_s_j q_15_s_z) s_L3 (select s_State q_17_s_j))))
+      (= s_Timer_next s_Timer)
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Clock_next s_Clock)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_18_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_18_s_z) s_L3)
+        (= (select s_Sender q_18_s_z) (select s_Receiver q_18_s_z)))
+      (forall ((q_19_s_j Proc))
+        (=
+          (select s_State_next q_19_s_j)
+          (ite
+            (= q_19_s_j q_18_s_z)
+            s_L4
+            (ite
+              (and
+                (not (= (select s_Sender q_19_s_j) (select s_Receiver q_19_s_j)))
+                (and
+                  (= (select s_State q_19_s_j) s_L4)
+                  (= (select s_Sender q_19_s_j) (select s__5f__5f_proc_5f_rank q_18_s_z))))
+              s_L1
+              (select s_State q_19_s_j)))))
+      (= s_Timer_next s_Timer)
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Clock_next s_Clock)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_20_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_20_s_z) s_L4)
+        (and
+          (= (select s_Sender q_20_s_z) (select s_Receiver q_20_s_z))
+          (and
+            (< (/ (to_real 0) (to_real 10)) s_Tick)
+            (forall ((q_21_s_j Proc))
+              (=>
+                (not (= q_21_s_j q_20_s_z))
+                (or
+                  (= (select s_Sender q_21_s_j) (select s_Receiver q_21_s_j))
+                  (or
+                    (not (= (select s_Receiver q_21_s_j) (select s__5f__5f_proc_5f_rank q_20_s_z)))
+                    (not (= (select s_State q_21_s_j) s_L2)))))))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_22_s_j Proc))
+        (=
+          (select s_State_next q_22_s_j)
+          (ite (= q_22_s_j q_20_s_z) s_L1 (select s_State q_22_s_j))))
+      (forall ((q_23_s_j Proc)) (= (select s_Clock_next q_23_s_j) s_Timer))
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_24_s_z Proc) (q_25_s_other Proc))
+    (and
+      (not (= q_24_s_z q_25_s_other))
+      (and
+        (= (select s_State q_24_s_z) s_L1)
+        (and
+          (= (select s_Sender q_24_s_z) (select s_Receiver q_24_s_z))
+          (and
+            (= (select s_State q_25_s_other) s_L2)
+            (and
+              (not (= (select s_Sender q_25_s_other) (select s_Receiver q_25_s_other)))
+              (and
+                (= (select s_Receiver q_25_s_other) (select s__5f__5f_proc_5f_rank q_24_s_z))
+                (and
+                  (<= (select s_Clock q_25_s_other) (select s_Clock q_24_s_z))
+                  (< (/ (to_real 0) (to_real 10)) s_Tick)))))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_26_s_j Proc))
+        (=
+          (select s_State_next q_26_s_j)
+          (ite
+            (= q_26_s_j q_24_s_z)
+            s_L1
+            (ite (= q_26_s_j q_25_s_other) s_L3 (select s_State q_26_s_j)))))
+      (forall ((q_27_s_j Proc))
+        (=
+          (select s_Clock_next q_27_s_j)
+          (ite
+            (= q_27_s_j q_24_s_z)
+            s_Timer
+            (ite (= q_27_s_j q_25_s_other) s_Timer (select s_Clock q_27_s_j)))))
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_28_s_z Proc) (q_29_s_other Proc))
+    (and
+      (not (= q_28_s_z q_29_s_other))
+      (and
+        (= (select s_State q_28_s_z) s_L2)
+        (and
+          (= (select s_Sender q_28_s_z) (select s_Receiver q_28_s_z))
+          (and
+            (= (select s_State q_29_s_other) s_L2)
+            (and
+              (not (= (select s_Sender q_29_s_other) (select s_Receiver q_29_s_other)))
+              (and
+                (= (select s_Receiver q_29_s_other) (select s__5f__5f_proc_5f_rank q_28_s_z))
+                (and
+                  (< (select s_Clock q_29_s_other) (select s_Last q_28_s_z))
+                  (< (/ (to_real 0) (to_real 10)) s_Tick)))))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_30_s_j Proc))
+        (=
+          (select s_State_next q_30_s_j)
+          (ite
+            (= q_30_s_j q_28_s_z)
+            s_L2
+            (ite (= q_30_s_j q_29_s_other) s_L3 (select s_State q_30_s_j)))))
+      (forall ((q_31_s_j Proc))
+        (=
+          (select s_Clock_next q_31_s_j)
+          (ite
+            (= q_31_s_j q_28_s_z)
+            s_Timer
+            (ite (= q_31_s_j q_29_s_other) s_Timer (select s_Clock q_31_s_j)))))
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+; action: t8
+(define-fun action_7 () Bool
+  (exists ((q_32_s_z Proc) (q_33_s_other Proc))
+    (and
+      (not (= q_32_s_z q_33_s_other))
+      (and
+        (= (select s_State q_32_s_z) s_L2)
+        (and
+          (= (select s_Sender q_32_s_z) (select s_Receiver q_32_s_z))
+          (and
+            (= (select s_State q_33_s_other) s_L2)
+            (and
+              (not (= (select s_Sender q_33_s_other) (select s_Receiver q_33_s_other)))
+              (and
+                (= (select s_Receiver q_33_s_other) (select s__5f__5f_proc_5f_rank q_32_s_z))
+                (and
+                  (= (select s_Clock q_33_s_other) (select s_Last q_32_s_z))
+                  (and
+                    (< (select s_Sender q_33_s_other) (select s__5f__5f_proc_5f_rank q_32_s_z))
+                    (< (/ (to_real 0) (to_real 10)) s_Tick))))))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_34_s_j Proc))
+        (=
+          (select s_State_next q_34_s_j)
+          (ite
+            (= q_34_s_j q_32_s_z)
+            s_L2
+            (ite (= q_34_s_j q_33_s_other) s_L3 (select s_State q_34_s_j)))))
+      (forall ((q_35_s_j Proc))
+        (=
+          (select s_Clock_next q_35_s_j)
+          (ite
+            (= q_35_s_j q_32_s_z)
+            s_Timer
+            (ite (= q_35_s_j q_33_s_other) s_Timer (select s_Clock q_35_s_j)))))
+      (= s_Sender_next s_Sender)
+      (= s_Receiver_next s_Receiver)
+      (= s_Last_next s_Last)
+      (= s_Is_5f_proc_next s_Is_5f_proc))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_z Proc))
+        (and
+          (= (select s_State q_2_s_z) s_L1)
+          (and
+            (= (select s_Clock q_2_s_z) (/ (to_real 0) (to_real 10)))
+            (and
+              (= (select s_Last q_2_s_z) (/ (to_real 0) (to_real 10)))
+              (= s_Timer (/ (to_real 10) (to_real 10)))))))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_L4))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_L4))
+        (not (= s_L3 s_L4)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3) (= q_1_s_enum s_L4)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6 action_7)
+      (= s_L1_next s_L1)
+      (= s_L2_next s_L2)
+      (= s_L3_next s_L3)
+      (= s_L4_next s_L4)
+      (= s_Tick_next s_Tick)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_L4))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_L4))
+        (not (= s_L3 s_L4)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3) (= q_1_s_enum s_L4)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_L4))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_L4))
+        (not (= s_L3 s_L4)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3) (= q_1_s_enum s_L4)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_z1 Proc) (q_4_s_z2 Proc) (q_5_s_z3 Proc) (q_6_s_z4 Proc))
+      (=>
+        (and
+          (not (= q_3_s_z1 q_4_s_z2))
+          (not (= q_3_s_z1 q_5_s_z3))
+          (not (= q_3_s_z1 q_6_s_z4))
+          (not (= q_4_s_z2 q_5_s_z3))
+          (not (= q_4_s_z2 q_6_s_z4))
+          (not (= q_5_s_z3 q_6_s_z4)))
+        (not
+          (and
+            (= (select s_State q_3_s_z1) s_L3)
+            (and
+              (= (select s_State q_4_s_z2) s_L3)
+              (and
+                (= (select s_Sender q_3_s_z1) (select s_Receiver q_3_s_z1))
+                (and
+                  (= (select s_Sender q_4_s_z2) (select s_Receiver q_4_s_z2))
+                  (and
+                    (= (select s_State q_5_s_z3) s_L4)
+                    (and
+                      (= (select s_State q_6_s_z4) s_L4)
+                      (and
+                        (not (= (select s_Sender q_5_s_z3) (select s_Receiver q_5_s_z3)))
+                        (and
+                          (not (= (select s_Sender q_6_s_z4) (select s_Receiver q_6_s_z4)))
+                          (and
+                            (= (select s_Sender q_5_s_z3) (select s__5f__5f_proc_5f_rank q_3_s_z1))
+                            (and
+                              (=
+                                (select s_Sender q_6_s_z4)
+                                (select s__5f__5f_proc_5f_rank q_4_s_z2))
+                              (and
+                                (=
+                                  (select s_Receiver q_5_s_z3)
+                                  (select s__5f__5f_proc_5f_rank q_4_s_z2))
+                                (=
+                                  (select s_Receiver q_6_s_z4)
+                                  (select s__5f__5f_proc_5f_rank q_3_s_z1))))))))))))))))
+    :invar-property
+    0))

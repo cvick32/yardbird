@@ -1,0 +1,212 @@
+; Generated offline from ivybench/ex/vmt/majorityset-leader-election.vmt
+; Source SHA-256: 179bad74b7602d06f2fcad0a9a12078712e3c7c7a654c89ed1282cf879b80660
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_node 0)
+(declare-sort s_nodeset 0)
+(declare-fun s__5f__5f_didNotVote () (Array s_node Bool))
+(declare-fun s__5f__5f_didNotVote_next () (Array s_node Bool))
+(declare-fun s__5f__5f_leader () (Array s_node Bool))
+(declare-fun s__5f__5f_leader_next () (Array s_node Bool))
+(declare-fun s__5f__5f_vote () (Array s_node (Array s_node Bool)))
+(declare-fun s__5f__5f_vote_next () (Array s_node (Array s_node Bool)))
+(declare-fun s__5f__5f_voters () (Array s_node (Array s_nodeset Bool)))
+(declare-fun s__5f__5f_voters_next () (Array s_node (Array s_nodeset Bool)))
+(declare-fun s_emptyset () s_nodeset)
+(declare-fun s_emptyset_next () s_nodeset)
+(declare-fun s_majority () (Array s_nodeset Bool))
+(declare-fun s_majority_next () (Array s_nodeset Bool))
+(declare-fun s_member () (Array s_node (Array s_nodeset Bool)))
+(declare-fun s_member_next () (Array s_node (Array s_nodeset Bool)))
+(declare-fun s_setOverlap () (Array s_nodeset (Array s_nodeset Bool)))
+(declare-fun s_setOverlap_next () (Array s_nodeset (Array s_nodeset Bool)))
+; source symbol: __didNotVote
+(define-fun link_0 () (Array s_node Bool) (! s__5f__5f_didNotVote :next s__5f__5f_didNotVote_next))
+; source symbol: __leader
+(define-fun link_1 () (Array s_node Bool) (! s__5f__5f_leader :next s__5f__5f_leader_next))
+; source symbol: __vote
+(define-fun link_2 () (Array s_node (Array s_node Bool)) (! s__5f__5f_vote :next s__5f__5f_vote_next))
+; source symbol: __voters
+(define-fun link_3 () (Array s_node (Array s_nodeset Bool)) (! s__5f__5f_voters :next s__5f__5f_voters_next))
+; source symbol: emptyset
+(define-fun link_4 () s_nodeset (! s_emptyset :next s_emptyset_next))
+; source symbol: majority
+(define-fun link_5 () (Array s_nodeset Bool) (! s_majority :next s_majority_next))
+; source symbol: member
+(define-fun link_6 () (Array s_node (Array s_nodeset Bool)) (! s_member :next s_member_next))
+; source symbol: setOverlap
+(define-fun link_7 () (Array s_nodeset (Array s_nodeset Bool)) (! s_setOverlap :next s_setOverlap_next))
+; action: ext:become_leader
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_16_s_V_5f__5f_fml_3a_n s_node) (q_17_s_V_5f__5f_fml_3a_vs s_nodeset))
+        (and
+          (forall ((q_18_s_V0 s_node))
+            (=
+              (select s__5f__5f_leader_next q_18_s_V0)
+              (ite (= q_18_s_V0 q_16_s_V_5f__5f_fml_3a_n) true (select s__5f__5f_leader q_18_s_V0))))
+          (select (select s__5f__5f_voters q_16_s_V_5f__5f_fml_3a_n) q_17_s_V_5f__5f_fml_3a_vs)
+          (select s_majority q_17_s_V_5f__5f_fml_3a_vs))))
+    (= s__5f__5f_vote_next s__5f__5f_vote)
+    (= s__5f__5f_voters_next s__5f__5f_voters)))
+; action: ext:receive_vote
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_19_s_V_5f__5f_fml_3a_n s_node) (q_20_s_V_5f__5f_fml_3a_s2 s_nodeset) (q_21_s_V_5f__5f_fml_3a_voter s_node) (q_22_s_V_5f__5f_fml_3a_vs s_nodeset) (q_23_s_V_5f__5f_new_5f_fml_3a_n s_node) (q_24_s_V_5f__5f_new_5f_fml_3a_s1 s_nodeset) (q_25_s_V_5f__5f_new_5f_fml_3a_vs s_nodeset))
+        (and
+          (= q_23_s_V_5f__5f_new_5f_fml_3a_n q_21_s_V_5f__5f_fml_3a_voter)
+          (= q_24_s_V_5f__5f_new_5f_fml_3a_s1 q_22_s_V_5f__5f_fml_3a_vs)
+          (= q_25_s_V_5f__5f_new_5f_fml_3a_vs q_20_s_V_5f__5f_fml_3a_s2)
+          (forall ((q_26_s_V0 s_node) (q_27_s_V1 s_nodeset))
+            (=
+              (select (select s__5f__5f_voters_next q_26_s_V0) q_27_s_V1)
+              (ite
+                (= q_26_s_V0 q_19_s_V_5f__5f_fml_3a_n)
+                (= q_27_s_V1 q_25_s_V_5f__5f_new_5f_fml_3a_vs)
+                (select (select s__5f__5f_voters q_26_s_V0) q_27_s_V1))))
+          (select (select s__5f__5f_vote q_21_s_V_5f__5f_fml_3a_voter) q_19_s_V_5f__5f_fml_3a_n)
+          (select (select s__5f__5f_voters q_19_s_V_5f__5f_fml_3a_n) q_22_s_V_5f__5f_fml_3a_vs)
+          (not (select (select s_member q_21_s_V_5f__5f_fml_3a_voter) q_22_s_V_5f__5f_fml_3a_vs))
+          (forall ((q_28_s_N s_node))
+            (=
+              (select (select s_member q_28_s_N) q_20_s_V_5f__5f_fml_3a_s2)
+              (or
+                (select (select s_member q_28_s_N) q_24_s_V_5f__5f_new_5f_fml_3a_s1)
+                (= q_28_s_N q_23_s_V_5f__5f_new_5f_fml_3a_n))))
+          (=>
+            (select s_majority q_24_s_V_5f__5f_new_5f_fml_3a_s1)
+            (select s_majority q_20_s_V_5f__5f_fml_3a_s2)))))
+    (= s__5f__5f_leader_next s__5f__5f_leader)
+    (= s__5f__5f_vote_next s__5f__5f_vote)))
+; action: ext:voting
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_29_s_V_5f__5f_fml_3a_n1 s_node) (q_30_s_V_5f__5f_fml_3a_n2 s_node))
+        (and
+          (forall ((q_31_s_V0 s_node) (q_32_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_vote_next q_31_s_V0) q_32_s_V1)
+              (ite
+                (and
+                  (= q_31_s_V0 q_29_s_V_5f__5f_fml_3a_n1)
+                  (= q_32_s_V1 q_30_s_V_5f__5f_fml_3a_n2))
+                true
+                (select (select s__5f__5f_vote q_31_s_V0) q_32_s_V1))))
+          (select s__5f__5f_didNotVote q_29_s_V_5f__5f_fml_3a_n1))))
+    (= s__5f__5f_leader_next s__5f__5f_leader)
+    (= s__5f__5f_voters_next s__5f__5f_voters)))
+; action: ns.add
+(define-fun action_3 () Bool
+  (and
+    (and
+      (exists ((q_33_s_V_5f__5f_fml_3a_n s_node) (q_34_s_V_5f__5f_fml_3a_s1 s_nodeset) (q_35_s_V_5f__5f_fml_3a_s2 s_nodeset))
+        (and
+          (forall ((q_36_s_N s_node))
+            (=
+              (select (select s_member q_36_s_N) q_35_s_V_5f__5f_fml_3a_s2)
+              (or
+                (select (select s_member q_36_s_N) q_34_s_V_5f__5f_fml_3a_s1)
+                (= q_36_s_N q_33_s_V_5f__5f_fml_3a_n))))
+          (=>
+            (select s_majority q_34_s_V_5f__5f_fml_3a_s1)
+            (select s_majority q_35_s_V_5f__5f_fml_3a_s2)))))
+    (= s__5f__5f_leader_next s__5f__5f_leader)
+    (= s__5f__5f_vote_next s__5f__5f_vote)
+    (= s__5f__5f_voters_next s__5f__5f_voters)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_11_s_V0 s_node) (q_12_s_V1 s_node))
+            (= (select (select s__5f__5f_vote q_11_s_V0) q_12_s_V1) false))
+          (forall ((q_13_s_V0 s_node)) (= (select s__5f__5f_leader q_13_s_V0) false))
+          (forall ((q_14_s_V0 s_node) (q_15_s_V1 s_nodeset))
+            (= (select (select s__5f__5f_voters q_14_s_V0) q_15_s_V1) (= q_15_s_V1 s_emptyset)))))
+      (and
+        (forall ((q_1_s_V0 s_node))
+          (=
+            (select s__5f__5f_didNotVote q_1_s_V0)
+            (forall ((q_2_s_V s_node)) (not (select (select s__5f__5f_vote q_1_s_V0) q_2_s_V))))))
+      (and
+        (forall ((q_3_s_V0 s_nodeset) (q_4_s_V1 s_nodeset))
+          (=
+            (select (select s_setOverlap q_3_s_V0) q_4_s_V1)
+            (exists ((q_5_s_N s_node))
+              (and
+                (select (select s_member q_5_s_N) q_3_s_V0)
+                (select (select s_member q_5_s_N) q_4_s_V1))))))
+      (and
+        (and
+          (forall ((q_8_s_S1 s_nodeset) (q_9_s_S2 s_nodeset))
+            (=>
+              (and (select s_majority q_8_s_S1) (select s_majority q_9_s_S2))
+              (select (select s_setOverlap q_8_s_S1) q_9_s_S2)))
+          (forall ((q_10_s_N s_node)) (not (select (select s_member q_10_s_N) s_emptyset))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3)
+      (= s_emptyset_next s_emptyset)
+      (= s_majority_next s_majority)
+      (= s_member_next s_member)
+      (= s_setOverlap_next s_setOverlap)
+      (and
+        (forall ((q_1_s_V0 s_node))
+          (=
+            (select s__5f__5f_didNotVote q_1_s_V0)
+            (forall ((q_2_s_V s_node)) (not (select (select s__5f__5f_vote q_1_s_V0) q_2_s_V))))))
+      (and
+        (forall ((q_3_s_V0 s_nodeset) (q_4_s_V1 s_nodeset))
+          (=
+            (select (select s_setOverlap q_3_s_V0) q_4_s_V1)
+            (exists ((q_5_s_N s_node))
+              (and
+                (select (select s_member q_5_s_N) q_3_s_V0)
+                (select (select s_member q_5_s_N) q_4_s_V1))))))
+      (and
+        (and
+          (forall ((q_8_s_S1 s_nodeset) (q_9_s_S2 s_nodeset))
+            (=>
+              (and (select s_majority q_8_s_S1) (select s_majority q_9_s_S2))
+              (select (select s_setOverlap q_8_s_S1) q_9_s_S2)))
+          (forall ((q_10_s_N s_node)) (not (select (select s_member q_10_s_N) s_emptyset)))))
+      (and
+        (forall ((q_1_s_V0 s_node))
+          (=
+            (select s__5f__5f_didNotVote_next q_1_s_V0)
+            (forall ((q_2_s_V s_node)) (not (select (select s__5f__5f_vote_next q_1_s_V0) q_2_s_V))))))
+      (and
+        (forall ((q_3_s_V0 s_nodeset) (q_4_s_V1 s_nodeset))
+          (=
+            (select (select s_setOverlap q_3_s_V0) q_4_s_V1)
+            (exists ((q_5_s_N s_node))
+              (and
+                (select (select s_member q_5_s_N) q_3_s_V0)
+                (select (select s_member q_5_s_N) q_4_s_V1))))))
+      (and
+        (and
+          (forall ((q_8_s_S1 s_nodeset) (q_9_s_S2 s_nodeset))
+            (=>
+              (and (select s_majority q_8_s_S1) (select s_majority q_9_s_S2))
+              (select (select s_setOverlap q_8_s_S1) q_9_s_S2)))
+          (forall ((q_10_s_N s_node)) (not (select (select s_member q_10_s_N) s_emptyset))))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_6_s_X s_node) (q_7_s_Y s_node))
+        (=>
+          (and (select s__5f__5f_leader q_6_s_X) (select s__5f__5f_leader q_7_s_Y))
+          (= q_6_s_X q_7_s_Y))))
+    :invar-property
+    0))

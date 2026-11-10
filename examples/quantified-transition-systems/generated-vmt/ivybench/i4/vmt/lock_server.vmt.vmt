@@ -1,0 +1,72 @@
+; Generated offline from ivybench/i4/vmt/lock_server.vmt
+; Source SHA-256: 8426cf04820dddc2ca95bc6aafee2557b4d6653b812ae17221ea89d6b4801b86
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_client 0)
+(declare-sort s_server 0)
+(declare-fun s__5f__5f_link () (Array s_client (Array s_server Bool)))
+(declare-fun s__5f__5f_link_next () (Array s_client (Array s_server Bool)))
+(declare-fun s__5f__5f_semaphore () (Array s_server Bool))
+(declare-fun s__5f__5f_semaphore_next () (Array s_server Bool))
+; source symbol: __link
+(define-fun link_0 () (Array s_client (Array s_server Bool)) (! s__5f__5f_link :next s__5f__5f_link_next))
+; source symbol: __semaphore
+(define-fun link_1 () (Array s_server Bool) (! s__5f__5f_semaphore :next s__5f__5f_semaphore_next))
+; action: ext:connect
+(define-fun action_0 () Bool
+  (and
+    (exists ((q_7_s_V_5f__5f_fml_3a_c s_client) (q_8_s_V_5f__5f_fml_3a_s s_server))
+      (and
+        (forall ((q_9_s_V0 s_client) (q_10_s_V1 s_server))
+          (=
+            (select (select s__5f__5f_link_next q_9_s_V0) q_10_s_V1)
+            (ite
+              (and (= q_9_s_V0 q_7_s_V_5f__5f_fml_3a_c) (= q_10_s_V1 q_8_s_V_5f__5f_fml_3a_s))
+              true
+              (select (select s__5f__5f_link q_9_s_V0) q_10_s_V1))))
+        (forall ((q_11_s_V0 s_server))
+          (=
+            (select s__5f__5f_semaphore_next q_11_s_V0)
+            (ite (= q_11_s_V0 q_8_s_V_5f__5f_fml_3a_s) false (select s__5f__5f_semaphore q_11_s_V0))))
+        (select s__5f__5f_semaphore q_8_s_V_5f__5f_fml_3a_s)))))
+; action: ext:disconnect
+(define-fun action_1 () Bool
+  (and
+    (exists ((q_12_s_V_5f__5f_fml_3a_c s_client) (q_13_s_V_5f__5f_fml_3a_s s_server))
+      (and
+        (forall ((q_14_s_V0 s_client) (q_15_s_V1 s_server))
+          (=
+            (select (select s__5f__5f_link_next q_14_s_V0) q_15_s_V1)
+            (ite
+              (and (= q_14_s_V0 q_12_s_V_5f__5f_fml_3a_c) (= q_15_s_V1 q_13_s_V_5f__5f_fml_3a_s))
+              false
+              (select (select s__5f__5f_link q_14_s_V0) q_15_s_V1))))
+        (forall ((q_16_s_V0 s_server))
+          (=
+            (select s__5f__5f_semaphore_next q_16_s_V0)
+            (ite (= q_16_s_V0 q_13_s_V_5f__5f_fml_3a_s) true (select s__5f__5f_semaphore q_16_s_V0))))
+        (select (select s__5f__5f_link q_12_s_V_5f__5f_fml_3a_c) q_13_s_V_5f__5f_fml_3a_s)))))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (forall ((q_4_s_V0 s_server)) (= (select s__5f__5f_semaphore q_4_s_V0) true))
+        (forall ((q_5_s_V0 s_client) (q_6_s_V1 s_server))
+          (= (select (select s__5f__5f_link q_5_s_V0) q_6_s_V1) false))))
+    :init
+    true))
+(define-fun trans () Bool (! (or action_0 action_1) :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_C1 s_client) (q_2_s_C2 s_client) (q_3_s_S s_server))
+        (=>
+          (and
+            (select (select s__5f__5f_link q_1_s_C1) q_3_s_S)
+            (select (select s__5f__5f_link q_2_s_C2) q_3_s_S))
+          (= q_1_s_C1 q_2_s_C2))))
+    :invar-property
+    0))

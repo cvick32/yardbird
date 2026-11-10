@@ -1,0 +1,635 @@
+; Generated offline from cubicle/examples/challenges/MIS.cub
+; Source SHA-256: 72d4a12097b458829472c1f40b5d22f5e2f4574b1a8ac89752c9a48a15f7160a
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['x', 'y']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['x']
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-sort s_state 0)
+(declare-sort s_prob 0)
+(declare-sort s_phase 0)
+(declare-fun s_L1 () s_location)
+(declare-fun s_L1_next () s_location)
+(declare-fun s_L2 () s_location)
+(declare-fun s_L2_next () s_location)
+(declare-fun s_L3 () s_location)
+(declare-fun s_L3_next () s_location)
+(declare-fun s_L4 () s_location)
+(declare-fun s_L4_next () s_location)
+(declare-fun s_L5 () s_location)
+(declare-fun s_L5_next () s_location)
+(declare-fun s_L6 () s_location)
+(declare-fun s_L6_next () s_location)
+(declare-fun s_L7 () s_location)
+(declare-fun s_L7_next () s_location)
+(declare-fun s_Viol_5f_max () s_location)
+(declare-fun s_Viol_5f_max_next () s_location)
+(declare-fun s_Playing () s_state)
+(declare-fun s_Playing_next () s_state)
+(declare-fun s_Won () s_state)
+(declare-fun s_Won_next () s_state)
+(declare-fun s_Lost () s_state)
+(declare-fun s_Lost_next () s_state)
+(declare-fun s_H () s_prob)
+(declare-fun s_H_next () s_prob)
+(declare-fun s_L () s_prob)
+(declare-fun s_L_next () s_prob)
+(declare-fun s_P0 () s_phase)
+(declare-fun s_P0_next () s_phase)
+(declare-fun s_P1 () s_phase)
+(declare-fun s_P1_next () s_phase)
+(declare-fun s_P2 () s_phase)
+(declare-fun s_P2_next () s_phase)
+(declare-fun s_Adjacent () (Array Proc (Array Proc Bool)))
+(declare-fun s_Adjacent_next () (Array Proc (Array Proc Bool)))
+(declare-fun s_PC () (Array Proc s_location))
+(declare-fun s_PC_next () (Array Proc s_location))
+(declare-fun s_State () (Array Proc s_state))
+(declare-fun s_State_next () (Array Proc s_state))
+(declare-fun s_Val () (Array Proc s_prob))
+(declare-fun s_Val_next () (Array Proc s_prob))
+(declare-fun s_Phase () (Array Proc s_phase))
+(declare-fun s_Phase_next () (Array Proc s_phase))
+(declare-fun s_Won_5f_once () (Array Proc Bool))
+(declare-fun s_Won_5f_once_next () (Array Proc Bool))
+(declare-fun s_Lost_5f_once () (Array Proc Bool))
+(declare-fun s_Lost_5f_once_next () (Array Proc Bool))
+; source symbol: L1
+(define-fun link_0 () s_location (! s_L1 :next s_L1_next))
+; source symbol: L2
+(define-fun link_1 () s_location (! s_L2 :next s_L2_next))
+; source symbol: L3
+(define-fun link_2 () s_location (! s_L3 :next s_L3_next))
+; source symbol: L4
+(define-fun link_3 () s_location (! s_L4 :next s_L4_next))
+; source symbol: L5
+(define-fun link_4 () s_location (! s_L5 :next s_L5_next))
+; source symbol: L6
+(define-fun link_5 () s_location (! s_L6 :next s_L6_next))
+; source symbol: L7
+(define-fun link_6 () s_location (! s_L7 :next s_L7_next))
+; source symbol: Viol_max
+(define-fun link_7 () s_location (! s_Viol_5f_max :next s_Viol_5f_max_next))
+; source symbol: Playing
+(define-fun link_8 () s_state (! s_Playing :next s_Playing_next))
+; source symbol: Won
+(define-fun link_9 () s_state (! s_Won :next s_Won_next))
+; source symbol: Lost
+(define-fun link_10 () s_state (! s_Lost :next s_Lost_next))
+; source symbol: H
+(define-fun link_11 () s_prob (! s_H :next s_H_next))
+; source symbol: L
+(define-fun link_12 () s_prob (! s_L :next s_L_next))
+; source symbol: P0
+(define-fun link_13 () s_phase (! s_P0 :next s_P0_next))
+; source symbol: P1
+(define-fun link_14 () s_phase (! s_P1 :next s_P1_next))
+; source symbol: P2
+(define-fun link_15 () s_phase (! s_P2 :next s_P2_next))
+; source symbol: Adjacent
+(define-fun link_16 () (Array Proc (Array Proc Bool)) (! s_Adjacent :next s_Adjacent_next))
+; source symbol: PC
+(define-fun link_17 () (Array Proc s_location) (! s_PC :next s_PC_next))
+; source symbol: State
+(define-fun link_18 () (Array Proc s_state) (! s_State :next s_State_next))
+; source symbol: Val
+(define-fun link_19 () (Array Proc s_prob) (! s_Val :next s_Val_next))
+; source symbol: Phase
+(define-fun link_20 () (Array Proc s_phase) (! s_Phase :next s_Phase_next))
+; source symbol: Won_once
+(define-fun link_21 () (Array Proc Bool) (! s_Won_5f_once :next s_Won_5f_once_next))
+; source symbol: Lost_once
+(define-fun link_22 () (Array Proc Bool) (! s_Lost_5f_once :next s_Lost_5f_once_next))
+; action: enter_while
+(define-fun action_0 () Bool
+  (exists ((q_16_s_x Proc))
+    (and
+      (and (= (select s_PC q_16_s_x) s_L1) (= (select s_State q_16_s_x) s_Playing))
+      (forall ((q_17_s_index0 Proc))
+        (=
+          (select s_PC_next q_17_s_index0)
+          (ite (= q_17_s_index0 q_16_s_x) s_L2 (select s_PC q_17_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: exit_while
+(define-fun action_1 () Bool
+  (exists ((q_18_s_x Proc))
+    (and
+      (and (= (select s_PC q_18_s_x) s_L1) (not (= (select s_State q_18_s_x) s_Playing)))
+      (forall ((q_19_s_index0 Proc))
+        (=
+          (select s_PC_next q_19_s_index0)
+          (ite (= q_19_s_index0 q_18_s_x) s_L7 (select s_PC q_19_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: await
+(define-fun action_2 () Bool
+  (exists ((q_20_s_x Proc))
+    (and
+      (and
+        (= (select s_PC q_20_s_x) s_L2)
+        (forall ((q_21_s_j Proc))
+          (=>
+            (not (= q_21_s_j q_20_s_x))
+            (or
+              (= (select (select s_Adjacent q_20_s_x) q_21_s_j) false)
+              (or
+                (not (= (select s_State q_21_s_j) s_Playing))
+                (or
+                  (and (= (select s_Phase q_20_s_x) s_P0) (= (select s_Phase q_21_s_j) s_P1))
+                  (or
+                    (and (= (select s_Phase q_20_s_x) s_P1) (= (select s_Phase q_21_s_j) s_P2))
+                    (and (= (select s_Phase q_20_s_x) s_P2) (= (select s_Phase q_21_s_j) s_P0)))))))))
+      (forall ((q_22_s_index0 Proc))
+        (=
+          (select s_PC_next q_22_s_index0)
+          (ite (= q_22_s_index0 q_20_s_x) s_L3 (select s_PC q_22_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: first_if_then_H
+(define-fun action_3 () Bool
+  (exists ((q_23_s_x Proc))
+    (and
+      (and (= (select s_PC q_23_s_x) s_L3) (= (select s_Phase q_23_s_x) s_P0))
+      (forall ((q_24_s_index0 Proc))
+        (=
+          (select s_PC_next q_24_s_index0)
+          (ite (= q_24_s_index0 q_23_s_x) s_L6 (select s_PC q_24_s_index0))))
+      (forall ((q_25_s_index0 Proc))
+        (=
+          (select s_Val_next q_25_s_index0)
+          (ite (= q_25_s_index0 q_23_s_x) s_H (select s_Val q_25_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: first_if_then_L
+(define-fun action_4 () Bool
+  (exists ((q_26_s_x Proc))
+    (and
+      (and (= (select s_PC q_26_s_x) s_L3) (= (select s_Phase q_26_s_x) s_P0))
+      (forall ((q_27_s_index0 Proc))
+        (=
+          (select s_PC_next q_27_s_index0)
+          (ite (= q_27_s_index0 q_26_s_x) s_L6 (select s_PC q_27_s_index0))))
+      (forall ((q_28_s_index0 Proc))
+        (=
+          (select s_Val_next q_28_s_index0)
+          (ite (= q_28_s_index0 q_26_s_x) s_L (select s_Val q_28_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: first_if_else
+(define-fun action_5 () Bool
+  (exists ((q_29_s_x Proc))
+    (and
+      (and (= (select s_PC q_29_s_x) s_L3) (not (= (select s_Phase q_29_s_x) s_P0)))
+      (forall ((q_30_s_index0 Proc))
+        (=
+          (select s_PC_next q_30_s_index0)
+          (ite (= q_30_s_index0 q_29_s_x) s_L4 (select s_PC q_30_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: second_if_then
+(define-fun action_6 () Bool
+  (exists ((q_31_s_x Proc))
+    (and
+      (and
+        (= (select s_PC q_31_s_x) s_L4)
+        (and
+          (= (select s_Phase q_31_s_x) s_P1)
+          (and
+            (= (select s_Val q_31_s_x) s_H)
+            (forall ((q_32_s_j Proc))
+              (=>
+                (not (= q_32_s_j q_31_s_x))
+                (or
+                  (= (select (select s_Adjacent q_31_s_x) q_32_s_j) false)
+                  (and
+                    (= (select (select s_Adjacent q_31_s_x) q_32_s_j) true)
+                    (= (select s_Val q_32_s_j) s_L))))))))
+      (forall ((q_33_s_index0 Proc))
+        (=
+          (select s_PC_next q_33_s_index0)
+          (ite (= q_33_s_index0 q_31_s_x) s_L6 (select s_PC q_33_s_index0))))
+      (forall ((q_34_s_index0 Proc))
+        (=
+          (select s_State_next q_34_s_index0)
+          (ite (= q_34_s_index0 q_31_s_x) s_Won (select s_State q_34_s_index0))))
+      (forall ((q_35_s_index0 Proc))
+        (=
+          (select s_Won_5f_once_next q_35_s_index0)
+          (ite (= q_35_s_index0 q_31_s_x) true (select s_Won_5f_once q_35_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: second_if_else_a
+(define-fun action_7 () Bool
+  (exists ((q_36_s_x Proc))
+    (and
+      (and (= (select s_PC q_36_s_x) s_L4) (not (= (select s_Phase q_36_s_x) s_P1)))
+      (forall ((q_37_s_index0 Proc))
+        (=
+          (select s_PC_next q_37_s_index0)
+          (ite (= q_37_s_index0 q_36_s_x) s_L5 (select s_PC q_37_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: second_if_else_b
+(define-fun action_8 () Bool
+  (exists ((q_38_s_x Proc))
+    (and
+      (and (= (select s_PC q_38_s_x) s_L4) (= (select s_Val q_38_s_x) s_L))
+      (forall ((q_39_s_index0 Proc))
+        (=
+          (select s_PC_next q_39_s_index0)
+          (ite (= q_39_s_index0 q_38_s_x) s_L5 (select s_PC q_39_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: second_if_else_c
+(define-fun action_9 () Bool
+  (exists ((q_40_s_x Proc) (q_41_s_y Proc))
+    (and
+      (not (= q_40_s_x q_41_s_y))
+      (and
+        (= (select s_PC q_40_s_x) s_L4)
+        (and
+          (= (select (select s_Adjacent q_40_s_x) q_41_s_y) true)
+          (= (select s_Val q_41_s_y) s_H)))
+      (forall ((q_42_s_index0 Proc))
+        (=
+          (select s_PC_next q_42_s_index0)
+          (ite (= q_42_s_index0 q_40_s_x) s_L5 (select s_PC q_42_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: third_if_then
+(define-fun action_10 () Bool
+  (exists ((q_43_s_x Proc) (q_44_s_y Proc))
+    (and
+      (not (= q_43_s_x q_44_s_y))
+      (and
+        (= (select s_PC q_43_s_x) s_L5)
+        (and
+          (= (select s_Phase q_43_s_x) s_P2)
+          (and
+            (= (select (select s_Adjacent q_43_s_x) q_44_s_y) true)
+            (= (select s_State q_44_s_y) s_Won))))
+      (forall ((q_45_s_index0 Proc))
+        (=
+          (select s_PC_next q_45_s_index0)
+          (ite (= q_45_s_index0 q_43_s_x) s_L6 (select s_PC q_45_s_index0))))
+      (forall ((q_46_s_index0 Proc))
+        (=
+          (select s_State_next q_46_s_index0)
+          (ite (= q_46_s_index0 q_43_s_x) s_Lost (select s_State q_46_s_index0))))
+      (forall ((q_47_s_index0 Proc))
+        (=
+          (select s_Lost_5f_once_next q_47_s_index0)
+          (ite (= q_47_s_index0 q_43_s_x) true (select s_Lost_5f_once q_47_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once))))
+; action: last_assignment_a
+(define-fun action_11 () Bool
+  (exists ((q_48_s_x Proc))
+    (and
+      (and (= (select s_PC q_48_s_x) s_L6) (= (select s_Phase q_48_s_x) s_P0))
+      (forall ((q_49_s_index0 Proc))
+        (=
+          (select s_PC_next q_49_s_index0)
+          (ite (= q_49_s_index0 q_48_s_x) s_L1 (select s_PC q_49_s_index0))))
+      (forall ((q_50_s_index0 Proc))
+        (=
+          (select s_Phase_next q_50_s_index0)
+          (ite (= q_50_s_index0 q_48_s_x) s_P1 (select s_Phase q_50_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: last_assignment_b
+(define-fun action_12 () Bool
+  (exists ((q_51_s_x Proc))
+    (and
+      (and (= (select s_PC q_51_s_x) s_L6) (= (select s_Phase q_51_s_x) s_P1))
+      (forall ((q_52_s_index0 Proc))
+        (=
+          (select s_PC_next q_52_s_index0)
+          (ite (= q_52_s_index0 q_51_s_x) s_L1 (select s_PC q_52_s_index0))))
+      (forall ((q_53_s_index0 Proc))
+        (=
+          (select s_Phase_next q_53_s_index0)
+          (ite (= q_53_s_index0 q_51_s_x) s_P2 (select s_Phase q_53_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: last_assignment_c
+(define-fun action_13 () Bool
+  (exists ((q_54_s_x Proc))
+    (and
+      (and (= (select s_PC q_54_s_x) s_L6) (= (select s_Phase q_54_s_x) s_P2))
+      (forall ((q_55_s_index0 Proc))
+        (=
+          (select s_PC_next q_55_s_index0)
+          (ite (= q_55_s_index0 q_54_s_x) s_L1 (select s_PC q_55_s_index0))))
+      (forall ((q_56_s_index0 Proc))
+        (=
+          (select s_Phase_next q_56_s_index0)
+          (ite (= q_56_s_index0 q_54_s_x) s_P0 (select s_Phase q_56_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+; action: violate_max
+(define-fun action_14 () Bool
+  (exists ((q_57_s_x Proc))
+    (and
+      (and
+        (= (select s_State q_57_s_x) s_Lost)
+        (forall ((q_58_s_j Proc))
+          (=>
+            (not (= q_58_s_j q_57_s_x))
+            (or
+              (= (select (select s_Adjacent q_57_s_x) q_58_s_j) false)
+              (not (= (select s_State q_58_s_j) s_Won))))))
+      (forall ((q_59_s_index0 Proc))
+        (=
+          (select s_PC_next q_59_s_index0)
+          (ite (= q_59_s_index0 q_57_s_x) s_Viol_5f_max (select s_PC q_59_s_index0))))
+      (= s_Adjacent_next s_Adjacent)
+      (= s_State_next s_State)
+      (= s_Val_next s_Val)
+      (= s_Phase_next s_Phase)
+      (= s_Won_5f_once_next s_Won_5f_once)
+      (= s_Lost_5f_once_next s_Lost_5f_once))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_5_s_x Proc))
+        (and
+          (= (select s_PC q_5_s_x) s_L1)
+          (and
+            (= (select s_State q_5_s_x) s_Playing)
+            (and
+              (= (select s_Phase q_5_s_x) s_P0)
+              (and
+                (= (select s_Won_5f_once q_5_s_x) false)
+                (= (select s_Lost_5f_once q_5_s_x) false))))))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_L4))
+        (not (= s_L1 s_L5))
+        (not (= s_L1 s_L6))
+        (not (= s_L1 s_L7))
+        (not (= s_L1 s_Viol_5f_max))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_L4))
+        (not (= s_L2 s_L5))
+        (not (= s_L2 s_L6))
+        (not (= s_L2 s_L7))
+        (not (= s_L2 s_Viol_5f_max))
+        (not (= s_L3 s_L4))
+        (not (= s_L3 s_L5))
+        (not (= s_L3 s_L6))
+        (not (= s_L3 s_L7))
+        (not (= s_L3 s_Viol_5f_max))
+        (not (= s_L4 s_L5))
+        (not (= s_L4 s_L6))
+        (not (= s_L4 s_L7))
+        (not (= s_L4 s_Viol_5f_max))
+        (not (= s_L5 s_L6))
+        (not (= s_L5 s_L7))
+        (not (= s_L5 s_Viol_5f_max))
+        (not (= s_L6 s_L7))
+        (not (= s_L6 s_Viol_5f_max))
+        (not (= s_L7 s_Viol_5f_max)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_L1)
+          (= q_1_s_enum s_L2)
+          (= q_1_s_enum s_L3)
+          (= q_1_s_enum s_L4)
+          (= q_1_s_enum s_L5)
+          (= q_1_s_enum s_L6)
+          (= q_1_s_enum s_L7)
+          (= q_1_s_enum s_Viol_5f_max)))
+      (and (not (= s_Playing s_Won)) (not (= s_Playing s_Lost)) (not (= s_Won s_Lost)))
+      (forall ((q_2_s_enum s_state))
+        (or (= q_2_s_enum s_Playing) (= q_2_s_enum s_Won) (= q_2_s_enum s_Lost)))
+      (not (= s_H s_L))
+      (forall ((q_3_s_enum s_prob)) (or (= q_3_s_enum s_H) (= q_3_s_enum s_L)))
+      (and (not (= s_P0 s_P1)) (not (= s_P0 s_P2)) (not (= s_P1 s_P2)))
+      (forall ((q_4_s_enum s_phase))
+        (or (= q_4_s_enum s_P0) (= q_4_s_enum s_P1) (= q_4_s_enum s_P2))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13
+        action_14)
+      (= s_L1_next s_L1)
+      (= s_L2_next s_L2)
+      (= s_L3_next s_L3)
+      (= s_L4_next s_L4)
+      (= s_L5_next s_L5)
+      (= s_L6_next s_L6)
+      (= s_L7_next s_L7)
+      (= s_Viol_5f_max_next s_Viol_5f_max)
+      (= s_Playing_next s_Playing)
+      (= s_Won_next s_Won)
+      (= s_Lost_next s_Lost)
+      (= s_H_next s_H)
+      (= s_L_next s_L)
+      (= s_P0_next s_P0)
+      (= s_P1_next s_P1)
+      (= s_P2_next s_P2)
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_L4))
+        (not (= s_L1 s_L5))
+        (not (= s_L1 s_L6))
+        (not (= s_L1 s_L7))
+        (not (= s_L1 s_Viol_5f_max))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_L4))
+        (not (= s_L2 s_L5))
+        (not (= s_L2 s_L6))
+        (not (= s_L2 s_L7))
+        (not (= s_L2 s_Viol_5f_max))
+        (not (= s_L3 s_L4))
+        (not (= s_L3 s_L5))
+        (not (= s_L3 s_L6))
+        (not (= s_L3 s_L7))
+        (not (= s_L3 s_Viol_5f_max))
+        (not (= s_L4 s_L5))
+        (not (= s_L4 s_L6))
+        (not (= s_L4 s_L7))
+        (not (= s_L4 s_Viol_5f_max))
+        (not (= s_L5 s_L6))
+        (not (= s_L5 s_L7))
+        (not (= s_L5 s_Viol_5f_max))
+        (not (= s_L6 s_L7))
+        (not (= s_L6 s_Viol_5f_max))
+        (not (= s_L7 s_Viol_5f_max)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_L1)
+          (= q_1_s_enum s_L2)
+          (= q_1_s_enum s_L3)
+          (= q_1_s_enum s_L4)
+          (= q_1_s_enum s_L5)
+          (= q_1_s_enum s_L6)
+          (= q_1_s_enum s_L7)
+          (= q_1_s_enum s_Viol_5f_max)))
+      (and (not (= s_Playing s_Won)) (not (= s_Playing s_Lost)) (not (= s_Won s_Lost)))
+      (forall ((q_2_s_enum s_state))
+        (or (= q_2_s_enum s_Playing) (= q_2_s_enum s_Won) (= q_2_s_enum s_Lost)))
+      (not (= s_H s_L))
+      (forall ((q_3_s_enum s_prob)) (or (= q_3_s_enum s_H) (= q_3_s_enum s_L)))
+      (and (not (= s_P0 s_P1)) (not (= s_P0 s_P2)) (not (= s_P1 s_P2)))
+      (forall ((q_4_s_enum s_phase))
+        (or (= q_4_s_enum s_P0) (= q_4_s_enum s_P1) (= q_4_s_enum s_P2)))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_L4))
+        (not (= s_L1 s_L5))
+        (not (= s_L1 s_L6))
+        (not (= s_L1 s_L7))
+        (not (= s_L1 s_Viol_5f_max))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_L4))
+        (not (= s_L2 s_L5))
+        (not (= s_L2 s_L6))
+        (not (= s_L2 s_L7))
+        (not (= s_L2 s_Viol_5f_max))
+        (not (= s_L3 s_L4))
+        (not (= s_L3 s_L5))
+        (not (= s_L3 s_L6))
+        (not (= s_L3 s_L7))
+        (not (= s_L3 s_Viol_5f_max))
+        (not (= s_L4 s_L5))
+        (not (= s_L4 s_L6))
+        (not (= s_L4 s_L7))
+        (not (= s_L4 s_Viol_5f_max))
+        (not (= s_L5 s_L6))
+        (not (= s_L5 s_L7))
+        (not (= s_L5 s_Viol_5f_max))
+        (not (= s_L6 s_L7))
+        (not (= s_L6 s_Viol_5f_max))
+        (not (= s_L7 s_Viol_5f_max)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_L1)
+          (= q_1_s_enum s_L2)
+          (= q_1_s_enum s_L3)
+          (= q_1_s_enum s_L4)
+          (= q_1_s_enum s_L5)
+          (= q_1_s_enum s_L6)
+          (= q_1_s_enum s_L7)
+          (= q_1_s_enum s_Viol_5f_max)))
+      (and (not (= s_Playing s_Won)) (not (= s_Playing s_Lost)) (not (= s_Won s_Lost)))
+      (forall ((q_2_s_enum s_state))
+        (or (= q_2_s_enum s_Playing) (= q_2_s_enum s_Won) (= q_2_s_enum s_Lost)))
+      (not (= s_H s_L))
+      (forall ((q_3_s_enum s_prob)) (or (= q_3_s_enum s_H) (= q_3_s_enum s_L)))
+      (and (not (= s_P0 s_P1)) (not (= s_P0 s_P2)) (not (= s_P1 s_P2)))
+      (forall ((q_4_s_enum s_phase))
+        (or (= q_4_s_enum s_P0) (= q_4_s_enum s_P1) (= q_4_s_enum s_P2))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_9_s_z1 Proc) (q_10_s_z2 Proc))
+        (=>
+          (not (= q_9_s_z1 q_10_s_z2))
+          (not
+            (and
+              (= (select (select s_Adjacent q_9_s_z1) q_10_s_z2) true)
+              (and (= (select s_State q_9_s_z1) s_Won) (= (select s_State q_10_s_z2) s_Won))))))
+      (forall ((q_11_s_z1 Proc)) (=> true (not (= (select s_PC q_11_s_z1) s_Viol_5f_max))))
+      (forall ((q_12_s_z1 Proc) (q_13_s_z2 Proc))
+        (=>
+          (not (= q_12_s_z1 q_13_s_z2))
+          (not
+            (and
+              (= (select s_State q_12_s_z1) s_Playing)
+              (and
+                (= (select s_State q_13_s_z2) s_Playing)
+                (and
+                  (= (select (select s_Adjacent q_12_s_z1) q_13_s_z2) true)
+                  (and (= (select s_Phase q_12_s_z1) s_P0) (= (select s_Phase q_13_s_z2) s_P2))))))))
+      (forall ((q_14_s_z1 Proc))
+        (=>
+          true
+          (not
+            (and
+              (not (= (select s_State q_14_s_z1) s_Won))
+              (= (select s_Won_5f_once q_14_s_z1) true)))))
+      (forall ((q_15_s_x Proc))
+        (=>
+          true
+          (not
+            (and
+              (not (= (select s_State q_15_s_x) s_Lost))
+              (= (select s_Lost_5f_once q_15_s_x) true))))))
+    :invar-property
+    0))

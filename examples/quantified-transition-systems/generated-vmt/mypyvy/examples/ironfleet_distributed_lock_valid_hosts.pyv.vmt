@@ -1,0 +1,155 @@
+; Generated offline from mypyvy/examples/ironfleet_distributed_lock_valid_hosts.pyv
+; Source SHA-256: fcccf373c9c79037d358f41c0f7f0c7a5d286a2b8bd6fe19476d4cdea1631e4c
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_host 0)
+(declare-sort s_epoch 0)
+(declare-fun s_valid () (Array s_host Bool))
+(declare-fun s_valid_next () (Array s_host Bool))
+(declare-fun s_zero () s_epoch)
+(declare-fun s_zero_next () s_epoch)
+(declare-fun s_le () (Array s_epoch (Array s_epoch Bool)))
+(declare-fun s_le_next () (Array s_epoch (Array s_epoch Bool)))
+(declare-fun s_sent_5f_msgs () (Array s_host (Array s_epoch Bool)))
+(declare-fun s_sent_5f_msgs_next () (Array s_host (Array s_epoch Bool)))
+(declare-fun s_host_5f_epoch () (Array s_host s_epoch))
+(declare-fun s_host_5f_epoch_next () (Array s_host s_epoch))
+(declare-fun s_holds_5f_lock () (Array s_host Bool))
+(declare-fun s_holds_5f_lock_next () (Array s_host Bool))
+; source symbol: valid
+(define-fun link_0 () (Array s_host Bool) (! s_valid :next s_valid_next))
+; source symbol: zero
+(define-fun link_1 () s_epoch (! s_zero :next s_zero_next))
+; source symbol: le
+(define-fun link_2 () (Array s_epoch (Array s_epoch Bool)) (! s_le :next s_le_next))
+; source symbol: sent_msgs
+(define-fun link_3 () (Array s_host (Array s_epoch Bool)) (! s_sent_5f_msgs :next s_sent_5f_msgs_next))
+; source symbol: host_epoch
+(define-fun link_4 () (Array s_host s_epoch) (! s_host_5f_epoch :next s_host_5f_epoch_next))
+; source symbol: holds_lock
+(define-fun link_5 () (Array s_host Bool) (! s_holds_5f_lock :next s_holds_5f_lock_next))
+; action: do_grant
+(define-fun action_0 () Bool
+  (exists ((q_15_s_h s_host) (q_16_s_d s_host) (q_17_s_e s_epoch))
+    (and
+      (and
+        (select s_valid q_15_s_h)
+        (select s_valid q_16_s_d)
+        (select s_holds_5f_lock q_15_s_h)
+        (not (select (select s_le q_17_s_e) (select s_host_5f_epoch q_15_s_h)))
+        (forall ((q_18_s_H s_host))
+          (=>
+            (select s_valid q_18_s_H)
+            (=
+              (select s_holds_5f_lock_next q_18_s_H)
+              (and (select s_holds_5f_lock q_18_s_H) (not (= q_18_s_H q_15_s_h))))))
+        (forall ((q_19_s_D s_host) (q_20_s_E s_epoch))
+          (=>
+            (select s_valid q_19_s_D)
+            (=
+              (select (select s_sent_5f_msgs_next q_19_s_D) q_20_s_E)
+              (or
+                (select (select s_sent_5f_msgs q_19_s_D) q_20_s_E)
+                (and (= q_19_s_D q_16_s_d) (= q_20_s_E q_17_s_e)))))))
+      (forall ((q_21_s_x0 s_host))
+        (= (select s_host_5f_epoch_next q_21_s_x0) (select s_host_5f_epoch q_21_s_x0))))))
+; action: do_accept
+(define-fun action_1 () Bool
+  (exists ((q_22_s_h s_host) (q_23_s_e s_epoch))
+    (and
+      (and
+        (select s_valid q_22_s_h)
+        (select (select s_sent_5f_msgs q_22_s_h) q_23_s_e)
+        (not (select (select s_le q_23_s_e) (select s_host_5f_epoch q_22_s_h)))
+        (forall ((q_24_s_H s_host))
+          (=>
+            (select s_valid q_24_s_H)
+            (=
+              (select s_holds_5f_lock_next q_24_s_H)
+              (or (select s_holds_5f_lock q_24_s_H) (= q_24_s_H q_22_s_h)))))
+        (forall ((q_25_s_H s_host))
+          (=>
+            (select s_valid q_25_s_H)
+            (=
+              (select s_host_5f_epoch_next q_25_s_H)
+              (ite (= q_25_s_H q_22_s_h) q_23_s_e (select s_host_5f_epoch q_25_s_H))))))
+      (forall ((q_26_s_x0 s_host) (q_27_s_x1 s_epoch))
+        (=
+          (select (select s_sent_5f_msgs_next q_26_s_x0) q_27_s_x1)
+          (select (select s_sent_5f_msgs q_26_s_x0) q_27_s_x1))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_H s_host) (q_2_s_E s_epoch))
+        (not (select (select s_sent_5f_msgs q_1_s_H) q_2_s_E)))
+      (=>
+        (exists ((q_3_s_H0 s_host)) (select s_valid q_3_s_H0))
+        (exists ((q_4_s_H0 s_host))
+          (and
+            (select s_valid q_4_s_H0)
+            (forall ((q_5_s_H s_host))
+              (=>
+                (select s_valid q_5_s_H)
+                (and
+                  (= (select s_holds_5f_lock q_5_s_H) (= q_5_s_H q_4_s_H0))
+                  (= (= (select s_host_5f_epoch q_5_s_H) s_zero) (not (= q_5_s_H q_4_s_H0)))))))))
+      (forall ((q_6_s_X s_epoch)) (select (select s_le q_6_s_X) q_6_s_X))
+      (forall ((q_7_s_X s_epoch) (q_8_s_Y s_epoch) (q_9_s_Z s_epoch))
+        (=>
+          (and (select (select s_le q_7_s_X) q_8_s_Y) (select (select s_le q_8_s_Y) q_9_s_Z))
+          (select (select s_le q_7_s_X) q_9_s_Z)))
+      (forall ((q_10_s_X s_epoch) (q_11_s_Y s_epoch))
+        (=>
+          (and (select (select s_le q_10_s_X) q_11_s_Y) (select (select s_le q_11_s_Y) q_10_s_X))
+          (= q_10_s_X q_11_s_Y)))
+      (forall ((q_12_s_X s_epoch) (q_13_s_Y s_epoch))
+        (or (select (select s_le q_12_s_X) q_13_s_Y) (select (select s_le q_13_s_Y) q_12_s_X)))
+      (forall ((q_14_s_X s_epoch)) (select (select s_le s_zero) q_14_s_X)))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1)
+      (= s_valid_next s_valid)
+      (= s_zero_next s_zero)
+      (= s_le_next s_le)
+      (forall ((q_6_s_X s_epoch)) (select (select s_le q_6_s_X) q_6_s_X))
+      (forall ((q_7_s_X s_epoch) (q_8_s_Y s_epoch) (q_9_s_Z s_epoch))
+        (=>
+          (and (select (select s_le q_7_s_X) q_8_s_Y) (select (select s_le q_8_s_Y) q_9_s_Z))
+          (select (select s_le q_7_s_X) q_9_s_Z)))
+      (forall ((q_10_s_X s_epoch) (q_11_s_Y s_epoch))
+        (=>
+          (and (select (select s_le q_10_s_X) q_11_s_Y) (select (select s_le q_11_s_Y) q_10_s_X))
+          (= q_10_s_X q_11_s_Y)))
+      (forall ((q_12_s_X s_epoch) (q_13_s_Y s_epoch))
+        (or (select (select s_le q_12_s_X) q_13_s_Y) (select (select s_le q_13_s_Y) q_12_s_X)))
+      (forall ((q_14_s_X s_epoch)) (select (select s_le s_zero) q_14_s_X))
+      (forall ((q_6_s_X s_epoch)) (select (select s_le q_6_s_X) q_6_s_X))
+      (forall ((q_7_s_X s_epoch) (q_8_s_Y s_epoch) (q_9_s_Z s_epoch))
+        (=>
+          (and (select (select s_le q_7_s_X) q_8_s_Y) (select (select s_le q_8_s_Y) q_9_s_Z))
+          (select (select s_le q_7_s_X) q_9_s_Z)))
+      (forall ((q_10_s_X s_epoch) (q_11_s_Y s_epoch))
+        (=>
+          (and (select (select s_le q_10_s_X) q_11_s_Y) (select (select s_le q_11_s_Y) q_10_s_X))
+          (= q_10_s_X q_11_s_Y)))
+      (forall ((q_12_s_X s_epoch) (q_13_s_Y s_epoch))
+        (or (select (select s_le q_12_s_X) q_13_s_Y) (select (select s_le q_13_s_Y) q_12_s_X)))
+      (forall ((q_14_s_X s_epoch)) (select (select s_le s_zero) q_14_s_X)))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_28_s_H1 s_host) (q_29_s_H2 s_host))
+      (=>
+        (and
+          (select s_valid q_28_s_H1)
+          (select s_valid q_29_s_H2)
+          (select s_holds_5f_lock q_28_s_H1)
+          (select s_holds_5f_lock q_29_s_H2))
+        (= q_28_s_H1 q_29_s_H2)))
+    :invar-property
+    0))

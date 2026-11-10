@@ -1,0 +1,120 @@
+; Generated offline from lambda/benchmarks/protocols/mesi.cub
+; Source SHA-256: 80a278a51800ce7126246b469f4c735d797be470260bd8dd4cacec39ead689fd
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-fun s_M () s_location)
+(declare-fun s_M_next () s_location)
+(declare-fun s_E () s_location)
+(declare-fun s_E_next () s_location)
+(declare-fun s_S () s_location)
+(declare-fun s_S_next () s_location)
+(declare-fun s_I () s_location)
+(declare-fun s_I_next () s_location)
+(declare-fun s_State () (Array Proc s_location))
+(declare-fun s_State_next () (Array Proc s_location))
+; source symbol: M
+(define-fun link_0 () s_location (! s_M :next s_M_next))
+; source symbol: E
+(define-fun link_1 () s_location (! s_E :next s_E_next))
+; source symbol: S
+(define-fun link_2 () s_location (! s_S :next s_S_next))
+; source symbol: I
+(define-fun link_3 () s_location (! s_I :next s_I_next))
+; source symbol: State
+(define-fun link_4 () (Array Proc s_location) (! s_State :next s_State_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_5_s_x Proc))
+    (and
+      (= (select s_State q_5_s_x) s_E)
+      (forall ((q_6_s_j Proc))
+        (= (select s_State_next q_6_s_j) (ite (= q_6_s_j q_5_s_x) s_M (select s_State q_6_s_j)))))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_7_s_x Proc))
+    (and
+      (= (select s_State q_7_s_x) s_I)
+      (forall ((q_8_s_j Proc))
+        (=
+          (select s_State_next q_8_s_j)
+          (ite
+            (= q_8_s_j q_7_s_x)
+            s_S
+            (ite
+              (= (select s_State q_8_s_j) s_E)
+              s_S
+              (ite
+                (= (select s_State q_8_s_j) s_M)
+                s_S
+                (ite (= (select s_State q_8_s_j) s_I) s_I s_S)))))))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_9_s_x Proc))
+    (and
+      (= (select s_State q_9_s_x) s_S)
+      (forall ((q_10_s_j Proc))
+        (= (select s_State_next q_10_s_j) (ite (= q_10_s_j q_9_s_x) s_E s_I))))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_11_s_x Proc))
+    (and
+      (= (select s_State q_11_s_x) s_I)
+      (forall ((q_12_s_j Proc))
+        (= (select s_State_next q_12_s_j) (ite (= q_12_s_j q_11_s_x) s_E s_I))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_z Proc)) (= (select s_State q_2_s_z) s_I))
+      (and
+        (not (= s_M s_E))
+        (not (= s_M s_S))
+        (not (= s_M s_I))
+        (not (= s_E s_S))
+        (not (= s_E s_I))
+        (not (= s_S s_I)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_M) (= q_1_s_enum s_E) (= q_1_s_enum s_S) (= q_1_s_enum s_I))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3)
+      (= s_M_next s_M)
+      (= s_E_next s_E)
+      (= s_S_next s_S)
+      (= s_I_next s_I)
+      (and
+        (not (= s_M s_E))
+        (not (= s_M s_S))
+        (not (= s_M s_I))
+        (not (= s_E s_S))
+        (not (= s_E s_I))
+        (not (= s_S s_I)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_M) (= q_1_s_enum s_E) (= q_1_s_enum s_S) (= q_1_s_enum s_I)))
+      (and
+        (not (= s_M s_E))
+        (not (= s_M s_S))
+        (not (= s_M s_I))
+        (not (= s_E s_S))
+        (not (= s_E s_I))
+        (not (= s_S s_I)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_M) (= q_1_s_enum s_E) (= q_1_s_enum s_S) (= q_1_s_enum s_I))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_z1 Proc) (q_4_s_z2 Proc))
+      (=>
+        (not (= q_3_s_z1 q_4_s_z2))
+        (not (and (= (select s_State q_3_s_z1) s_M) (= (select s_State q_4_s_z2) s_M)))))
+    :invar-property
+    0))

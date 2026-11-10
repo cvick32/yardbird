@@ -1,0 +1,114 @@
+; Generated offline from ivybench/ex/vmt/quorum-leader-election.vmt
+; Source SHA-256: a9a9c66cb926ba1d6c3d35a4ead0715786481e9b66433bc4ba67548812290c4e
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_node 0)
+(declare-sort s_nset 0)
+(declare-fun s__5f__5f_isleader () (Array s_node Bool))
+(declare-fun s__5f__5f_isleader_next () (Array s_node Bool))
+(declare-fun s__5f__5f_quorum () s_nset)
+(declare-fun s__5f__5f_quorum_next () s_nset)
+(declare-fun s__5f__5f_voted () (Array s_node (Array s_node Bool)))
+(declare-fun s__5f__5f_voted_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_majority () (Array s_nset Bool))
+(declare-fun s_majority_next () (Array s_nset Bool))
+(declare-fun s_member () (Array s_node (Array s_nset Bool)))
+(declare-fun s_member_next () (Array s_node (Array s_nset Bool)))
+; source symbol: __isleader
+(define-fun link_0 () (Array s_node Bool) (! s__5f__5f_isleader :next s__5f__5f_isleader_next))
+; source symbol: __quorum
+(define-fun link_1 () s_nset (! s__5f__5f_quorum :next s__5f__5f_quorum_next))
+; source symbol: __voted
+(define-fun link_2 () (Array s_node (Array s_node Bool)) (! s__5f__5f_voted :next s__5f__5f_voted_next))
+; source symbol: majority
+(define-fun link_3 () (Array s_nset Bool) (! s_majority :next s_majority_next))
+; source symbol: member
+(define-fun link_4 () (Array s_node (Array s_nset Bool)) (! s_member :next s_member_next))
+; action: ext:become_leader
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_9_s_V_5f__5f_fml_3a_n s_node) (q_10_s_V_5f__5f_fml_3a_s s_nset))
+        (and
+          (forall ((q_11_s_V0 s_node))
+            (=
+              (select s__5f__5f_isleader_next q_11_s_V0)
+              (ite (= q_11_s_V0 q_9_s_V_5f__5f_fml_3a_n) true (select s__5f__5f_isleader q_11_s_V0))))
+          (= s__5f__5f_quorum_next q_10_s_V_5f__5f_fml_3a_s)
+          (select s_majority q_10_s_V_5f__5f_fml_3a_s)
+          (forall ((q_12_s_M s_node))
+            (=>
+              (select (select s_member q_12_s_M) q_10_s_V_5f__5f_fml_3a_s)
+              (select (select s__5f__5f_voted q_12_s_M) q_9_s_V_5f__5f_fml_3a_n))))))
+    (= s__5f__5f_voted_next s__5f__5f_voted)))
+; action: ext:vote
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_13_s_V_5f__5f_fml_3a_n s_node) (q_14_s_V_5f__5f_fml_3a_v s_node))
+        (and
+          (forall ((q_15_s_V0 s_node) (q_16_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_voted_next q_15_s_V0) q_16_s_V1)
+              (ite
+                (and (= q_15_s_V0 q_14_s_V_5f__5f_fml_3a_v) (= q_16_s_V1 q_13_s_V_5f__5f_fml_3a_n))
+                true
+                (select (select s__5f__5f_voted q_15_s_V0) q_16_s_V1))))
+          (forall ((q_17_s_M s_node))
+            (not (select (select s__5f__5f_voted q_14_s_V_5f__5f_fml_3a_v) q_17_s_M))))))
+    (= s__5f__5f_isleader_next s__5f__5f_isleader)
+    (= s__5f__5f_quorum_next s__5f__5f_quorum)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_6_s_V0 s_node) (q_7_s_V1 s_node))
+            (= (select (select s__5f__5f_voted q_6_s_V0) q_7_s_V1) false))
+          (forall ((q_8_s_V0 s_node)) (= (select s__5f__5f_isleader q_8_s_V0) false))))
+      (and
+        (forall ((q_3_s_S1 s_nset) (q_4_s_S2 s_nset))
+          (=>
+            (and (select s_majority q_3_s_S1) (select s_majority q_4_s_S2))
+            (exists ((q_5_s_N s_node))
+              (and
+                (select (select s_member q_5_s_N) q_3_s_S1)
+                (select (select s_member q_5_s_N) q_4_s_S2)))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1)
+      (= s_majority_next s_majority)
+      (= s_member_next s_member)
+      (and
+        (forall ((q_3_s_S1 s_nset) (q_4_s_S2 s_nset))
+          (=>
+            (and (select s_majority q_3_s_S1) (select s_majority q_4_s_S2))
+            (exists ((q_5_s_N s_node))
+              (and
+                (select (select s_member q_5_s_N) q_3_s_S1)
+                (select (select s_member q_5_s_N) q_4_s_S2))))))
+      (and
+        (forall ((q_3_s_S1 s_nset) (q_4_s_S2 s_nset))
+          (=>
+            (and (select s_majority q_3_s_S1) (select s_majority q_4_s_S2))
+            (exists ((q_5_s_N s_node))
+              (and
+                (select (select s_member q_5_s_N) q_3_s_S1)
+                (select (select s_member q_5_s_N) q_4_s_S2)))))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_M s_node) (q_2_s_N s_node))
+        (=>
+          (and (select s__5f__5f_isleader q_2_s_N) (select s__5f__5f_isleader q_1_s_M))
+          (= q_2_s_N q_1_s_M))))
+    :invar-property
+    0))

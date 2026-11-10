@@ -1,0 +1,196 @@
+; Generated offline from cubicle/examples/bakery_lamport_bogus.cub
+; Source SHA-256: 09421e0970255f87686ca9dc0c760152ef354e20f93dd54ea2e32ff42d8ce012
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Supplied forbidden-cube invariant retained in source only; not assumed: []
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-fun s_NCS () s_location)
+(declare-fun s_NCS_next () s_location)
+(declare-fun s_Choose () s_location)
+(declare-fun s_Choose_next () s_location)
+(declare-fun s_Wait () s_location)
+(declare-fun s_Wait_next () s_location)
+(declare-fun s_CS () s_location)
+(declare-fun s_CS_next () s_location)
+(declare-fun s_PC () (Array Proc s_location))
+(declare-fun s_PC_next () (Array Proc s_location))
+(declare-fun s_Ticket () (Array Proc Int))
+(declare-fun s_Ticket_next () (Array Proc Int))
+(declare-fun s_Number () (Array Proc Int))
+(declare-fun s_Number_next () (Array Proc Int))
+(declare-fun s_Max () Int)
+(declare-fun s_Max_next () Int)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: NCS
+(define-fun link_0 () s_location (! s_NCS :next s_NCS_next))
+; source symbol: Choose
+(define-fun link_1 () s_location (! s_Choose :next s_Choose_next))
+; source symbol: Wait
+(define-fun link_2 () s_location (! s_Wait :next s_Wait_next))
+; source symbol: CS
+(define-fun link_3 () s_location (! s_CS :next s_CS_next))
+; source symbol: PC
+(define-fun link_4 () (Array Proc s_location) (! s_PC :next s_PC_next))
+; source symbol: Ticket
+(define-fun link_5 () (Array Proc Int) (! s_Ticket :next s_Ticket_next))
+; source symbol: Number
+(define-fun link_6 () (Array Proc Int) (! s_Number :next s_Number_next))
+; source symbol: Max
+(define-fun link_7 () Int (! s_Max :next s_Max_next))
+; source symbol: __proc_rank
+(define-fun link_8 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: next_ticket
+(define-fun action_0 () Bool
+  (and
+    (forall ((q_5_s_j Proc)) (= (select s_Ticket_next q_5_s_j) s_Max))
+    (= s_Max_next (+ s_Max 1))
+    (= s_PC_next s_PC)
+    (= s_Number_next s_Number)))
+; action: take_ticket
+(define-fun action_1 () Bool
+  (exists ((q_6_s_x Proc))
+    (and
+      (and
+        (= (select s_PC q_6_s_x) s_NCS)
+        (forall ((q_7_s_j Proc)) (=> (not (= q_7_s_j q_6_s_x)) (< (select s_Number q_7_s_j) s_Max))))
+      (forall ((q_8_s_index0 Proc))
+        (=
+          (select s_PC_next q_8_s_index0)
+          (ite (= q_8_s_index0 q_6_s_x) s_Choose (select s_PC q_8_s_index0))))
+      (forall ((q_9_s_index0 Proc))
+        (=
+          (select s_Ticket_next q_9_s_index0)
+          (ite (= q_9_s_index0 q_6_s_x) s_Max (select s_Ticket q_9_s_index0))))
+      (= s_Number_next s_Number)
+      (= s_Max_next s_Max))))
+; action: wait
+(define-fun action_2 () Bool
+  (exists ((q_10_s_x Proc))
+    (and
+      (= (select s_PC q_10_s_x) s_Choose)
+      (forall ((q_11_s_index0 Proc))
+        (=
+          (select s_PC_next q_11_s_index0)
+          (ite (= q_11_s_index0 q_10_s_x) s_Wait (select s_PC q_11_s_index0))))
+      (forall ((q_12_s_index0 Proc))
+        (=
+          (select s_Number_next q_12_s_index0)
+          (ite
+            (= q_12_s_index0 q_10_s_x)
+            (select s_Ticket q_10_s_x)
+            (select s_Number q_12_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Max_next s_Max))))
+; action: turn
+(define-fun action_3 () Bool
+  (exists ((q_13_s_x Proc))
+    (and
+      (and
+        (= (select s_PC q_13_s_x) s_Wait)
+        (forall ((q_14_s_j Proc))
+          (=>
+            (not (= q_14_s_j q_13_s_x))
+            (or
+              (= (select s_Number q_14_s_j) 0)
+              (or
+                (< (select s_Number q_13_s_x) (select s_Number q_14_s_j))
+                (and
+                  (= (select s_Number q_14_s_j) (select s_Number q_13_s_x))
+                  (<
+                    (select s__5f__5f_proc_5f_rank q_13_s_x)
+                    (select s__5f__5f_proc_5f_rank q_14_s_j))))))))
+      (forall ((q_15_s_index0 Proc))
+        (=
+          (select s_PC_next q_15_s_index0)
+          (ite (= q_15_s_index0 q_13_s_x) s_CS (select s_PC q_15_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Number_next s_Number)
+      (= s_Max_next s_Max))))
+; action: exit
+(define-fun action_4 () Bool
+  (exists ((q_16_s_x Proc))
+    (and
+      (= (select s_PC q_16_s_x) s_CS)
+      (forall ((q_17_s_index0 Proc))
+        (=
+          (select s_PC_next q_17_s_index0)
+          (ite (= q_17_s_index0 q_16_s_x) s_NCS (select s_PC q_17_s_index0))))
+      (forall ((q_18_s_index0 Proc))
+        (=
+          (select s_Number_next q_18_s_index0)
+          (ite (= q_18_s_index0 q_16_s_x) 0 (select s_Number q_18_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Max_next s_Max))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_x Proc))
+        (and
+          (= (select s_PC q_2_s_x) s_NCS)
+          (and (= (select s_Number q_2_s_x) 0) (and (= s_Max 1) (= (select s_Ticket q_2_s_x) 0)))))
+      (and
+        (not (= s_NCS s_Choose))
+        (not (= s_NCS s_Wait))
+        (not (= s_NCS s_CS))
+        (not (= s_Choose s_Wait))
+        (not (= s_Choose s_CS))
+        (not (= s_Wait s_CS)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_NCS) (= q_1_s_enum s_Choose) (= q_1_s_enum s_Wait) (= q_1_s_enum s_CS)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4)
+      (= s_NCS_next s_NCS)
+      (= s_Choose_next s_Choose)
+      (= s_Wait_next s_Wait)
+      (= s_CS_next s_CS)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_NCS s_Choose))
+        (not (= s_NCS s_Wait))
+        (not (= s_NCS s_CS))
+        (not (= s_Choose s_Wait))
+        (not (= s_Choose s_CS))
+        (not (= s_Wait s_CS)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_NCS) (= q_1_s_enum s_Choose) (= q_1_s_enum s_Wait) (= q_1_s_enum s_CS)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_NCS s_Choose))
+        (not (= s_NCS s_Wait))
+        (not (= s_NCS s_CS))
+        (not (= s_Choose s_Wait))
+        (not (= s_Choose s_CS))
+        (not (= s_Wait s_CS)))
+      (forall ((q_1_s_enum s_location))
+        (or (= q_1_s_enum s_NCS) (= q_1_s_enum s_Choose) (= q_1_s_enum s_Wait) (= q_1_s_enum s_CS)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_x Proc) (q_4_s_y Proc))
+      (=>
+        (not (= q_3_s_x q_4_s_y))
+        (not (and (= (select s_PC q_3_s_x) s_CS) (= (select s_PC q_4_s_y) s_CS)))))
+    :invar-property
+    0))

@@ -1,0 +1,236 @@
+; Generated offline from mypyvy/examples/misc/chain_replication.pyv
+; Source SHA-256: c313991e8dd82b604240cdcf030d128c053af0794612654c42d07387c39b4324
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; No safety annotation; checking all declared invariants as properties.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node_5f_id 0)
+(declare-sort s_node_5f_state 0)
+(declare-fun s_le () (Array s_node_5f_state (Array s_node_5f_state Bool)))
+(declare-fun s_le_next () (Array s_node_5f_state (Array s_node_5f_state Bool)))
+(declare-fun s_empty () s_node_5f_state)
+(declare-fun s_empty_next () s_node_5f_state)
+(declare-fun s_client () s_node_5f_id)
+(declare-fun s_client_next () s_node_5f_id)
+(declare-fun s_head () s_node_5f_id)
+(declare-fun s_head_next () s_node_5f_id)
+(declare-fun s_middle () s_node_5f_id)
+(declare-fun s_middle_next () s_node_5f_id)
+(declare-fun s_tail () s_node_5f_id)
+(declare-fun s_tail_next () s_node_5f_id)
+(declare-fun s_state () (Array s_node_5f_id s_node_5f_state))
+(declare-fun s_state_next () (Array s_node_5f_id s_node_5f_state))
+(declare-fun s_msg () (Array s_node_5f_id (Array s_node_5f_id (Array s_node_5f_state Bool))))
+(declare-fun s_msg_next () (Array s_node_5f_id (Array s_node_5f_id (Array s_node_5f_state Bool))))
+; source symbol: le
+(define-fun link_0 () (Array s_node_5f_state (Array s_node_5f_state Bool)) (! s_le :next s_le_next))
+; source symbol: empty
+(define-fun link_1 () s_node_5f_state (! s_empty :next s_empty_next))
+; source symbol: client
+(define-fun link_2 () s_node_5f_id (! s_client :next s_client_next))
+; source symbol: head
+(define-fun link_3 () s_node_5f_id (! s_head :next s_head_next))
+; source symbol: middle
+(define-fun link_4 () s_node_5f_id (! s_middle :next s_middle_next))
+; source symbol: tail
+(define-fun link_5 () s_node_5f_id (! s_tail :next s_tail_next))
+; source symbol: state
+(define-fun link_6 () (Array s_node_5f_id s_node_5f_state) (! s_state :next s_state_next))
+; source symbol: msg
+(define-fun link_7 () (Array s_node_5f_id (Array s_node_5f_id (Array s_node_5f_state Bool))) (! s_msg :next s_msg_next))
+; action: client_update
+(define-fun action_0 () Bool
+  (exists ((q_14_s_next s_node_5f_state))
+    (and
+      (and
+        (select (select s_le (select s_state s_client)) q_14_s_next)
+        (forall ((q_15_s_N s_node_5f_id))
+          (=>
+            (not (= q_15_s_N s_client))
+            (= (select s_state_next q_15_s_N) (select s_state q_15_s_N))))
+        (= (select s_state_next s_client) q_14_s_next))
+      (forall ((q_16_s_x0 s_node_5f_id) (q_17_s_x1 s_node_5f_id) (q_18_s_x2 s_node_5f_state))
+        (=
+          (select (select (select s_msg_next q_16_s_x0) q_17_s_x1) q_18_s_x2)
+          (select (select (select s_msg q_16_s_x0) q_17_s_x1) q_18_s_x2))))))
+; action: client_send
+(define-fun action_1 () Bool
+  (and
+    (forall ((q_19_s_X s_node_5f_id) (q_20_s_Y s_node_5f_id) (q_21_s_Z s_node_5f_state))
+      (=
+        (select (select (select s_msg_next q_19_s_X) q_20_s_Y) q_21_s_Z)
+        (or
+          (select (select (select s_msg q_19_s_X) q_20_s_Y) q_21_s_Z)
+          (and (= q_19_s_X s_client) (= q_20_s_Y s_head) (= q_21_s_Z (select s_state s_client))))))
+    (forall ((q_22_s_x0 s_node_5f_id))
+      (= (select s_state_next q_22_s_x0) (select s_state q_22_s_x0)))))
+; action: head_recv
+(define-fun action_2 () Bool
+  (exists ((q_23_s_recvd s_node_5f_state))
+    (forall ((q_24_s_Z s_node_5f_state) (q_25_s_X s_node_5f_id) (q_26_s_Y s_node_5f_id))
+      (and
+        (select (select s_le (select s_state s_head)) q_23_s_recvd)
+        (select (select (select s_msg s_client) s_head) q_23_s_recvd)
+        (=>
+          (select (select (select s_msg s_client) s_head) q_24_s_Z)
+          (select (select s_le q_23_s_recvd) q_24_s_Z))
+        (forall ((q_27_s_N s_node_5f_id))
+          (=>
+            (not (= q_27_s_N s_head))
+            (= (select s_state_next q_27_s_N) (select s_state q_27_s_N))))
+        (= (select s_state_next s_head) q_23_s_recvd)
+        (=
+          (select (select (select s_msg_next q_25_s_X) q_26_s_Y) q_24_s_Z)
+          (and
+            (select (select (select s_msg q_25_s_X) q_26_s_Y) q_24_s_Z)
+            (not (and (= q_25_s_X s_client) (= q_26_s_Y s_head) (= q_24_s_Z q_23_s_recvd)))))))))
+; action: head_send
+(define-fun action_3 () Bool
+  (and
+    (forall ((q_28_s_X s_node_5f_id) (q_29_s_Y s_node_5f_id) (q_30_s_Z s_node_5f_state))
+      (=
+        (select (select (select s_msg_next q_28_s_X) q_29_s_Y) q_30_s_Z)
+        (or
+          (select (select (select s_msg q_28_s_X) q_29_s_Y) q_30_s_Z)
+          (and (= q_28_s_X s_head) (= q_29_s_Y s_middle) (= q_30_s_Z (select s_state s_head))))))
+    (forall ((q_31_s_x0 s_node_5f_id))
+      (= (select s_state_next q_31_s_x0) (select s_state q_31_s_x0)))))
+; action: middle_recv
+(define-fun action_4 () Bool
+  (exists ((q_32_s_recvd s_node_5f_state))
+    (forall ((q_33_s_Z s_node_5f_state) (q_34_s_X s_node_5f_id) (q_35_s_Y s_node_5f_id))
+      (and
+        (select (select s_le (select s_state s_middle)) q_32_s_recvd)
+        (select (select (select s_msg s_head) s_middle) q_32_s_recvd)
+        (=>
+          (select (select (select s_msg s_head) s_middle) q_33_s_Z)
+          (select (select s_le q_32_s_recvd) q_33_s_Z))
+        (forall ((q_36_s_N s_node_5f_id))
+          (=>
+            (not (= q_36_s_N s_middle))
+            (= (select s_state_next q_36_s_N) (select s_state q_36_s_N))))
+        (= (select s_state_next s_middle) q_32_s_recvd)
+        (=
+          (select (select (select s_msg_next q_34_s_X) q_35_s_Y) q_33_s_Z)
+          (and
+            (select (select (select s_msg q_34_s_X) q_35_s_Y) q_33_s_Z)
+            (not (and (= q_34_s_X s_head) (= q_35_s_Y s_middle) (= q_33_s_Z q_32_s_recvd)))))))))
+; action: middle_send
+(define-fun action_5 () Bool
+  (and
+    (forall ((q_37_s_X s_node_5f_id) (q_38_s_Y s_node_5f_id) (q_39_s_Z s_node_5f_state))
+      (=
+        (select (select (select s_msg_next q_37_s_X) q_38_s_Y) q_39_s_Z)
+        (or
+          (select (select (select s_msg q_37_s_X) q_38_s_Y) q_39_s_Z)
+          (and (= q_37_s_X s_middle) (= q_38_s_Y s_tail) (= q_39_s_Z (select s_state s_middle))))))
+    (forall ((q_40_s_x0 s_node_5f_id))
+      (= (select s_state_next q_40_s_x0) (select s_state q_40_s_x0)))))
+; action: tail_recv
+(define-fun action_6 () Bool
+  (exists ((q_41_s_recvd s_node_5f_state))
+    (forall ((q_42_s_Z s_node_5f_state) (q_43_s_X s_node_5f_id) (q_44_s_Y s_node_5f_id))
+      (and
+        (select (select s_le (select s_state s_tail)) q_41_s_recvd)
+        (select (select (select s_msg s_middle) s_tail) q_41_s_recvd)
+        (=>
+          (select (select (select s_msg s_middle) s_tail) q_42_s_Z)
+          (select (select s_le q_41_s_recvd) q_42_s_Z))
+        (forall ((q_45_s_N s_node_5f_id))
+          (=>
+            (not (= q_45_s_N s_tail))
+            (= (select s_state_next q_45_s_N) (select s_state q_45_s_N))))
+        (= (select s_state_next s_tail) q_41_s_recvd)
+        (= (select s_state_next s_tail) q_41_s_recvd)
+        (=
+          (select (select (select s_msg_next q_43_s_X) q_44_s_Y) q_42_s_Z)
+          (and
+            (select (select (select s_msg q_43_s_X) q_44_s_Y) q_42_s_Z)
+            (not (and (= q_43_s_X s_middle) (= q_44_s_Y s_tail) (= q_42_s_Z q_41_s_recvd)))))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_X s_node_5f_id)) (= (select s_state q_1_s_X) s_empty))
+      (forall ((q_2_s_X s_node_5f_id) (q_3_s_Y s_node_5f_id) (q_4_s_Z s_node_5f_state))
+        (not (select (select (select s_msg q_2_s_X) q_3_s_Y) q_4_s_Z)))
+      (forall ((q_5_s_X s_node_5f_state)) (select (select s_le q_5_s_X) q_5_s_X))
+      (forall ((q_6_s_X s_node_5f_state) (q_7_s_Y s_node_5f_state))
+        (=>
+          (and (select (select s_le q_6_s_X) q_7_s_Y) (select (select s_le q_7_s_Y) q_6_s_X))
+          (= q_6_s_X q_7_s_Y)))
+      (forall ((q_8_s_X s_node_5f_state) (q_9_s_Y s_node_5f_state) (q_10_s_Z s_node_5f_state))
+        (=>
+          (and (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_10_s_Z))
+          (select (select s_le q_8_s_X) q_10_s_Z)))
+      (forall ((q_11_s_X s_node_5f_state) (q_12_s_Y s_node_5f_state))
+        (or (select (select s_le q_11_s_X) q_12_s_Y) (select (select s_le q_12_s_Y) q_11_s_X)))
+      (forall ((q_13_s_X s_node_5f_state)) (select (select s_le s_empty) q_13_s_X))
+      (and (not (= s_client s_head)) (not (= s_client s_middle)) (not (= s_client s_tail)))
+      (=> (= s_head s_tail) (and (= s_head s_middle) (= s_middle s_tail))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6)
+      (= s_le_next s_le)
+      (= s_empty_next s_empty)
+      (= s_client_next s_client)
+      (= s_head_next s_head)
+      (= s_middle_next s_middle)
+      (= s_tail_next s_tail)
+      (forall ((q_5_s_X s_node_5f_state)) (select (select s_le q_5_s_X) q_5_s_X))
+      (forall ((q_6_s_X s_node_5f_state) (q_7_s_Y s_node_5f_state))
+        (=>
+          (and (select (select s_le q_6_s_X) q_7_s_Y) (select (select s_le q_7_s_Y) q_6_s_X))
+          (= q_6_s_X q_7_s_Y)))
+      (forall ((q_8_s_X s_node_5f_state) (q_9_s_Y s_node_5f_state) (q_10_s_Z s_node_5f_state))
+        (=>
+          (and (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_10_s_Z))
+          (select (select s_le q_8_s_X) q_10_s_Z)))
+      (forall ((q_11_s_X s_node_5f_state) (q_12_s_Y s_node_5f_state))
+        (or (select (select s_le q_11_s_X) q_12_s_Y) (select (select s_le q_12_s_Y) q_11_s_X)))
+      (forall ((q_13_s_X s_node_5f_state)) (select (select s_le s_empty) q_13_s_X))
+      (and (not (= s_client s_head)) (not (= s_client s_middle)) (not (= s_client s_tail)))
+      (=> (= s_head s_tail) (and (= s_head s_middle) (= s_middle s_tail)))
+      (forall ((q_5_s_X s_node_5f_state)) (select (select s_le q_5_s_X) q_5_s_X))
+      (forall ((q_6_s_X s_node_5f_state) (q_7_s_Y s_node_5f_state))
+        (=>
+          (and (select (select s_le q_6_s_X) q_7_s_Y) (select (select s_le q_7_s_Y) q_6_s_X))
+          (= q_6_s_X q_7_s_Y)))
+      (forall ((q_8_s_X s_node_5f_state) (q_9_s_Y s_node_5f_state) (q_10_s_Z s_node_5f_state))
+        (=>
+          (and (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_10_s_Z))
+          (select (select s_le q_8_s_X) q_10_s_Z)))
+      (forall ((q_11_s_X s_node_5f_state) (q_12_s_Y s_node_5f_state))
+        (or (select (select s_le q_11_s_X) q_12_s_Y) (select (select s_le q_12_s_Y) q_11_s_X)))
+      (forall ((q_13_s_X s_node_5f_state)) (select (select s_le s_empty) q_13_s_X))
+      (and (not (= s_client s_head)) (not (= s_client s_middle)) (not (= s_client s_tail)))
+      (=> (= s_head s_tail) (and (= s_head s_middle) (= s_middle s_tail))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (select (select s_le (select s_state s_head)) (select s_state s_client))
+      (select (select s_le (select s_state s_middle)) (select s_state s_head))
+      (select (select s_le (select s_state s_tail)) (select s_state s_middle))
+      (select (select s_le (select s_state s_tail)) (select s_state s_head))
+      (forall ((q_46_s_X s_node_5f_id) (q_47_s_Y s_node_5f_id) (q_48_s_Z s_node_5f_state))
+        (=>
+          (select (select (select s_msg q_46_s_X) q_47_s_Y) q_48_s_Z)
+          (select (select s_le q_48_s_Z) (select s_state s_client))))
+      (forall ((q_49_s_Y s_node_5f_id) (q_50_s_Z s_node_5f_state))
+        (=>
+          (select (select (select s_msg s_client) q_49_s_Y) q_50_s_Z)
+          (select (select s_le q_50_s_Z) (select s_state s_client))))
+      (forall ((q_51_s_Y s_node_5f_id) (q_52_s_Z s_node_5f_state))
+        (=>
+          (select (select (select s_msg s_head) q_51_s_Y) q_52_s_Z)
+          (select (select s_le q_52_s_Z) (select s_state s_head))))
+      (forall ((q_53_s_Y s_node_5f_id) (q_54_s_Z s_node_5f_state))
+        (=>
+          (select (select (select s_msg s_middle) q_53_s_Y) q_54_s_Z)
+          (select (select s_le q_54_s_Z) (select s_state s_middle)))))
+    :invar-property
+    0))

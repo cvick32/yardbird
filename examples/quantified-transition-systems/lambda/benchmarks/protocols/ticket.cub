@@ -1,0 +1,49 @@
+type state = Idle | Request | Crit
+
+array R[proc] : bool
+array L[proc] : bool
+array T[proc] : int
+var Current : int
+
+
+init (z) {
+   R[z] = False && L[z] = False && T[z] = -1 && Current = 1
+}
+
+unsafe (x y) {
+  L[x] = True && L[y] = True
+}
+
+transition req (i)
+requires { R[i] = False && L[i] = False}
+{
+  R[j] := case
+             | i = j : True
+             | _ : R[j];
+  T[j] := case
+             | i = j : Current
+             | _ : T[j];
+  Current := Current + 1
+}
+
+transition enter (i)
+requires {R[i] = True && forall_other y. T[i]<T[y] }
+{
+  L[j] := case
+             | i = j : True
+			 | _ : L[j];
+  R[j] := case
+             | i = j : False
+             | _ : R[j];
+}
+
+transition exit (i)
+requires { L[i] = True }
+{
+  T[j] := case
+             | i = j : 1
+             | _ : T[j];
+  L[j] := case
+             | i = j : False
+			 | _ : L[j];
+}

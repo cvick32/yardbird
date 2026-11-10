@@ -1,0 +1,159 @@
+; Generated offline from lambda/benchmarks/protocols/bakery_lamport_nomax.in
+; Source SHA-256: 5d4643b314abb94ec1ae0f019e6999232b4eaef166ea513701cfb716b46f2a3a
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Semantics profile: pinned CADE 2021 Lambda MCMT frontend and its index-sort proof export.
+; nat/subrange data use Int, matching Lambda; source range bounds are not additional axioms.
+; Process indices use an injective integer embedding; infinite process domains are admitted.
+; First x-case and special y-case are local updates; remaining cases are guarded constraints.
+(declare-sort Proc 0)
+(declare-fun s__5f__5f_index_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_index_5f_rank_next () (Array Proc Int))
+(declare-fun s_a () (Array Proc Int))
+(declare-fun s_a_next () (Array Proc Int))
+(declare-fun s_u () (Array Proc Int))
+(declare-fun s_u_next () (Array Proc Int))
+(declare-fun s_t () (Array Proc Int))
+(declare-fun s_t_next () (Array Proc Int))
+(declare-fun s_m () Int)
+(declare-fun s_m_next () Int)
+; source symbol: __index_rank
+(define-fun link_0 () (Array Proc Int) (! s__5f__5f_index_5f_rank :next s__5f__5f_index_5f_rank_next))
+; source symbol: a
+(define-fun link_1 () (Array Proc Int) (! s_a :next s_a_next))
+; source symbol: u
+(define-fun link_2 () (Array Proc Int) (! s_u :next s_u_next))
+; source symbol: t
+(define-fun link_3 () (Array Proc Int) (! s_t :next s_t_next))
+; source symbol: m
+(define-fun link_4 () Int (! s_m :next s_m_next))
+; action: transition_0
+(define-fun action_0 () Bool
+  (forall ((q_4_s_j Proc))
+    (=>
+      true
+      (and
+        (= (select s_a_next q_4_s_j) (select s_a q_4_s_j))
+        (= (select s_u_next q_4_s_j) s_m)
+        (= (select s_t_next q_4_s_j) (select s_t q_4_s_j))
+        (= s_m_next (+ s_m 1))))))
+; action: transition_1
+(define-fun action_1 () Bool
+  (exists ((q_5_s_x Proc))
+    (and
+      (= (select s_a q_5_s_x) 1)
+      (forall ((q_6_s_j Proc)) (or (= q_6_s_j q_5_s_x) (< (select s_t q_6_s_j) s_m)))
+      (and
+        (= (select s_a_next q_5_s_x) 2)
+        (= (select s_u_next q_5_s_x) s_m)
+        (= (select s_t_next q_5_s_x) (select s_t q_5_s_x))
+        (= s_m_next s_m))
+      (forall ((q_6_s_j Proc))
+        (=>
+          (not (= q_6_s_j q_5_s_x))
+          (and
+            (= (select s_a_next q_6_s_j) (select s_a q_6_s_j))
+            (= (select s_u_next q_6_s_j) (select s_u q_6_s_j))
+            (= (select s_t_next q_6_s_j) (select s_t q_6_s_j))
+            (= s_m_next s_m)))))))
+; action: transition_2
+(define-fun action_2 () Bool
+  (exists ((q_7_s_x Proc))
+    (and
+      (= (select s_a q_7_s_x) 2)
+      (and
+        (= (select s_a_next q_7_s_x) 3)
+        (= (select s_u_next q_7_s_x) (select s_u q_7_s_x))
+        (= (select s_t_next q_7_s_x) (select s_u q_7_s_x))
+        (= s_m_next s_m))
+      (forall ((q_8_s_j Proc))
+        (=>
+          (not (= q_8_s_j q_7_s_x))
+          (and
+            (= (select s_a_next q_8_s_j) (select s_a q_8_s_j))
+            (= (select s_u_next q_8_s_j) (select s_u q_8_s_j))
+            (= (select s_t_next q_8_s_j) (select s_t q_8_s_j))
+            (= s_m_next s_m)))))))
+; action: transition_3
+(define-fun action_3 () Bool
+  (exists ((q_9_s_x Proc))
+    (and
+      (= (select s_a q_9_s_x) 3)
+      (forall ((q_10_s_j Proc))
+        (or
+          (= q_10_s_j q_9_s_x)
+          (and (not (= (select s_a q_10_s_j) 2)) (= (select s_t q_10_s_j) 0))
+          (and (not (= (select s_a q_10_s_j) 2)) (> (select s_t q_10_s_j) (select s_t q_9_s_x)))
+          (and
+            (not (= (select s_a q_10_s_j) 2))
+            (= (select s_t q_10_s_j) (select s_t q_9_s_x))
+            (> (select s__5f__5f_index_5f_rank q_10_s_j) (select s__5f__5f_index_5f_rank q_9_s_x)))))
+      (and
+        (= (select s_a_next q_9_s_x) 4)
+        (= (select s_u_next q_9_s_x) (select s_u q_9_s_x))
+        (= (select s_t_next q_9_s_x) (select s_t q_9_s_x))
+        (= s_m_next s_m))
+      (forall ((q_10_s_j Proc))
+        (=>
+          (not (= q_10_s_j q_9_s_x))
+          (and
+            (= (select s_a_next q_10_s_j) (select s_a q_10_s_j))
+            (= (select s_u_next q_10_s_j) (select s_u q_10_s_j))
+            (= (select s_t_next q_10_s_j) (select s_t q_10_s_j))
+            (= s_m_next s_m)))))))
+; action: transition_4
+(define-fun action_4 () Bool
+  (exists ((q_11_s_x Proc))
+    (and
+      (= (select s_a q_11_s_x) 4)
+      (and
+        (= (select s_a_next q_11_s_x) 1)
+        (= (select s_u_next q_11_s_x) (select s_u q_11_s_x))
+        (= (select s_t_next q_11_s_x) 0)
+        (= s_m_next s_m))
+      (forall ((q_12_s_j Proc))
+        (=>
+          (not (= q_12_s_j q_11_s_x))
+          (and
+            (= (select s_a_next q_12_s_j) (select s_a q_12_s_j))
+            (= (select s_u_next q_12_s_j) (select s_u q_12_s_j))
+            (= (select s_t_next q_12_s_j) (select s_t q_12_s_j))
+            (= s_m_next s_m)))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_x Proc))
+        (and
+          (= (select s_a q_1_s_x) 1)
+          (= (select s_t q_1_s_x) 0)
+          (= s_m 1)
+          (= (select s_u q_1_s_x) 0)))
+      (forall ((q_13_s_a Proc) (q_14_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_13_s_a) (select s__5f__5f_index_5f_rank q_14_s_b))
+          (= q_13_s_a q_14_s_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4)
+      (= s__5f__5f_index_5f_rank_next s__5f__5f_index_5f_rank)
+      (forall ((q_13_s_a Proc) (q_14_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_13_s_a) (select s__5f__5f_index_5f_rank q_14_s_b))
+          (= q_13_s_a q_14_s_b)))
+      (forall ((q_13_s_a Proc) (q_14_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_13_s_a) (select s__5f__5f_index_5f_rank q_14_s_b))
+          (= q_13_s_a q_14_s_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_2_s_x Proc) (q_3_s_y Proc))
+      (=>
+        (not (= q_2_s_x q_3_s_y))
+        (not (and (= (select s_a q_2_s_x) 4) (= (select s_a q_3_s_y) 4)))))
+    :invar-property
+    0))

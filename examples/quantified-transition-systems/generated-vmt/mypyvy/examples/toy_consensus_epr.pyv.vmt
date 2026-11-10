@@ -1,0 +1,92 @@
+; Generated offline from mypyvy/examples/toy_consensus_epr.pyv
+; Source SHA-256: 61e8c7bb6bcf2bf50433e1a39e8707fc8aacdccabf257775cdf2a0e2fa8321d8
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_value 0)
+(declare-sort s_quorum 0)
+(declare-sort s_node 0)
+(declare-fun s_member () (Array s_node (Array s_quorum Bool)))
+(declare-fun s_member_next () (Array s_node (Array s_quorum Bool)))
+(declare-fun s_voted () (Array s_node Bool))
+(declare-fun s_voted_next () (Array s_node Bool))
+(declare-fun s_vote () (Array s_node (Array s_value Bool)))
+(declare-fun s_vote_next () (Array s_node (Array s_value Bool)))
+(declare-fun s_decided () (Array s_value Bool))
+(declare-fun s_decided_next () (Array s_value Bool))
+; source symbol: member
+(define-fun link_0 () (Array s_node (Array s_quorum Bool)) (! s_member :next s_member_next))
+; source symbol: voted
+(define-fun link_1 () (Array s_node Bool) (! s_voted :next s_voted_next))
+; source symbol: vote
+(define-fun link_2 () (Array s_node (Array s_value Bool)) (! s_vote :next s_vote_next))
+; source symbol: decided
+(define-fun link_3 () (Array s_value Bool) (! s_decided :next s_decided_next))
+; action: cast_vote
+(define-fun action_0 () Bool
+  (exists ((q_8_s_n s_node) (q_9_s_v s_value))
+    (and
+      (forall ((q_10_s_N s_node) (q_11_s_V s_value))
+        (and
+          (not (select s_voted q_8_s_n))
+          (=
+            (select (select s_vote_next q_10_s_N) q_11_s_V)
+            (or
+              (select (select s_vote q_10_s_N) q_11_s_V)
+              (and (= q_10_s_N q_8_s_n) (= q_11_s_V q_9_s_v))))
+          (= (select s_voted_next q_10_s_N) (or (select s_voted q_10_s_N) (= q_10_s_N q_8_s_n)))))
+      (forall ((q_12_s_x0 s_value))
+        (= (select s_decided_next q_12_s_x0) (select s_decided q_12_s_x0))))))
+; action: decide
+(define-fun action_1 () Bool
+  (exists ((q_13_s_v s_value) (q_14_s_q s_quorum))
+    (and
+      (forall ((q_15_s_N s_node) (q_16_s_V s_value))
+        (and
+          (=>
+            (select (select s_member q_15_s_N) q_14_s_q)
+            (select (select s_vote q_15_s_N) q_13_s_v))
+          (=
+            (select s_decided_next q_16_s_V)
+            (or (select s_decided q_16_s_V) (= q_16_s_V q_13_s_v)))))
+      (forall ((q_17_s_x0 s_node)) (= (select s_voted_next q_17_s_x0) (select s_voted q_17_s_x0)))
+      (forall ((q_18_s_x0 s_node) (q_19_s_x1 s_value))
+        (=
+          (select (select s_vote_next q_18_s_x0) q_19_s_x1)
+          (select (select s_vote q_18_s_x0) q_19_s_x1))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_N s_node)) (not (select s_voted q_1_s_N)))
+      (forall ((q_2_s_N s_node) (q_3_s_V s_value)) (not (select (select s_vote q_2_s_N) q_3_s_V)))
+      (forall ((q_4_s_V s_value)) (not (select s_decided q_4_s_V)))
+      (forall ((q_5_s_Q1 s_quorum) (q_6_s_Q2 s_quorum))
+        (exists ((q_7_s_N s_node))
+          (and
+            (select (select s_member q_7_s_N) q_5_s_Q1)
+            (select (select s_member q_7_s_N) q_6_s_Q2)))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1)
+      (= s_member_next s_member)
+      (forall ((q_5_s_Q1 s_quorum) (q_6_s_Q2 s_quorum))
+        (exists ((q_7_s_N s_node))
+          (and
+            (select (select s_member q_7_s_N) q_5_s_Q1)
+            (select (select s_member q_7_s_N) q_6_s_Q2))))
+      (forall ((q_5_s_Q1 s_quorum) (q_6_s_Q2 s_quorum))
+        (exists ((q_7_s_N s_node))
+          (and
+            (select (select s_member q_7_s_N) q_5_s_Q1)
+            (select (select s_member q_7_s_N) q_6_s_Q2)))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_20_s_V1 s_value) (q_21_s_V2 s_value))
+      (=> (and (select s_decided q_20_s_V1) (select s_decided q_21_s_V2)) (= q_20_s_V1 q_21_s_V2)))
+    :invar-property
+    0))

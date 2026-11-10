@@ -1,0 +1,161 @@
+; Generated offline from cubicle/examples/bakery.cub
+; Source SHA-256: 4decc7e74a426592fb3242b85f8f9beb5f18864b7586d47007ddef58574945a7
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_t 0)
+(declare-fun s_Idle () s_t)
+(declare-fun s_Idle_next () s_t)
+(declare-fun s_Wait () s_t)
+(declare-fun s_Wait_next () s_t)
+(declare-fun s_Crit () s_t)
+(declare-fun s_Crit_next () s_t)
+(declare-fun s_Crash () s_t)
+(declare-fun s_Crash_next () s_t)
+(declare-fun s_A () (Array Proc s_t))
+(declare-fun s_A_next () (Array Proc s_t))
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: Idle
+(define-fun link_0 () s_t (! s_Idle :next s_Idle_next))
+; source symbol: Wait
+(define-fun link_1 () s_t (! s_Wait :next s_Wait_next))
+; source symbol: Crit
+(define-fun link_2 () s_t (! s_Crit :next s_Crit_next))
+; source symbol: Crash
+(define-fun link_3 () s_t (! s_Crash :next s_Crash_next))
+; source symbol: A
+(define-fun link_4 () (Array Proc s_t) (! s_A :next s_A_next))
+; source symbol: __proc_rank
+(define-fun link_5 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: tr1
+(define-fun action_0 () Bool
+  (exists ((q_5_s_z Proc))
+    (and
+      (= (select s_A q_5_s_z) s_Idle)
+      (forall ((q_6_s_j Proc))
+        (=
+          (select s_A_next q_6_s_j)
+          (ite
+            (= q_6_s_j q_5_s_z)
+            s_Wait
+            (ite
+              (< (select s__5f__5f_proc_5f_rank q_6_s_j) (select s__5f__5f_proc_5f_rank q_5_s_z))
+              (select s_A q_6_s_j)
+              (ite
+                (and
+                  (<
+                    (select s__5f__5f_proc_5f_rank q_5_s_z)
+                    (select s__5f__5f_proc_5f_rank q_6_s_j))
+                  (= (select s_A q_6_s_j) s_Idle))
+                (select s_A q_6_s_j)
+                s_Crash))))))))
+; action: tr2
+(define-fun action_1 () Bool
+  (exists ((q_7_s_z Proc))
+    (and
+      (= (select s_A q_7_s_z) s_Wait)
+      (forall ((q_8_s_j Proc))
+        (=
+          (select s_A_next q_8_s_j)
+          (ite
+            (= q_8_s_j q_7_s_z)
+            s_Crit
+            (ite
+              (< (select s__5f__5f_proc_5f_rank q_7_s_z) (select s__5f__5f_proc_5f_rank q_8_s_j))
+              (select s_A q_8_s_j)
+              (ite
+                (and
+                  (<
+                    (select s__5f__5f_proc_5f_rank q_8_s_j)
+                    (select s__5f__5f_proc_5f_rank q_7_s_z))
+                  (= (select s_A q_8_s_j) s_Idle))
+                s_Idle
+                s_Crash))))))))
+; action: tr3
+(define-fun action_2 () Bool
+  (exists ((q_9_s_z Proc))
+    (and
+      (= (select s_A q_9_s_z) s_Crit)
+      (forall ((q_10_s_j Proc))
+        (= (select s_A_next q_10_s_j) (ite (= q_10_s_j q_9_s_z) s_Idle (select s_A q_10_s_j)))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_z Proc)) (= (select s_A q_2_s_z) s_Idle))
+      (and
+        (not (= s_Idle s_Wait))
+        (not (= s_Idle s_Crit))
+        (not (= s_Idle s_Crash))
+        (not (= s_Wait s_Crit))
+        (not (= s_Wait s_Crash))
+        (not (= s_Crit s_Crash)))
+      (forall ((q_1_s_enum s_t))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Crit)
+          (= q_1_s_enum s_Crash)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2)
+      (= s_Idle_next s_Idle)
+      (= s_Wait_next s_Wait)
+      (= s_Crit_next s_Crit)
+      (= s_Crash_next s_Crash)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_Idle s_Wait))
+        (not (= s_Idle s_Crit))
+        (not (= s_Idle s_Crash))
+        (not (= s_Wait s_Crit))
+        (not (= s_Wait s_Crash))
+        (not (= s_Crit s_Crash)))
+      (forall ((q_1_s_enum s_t))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Crit)
+          (= q_1_s_enum s_Crash)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_Idle s_Wait))
+        (not (= s_Idle s_Crit))
+        (not (= s_Idle s_Crash))
+        (not (= s_Wait s_Crit))
+        (not (= s_Wait s_Crash))
+        (not (= s_Crit s_Crash)))
+      (forall ((q_1_s_enum s_t))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Crit)
+          (= q_1_s_enum s_Crash)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_z1 Proc) (q_4_s_z2 Proc))
+      (=>
+        (not (= q_3_s_z1 q_4_s_z2))
+        (not (and (= (select s_A q_3_s_z1) s_Crit) (= (select s_A q_4_s_z2) s_Crit)))))
+    :invar-property
+    0))

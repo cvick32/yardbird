@@ -1,0 +1,716 @@
+; Generated offline from mypyvy/examples/misc/cache_one.pyv
+; Source SHA-256: 5c5e4e39fa3a8bd3194a8c56076b562edbc674440a09f59e3a9efc97b9cfb90c
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_value 0)
+(declare-sort s_core 0)
+(declare-fun s_memory () s_value)
+(declare-fun s_memory_next () s_value)
+(declare-fun s_cache () (Array s_core s_value))
+(declare-fun s_cache_next () (Array s_core s_value))
+(declare-fun s_modified () (Array s_core Bool))
+(declare-fun s_modified_next () (Array s_core Bool))
+(declare-fun s_exclusive () (Array s_core Bool))
+(declare-fun s_exclusive_next () (Array s_core Bool))
+(declare-fun s_shared () (Array s_core Bool))
+(declare-fun s_shared_next () (Array s_core Bool))
+(declare-fun s_invalid () (Array s_core Bool))
+(declare-fun s_invalid_next () (Array s_core Bool))
+(declare-fun s_proc_5f_read () (Array s_core Bool))
+(declare-fun s_proc_5f_read_next () (Array s_core Bool))
+(declare-fun s_proc_5f_write () (Array s_core (Array s_value Bool)))
+(declare-fun s_proc_5f_write_next () (Array s_core (Array s_value Bool)))
+(declare-fun s_bus_5f_in_5f_use () Bool)
+(declare-fun s_bus_5f_in_5f_use_next () Bool)
+(declare-fun s_bus_5f_read () (Array s_core Bool))
+(declare-fun s_bus_5f_read_next () (Array s_core Bool))
+(declare-fun s_bus_5f_read_5f_for_5f_ownership () (Array s_core Bool))
+(declare-fun s_bus_5f_read_5f_for_5f_ownership_next () (Array s_core Bool))
+(declare-fun s_bus_5f_upgrade () (Array s_core Bool))
+(declare-fun s_bus_5f_upgrade_next () (Array s_core Bool))
+(declare-fun s_bus_5f_transfer () (Array s_value Bool))
+(declare-fun s_bus_5f_transfer_next () (Array s_value Bool))
+; source symbol: memory
+(define-fun link_0 () s_value (! s_memory :next s_memory_next))
+; source symbol: cache
+(define-fun link_1 () (Array s_core s_value) (! s_cache :next s_cache_next))
+; source symbol: modified
+(define-fun link_2 () (Array s_core Bool) (! s_modified :next s_modified_next))
+; source symbol: exclusive
+(define-fun link_3 () (Array s_core Bool) (! s_exclusive :next s_exclusive_next))
+; source symbol: shared
+(define-fun link_4 () (Array s_core Bool) (! s_shared :next s_shared_next))
+; source symbol: invalid
+(define-fun link_5 () (Array s_core Bool) (! s_invalid :next s_invalid_next))
+; source symbol: proc_read
+(define-fun link_6 () (Array s_core Bool) (! s_proc_5f_read :next s_proc_5f_read_next))
+; source symbol: proc_write
+(define-fun link_7 () (Array s_core (Array s_value Bool)) (! s_proc_5f_write :next s_proc_5f_write_next))
+; source symbol: bus_in_use
+(define-fun link_8 () Bool (! s_bus_5f_in_5f_use :next s_bus_5f_in_5f_use_next))
+; source symbol: bus_read
+(define-fun link_9 () (Array s_core Bool) (! s_bus_5f_read :next s_bus_5f_read_next))
+; source symbol: bus_read_for_ownership
+(define-fun link_10 () (Array s_core Bool) (! s_bus_5f_read_5f_for_5f_ownership :next s_bus_5f_read_5f_for_5f_ownership_next))
+; source symbol: bus_upgrade
+(define-fun link_11 () (Array s_core Bool) (! s_bus_5f_upgrade :next s_bus_5f_upgrade_next))
+; source symbol: bus_transfer
+(define-fun link_12 () (Array s_value Bool) (! s_bus_5f_transfer :next s_bus_5f_transfer_next))
+; action: issue_proc_read_invalid
+(define-fun action_0 () Bool
+  (exists ((q_12_s_c s_core))
+    (and
+      (and
+        (select s_invalid q_12_s_c)
+        (not s_bus_5f_in_5f_use)
+        s_bus_5f_in_5f_use_next
+        (forall ((q_13_s_C s_core))
+          (=
+            (select s_proc_5f_read_next q_13_s_C)
+            (or (select s_proc_5f_read q_13_s_C) (= q_13_s_C q_12_s_c))))
+        (forall ((q_14_s_C s_core))
+          (=
+            (select s_bus_5f_read_next q_14_s_C)
+            (or (select s_bus_5f_read q_14_s_C) (not (= q_14_s_C q_12_s_c))))))
+      (forall ((q_15_s_x0 s_core))
+        (= (select s_modified_next q_15_s_x0) (select s_modified q_15_s_x0)))
+      (forall ((q_16_s_x0 s_core))
+        (= (select s_exclusive_next q_16_s_x0) (select s_exclusive q_16_s_x0)))
+      (forall ((q_17_s_x0 s_core)) (= (select s_shared_next q_17_s_x0) (select s_shared q_17_s_x0)))
+      (forall ((q_18_s_x0 s_core))
+        (= (select s_invalid_next q_18_s_x0) (select s_invalid q_18_s_x0)))
+      (forall ((q_19_s_x0 s_core) (q_20_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_19_s_x0) q_20_s_x1)
+          (select (select s_proc_5f_write q_19_s_x0) q_20_s_x1)))
+      (forall ((q_21_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_21_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_21_s_x0)))
+      (forall ((q_22_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_22_s_x0) (select s_bus_5f_upgrade q_22_s_x0)))
+      (forall ((q_23_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_23_s_x0) (select s_bus_5f_transfer q_23_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_24_s_x0 s_core)) (= (select s_cache_next q_24_s_x0) (select s_cache q_24_s_x0))))))
+; action: do_bus_read_invalid
+(define-fun action_1 () Bool
+  (exists ((q_25_s_c s_core))
+    (and
+      (and
+        (select s_bus_5f_read q_25_s_c)
+        (select s_invalid q_25_s_c)
+        (forall ((q_26_s_C s_core))
+          (=
+            (select s_bus_5f_read_next q_26_s_C)
+            (and (select s_bus_5f_read q_26_s_C) (not (= q_26_s_C q_25_s_c))))))
+      (forall ((q_27_s_x0 s_core))
+        (= (select s_modified_next q_27_s_x0) (select s_modified q_27_s_x0)))
+      (forall ((q_28_s_x0 s_core))
+        (= (select s_exclusive_next q_28_s_x0) (select s_exclusive q_28_s_x0)))
+      (forall ((q_29_s_x0 s_core)) (= (select s_shared_next q_29_s_x0) (select s_shared q_29_s_x0)))
+      (forall ((q_30_s_x0 s_core))
+        (= (select s_invalid_next q_30_s_x0) (select s_invalid q_30_s_x0)))
+      (forall ((q_31_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_31_s_x0) (select s_proc_5f_read q_31_s_x0)))
+      (forall ((q_32_s_x0 s_core) (q_33_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_32_s_x0) q_33_s_x1)
+          (select (select s_proc_5f_write q_32_s_x0) q_33_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_34_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_34_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_34_s_x0)))
+      (forall ((q_35_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_35_s_x0) (select s_bus_5f_upgrade q_35_s_x0)))
+      (forall ((q_36_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_36_s_x0) (select s_bus_5f_transfer q_36_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_37_s_x0 s_core)) (= (select s_cache_next q_37_s_x0) (select s_cache q_37_s_x0))))))
+; action: do_bus_read_valid
+(define-fun action_2 () Bool
+  (exists ((q_38_s_c s_core) (q_39_s_v s_value))
+    (and
+      (and
+        (select s_bus_5f_read q_38_s_c)
+        (not (select s_invalid q_38_s_c))
+        (= (select s_cache q_38_s_c) q_39_s_v)
+        (forall ((q_40_s_C s_core))
+          (=
+            (select s_bus_5f_read_next q_40_s_C)
+            (and (select s_bus_5f_read q_40_s_C) (not (= q_40_s_C q_38_s_c)))))
+        (forall ((q_41_s_C s_core))
+          (= (select s_shared_next q_41_s_C) (or (select s_shared q_41_s_C) (= q_41_s_C q_38_s_c))))
+        (forall ((q_42_s_C s_core))
+          (=
+            (select s_modified_next q_42_s_C)
+            (and (select s_modified q_42_s_C) (not (= q_42_s_C q_38_s_c)))))
+        (forall ((q_43_s_C s_core))
+          (=
+            (select s_exclusive_next q_43_s_C)
+            (and (select s_exclusive q_43_s_C) (not (= q_43_s_C q_38_s_c)))))
+        (=> (select s_modified q_38_s_c) (= s_memory_next q_39_s_v))
+        (=> (not (select s_modified q_38_s_c)) (= s_memory_next s_memory))
+        (forall ((q_44_s_V s_value))
+          (=
+            (select s_bus_5f_transfer_next q_44_s_V)
+            (or (select s_bus_5f_transfer q_44_s_V) (= q_44_s_V q_39_s_v)))))
+      (forall ((q_45_s_x0 s_core))
+        (= (select s_invalid_next q_45_s_x0) (select s_invalid q_45_s_x0)))
+      (forall ((q_46_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_46_s_x0) (select s_proc_5f_read q_46_s_x0)))
+      (forall ((q_47_s_x0 s_core) (q_48_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_47_s_x0) q_48_s_x1)
+          (select (select s_proc_5f_write q_47_s_x0) q_48_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_49_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_49_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_49_s_x0)))
+      (forall ((q_50_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_50_s_x0) (select s_bus_5f_upgrade q_50_s_x0)))
+      (forall ((q_51_s_x0 s_core)) (= (select s_cache_next q_51_s_x0) (select s_cache q_51_s_x0))))))
+; action: complete_proc_read_invalid_shared
+(define-fun action_3 () Bool
+  (exists ((q_52_s_c s_core) (q_53_s_v s_value))
+    (and
+      (and
+        (select s_invalid q_52_s_c)
+        (select s_proc_5f_read q_52_s_c)
+        (select s_bus_5f_transfer q_53_s_v)
+        (forall ((q_54_s_C s_core)) (not (select s_bus_5f_read q_54_s_C)))
+        (forall ((q_55_s_V s_value)) (not (select s_bus_5f_transfer_next q_55_s_V)))
+        (forall ((q_56_s_C s_core))
+          (=
+            (select s_invalid_next q_56_s_C)
+            (and (select s_invalid q_56_s_C) (not (= q_56_s_C q_52_s_c)))))
+        (forall ((q_57_s_C s_core))
+          (= (select s_shared_next q_57_s_C) (or (select s_shared q_57_s_C) (= q_57_s_C q_52_s_c))))
+        (forall ((q_58_s_C s_core))
+          (=>
+            (not (= q_58_s_C q_52_s_c))
+            (= (select s_cache_next q_58_s_C) (select s_cache q_58_s_C))))
+        (= (select s_cache_next q_52_s_c) q_53_s_v)
+        (not s_bus_5f_in_5f_use_next)
+        (forall ((q_59_s_C s_core))
+          (=
+            (select s_proc_5f_read_next q_59_s_C)
+            (and (select s_proc_5f_read q_59_s_C) (not (= q_59_s_C q_52_s_c))))))
+      (forall ((q_60_s_x0 s_core))
+        (= (select s_modified_next q_60_s_x0) (select s_modified q_60_s_x0)))
+      (forall ((q_61_s_x0 s_core))
+        (= (select s_exclusive_next q_61_s_x0) (select s_exclusive q_61_s_x0)))
+      (forall ((q_62_s_x0 s_core) (q_63_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_62_s_x0) q_63_s_x1)
+          (select (select s_proc_5f_write q_62_s_x0) q_63_s_x1)))
+      (forall ((q_64_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_64_s_x0) (select s_bus_5f_read q_64_s_x0)))
+      (forall ((q_65_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_65_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_65_s_x0)))
+      (forall ((q_66_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_66_s_x0) (select s_bus_5f_upgrade q_66_s_x0)))
+      (= s_memory_next s_memory))))
+; action: complete_proc_read_invalid_exclusive
+(define-fun action_4 () Bool
+  (exists ((q_67_s_c s_core) (q_68_s_v s_value))
+    (and
+      (and
+        (select s_invalid q_67_s_c)
+        (select s_proc_5f_read q_67_s_c)
+        (forall ((q_69_s_V s_value)) (not (select s_bus_5f_transfer q_69_s_V)))
+        (forall ((q_70_s_C s_core)) (not (select s_bus_5f_read q_70_s_C)))
+        (= s_memory q_68_s_v)
+        (forall ((q_71_s_C s_core))
+          (=
+            (select s_invalid_next q_71_s_C)
+            (and (select s_invalid q_71_s_C) (not (= q_71_s_C q_67_s_c)))))
+        (forall ((q_72_s_C s_core))
+          (=
+            (select s_exclusive_next q_72_s_C)
+            (or (select s_exclusive q_72_s_C) (= q_72_s_C q_67_s_c))))
+        (forall ((q_73_s_C s_core))
+          (=>
+            (not (= q_73_s_C q_67_s_c))
+            (= (select s_cache_next q_73_s_C) (select s_cache q_73_s_C))))
+        (= (select s_cache_next q_67_s_c) q_68_s_v)
+        (not s_bus_5f_in_5f_use_next)
+        (forall ((q_74_s_C s_core))
+          (=
+            (select s_proc_5f_read_next q_74_s_C)
+            (and (select s_proc_5f_read q_74_s_C) (not (= q_74_s_C q_67_s_c))))))
+      (forall ((q_75_s_x0 s_core))
+        (= (select s_modified_next q_75_s_x0) (select s_modified q_75_s_x0)))
+      (forall ((q_76_s_x0 s_core)) (= (select s_shared_next q_76_s_x0) (select s_shared q_76_s_x0)))
+      (forall ((q_77_s_x0 s_core) (q_78_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_77_s_x0) q_78_s_x1)
+          (select (select s_proc_5f_write q_77_s_x0) q_78_s_x1)))
+      (forall ((q_79_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_79_s_x0) (select s_bus_5f_read q_79_s_x0)))
+      (forall ((q_80_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_80_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_80_s_x0)))
+      (forall ((q_81_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_81_s_x0) (select s_bus_5f_upgrade q_81_s_x0)))
+      (forall ((q_82_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_82_s_x0) (select s_bus_5f_transfer q_82_s_x0)))
+      (= s_memory_next s_memory))))
+; action: issue_proc_write_invalid
+(define-fun action_5 () Bool
+  (exists ((q_83_s_c s_core) (q_84_s_v s_value))
+    (and
+      (and
+        (select s_invalid q_83_s_c)
+        (not s_bus_5f_in_5f_use)
+        s_bus_5f_in_5f_use_next
+        (forall ((q_85_s_C s_core) (q_86_s_V s_value))
+          (=
+            (select (select s_proc_5f_write_next q_85_s_C) q_86_s_V)
+            (or
+              (select (select s_proc_5f_write q_85_s_C) q_86_s_V)
+              (and (= q_85_s_C q_83_s_c) (= q_86_s_V q_84_s_v)))))
+        (forall ((q_87_s_C s_core))
+          (=
+            (select s_bus_5f_read_5f_for_5f_ownership_next q_87_s_C)
+            (or (select s_bus_5f_read_5f_for_5f_ownership q_87_s_C) (not (= q_87_s_C q_83_s_c))))))
+      (forall ((q_88_s_x0 s_core))
+        (= (select s_modified_next q_88_s_x0) (select s_modified q_88_s_x0)))
+      (forall ((q_89_s_x0 s_core))
+        (= (select s_exclusive_next q_89_s_x0) (select s_exclusive q_89_s_x0)))
+      (forall ((q_90_s_x0 s_core)) (= (select s_shared_next q_90_s_x0) (select s_shared q_90_s_x0)))
+      (forall ((q_91_s_x0 s_core))
+        (= (select s_invalid_next q_91_s_x0) (select s_invalid q_91_s_x0)))
+      (forall ((q_92_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_92_s_x0) (select s_proc_5f_read q_92_s_x0)))
+      (forall ((q_93_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_93_s_x0) (select s_bus_5f_read q_93_s_x0)))
+      (forall ((q_94_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_94_s_x0) (select s_bus_5f_upgrade q_94_s_x0)))
+      (forall ((q_95_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_95_s_x0) (select s_bus_5f_transfer q_95_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_96_s_x0 s_core)) (= (select s_cache_next q_96_s_x0) (select s_cache q_96_s_x0))))))
+; action: do_bus_read_for_ownership_invalid
+(define-fun action_6 () Bool
+  (exists ((q_97_s_c s_core))
+    (and
+      (and
+        (select s_bus_5f_read_5f_for_5f_ownership q_97_s_c)
+        (select s_invalid q_97_s_c)
+        (forall ((q_98_s_C s_core))
+          (=
+            (select s_bus_5f_read_5f_for_5f_ownership_next q_98_s_C)
+            (and (select s_bus_5f_read_5f_for_5f_ownership q_98_s_C) (not (= q_98_s_C q_97_s_c))))))
+      (forall ((q_99_s_x0 s_core))
+        (= (select s_modified_next q_99_s_x0) (select s_modified q_99_s_x0)))
+      (forall ((q_100_s_x0 s_core))
+        (= (select s_exclusive_next q_100_s_x0) (select s_exclusive q_100_s_x0)))
+      (forall ((q_101_s_x0 s_core))
+        (= (select s_shared_next q_101_s_x0) (select s_shared q_101_s_x0)))
+      (forall ((q_102_s_x0 s_core))
+        (= (select s_invalid_next q_102_s_x0) (select s_invalid q_102_s_x0)))
+      (forall ((q_103_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_103_s_x0) (select s_proc_5f_read q_103_s_x0)))
+      (forall ((q_104_s_x0 s_core) (q_105_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_104_s_x0) q_105_s_x1)
+          (select (select s_proc_5f_write q_104_s_x0) q_105_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_106_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_106_s_x0) (select s_bus_5f_read q_106_s_x0)))
+      (forall ((q_107_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_107_s_x0) (select s_bus_5f_upgrade q_107_s_x0)))
+      (forall ((q_108_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_108_s_x0) (select s_bus_5f_transfer q_108_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_109_s_x0 s_core))
+        (= (select s_cache_next q_109_s_x0) (select s_cache q_109_s_x0))))))
+; action: do_bus_read_for_ownership_valid
+(define-fun action_7 () Bool
+  (exists ((q_110_s_c s_core) (q_111_s_v s_value))
+    (and
+      (and
+        (select s_bus_5f_read_5f_for_5f_ownership q_110_s_c)
+        (not (select s_invalid q_110_s_c))
+        (= (select s_cache q_110_s_c) q_111_s_v)
+        (forall ((q_112_s_C s_core))
+          (=
+            (select s_bus_5f_read_5f_for_5f_ownership_next q_112_s_C)
+            (and (select s_bus_5f_read_5f_for_5f_ownership q_112_s_C) (not (= q_112_s_C q_110_s_c)))))
+        (forall ((q_113_s_C s_core))
+          (=
+            (select s_invalid_next q_113_s_C)
+            (or (select s_invalid q_113_s_C) (= q_113_s_C q_110_s_c))))
+        (forall ((q_114_s_C s_core))
+          (=
+            (select s_shared_next q_114_s_C)
+            (and (select s_shared q_114_s_C) (not (= q_114_s_C q_110_s_c)))))
+        (forall ((q_115_s_C s_core))
+          (=
+            (select s_modified_next q_115_s_C)
+            (and (select s_modified q_115_s_C) (not (= q_115_s_C q_110_s_c)))))
+        (forall ((q_116_s_C s_core))
+          (=
+            (select s_exclusive_next q_116_s_C)
+            (and (select s_exclusive q_116_s_C) (not (= q_116_s_C q_110_s_c)))))
+        (=> (select s_modified q_110_s_c) (= s_memory_next q_111_s_v))
+        (=> (not (select s_modified q_110_s_c)) (= s_memory_next s_memory))
+        (forall ((q_117_s_V s_value))
+          (=
+            (select s_bus_5f_transfer_next q_117_s_V)
+            (or (select s_bus_5f_transfer q_117_s_V) (= q_117_s_V q_111_s_v)))))
+      (forall ((q_118_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_118_s_x0) (select s_proc_5f_read q_118_s_x0)))
+      (forall ((q_119_s_x0 s_core) (q_120_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_119_s_x0) q_120_s_x1)
+          (select (select s_proc_5f_write q_119_s_x0) q_120_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_121_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_121_s_x0) (select s_bus_5f_read q_121_s_x0)))
+      (forall ((q_122_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_122_s_x0) (select s_bus_5f_upgrade q_122_s_x0)))
+      (forall ((q_123_s_x0 s_core))
+        (= (select s_cache_next q_123_s_x0) (select s_cache q_123_s_x0))))))
+; action: complete_proc_write_invalid
+(define-fun action_8 () Bool
+  (exists ((q_124_s_c s_core) (q_125_s_v s_value))
+    (and
+      (and
+        (select s_invalid q_124_s_c)
+        (select (select s_proc_5f_write q_124_s_c) q_125_s_v)
+        (forall ((q_126_s_C s_core)) (not (select s_bus_5f_read_5f_for_5f_ownership q_126_s_C)))
+        (forall ((q_127_s_V s_value)) (not (select s_bus_5f_transfer_next q_127_s_V)))
+        (forall ((q_128_s_C s_core))
+          (=
+            (select s_invalid_next q_128_s_C)
+            (and (select s_invalid q_128_s_C) (not (= q_128_s_C q_124_s_c)))))
+        (forall ((q_129_s_C s_core))
+          (=
+            (select s_modified_next q_129_s_C)
+            (or (select s_modified q_129_s_C) (= q_129_s_C q_124_s_c))))
+        (forall ((q_130_s_C s_core))
+          (=>
+            (not (= q_130_s_C q_124_s_c))
+            (= (select s_cache_next q_130_s_C) (select s_cache q_130_s_C))))
+        (= (select s_cache_next q_124_s_c) q_125_s_v)
+        (not s_bus_5f_in_5f_use_next)
+        (forall ((q_131_s_C s_core) (q_132_s_V s_value))
+          (=
+            (select (select s_proc_5f_write_next q_131_s_C) q_132_s_V)
+            (and
+              (select (select s_proc_5f_write q_131_s_C) q_132_s_V)
+              (not (and (= q_131_s_C q_124_s_c) (= q_132_s_V q_125_s_v)))))))
+      (forall ((q_133_s_x0 s_core))
+        (= (select s_exclusive_next q_133_s_x0) (select s_exclusive q_133_s_x0)))
+      (forall ((q_134_s_x0 s_core))
+        (= (select s_shared_next q_134_s_x0) (select s_shared q_134_s_x0)))
+      (forall ((q_135_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_135_s_x0) (select s_proc_5f_read q_135_s_x0)))
+      (forall ((q_136_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_136_s_x0) (select s_bus_5f_read q_136_s_x0)))
+      (forall ((q_137_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_137_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_137_s_x0)))
+      (forall ((q_138_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_138_s_x0) (select s_bus_5f_upgrade q_138_s_x0)))
+      (= s_memory_next s_memory))))
+; action: proc_write_exclusive
+(define-fun action_9 () Bool
+  (exists ((q_139_s_c s_core) (q_140_s_v s_value))
+    (and
+      (and
+        (select s_exclusive q_139_s_c)
+        (not s_bus_5f_in_5f_use)
+        (forall ((q_141_s_C s_core))
+          (=
+            (select s_exclusive_next q_141_s_C)
+            (and (select s_exclusive q_141_s_C) (not (= q_141_s_C q_139_s_c)))))
+        (forall ((q_142_s_C s_core))
+          (=
+            (select s_modified_next q_142_s_C)
+            (or (select s_modified q_142_s_C) (= q_142_s_C q_139_s_c))))
+        (forall ((q_143_s_C s_core))
+          (=>
+            (not (= q_143_s_C q_139_s_c))
+            (= (select s_cache_next q_143_s_C) (select s_cache q_143_s_C))))
+        (= (select s_cache_next q_139_s_c) q_140_s_v))
+      (forall ((q_144_s_x0 s_core))
+        (= (select s_shared_next q_144_s_x0) (select s_shared q_144_s_x0)))
+      (forall ((q_145_s_x0 s_core))
+        (= (select s_invalid_next q_145_s_x0) (select s_invalid q_145_s_x0)))
+      (forall ((q_146_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_146_s_x0) (select s_proc_5f_read q_146_s_x0)))
+      (forall ((q_147_s_x0 s_core) (q_148_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_147_s_x0) q_148_s_x1)
+          (select (select s_proc_5f_write q_147_s_x0) q_148_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_149_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_149_s_x0) (select s_bus_5f_read q_149_s_x0)))
+      (forall ((q_150_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_150_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_150_s_x0)))
+      (forall ((q_151_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_151_s_x0) (select s_bus_5f_upgrade q_151_s_x0)))
+      (forall ((q_152_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_152_s_x0) (select s_bus_5f_transfer q_152_s_x0)))
+      (= s_memory_next s_memory))))
+; action: issue_proc_write_shared
+(define-fun action_10 () Bool
+  (exists ((q_153_s_c s_core) (q_154_s_v s_value))
+    (and
+      (and
+        (select s_shared q_153_s_c)
+        (not s_bus_5f_in_5f_use)
+        s_bus_5f_in_5f_use_next
+        (forall ((q_155_s_C s_core) (q_156_s_V s_value))
+          (=
+            (select (select s_proc_5f_write_next q_155_s_C) q_156_s_V)
+            (or
+              (select (select s_proc_5f_write q_155_s_C) q_156_s_V)
+              (and (= q_155_s_C q_153_s_c) (= q_156_s_V q_154_s_v)))))
+        (forall ((q_157_s_C s_core))
+          (=
+            (select s_bus_5f_upgrade_next q_157_s_C)
+            (or (select s_bus_5f_upgrade q_157_s_C) (not (= q_157_s_C q_153_s_c))))))
+      (forall ((q_158_s_x0 s_core))
+        (= (select s_modified_next q_158_s_x0) (select s_modified q_158_s_x0)))
+      (forall ((q_159_s_x0 s_core))
+        (= (select s_exclusive_next q_159_s_x0) (select s_exclusive q_159_s_x0)))
+      (forall ((q_160_s_x0 s_core))
+        (= (select s_shared_next q_160_s_x0) (select s_shared q_160_s_x0)))
+      (forall ((q_161_s_x0 s_core))
+        (= (select s_invalid_next q_161_s_x0) (select s_invalid q_161_s_x0)))
+      (forall ((q_162_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_162_s_x0) (select s_proc_5f_read q_162_s_x0)))
+      (forall ((q_163_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_163_s_x0) (select s_bus_5f_read q_163_s_x0)))
+      (forall ((q_164_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_164_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_164_s_x0)))
+      (forall ((q_165_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_165_s_x0) (select s_bus_5f_transfer q_165_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_166_s_x0 s_core))
+        (= (select s_cache_next q_166_s_x0) (select s_cache q_166_s_x0))))))
+; action: do_bus_upgrade
+(define-fun action_11 () Bool
+  (exists ((q_167_s_c s_core))
+    (and
+      (and
+        (select s_bus_5f_upgrade q_167_s_c)
+        (forall ((q_168_s_C s_core))
+          (=
+            (select s_bus_5f_upgrade_next q_168_s_C)
+            (and (select s_bus_5f_upgrade q_168_s_C) (not (= q_168_s_C q_167_s_c)))))
+        (forall ((q_169_s_C s_core))
+          (=
+            (select s_invalid_next q_169_s_C)
+            (or (select s_invalid q_169_s_C) (= q_169_s_C q_167_s_c))))
+        (forall ((q_170_s_C s_core))
+          (=
+            (select s_shared_next q_170_s_C)
+            (and (select s_shared q_170_s_C) (not (= q_170_s_C q_167_s_c))))))
+      (forall ((q_171_s_x0 s_core))
+        (= (select s_modified_next q_171_s_x0) (select s_modified q_171_s_x0)))
+      (forall ((q_172_s_x0 s_core))
+        (= (select s_exclusive_next q_172_s_x0) (select s_exclusive q_172_s_x0)))
+      (forall ((q_173_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_173_s_x0) (select s_proc_5f_read q_173_s_x0)))
+      (forall ((q_174_s_x0 s_core) (q_175_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_174_s_x0) q_175_s_x1)
+          (select (select s_proc_5f_write q_174_s_x0) q_175_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_176_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_176_s_x0) (select s_bus_5f_read q_176_s_x0)))
+      (forall ((q_177_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_177_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_177_s_x0)))
+      (forall ((q_178_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_178_s_x0) (select s_bus_5f_transfer q_178_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_179_s_x0 s_core))
+        (= (select s_cache_next q_179_s_x0) (select s_cache q_179_s_x0))))))
+; action: complete_proc_write_shared
+(define-fun action_12 () Bool
+  (exists ((q_180_s_c s_core) (q_181_s_v s_value))
+    (and
+      (and
+        (select s_shared q_180_s_c)
+        (select (select s_proc_5f_write q_180_s_c) q_181_s_v)
+        (forall ((q_182_s_C s_core)) (not (select s_bus_5f_upgrade q_182_s_C)))
+        (forall ((q_183_s_C s_core))
+          (=
+            (select s_shared_next q_183_s_C)
+            (and (select s_shared q_183_s_C) (not (= q_183_s_C q_180_s_c)))))
+        (forall ((q_184_s_C s_core))
+          (=
+            (select s_modified_next q_184_s_C)
+            (or (select s_modified q_184_s_C) (= q_184_s_C q_180_s_c))))
+        (forall ((q_185_s_C s_core))
+          (=>
+            (not (= q_185_s_C q_180_s_c))
+            (= (select s_cache_next q_185_s_C) (select s_cache q_185_s_C))))
+        (= (select s_cache_next q_180_s_c) q_181_s_v)
+        (forall ((q_186_s_C s_core) (q_187_s_V s_value))
+          (=
+            (select (select s_proc_5f_write_next q_186_s_C) q_187_s_V)
+            (and
+              (select (select s_proc_5f_write q_186_s_C) q_187_s_V)
+              (not (and (= q_186_s_C q_180_s_c) (= q_187_s_V q_181_s_v))))))
+        (not s_bus_5f_in_5f_use_next))
+      (forall ((q_188_s_x0 s_core))
+        (= (select s_exclusive_next q_188_s_x0) (select s_exclusive q_188_s_x0)))
+      (forall ((q_189_s_x0 s_core))
+        (= (select s_invalid_next q_189_s_x0) (select s_invalid q_189_s_x0)))
+      (forall ((q_190_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_190_s_x0) (select s_proc_5f_read q_190_s_x0)))
+      (forall ((q_191_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_191_s_x0) (select s_bus_5f_read q_191_s_x0)))
+      (forall ((q_192_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_192_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_192_s_x0)))
+      (forall ((q_193_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_193_s_x0) (select s_bus_5f_upgrade q_193_s_x0)))
+      (forall ((q_194_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_194_s_x0) (select s_bus_5f_transfer q_194_s_x0)))
+      (= s_memory_next s_memory))))
+; action: evict_modified
+(define-fun action_13 () Bool
+  (exists ((q_195_s_c s_core))
+    (and
+      (and
+        (not s_bus_5f_in_5f_use)
+        (select s_modified q_195_s_c)
+        (= s_memory_next (select s_cache q_195_s_c))
+        (forall ((q_196_s_C s_core))
+          (=
+            (select s_modified_next q_196_s_C)
+            (and (select s_modified q_196_s_C) (not (= q_196_s_C q_195_s_c)))))
+        (forall ((q_197_s_C s_core))
+          (=
+            (select s_invalid_next q_197_s_C)
+            (or (select s_invalid q_197_s_C) (= q_197_s_C q_195_s_c)))))
+      (forall ((q_198_s_x0 s_core))
+        (= (select s_exclusive_next q_198_s_x0) (select s_exclusive q_198_s_x0)))
+      (forall ((q_199_s_x0 s_core))
+        (= (select s_shared_next q_199_s_x0) (select s_shared q_199_s_x0)))
+      (forall ((q_200_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_200_s_x0) (select s_proc_5f_read q_200_s_x0)))
+      (forall ((q_201_s_x0 s_core) (q_202_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_201_s_x0) q_202_s_x1)
+          (select (select s_proc_5f_write q_201_s_x0) q_202_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_203_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_203_s_x0) (select s_bus_5f_read q_203_s_x0)))
+      (forall ((q_204_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_204_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_204_s_x0)))
+      (forall ((q_205_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_205_s_x0) (select s_bus_5f_upgrade q_205_s_x0)))
+      (forall ((q_206_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_206_s_x0) (select s_bus_5f_transfer q_206_s_x0)))
+      (forall ((q_207_s_x0 s_core))
+        (= (select s_cache_next q_207_s_x0) (select s_cache q_207_s_x0))))))
+; action: evict_exclusive_or_shared
+(define-fun action_14 () Bool
+  (exists ((q_208_s_c s_core))
+    (and
+      (and
+        (not s_bus_5f_in_5f_use)
+        (or (select s_exclusive q_208_s_c) (select s_shared q_208_s_c))
+        (forall ((q_209_s_C s_core))
+          (=
+            (select s_exclusive_next q_209_s_C)
+            (and (select s_exclusive q_209_s_C) (not (= q_209_s_C q_208_s_c)))))
+        (forall ((q_210_s_C s_core))
+          (=
+            (select s_shared_next q_210_s_C)
+            (and (select s_shared q_210_s_C) (not (= q_210_s_C q_208_s_c)))))
+        (forall ((q_211_s_C s_core))
+          (=
+            (select s_invalid_next q_211_s_C)
+            (or (select s_invalid q_211_s_C) (= q_211_s_C q_208_s_c)))))
+      (forall ((q_212_s_x0 s_core))
+        (= (select s_modified_next q_212_s_x0) (select s_modified q_212_s_x0)))
+      (forall ((q_213_s_x0 s_core))
+        (= (select s_proc_5f_read_next q_213_s_x0) (select s_proc_5f_read q_213_s_x0)))
+      (forall ((q_214_s_x0 s_core) (q_215_s_x1 s_value))
+        (=
+          (select (select s_proc_5f_write_next q_214_s_x0) q_215_s_x1)
+          (select (select s_proc_5f_write q_214_s_x0) q_215_s_x1)))
+      (= s_bus_5f_in_5f_use_next s_bus_5f_in_5f_use)
+      (forall ((q_216_s_x0 s_core))
+        (= (select s_bus_5f_read_next q_216_s_x0) (select s_bus_5f_read q_216_s_x0)))
+      (forall ((q_217_s_x0 s_core))
+        (=
+          (select s_bus_5f_read_5f_for_5f_ownership_next q_217_s_x0)
+          (select s_bus_5f_read_5f_for_5f_ownership q_217_s_x0)))
+      (forall ((q_218_s_x0 s_core))
+        (= (select s_bus_5f_upgrade_next q_218_s_x0) (select s_bus_5f_upgrade q_218_s_x0)))
+      (forall ((q_219_s_x0 s_value))
+        (= (select s_bus_5f_transfer_next q_219_s_x0) (select s_bus_5f_transfer q_219_s_x0)))
+      (= s_memory_next s_memory)
+      (forall ((q_220_s_x0 s_core))
+        (= (select s_cache_next q_220_s_x0) (select s_cache q_220_s_x0))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_C s_core)) (not (select s_modified q_1_s_C)))
+      (forall ((q_2_s_C s_core)) (not (select s_exclusive q_2_s_C)))
+      (forall ((q_3_s_C s_core)) (not (select s_shared q_3_s_C)))
+      (forall ((q_4_s_C s_core)) (select s_invalid q_4_s_C))
+      (forall ((q_5_s_C s_core)) (not (select s_proc_5f_read q_5_s_C)))
+      (forall ((q_6_s_C s_core) (q_7_s_V s_value))
+        (not (select (select s_proc_5f_write q_6_s_C) q_7_s_V)))
+      (not s_bus_5f_in_5f_use)
+      (forall ((q_8_s_C s_core)) (not (select s_bus_5f_read q_8_s_C)))
+      (forall ((q_9_s_C s_core)) (not (select s_bus_5f_read_5f_for_5f_ownership q_9_s_C)))
+      (forall ((q_10_s_C s_core)) (not (select s_bus_5f_upgrade q_10_s_C)))
+      (forall ((q_11_s_V s_value)) (not (select s_bus_5f_transfer q_11_s_V))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (or
+      action_0
+      action_1
+      action_2
+      action_3
+      action_4
+      action_5
+      action_6
+      action_7
+      action_8
+      action_9
+      action_10
+      action_11
+      action_12
+      action_13
+      action_14)
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_221_s_C s_core))
+      (=>
+        (and (not (select s_invalid q_221_s_C)) (not (select s_modified q_221_s_C)))
+        (= (select s_cache q_221_s_C) s_memory)))
+    :invar-property
+    0))

@@ -1,0 +1,103 @@
+; Generated offline from mypyvy/examples/misc/primary_backup.pyv
+; Source SHA-256: 90a46403aedd5a68f130d98f1dfa755a25a05b1392e1a061a1198a75e0abab8d
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_data 0)
+(declare-fun s_le () (Array s_data (Array s_data Bool)))
+(declare-fun s_le_next () (Array s_data (Array s_data Bool)))
+(declare-fun s_zero () s_data)
+(declare-fun s_zero_next () s_data)
+(declare-fun s_primary () s_data)
+(declare-fun s_primary_next () s_data)
+(declare-fun s_backup () s_data)
+(declare-fun s_backup_next () s_data)
+(declare-fun s_msg () (Array s_data Bool))
+(declare-fun s_msg_next () (Array s_data Bool))
+; source symbol: le
+(define-fun link_0 () (Array s_data (Array s_data Bool)) (! s_le :next s_le_next))
+; source symbol: zero
+(define-fun link_1 () s_data (! s_zero :next s_zero_next))
+; source symbol: primary
+(define-fun link_2 () s_data (! s_primary :next s_primary_next))
+; source symbol: backup
+(define-fun link_3 () s_data (! s_backup :next s_backup_next))
+; source symbol: msg
+(define-fun link_4 () (Array s_data Bool) (! s_msg :next s_msg_next))
+; action: send
+(define-fun action_0 () Bool
+  (and
+    (forall ((q_11_s_X s_data))
+      (= (select s_msg_next q_11_s_X) (or (select s_msg q_11_s_X) (= q_11_s_X s_primary))))
+    (= s_primary_next s_primary)
+    (= s_backup_next s_backup)))
+; action: recv
+(define-fun action_1 () Bool
+  (exists ((q_12_s_x s_data))
+    (and
+      (and
+        (select s_msg q_12_s_x)
+        (= s_backup_next q_12_s_x)
+        (forall ((q_13_s_X s_data))
+          (= (select s_msg_next q_13_s_X) (and (select s_msg q_13_s_X) (not (= q_13_s_X q_12_s_x))))))
+      (= s_primary_next s_primary))))
+; action: increment
+(define-fun action_2 () Bool
+  (exists ((q_14_s_next s_data))
+    (and
+      (and (select (select s_le s_primary) q_14_s_next) (= s_primary_next q_14_s_next))
+      (forall ((q_15_s_x0 s_data)) (= (select s_msg_next q_15_s_x0) (select s_msg q_15_s_x0)))
+      (= s_backup_next s_backup))))
+(define-fun init () Bool
+  (!
+    (and
+      (= s_primary s_zero)
+      (= s_backup s_zero)
+      (forall ((q_1_s_X s_data)) (not (select s_msg q_1_s_X)))
+      (forall ((q_2_s_X s_data)) (select (select s_le q_2_s_X) q_2_s_X))
+      (forall ((q_3_s_X s_data) (q_4_s_Y s_data))
+        (=>
+          (and (select (select s_le q_3_s_X) q_4_s_Y) (select (select s_le q_4_s_Y) q_3_s_X))
+          (= q_3_s_X q_4_s_Y)))
+      (forall ((q_5_s_X s_data) (q_6_s_Y s_data) (q_7_s_Z s_data))
+        (=>
+          (and (select (select s_le q_5_s_X) q_6_s_Y) (select (select s_le q_6_s_Y) q_7_s_Z))
+          (select (select s_le q_5_s_X) q_7_s_Z)))
+      (forall ((q_8_s_X s_data) (q_9_s_Y s_data))
+        (or (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_8_s_X)))
+      (forall ((q_10_s_X s_data)) (select (select s_le s_zero) q_10_s_X)))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2)
+      (= s_le_next s_le)
+      (= s_zero_next s_zero)
+      (forall ((q_2_s_X s_data)) (select (select s_le q_2_s_X) q_2_s_X))
+      (forall ((q_3_s_X s_data) (q_4_s_Y s_data))
+        (=>
+          (and (select (select s_le q_3_s_X) q_4_s_Y) (select (select s_le q_4_s_Y) q_3_s_X))
+          (= q_3_s_X q_4_s_Y)))
+      (forall ((q_5_s_X s_data) (q_6_s_Y s_data) (q_7_s_Z s_data))
+        (=>
+          (and (select (select s_le q_5_s_X) q_6_s_Y) (select (select s_le q_6_s_Y) q_7_s_Z))
+          (select (select s_le q_5_s_X) q_7_s_Z)))
+      (forall ((q_8_s_X s_data) (q_9_s_Y s_data))
+        (or (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_8_s_X)))
+      (forall ((q_10_s_X s_data)) (select (select s_le s_zero) q_10_s_X))
+      (forall ((q_2_s_X s_data)) (select (select s_le q_2_s_X) q_2_s_X))
+      (forall ((q_3_s_X s_data) (q_4_s_Y s_data))
+        (=>
+          (and (select (select s_le q_3_s_X) q_4_s_Y) (select (select s_le q_4_s_Y) q_3_s_X))
+          (= q_3_s_X q_4_s_Y)))
+      (forall ((q_5_s_X s_data) (q_6_s_Y s_data) (q_7_s_Z s_data))
+        (=>
+          (and (select (select s_le q_5_s_X) q_6_s_Y) (select (select s_le q_6_s_Y) q_7_s_Z))
+          (select (select s_le q_5_s_X) q_7_s_Z)))
+      (forall ((q_8_s_X s_data) (q_9_s_Y s_data))
+        (or (select (select s_le q_8_s_X) q_9_s_Y) (select (select s_le q_9_s_Y) q_8_s_X)))
+      (forall ((q_10_s_X s_data)) (select (select s_le s_zero) q_10_s_X)))
+    :trans
+    true))
+(define-fun property () Bool (! (select (select s_le s_backup) s_primary) :invar-property 0))

@@ -1,0 +1,3946 @@
+:comment Input model:
+:comment | system implementation sys.impl
+:comment |     parameters
+:comment |         A0: set of indices;
+:comment |         A1: set of indices;
+:comment |         A2: set of indices;
+:comment |         A3: set of indices;
+:comment |         A4: set of indices;
+:comment |         B0: set of indices;
+:comment |         B1: set of indices;
+:comment |         B2: set of indices;
+:comment |         B3: set of indices;
+:comment |         B4: set of indices;
+:comment |         C: set of indices;
+:comment | 
+:comment |     subcomponents
+:comment |         a0: set indexed by A0;
+:comment |         a1: set indexed by A1;
+:comment |         a2: set indexed by A2;
+:comment |         a3: set indexed by A3;
+:comment |         a4: set indexed by A4;
+:comment |         b0: set indexed by B0;
+:comment |         b1: set indexed by B1;
+:comment |         b2: set indexed by B2;
+:comment |         b3: set indexed by B3;
+:comment |         b4: set indexed by B4;
+:comment |         c: set indexed by C;
+:comment | 
+:comment |     connections
+:comment |         a0[x] -> c[y] for x in A0, y in C;
+:comment |         c[y] -> a0[x] for x in A0, y in C;
+:comment |         b0[x] -> c[y] for x in B0, y in C;
+:comment |         c[y] -> b0[x] for x in B0, y in C;
+:comment | 
+:comment |         a1[x] -> a0[y] for x in A1, y in A0;
+:comment |         a0[x] -> a1[y] for x in A0, y in A1;
+:comment |         a2[x] -> a1[y] for x in A2, y in A1;
+:comment |         a1[x] -> a2[y] for x in A1, y in A2;
+:comment |         a3[x] -> a2[y] for x in A3, y in A2;
+:comment |         a2[x] -> a3[y] for x in A2, y in A3;
+:comment |         a4[x] -> a3[y] for x in A4, y in A3;
+:comment |         a3[x] -> a4[y] for x in A3, y in A4;
+:comment | 
+:comment |         b1[x] -> b0[y] for x in B1, y in B0;
+:comment |         b0[x] -> b1[y] for x in B0, y in B1;
+:comment |         b2[x] -> b1[y] for x in B2, y in B1;
+:comment |         b1[x] -> b2[y] for x in B1, y in B2;
+:comment |         b3[x] -> b2[y] for x in B3, y in B2;
+:comment |         b2[x] -> b3[y] for x in B2, y in B3;
+:comment |         b4[x] -> b3[y] for x in B4, y in B3;
+:comment |         b3[x] -> b4[y] for x in B3, y in B4;
+:comment | 
+:comment |     reconfigurations
+:comment |         exists(x not in A0, next(A0) = add(A0, x));
+:comment |         exists(x not in A1, next(A1) = add(A1, x));
+:comment |         exists(x not in A2, next(A2) = add(A2, x));
+:comment |         exists(x not in A3, next(A3) = add(A3, x));
+:comment |         exists(x not in A4, next(A4) = add(A4, x));
+:comment | 
+:comment |         exists(x in A0, next(A0) = remove(A0, x));
+:comment |         exists(x in A1, next(A1) = remove(A1, x));
+:comment |         exists(x in A2, next(A2) = remove(A2, x));
+:comment |         exists(x in A3, next(A3) = remove(A3, x));
+:comment |         exists(x in A4, next(A4) = remove(A4, x));
+:comment | 
+:comment |         exists(x not in B0, next(B0) = add(B0, x));
+:comment |         exists(x not in B1, next(B1) = add(B1, x));
+:comment |         exists(x not in B2, next(B2) = add(B2, x));
+:comment |         exists(x not in B3, next(B3) = add(B3, x));
+:comment |         exists(x not in B4, next(B4) = add(B4, x));
+:comment | 
+:comment |         exists(x in B0, next(B0) = remove(B0, x));
+:comment |         exists(x in B1, next(B1) = remove(B1, x));
+:comment |         exists(x in B2, next(B2) = remove(B2, x));
+:comment |         exists(x in B3, next(B3) = remove(B3, x));
+:comment |         exists(x in B4, next(B4) = remove(B4, x));
+:comment | 
+:comment |         exists(x not in C, next(C) = add(C, x));
+:comment |         exists(x in C, next(C) = remove(C, x));
+:comment | end sys.impl;
+
+:comment Source components: a2
+:comment Destination components: b0
+
+:index int
+:max_transitions_number 1000
+
+:local _A0 bool
+:local _A1 bool
+:local _A2 bool
+:local _A3 bool
+:local _A4 bool
+:local _B0 bool
+:local _B1 bool
+:local _B2 bool
+:local _B3 bool
+:local _B4 bool
+:local _C bool
+:local _a0_token bool
+:local _a1_token bool
+:local _a2_token bool
+:local _a3_token bool
+:local _a4_token bool
+:local _b0_token bool
+:local _b1_token bool
+:local _b2_token bool
+:local _b3_token bool
+:local _b4_token bool
+:local _c_token bool
+
+:initial
+:var x
+:var y
+:cnj (= _a0_token[x] false) (= _a1_token[x] false) (= _a2_token[x] true) (= _a3_token[x] false) (= _a4_token[x] false) (= _b0_token[x] false) (= _b1_token[x] false) (= _b2_token[x] false) (= _b3_token[x] false) (= _b4_token[x] false) (= _c_token[x] false)
+
+:unsafe
+:var x
+:cnj (= _b0_token[x] true)
+
+:comment transition t1
+:comment connection 1, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A0[x] true) (= _a0_token[x] true) (= _C[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val true
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t2
+:comment connection 1, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A0[x] true) (= _a0_token[x] true) (= _C[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val true
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t3
+:comment connection 2, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C[x] true) (= _c_token[x] true) (= _A0[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val true
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t4
+:comment connection 2, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C[x] true) (= _c_token[x] true) (= _A0[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val true
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t5
+:comment connection 3, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B0[x] true) (= _b0_token[x] true) (= _C[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val true
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t6
+:comment connection 3, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B0[x] true) (= _b0_token[x] true) (= _C[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val true
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t7
+:comment connection 4, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _C[x] true) (= _c_token[x] true) (= _B0[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val true
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t8
+:comment connection 4, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _C[x] true) (= _c_token[x] true) (= _B0[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val true
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t9
+:comment connection 5, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A1[x] true) (= _a1_token[x] true) (= _A0[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val true
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t10
+:comment connection 5, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A1[x] true) (= _a1_token[x] true) (= _A0[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val true
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t11
+:comment connection 6, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A0[x] true) (= _a0_token[x] true) (= _A1[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val true
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t12
+:comment connection 6, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A0[x] true) (= _a0_token[x] true) (= _A1[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val true
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t13
+:comment connection 7, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A2[x] true) (= _a2_token[x] true) (= _A1[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val true
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t14
+:comment connection 7, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A2[x] true) (= _a2_token[x] true) (= _A1[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val true
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t15
+:comment connection 8, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A1[x] true) (= _a1_token[x] true) (= _A2[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val true
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t16
+:comment connection 8, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A1[x] true) (= _a1_token[x] true) (= _A2[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val true
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t17
+:comment connection 9, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A3[x] true) (= _a3_token[x] true) (= _A2[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val true
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t18
+:comment connection 9, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A3[x] true) (= _a3_token[x] true) (= _A2[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val true
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t19
+:comment connection 10, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A2[x] true) (= _a2_token[x] true) (= _A3[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val true
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t20
+:comment connection 10, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A2[x] true) (= _a2_token[x] true) (= _A3[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val true
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t21
+:comment connection 11, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A4[x] true) (= _a4_token[x] true) (= _A3[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val true
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t22
+:comment connection 11, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A4[x] true) (= _a4_token[x] true) (= _A3[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val true
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t23
+:comment connection 12, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _A3[x] true) (= _a3_token[x] true) (= _A4[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val true
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t24
+:comment connection 12, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _A3[x] true) (= _a3_token[x] true) (= _A4[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val true
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t25
+:comment connection 13, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B1[x] true) (= _b1_token[x] true) (= _B0[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val true
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t26
+:comment connection 13, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B1[x] true) (= _b1_token[x] true) (= _B0[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val true
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t27
+:comment connection 14, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B0[x] true) (= _b0_token[x] true) (= _B1[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val true
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t28
+:comment connection 14, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B0[x] true) (= _b0_token[x] true) (= _B1[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val true
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t29
+:comment connection 15, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B2[x] true) (= _b2_token[x] true) (= _B1[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val true
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t30
+:comment connection 15, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B2[x] true) (= _b2_token[x] true) (= _B1[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val true
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t31
+:comment connection 16, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B1[x] true) (= _b1_token[x] true) (= _B2[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val true
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t32
+:comment connection 16, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B1[x] true) (= _b1_token[x] true) (= _B2[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val true
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t33
+:comment connection 17, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B3[x] true) (= _b3_token[x] true) (= _B2[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val true
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t34
+:comment connection 17, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B3[x] true) (= _b3_token[x] true) (= _B2[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val true
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t35
+:comment connection 18, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B2[x] true) (= _b2_token[x] true) (= _B3[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val true
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t36
+:comment connection 18, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B2[x] true) (= _b2_token[x] true) (= _B3[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val true
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t37
+:comment connection 19, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B4[x] true) (= _b4_token[x] true) (= _B3[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val true
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t38
+:comment connection 19, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B4[x] true) (= _b4_token[x] true) (= _B3[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val true
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t39
+:comment connection 20, case 4a, first transition
+:transition
+:var x
+:var j
+:guard true true true true (= _B3[x] true) (= _b3_token[x] true) (= _B4[x] true)
+:numcases 2
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val true
+:val _c_token[j]
+:case (not (= j x))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t40
+:comment connection 20, case 4a, second transition
+:transition
+:var x
+:var y
+:var j
+:guard true true true true (= _B3[x] true) (= _b3_token[x] true) (= _B4[y] true)
+:numcases 3
+:case (= j x)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+:case (not (= j x)) (= j y)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val true
+:val _c_token[j]
+:case (not (= j x)) (not (= j y))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val _a0_token[j]
+:val _a1_token[j]
+:val _a2_token[j]
+:val _a3_token[j]
+:val _a4_token[j]
+:val _b0_token[j]
+:val _b1_token[j]
+:val _b2_token[j]
+:val _b3_token[j]
+:val _b4_token[j]
+:val _c_token[j]
+
+:comment transition t41
+:comment reconfiguration 1, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A0[x] false) (= _A0[x] false)
+:numcases 2
+:case (= x j)
+:val true
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val false
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t42
+:comment reconfiguration 2, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A1[x] false) (= _A1[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val true
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val false
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t43
+:comment reconfiguration 3, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A2[x] false) (= _A2[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val true
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t44
+:comment reconfiguration 4, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A3[x] false) (= _A3[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val true
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val false
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t45
+:comment reconfiguration 5, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A4[x] false) (= _A4[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val true
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val false
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t46
+:comment reconfiguration 6, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A0[x] true) (= _A0[x] true)
+:numcases 2
+:case (= x j)
+:val false
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val false
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t47
+:comment reconfiguration 7, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A1[x] true) (= _A1[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val false
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val false
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t48
+:comment reconfiguration 8, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A2[x] true) (= _A2[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val false
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t49
+:comment reconfiguration 9, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A3[x] true) (= _A3[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val false
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val false
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t50
+:comment reconfiguration 10, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _A4[x] true) (= _A4[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val false
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val false
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t51
+:comment reconfiguration 11, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B0[x] false) (= _B0[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val true
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val false
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t52
+:comment reconfiguration 12, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B1[x] false) (= _B1[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val true
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val false
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t53
+:comment reconfiguration 13, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B2[x] false) (= _B2[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val true
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val false
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t54
+:comment reconfiguration 14, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B3[x] false) (= _B3[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val true
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val false
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t55
+:comment reconfiguration 15, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B4[x] false) (= _B4[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val true
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val false
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t56
+:comment reconfiguration 16, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B0[x] true) (= _B0[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val false
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val false
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t57
+:comment reconfiguration 17, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B1[x] true) (= _B1[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val false
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val false
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t58
+:comment reconfiguration 18, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B2[x] true) (= _B2[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val false
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val false
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t59
+:comment reconfiguration 19, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B3[x] true) (= _B3[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val false
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val false
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t60
+:comment reconfiguration 20, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _B4[x] true) (= _B4[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val false
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val false
+:val (and _c_token[j] true)
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t61
+:comment reconfiguration 21, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _C[x] false) (= _C[x] false)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val true
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val false
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)
+
+:comment transition t62
+:comment reconfiguration 22, case 2, transition 1 of 1, x -> x
+:transition
+:var j
+:var x
+:guard true (= _C[x] true) (= _C[x] true)
+:numcases 2
+:case (= x j)
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val false
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val false
+:case (not (= x j))
+:val _A0[j]
+:val _A1[j]
+:val _A2[j]
+:val _A3[j]
+:val _A4[j]
+:val _B0[j]
+:val _B1[j]
+:val _B2[j]
+:val _B3[j]
+:val _B4[j]
+:val _C[j]
+:val (and _a0_token[j] true)
+:val (and _a1_token[j] true)
+:val true
+:val (and _a3_token[j] true)
+:val (and _a4_token[j] true)
+:val (and _b0_token[j] true)
+:val (and _b1_token[j] true)
+:val (and _b2_token[j] true)
+:val (and _b3_token[j] true)
+:val (and _b4_token[j] true)
+:val (and _c_token[j] true)

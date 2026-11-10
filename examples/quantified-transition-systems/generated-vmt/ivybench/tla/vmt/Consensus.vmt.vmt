@@ -1,0 +1,34 @@
+; Generated offline from ivybench/tla/vmt/Consensus.vmt
+; Source SHA-256: df56f91bf8fc82e5ee07bad4649aaf62fa98192a1fcb2d75ee254039fce5ca18
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_value 0)
+(declare-fun s__5f__5f_chosen () (Array s_value Bool))
+(declare-fun s__5f__5f_chosen_next () (Array s_value Bool))
+; source symbol: __chosen
+(define-fun link_0 () (Array s_value Bool) (! s__5f__5f_chosen :next s__5f__5f_chosen_next))
+; action: ext:choose
+(define-fun action_0 () Bool
+  (and
+    (exists ((q_4_s_V_5f__5f_fml_3a_v s_value))
+      (and
+        (forall ((q_5_s_V0 s_value))
+          (=
+            (select s__5f__5f_chosen_next q_5_s_V0)
+            (ite (= q_5_s_V0 q_4_s_V_5f__5f_fml_3a_v) true (select s__5f__5f_chosen q_5_s_V0))))
+        (forall ((q_6_s_V s_value)) (not (select s__5f__5f_chosen q_6_s_V)))))))
+(define-fun init () Bool
+  (! (and (forall ((q_3_s_V0 s_value)) (= (select s__5f__5f_chosen q_3_s_V0) false))) :init true))
+(define-fun trans () Bool (! action_0 :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_V1 s_value) (q_2_s_V2 s_value))
+        (=>
+          (and (select s__5f__5f_chosen q_1_s_V1) (select s__5f__5f_chosen q_2_s_V2))
+          (= q_1_s_V1 q_2_s_V2))))
+    :invar-property
+    0))
