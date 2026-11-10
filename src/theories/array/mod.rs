@@ -14,3 +14,5 @@ pub mod rule;
 pub(crate) mod search;
 pub(crate) mod term_index;
 pub mod transition_guard;
+
+pub(crate) mod read_support;

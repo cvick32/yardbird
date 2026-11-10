@@ -469,6 +469,9 @@ pub struct Driver<'ctx, S> {
     progress_file: Option<PathBuf>,
     profiler: Option<Profiler>,
     solver_capture: Option<SolverCapture>,
+    reuse_proved_properties: bool,
+    proved_property_instance_limit: usize,
+    split_property_checks: bool,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -635,6 +638,9 @@ impl<'ctx, S> Driver<'ctx, S> {
             progress_file: None,
             profiler: None,
             solver_capture: None,
+            reuse_proved_properties: false,
+            proved_property_instance_limit: 0,
+            split_property_checks: false,
         }
     }
 
@@ -669,6 +675,22 @@ impl<'ctx, S> Driver<'ctx, S> {
 
     pub fn with_profiler(mut self, profiler: Option<Profiler>) -> Self {
         self.profiler = profiler;
+        self
+    }
+
+    /// Reassert proved properties only at their original bounded frames.
+    pub fn with_proved_property_reuse(mut self, enabled: bool) -> Self {
+        self.reuse_proved_properties = enabled;
+        self
+    }
+
+    pub fn with_proved_property_instance_limit(mut self, limit: usize) -> Self {
+        self.proved_property_instance_limit = limit;
+        self
+    }
+
+    pub fn with_split_property_checks(mut self, enabled: bool) -> Self {
+        self.split_property_checks = enabled;
         self
     }
 
@@ -760,7 +782,10 @@ impl<'ctx, S> Driver<'ctx, S> {
             self.instantiation_strategy.clone_box(),
             profiling,
             self.solver_capture.clone(),
-        )?;
+        )?
+        .with_proved_property_reuse(self.reuse_proved_properties)
+        .with_proved_property_instance_limit(self.proved_property_instance_limit)
+        .with_split_property_checks(self.split_property_checks);
 
         // Each checkpoint retains the current step before taking the shared
         // finalization path. Individual actions are deliberately not interrupted.
@@ -801,7 +826,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                 // The concrete query is fixed at this depth, independently of
                 // the successive abstract models and valid refinement lemmas.
                 let mut concrete_rejected = false;
-                for refinement_step in 0..n_refines {
+                for refinement_step in
+                    0..n_refines.saturating_add(smt_problem.additional_property_checks())
+                {
                     progress.current_depth = Some(depth);
                     progress.current_refinement_step = Some(refinement_step);
                     progress_checkpoint.write(&progress, driver_start.elapsed(), true, false)?;
@@ -867,7 +894,9 @@ impl<'ctx, S> Driver<'ctx, S> {
                             measurement,
                         );
                     }
-                    if check_result == SolverCheckResult::Unsat {
+                    let partial_unsat = check_result == SolverCheckResult::Unsat
+                        && smt_problem.has_remaining_property_parts();
+                    if check_result == SolverCheckResult::Unsat && !partial_unsat {
                         // A completed check must be recorded even if it crossed
                         // the cooperative deadline before returning.
                         progress.record_depth_completion(depth, driver_start.elapsed());
@@ -885,6 +914,23 @@ impl<'ctx, S> Driver<'ctx, S> {
                         );
                     }
                     checkpoint!('bmc, "check", driver_record.take(), step_start);
+                    if partial_unsat {
+                        let partition_start = Instant::now();
+                        assert!(smt_problem.advance_property_partition());
+                        if let Some(mut record) = driver_record.take() {
+                            record.record_timing("property_partition", partition_start.elapsed());
+                            record.record_timing("driver_step_total", step_start.elapsed());
+                            if let Some(profiler) = &mut profiler {
+                                profiler.add_driver_record(record.finish(
+                                    "property_partition_unsat",
+                                    smt_problem.get_instantiations().len(),
+                                    smt_problem.get_number_instantiations_added(),
+                                ));
+                            }
+                        }
+                        checkpoint!('bmc, "property_partition", driver_record.take(), step_start);
+                        continue;
+                    }
                     let mut action = match check_result {
                         SolverCheckResult::Unsat => {
                             let unsat_start = Instant::now();

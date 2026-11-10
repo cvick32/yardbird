@@ -3,6 +3,7 @@
 pub enum ArrayAxiomKind {
     WriteDoesNotOverwrite,
     ReadAfterWrite,
+    ReadOverWrite,
     ConstantArray,
 }
 
@@ -11,6 +12,7 @@ impl ArrayAxiomKind {
         match self {
             Self::WriteDoesNotOverwrite => "write-does-not-overwrite",
             Self::ReadAfterWrite => "read-after-write",
+            Self::ReadOverWrite => "read-over-write",
             Self::ConstantArray => "constant-array",
         }
     }

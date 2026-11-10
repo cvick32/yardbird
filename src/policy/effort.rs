@@ -80,6 +80,12 @@ impl Default for WorkAllowance {
     }
 }
 impl WorkAllowance {
+    /// Keep half the discovery/page allowance available to ordinary search.
+    /// Zero for a one-unit budget: it cannot fairly support both producers.
+    pub(crate) fn read_frontier_reservation(&self) -> (usize, usize) {
+        (self.dependency_work / 2, self.binder_page_size / 2)
+    }
+
     fn widen(&mut self) {
         self.winners = self.winners.saturating_mul(2);
         self.binder_search_limit = self
@@ -141,6 +147,7 @@ pub struct OperationId {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationKind {
+    ReadSupport,
     PolicyCandidates,
     CountermodelCandidates,
     DiscoverDependencies,
@@ -554,9 +561,9 @@ impl ProofEffort for DefaultEffort {
                     return;
                 }
                 self.stage = match operation {
-                    OperationKind::CountermodelCandidates | OperationKind::PolicyCandidates => {
-                        self.stage
-                    }
+                    OperationKind::ReadSupport
+                    | OperationKind::CountermodelCandidates
+                    | OperationKind::PolicyCandidates => self.stage,
                     OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
                         self.dependency_slices += 1;
@@ -869,6 +876,28 @@ mod guidance_followup_tests {
                         EffortDecision::ReturnToDriver
                     ));
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod frontier_budget_tests {
+    use super::*;
+
+    #[test]
+    fn frontier_reservation_is_bounded_and_retains_ordinary_work() {
+        for work in [0, 1, 2, 3, 128, 512, usize::MAX] {
+            let allowance = WorkAllowance {
+                dependency_work: work,
+                binder_page_size: work,
+                ..Default::default()
+            };
+            let (discovery, matching) = allowance.read_frontier_reservation();
+            assert_eq!(discovery, matching);
+            assert!(discovery <= work / 2);
+            if work > 0 {
+                assert!(work - discovery > 0);
             }
         }
     }

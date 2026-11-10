@@ -98,3 +98,62 @@ impl TracedEquationSearch {
         work
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theories::quantifiers::{BinderKind, BinderRule};
+    use smt2parser::{concrete::Symbol, vmt::array_abstractor::string_to_sort};
+
+    #[test]
+    fn tiny_slices_resume_and_preserve_demanded_index_and_source_capture() {
+        let rule = BinderRule {
+            name: "q".into(),
+            kind: BinderKind::Forall,
+            captures: vec![(Symbol("a".into()), string_to_sort("Array_Int_Int"))],
+            variables: vec![(Symbol("i".into()), string_to_sort("Int"))],
+            body: "(= (Read_Int_Int a i) 7)".parse().unwrap(),
+            witnesses: vec![],
+            result_sort: string_to_sort("Bool"),
+            unit_capture: false,
+        };
+        let mut plan = QuantifierPlan::default();
+        plan.rules.push(rule);
+        // Numeral demand needs no free-symbol signature. The capture names the
+        // exact source frame, rather than an independently extracted alias.
+        let origin = CountermodelOrigin {
+            model_version: 4,
+            depth: 3,
+            node: 17,
+        };
+        let mut search = TracedEquationSearch {
+            frontiers: vec![("(Read_Int_Int arr@2 42)".parse().unwrap(), origin.clone())],
+            sources: VecDeque::from(["(q arr@2)".parse().unwrap()]),
+            compiler: None,
+            equations: None,
+            jobs: VecDeque::new(),
+        };
+        let mut requests = Vec::new();
+        assert_eq!(search.advance(&plan, 0, &mut requests), 0);
+        assert!(requests.is_empty());
+        let mut work = 0;
+        while search.pending() {
+            assert_eq!(search.advance(&plan, 1, &mut requests), 1);
+            work += 1;
+            assert!(work < 100, "continuation did not terminate");
+        }
+        assert!(work > 1);
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].request.helper, "q");
+        assert_eq!(requests[0].origin.as_ref().unwrap().node, origin.node);
+        assert!(requests[0]
+            .request
+            .bindings
+            .contains(&(Symbol("a".into()), "arr@2".parse().unwrap())));
+        assert!(requests[0]
+            .request
+            .bindings
+            .contains(&(Symbol("i".into()), "42".parse().unwrap())));
+        assert_eq!(search.advance(&plan, 10, &mut requests), 0);
+    }
+}

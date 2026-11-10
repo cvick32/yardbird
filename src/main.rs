@@ -291,6 +291,9 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             .with_profiler(options.build_profiler())
             .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
             .with_progress_file(options.progress_file.clone())
+            .with_proved_property_reuse(options.reuse_proved_properties)
+            .with_proved_property_instance_limit(options.proved_property_instance_limit)
+            .with_split_property_checks(options.split_property_checks)
             .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
@@ -337,6 +340,9 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                 .with_profiler(options.build_profiler())
                 .with_wall_timeout(options.wall_timeout_secs.map(Duration::from_secs))
                 .with_progress_file(options.progress_file.clone())
+                .with_proved_property_reuse(options.reuse_proved_properties)
+                .with_proved_property_instance_limit(options.proved_property_instance_limit)
+                .with_split_property_checks(options.split_property_checks)
                 .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);

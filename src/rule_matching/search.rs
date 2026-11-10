@@ -27,6 +27,8 @@ pub(crate) struct RuleMatch {
     pub root: egg::Id,
     pub substitution: egg::Subst,
     pub model_violation_verified: bool,
+    /// Correlated symbolic choices supplied by a theory, checked against the match.
+    pub preferred_bindings: Vec<(egg::Var, crate::terms::language::TermExpr)>,
 }
 
 #[derive(Default)]
@@ -62,6 +64,7 @@ pub(crate) fn search<N: egg::Analysis<TermLanguage>, M>(
                     root: matched.eclass,
                     substitution,
                     model_violation_verified: false,
+                    preferred_bindings: vec![],
                 })
         })
         .collect();
