@@ -356,6 +356,7 @@ pub(super) fn prepared_fixture(variable_count: usize, value_count: usize) -> Pre
     PreparedFixture {
         egraph: graph,
         search: PreparedQuantifierSearch {
+            source_captures: None,
             graph_version: 0,
             additional_terms: terms,
             representatives,
@@ -1376,4 +1377,84 @@ fn background_classification_respects_definition_parameter_shadowing() {
     let (_, plan) = lower_model(input).unwrap();
     assert!(!plan.rules.is_empty());
     assert!(plan.background_rules.is_empty());
+}
+
+#[test]
+fn scheduled_exact_preserves_ordinary_winners_and_continuations() {
+    use crate::policy::instance_selection::TermCostInstantiationRanker;
+    use crate::rule_matching::scope::CandidateScope;
+    let mut batch = ranked_binder_fixture(SearchPhase::Expand);
+    batch.candidates.truncate(1);
+    batch.candidates[0].cost = 100;
+    let ordinary = batch.candidates[0].expression.to_string();
+    batch.search.continuable_rules = vec!["ordinary-cursor".into()];
+    let mut exact = InstantiationBatch::default();
+    let mut candidate = batch.candidates[0].clone();
+    candidate.expression = "($apply p exact)".parse().unwrap();
+    candidate.cost = 0;
+    exact.candidates.push(candidate);
+    let (summary, used_exact) =
+        super::refinement::select_ordinary_then_exact(&mut batch, Some(exact), |batch| {
+            batch.prepare_with_ranker(
+                CandidateScope::AllCandidates,
+                &HashSet::<String>::new(),
+                1,
+                &TermCostInstantiationRanker,
+                |_| unreachable!(),
+                |c| Some(c.expression.to_string()),
+            )
+        })
+        .unwrap();
+    assert!(!used_exact);
+    assert_eq!(summary.selected_count(), 1);
+    assert_eq!(
+        batch.selected().next().unwrap().expression.to_string(),
+        ordinary
+    );
+    assert_eq!(batch.search.continuable_rules, ["ordinary-cursor"]);
+}
+
+#[test]
+fn scheduled_exact_fills_pages_only_after_ordinary_eligibility_checks() {
+    use crate::policy::instance_selection::TermCostInstantiationRanker;
+    use crate::rule_matching::scope::CandidateScope;
+    for reject_as_known in [false, true] {
+        let mut batch = ranked_binder_fixture(SearchPhase::Expand);
+        batch.candidates.truncate(1);
+        let ordinary = batch.candidates[0].expression.to_string();
+        batch.search.continuable_rules = vec!["ordinary-cursor".into()];
+        batch.search.budget_exhausted_rules = vec!["bounded-rule".into()];
+        let mut exact = InstantiationBatch::default();
+        let mut candidate = batch.candidates[0].clone();
+        candidate.expression = "($apply p exact)".parse().unwrap();
+        exact.candidates.push(candidate);
+        let known = if reject_as_known {
+            HashSet::from([ordinary.clone()])
+        } else {
+            HashSet::new()
+        };
+        let (summary, used_exact) =
+            super::refinement::select_ordinary_then_exact(&mut batch, Some(exact), |batch| {
+                batch.prepare_with_ranker(
+                    CandidateScope::AllCandidates,
+                    &known,
+                    1,
+                    &TermCostInstantiationRanker,
+                    |_| unreachable!(),
+                    |c| {
+                        let key = c.expression.to_string();
+                        (reject_as_known || key != ordinary).then_some(key)
+                    },
+                )
+            })
+            .unwrap();
+        assert!(used_exact);
+        assert_eq!(summary.selected_count(), 1);
+        assert_eq!(
+            batch.selected().next().unwrap().expression.to_string(),
+            "($apply p exact)"
+        );
+        assert_eq!(batch.search.continuable_rules, ["ordinary-cursor"]);
+        assert_eq!(batch.search.budget_exhausted_rules, ["bounded-rule"]);
+    }
 }

@@ -40,6 +40,27 @@ pub(crate) struct SearchContext<'a, F: TermCostFactory> {
 }
 
 impl<F: TermCostFactory> SearchContext<'_, F> {
+    /// A bounded sub-operation borrows the same graph, model and history.
+    pub fn with_allowance(&self, allowance: WorkAllowance) -> SearchContext<'_, F> {
+        SearchContext {
+            formulas: self.formulas,
+            model_version: self.model_version,
+            graph: self.graph,
+            graph_version: self.graph_version,
+            smt: self.smt,
+            term_config: self.term_config,
+            ranker: self.ranker,
+            allowance,
+            operation_id: self.operation_id,
+            pending_instances: self.pending_instances,
+            selection_counts: self.selection_counts,
+            artifact_capture: self.artifact_capture,
+            depth: self.depth,
+            refinement_step: self.refinement_step,
+            profiling: self.profiling.clone(),
+        }
+    }
+
     pub fn term_cost(
         &self,
         context: &crate::policy::term_selection::context::TermCostContext,

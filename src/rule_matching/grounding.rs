@@ -295,6 +295,7 @@ pub(crate) fn groundings<'a, N, CF>(
     subst: egg::Subst,
     egraph: &'a egg::EGraph<TermLanguage, N>,
     extractor: std::rc::Rc<TermExtractor<CF>>,
+    preferred_bindings: Vec<(egg::Var, TermExpr)>,
     context: GroundContext<'a>,
 ) -> impl Iterator<Item = GroundSubstitution> + 'a
 where
@@ -308,6 +309,17 @@ where
         if first {
             first = false;
             let mut grounding = GroundSubstitution::default();
+            for (variable, expression) in &preferred_bindings {
+                let actual = egraph.lookup_expr(expression).map(|id| egraph.find(id));
+                assert_eq!(
+                    actual,
+                    subst.get(*variable).map(|id| egraph.find(*id)),
+                    "preferred grounding must preserve the matched model class"
+                );
+                grounding
+                    .bind_source_choice(*variable, expression.clone(), egraph, &extractor, context)
+                    .expect("preferred source binding is present in the graph");
+            }
             ground_pattern(
                 pattern,
                 Some(expected_eclass),
@@ -725,5 +737,55 @@ mod tests {
             grounding.get_binding(y).unwrap().expression.to_string(),
             "b"
         );
+    }
+    #[test]
+    fn preferred_capture_survives_equivalent_extraction_and_keeps_observations() {
+        let pattern: TermPattern = "(= ?capture ?bound)".parse().unwrap();
+        let capture: egg::Var = "?capture".parse().unwrap();
+        let bound: egg::Var = "?bound".parse().unwrap();
+        let mut graph = egg::EGraph::<TermLanguage, ()>::default();
+        let original: TermExpr = "original_capture".parse().unwrap();
+        let alias = graph.add_expr(&"alias".parse().unwrap());
+        let source = graph.add_expr(&original);
+        let value = graph.add_expr(&"value".parse().unwrap());
+        graph.union(source, alias);
+        graph.rebuild();
+        let mut subst = egg::Subst::default();
+        subst.insert(capture, alias);
+        subst.insert(bound, value);
+        let extractor = std::rc::Rc::new(TermExtractor::new(
+            &graph,
+            ZeroCost,
+            TermExtractorOptions {
+                candidate_catalog: ArrayCandidateCatalog::default(),
+                candidate_scope: CandidateScope::AllCandidates,
+                refinement_step: 0,
+                selection_counts: FxHashMap::default(),
+                depth: 0,
+                profiling: None,
+            },
+        ));
+        let selected = groundings(
+            &pattern,
+            alias,
+            subst,
+            &graph,
+            extractor,
+            vec![(capture, original)],
+            GroundContext::new(
+                false,
+                "test",
+                crate::rule_matching::rule::QuantifiedRuleCategory::InputBinder,
+            ),
+        )
+        .next()
+        .unwrap();
+        assert_eq!(
+            instantiate_pattern(&pattern, &selected)
+                .unwrap()
+                .to_string(),
+            "(= original_capture value)"
+        );
+        assert_eq!(selected.selection_history().len(), 2);
     }
 }

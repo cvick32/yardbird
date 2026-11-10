@@ -181,6 +181,7 @@ fn search_binder_rule_page<N: egg::Analysis<TermLanguage>>(
                     .id,
                 substitution: egg::Subst::default(),
                 model_violation_verified: false,
+                preferred_bindings: vec![],
             }],
             report: RuleSearchReport {
                 returned_substitutions: 1,

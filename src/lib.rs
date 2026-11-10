@@ -244,6 +244,22 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guidance_work: Option<usize>,
 
+    /// Try exact instances inside the binder work selected by guided search.
+    /// Preserves the guided operation schedule; requires --policy countermodel-guided.
+    #[arg(long, requires = "policy")]
+    #[serde(default)]
+    pub guided_exact_grounding: bool,
+
+    /// Prefer intact source capture tuples when grounding quantified rules.
+    #[arg(long, requires = "policy")]
+    #[serde(default)]
+    pub guided_source_captures: bool,
+
+    /// Reserve discovery work for traced reads and prefer their quantifier tuples.
+    #[arg(long, requires = "policy")]
+    #[serde(default)]
+    pub guided_read_frontiers: bool,
+
     /// Order of quantified transition explanations (default: predecessor-first).
     /// Requires --policy countermodel-guided.
     #[arg(long, value_enum, requires = "policy")]
@@ -356,6 +372,9 @@ impl Default for YardbirdOptions {
             countermodel_trace_work: 0,
             guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
             guidance_work: None,
+            guided_exact_grounding: false,
+            guided_source_captures: false,
+            guided_read_frontiers: false,
             guidance_transition_order: None,
             guidance_action_requirements: None,
             prefer_axioms: false,
@@ -548,6 +567,21 @@ impl YardbirdOptions {
 
     /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
     pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.guided_read_frontiers
+                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            "--guided-read-frontiers requires --policy countermodel-guided"
+        );
+        anyhow::ensure!(
+            !self.guided_exact_grounding
+                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            "--guided-exact-grounding requires --policy countermodel-guided"
+        );
+        anyhow::ensure!(
+            !self.guided_source_captures
+                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            "--guided-source-captures requires --policy countermodel-guided"
+        );
         if self.guidance_transition_order.is_some() || self.guidance_action_requirements.is_some() {
             anyhow::ensure!(
                 self.policy == Some(policy::NamedPolicy::CountermodelGuided),
@@ -1175,6 +1209,69 @@ mod option_tests {
         assert_eq!(
             options.guidance_schedule,
             policy::effort::GuidanceSchedule::Supplement
+        );
+    }
+
+    #[test]
+    fn guided_exact_grounding_requires_guided_policy() {
+        let mut run = YardbirdOptions::default();
+        run.filename = Some("test.vmt".into());
+        run.guided_exact_grounding = true;
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::GermanFast);
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::CountermodelGuided);
+        assert!(run.validate_countermodel_trace_options().is_ok());
+        let mut old = serde_json::to_value(&run).unwrap();
+        old.as_object_mut()
+            .unwrap()
+            .remove("guided_exact_grounding");
+        assert!(
+            !serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .guided_exact_grounding
+        );
+    }
+
+    #[test]
+    fn guided_source_captures_requires_guided_policy_and_defaults_off() {
+        let mut run = YardbirdOptions::default();
+        run.filename = Some("test.vmt".into());
+        assert!(!run.guided_source_captures);
+        run.guided_source_captures = true;
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::GermanFast);
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::CountermodelGuided);
+        assert!(run.validate_countermodel_trace_options().is_ok());
+        let mut old = serde_json::to_value(&run).unwrap();
+        old.as_object_mut()
+            .unwrap()
+            .remove("guided_source_captures");
+        assert!(
+            !serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .guided_source_captures
+        );
+    }
+
+    #[test]
+    fn guided_read_frontiers_requires_guided_policy_and_defaults_off() {
+        let mut run = YardbirdOptions::default();
+        run.filename = Some("test.vmt".into());
+        assert!(!run.guided_read_frontiers);
+        run.guided_read_frontiers = true;
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::GermanFast);
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::CountermodelGuided);
+        assert!(run.validate_countermodel_trace_options().is_ok());
+        let mut old = serde_json::to_value(&run).unwrap();
+        old.as_object_mut().unwrap().remove("guided_read_frontiers");
+        assert!(
+            !serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .guided_read_frontiers
         );
     }
 

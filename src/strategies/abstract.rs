@@ -209,6 +209,21 @@ where
         }
     }
 
+    pub(crate) fn with_guided_read_frontiers(mut self, enabled: bool) -> Self {
+        self.quantifier.read_frontiers = enabled;
+        self
+    }
+
+    pub(crate) fn with_guided_source_captures(mut self, enabled: bool) -> Self {
+        self.quantifier.source_captures = enabled;
+        self
+    }
+
+    pub fn with_guided_exact_grounding(mut self, enabled: bool) -> Self {
+        self.quantifier.exact_grounding = enabled;
+        self
+    }
+
     pub fn with_countermodel_trace_work(mut self, work: usize) -> Self {
         self.countermodel_trace_work = work;
         self
@@ -432,7 +447,13 @@ where
                         .collect(),
                 ));
                 self.array = prepared.array;
+                let exact_grounding = self.quantifier.exact_grounding;
+                let source_captures = self.quantifier.source_captures;
+                let read_frontiers = self.quantifier.read_frontiers;
                 self.quantifier = prepared.quantifier;
+                self.quantifier.exact_grounding = exact_grounding;
+                self.quantifier.source_captures = source_captures;
+                self.quantifier.read_frontiers = read_frontiers;
                 self.ownership = prepared.ownership;
                 self.prepared_theory = Some(prepared.theory);
                 prepared.model

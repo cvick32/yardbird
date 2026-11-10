@@ -14,12 +14,15 @@ use smt2parser::{
 
 use crate::terms::language::TermLanguage;
 mod compiled_rule;
+mod demanded_indices;
 pub(crate) mod eager;
+pub(crate) mod ground;
 mod lowering;
 pub mod provenance;
 pub(crate) mod refinement;
 mod rule;
 pub(crate) mod search;
+mod source_captures;
 pub mod transition_guard;
 #[cfg(test)]
 use lowering::lower_model;
@@ -483,6 +486,7 @@ impl QuantifierPlan {
         );
         Ok(PreparedQuantifierSearch {
             graph_version: 0,
+            source_captures: None,
             additional_terms: graph.terms.clone(),
             representatives: graph.representatives(),
             evaluations: graph.evaluations.clone(),
@@ -505,6 +509,7 @@ struct CompiledBinderRules {
 }
 
 pub(crate) struct PreparedQuantifierSearch {
+    source_captures: Option<source_captures::SourceCaptures>,
     graph_version: u64,
     additional_terms: Vec<crate::terms::language::TermExpr>,
     representatives: HashMap<egg::Id, crate::terms::language::TermExpr>,
@@ -591,6 +596,14 @@ impl PreparedQuantifierSearch {
             .map(|i| (i, rules[i].metadata().name().to_owned()))
             .collect()
     }
+    /// Source helper selected by this compiled page, independent of its signed path.
+    pub(crate) fn rule_helper(&self, phase: SearchPhase, index: usize) -> &str {
+        match self.compiled.phases[&phase][index].metadata().provenance() {
+            crate::rule_matching::rule::QuantifiedRuleProvenance::InputBinder { helper } => helper,
+            _ => unreachable!("compiled binder pages have binder provenance"),
+        }
+    }
+
     /// Symbolic identity for a compiled alternative in observation records.
     /// Unlike a cursor index, this distinguishes the formula and signed path.
     pub(crate) fn rule_description(&self, phase: SearchPhase, index: usize) -> String {
@@ -646,10 +659,16 @@ impl PreparedQuantifierSearch {
             .transpose()?;
         if let (Some(request), Some((_, allowance))) = (request, page) {
             let state = self.requests.get_mut(request).unwrap();
-            if state.allowance != Some(allowance) {
+            // A smaller first page can reserve work for demanded indices.
+            // Changing chunk width does not invalidate the continuation offset.
+            let previous = state.allowance.map(|mut previous| {
+                previous.binder_page_size = allowance.binder_page_size;
+                previous
+            });
+            if previous != Some(allowance) {
                 state.cursor = Default::default();
-                state.allowance = Some(allowance);
             }
+            state.allowance = Some(allowance);
         }
         let profiling = options.instrumentation.profiling.clone();
         let rules = match &requested_rule {
@@ -850,6 +869,15 @@ impl PreparedQuantifierSearch {
                     .iter()
                     .filter_map(|(_, term)| egraph.lookup_expr(term).map(|id| egraph.find(id))),
             );
+            if let Some(captures) = &self.source_captures {
+                candidate.preferred_bindings =
+                    captures.preferred(rule, &candidate.substitution, egraph);
+                if !candidate.preferred_bindings.is_empty() {
+                    count("source_capture_groundings");
+                    // Keep validation independent of representative preferences.
+                    candidate.model_violation_verified = false;
+                }
+            }
             kept.push(candidate);
         }
         matched.matches = kept;
