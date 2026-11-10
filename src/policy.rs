@@ -12,6 +12,7 @@ pub(crate) mod instantiation;
 pub mod llm;
 mod prefer_axioms;
 pub mod random;
+pub(crate) mod read_support;
 pub mod term_selection;
 use crate::auxiliary_synthesis::ConditionalHistory;
 use crate::instance_installation::full_unroll::FullUnrollStrategy;
@@ -103,31 +104,42 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
             ..Default::default()
         },
     );
+    let ordinary = DefaultEffort::default()
+        .with_prefer_axioms(run.prefer_axioms)
+        .with_countermodel_refinement(true)
+        .with_guidance_work(run.guidance_work.unwrap_or(1024))
+        .with_allowance(effort::WorkAllowance {
+            guidance_action_requirements: run
+                .guidance_action_requirements
+                .unwrap_or(effort::ActionRequirementGuidance::WhenUnproductive),
+            guidance_transition_order: run
+                .guidance_transition_order
+                .unwrap_or(effort::GuidanceTransitionOrder::PredecessorFirst),
+            ..Default::default()
+        })
+        .with_guidance_followup(followup)
+        .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
+        .with_winners_per_group(20);
     let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
-        .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker))
-        .with_effort(
-            DefaultEffort::default()
-                .with_prefer_axioms(run.prefer_axioms)
-                .with_countermodel_refinement(true)
-                .with_guidance_work(run.guidance_work.unwrap_or(1024))
-                .with_allowance(effort::WorkAllowance {
-                    guidance_action_requirements: run
-                        .guidance_action_requirements
-                        .unwrap_or(effort::ActionRequirementGuidance::WhenUnproductive),
-                    guidance_transition_order: run
-                        .guidance_transition_order
-                        .unwrap_or(effort::GuidanceTransitionOrder::PredecessorFirst),
-                    ..Default::default()
-                })
-                .with_guidance_followup(followup)
-                .with_egraph_builder(Box::<SourceThenFullEGraphBuilder>::default())
-                .with_winners_per_group(20),
-        );
+        .with_instantiation_ranker(Box::new(PreferSourceInstantiationRanker));
+    let policy = if run.guided_read_support {
+        policy.with_effort(read_support::ReadSupportEffort::new(
+            ordinary,
+            effort::WorkAllowance {
+                dependency_work: 2048,
+                winners: 20,
+                ..Default::default()
+            },
+        ))
+    } else {
+        policy.with_effort(ordinary)
+    };
     let policy = run.configure_eager_policy(policy);
     let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
         .with_guided_exact_grounding(run.guided_exact_grounding)
         .with_guided_source_captures(run.guided_source_captures)
         .with_guided_read_frontiers(run.guided_read_frontiers)
+        .with_guided_read_support(run.guided_read_support)
         .with_countermodel_trace_work(run.countermodel_trace_work)
         .with_artifact_capture(run.build_array_artifact_capture())
         .with_theory_selection(run.theory.clone())

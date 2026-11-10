@@ -260,6 +260,11 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guided_read_frontiers: bool,
 
+    /// Retain a bounded pool of source-index quantifier and array support instances.
+    #[arg(long, requires = "policy")]
+    #[serde(default)]
+    pub guided_read_support: bool,
+
     /// Order of quantified transition explanations (default: predecessor-first).
     /// Requires --policy countermodel-guided.
     #[arg(long, value_enum, requires = "policy")]
@@ -375,6 +380,7 @@ impl Default for YardbirdOptions {
             guided_exact_grounding: false,
             guided_source_captures: false,
             guided_read_frontiers: false,
+            guided_read_support: false,
             guidance_transition_order: None,
             guidance_action_requirements: None,
             prefer_axioms: false,
@@ -567,6 +573,11 @@ impl YardbirdOptions {
 
     /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
     pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.guided_read_support
+                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            "--guided-read-support requires --policy countermodel-guided"
+        );
         anyhow::ensure!(
             !self.guided_read_frontiers
                 || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
@@ -1272,6 +1283,26 @@ mod option_tests {
             !serde_json::from_value::<YardbirdOptions>(old)
                 .unwrap()
                 .guided_read_frontiers
+        );
+    }
+
+    #[test]
+    fn guided_read_support_requires_guided_policy_and_defaults_off() {
+        let mut run = YardbirdOptions::default();
+        run.filename = Some("test.vmt".into());
+        assert!(!run.guided_read_support);
+        run.guided_read_support = true;
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::GermanFast);
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.policy = Some(policy::NamedPolicy::CountermodelGuided);
+        assert!(run.validate_countermodel_trace_options().is_ok());
+        let mut old = serde_json::to_value(&run).unwrap();
+        old.as_object_mut().unwrap().remove("guided_read_support");
+        assert!(
+            !serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .guided_read_support
         );
     }
 

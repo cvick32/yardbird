@@ -147,6 +147,7 @@ pub struct OperationId {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationKind {
+    ReadSupport,
     PolicyCandidates,
     CountermodelCandidates,
     DiscoverDependencies,
@@ -560,9 +561,9 @@ impl ProofEffort for DefaultEffort {
                     return;
                 }
                 self.stage = match operation {
-                    OperationKind::CountermodelCandidates | OperationKind::PolicyCandidates => {
-                        self.stage
-                    }
+                    OperationKind::ReadSupport
+                    | OperationKind::CountermodelCandidates
+                    | OperationKind::PolicyCandidates => self.stage,
                     OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
                         self.dependency_slices += 1;

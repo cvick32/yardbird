@@ -41,7 +41,10 @@ impl ArrayInstantiationSchema {
                             ("idx".into(), index.clone()),
                             ("val".into(), value.clone()),
                         ]);
-                        if kind == ArrayAxiomKind::WriteDoesNotOverwrite {
+                        if matches!(
+                            kind,
+                            ArrayAxiomKind::WriteDoesNotOverwrite | ArrayAxiomKind::ReadOverWrite
+                        ) {
                             slots.insert("c".into(), index.clone());
                         }
                         slots
