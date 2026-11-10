@@ -148,8 +148,73 @@ Library callers select `yardbird::policy::NamedPolicy::GermanFast` and call
 `build_plan(&run_options)`. The returned plan supplies the solver, instantiation
 strategy, proof strategy and optional synthesis extension to execute.
 
+`--policy countermodel-guided --guided-exact-grounding --theory array,quantifiers`
+adds typed source-term grounding within existing guided binder requests, preserving
+the guidance/supplement schedule and independent instance validation. It remains
+opt-in: in the 30-case experiment it gained one completed check on
+`ring_leader_election` (9 versus 8), but lost one on `client_server_db_ae` and two on
+`flash-coherence`. It is useful for that individual depth gain, not a general default.
+
+`--policy countermodel-guided --guided-read-support --theory array,quantifiers`
+adds a runtime source-index support pool. It interleaves instances of
+single-variable universal binders whose variable indexes an array read with
+ground array axioms, including stores exposed by quantified bodies. Satisfied
+instances stay available across models; only validated violations are installed.
+Source indices are frozen at each BMC depth, so generated reads cannot feed back
+into this pool. The prelude generates at most 2,048 instances per model and yields
+every eighth refinement to ordinary guided search. Other binder shapes and
+scalar/domain axioms remain available through ordinary search.
+
+Array support uses complete equations:
+`Read(Write(a, i, v), j) = ite(i = j, v, Read(a, j))`.
+The constructor's own index keeps its read-after-write equation, without an
+additional equivalent ITE equation. This optional runtime refinement keeps both
+theories in Yardbird and performs no input preprocessing.
+
+`--reuse-proved-properties` retains each UNSAT-checked property at its original
+BMC frame when advancing to the next depth. It preserves the proved formula's
+source vocabulary for subsequent Yardbird search. No formula is shifted to a
+future frame, and bounded proofs are never treated as inductive invariants.
+Assertions are deferred until unrolling, preserving access to the preceding
+UNSAT core. This VMT-only experiment defaults off and works with either property
+check mechanism. It does not change theory ownership or search scheduling.
+Adding `--proved-property-instance-limit 512` also generates up to 512 ground
+instances per depth from previously proved universal properties, using typed
+source indices. Only fresh property witnesses recorded by Herbrandization are
+substituted; state terms retain the proved frame. This is disabled when auxiliary
+property restrictions are present. Generated terms do not enter the source pool,
+and no universal formula is delegated to the backend.
+
+`--split-property-checks` checks positive top-level property conjuncts in source
+order under the countermodel-guided policy. After each UNSAT result, its proved
+conjunct is shared at the same frame with subsequent checks. When enabled,
+proved-property instances share the existing per-depth instance budget. A depth
+is completed only after every conjunct passes; a SAT or unknown part receives no
+depth credit. Disjunctions, guarded formulas, and binders are not split. This
+VMT-only experiment defaults off and keeps theory ownership unchanged.
+
+`--policy countermodel-guided --guided-read-frontiers --theory array,quantifiers`
+reserves half the dependency-discovery work for unresolved traced reads and
+tries their exact-index quantifier requests before ordinary candidates. At most
+four requests share half the binder-page budget; ordinary binder pages also
+prefer typed indices observed in traced reads, with half their page reserved
+for fallback. Unused discovery work returns
+to ordinary search. The existing guidance/supplement schedule and independent
+model validation remain in force. This experimental option defaults off and can
+be combined with `--guided-source-captures`.
+
+`--policy countermodel-guided --guided-source-captures --theory array,quantifiers`
+prefers one intact source helper's captured arguments when grounding a matched
+quantifier. Every capture must match its model class; arguments are never mixed
+between helper applications. Explicit request bindings stay literal, and helpers
+without a matching source tuple retain ordinary extraction. Quantified variables
+still use ordinary term selection. Candidate validation runs again after this
+preference, and guided scheduling is unchanged. This opt-in experiment targets
+synthetic helper/witness churn without handing either theory to the backend.
+Profiling records `source_capture_groundings` per binder.
+
 For an axiom-first ablation, add `--prefer-axioms` to the abstract VMT strategy
-or either named policy. Each solver model gets a bounded pass over array axioms
+or these named policies. Each solver model gets a bounded pass over array axioms
 and quantified background assertions before the existing search resumes:
 
 ```bash

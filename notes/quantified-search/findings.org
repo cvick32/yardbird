@@ -1,0 +1,187 @@
+#+TITLE: Quantified transition-system search: findings and retained changes
+
+* Cleanup preservation results
+These are fresh runs of the cleaned code based on main e493e48, compared with the
+archived references. Build: release --no-default-features; target checks 0-19;
+500s per run; one sequential repetition; profiles and solver journals disabled.
+Both arrays and quantifiers stay in Yardbird in all cleanup runs.
+
+| Configuration / case | Before cleanup | After cleanup | Time to same final check, before -> after |
+|----------------------+----------------+---------------+------------------------------------------|
+| Guided, full 30-case suite | 6/30 full; 336/600 checks | 6/30 full; 336/600 checks | See cleanup-comparison.csv |
+| Tomasulo, retained optimized options | 7 checks | 7 checks | 181.728s -> 179.120s |
+| Ring leader, exact grounding | 9 checks | 9 checks | 423.858s -> 417.584s |
+
+Every per-case guided depth count is maintained. Ordinary guided Tomasulo still
+completes 3 checks, versus 7 with the retained options; ordinary guided ring
+leader completes 8, versus 9 with exact grounding. The archived Z3 references
+remain 3/30 full completions and 308/600 checks on the suite, and 6 checks on
+Tomasulo. Z3 was not rerun for this cleanup-only preservation check.
+
+Paxos (495.952s) and toy_consensus_forall (497.832s) completed their last checks
+close to the cutoff. Their references were 487.296s and 487.573s respectively;
+these small slowdowns did not lose depth, but the margins are narrow. All timing
+comparisons are single repetitions, so do not infer a statistically robust
+speedup from small differences. No unbounded proof is claimed.
+
+cleanup-evidence.jsonl preserves raw progress and commands for the 32 runs;
+cleanup-comparison.csv compares each case with its reference. cleanup-audit.jsonl
+records the build environment, binary hash, code hashes, and passing checks.
+
+A subsequent Clippy cleanup named a tuple type and removed a redundant local
+binding. The rebuilt release executable has identical machine code, section
+addresses, and runtime data except four diagnostic line numbers shifted by one;
+its build ID also changes. The audit records both binary hashes and these four
+locations. Workspace Clippy with warnings denied and formatting checks pass.
+The cleanup benchmark results therefore apply to the same executable solver code.
+
+* Scope and measurement
+Both array axioms and input quantifiers remain in Yardbird for every guided
+configuration. Native Z3 is the comparison. No preprocessing change is proposed.
+A completed check means the entire property at one bounded depth was UNSAT.
+Depth 20 means completing checks 0 through 19; it is not an unbounded proof.
+Timeouts retain only completed checks within the wall budget.
+
+The archived-results.csv table includes per-case coverage; archived-depths.csv
+contains completion times for each check. archived-evidence.jsonl contains the
+run dates, source revisions, binary/input hashes, configurations, and compact
+results. Dirty source revisions alone do not identify the experimental build:
+use the binary hash and archived run directory together. Raw solver journals,
+full source snapshots and binaries remain in local benchmark_results/. They are
+not included in the PR. Early screening runs use different limits; consult each
+run's metadata before comparing them with depth-20/500-second confirmations.
+
+The historical user result at commit 1f5d246 (six full completions) has not been
+reproduced here. Matching its flags on another commit does not reproduce it.
+All timing claims below describe individual sequential runs, release builds with
+--no-default-features, with profiles and journals disabled for confirmation.
+Small timing differences are not established statistical improvements.
+
+* Earlier hybrid comparison
+A nine-case screening subset with a 10-second budget compared Yardbird arrays
+plus native Z3 quantifiers against native Z3. At depth 5, three repetitions
+completed 27/27 hybrid runs and 24/27 Z3 runs. At depth 10, both completed 3/9
+cases in one repetition. These screening results use their recorded inputs and
+limits; they are separate from the later 30-case encoded suite. They motivate
+separating the two theories, but do not satisfy the goal of keeping both in
+Yardbird and are not used as preservation targets for this PR.
+
+* Broad-suite context before cleanup
+The model-join comparison used all 30 encoded protocol inputs, depth 20, 500s:
+
+| Configuration | Completed cases | Completed checks / 600 |
+|---------------+-----------------+------------------------|
+| Guided 4096   |               6 |                    336 |
+| Model joins   |               6 |                    336 |
+| Native Z3     |               3 |                    308 |
+
+The six guided completions were database_chain_replication, decentralized_lock,
+distributed_lock, german, lock_server_sync, and two_phase_commit. Completion
+counts and partial coverage both matter; these totals do not establish that the
+Tomasulo-specific options help every benchmark.
+
+* Retained options
+- Source captures: preserve an intact helper argument tuple through extraction.
+  In the earlier Tomasulo run, time through check 2 fell from 35.85s to 20.41s.
+  Literal request bindings remain literal and every candidate is revalidated.
+- Read frontiers: the combined capture/frontier run reached check 2 in 16.62s
+  versus guided 36.07s. Reserve bounded discovery work and prefer demanded read indices
+  inside the existing guided schedule; retain ordinary fallback work.
+- Read support: interleave relevant single-variable universal instances and
+  complete read-over-write equations over frozen source indices. Preserve
+  satisfied candidates across models and validate again before installation.
+  The former read-binder and complete-read switches are folded into this option.
+- Proved-property reuse and certified instances: retain the original proved
+  frame. Substitute only recorded arbitrary property witnesses, with a shared
+  per-depth budget and exclusions for auxiliary property restrictions.
+- Property splitting: prove positive top-level conjuncts in source order and
+  share proved conjuncts at the same frame. Count a depth only after all pass.
+- Scheduled exact grounding: retain as opt-in at the user's request. In its full
+  suite it gains ring_leader_election 8 -> 9 checks, but loses client_server_db_ae
+  12 -> 11 and flash-coherence 12 -> 10. Ordinary validated selections take precedence.
+  Overall coverage is 334 versus guided 336, so this is not a default choice.
+
+* Tomasulo progression
+The CSV files retain paired runs and their individual timings. The final
+pre-cleanup comparison was:
+
+| Configuration          | Completed checks | Seconds through check 5 | Seconds through check 6 |
+|------------------------+------------------+-------------------------+-------------------------|
+| Proved instances       |                7 |                  69.696 |                 213.863 |
+| Plus property splitting|                7 |                  53.187 |                 181.728 |
+| Native Z3              |                6 |                  54.610 |                       - |
+
+Splitting reduced time through check 6 by about 15% in that run. It did not gain
+a further completed depth. The 53.2s versus 54.6s comparison is too close to
+claim a robust timing win. Yardbird's extra completed check is the clearer gain.
+Earlier steps moved guided search from three checks to six with read support,
+then to seven with proved universal instances. The remaining check-7 stall is
+in a ground solver query: the diagnostic reported about 71 million added
+equalities and 30 million propagations, without native array axioms or QIs.
+Diagnostic solver limits/build settings differ from confirmation timings.
+
+* Removed experiments
+Cross-rule and dependency batching did not retain compelling gains. Standalone
+broad grounding was dominated by ordinary guided search. Model-indexed joins
+and extraction caching preserved total depth coverage without a meaningful,
+robust runtime improvement. Model replay increased ground work. Their optional
+implementations and switches are removed; their evidence remains archived.
+The standalone ground-binder policy is removed independently of the retained
+scheduled exact-grounding option.
+
+* Review and validation
+Review covers model-local cache lifetimes, source-only index growth, literal
+bindings, independent candidate validation, original-frame property reuse,
+property-part activation, and timeout depth accounting. Regression tests cover
+unsafe later property conjuncts, later-frame counterexamples, typed witness
+substitution, read support, scheduling fallback, and benchmark progress parsing.
+Review also fixed true-to-false builder toggling for property splitting and
+store discovery through attributed quantified bodies. Read support is reset when
+a strategy is configured for a new problem, preventing stale instances from
+crossing problem boundaries at the same depth. The benchmark harness now hashes
+staged edits as well as unstaged edits.
+
+Cleanup validation completed before committing: 500 unit tests on the main-based
+checkout, 15 integration tests, and 10 Python tests passed. The binary, all 288
+Rust/build source files, all 30 input hashes, and baseline flags were checked.
+All 30 guided cases preserved their completed-check counts; no case lost a depth.
+The focused Tomasulo and exact-grounding ring-leader gains were also preserved.
+The two later unsafe-property integration scenarios run with splitting both off
+and on. Captured integration solver sessions contain no native arrays or QIs.
+
+* Archived per-benchmark coverage
+These are the paired model-join-suite baselines, before cleanup. Each column
+counts complete checks out of 20; timeout prefixes are included.
+
+| Benchmark | Guided | Z3 |
+|-----------+--------+----|
+| chord_ring_maintenance | 2 | 3 |
+| client_server_ae | 17 | 13 |
+| client_server_db_ae | 12 | 11 |
+| consensus_epr | 13 | 10 |
+| consensus_forall | 12 | 9 |
+| consensus_wo_decide | 11 | 9 |
+| database_chain_replication | 20 | 8 |
+| decentralized_lock | 20 | 20 |
+| distributed_lock | 20 | 20 |
+| fast_paxos | 3 | 4 |
+| flash-coherence | 12 | 11 |
+| flexible_paxos | 10 | 8 |
+| german | 20 | 17 |
+| hybrid_reliable_broadcast | 1 | 4 |
+| learning_switch_quad | 5 | 6 |
+| learning_switch_ternary | 7 | 9 |
+| lock_server_async | 15 | 11 |
+| lock_server_sync | 20 | 11 |
+| multi_paxos | 6 | 7 |
+| paxos | 8 | 8 |
+| ring_leader_election | 8 | 8 |
+| sharded_key_value_store | 7 | 9 |
+| sharded_kv_no_lost_keys | 3 | 6 |
+| stoppable_paxos | 7 | 6 |
+| ticket_lock | 16 | 18 |
+| tomasulo | 3 | 6 |
+| toy_consensus_epr | 15 | 13 |
+| toy_consensus_forall | 15 | 13 |
+| two_phase_commit | 20 | 20 |
+| vertical_paxos | 8 | 10 |
