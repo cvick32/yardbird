@@ -265,6 +265,22 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guided_read_support: bool,
 
+    /// Reassert proved bounded properties at their original frames before advancing.
+    #[arg(long)]
+    #[serde(default)]
+    pub reuse_proved_properties: bool,
+
+    /// Bound source-index instances of previously proved universal properties per depth.
+    /// Zero disables this experiment; only fresh property witnesses are substituted.
+    #[arg(long, default_value = "0", requires = "reuse_proved_properties")]
+    #[serde(default)]
+    pub proved_property_instance_limit: usize,
+
+    /// Check positive top-level property conjuncts separately, sharing their proofs.
+    #[arg(long, requires = "policy")]
+    #[serde(default)]
+    pub split_property_checks: bool,
+
     /// Order of quantified transition explanations (default: predecessor-first).
     /// Requires --policy countermodel-guided.
     #[arg(long, value_enum, requires = "policy")]
@@ -381,6 +397,9 @@ impl Default for YardbirdOptions {
             guided_source_captures: false,
             guided_read_frontiers: false,
             guided_read_support: false,
+            reuse_proved_properties: false,
+            proved_property_instance_limit: 0,
+            split_property_checks: false,
             guidance_transition_order: None,
             guidance_action_requirements: None,
             prefer_axioms: false,
@@ -522,6 +541,10 @@ impl YardbirdOptions {
 
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
         anyhow::ensure!(
+            !self.split_property_checks,
+            "--split-property-checks is currently supported only for VMT inputs"
+        );
+        anyhow::ensure!(
             matches!(&self.theory, TheorySelection::Auto)
                 || self.theory == TheorySelection::Explicit(vec![Theory::Array]),
             "theory ownership selection is currently supported only for VMT inputs"
@@ -529,6 +552,14 @@ impl YardbirdOptions {
         anyhow::ensure!(
             self.wall_timeout_secs.is_none(),
             "--wall-timeout-secs is currently supported only for VMT inputs"
+        );
+        anyhow::ensure!(
+            !self.reuse_proved_properties,
+            "--reuse-proved-properties is currently supported only for VMT inputs"
+        );
+        anyhow::ensure!(
+            self.proved_property_instance_limit == 0,
+            "--proved-property-instance-limit is currently supported only for VMT inputs"
         );
         if self.synthesis_trigger != SynthesisTrigger::Off {
             anyhow::bail!(
@@ -573,6 +604,15 @@ impl YardbirdOptions {
 
     /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
     pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.split_property_checks
+                || matches!(self.policy, Some(policy::NamedPolicy::CountermodelGuided)),
+            "--split-property-checks requires --policy countermodel-guided"
+        );
+        anyhow::ensure!(
+            self.proved_property_instance_limit == 0 || self.reuse_proved_properties,
+            "--proved-property-instance-limit requires --reuse-proved-properties"
+        );
         anyhow::ensure!(
             !self.guided_read_support
                 || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
@@ -1303,6 +1343,26 @@ mod option_tests {
             !serde_json::from_value::<YardbirdOptions>(old)
                 .unwrap()
                 .guided_read_support
+        );
+    }
+
+    #[test]
+    fn proved_property_reuse_defaults_off_and_requires_vmt() {
+        let mut run = YardbirdOptions::default();
+        assert!(!run.reuse_proved_properties);
+        assert_eq!(run.proved_property_instance_limit, 0);
+        run.proved_property_instance_limit = 512;
+        assert!(run.validate_countermodel_trace_options().is_err());
+        run.reuse_proved_properties = true;
+        assert!(run.validate_smtlib_mode().is_err());
+        let mut old = serde_json::to_value(&run).unwrap();
+        old.as_object_mut()
+            .unwrap()
+            .remove("reuse_proved_properties");
+        assert!(
+            !serde_json::from_value::<YardbirdOptions>(old)
+                .unwrap()
+                .reuse_proved_properties
         );
     }
 

@@ -30,6 +30,14 @@ pub trait ProofStrategy<'ctx, S> {
         model
     }
 
+    /// Fresh, unconstrained constants introduced for a purely universal property.
+    /// Only these constants may be substituted when reusing a bounded proof.
+    fn universal_property_witnesses(
+        &self,
+    ) -> Vec<(smt2parser::concrete::Symbol, smt2parser::concrete::Sort)> {
+        vec![]
+    }
+
     fn configuration_error(&self) -> Option<&str> {
         None
     }

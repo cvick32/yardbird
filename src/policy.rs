@@ -11,6 +11,7 @@ pub mod instance_selection;
 pub(crate) mod instantiation;
 pub mod llm;
 mod prefer_axioms;
+pub(crate) mod property_checks;
 pub mod random;
 pub(crate) mod read_support;
 pub mod term_selection;

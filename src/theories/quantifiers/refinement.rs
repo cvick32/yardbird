@@ -17,6 +17,7 @@ pub(crate) struct QuantifierRefinement {
     pub(crate) provenance: crate::theories::quantifiers::provenance::QuantifierProvenance,
     pub(crate) configuration_error: Option<String>,
     pub(crate) owns_quantifiers: bool,
+    pub(crate) property_witnesses: Vec<smt2parser::concrete::Symbol>,
     pub(crate) exact_grounding: bool,
     pub(crate) source_captures: bool,
     pub(crate) read_frontiers: bool,
@@ -97,6 +98,10 @@ impl QuantifierRefinement {
                 }
             };
         let (model, bindings) = model.herbrandize_universal_property_with_bindings();
+        self.property_witnesses = bindings
+            .iter()
+            .map(|(_, witness)| witness.clone())
+            .collect();
         self.provenance.record_property_witnesses(&bindings);
         let herbrand_witnesses = bindings.len();
         if herbrand_witnesses > 0 {

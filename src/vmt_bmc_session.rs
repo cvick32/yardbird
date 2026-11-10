@@ -70,6 +70,19 @@ pub struct VmtBmcSession {
     trans_assertion: Term,
     property_assertion: Term,
     property_check_mode: PropertyCheckMode,
+    reuse_proved_properties: bool,
+    pending_proved_property: Option<Term>,
+    proved_property_instance_limit: usize,
+    proved_properties_added: u64,
+    proved_property_instances_added: u64,
+    proved_instances_this_depth: usize,
+    split_property_checks: bool,
+    property_parts: Vec<Term>,
+    property_part: usize,
+    last_property_result: Option<SolverCheckResult>,
+    proved_property_parts: u64,
+    proved_property_instances:
+        crate::theories::quantifiers::proved_properties::ProvedPropertyInstances,
     property_activation_assertions: Vec<Term>,
     property_activation_revisions: BTreeMap<u16, u32>,
     current_property_assumption: Option<Term>,
@@ -219,6 +232,21 @@ impl VmtBmcSession {
             trans_assertion,
             property_assertion,
             property_check_mode,
+            reuse_proved_properties: false,
+            pending_proved_property: None,
+            proved_property_instance_limit: 0,
+            proved_properties_added: 0,
+            proved_property_instances_added: 0,
+            proved_instances_this_depth: 0,
+            split_property_checks: false,
+            property_parts: vec![],
+            property_part: 0,
+            last_property_result: None,
+            proved_property_parts: 0,
+            proved_property_instances:
+                crate::theories::quantifiers::proved_properties::ProvedPropertyInstances::new(
+                    strategy.universal_property_witnesses(),
+                ),
             property_activation_assertions: vec![],
             property_activation_revisions: BTreeMap::new(),
             current_property_assumption: None,
@@ -413,10 +441,16 @@ impl VmtBmcSession {
         self.current_property_assumption = None;
         self.current_property_assumption_depth = None;
 
+        self.property_parts = crate::policy::property_checks::parts(
+            &self.subterm_handler.get_property_assert(),
+            self.split_property_checks,
+        );
+        self.property_part = 0;
+        self.last_property_result = None;
         if self.property_check_mode == PropertyCheckMode::Assumptions
             || retain_refinement_assumption
         {
-            let property = self.subterm_handler.get_property_assert();
+            let property = self.property_parts[0].clone();
             self.install_property_activation(&property);
         }
     }
@@ -892,6 +926,126 @@ impl VmtBmcSession {
 }
 
 impl VmtBmcSession {
+    pub(crate) fn with_proved_property_reuse(mut self, enabled: bool) -> Self {
+        self.reuse_proved_properties = enabled;
+        self
+    }
+
+    pub(crate) fn with_proved_property_instance_limit(mut self, limit: usize) -> Self {
+        self.proved_property_instance_limit = limit;
+        self
+    }
+
+    pub(crate) fn with_split_property_checks(mut self, enabled: bool) -> Self {
+        if self.split_property_checks != enabled {
+            self.split_property_checks = enabled;
+            self.update_property();
+        }
+        self
+    }
+
+    pub(crate) fn additional_property_checks(&self) -> u32 {
+        self.property_parts
+            .len()
+            .saturating_sub(1)
+            .try_into()
+            .unwrap_or(u32::MAX)
+    }
+
+    pub(crate) fn has_remaining_property_parts(&self) -> bool {
+        self.property_part + 1 < self.property_parts.len()
+    }
+
+    /// Share only a conjunct whose negation was just proved UNSAT. The driver
+    /// must not count this as a completed BMC depth until every conjunct passed.
+    pub(crate) fn advance_property_partition(&mut self) -> bool {
+        if self.last_property_result != Some(SolverCheckResult::Unsat)
+            || !self.has_remaining_property_parts()
+        {
+            return false;
+        }
+        let property = self.property_parts[self.property_part].clone();
+        self.solver
+            .assert_term(&property)
+            .expect("assert proved property part");
+        self.init_and_transition_assertions
+            .push(NamedAssertion::new(
+                format!("yardbird_proved_part_{}_{}", self.depth, self.property_part),
+                property.clone(),
+                self.depth,
+            ));
+        self.proved_property_parts += 1;
+        if self.auxiliary_specs.is_empty() && self.auxiliary_property_constraints.is_empty() {
+            self.proved_property_instances
+                .remember(self.depth, property);
+            self.install_proved_property_instances();
+        }
+        self.pending_proved_property = None;
+        self.property_part += 1;
+        self.last_property_result = None;
+        self.current_property_assumption = None;
+        self.current_property_assumption_depth = None;
+        if self.property_check_mode == PropertyCheckMode::Assumptions {
+            let property = self.property_parts[self.property_part].clone();
+            self.install_property_activation(&property);
+        }
+        true
+    }
+
+    fn install_proved_property_instances(&mut self) {
+        if self.proved_property_instance_limit == 0
+            || !self.auxiliary_specs.is_empty()
+            || !self.auxiliary_property_constraints.is_empty()
+        {
+            return;
+        }
+        let signatures = self
+            .variable_definitions
+            .iter()
+            .chain(&self.function_definitions)
+            .filter_map(|command| match command {
+                Command::DeclareFun {
+                    symbol,
+                    parameters,
+                    sort,
+                } => Some((symbol.0.clone(), (parameters.clone(), sort.clone()))),
+                _ => None,
+            })
+            .collect();
+        let source = crate::rule_matching::source_terms::SourceTerms::new(
+            self.subterm_handler.get_source_subterms(),
+            &signatures,
+        );
+        for (proved_frame, term) in self
+            .proved_property_instances
+            .instances(
+                &source,
+                self.proved_property_instance_limit
+                    .saturating_sub(self.proved_instances_this_depth),
+            )
+            .into_iter()
+        {
+            self.solver
+                .assert_term(&term)
+                .expect("assert proved universal instance");
+            self.proved_property_instances_added += 1;
+            self.proved_instances_this_depth += 1;
+            // Register as derived vocabulary: generated reads must not feed the
+            // frozen source-index pool. All terms are already declared.
+            self.subterm_handler
+                .register_instantiation_term(term.clone());
+            self.init_and_transition_assertions
+                .push(NamedAssertion::new(
+                    format!(
+                        "yardbird_proved_instance_from_{proved_frame}_at_{}_{}",
+                        self.depth, self.proved_property_instances_added
+                    ),
+                    term,
+                    self.depth,
+                ));
+        }
+    }
+
     /// Checks the satisfiability of BMC `self.bmc_builder.depth` under the
     /// negated property. Scoped checks push the property temporarily;
     /// assumption checks enable a permanently guarded property literal.
@@ -909,7 +1063,7 @@ impl VmtBmcSession {
             + self.init_and_transition_assertions.len()
             + self.asserted_instantiation_terms.len()
             + property_assertion_count) as u64;
-        let property = self.subterm_handler.get_property_assert();
+        let property = self.property_parts[self.property_part].clone();
         let assumptions = self
             .current_property_assumption
             .iter()
@@ -971,6 +1125,17 @@ impl VmtBmcSession {
         }
 
         self.solver.complete_check();
+        self.last_property_result = Some(outcome.result);
+        if self.reuse_proved_properties && outcome.result == SolverCheckResult::Unsat {
+            // This exact ground formula was proved under this prefix. It must
+            // never be shifted to a new frame or treated as an inductive invariant.
+            // Defer assertion until unroll, preserving access to the UNSAT core.
+            self.pending_proved_property = Some(if self.has_remaining_property_parts() {
+                property
+            } else {
+                self.subterm_handler.get_property_assert()
+            });
+        }
         outcome.result
     }
 
@@ -978,6 +1143,29 @@ impl VmtBmcSession {
         self.last_unroll_profile.clear();
         let unroll_start = Instant::now();
         if depth > self.depth {
+            self.proved_instances_this_depth = 0;
+            if let Some(property) = self.pending_proved_property.take() {
+                self.solver
+                    .assert_term(&property)
+                    .expect("assert proved property");
+                self.proved_properties_added += 1;
+                // Keep the original helper application visible to Yardbird QI
+                // search after the active property vocabulary moves forward.
+                self.subterm_handler.register_background_term(&property);
+                if self.proved_property_instance_limit > 0
+                    && self.auxiliary_specs.is_empty()
+                    && self.auxiliary_property_constraints.is_empty()
+                {
+                    self.proved_property_instances
+                        .remember(self.depth, property.clone());
+                }
+                self.init_and_transition_assertions
+                    .push(NamedAssertion::new(
+                        format!("yardbird_proved_property_{}", self.depth),
+                        property,
+                        self.depth,
+                    ));
+            }
             // These things should only happen the first time a new depth is seen.
             // Set new depth.
             self.depth = depth;
@@ -1030,6 +1218,7 @@ impl VmtBmcSession {
                     on_loop_start.elapsed().as_secs_f64(),
                 );
             }
+            self.install_proved_property_instances();
         } else {
             self.last_unroll_profile.insert(
                 "unroll_noop".to_string(),
@@ -1093,6 +1282,12 @@ impl ProblemContext for VmtBmcSession {
 
     fn get_solver_statistics(&self) -> SolverStatistics {
         let mut statistics = self.solver.get_solver_statistics();
+        statistics.add_count("yardbird.proved properties", self.proved_properties_added);
+        statistics.add_count("yardbird.proved property parts", self.proved_property_parts);
+        statistics.add_count(
+            "yardbird.proved property instances",
+            self.proved_property_instances_added,
+        );
         self.assertion_tracker
             .metrics()
             .add_to_solver_statistics(&mut statistics);
@@ -1244,6 +1439,127 @@ mod tests {
     use crate::strategies::{Abstract, ConcreteArrayZ3, ProofStrategy, RefinementState};
 
     use super::*;
+
+    #[test]
+    fn property_parts_require_separate_unsat_checks_in_every_activation_mode() {
+        for mode in [
+            PropertyCheckMode::Scoped,
+            PropertyCheckMode::Assumptions,
+            PropertyCheckMode::RefinementAssumptions,
+        ] {
+            let input = br#"
+                (declare-fun x () Int) (declare-fun xn () Int)
+                (define-fun .x () Int (! x :next xn))
+                (define-fun init () Bool (! (= x 0) :init true))
+                (define-fun trans () Bool (! (= xn (+ x 1)) :trans true))
+                (define-fun prop () Bool (! (and (>= x 0) (< x 1)) :invar-property 0))
+            "#;
+            let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let model = VMTModel::checked_from(commands).unwrap();
+            let strategy: Box<dyn ProofStrategy<'_, RefinementState>> =
+                Box::new(ConcreteArrayZ3::new(false).with_property_check_mode(mode));
+            let mut smt = VmtBmcSession::new(
+                &model,
+                &strategy,
+                SolverBackend::Z3,
+                false,
+                Box::new(FullUnrollStrategy::new()),
+                false,
+                None,
+            )
+            .unwrap()
+            .with_proved_property_reuse(true)
+            .with_split_property_checks(true);
+            smt = smt.with_split_property_checks(false);
+            assert_eq!(smt.property_parts.len(), 1);
+            smt = smt.with_split_property_checks(true);
+            assert_eq!(smt.property_parts.len(), 2);
+            assert!(!smt.advance_property_partition());
+            assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+            assert!(smt.has_remaining_property_parts());
+            assert!(smt.advance_property_partition());
+            assert!(!smt.advance_property_partition());
+            assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+            assert!(!smt.has_remaining_property_parts());
+            assert_eq!(
+                smt.pending_proved_property.as_ref().unwrap().to_string(),
+                "(and (>= x@0 0) (< x@0 1))"
+            );
+            smt.unroll(1);
+            assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+            assert!(smt.advance_property_partition());
+            assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+            assert!(!smt.advance_property_partition());
+            assert!(smt.pending_proved_property.is_none());
+            assert_eq!(smt.proved_property_parts, 2);
+        }
+    }
+
+    #[test]
+    fn proved_properties_are_reused_only_at_checked_frames_after_unsat() {
+        for mode in [
+            PropertyCheckMode::Scoped,
+            PropertyCheckMode::Assumptions,
+            PropertyCheckMode::RefinementAssumptions,
+        ] {
+            for enabled in [false, true] {
+                let input = br#"
+                    (declare-fun x () Int) (declare-fun xn () Int)
+                    (define-fun .x () Int (! x :next xn))
+                    (define-fun init () Bool (! (= x 0) :init true))
+                    (define-fun trans () Bool (! (= xn (+ x 1)) :trans true))
+                    (define-fun prop () Bool (! (< x 2) :invar-property 0))
+                "#;
+                let commands = CommandStream::new(&input[..], SyntaxBuilder, None)
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap();
+                let model = VMTModel::checked_from(commands).unwrap();
+                let strategy: Box<dyn ProofStrategy<'_, RefinementState>> =
+                    Box::new(ConcreteArrayZ3::new(false).with_property_check_mode(mode));
+                let mut smt = VmtBmcSession::new(
+                    &model,
+                    &strategy,
+                    SolverBackend::Z3,
+                    false,
+                    Box::new(FullUnrollStrategy::new()),
+                    false,
+                    None,
+                )
+                .unwrap()
+                .with_proved_property_reuse(enabled);
+                assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+                assert_eq!(smt.pending_proved_property.is_some(), enabled);
+                smt.unroll(1);
+                smt.unroll(1); // No duplicate assertion on a refinement at this depth.
+                let retained = smt
+                    .init_and_transition_assertions
+                    .iter()
+                    .filter(|a| a.label.starts_with("yardbird_proved_property"))
+                    .collect::<Vec<_>>();
+                assert_eq!(retained.len(), usize::from(enabled));
+                if enabled {
+                    assert_eq!(retained[0].frame, 0);
+                    assert_eq!(retained[0].term.to_string(), "(< x@0 2)");
+                }
+                assert_eq!(smt.check_property(), SolverCheckResult::Unsat);
+                smt.unroll(2);
+                // Reusing a bounded theorem must not rule out the later real error.
+                assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+                assert!(smt.pending_proved_property.is_none());
+                smt.unroll(3);
+                assert_eq!(
+                    smt.init_and_transition_assertions
+                        .iter()
+                        .filter(|a| a.label.starts_with("yardbird_proved_property"))
+                        .count(),
+                    if enabled { 2 } else { 0 }
+                );
+                assert_eq!(smt.check_property(), SolverCheckResult::Sat);
+            }
+        }
+    }
 
     #[test]
     fn dump_formatter_appends_property_check_and_unsat_core_commands() {

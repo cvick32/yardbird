@@ -379,6 +379,22 @@ where
         }
     }
 
+    fn universal_property_witnesses(
+        &self,
+    ) -> Vec<(smt2parser::concrete::Symbol, smt2parser::concrete::Sort)> {
+        self.quantifier
+            .property_witnesses
+            .iter()
+            .filter_map(|w| {
+                self.quantifier
+                    .plan
+                    .signatures
+                    .get(&w.0)
+                    .map(|(_, sort)| (w.clone(), sort.clone()))
+            })
+            .collect()
+    }
+
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }

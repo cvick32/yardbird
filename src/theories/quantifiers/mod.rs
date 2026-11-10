@@ -18,6 +18,7 @@ mod demanded_indices;
 pub(crate) mod eager;
 pub(crate) mod ground;
 mod lowering;
+pub(crate) mod proved_properties;
 pub mod provenance;
 pub(crate) mod refinement;
 mod rule;
