@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{SolverBackend, Theory, TheorySelection, YardbirdOptions};
+use crate::{policy::NamedPolicy, SolverBackend, Theory, TheorySelection, YardbirdOptions};
 use serde::{Deserialize, Serialize};
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ pub struct LlmOptions {
     /// Log complete requests and use ordinary refinement without network calls.
     #[arg(long)]
     pub llm_dry_run: bool,
-    /// Complete-proposal attempts per countermodel, including feedback retries.
+    /// Complete-proposal attempts per LLM turn, including feedback retries.
     #[arg(long, default_value_t = 1)]
     pub llm_attempts: usize,
     /// Hard cap on inference calls across the run (including rejected replies).
@@ -56,6 +56,18 @@ pub struct LlmOptions {
     /// Hard cap on inference calls for one solver model, across fallback cycles.
     #[arg(long, default_value_t = 8)]
     pub llm_max_calls_per_model: usize,
+    /// Maximum symbolic operations before an LLM turn in symbolic-llm.
+    #[arg(long, default_value_t = 8)]
+    pub symbolic_operations: usize,
+    /// Match/page allowance per symbolic operation (no automatic widening).
+    #[arg(long, default_value_t = 128)]
+    pub symbolic_match_work: usize,
+    /// Dependency traversal work per symbolic operation.
+    #[arg(long, default_value_t = 128)]
+    pub symbolic_dependency_work: usize,
+    /// Term-construction attempts per symbolic vocabulary-growth operation.
+    #[arg(long, default_value_t = 64)]
+    pub symbolic_vocabulary_work: usize,
     /// Per-request deadline; the driver wall timeout remains cooperative.
     #[arg(long, default_value_t = 120)]
     pub llm_timeout_secs: u64,
@@ -85,6 +97,10 @@ impl Default for LlmOptions {
             llm_attempts: 1,
             llm_max_calls: 100,
             llm_max_calls_per_model: 8,
+            symbolic_operations: 8,
+            symbolic_match_work: 128,
+            symbolic_dependency_work: 128,
+            symbolic_vocabulary_work: 64,
             llm_timeout_secs: 120,
             llm_max_request_bytes: 2_097_152,
             llm_max_output_tokens: 4096,
@@ -140,9 +156,16 @@ impl LlmOptions {
             "--llm-adaptive-thinking requires --llm-provider anthropic"
         );
         anyhow::ensure!(
-            self.llm_max_calls > 0 && self.llm_max_calls_per_model > 0,
-            "LLM call budgets must be positive"
+            self.llm_max_calls > 0
+                && self.llm_max_calls_per_model > 0
+                && self.symbolic_operations > 0
+                && self.symbolic_match_work > 0
+                && self.symbolic_dependency_work > 0
+                && self.symbolic_vocabulary_work > 0,
+            "LLM and symbolic budgets must be positive"
         );
+        anyhow::ensure!(run.policy != Some(NamedPolicy::SymbolicLlm) || !run.no_guided_fallback,
+            "symbolic-llm requires symbolic fallback; use llm --no-guided-fallback for strict guidance");
         self.pricing.validate()?;
         let log = self
             .llm_log

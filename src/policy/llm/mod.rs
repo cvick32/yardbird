@@ -3,6 +3,7 @@
 //! to ordinary refinement; providers cannot report proofs or counterexamples.
 mod client;
 mod cost;
+mod effort;
 mod options;
 mod protocol;
 #[cfg(test)]
@@ -37,6 +38,11 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
     let options = run.llm.clone();
     let experiment = Experiment {
         no_fallback: run.no_guided_fallback,
+        policy_name: if run.policy == Some(crate::policy::NamedPolicy::SymbolicLlm) {
+            "symbolic-llm"
+        } else {
+            "llm"
+        },
         progress: Default::default(),
         client: Box::new(HttpClient::new(
             options.llm_provider,
@@ -50,13 +56,19 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
         input: run.filename.clone(),
         problem_source: None,
     };
+    let effort: Box<dyn crate::policy::effort::ProofEffort> =
+        if run.policy == Some(crate::policy::NamedPolicy::SymbolicLlm) {
+            Box::new(effort::SymbolicLlmEffort::new(&run.llm))
+        } else {
+            Box::new(
+                DiscoveryFirst::default()
+                    .with_no_fallback(run.no_guided_fallback)
+                    .with_discovery_calls(run.llm.llm_attempts),
+            )
+        };
     let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
         .with_instantiation_ranker(Box::new(TermCostInstantiationRanker))
-        .with_effort(
-            DiscoveryFirst::default()
-                .with_no_fallback(run.no_guided_fallback)
-                .with_discovery_calls(run.llm.llm_attempts),
-        )
+        .with_boxed_effort(effort)
         .with_discovery(experiment);
     ArrayProofPlan {
         solver: SolverBackend::Z3,
@@ -82,6 +94,7 @@ struct EpisodeProgress {
 }
 
 struct Experiment {
+    policy_name: &'static str,
     progress: EpisodeProgress,
     no_fallback: bool,
     options: LlmOptions,
@@ -106,8 +119,8 @@ impl Experiment {
         }
         record["no_guided_fallback"] = json!(self.no_fallback);
         record["schema_version"] = json!(4);
-        record["policy"] = json!("llm");
         record["run_cost"] = self.spend.summary();
+        record["policy"] = json!(self.policy_name);
         record["query_id"] = json!(self.query_id);
         record["input"] = json!(self.input);
         record["depth"] = json!(context.depth);
@@ -132,7 +145,8 @@ impl Experiment {
             context,
             json!({"event":"episode_end", "outcome":outcome,
             "api_calls":calls,
-            "ordinary_fallback":!self.no_fallback && outcome != "violated",
+            "ordinary_fallback":if self.policy_name == "symbolic-llm" { Value::Null } else { json!(!self.no_fallback && outcome != "violated") },
+            "scheduling_owner":if self.policy_name == "symbolic-llm" { "effort_policy" } else { "discovery_first" },
             "call_budget":{"run_used":self.progress.total_calls,"run_limit":self.options.llm_max_calls,
                 "model_used":self.progress.model_calls,"model_limit":self.options.llm_max_calls_per_model},
             "inference_disabled":self.progress.disabled || self.progress.usage.disabled,
@@ -201,7 +215,12 @@ impl InstanceDiscovery for Experiment {
             }
         };
         for attempt in 1..=attempts {
-            let request = protocol::request(&self.options, &snapshot, &self.progress.failures)?;
+            let mut request = protocol::request(&self.options, &snapshot, &self.progress.failures)?;
+            protocol::add_symbolic_feedback(
+                &mut request,
+                self.options.llm_provider,
+                context.symbolic_feedback,
+            )?;
             self.query_id += 1;
             let bytes = serde_json::to_vec(&request)?.len();
             self.record(context, json!({"event":"request", "attempt":attempt,

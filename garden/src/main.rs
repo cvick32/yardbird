@@ -792,7 +792,7 @@ fn is_guided(policy: Option<yardbird::policy::NamedPolicy>) -> bool {
     use yardbird::policy::NamedPolicy::*;
     matches!(
         policy,
-        Some(OneShot | ConditionalBinding | Llm | RandomInstantiation)
+        Some(OneShot | ConditionalBinding | Llm | SymbolicLlm | RandomInstantiation)
     )
 }
 

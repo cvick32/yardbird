@@ -189,6 +189,7 @@ fn boolean_catalogue_filter_preserves_refinement_children_and_full_model() {
         &DiscoveryContext {
             quantifiers: None,
             call_limit: usize::MAX,
+            symbolic_feedback: &serde_json::Value::Null,
             smt: &smt,
             depth: 0,
             refinement_step: 1,
@@ -246,6 +247,7 @@ fn full_snapshot_preserves_irrelevant_terms_and_native_model_and_rejects_bad_ids
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -359,6 +361,7 @@ fn retry_feedback_keeps_model_fixed_and_finds_a_verified_violation() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -546,6 +549,7 @@ fn conditional_requests_cover_all_array_schemas_without_changing_domains() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -601,6 +605,7 @@ fn conditional_beam_uses_fixed_prefixes_and_can_select_a_lower_ranked_prefix() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -680,6 +685,7 @@ fn conditional_partial_failures_never_produce_instances_and_retry_without_fixed_
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -785,6 +791,7 @@ fn second_ranked_binding_finds_violation_without_another_api_call() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -999,6 +1006,7 @@ fn snapshot_reports_only_installed_successes_in_normalized_notation() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -1025,6 +1033,7 @@ fn snapshot_reports_only_installed_successes_in_normalized_notation() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 1,
@@ -1065,6 +1074,7 @@ fn binding_transport_failure_keeps_selection_cost_and_stops_the_episode() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -1143,6 +1153,7 @@ fn oversized_and_dry_run_requests_never_call_the_client_or_truncate_the_log() {
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -1237,6 +1248,7 @@ fn invalid_answers_exhaust_exactly_the_retry_budget_and_never_become_instances()
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -1270,6 +1282,7 @@ fn constant_axiom_uses_shared_schema_and_unknown_evaluation_is_not_a_violation()
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -1304,6 +1317,7 @@ fn constant_axiom_uses_shared_schema_and_unknown_evaluation_is_not_a_violation()
     let unknown_context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &unknown_smt,
         ..context
     };
@@ -1322,6 +1336,7 @@ fn constant_axiom_uses_shared_schema_and_unknown_evaluation_is_not_a_violation()
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         pending: &pending,
         ..context
     };
@@ -1412,6 +1427,7 @@ fn staged_requests_share_run_stable_ids_and_the_complete_current_catalogue() {
         let context = DiscoveryContext {
             quantifiers: None,
             call_limit: usize::MAX,
+            symbolic_feedback: &serde_json::Value::Null,
             smt: &smt,
             depth,
             refinement_step: 0,
@@ -1564,6 +1580,7 @@ fn split_binding_calls_are_batched_accounted_and_fail_without_partial_candidates
     let context = DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,

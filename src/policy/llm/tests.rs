@@ -64,6 +64,7 @@ fn context<'a>(
     DiscoveryContext {
         quantifiers: None,
         call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt,
         depth: 0,
         refinement_step: 0,
@@ -215,6 +216,7 @@ fn experiment(
     let requests = Rc::new(RefCell::new(Vec::new()));
     (
         Experiment {
+            policy_name: "llm",
             progress: Default::default(),
             no_fallback: false,
             options: LlmOptions {
@@ -1019,6 +1021,80 @@ fn llm_names_roundtrip() {
         serde_json::from_str::<NamedPolicy>("\"LlmOneShot\"").unwrap(),
         NamedPolicy::Llm
     );
+}
+
+#[test]
+fn hybrid_budgets_roundtrip() {
+    let run = YardbirdOptions::try_parse_from([
+        "yardbird",
+        "-f",
+        "fixture.encoding.vmt",
+        "--policy",
+        "symbolic-llm",
+        "--llm-model",
+        "gpt-6.1-terra",
+        "--llm-reasoning-effort",
+        "low",
+        "--llm-dry-run",
+        "--llm-log",
+        "/tmp/unused-policy-log.jsonl",
+        "--symbolic-operations",
+        "3",
+        "--llm-attempts",
+        "2",
+        "--llm-max-calls",
+        "9",
+    ])
+    .unwrap();
+    assert_eq!(run.policy, Some(NamedPolicy::SymbolicLlm));
+    run.llm.validate(&run).unwrap();
+    assert_eq!(run.llm.symbolic_operations, 3);
+    let serialized = serde_json::to_value(&run).unwrap();
+    assert_eq!(serialized["policy"], "symbolic-llm");
+    let restored: YardbirdOptions = serde_json::from_value(serialized).unwrap();
+    assert_eq!(restored.llm, run.llm);
+}
+
+#[test]
+fn hybrid_driver_requeries_same_model_after_symbolic_slice_and_rejection() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("hybrid.jsonl");
+    let (mut discovery, requests) = experiment(
+        path.clone(),
+        LlmProvider::Openai,
+        vec![Reply::FalseGuard, Reply::Valid],
+    );
+    discovery.options.symbolic_operations = 1;
+    discovery.options.llm_attempts = 2;
+    discovery.policy_name = "symbolic-llm";
+    let scheduler = effort::SymbolicLlmEffort::new(&discovery.options);
+    let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
+        .with_effort(scheduler)
+        .with_discovery(discovery);
+    let mut driver = crate::Driver::new(
+        model(),
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    );
+    let result = driver
+        .check_strategy(1, Box::new(Abstract::new(1, false, policy, false)))
+        .unwrap();
+    assert!(result.total_instantiations_added > 0);
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks")
+            .unwrap(),
+        0.0
+    );
+    let requests = requests.borrow();
+    assert_eq!(requests.len(), 2);
+    let first = request_state(&requests[0]);
+    let second = request_state(&requests[1]);
+    assert_eq!(first["model_version"], second["model_version"]);
+    assert_eq!(first["model"], second["model"]);
+    assert_eq!(first["symbolic_search"]["completed_operations"], 1);
+    assert_eq!(second["failure_summary"][0]["reason"], "false_antecedent");
 }
 
 #[test]

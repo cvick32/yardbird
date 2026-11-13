@@ -18,6 +18,7 @@ pub(crate) struct DiscoveryContext<'a> {
         &'a crate::theories::quantifiers::provenance::QuantifierProvenance,
     )>,
     pub call_limit: usize,
+    pub symbolic_feedback: &'a serde_json::Value,
     pub pending: &'a HashSet<Term>,
 }
 

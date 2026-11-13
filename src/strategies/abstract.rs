@@ -453,7 +453,7 @@ where
     }
 
     fn allows_concrete_validation(&self) -> bool {
-        !self.quantifier.owns_quantifiers
+        !self.quantifier.owns_quantifiers && self.policy.effort().allows_concrete_validation()
     }
 
     fn configuration_error(&self) -> Option<&str> {
@@ -740,6 +740,7 @@ where
                 smt.make_unquantified_instance(expr_to_term(candidate.expression.clone()))
                     .map(|instance| crate::instance_installation::assertion_tracker::canonical_instantiation_key(instance.get_term()))
             }).collect::<HashSet<_>>();
+            let symbolic_feedback = self.policy.effort().discovery_feedback();
             let PolicyParts {
                 term_config,
                 ranker,
@@ -777,6 +778,7 @@ where
                         producer.discover(&crate::policy::discovery::DiscoveryContext {
                             quantifiers,
                             call_limit: allowance.discovery_calls,
+                            symbolic_feedback: &symbolic_feedback,
                             smt,
                             depth: state.depth,
                             refinement_step,

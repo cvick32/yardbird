@@ -26,6 +26,43 @@ have no arithmetic semantics inferred from their names.
 `llm-one-shot` remains a CLI/serialized-input alias; new results use `llm`.
 The renamed policy remains LLM-first with optional ordinary fallback.
 
+## Bounded symbolic search with LLM fallback
+
+`--policy symbolic-llm` starts with symbolic search, gives the LLM a turn after
+its bounded slice (or earlier symbolic exhaustion), then resumes symbolic search.
+An accepted instance returns to the solver. Without an installation, the next
+cycle uses the same model, stable term IDs, cumulative rejection feedback, and
+symbolic continuations. Every operation yields to the driver for deadline checks.
+The dependency prefix is limited to one discovery slice and one directed request
+per pass. With the default eight-operation budget, an unproductive prefix leaves
+room for binder witnesses, guarded reads, array expansion and candidates, and
+binder conflict search before calling the LLM. Unavailable operations are skipped;
+a selected instance returns to the solver immediately. Smaller operation budgets
+can intentionally truncate this sweep. Dependency cursors survive the scheduling
+limit and can resume in later passes on the same model.
+Concrete validation is disabled for this policy, including array-only inputs.
+Exhausting either inference cap stops inconclusively (`NoProgress`), never as SAT
+or a proof. `--no-guided-fallback` is incompatible with this hybrid policy.
+
+| Control | Default | Scope |
+| --- | --- | --- |
+| `--symbolic-operations` | 8 | Symbolic operations before an LLM turn |
+| `--symbolic-match-work` | 128 | Match/page limit per operation; array search uses one round |
+| `--symbolic-dependency-work` | 128 | Dependency work per operation |
+| `--symbolic-vocabulary-work` | 64 | Term-construction attempts per growth operation |
+| `--llm-attempts` | 1 | Maximum calls per LLM turn; hybrid executes one call per operation |
+| `--llm-max-calls-per-model` | 8 | Inference calls across all turns for one solver model |
+| `--llm-max-calls` | 100 | Inference calls across the entire run |
+
+Symbolic allowances are fixed, not automatically widened beyond these limits.
+Calls include rejected responses and transport failures. Provider/transport or
+refused/incomplete-response failures disable further inference for the run;
+abstentions and invalid substitutions can be revisited with feedback in later
+hybrid turns. Dry-run/oversize/snapshot failures end the hybrid search without
+an empty busy loop. Each request still has its own timeout and token/byte limits.
+A single operation is cooperative, not forcibly interrupted by the wall timeout.
+The normal `llm` policy retains ordinary fallback when inference is exhausted.
+
 ## Running
 
 Choose an explicit provider model ID supported by your account. The model must
@@ -97,7 +134,7 @@ The LLM receives ordered JSON content blocks:
 
 1. Complete original VMT, axiom schemas, notation, and other static context.
 2. Initial vocabulary followed by immutable additions of declarations and terms.
-3. Complete current model, depth/version, installed instances, and retry feedback.
+3. Complete current model, depth/version, installed instances, and retry feedback (plus symbolic-search observations for the hybrid).
 
 Concatenate the vocabulary arrays and combine the other fields to reconstruct
 the shared flat snapshot that JEV uses. All blocks are sent on every request.
@@ -125,9 +162,7 @@ and [Anthropic caching guide](https://platform.claude.com/docs/en/build-with-cla
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--llm-max-calls` | 100 | Maximum inference calls across the run |
-| `--llm-max-calls-per-model` | 8 | Maximum inference calls for one solver model |
-| `--llm-attempts` | 1 | Complete proposals per countermodel, including feedback retries |
+| `--llm-attempts` | 1 | Complete proposals per LLM turn, including feedback retries |
 | `--llm-timeout-secs` | 120 | Deadline for each HTTP request including body reads |
 | `--llm-max-request-bytes` | 2097152 | Maximum serialized request size; larger requests are logged and skipped |
 | `--llm-max-output-tokens` | 4096 | Provider output budget, including reasoning/thinking |
@@ -219,7 +254,7 @@ not written to the log. Requests contain the full verification source and model.
 `accepted_instances` counts proposals passing discovery validation. Discovery
 cannot observe the installer, so `installation_status` explicitly reports
 `not_observed_by_discovery`. Use the normal profiling/solver results for actual
-installation totals. `ordinary_fallback` records the discovery handoff decision.
+installation totals. `ordinary_fallback` records the `llm` discovery handoff decision. For `symbolic-llm` it is null: the effort policy chooses the next operation, and profiling records the actual sequence of symbolic and LLM work.
 The policy enables profiling automatically, as JEV does.
 
 For the strict comparison, use LLM defaults and JEV `--policy conditional-binding

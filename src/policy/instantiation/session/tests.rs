@@ -10,6 +10,7 @@ fn snapshot() -> InstantiationSnapshot {
         &DiscoveryContext {
             quantifiers: None,
             call_limit: usize::MAX,
+            symbolic_feedback: &serde_json::Value::Null,
             smt: &smt,
             depth: 0,
             refinement_step: 0,
@@ -142,6 +143,7 @@ fn changed_source_rebuilds_static_context_without_renumbering_terms() {
             &DiscoveryContext {
                 quantifiers: None,
                 call_limit: usize::MAX,
+                symbolic_feedback: &serde_json::Value::Null,
                 smt: &smt,
                 depth: 0,
                 refinement_step: 1,

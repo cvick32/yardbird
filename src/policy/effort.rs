@@ -240,6 +240,12 @@ pub enum EffortEvent<'a> {
 }
 
 pub trait ProofEffort {
+    fn discovery_feedback(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+    fn allows_concrete_validation(&self) -> bool {
+        true
+    }
     fn uses_countermodel_refinement(&self) -> bool {
         false
     }
@@ -288,7 +294,10 @@ pub struct DefaultEffort {
     dependency_model: Option<u64>,
     discovered_this_pass: bool,
     dependency_slices: usize,
+    dependency_slice_limit: usize,
+    dependency_request_limit: usize,
     requests: HashSet<usize>,
+    next_request: usize,
     next_rule: HashMap<SearchPhase, usize>,
 }
 impl Default for DefaultEffort {
@@ -313,12 +322,28 @@ impl Default for DefaultEffort {
             dependency_model: None,
             discovered_this_pass: false,
             dependency_slices: 0,
+            dependency_slice_limit: 8,
+            dependency_request_limit: 32,
             requests: HashSet::new(),
+            next_request: 0,
             next_rule: HashMap::new(),
         }
     }
 }
 impl DefaultEffort {
+    /// Bound the dependency prefix of each pass, leaving turns for general
+    /// binder and array matching. Continuation state belongs to the searches
+    /// and survives this scheduling limit.
+    pub fn with_dependency_burst_limits(mut self, slices: usize, requests: usize) -> Self {
+        assert!(
+            slices > 0,
+            "dependency discovery needs a positive slice limit"
+        );
+        self.dependency_slice_limit = slices;
+        self.dependency_request_limit = requests;
+        self
+    }
+
     /// Try a bounded array/background-axiom sweep before the standard schedule.
     pub fn with_prefer_axioms(mut self, enabled: bool) -> Self {
         self.prefer_axioms = enabled;
@@ -426,16 +451,26 @@ impl ProofEffort for DefaultEffort {
             let find = |kind| context.operations.iter().find(|op| op.kind == kind);
             let operation = match self.stage {
                 Stage::Dependencies => {
-                    if self.step % 8 == 7
-                        || (self.dependency_model == Some(self.model) && !self.discovered_this_pass)
-                    {
+                    if self.step % 8 == 7 {
                         self.stage = Stage::Witnesses;
                         continue;
                     }
                     if !self.discovered_this_pass {
                         find(OperationKind::DiscoverDependencies)
-                    } else if self.requests.len() < 32 {
-                        context.operations.iter().find(|op| matches!(op.kind, OperationKind::DependencyRequest(i) if !self.requests.contains(&i)))
+                    } else if self.requests.len() < self.dependency_request_limit {
+                        context
+                            .operations
+                            .iter()
+                            .filter_map(|op| match op.kind {
+                                OperationKind::DependencyRequest(i)
+                                    if !self.requests.contains(&i) =>
+                                {
+                                    Some((i, op))
+                                }
+                                _ => None,
+                            })
+                            .min_by_key(|(i, _)| (*i < self.next_request, *i))
+                            .map(|(_, op)| op)
                     } else {
                         None
                     }
@@ -502,6 +537,7 @@ impl ProofEffort for DefaultEffort {
                 self.countermodel_model = None;
                 self.next_rule.clear();
                 self.dependency_model = None;
+                self.next_request = 0;
                 self.model = 0;
                 self.allowance = self.initial_allowance;
                 self.retry = false;
@@ -515,6 +551,8 @@ impl ProofEffort for DefaultEffort {
                 ..
             } => {
                 if self.model != *model {
+                    self.dependency_model = None;
+                    self.next_request = 0;
                     self.allowance = self.initial_allowance;
                     self.retry = false;
                     self.grow_next = false;
@@ -535,7 +573,9 @@ impl ProofEffort for DefaultEffort {
                     self.grow_next = !self.grow_next;
                     self.retry = false;
                 }
-                self.discovered_this_pass = false;
+                // Completed discovery need not run again, but its directed
+                // requests still get a bounded, rotating turn on each pass.
+                self.discovered_this_pass = self.dependency_model == Some(*model);
                 self.dependency_slices = 0;
                 self.requests.clear();
             }
@@ -574,13 +614,17 @@ impl ProofEffort for DefaultEffort {
                         // Bound the burst so general matching and the driver's
                         // cooperative timeout still get turns. Pending symbolic
                         // work survives the burst and is resumed next time.
-                        let resume = report.continuable && self.dependency_slices < 8;
-                        self.dependency_model = (!resume).then_some(self.model);
+                        let resume = report.continuable
+                            && self.dependency_slices < self.dependency_slice_limit;
+                        // Reaching a scheduling limit is not exhaustion of the
+                        // model-local discovery cursor. Resume it next pass.
+                        self.dependency_model = (!report.continuable).then_some(self.model);
                         self.discovered_this_pass = !resume;
                         Stage::Dependencies
                     }
                     OperationKind::DependencyRequest(i) => {
                         self.requests.insert(*i);
+                        self.next_request = i.saturating_add(1);
                         Stage::Dependencies
                     }
                     OperationKind::Binder(SearchPhase::Witnesses) => Stage::Guards,
