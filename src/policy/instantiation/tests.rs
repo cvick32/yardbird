@@ -78,6 +78,7 @@ fn typed_catalogue_preserves_bitvector_result_sorts_and_rejects_boolean_indices(
     let provenance = Default::default();
     let context = DiscoveryContext {
         quantifiers: Some((&plan, &provenance)),
+        call_limit: usize::MAX,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -163,6 +164,7 @@ fn context_is_complete_owned_and_independent_of_provider_request_edits() {
     let pending = HashSet::new();
     let context = DiscoveryContext {
         quantifiers: None,
+        call_limit: usize::MAX,
         smt: &smt,
         depth: 0,
         refinement_step: 2,
@@ -209,6 +211,7 @@ fn joint_proposals_use_exact_schemas_and_shared_whole_formula_validation() {
     let pending = HashSet::new();
     let context = DiscoveryContext {
         quantifiers: None,
+        call_limit: usize::MAX,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -243,6 +246,7 @@ fn joint_proposals_reject_unknown_ids_wrong_sorts_and_inexact_slots() {
     let pending = HashSet::new();
     let context = DiscoveryContext {
         quantifiers: None,
+        call_limit: usize::MAX,
         smt: &smt,
         depth: 0,
         refinement_step: 0,

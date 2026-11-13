@@ -36,7 +36,7 @@ class BenchmarkParserTests(unittest.TestCase):
             })
         for policy, section, field, first, second in [
             ("llm-one-shot", "llm", "llm_max_output_tokens", 4096, 32768),
-            ("llm", "llm", "llm_max_output_tokens", 4096, 32768),
+            ("llm", "llm", "llm_max_calls", 10, 20),
             ("conditional-binding", "decision_model", "jev_attempts", 1, 5),
             ("random-instantiation", "random", "random_samples", 1, 1000),
             ("random-instantiation", "random", "random_seed", 0, 1),

@@ -9,6 +9,7 @@ fn snapshot() -> InstantiationSnapshot {
     InstantiationSnapshot::capture(
         &DiscoveryContext {
             quantifiers: None,
+            call_limit: usize::MAX,
             smt: &smt,
             depth: 0,
             refinement_step: 0,
@@ -140,6 +141,7 @@ fn changed_source_rebuilds_static_context_without_renumbering_terms() {
         .capture(
             &DiscoveryContext {
                 quantifiers: None,
+                call_limit: usize::MAX,
                 smt: &smt,
                 depth: 0,
                 refinement_step: 1,

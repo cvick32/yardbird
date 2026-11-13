@@ -39,6 +39,8 @@ pub enum GuidanceTransitionOrder {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkAllowance {
+    #[serde(default = "default_discovery_calls")]
+    pub discovery_calls: usize,
     pub winners: usize,
     /// Maximum term-construction attempts in one vocabulary-growth operation.
     pub vocabulary_work: usize,
@@ -60,9 +62,14 @@ pub struct WorkAllowance {
     #[serde(default)]
     pub guidance_transition_order: GuidanceTransitionOrder,
 }
+fn default_discovery_calls() -> usize {
+    1
+}
+
 impl Default for WorkAllowance {
     fn default() -> Self {
         Self {
+            discovery_calls: 1,
             winners: 1,
             vocabulary_work: 64,
             binder_page_size: 100,
@@ -188,6 +195,10 @@ pub struct BinderEffortContext<'a> {
 pub struct WorkReport {
     pub candidates_returned: usize,
     pub selected: usize,
+    #[serde(default)]
+    pub discovery_calls: usize,
+    #[serde(default)]
+    pub discovery_disabled: bool,
     pub examined_substitutions: usize,
     pub returned_substitutions: usize,
     pub cache_hit: bool,

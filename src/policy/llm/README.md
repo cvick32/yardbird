@@ -101,8 +101,7 @@ The LLM receives ordered JSON content blocks:
 
 Concatenate the vocabulary arrays and combine the other fields to reconstruct
 the shared flat snapshot that JEV uses. All blocks are sent on every request.
-No terms are shortlisted, no model defaults are omitted, and no previous models
-or LLM answers are accumulated. JEV retains its existing staged request format;
+No terms are shortlisted and no model defaults are omitted. Compact rejection feedback persists for the current model. JEV retains its existing staged request format;
 its binding choices use the same stable IDs and full current catalogue.
 
 `--llm-explicit-cache true` is the default. The adapters mark the static block
@@ -126,6 +125,8 @@ and [Anthropic caching guide](https://platform.claude.com/docs/en/build-with-cla
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
+| `--llm-max-calls` | 100 | Maximum inference calls across the run |
+| `--llm-max-calls-per-model` | 8 | Maximum inference calls for one solver model |
 | `--llm-attempts` | 1 | Complete proposals per countermodel, including feedback retries |
 | `--llm-timeout-secs` | 120 | Deadline for each HTTP request including body reads |
 | `--llm-max-request-bytes` | 2097152 | Maximum serialized request size; larger requests are logged and skipped |
@@ -134,9 +135,7 @@ and [Anthropic caching guide](https://platform.claude.com/docs/en/build-with-cla
 Set `--llm-attempts 3` to retry malformed or rejected proposals with compact
 feedback on the same frozen model and catalogue. Refusals, incomplete responses,
 abstentions, and transport errors end the episode immediately. There are no
-hidden transport retries or repair calls. Each subsequent solver model starts
-a new episode and gets a fresh attempt budget. There is no aggregate API-call
-or dollar budget in this initial policy.
+hidden transport retries or repair calls. Each subsequent solver model resets model-local feedback and its call budget. The per-model and run-wide call caps also apply to this policy; there is no dollar budget.
 
 The driver's wall timeout is cooperative: an in-flight discovery episode can
 finish after that timeout. Use the request timeout and attempt budget to bound

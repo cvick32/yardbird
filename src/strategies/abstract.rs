@@ -776,6 +776,7 @@ where
                     let instances =
                         producer.discover(&crate::policy::discovery::DiscoveryContext {
                             quantifiers,
+                            call_limit: allowance.discovery_calls,
                             smt,
                             depth: state.depth,
                             refinement_step,
@@ -787,6 +788,9 @@ where
                     pool.remember(instances);
                     batch = pool.candidates_partial(&context)?;
                     report = WorkReport::from_batch(&batch);
+                    let usage = producer.take_usage();
+                    report.discovery_calls = usage.calls;
+                    report.discovery_disabled = usage.disabled;
                     retain = report.selected > 0;
                 }
                 OperationKind::CountermodelCandidates => {

@@ -17,13 +17,24 @@ pub(crate) struct DiscoveryContext<'a> {
         &'a crate::theories::quantifiers::QuantifierPlan,
         &'a crate::theories::quantifiers::provenance::QuantifierProvenance,
     )>,
+    pub call_limit: usize,
     pub pending: &'a HashSet<Term>,
+}
+
+#[derive(Default)]
+pub(crate) struct DiscoveryUsage {
+    pub calls: usize,
+    pub disabled: bool,
 }
 
 pub(crate) trait InstanceDiscovery {
     fn supports_input_binders(&self) -> bool {
         false
     }
+    fn take_usage(&mut self) -> DiscoveryUsage {
+        DiscoveryUsage::default()
+    }
+
     fn discover(&mut self, context: &DiscoveryContext<'_>)
         -> anyhow::Result<Vec<SymbolicInstance>>;
 }
@@ -38,9 +49,14 @@ pub(crate) struct DiscoveryFirst {
     model: u64,
     handoff: bool,
     discovery_winners: Option<usize>,
+    discovery_calls: Option<usize>,
 }
 
 impl DiscoveryFirst {
+    pub(crate) fn with_discovery_calls(mut self, calls: usize) -> Self {
+        self.discovery_calls = Some(calls);
+        self
+    }
     pub(crate) fn with_no_fallback(mut self, no_fallback: bool) -> Self {
         self.no_fallback = no_fallback;
         self
@@ -68,6 +84,7 @@ impl ProofEffort for DiscoveryFirst {
                     operation: operation.id,
                     allowance: WorkAllowance {
                         winners: self.discovery_winners.unwrap_or(1),
+                        discovery_calls: self.discovery_calls.unwrap_or(1),
                         ..WorkAllowance::default()
                     },
                 };

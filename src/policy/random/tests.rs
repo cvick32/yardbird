@@ -58,6 +58,7 @@ fn context<'a>(
 ) -> DiscoveryContext<'a> {
     DiscoveryContext {
         quantifiers: None,
+        call_limit: usize::MAX,
         smt,
         depth: 0,
         refinement_step: 0,

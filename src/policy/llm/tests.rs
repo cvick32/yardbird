@@ -63,6 +63,7 @@ fn context<'a>(
 ) -> DiscoveryContext<'a> {
     DiscoveryContext {
         quantifiers: None,
+        call_limit: usize::MAX,
         smt,
         depth: 0,
         refinement_step: 0,
@@ -214,6 +215,7 @@ fn experiment(
     let requests = Rc::new(RefCell::new(Vec::new()));
     (
         Experiment {
+            progress: Default::default(),
             no_fallback: false,
             options: LlmOptions {
                 llm_provider: provider,
@@ -775,6 +777,38 @@ fn strict_guidance_failure_stops_without_installing_ordinary_instances() {
     let last: Value = serde_json::from_str(records.lines().last().unwrap()).unwrap();
     assert_eq!(last["ordinary_fallback"], false);
     assert_eq!(last["no_guided_fallback"], true);
+}
+
+#[test]
+fn bounded_calls_preserve_rejections_across_same_model_episodes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut discovery, requests) = experiment(
+        dir.path().join("episodes.jsonl"),
+        LlmProvider::Openai,
+        vec![Reply::FalseGuard, Reply::Valid],
+    );
+    discovery.options.llm_attempts = 5;
+    discovery.options.llm_max_calls = 2;
+    let smt = fixture();
+    let pending = HashSet::new();
+    let mut context = context(&smt, &pending);
+    context.call_limit = 1;
+    assert!(discovery.discover(&context).unwrap().is_empty());
+    assert_eq!(discovery.take_usage().calls, 1);
+    let instances = discovery.discover(&context).unwrap();
+    assert_eq!(instances.len(), 1);
+    let requests = requests.borrow();
+    let a = request_state(&requests[0]);
+    let b = request_state(&requests[1]);
+    assert_eq!(a["model"], b["model"]);
+    assert_eq!(b["failure_summary"][0]["reason"], "false_antecedent");
+    assert!(discovery.discover(&context).unwrap().is_empty());
+    assert!(discovery.take_usage().disabled);
+    context.model_version += 1;
+    assert!(
+        discovery.discover(&context).unwrap().is_empty(),
+        "new model must not reset run budget"
+    );
 }
 
 struct BinderClient;
