@@ -66,7 +66,6 @@ The retained variants are:
 | --- | --- |
 | `guided4096` | Existing guided search; supplement scheduling and 4,096 trace work |
 | `guided4096-exact` | Scheduled exact grounding; retains the ring-leader depth gain despite other regressions |
-| `guided4096-captures` | Compatibility alias for `guided4096`; actual helper captures are always preserved |
 | `guided4096-frontiers` | Also reserve work for demanded read indices |
 | `guided4096-read-support` | Also use read-index QIs and complete array-read equations |
 | `guided4096-proved-prefix` | Also retain proved properties at their original frames |

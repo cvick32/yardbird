@@ -209,8 +209,7 @@ applications retain their distinct symbolic tuples; only quantified variables us
 ordinary term selection. Explicit request bindings stay literal. Occurrence
 expansion is paged, and candidates with preserved captures are independently
 validated. Profiling records `application_capture_groundings` per binder.
-The old `--guided-source-captures` switch remains accepted for compatibility and
-no longer changes behavior.
+Capture preservation is unconditional; there is no capture-selection switch.
 
 Countermodel guidance follows scalar state values as well as array reads through
 asserted predecessor transitions. Quantified action equations retain their actual

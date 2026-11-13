@@ -221,11 +221,6 @@ where
         self
     }
 
-    pub(crate) fn with_guided_source_captures(self, _enabled: bool) -> Self {
-        // Compatibility: actual application captures are now always preserved.
-        self
-    }
-
     pub fn with_guided_exact_grounding(mut self, enabled: bool) -> Self {
         self.quantifier.exact_grounding = enabled;
         self

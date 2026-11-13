@@ -32,7 +32,7 @@ fn run_frontier_options(source: &str, work: u32, depth: u16) -> (Value, String) 
         .arg(work.to_string())
         .arg("-d")
         .arg(depth.to_string());
-    command.args(["--guided-read-frontiers", "--guided-source-captures"]);
+    command.arg("--guided-read-frontiers");
     let output = command.output().unwrap();
     let result: Value = serde_json::from_slice(&output.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&output.stderr)));
