@@ -19,7 +19,6 @@ pub(crate) struct QuantifierRefinement {
     pub(crate) owns_quantifiers: bool,
     pub(crate) property_witnesses: Vec<smt2parser::concrete::Symbol>,
     pub(crate) exact_grounding: bool,
-    pub(crate) source_captures: bool,
     pub(crate) read_frontiers: bool,
 }
 
@@ -146,14 +145,7 @@ impl QuantifierRefinement {
     ) -> anyhow::Result<()> {
         if state.is_none() {
             let start = Instant::now();
-            let mut prepared = self.plan.prepare(smt, graph)?;
-            if self.source_captures {
-                prepared.source_captures = Some(super::source_captures::SourceCaptures::new(
-                    &self.plan,
-                    smt.get_source_subterms(),
-                    &smt.get_array_types(),
-                ));
-            }
+            let prepared = self.plan.prepare(smt, graph)?;
             *graph_version += 1;
             *state = Some(BinderSearchState {
                 prepared,

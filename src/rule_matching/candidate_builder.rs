@@ -290,7 +290,7 @@ where
                     root,
                     substitution: subst,
                     model_violation_verified,
-                    preferred_bindings,
+                    literal_bindings,
                 } = matched;
                 let rule = &rules[rule_index];
                 let profiling = self.profiling.is_some();
@@ -300,7 +300,7 @@ where
                     subst,
                     egraph,
                     self.extractor.clone(),
-                    preferred_bindings,
+                    literal_bindings,
                     GroundContext::new(
                         self.artifact_capture.decisions,
                         rule.metadata().name(),

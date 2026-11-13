@@ -250,7 +250,7 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guided_exact_grounding: bool,
 
-    /// Prefer intact source capture tuples when grounding quantified rules.
+    /// Compatibility flag; actual helper capture tuples are now always preserved.
     #[arg(long, requires = "policy")]
     #[serde(default)]
     pub guided_source_captures: bool,
