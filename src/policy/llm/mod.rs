@@ -91,7 +91,7 @@ impl Experiment {
         record["no_guided_fallback"] = json!(self.no_fallback);
         record["schema_version"] = json!(3);
         record["run_cost"] = self.spend.summary();
-        record["policy"] = json!("llm-one-shot");
+        record["policy"] = json!("llm");
         record["query_id"] = json!(self.query_id);
         record["input"] = json!(self.input);
         record["depth"] = json!(context.depth);

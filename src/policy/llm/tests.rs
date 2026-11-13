@@ -614,7 +614,7 @@ fn cli_validation_serialization_and_plan_match_experiment_requirements() {
         }
         assert!(run.llm.validate(&run).is_err(), "accepted case {invalid}");
     }
-    let plan = NamedPolicy::LlmOneShot.build_plan(&options);
+    let plan = NamedPolicy::Llm.build_plan(&options);
     assert_eq!(plan.solver, SolverBackend::Z3);
     assert_eq!(
         plan.strategy.property_check_mode(),
@@ -773,4 +773,38 @@ fn strict_guidance_failure_stops_without_installing_ordinary_instances() {
     let last: Value = serde_json::from_str(records.lines().last().unwrap()).unwrap();
     assert_eq!(last["ordinary_fallback"], false);
     assert_eq!(last["no_guided_fallback"], true);
+}
+
+#[test]
+fn llm_names_roundtrip() {
+    for (name, expected) in [
+        ("llm", NamedPolicy::Llm),
+        ("llm-one-shot", NamedPolicy::Llm),
+    ] {
+        let run = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "fixture.encoding.vmt",
+            "--policy",
+            name,
+            "--llm-model",
+            "gpt-6.1-terra",
+            "--llm-reasoning-effort",
+            "low",
+            "--llm-dry-run",
+            "--llm-log",
+            "/tmp/unused-policy-log.jsonl",
+        ])
+        .unwrap();
+        assert_eq!(run.policy, Some(expected));
+        run.llm.validate(&run).unwrap();
+        let serialized = serde_json::to_value(&run).unwrap();
+        assert_eq!(serialized["policy"], "llm");
+        let restored: YardbirdOptions = serde_json::from_value(serialized).unwrap();
+        assert_eq!(restored.llm, run.llm);
+    }
+    assert_eq!(
+        serde_json::from_str::<NamedPolicy>("\"LlmOneShot\"").unwrap(),
+        NamedPolicy::Llm
+    );
 }

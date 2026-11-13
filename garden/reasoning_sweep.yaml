@@ -47,7 +47,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   astra-low:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai
@@ -68,7 +68,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   astra-high:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai
@@ -89,7 +89,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   astra-max:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai
@@ -110,7 +110,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   luna-low:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai
@@ -131,7 +131,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   luna-medium:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai
@@ -152,7 +152,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   luna-high:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai

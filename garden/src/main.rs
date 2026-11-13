@@ -513,7 +513,7 @@ fn run_single(
     match status_code {
         Some(result) => {
             let log = match options.policy {
-                Some(yardbird::policy::NamedPolicy::LlmOneShot) => options.llm.llm_log.as_deref(),
+                Some(p) if p.uses_llm() => options.llm.llm_log.as_deref(),
                 Some(
                     yardbird::policy::NamedPolicy::OneShot
                     | yardbird::policy::NamedPolicy::ConditionalBinding,
@@ -699,7 +699,7 @@ fn run_config_based(mut options: GardenOptions, config: BenchmarkConfig) -> anyh
                 .as_ref()
                 .unwrap()
                 .join("preflight.jsonl");
-            if run.policy == Some(yardbird::policy::NamedPolicy::LlmOneShot) {
+            if run.policy.is_some_and(|p| p.uses_llm()) {
                 configured.llm.llm_log = Some(path);
                 configured.llm.llm_dry_run |= options.guided_dry_run;
             } else if run.policy == Some(yardbird::policy::NamedPolicy::RandomInstantiation) {
@@ -792,7 +792,7 @@ fn is_guided(policy: Option<yardbird::policy::NamedPolicy>) -> bool {
     use yardbird::policy::NamedPolicy::*;
     matches!(
         policy,
-        Some(OneShot | ConditionalBinding | LlmOneShot | RandomInstantiation)
+        Some(OneShot | ConditionalBinding | Llm | RandomInstantiation)
     )
 }
 
@@ -849,7 +849,7 @@ fn run_config_benchmark(
             .as_ref()
             .expect("guided log directory prepared");
         let path = root.join(format!("{run_idx:04}-{benchmark_idx:04}.jsonl"));
-        if run.policy == Some(yardbird::policy::NamedPolicy::LlmOneShot) {
+        if run.policy.is_some_and(|p| p.uses_llm()) {
             configured.llm.llm_log = Some(path);
             configured.llm.llm_dry_run |= options.guided_dry_run;
         } else if run.policy == Some(yardbird::policy::NamedPolicy::RandomInstantiation) {

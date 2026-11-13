@@ -463,7 +463,7 @@ impl YardbirdOptions {
                 p.uses_decision_model()
                     || matches!(
                         p,
-                        policy::NamedPolicy::LlmOneShot | policy::NamedPolicy::RandomInstantiation
+                        policy::NamedPolicy::Llm | policy::NamedPolicy::RandomInstantiation
                     )
             })
             || self.train
@@ -522,7 +522,7 @@ impl YardbirdOptions {
                     p,
                     policy::NamedPolicy::OneShot
                         | policy::NamedPolicy::ConditionalBinding
-                        | policy::NamedPolicy::LlmOneShot
+                        | policy::NamedPolicy::Llm
                         | policy::NamedPolicy::RandomInstantiation
                 )),
             "--no-guided-fallback requires a JEV, LLM, or random-instantiation policy"

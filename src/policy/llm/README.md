@@ -1,6 +1,6 @@
 # LLM-guided instantiation
 
-`--policy llm-one-shot` asks an LLM to choose an array axiom and all of its
+`--policy llm` asks an LLM to choose an array axiom and all of its
 bindings together. The default is one complete proposal in one inference call
 per abstract countermodel. Yardbird constructs the formula itself and accepts
 it only if it is installable, new, and evaluates to known false in that model.
@@ -15,6 +15,8 @@ quantifiers to the solver. Other array sorts cause snapshot capture to skip
 inference and use ordinary refinement. Eager seeding, countermodel tracing,
 auxiliary synthesis, and prefer-axioms cannot be combined with this policy.
 
+`llm-one-shot` remains a CLI/serialized-input alias; new results use `llm`.
+
 ## Running
 
 Choose an explicit provider model ID supported by your account. The model must
@@ -26,7 +28,7 @@ Inspect the complete OpenAI request without a key or any inference calls:
 
 ```bash
 cargo run --release -- -f examples/array/array_copy.vmt -d 3 \
-  --policy llm-one-shot --llm-provider openai \
+  --policy llm --llm-provider openai \
   --llm-model YOUR_MODEL_ID --llm-dry-run \
   --llm-log /tmp/yardbird-llm-dry-run.jsonl --json-output
 ```
@@ -39,7 +41,7 @@ For Anthropic, configure `ANTHROPIC_API_KEY` and select the Messages adapter:
 
 ```bash
 cargo run --release -- -f examples/array/array_copy.vmt -d 3 \
-  --policy llm-one-shot --llm-provider anthropic \
+  --policy llm --llm-provider anthropic \
   --llm-model YOUR_MODEL_ID --llm-log /tmp/yardbird-anthropic.jsonl \
   --json-output
 ```

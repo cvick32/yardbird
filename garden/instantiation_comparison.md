@@ -9,7 +9,7 @@ configuration for each method:
 | Matrix | Configuration |
 | --- | --- |
 | `jev` | `conditional-binding`, property-directed prompt, `jev-latest`, 5 attempts, 10 candidates, beam width 3, batching, 2-second request timeout |
-| `openai` | `llm-one-shot`, `gpt-6-astra`, one complete-proposal attempt, explicit prompt caching |
+| `openai` | `llm`, `gpt-6-astra`, one complete-proposal attempt, explicit prompt caching |
 | `yardbird` | Frozen best abstract configuration from the August 31 depth-50 ablation: BMC cost, source-then-full, prefer-source ranker, 16 winners |
 | `z3` | Concrete Z3 arrays |
 

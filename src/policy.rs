@@ -39,12 +39,18 @@ pub enum NamedPolicy {
     /// Choose axiom bindings sequentially, conditioned on earlier choices.
     ConditionalBinding,
     /// Choose an axiom and every binding in one LLM response, with ordinary fallback.
-    LlmOneShot,
+    #[value(alias = "llm-one-shot")]
+    #[serde(rename = "llm", alias = "LlmOneShot", alias = "llm-one-shot")]
+    Llm,
     /// Uniformly sample well-sorted array-axiom proposals from the shared catalogue.
     RandomInstantiation,
 }
 
 impl NamedPolicy {
+    pub fn uses_llm(self) -> bool {
+        matches!(self, Self::Llm)
+    }
+
     pub(crate) fn uses_decision_model(self) -> bool {
         matches!(self, Self::OneShot | Self::ConditionalBinding)
     }
@@ -52,7 +58,7 @@ impl NamedPolicy {
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
             Self::RandomInstantiation => random::build_plan(run),
-            Self::LlmOneShot => llm::build_plan(run),
+            Self::Llm => llm::build_plan(run),
             Self::GermanFast => run_german_fast(run),
             Self::CountermodelGuided => run_countermodel_guided(run),
             Self::OneShot => decision_model::build_plan(run, decision_model::BindingMode::OneShot),

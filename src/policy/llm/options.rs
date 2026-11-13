@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::{policy::NamedPolicy, SolverBackend, Theory, TheorySelection, YardbirdOptions};
+use crate::{SolverBackend, Theory, TheorySelection, YardbirdOptions};
 use serde::{Deserialize, Serialize};
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,7 +38,7 @@ pub struct LlmOptions {
     /// Provider for joint axiom-and-binding inference.
     #[arg(long, value_enum, default_value_t = LlmProvider::Openai)]
     pub llm_provider: LlmProvider,
-    /// Explicit provider model ID (required with --policy llm-one-shot).
+    /// Explicit provider model ID (required with --policy llm).
     #[arg(long)]
     pub llm_model: Option<String>,
     /// New JSONL file containing requests, responses, usage, and validation outcomes.
@@ -88,10 +88,10 @@ impl Default for LlmOptions {
 
 impl LlmOptions {
     pub fn validate(&self, run: &YardbirdOptions) -> anyhow::Result<()> {
-        if run.policy != Some(NamedPolicy::LlmOneShot) {
+        if !run.policy.is_some_and(|p| p.uses_llm()) {
             anyhow::ensure!(
                 self == &Self::default(),
-                "--llm-* options require --policy llm-one-shot"
+                "--llm-* options require --policy llm"
             );
             return Ok(());
         }

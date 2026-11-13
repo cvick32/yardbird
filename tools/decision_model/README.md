@@ -96,7 +96,7 @@ does not address the choice-count limit.
 
 ### Shared vocabulary identity
 
-JEV and `llm-one-shot` capture through the same run-scoped instantiation session.
+JEV and `llm` capture through the same run-scoped instantiation session.
 Shared snapshot schema version 3 assigns stable IDs to `(expression, sort)` pairs
 as terms appear. IDs are never reassigned within a run, but only the current
 catalogue is eligible. Different runs can discover terms in different orders;

@@ -12,6 +12,7 @@ JSON_READ_CHUNK_SIZE = 1024 * 1024
 
 GUIDED_SETTINGS_SECTION = {
     "llm-one-shot": "llm",
+    "llm": "llm",
     "one-shot": "decision_model",
     "conditional-binding": "decision_model",
     "random-instantiation": "random",
@@ -358,8 +359,8 @@ class BenchmarkResult:
         """Return a semantic PGFPlots style for an ablation configuration."""
         if self.strategy != "abstract" or not self.has_extended_configuration():
             return None
-        if self.policy in {"one-shot", "conditional-binding", "llm-one-shot"}:
-            color = "softPurple" if self.policy == "llm-one-shot" else "softGreen"
+        if self.policy in {"one-shot", "conditional-binding", "llm-one-shot", "llm"}:
+            color = "softPurple" if self.policy in {"llm-one-shot", "llm"} else "softGreen"
             line = "densely dashed" if self.no_guided_fallback is False else "solid"
             return f"color={color}, very thick, {line}, mark=none"
         if self.instantiation_ranker == "term-cost":
