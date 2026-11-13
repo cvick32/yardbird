@@ -57,6 +57,7 @@ fn context<'a>(
     pending: &'a HashSet<smt2parser::concrete::Term>,
 ) -> DiscoveryContext<'a> {
     DiscoveryContext {
+        quantifiers: None,
         smt,
         depth: 0,
         refinement_step: 0,

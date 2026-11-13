@@ -8,6 +8,7 @@ fn snapshot() -> InstantiationSnapshot {
     let smt = fixture();
     InstantiationSnapshot::capture(
         &DiscoveryContext {
+            quantifiers: None,
             smt: &smt,
             depth: 0,
             refinement_step: 0,
@@ -138,6 +139,7 @@ fn changed_source_rebuilds_static_context_without_renumbering_terms() {
     let next = session
         .capture(
             &DiscoveryContext {
+                quantifiers: None,
                 smt: &smt,
                 depth: 0,
                 refinement_step: 1,

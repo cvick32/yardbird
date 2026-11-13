@@ -102,8 +102,8 @@ impl LlmOptions {
         anyhow::ensure!(
             run.solver == SolverBackend::Z3
                 && (run.theory == TheorySelection::Auto
-                    || run.theory == TheorySelection::Explicit(vec![Theory::Array])),
-            "LLM policy requires Z3 and --theory auto or array"
+                    || matches!(&run.theory, TheorySelection::Explicit(theories) if !theories.is_empty() && theories.iter().all(|t| matches!(t, Theory::Array | Theory::Quantifiers)))),
+            "LLM policy requires Z3 and --theory auto, array, quantifiers, or array,quantifiers"
         );
         anyhow::ensure!(!run.eager && run.countermodel_trace_work == 0 &&
             run.synthesis_trigger == crate::SynthesisTrigger::Off && !run.prefer_axioms,

@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 
 use crate::{
     instance_installation::full_unroll::FullUnrollStrategy,
+    policy::instantiation::InstantiationSchema,
     policy::{
         discovery::{DiscoveryContext, DiscoveryFirst, InstanceDiscovery},
         instance_selection::TermCostInstantiationRanker,
@@ -28,7 +29,6 @@ use crate::{
     rule_matching::candidate::SymbolicInstance,
     solver::PropertyCheckMode,
     strategies::Abstract,
-    theories::array::instantiation_schema::ArrayInstantiationSchema,
     ArrayProofPlan, SolverBackend, Theory, TheorySelection, YardbirdOptions,
 };
 
@@ -97,7 +97,7 @@ impl RandomOptions {
 /// full syntactic sort domain. This is not uniform over the union of all tuples:
 /// axioms with more slots do not receive more probability mass.
 struct ProposalSampler<'a> {
-    schemas: Vec<&'a ArrayInstantiationSchema>,
+    schemas: Vec<&'a InstantiationSchema>,
     domains: BTreeMap<&'a str, Vec<&'a str>>,
 }
 

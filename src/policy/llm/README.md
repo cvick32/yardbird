@@ -1,6 +1,6 @@
 # LLM-guided instantiation
 
-`--policy llm` asks an LLM to choose an array axiom and all of its
+`--policy llm` asks an LLM to choose an offered theory rule and all of its
 bindings together. The default is one complete proposal in one inference call
 per abstract countermodel. Yardbird constructs the formula itself and accepts
 it only if it is installable, new, and evaluates to known false in that model.
@@ -8,14 +8,23 @@ Accepted instances use the existing selection and full-unroll installation path.
 Failure or abstention yields to ordinary refinement; neither establishes a real
 counterexample or a proof.
 
-This first implementation supports VMT inputs with Z3 and Int-indexed,
-Int-valued arrays, matching the JEV experiment. Use `--theory auto` (default) or
-`--theory array`. As with JEV, the plan owns array abstraction and leaves input
-quantifiers to the solver. Other array sorts cause snapshot capture to skip
-inference and use ordinary refinement. Eager seeding, countermodel tracing,
-auxiliary synthesis, and prefer-axioms cannot be combined with this policy.
+The `llm` policy supports VMT inputs with Z3 and typed arrays, including Boolean
+and nested-array values. `--theory auto` owns both arrays and input quantifiers;
+explicit `array`, `quantifiers`, and `array,quantifiers` selections are also
+available. For distributed protocols use **only `*.encoding.vmt` companions**.
+Direct lambda guidance is unsupported. JEV and random instantiation retain their
+existing Int/Int array-only catalogue.
+
+Input-binder rules come exclusively from the actual input's registered lowering
+plan. Each rule exposes its source/parent identity, captures, bound variables,
+logical direction, and deterministic witness dependencies. The LLM supplies only
+rule and typed term IDs; Yardbird constructs and validates the exact instance.
+There is no invariant, predicate, arbitrary lemma, or new-assumption synthesis.
+Built-in array axioms are identified separately. Uninterpreted sorts and relations
+have no arithmetic semantics inferred from their names.
 
 `llm-one-shot` remains a CLI/serialized-input alias; new results use `llm`.
+The renamed policy remains LLM-first with optional ordinary fallback.
 
 ## Running
 
@@ -203,10 +212,9 @@ Events include `request`, `request_skipped`, `response`, `attempt_result`,
 `transport_error`, `snapshot_error`, and `episode_end`. Records contain provider
 configuration, model version, depth, refinement step, and a run-local query ID.
 Responses retain raw provider usage, including any cache/reasoning breakdown,
-and the resolved model name. Log schema version 3 retains per-response `cost`
+and the resolved model name. Log schema version 4 retains per-response `cost`
 and cumulative `run_cost` from version 2, and changes request content to ordered
-JSON blocks with explicit cache controls. The shared snapshot schema is also
-version 3, reflecting stable run-scoped IDs. Keys and authorization headers are
+JSON blocks with explicit cache controls. The shared snapshot schema is version 4, adding typed input-binder schemas and source provenance. Keys and authorization headers are
 not written to the log. Requests contain the full verification source and model.
 
 `accepted_instances` counts proposals passing discovery validation. Discovery

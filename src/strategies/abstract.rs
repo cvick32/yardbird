@@ -381,7 +381,7 @@ where
                 preprocess_arrays: self.preprocess_exact_read_after_write,
                 encoding: self.encoding_options,
                 property_cone: self.policy.effort().requires_property_cone(),
-                profile: self.profile,
+                profile: self.profile || self.policy.has_input_binder_discovery(),
             },
         );
         match prepared {
@@ -595,7 +595,8 @@ where
             }
             self.offer_sequence += 1;
             let mut kinds = Vec::new();
-            if self.ownership.arrays && self.policy.has_discovery() {
+            if (self.ownership.arrays || self.ownership.quantifiers) && self.policy.has_discovery()
+            {
                 kinds.push((
                     OperationKind::PolicyCandidates,
                     "policy-proposed symbolic instances".into(),
@@ -768,10 +769,13 @@ where
             let mut retain = false;
             match operation.kind {
                 OperationKind::PolicyCandidates => {
-                    let instances = discovery
-                        .as_mut()
-                        .expect("offered discovery producer")
-                        .discover(&crate::policy::discovery::DiscoveryContext {
+                    let producer = discovery.as_mut().expect("offered discovery producer");
+                    let quantifiers = producer
+                        .supports_input_binders()
+                        .then_some((&self.quantifier.plan, &self.quantifier.provenance));
+                    let instances =
+                        producer.discover(&crate::policy::discovery::DiscoveryContext {
+                            quantifiers,
                             smt,
                             depth: state.depth,
                             refinement_step,

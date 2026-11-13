@@ -60,7 +60,7 @@ pub(super) fn request(
         LlmProvider::Openai => json!({
             "model":model,
             "input":[{"role":"developer", "content":PROMPT.trim()}, {"role":"user", "content":input}],
-            "text":{"format":{"type":"json_schema", "name":"array_instantiation", "strict":true, "schema":schema}},
+            "text":{"format":{"type":"json_schema", "name":"theory_instantiation", "strict":true, "schema":schema}},
             "max_output_tokens":options.llm_max_output_tokens,
             "store":false, "truncation":"disabled"
         }),

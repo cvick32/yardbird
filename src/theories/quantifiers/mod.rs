@@ -15,6 +15,7 @@ use smt2parser::{
 use crate::terms::language::TermLanguage;
 mod compiled_rule;
 pub(crate) mod eager;
+pub(crate) mod instantiation_schema;
 mod lowering;
 pub mod provenance;
 pub(crate) mod refinement;

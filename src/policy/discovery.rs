@@ -12,10 +12,18 @@ pub(crate) struct DiscoveryContext<'a> {
     pub depth: u16,
     pub refinement_step: u32,
     pub model_version: u64,
+    /// Present only for producers opting into typed input-binder guidance.
+    pub quantifiers: Option<(
+        &'a crate::theories::quantifiers::QuantifierPlan,
+        &'a crate::theories::quantifiers::provenance::QuantifierProvenance,
+    )>,
     pub pending: &'a HashSet<Term>,
 }
 
 pub(crate) trait InstanceDiscovery {
+    fn supports_input_binders(&self) -> bool {
+        false
+    }
     fn discover(&mut self, context: &DiscoveryContext<'_>)
         -> anyhow::Result<Vec<SymbolicInstance>>;
 }

@@ -5,6 +5,7 @@ use crate::{
     solver::SolverCheckResult,
     strategies::{ProofStrategy, RefinementState},
     vmt_bmc_session::VmtBmcSession,
+    Theory, TheorySelection,
 };
 use clap::Parser;
 use smt2parser::{concrete::SyntaxBuilder, vmt::VMTModel, CommandStream};
@@ -61,6 +62,7 @@ fn context<'a>(
     pending: &'a HashSet<smt2parser::concrete::Term>,
 ) -> DiscoveryContext<'a> {
     DiscoveryContext {
+        quantifiers: None,
         smt,
         depth: 0,
         refinement_step: 0,
@@ -607,7 +609,7 @@ fn cli_validation_serialization_and_plan_match_experiment_requirements() {
             6 => run.llm.llm_provider = LlmProvider::Openai,
             7 => run.llm.llm_reasoning_effort = Some(" ".into()),
             8 => run.filename = Some("fixture.smt2".into()),
-            9 => run.theory = TheorySelection::Explicit(vec![Theory::Quantifiers]),
+            9 => run.theory = TheorySelection::Explicit(vec![Theory::List]),
             10 => run.llm.pricing.llm_input_usd_per_million = None,
             11 => run.llm.pricing.llm_output_usd_per_million = Some(-1.0),
             _ => unreachable!(),
@@ -775,6 +777,182 @@ fn strict_guidance_failure_stops_without_installing_ordinary_instances() {
     assert_eq!(last["no_guided_fallback"], true);
 }
 
+struct BinderClient;
+impl LlmClient for BinderClient {
+    fn infer(&mut self, request: &Value) -> anyhow::Result<Value> {
+        let state = request_state(request);
+        let schema = state["axioms"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| {
+                s["provenance"]["kind"] == "input_binder"
+                    && s["provenance"]["direction"] == "instance"
+            })
+            .unwrap();
+        assert!(
+            state["binder_sources"][schema["provenance"]["source_id"].as_str().unwrap()]["formula"]
+                .as_str()
+                .unwrap()
+                .contains("forall")
+        );
+        let bindings = schema["slots"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(slot, sort)| {
+                let term = state["terms"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|t| {
+                        t["sort"] == *sort
+                            && (t["expression"].as_str().unwrap().starts_with("k@")
+                                || t["expression"].as_str().unwrap().starts_with("a@"))
+                    })
+                    .unwrap();
+                (slot.clone(), term["id"].clone())
+            })
+            .collect::<serde_json::Map<_, _>>();
+        Ok(envelope(
+            LlmProvider::Openai,
+            &json!({"proposal":{"axiom_id":schema["id"],"bindings":bindings}}).to_string(),
+        ))
+    }
+}
+
+#[test]
+fn typed_input_quantifier_proposal_is_validated_installed_and_replayed() {
+    let source = r#"
+      (declare-sort node 0)
+      (declare-fun a () (Array node Bool))
+      (declare-fun a.next () (Array node Bool))
+      (define-fun a.link () (Array node Bool) (! a :next a.next))
+      (declare-fun k () node)
+      (define-fun init () Bool (! (forall ((x node)) (select a x)) :init true))
+      (define-fun trans () Bool (! (= a.next a) :trans true))
+      (define-fun prop () Bool (! (select a k) :invar-property 0))
+    "#;
+    let model = VMTModel::checked_from(
+        CommandStream::new(source.as_bytes(), SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap(),
+    )
+    .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("binder.jsonl");
+    let (mut discovery, _) = experiment(path.clone(), LlmProvider::Openai, vec![]);
+    discovery.problem_source = Some(source.into());
+    discovery.client = Box::new(BinderClient);
+    let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
+        .with_effort(DiscoveryFirst::default().with_no_fallback(true))
+        .with_discovery(discovery);
+    let mut driver = crate::Driver::new(
+        model,
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    );
+    let result = driver
+        .check_strategy(3, Box::new(Abstract::new(3, false, policy, true)))
+        .unwrap();
+    assert!(!result.counterexample);
+    assert!(result.total_instantiations_added > 0);
+    assert_eq!(
+        result
+            .solver_statistics
+            .get_f64("concrete_validation_checks")
+            .unwrap(),
+        0.0
+    );
+    let events = records(&path);
+    assert!(events
+        .iter()
+        .any(|e| e["event"] == "attempt_result" && e["feedback"]["outcome"] == "violated"));
+    let request = events.iter().find(|e| e["event"] == "request").unwrap();
+    assert!(request_state(&request["request"])["terms"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["sort"] == "Bool"));
+}
+
+#[test]
+fn encoding_corpus_binders_have_exact_schemas_and_source_provenance() {
+    use crate::theories::{
+        preparation::{prepare_vmt, PreparationOptions},
+        quantifiers::instantiation_schema::BinderInstantiationSchema,
+    };
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/distributed_protocols");
+    let mut files = vec![];
+    for dir in std::fs::read_dir(root)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().is_dir())
+    {
+        files.extend(
+            std::fs::read_dir(dir.path())
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.to_string_lossy().ends_with(".encoding.vmt")),
+        );
+    }
+    files.sort();
+    assert!(files.len() >= 30);
+    let mut widest = 0;
+    let mut exists = 0;
+    let mut nested = 0;
+    for file in files {
+        let prepared = prepare_vmt(
+            VMTModel::from_path(&file).unwrap(),
+            PreparationOptions {
+                selection: &TheorySelection::Auto,
+                preprocess_arrays: false,
+                encoding: Default::default(),
+                property_cone: false,
+                profile: true,
+            },
+        )
+        .unwrap();
+        assert!(
+            prepared.quantifier.configuration_error.is_none(),
+            "{}",
+            file.display()
+        );
+        for source in prepared.quantifier.provenance.sources.values() {
+            widest = widest.max(source.variables.len());
+            nested += usize::from(source.parent_source_id.is_some());
+            assert_ne!(source.kind, "lambda");
+        }
+        for rule in &prepared.quantifier.plan.rules {
+            exists += usize::from(rule.kind == crate::theories::quantifiers::BinderKind::Exists);
+            for witness in [false, true] {
+                let schema =
+                    BinderInstantiationSchema::new(rule, &prepared.quantifier.provenance, witness)
+                        .unwrap();
+                assert!(
+                    schema.formula.starts_with("(=> "),
+                    "{}: {}",
+                    file.display(),
+                    schema.formula
+                );
+                assert!(prepared
+                    .quantifier
+                    .provenance
+                    .sources
+                    .contains_key(schema.provenance["source_id"].as_str().unwrap()));
+                if witness {
+                    assert!(schema.slots.keys().all(|s| s.starts_with("capture_")));
+                }
+            }
+        }
+    }
+    assert!(widest >= 7);
+    assert!(exists > 0);
+    assert!(nested > 0);
+}
+
 #[test]
 fn llm_names_roundtrip() {
     for (name, expected) in [
@@ -807,4 +985,43 @@ fn llm_names_roundtrip() {
         serde_json::from_str::<NamedPolicy>("\"LlmOneShot\"").unwrap(),
         NamedPolicy::Llm
     );
+}
+
+#[test]
+fn quantifier_only_input_offers_llm_discovery_without_array_types() {
+    let source = r#"
+      (declare-sort node 0)
+      (declare-fun p (node) Bool)
+      (declare-fun k () node)
+      (define-fun init () Bool (! (forall ((x node)) (p x)) :init true))
+      (define-fun trans () Bool (! true :trans true))
+      (define-fun prop () Bool (! (p k) :invar-property 0))
+    "#;
+    let model = VMTModel::checked_from(
+        CommandStream::new(source.as_bytes(), SyntaxBuilder, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap(),
+    )
+    .unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let (mut discovery, _) = experiment(
+        directory.path().join("quantifiers.jsonl"),
+        LlmProvider::Openai,
+        vec![],
+    );
+    discovery.problem_source = Some(source.into());
+    discovery.client = Box::new(BinderClient);
+    let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
+        .with_effort(DiscoveryFirst::default().with_no_fallback(true))
+        .with_discovery(discovery);
+    let strategy = Abstract::new(1, false, policy, false)
+        .with_theory_selection(TheorySelection::Explicit(vec![Theory::Quantifiers]));
+    let mut driver = crate::Driver::new(
+        model,
+        Box::new(FullUnrollStrategy::new()),
+        SolverBackend::Z3,
+    );
+    let result = driver.check_strategy(1, Box::new(strategy)).unwrap();
+    assert!(!result.counterexample);
+    assert!(result.total_instantiations_added > 0);
 }

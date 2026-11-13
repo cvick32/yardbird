@@ -36,7 +36,7 @@ pub(crate) struct CatalogueTerm {
 /// constructs exact theory instances; validation against the live model is separate.
 pub(crate) struct InstantiationSnapshot {
     pub terms: Vec<CatalogueTerm>,
-    pub schemas: Vec<ArrayInstantiationSchema>,
+    pub schemas: Vec<super::InstantiationSchema>,
     model: String,
     pub(super) declarations: Vec<String>,
     pub(super) prefix: Vec<Value>,
@@ -45,6 +45,7 @@ pub(crate) struct InstantiationSnapshot {
     model_version: u64,
     successful_instantiations: BTreeSet<String>,
     problem_source: String,
+    binder_sources: Value,
 }
 
 impl InstantiationSnapshot {
@@ -53,9 +54,10 @@ impl InstantiationSnapshot {
         problem_source: &str,
     ) -> anyhow::Result<Self> {
         let types = context.smt.get_array_types();
-        anyhow::ensure!(!types.is_empty(), "no abstract array types");
+        let extended = context.quantifiers.is_some();
+        anyhow::ensure!(extended || !types.is_empty(), "no abstract array types");
         anyhow::ensure!(
-            types.iter().all(|(i, v)| i == "Int" && v == "Int"),
+            extended || types.iter().all(|(i, v)| i == "Int" && v == "Int"),
             "guided instantiation supports Int-indexed, Int-valued arrays only"
         );
         let native_model = context.smt.native_model_to_string()?;
@@ -103,6 +105,17 @@ impl InstantiationSnapshot {
         {
             collect_ground(term, &mut ground)?;
         }
+        if let Some((plan, _)) = context.quantifiers {
+            for (_, term) in &plan.seeds {
+                collect_ground(term, &mut ground)?;
+            }
+            for literal in ["true", "false"] {
+                collect_ground(
+                    &crate::theories::quantifiers::app(literal, vec![]),
+                    &mut ground,
+                )?;
+            }
+        }
         let mut terms = vec![];
         for (expression, term) in ground {
             let sort = term_sort(&term, &signatures, &HashMap::new())
@@ -110,7 +123,7 @@ impl InstantiationSnapshot {
             let sort = TermLanguage::sort_to_name(&sort);
             // None of the supported Int/Int array axiom slots accept Bool.
             // This only filters substitution options, never the native model.
-            if sort == "Bool" {
+            if !extended && sort == "Bool" {
                 continue;
             }
             terms.push(CatalogueTerm {
@@ -120,7 +133,25 @@ impl InstantiationSnapshot {
                 term,
             });
         }
-        let schemas = ArrayInstantiationSchema::all(&types)?;
+        let mut schemas = ArrayInstantiationSchema::all(&types)?
+            .into_iter()
+            .map(super::InstantiationSchema::array)
+            .collect::<Vec<_>>();
+        if let Some((plan, provenance)) = context.quantifiers {
+            for rule in &plan.rules {
+                for witness in [false, true] {
+                    let schema = crate::theories::quantifiers::instantiation_schema::BinderInstantiationSchema::new(rule, provenance, witness)?;
+                    schemas.push(super::InstantiationSchema::binder(
+                        format!(
+                            "binder:{}:{}",
+                            rule.name,
+                            if witness { "witness" } else { "instance" }
+                        ),
+                        schema,
+                    ));
+                }
+            }
+        }
         let mut declarations = declarations
             .iter()
             .map(ToString::to_string)
@@ -148,6 +179,19 @@ impl InstantiationSnapshot {
                 .map(ToString::to_string)
                 .collect(),
             problem_source: problem_source.to_owned(),
+            binder_sources: context
+                .quantifiers
+                .map(|(_, provenance)| {
+                    // The complete file is already present; avoid repeating entire
+                    // transition commands for every nested binder occurrence.
+                    let mut sources =
+                        serde_json::to_value(&provenance.sources).expect("serializable provenance");
+                    for source in sources.as_object_mut().unwrap().values_mut() {
+                        source.as_object_mut().unwrap().remove("command");
+                    }
+                    sources
+                })
+                .unwrap_or_else(|| json!({})),
         })
     }
 
@@ -155,7 +199,7 @@ impl InstantiationSnapshot {
     /// protocol without recapturing or filtering the underlying context.
     pub fn state(&self) -> Value {
         let mut state = json!({
-            "schema_version": 3,
+            "schema_version": 4,
             "model_format": "native Z3 model; preserve function defaults and uninterpreted-domain values; absent interpretations are unknown",
             "frame_notation": "x@N denotes x at absolute BMC frame N; unframed declaration signatures also apply to their framed instances",
             "depth": self.depth,
@@ -164,8 +208,9 @@ impl InstantiationSnapshot {
             "model": self.model,
             "declarations": self.declarations,
             "terms": self.terms,
-            "axioms": self.schemas.iter().map(|s| json!({"id":s.id,"name":s.name(),"slots":s.slots,"body":s.formula})).collect::<Vec<_>>(),
-            "catalogue_scope": "all non-Boolean current ground problem/refinement subterms, including children of Boolean formulas, deduplicated syntactically; no synthesized terms or heuristic shortlist; the full model retains Boolean interpretations",
+            "binder_sources": self.binder_sources,
+            "axioms": self.schemas.iter().map(|s| json!({"id":s.id,"name":s.name(),"slots":s.slots,"body":s.formula,"provenance":s.provenance})).collect::<Vec<_>>(),
+            "catalogue_scope": "current ground problem/refinement subterms and registered binder seeds, deduplicated syntactically; typed binder guidance includes Boolean terms; legacy array-only producers omit Boolean choices; no model-domain elements or heuristic shortlist",
             "successful_instantiations": {
                 "meaning": "Previously installed instances from guided or ordinary Yardbird refinement. Do not propose these again. These are normalized replay schemas: x+K denotes relative frame offset K, while x@N in the model/catalogue denotes absolute frame N. They are not claims of current-model violations. Choose bindings only from the current catalogue.",
                 "instances": self.successful_instantiations,
@@ -173,7 +218,7 @@ impl InstantiationSnapshot {
         });
         state["problem"] = json!({
             "format":"VMT", "source":self.problem_source,
-            "notation":"The complete original verification problem. :init marks initialization, :trans the transition relation, :invar-property the property, and :next the current/next variable mapping. For Int arrays, select/store correspond to abstract Read_Int_Int/Write_Int_Int. x@N denotes absolute frame N; next variables denote the following frame. The original problem uses array semantics; the abstract function tables may violate them."
+            "notation":"The complete original verification problem. :init marks initialization, :trans the transition relation, :invar-property the property, and :next the current/next variable mapping. Typed select/store correspond to abstract Read_I_V/Write_I_V, including nested array sorts. Input binders map to the offered helper rules and source provenance. Witness terms are constructed by Yardbird, never supplied by the provider. x@N denotes absolute frame N; next variables denote the following frame. The original problem uses array semantics; the abstract function tables may violate them."
         });
         state
     }
@@ -195,7 +240,7 @@ impl InstantiationSnapshot {
         state
     }
 
-    pub fn schema(&self, id: &str) -> anyhow::Result<&ArrayInstantiationSchema> {
+    pub fn schema(&self, id: &str) -> anyhow::Result<&super::InstantiationSchema> {
         self.schemas
             .iter()
             .find(|s| s.id == id)

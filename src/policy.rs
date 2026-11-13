@@ -188,6 +188,12 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
         self
     }
 
+    pub(crate) fn has_input_binder_discovery(&self) -> bool {
+        self.discovery
+            .as_ref()
+            .is_some_and(|d| d.supports_input_binders())
+    }
+
     pub(crate) fn has_discovery(&self) -> bool {
         self.discovery.is_some()
     }

@@ -20,7 +20,7 @@ use crate::{
     rule_matching::candidate::SymbolicInstance,
     solver::PropertyCheckMode,
     strategies::Abstract,
-    ArrayProofPlan, SolverBackend, Theory, TheorySelection, YardbirdOptions,
+    ArrayProofPlan, SolverBackend, YardbirdOptions,
 };
 use client::{HttpClient, LlmClient};
 pub use cost::LlmPricing;
@@ -59,7 +59,7 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
         strategy: Box::new(
             Abstract::new(run.depth, run.run_ic3ia, policy, true)
                 .with_artifact_capture(run.build_array_artifact_capture())
-                .with_theory_selection(TheorySelection::Explicit(vec![Theory::Array]))
+                .with_theory_selection(run.theory.clone())
                 .with_property_check_mode(PropertyCheckMode::Assumptions),
         ),
         conditional_history: None,
@@ -89,7 +89,7 @@ impl Experiment {
             self.log = Some(OpenOptions::new().write(true).create_new(true).open(path)?);
         }
         record["no_guided_fallback"] = json!(self.no_fallback);
-        record["schema_version"] = json!(3);
+        record["schema_version"] = json!(4);
         record["run_cost"] = self.spend.summary();
         record["policy"] = json!("llm");
         record["query_id"] = json!(self.query_id);
@@ -122,6 +122,10 @@ impl Experiment {
 }
 
 impl InstanceDiscovery for Experiment {
+    fn supports_input_binders(&self) -> bool {
+        true
+    }
+
     fn discover(
         &mut self,
         context: &DiscoveryContext<'_>,
