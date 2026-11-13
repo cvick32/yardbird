@@ -1,0 +1,24 @@
+; Same observable transition system as prerequisite_existential_action.vmt.
+; The freely chosen parameter p is an auxiliary state variable.
+(declare-fun enabled () (Array Int Bool))
+(declare-fun enabled_next () (Array Int Bool))
+(declare-fun data () (Array Int Int))
+(declare-fun data_next () (Array Int Int))
+(declare-fun p () Int)
+(declare-fun p_next () Int)
+(define-fun .enabled () (Array Int Bool) (! enabled :next enabled_next))
+(define-fun .data () (Array Int Int) (! data :next data_next))
+(define-fun .p () Int (! p :next p_next))
+(declare-fun write () Bool)
+(declare-fun idle () Bool)
+(define-fun .write () Bool (! write :action 0))
+(define-fun .idle () Bool (! idle :action 0))
+(define-fun init () Bool (! (and
+  (forall ((i Int)) (= (select enabled i) false))
+  (= data ((as const (Array Int Int)) 0))) :init true))
+(define-fun trans () Bool (! (and
+  (= enabled_next enabled)
+  (=> write (and (select enabled p) (= data_next (store data p 1))))
+  (=> idle (= data_next data))
+  (or write idle) (not (and write idle))) :trans true))
+(define-fun prop () Bool (! (= (select data 0) 0) :invar-property 0))

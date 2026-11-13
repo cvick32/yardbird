@@ -1592,3 +1592,693 @@ fn same_frame_instances_use_shared_ranking_and_work_without_profiling() {
         }
     }
 }
+
+#[test]
+fn existential_action_equations_keep_witness_guards_and_stop_at_missing_instances() {
+    use crate::theories::quantifiers::{refinement::QuantifierRefinement, BinderKind};
+    let input = r#"
+      (declare-fun a () (Array Int Int))
+      (declare-fun an () (Array Int Int))
+      (declare-fun w ((Array Int Int)) Int)
+      (declare-fun tick () Bool)
+      (define-fun .a () (Array Int Int) (! a :next an))
+      (define-fun .tick () Bool (! tick :action 0))
+      (define-fun init () Bool (! true :init true))
+      (define-fun trans () Bool (! (=> tick
+        (exists ((p Int)) (forall ((i Int))
+          (= (select an i) (ite (= i p) (select a p) (select a i)))))) :trans true))
+      (define-fun prop () Bool (! true :invar-property 0))
+    "#;
+    let mut quantifiers = QuantifierRefinement::default();
+    let lowered = quantifiers.configure_model(model(input), false);
+    let (lowered, types) = lowered.abstract_array_theory();
+    let index = TransitionIndex::from_model(
+        &lowered,
+        &quantifiers
+            .plan
+            .rules
+            .iter()
+            .map(|r| r.name.clone())
+            .collect(),
+    );
+    let outer = quantifiers
+        .plan
+        .rules
+        .iter()
+        .find(|r| r.kind == BinderKind::Exists)
+        .unwrap();
+    let inner = quantifiers
+        .plan
+        .rules
+        .iter()
+        .find(|r| r.kind == BinderKind::Forall)
+        .unwrap();
+    let outer_prefix = format!("(=> ({} ", outer.name);
+    let inner_prefix = format!("(=> ({} ", inner.name);
+    let read: Term = "(Read_Int_Int a@1 (w a@1))".parse().unwrap();
+    for (enabled, witness, equation, expected_path) in [
+        (false, Some("true"), "true", 0),
+        (true, Some("false"), "true", 0),
+        (true, None, "true", 0),
+        (true, Some("true"), "false", 1),
+        (true, Some("true"), "true", 2),
+    ] {
+        let mut queries = Vec::new();
+        let mut evaluate = |term: &Term| -> anyhow::Result<ModelEvaluation> {
+            let text = term.to_string();
+            queries.push(text.clone());
+            if text == "tick@0" {
+                return Ok(if enabled { "true" } else { "false" }.into());
+            }
+            if text.starts_with(&outer_prefix) {
+                return Ok(witness.map_or(ModelEvaluation::Undetermined, Into::into));
+            }
+            if text.starts_with(&inner_prefix) {
+                return Ok(equation.into());
+            }
+            Ok("true".into())
+        };
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: 512,
+            initializers: None,
+            transitions: None,
+        };
+        let mut search = TransitionSearch::new(
+            &quantifiers.plan,
+            1,
+            GuidanceTransitionOrder::PredecessorFirst,
+        );
+        let steps = search
+            .steps(&read, &mut cx, false)
+            .unwrap_or_else(|_| panic!("existential action search failed"));
+        assert_eq!(steps.len(), usize::from(enabled));
+        if !enabled {
+            assert_eq!(queries, ["tick@0"]);
+            continue;
+        }
+        let step = &steps[0];
+        let TraceReason::QuantifiedTransition {
+            frame,
+            path,
+            unresolved,
+        } = &step.reason
+        else {
+            panic!("missing guarded transition explanation")
+        };
+        assert_eq!(*frame, 0);
+        assert_eq!(path.len(), expected_path);
+        assert_eq!(unresolved.is_some(), witness.is_none());
+        assert!(step
+            .conditions
+            .iter()
+            .any(|c| c.expression.to_string() == "tick@0" && c.value == "true"));
+        if witness != Some("true") {
+            let lemma = step.lemma.as_ref().unwrap();
+            assert_eq!(lemma.rule, format!("input-binder-{}", outer.name));
+            assert_eq!(lemma.model_value.as_deref(), witness);
+            assert_eq!(step.term, lemma.formula);
+            assert!(!queries.iter().any(|q| q.starts_with(&inner_prefix)));
+        } else if equation == "false" {
+            let lemma = step.lemma.as_ref().unwrap();
+            assert_eq!(lemma.rule, format!("input-binder-{}", inner.name));
+            assert!(lemma.formula.to_string().contains("(w a@1)"));
+            assert!(lemma.formula.to_string().contains(&outer.witnesses[0]));
+            assert_eq!(path[0].rule, format!("input-binder-{}", outer.name));
+        } else {
+            assert!(step.lemma.is_none());
+            let value = step.term.to_string();
+            assert!(value.contains("(Read_Int_Int a@0 (w a@1))"), "{value}");
+            assert!(value.contains(&outer.witnesses[0]));
+            assert!(!value.contains("(w a@0)"));
+        }
+    }
+}
+
+#[test]
+fn guided_driver_uses_existential_action_equations() {
+    use crate::{policy::term_selection::array::ArrayAstSize, SolverBackend, YardbirdOptions};
+    let input = r#"
+      (declare-fun a () (Array Int Int))
+      (declare-fun an () (Array Int Int))
+      (define-fun .a () (Array Int Int) (! a :next an))
+      (define-fun init () Bool (! (forall ((i Int)) (= (select a i) 0)) :init true))
+      (define-fun trans () Bool (! (exists ((p Int)) (forall ((i Int))
+        (= (select an i) (ite (= i p) (select a p) (select a i))))) :trans true))
+      (define-fun prop () Bool (! (= (select a 7) 0) :invar-property 0))
+    "#;
+    let mut options = YardbirdOptions::from_filename("existential-action.vmt".into());
+    options.profile = true;
+    let policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+        crate::policy::DefaultEffort::default()
+            .with_countermodel_refinement(true)
+            .with_guidance_work(4096)
+            .with_winners_per_group(20),
+    );
+    let strategy = crate::strategies::Abstract::new(3, false, policy, true);
+    let mut driver = crate::Driver::new(
+        model(input),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+    let result = driver.check_strategy(3, Box::new(strategy)).unwrap();
+    assert_eq!(
+        result
+            .run_progress
+            .as_ref()
+            .unwrap()
+            .deepest_completed_depth,
+        Some(2)
+    );
+    assert!(!result.counterexample);
+    let mut explained = false;
+    for record in &result.profiling.cost_records {
+        if let Some(trace) = &record.countermodel_trace {
+            assert!(!trace.nodes.iter().any(|n| matches!(
+                n.status,
+                TraceStatus::EvaluationFailed { .. } | TraceStatus::InconsistentStep
+            )));
+            explained |= trace.nodes.iter().any(|n| {
+                matches!(
+                    &n.reason, TraceReason::QuantifiedTransition { path, .. } if !path.is_empty()
+                )
+            });
+        }
+    }
+    assert!(
+        explained,
+        "guidance must reach the equation inside the existential action"
+    );
+}
+
+#[test]
+fn guarded_equations_check_conditions_before_nested_helpers() {
+    use crate::theories::quantifiers::{refinement::QuantifierRefinement, BinderKind};
+    let input = r#"
+      (declare-fun a () (Array Int Int))
+      (declare-fun an () (Array Int Int))
+      (declare-fun s () Int)
+      (declare-fun sn () Int)
+      (declare-fun enabled () Bool)
+      (declare-fun enabledn () Bool)
+      (define-fun .a () (Array Int Int) (! a :next an))
+      (define-fun .s () Int (! s :next sn))
+      (define-fun .enabled () Bool (! enabled :next enabledn))
+      (define-fun init () Bool (! true :init true))
+      (define-fun trans () Bool (! (exists ((p Int))
+        (=> enabled (forall ((i Int))
+          (=> (not (= i p)) (and (= (select an i) (select a i)) (= sn s)))))) :trans true))
+      (define-fun prop () Bool (! true :invar-property 0))
+    "#;
+    let mut quantifiers = QuantifierRefinement::default();
+    let lowered = quantifiers.configure_model(model(input), false);
+    let (lowered, types) = lowered.abstract_array_theory();
+    let index = TransitionIndex::from_model(
+        &lowered,
+        &quantifiers
+            .plan
+            .rules
+            .iter()
+            .map(|r| r.name.clone())
+            .collect(),
+    );
+    let outer = quantifiers
+        .plan
+        .rules
+        .iter()
+        .find(|r| r.kind == BinderKind::Exists)
+        .unwrap();
+    let inner = quantifiers
+        .plan
+        .rules
+        .iter()
+        .find(|r| r.kind == BinderKind::Forall)
+        .unwrap();
+    let outer_prefix = format!("(=> ({} ", outer.name);
+    let inner_prefix = format!("(=> ({} ", inner.name);
+    for target in ["(Read_Int_Int a@1 7)", "s@1"] {
+        for (enabled, guard, witness) in [
+            (Some("false"), Some("true"), "true"),
+            (None, Some("true"), "true"),
+            (Some("true"), Some("false"), "true"),
+            (Some("true"), None, "true"),
+            (Some("true"), Some("true"), "true"),
+            (Some("true"), Some("true"), "false"),
+        ] {
+            let mut queries = Vec::new();
+            let mut evaluate = |term: &Term| -> anyhow::Result<ModelEvaluation> {
+                let text = term.to_string();
+                queries.push(text.clone());
+                if text == "enabled@0" {
+                    return Ok(enabled.map_or(ModelEvaluation::Undetermined, Into::into));
+                }
+                if text.starts_with("(not (=") {
+                    return Ok(guard.map_or(ModelEvaluation::Undetermined, Into::into));
+                }
+                if text.starts_with(&outer_prefix) {
+                    return Ok(witness.into());
+                }
+                Ok("true".into())
+            };
+            let mut cx = TraceContext {
+                index: &index,
+                types: &types,
+                evaluate: &mut evaluate,
+                remaining: 2048,
+                initializers: None,
+                transitions: None,
+            };
+            let mut search = TransitionSearch::new(
+                &quantifiers.plan,
+                1,
+                GuidanceTransitionOrder::PredecessorFirst,
+            );
+            let steps = search
+                .steps(&target.parse().unwrap(), &mut cx, false)
+                .unwrap_or_else(|_| panic!("search failed"));
+            let inactive = enabled == Some("false") || guard == Some("false");
+            assert_eq!(steps.is_empty(), inactive);
+            if enabled != Some("true") {
+                assert!(
+                    !queries.iter().any(|q| q.starts_with(&inner_prefix)),
+                    "must check outer guard before nested helper"
+                );
+            }
+            if inactive {
+                continue;
+            }
+            let step = &steps[0];
+            if witness == "false" {
+                assert_eq!(
+                    step.lemma.as_ref().unwrap().model_value.as_deref(),
+                    Some("false")
+                );
+                assert!(!queries.iter().any(|q| q == "enabled@0"));
+            } else if enabled.is_none() || guard.is_none() {
+                assert!(matches!(step.frontier, Some(TraceError::Undetermined(_))));
+                assert!(step.lemma.is_none());
+            } else {
+                assert_eq!(
+                    step.term.to_string(),
+                    if target == "s@1" {
+                        "s@0"
+                    } else {
+                        "(Read_Int_Int a@0 7)"
+                    }
+                );
+                assert!(step.lemma.is_none());
+                assert!(step
+                    .conditions
+                    .iter()
+                    .any(|o| o.expression.to_string().starts_with("(not (=")));
+                let TraceReason::QuantifiedTransition { path, frame, .. } = &step.reason else {
+                    panic!("missing path");
+                };
+                assert_eq!(*frame, 0);
+                assert_eq!(path.len(), 2);
+                assert!(path[1].formula.to_string().contains("(=> (not (= "));
+                assert!(path[1].formula.to_string().contains(&outer.witnesses[0]));
+            }
+            // Frame 1 has no asserted outgoing transition at depth 1.
+            let mut cx = TraceContext {
+                index: &index,
+                types: &types,
+                evaluate: &mut |_| panic!("unasserted frame must not be queried"),
+                remaining: 100,
+                initializers: None,
+                transitions: None,
+            };
+            assert!(search
+                .steps(&target.parse().unwrap(), &mut cx, true)
+                .unwrap_or_else(|_| panic!("bounds failed"))
+                .is_empty());
+        }
+    }
+}
+
+#[test]
+fn guided_driver_traces_scalar_predecessors_and_guarded_frames() {
+    use crate::{policy::term_selection::array::ArrayAstSize, SolverBackend, YardbirdOptions};
+    let input = r#"
+      (declare-fun a () (Array Int Int))
+      (declare-fun an () (Array Int Int))
+      (declare-fun s () Int)
+      (declare-fun sn () Int)
+      (define-fun .a () (Array Int Int) (! a :next an))
+      (define-fun .s () Int (! s :next sn))
+      (define-fun init () Bool (! (forall ((i Int)) (and (= s 0) (= (select a i) 0))) :init true))
+      (define-fun trans () Bool (! (exists ((p Int)) (and
+        (= sn s) (= (select an p) (select a p))
+        (forall ((i Int)) (=> (not (= i p)) (= (select an i) (select a i)))))) :trans true))
+      (define-fun prop () Bool (! (and (= s 0) (= (select a 7) 0)) :invar-property 0))
+    "#;
+    let mut options = YardbirdOptions::from_filename("scalar-guarded-frame.vmt".into());
+    options.profile = true;
+    let policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+        crate::policy::DefaultEffort::default()
+            .with_countermodel_refinement(true)
+            .with_guidance_work(4096)
+            .with_winners_per_group(20),
+    );
+    let strategy = crate::strategies::Abstract::new(5, false, policy, true);
+    let mut driver = crate::Driver::new(
+        model(input),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+    let result = driver.check_strategy(5, Box::new(strategy)).unwrap();
+    assert_eq!(
+        result
+            .run_progress
+            .as_ref()
+            .unwrap()
+            .deepest_completed_depth,
+        Some(4)
+    );
+    assert!(!result.counterexample);
+    let nodes: Vec<_> = result
+        .profiling
+        .cost_records
+        .iter()
+        .filter_map(|r| r.countermodel_trace.as_ref())
+        .flat_map(|t| &t.nodes)
+        .collect();
+    assert!(nodes.iter().any(
+        |n| matches!(n.reason, TraceReason::QuantifiedTransition { .. })
+            && n.lemma
+                .as_ref()
+                .is_some_and(|l| l.formula.to_string().contains("(= s@1 s@0)"))
+    ));
+    assert!(nodes
+        .iter()
+        .any(|n| matches!(n.reason, TraceReason::Initialization { .. })
+            && n.lemma
+                .as_ref()
+                .is_some_and(|l| l.formula.to_string().contains("(= s@0 0)"))));
+    assert!(!nodes.iter().any(|n| matches!(
+        n.status,
+        TraceStatus::EvaluationFailed { .. } | TraceStatus::InconsistentStep
+    )));
+}
+
+#[test]
+fn prerequisite_tracing_is_independent_of_action_encoding() {
+    use crate::{
+        policy::{
+            effort::{ActionRequirementGuidance, WorkAllowance},
+            term_selection::array::ArrayAstSize,
+        },
+        SolverBackend, YardbirdOptions,
+    };
+    for input in [
+        include_str!("../../tests/fixtures/prerequisite_explicit_action.vmt"),
+        include_str!("../../tests/fixtures/prerequisite_existential_action.vmt"),
+    ] {
+        let mut count = None;
+        for profile in [true, false] {
+            let mut options = YardbirdOptions::from_filename("paired-prerequisite.vmt".into());
+            options.profile = profile;
+            let policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+                crate::policy::DefaultEffort::default()
+                    .with_countermodel_refinement(true)
+                    .with_allowance(WorkAllowance {
+                        guidance_action_requirements: ActionRequirementGuidance::WhenUnproductive,
+                        guidance_transition_order: GuidanceTransitionOrder::PredecessorFirst,
+                        ..Default::default()
+                    })
+                    .with_guidance_work(4096)
+                    .with_winners_per_group(20),
+            );
+            let strategy = crate::strategies::Abstract::new(5, false, policy, profile);
+            let mut driver = crate::Driver::new(
+                model(input),
+                options.build_instantiation_strategy(),
+                SolverBackend::Z3,
+            )
+            .with_profiler(options.build_profiler())
+            .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+            let result = driver.check_strategy(5, Box::new(strategy)).unwrap();
+            assert_eq!(
+                result
+                    .run_progress
+                    .as_ref()
+                    .unwrap()
+                    .deepest_completed_depth,
+                Some(4)
+            );
+            assert!(!result.counterexample);
+            if !profile {
+                assert_eq!(count, Some(result.total_instantiations_added));
+                continue;
+            }
+            count = Some(result.total_instantiations_added);
+            let mut selected_initializer = false;
+            for record in &result.profiling.cost_records {
+                let Some(trace) = &record.countermodel_trace else {
+                    continue;
+                };
+                assert!(trace.work <= 4096);
+                assert!(!trace.nodes.iter().any(|n| matches!(
+                    n.status,
+                    TraceStatus::EvaluationFailed { .. } | TraceStatus::InconsistentStep
+                )));
+                for event in &record.effort {
+                    if event.operation != "CountermodelCandidates" {
+                        continue;
+                    }
+                    for candidate in &event.candidates {
+                        if !candidate.selected {
+                            continue;
+                        }
+                        let Some(origin) = &candidate.countermodel_origin else {
+                            continue;
+                        };
+                        let node = &trace.nodes[origin.node];
+                        if !matches!(node.reason, TraceReason::Initialization { .. })
+                            || !node.lemma.as_ref().is_some_and(|l| {
+                                l.formula.to_string().contains("Read_Int_Bool enabled@0")
+                            })
+                        {
+                            continue;
+                        }
+                        let mut ancestor = node.parent;
+                        while let Some(id) = ancestor {
+                            let parent = &trace.nodes[id];
+                            if matches!(parent.reason, TraceReason::ActionRequirement { .. }) {
+                                selected_initializer = true;
+                                break;
+                            }
+                            ancestor = parent.parent;
+                        }
+                    }
+                }
+            }
+            assert!(
+                selected_initializer,
+                "both encodings must select the initializer demanded by the action prerequisite"
+            );
+        }
+    }
+}
+
+#[test]
+fn prerequisite_fixtures_have_equivalent_observable_transitions() {
+    let explicit = model(include_str!(
+        "../../tests/fixtures/prerequisite_explicit_action.vmt"
+    ));
+    let existential = model(include_str!(
+        "../../tests/fixtures/prerequisite_existential_action.vmt"
+    ));
+    assert_eq!(
+        explicit.get_initial_condition_for_yardbird(),
+        existential.get_initial_condition_for_yardbird()
+    );
+    assert_eq!(
+        explicit.get_property_for_yardbird(),
+        existential.get_property_for_yardbird()
+    );
+    let transition = existential.get_trans_condition_for_yardbird();
+    let Term::Application {
+        qual_identifier,
+        arguments,
+    } = &transition
+    else {
+        panic!("expected action choice");
+    };
+    assert_eq!(qual_identifier.get_name(), "or");
+    assert_eq!(arguments.len(), 2);
+    let Term::Exists {
+        vars,
+        term: write_body,
+    } = &arguments[0]
+    else {
+        panic!("expected existential action");
+    };
+    assert_eq!(vars.len(), 1);
+    assert_eq!(vars[0].0 .0, "p");
+    // Prove each selector case for an arbitrary parameter p. This avoids
+    // asking the oracle to invent a witness across alternating quantifiers;
+    // existentially projecting p then gives the same observable relation.
+    for (write, idle, expected) in [
+        (true, false, write_body.to_string()),
+        (false, true, arguments[1].to_string()),
+        (false, false, "false".into()),
+        (true, true, "false".into()),
+    ] {
+        let solver = z3::Solver::new();
+        let mut params = z3::Params::new();
+        params.set_u32("timeout", 5000);
+        solver.set_params(&params);
+        solver.from_string(format!(
+            r#"
+          (declare-const enabled (Array Int Bool))
+          (declare-const enabled_next (Array Int Bool))
+          (declare-const data (Array Int Int))
+          (declare-const data_next (Array Int Int))
+          (declare-const p Int)
+          (declare-const write Bool)
+          (declare-const idle Bool)
+          (assert (= write {write})) (assert (= idle {idle}))
+          (assert (xor {} {expected}))
+        "#,
+            explicit.get_trans_condition_for_yardbird()
+        ));
+        assert_eq!(solver.check(), z3::SatResult::Unsat);
+    }
+}
+
+#[test]
+fn existential_requirements_validate_witnesses_without_reframing_captures() {
+    use crate::theories::quantifiers::{
+        app, countermodel::existential_requirement, refinement::QuantifierRefinement, BinderKind,
+    };
+    let mut quantifiers = QuantifierRefinement::default();
+    let lowered = quantifiers.configure_model(
+        model(include_str!(
+            "../../tests/fixtures/prerequisite_existential_action.vmt"
+        )),
+        false,
+    );
+    let (lowered, types) = lowered.abstract_array_theory();
+    let index = TransitionIndex::from_model(
+        &lowered,
+        &quantifiers
+            .plan
+            .rules
+            .iter()
+            .map(|r| r.name.clone())
+            .collect(),
+    );
+    let rule = quantifiers
+        .plan
+        .rules
+        .iter()
+        .find(|r| r.kind == BinderKind::Exists)
+        .unwrap();
+    let captures: Vec<_> = rule
+        .captures
+        .iter()
+        .map(|(s, _)| index.index_term(&app(&s.0, vec![]), 0))
+        .collect();
+    let helper = app(&rule.name, captures.clone());
+    let formula = rule.witness_instance(&captures).unwrap();
+    let lemma = TraceLemma {
+        rule: rule.name.clone(),
+        formula: formula.clone(),
+        model_value: Some("true".into()),
+        instance: None,
+    };
+    for (active, witness) in [
+        (Some("true"), Some("true")),
+        (Some("false"), Some("true")),
+        (Some("true"), Some("false")),
+        (None, Some("true")),
+        (Some("true"), None),
+    ] {
+        let mut queries = Vec::new();
+        let mut evaluate = |term: &Term| -> anyhow::Result<ModelEvaluation> {
+            queries.push(term.clone());
+            let value = if term == &helper {
+                active
+            } else {
+                assert_eq!(term, &formula);
+                witness
+            };
+            Ok(value.map_or(ModelEvaluation::Undetermined, Into::into))
+        };
+        let mut cx = TraceContext {
+            index: &index,
+            types: &types,
+            evaluate: &mut evaluate,
+            remaining: 4096,
+            initializers: None,
+            transitions: None,
+        };
+        let step = existential_requirement(&quantifiers.plan, &lemma, 0, &mut cx)
+            .unwrap_or_else(|_| panic!("requirement search failed"));
+        if active == Some("false") || witness == Some("false") {
+            assert!(step.is_none());
+        } else {
+            let step = step.unwrap();
+            assert!(
+                step.lemma.is_none(),
+                "the observed action body is never a lemma"
+            );
+            assert_eq!(
+                matches!(step.frontier, Some(TraceError::Undetermined(_))),
+                active.is_none() || witness.is_none()
+            );
+            assert!(step.term.to_string().contains("data@1"));
+            let Term::Application { arguments, .. } = &formula else {
+                unreachable!()
+            };
+            let Term::Application {
+                arguments: body, ..
+            } = &arguments[1]
+            else {
+                unreachable!()
+            };
+            assert_eq!(
+                step.term.to_string(),
+                format!("(and {} true true)", body[0]),
+                "keep the enabling read and its opaque witness, but remove both updates"
+            );
+            assert!(step.term.to_string().contains(&rule.witnesses[0]));
+            if active == Some("true") && witness == Some("true") {
+                assert_eq!(step.conditions.len(), 2);
+            }
+        }
+        if active != Some("true") {
+            assert_eq!(queries, vec![helper.clone()]);
+        }
+    }
+    // A true implication with the right helper but a different body is insufficient.
+    let fake = TraceLemma {
+        formula: app("=>", vec![helper, app("true", vec![])]),
+        ..lemma
+    };
+    let mut cx = TraceContext {
+        index: &index,
+        types: &types,
+        evaluate: &mut |_| panic!("non-witness formula must be rejected before evaluation"),
+        remaining: 4096,
+        initializers: None,
+        transitions: None,
+    };
+    assert!(
+        existential_requirement(&quantifiers.plan, &fake, 0, &mut cx)
+            .unwrap_or_else(|_| panic!("validation failed"))
+            .is_none()
+    );
+    cx.remaining = 0;
+    assert!(matches!(
+        existential_requirement(&quantifiers.plan, &fake, 0, &mut cx),
+        Err(TraceError::Budget)
+    ));
+}

@@ -106,7 +106,7 @@ impl<'a> EquationSearch<'a> {
     pub(crate) fn new(plan: &'a QuantifierPlan, root: Term) -> Self {
         Self {
             plan,
-            compiler: Some(EquationCompiler::new(root.clone())),
+            compiler: Some(EquationCompiler::for_trace(root.clone())),
             root,
             root_observation: None,
             equations: None,
@@ -139,16 +139,47 @@ impl<'a> EquationSearch<'a> {
         let equations = self.equations.as_ref().unwrap();
         let mut cursor = EquationCursor::default();
         let mut children = Vec::new();
-        while cursor.pending() {
+        'alternatives: while cursor.pending() {
             cx.charge()?;
             let mut instances = Vec::new();
-            let Some(replacement) = cursor.step(equations, read, self.plan, &mut instances) else {
+            let mut guards = Vec::new();
+            let Some(replacement) =
+                cursor.step_trace(equations, read, self.plan, &mut instances, &mut guards)
+            else {
                 continue;
             };
             let mut path = Vec::new();
             let mut frontier = None;
             let mut unresolved = None;
-            for instance in instances {
+            let mut guard_frontier = None;
+            let mut conditions = self.conditions.clone();
+            conditions.extend(self.root_observation.iter().cloned());
+            let mut guards = guards.into_iter().peekable();
+            for (position, instance) in instances
+                .into_iter()
+                .map(Some)
+                .chain(std::iter::once(None))
+                .enumerate()
+            {
+                while guards.peek().is_some_and(|(before, _)| *before == position) {
+                    let (_, guard) = guards.next().unwrap();
+                    match cx.boolean(&guard) {
+                        Ok(observed) if observed.value == "true" => conditions.push(observed),
+                        Ok(_) => continue 'alternatives,
+                        Err(TraceError::Undetermined(expression)) => {
+                            unresolved = Some(expression.clone());
+                            guard_frontier = Some(TraceError::Undetermined(expression));
+                            break;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                if guard_frontier.is_some() {
+                    break;
+                }
+                let Some(instance) = instance else {
+                    break;
+                };
                 // A satisfied implication with a false helper is not permission
                 // to use its body as an equation. Walk only the active chain.
                 let Term::Application { arguments, .. } = &instance.term else {
@@ -183,7 +214,7 @@ impl<'a> EquationSearch<'a> {
                 path.push(lemma);
             }
             children.push(TraceStep {
-                frontier: None,
+                frontier: guard_frontier,
                 term: frontier
                     .as_ref()
                     .map_or(replacement, |lemma| lemma.formula.clone()),
@@ -198,12 +229,7 @@ impl<'a> EquationSearch<'a> {
                     }
                     (None, None) => TraceReason::Initialization { path },
                 },
-                conditions: self
-                    .conditions
-                    .iter()
-                    .cloned()
-                    .chain(self.root_observation.iter().cloned())
-                    .collect(),
+                conditions,
                 lemma: frontier,
             });
         }
@@ -214,6 +240,142 @@ impl<'a> EquationSearch<'a> {
 // Preserve the initializer entry point; both sources use the same guarded
 // equation-chain validation and non-completing model evaluation.
 pub(crate) type InitializerSearch<'a> = EquationSearch<'a>;
+
+/// Recover an encountered existential action's whole enabling body, just as
+/// named-action requirement tracing does. Only its exact witness implication
+/// licenses this observation; an arbitrary satisfied implication does not.
+pub(crate) fn existential_requirement(
+    plan: &QuantifierPlan,
+    lemma: &TraceLemma,
+    frame: u16,
+    cx: &mut TraceContext<'_>,
+) -> Result<Option<TraceStep>, TraceError> {
+    let Term::Application {
+        qual_identifier,
+        arguments,
+    } = &lemma.formula
+    else {
+        return Ok(None);
+    };
+    if qual_identifier.get_name() != "=>" || arguments.len() != 2 {
+        return Ok(None);
+    }
+    let Term::Application {
+        qual_identifier,
+        arguments: captures,
+    } = &arguments[0]
+    else {
+        return Ok(None);
+    };
+    for rule in &plan.rules {
+        cx.charge()?;
+        if rule.name != qual_identifier.get_name() || rule.kind != BinderKind::Exists {
+            continue;
+        }
+        if captures.len() != rule.captures.len()
+            || rule.witness_instance(captures).as_ref() != Some(&lemma.formula)
+        {
+            return Ok(None);
+        }
+        let mut conditions = Vec::new();
+        let mut frontier = None;
+        for term in [&arguments[0], &lemma.formula] {
+            match cx.boolean(term) {
+                Ok(observed) if observed.value == "true" => conditions.push(observed),
+                Ok(_) => return Ok(None),
+                Err(error @ TraceError::Undetermined(_)) => {
+                    frontier = Some(error);
+                    break;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        return Ok(Some(TraceStep {
+            term: prerequisite_projection(&arguments[1], plan, frame, cx)?,
+            reason: TraceReason::ActionRequirement {
+                frame,
+                action: rule.name.clone(),
+            },
+            conditions,
+            lemma: None,
+            frontier,
+        }));
+    }
+    Ok(None)
+}
+
+// Keep source-state requirements, dropping update atoms. Witness applications
+// are rigid action parameters: their closure captures are not state reads.
+fn prerequisite_projection(
+    term: &Term,
+    plan: &QuantifierPlan,
+    frame: u16,
+    cx: &mut TraceContext<'_>,
+) -> Result<Term, TraceError> {
+    fn current(
+        term: &Term,
+        plan: &QuantifierPlan,
+        frame: u16,
+        cx: &mut TraceContext<'_>,
+    ) -> Result<bool, TraceError> {
+        cx.charge()?;
+        if let Some(f) = cx.index.state_frame(term) {
+            return Ok(f <= frame);
+        }
+        if let Some(expanded) = cx.index.expand_framed_leaf(term) {
+            return current(&expanded, plan, frame, cx);
+        }
+        if let Term::Application {
+            qual_identifier,
+            arguments,
+        } = term
+        {
+            if plan
+                .rules
+                .iter()
+                .any(|r| r.witnesses.contains(&qual_identifier.get_name()))
+            {
+                return Ok(true);
+            }
+            for arg in arguments {
+                if !current(arg, plan, frame, cx)? {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+    cx.charge()?;
+    if current(term, plan, frame, cx)? {
+        return Ok(term.clone());
+    }
+    if let Term::Application {
+        qual_identifier,
+        arguments,
+    } = term
+    {
+        let name = qual_identifier.get_name();
+        if matches!(name.as_str(), "and" | "or") {
+            let mut projected = Vec::new();
+            for arg in arguments {
+                projected.push(prerequisite_projection(arg, plan, frame, cx)?);
+            }
+            return Ok(app(&name, projected));
+        }
+        if (name == "=>" && arguments.len() == 2 || name == "ite" && arguments.len() == 3)
+            && current(&arguments[0], plan, frame, cx)?
+        {
+            let mut projected = vec![arguments[0].clone()];
+            for arg in &arguments[1..] {
+                projected.push(prerequisite_projection(arg, plan, frame, cx)?);
+            }
+            return Ok(app(&name, projected));
+        }
+    }
+    // Replacing a positive update atom by true weakens the observed body.
+    // Mixed negations/guards are discarded whole, never strengthened.
+    Ok(app("true", vec![]))
+}
 
 pub(crate) struct TransitionSearch<'a> {
     plan: &'a QuantifierPlan,
@@ -324,6 +486,12 @@ fn active_equations<'a>(
             continue;
         };
         match (qual_identifier.get_name().as_str(), arguments.as_slice()) {
+            ("=", [_, _]) if contains_term(&term, array) => {
+                let mut search = EquationSearch::new(plan, term);
+                search.transition_frame = Some(frame);
+                search.conditions = conditions;
+                result.push(search);
+            }
             ("and", args) => queue.extend(args.iter().cloned().map(|t| (t, conditions.clone()))),
             ("=>", [guard, body]) => {
                 let observed = cx.boolean(guard)?;
@@ -367,11 +535,10 @@ fn active_equations<'a>(
                 }
             }
             (name, _)
-                if plan
-                    .rules
-                    .iter()
-                    .any(|rule| rule.name == name && rule.kind == BinderKind::Forall)
-                    && contains_term(&term, array) =>
+                if plan.rules.iter().any(|rule| {
+                    rule.name == name
+                        && matches!(rule.kind, BinderKind::Forall | BinderKind::Exists)
+                }) && contains_term(&term, array) =>
             {
                 let mut search = EquationSearch::new(plan, term);
                 search.transition_frame = Some(frame);

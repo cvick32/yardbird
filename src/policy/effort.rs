@@ -18,7 +18,7 @@ pub enum GuidanceSchedule {
 pub enum ActionRequirementGuidance {
     #[default]
     Disabled,
-    /// Extend a completed value/relational explanation with no violated
+    /// Extend a completed value/relational explanation (including cycles) with no violated
     /// instance or unresolved frontier. Ordinary search keeps incomplete ones.
     WhenUnproductive,
     Always,
