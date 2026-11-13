@@ -30,3 +30,4 @@ tools/training-viewer/backend/dist
 docs/
 condhist/
 yardbird-benchmark-key.pem
+/notes/
