@@ -31,20 +31,23 @@ pub(crate) fn extend<F: TermCostFactory>(
         })
         .cloned()
         .collect::<Vec<_>>();
-    if anchors.is_empty() {
+    let prerequisite_observations = trace
+        .nodes
+        .iter()
+        .any(|node| matches!(node.reason, TraceReason::ActionRequirement { .. }));
+    if anchors.is_empty() && !prerequisite_observations {
         return;
     }
+    let observed_atoms = trace
+        .nodes
+        .iter()
+        .filter(|node| {
+            matches!(node.model_value.as_deref(), Some("true" | "false"))
+                && Goal::new(&node.expression, true).key().is_some()
+        })
+        .map(|node| (node.id, Goal::new(&node.expression, true).atom))
+        .collect::<Vec<_>>();
     let mut agenda = ClauseAgenda::default();
-    let mut helpers = source_helpers(plan, smt);
-    helpers.sort_by_cached_key(ToString::to_string);
-    for helper in helpers {
-        if trace.work >= limit {
-            trace.budget_exhausted = true;
-            return;
-        }
-        trace.work += 1;
-        agenda.add_helper(plan, &helper);
-    }
     let mut has_demands = false;
     for anchor in &anchors {
         if trace.work >= limit {
@@ -62,9 +65,28 @@ pub(crate) fn extend<F: TermCostFactory>(
             anchor.model_value.as_deref() != Some("true"),
         ));
     }
+    // Queue observed helper demands before unrelated source clauses so their
+    // correlated tuples get the first share of bounded matching work.
+    let mut helpers = source_helpers(plan, smt);
+    helpers.sort_by_cached_key(ToString::to_string);
+    for helper in helpers {
+        if trace.work >= limit {
+            trace.budget_exhausted = true;
+            return;
+        }
+        trace.work += 1;
+        agenda.add_helper(plan, &helper);
+    }
+    // Witness-body observations may not occur in the source vocabulary. Join
+    // these concrete atoms too, keeping their exact captures and model polarity.
+    // They propose tuples only; the complete instance is still validated below.
+    let join_observations = has_demands || prerequisite_observations;
+    if join_observations && !add_trace_observations(trace, &mut agenda, limit) {
+        return;
+    }
     // Source observations only propose bindings. The complete guarded instance
     // is still checked below; neither source atoms nor model equalities become lemmas.
-    let mut sources = if has_demands {
+    let mut sources = if join_observations {
         smt.get_source_subterms()
     } else {
         vec![]
@@ -95,7 +117,7 @@ pub(crate) fn extend<F: TermCostFactory>(
         }
         trace.work += 1;
         let Some(instance) = agenda.step_modulo(plan, |left, right| {
-            if !has_demands {
+            if !join_observations {
                 return false;
             }
             if trace.work >= limit {
@@ -121,10 +143,10 @@ pub(crate) fn extend<F: TermCostFactory>(
         }
         // Every match is rooted in the observed atom syntax. Keep those links
         // alongside the entire axiom, rather than asserting observed values.
-        let roots = anchors
+        let roots = observed_atoms
             .iter()
-            .filter(|n| contains(&instance.term, &n.expression))
-            .map(|n| n.id)
+            .filter(|(_, atom)| contains(&instance.term, atom))
+            .map(|(id, _)| *id)
             .collect::<Vec<_>>();
         if roots.is_empty() {
             continue;
@@ -145,6 +167,32 @@ pub(crate) fn extend<F: TermCostFactory>(
             status: TraceStatus::ViolatedQuantifierInstance,
         });
     }
+}
+
+/// Observations propose bindings, never asserted facts. Keep model polarity
+/// and literal capture terms while excluding unknown values.
+fn add_trace_observations(
+    trace: &mut CountermodelTrace,
+    agenda: &mut ClauseAgenda,
+    limit: usize,
+) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    for node in &trace.nodes {
+        if trace.work >= limit {
+            trace.budget_exhausted = true;
+            return false;
+        }
+        trace.work += 1;
+        let truth = match node.model_value.as_deref() {
+            Some("true") => true,
+            Some("false") => false,
+            _ => continue,
+        };
+        if agenda.wants(&node.expression) && seen.insert((node.expression.clone(), truth)) {
+            agenda.add_goal(Goal::new(&node.expression, !truth));
+        }
+    }
+    true
 }
 
 /// Compare scoped quantified bodies rather than their unrelated helper names.
@@ -257,4 +305,71 @@ fn extend_bodies<F: TermCostFactory>(
 fn contains(term: &Term, target: &Term) -> bool {
     term == target
         || matches!(term, Term::Application { arguments, .. } if arguments.iter().any(|a| contains(a, target)))
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    use crate::theories::quantifiers::{BinderKind, BinderRule, QuantifierPlan};
+    use smt2parser::{concrete::Symbol, vmt::array_abstractor::string_to_sort};
+
+    #[test]
+    fn witness_body_observations_join_without_source_atoms_or_capture_changes() {
+        let int = string_to_sort("Int");
+        let rule = BinderRule {
+            name: "q".into(),
+            kind: BinderKind::Forall,
+            captures: vec![(Symbol("state".into()), int.clone())],
+            variables: vec![(Symbol("x".into()), int.clone()), (Symbol("y".into()), int)],
+            body: "(=> (p state x) (r state y))".parse().unwrap(),
+            witnesses: vec![],
+            result_sort: string_to_sort("Bool"),
+            unit_capture: false,
+        };
+        let expected = rule.instantiate(
+            &["state@1".parse().unwrap()],
+            &["1".parse().unwrap(), "2".parse().unwrap()],
+        );
+        let mut plan = QuantifierPlan::default();
+        plan.rules.push(rule);
+        let mut trace = CountermodelTrace {
+            model_version: 7,
+            depth: 1,
+            transition_order: Default::default(),
+            work: 0,
+            budget_exhausted: false,
+            nodes: vec![],
+        };
+        for (expression, value) in [
+            ("(p state@1 1)", Some("true")),
+            ("(r state@1 2)", Some("false")),
+            ("(r state@1 3)", None),
+            ("(p state@1 1)", Some("true")),
+        ] {
+            trace.nodes.push(TraceNode {
+                id: trace.nodes.len(),
+                parent: None,
+                expression: expression.parse().unwrap(),
+                model_value: value.map(str::to_owned),
+                reason: TraceReason::AssertedQuantifierBody,
+                conditions: vec![],
+                lemma: None,
+                status: TraceStatus::Value,
+            });
+        }
+        let mut agenda = ClauseAgenda::default();
+        assert!(agenda.add_demand(&plan, &"(q state@1)".parse().unwrap(), true));
+        assert!(add_trace_observations(&mut trace, &mut agenda, 32));
+        let mut instances = vec![];
+        while agenda.pending() > 0 {
+            instances.extend(agenda.step(&plan));
+        }
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].term, expected);
+        assert_eq!(trace.work, 4);
+        assert!(!trace.budget_exhausted);
+        assert!(trace.nodes.iter().all(|n| n.lemma.is_none()));
+        assert!(!add_trace_observations(&mut trace, &mut agenda, 4));
+        assert!(trace.budget_exhausted);
+    }
 }

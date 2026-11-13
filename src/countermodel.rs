@@ -267,7 +267,18 @@ pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> Coun
         }
         ActionRequirementGuidance::Always => true,
     } {
-        requirements::extend(&mut trace, context);
+        let before = trace.nodes.len();
+        let allowance = context.allowance.prerequisite_allowance(trace.work);
+        requirements::extend(&mut trace, &context.with_allowance(allowance));
+        // Requirements discover concrete witness-body observations after the
+        // initial relation pass. Give those new frontiers a matching pass too.
+        // A local traversal cutoff must not prevent use of its reserved work.
+        let traversal_exhausted = trace.budget_exhausted;
+        if trace.nodes.len() > before {
+            trace.budget_exhausted = false;
+            countermodel_relations::extend(&mut trace, context);
+        }
+        trace.budget_exhausted |= traversal_exhausted;
     }
     trace
 }

@@ -2282,3 +2282,101 @@ fn existential_requirements_validate_witnesses_without_reframing_captures() {
         Err(TraceError::Budget)
     ));
 }
+
+fn assert_relational_prerequisite_match(input: &str) {
+    use crate::{
+        policy::{
+            effort::{ActionRequirementGuidance, WorkAllowance},
+            term_selection::array::ArrayAstSize,
+        },
+        SolverBackend, YardbirdOptions,
+    };
+    let mut options = YardbirdOptions::from_filename("relational-prerequisite.vmt".into());
+    options.profile = true;
+    let policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+        crate::policy::DefaultEffort::default()
+            .with_countermodel_refinement(true)
+            .with_allowance(WorkAllowance {
+                guidance_action_requirements: ActionRequirementGuidance::WhenUnproductive,
+                guidance_transition_order: GuidanceTransitionOrder::PredecessorFirst,
+                ..Default::default()
+            })
+            .with_guidance_work(4096)
+            .with_winners_per_group(20),
+    );
+    let strategy = crate::strategies::Abstract::new(5, false, policy, true);
+    let mut driver = crate::Driver::new(
+        model(input),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_wall_timeout(Some(std::time::Duration::from_secs(10)));
+    let result = driver.check_strategy(5, Box::new(strategy)).unwrap();
+    assert_eq!(
+        result
+            .run_progress
+            .as_ref()
+            .unwrap()
+            .deepest_completed_depth,
+        Some(4)
+    );
+    assert!(!result.counterexample);
+    let mut selected_guard = false;
+    for record in &result.profiling.cost_records {
+        let Some(trace) = &record.countermodel_trace else {
+            continue;
+        };
+        assert!(trace.work <= 4096);
+        for event in &record.effort {
+            if event.operation != "CountermodelCandidates" {
+                continue;
+            }
+            for candidate in &event.candidates {
+                if !candidate.selected {
+                    continue;
+                }
+                let Some(origin) = &candidate.countermodel_origin else {
+                    continue;
+                };
+                let node = &trace.nodes[origin.node];
+                if !matches!(node.reason, TraceReason::QuantifierMatch { .. }) {
+                    continue;
+                }
+                assert!(matches!(
+                    node.status,
+                    TraceStatus::ViolatedQuantifierInstance
+                ));
+                let formula = node.lemma.as_ref().unwrap().formula.to_string();
+                assert!(formula.contains("enabled@0") && formula.contains("ready@0"));
+                let mut ancestor = node.parent;
+                while let Some(id) = ancestor {
+                    let parent = &trace.nodes[id];
+                    if matches!(parent.reason, TraceReason::ActionRequirement { .. }) {
+                        selected_guard = true;
+                        break;
+                    }
+                    ancestor = parent.parent;
+                }
+            }
+        }
+    }
+    assert!(
+        selected_guard,
+        "the quantified guard must be selected from a prerequisite observation"
+    );
+}
+
+#[test]
+fn relational_matching_consumes_new_prerequisite_observations() {
+    assert_relational_prerequisite_match(include_str!(
+        "../../tests/fixtures/relational_prerequisite.vmt"
+    ));
+}
+
+#[test]
+fn relational_matching_anchors_background_axioms_to_observed_reads() {
+    assert_relational_prerequisite_match(include_str!(
+        "../../tests/fixtures/background_relational_prerequisite.vmt"
+    ));
+}

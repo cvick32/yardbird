@@ -80,6 +80,16 @@ impl Default for WorkAllowance {
     }
 }
 impl WorkAllowance {
+    /// Let prerequisite traversal use half the remaining work, leaving the
+    /// rest for joining the new Boolean frontiers it discovers.
+    pub(crate) fn prerequisite_allowance(&self, used: usize) -> Self {
+        Self {
+            dependency_work: used.min(self.dependency_work)
+                + self.dependency_work.saturating_sub(used) / 2,
+            ..*self
+        }
+    }
+
     /// Keep half the discovery/page allowance available to ordinary search.
     /// Zero for a one-unit budget: it cannot fairly support both producers.
     pub(crate) fn read_frontier_reservation(&self) -> (usize, usize) {
