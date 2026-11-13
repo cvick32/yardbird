@@ -356,7 +356,7 @@ pub(super) fn prepared_fixture(variable_count: usize, value_count: usize) -> Pre
     PreparedFixture {
         egraph: graph,
         search: PreparedQuantifierSearch {
-            source_captures: None,
+            application_captures: Default::default(),
             graph_version: 0,
             additional_terms: terms,
             representatives,

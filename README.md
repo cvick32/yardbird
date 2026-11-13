@@ -200,18 +200,43 @@ four requests share half the binder-page budget; ordinary binder pages also
 prefer typed indices observed in traced reads, with half their page reserved
 for fallback. Unused discovery work returns
 to ordinary search. The existing guidance/supplement schedule and independent
-model validation remain in force. This experimental option defaults off and can
-be combined with `--guided-source-captures`.
+model validation remain in force. This experimental option defaults off. Actual
+helper capture tuples are preserved with or without this option.
 
-`--policy countermodel-guided --guided-source-captures --theory array,quantifiers`
-prefers one intact source helper's captured arguments when grounding a matched
-quantifier. Every capture must match its model class; arguments are never mixed
-between helper applications. Explicit request bindings stay literal, and helpers
-without a matching source tuple retain ordinary extraction. Quantified variables
-still use ordinary term selection. Candidate validation runs again after this
-preference, and guided scheduling is unchanged. This opt-in experiment targets
-synthetic helper/witness churn without handing either theory to the backend.
-Profiling records `source_capture_groundings` per binder.
+Quantifier refinement preserves each actual helper application's capture arguments
+by default, including applications introduced by earlier instances. Model-equal
+applications retain their distinct symbolic tuples; only quantified variables use
+ordinary term selection. Explicit request bindings stay literal. Occurrence
+expansion is paged, and candidates with preserved captures are independently
+validated. Profiling records `application_capture_groundings` per binder.
+Capture preservation is unconditional; there is no capture-selection switch.
+
+Countermodel guidance follows scalar state values as well as array reads through
+asserted predecessor transitions. Quantified action equations retain their actual
+captures and existential witness terms. For guarded frame equations, tracing
+checks each enclosing instance and branch guard in source order; false guards
+disable the equation, and unknown guards remain explicit trace frontiers.
+Scalar equations inside universal binders use declared, typed seed terms for
+variables absent from the demand. Refinement still installs the full guarded
+binder instance, never the traced equation by itself.
+
+Action-prerequisite guidance also follows existential action bodies reached by
+quantified transition tracing, without requiring `:action` annotations. It checks
+the exact helper application and its witness implication, then traces its
+source-state enabling conditions with the original captures and guards. Update
+clauses are excluded; witness captures remain opaque action parameters even when
+they contain future-state terms. The projection is an observation, not an asserted
+lemma. Repeated bodies are deduplicated within the model and share the trace work
+budget. `--guidance-action-requirements when-unproductive` includes completed
+cyclic explanations; unresolved frontiers retain their existing handling.
+
+Prerequisite tracing reserves half its remaining work for a second relational
+matching pass. Known Boolean observations can supply correlated tuples for full
+background-axiom instances; unknown observations are excluded. Earlier-frame
+observations can also suggest quantified values for a false existential helper,
+while preserving that helper's actual captures. Guidance traces the resulting
+current-frame body and validates the full binder instance before installation.
+Observed facts and model equalities are never asserted as lemmas.
 
 For an axiom-first ablation, add `--prefer-axioms` to the abstract VMT strategy
 or these named policies. Each solver model gets a bounded pass over array axioms

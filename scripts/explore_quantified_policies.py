@@ -39,8 +39,7 @@ VARIANTS = {
 }
 
 VARIANTS["guided4096-exact"] = [*VARIANTS["guided4096"], "--guided-exact-grounding"]
-VARIANTS["guided4096-captures"] = [*VARIANTS["guided4096"], "--guided-source-captures"]
-VARIANTS["guided4096-frontiers"] = [*VARIANTS["guided4096-captures"], "--guided-read-frontiers"]
+VARIANTS["guided4096-frontiers"] = [*VARIANTS["guided4096"], "--guided-read-frontiers"]
 VARIANTS["guided4096-read-support"] = [*VARIANTS["guided4096-frontiers"], "--guided-read-support"]
 VARIANTS["guided4096-proved-prefix"] = [*VARIANTS["guided4096-read-support"], "--reuse-proved-properties"]
 VARIANTS["guided4096-proved-instances"] = [*VARIANTS["guided4096-proved-prefix"], "--proved-property-instance-limit", "512"]

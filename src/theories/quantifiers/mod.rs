@@ -13,6 +13,7 @@ use smt2parser::{
 };
 
 use crate::terms::language::TermLanguage;
+mod application_captures;
 mod compiled_rule;
 mod demanded_indices;
 pub(crate) mod eager;
@@ -23,7 +24,6 @@ pub mod provenance;
 pub(crate) mod refinement;
 mod rule;
 pub(crate) mod search;
-mod source_captures;
 pub mod transition_guard;
 #[cfg(test)]
 use lowering::lower_model;
@@ -368,6 +368,11 @@ impl BinderRule {
                 formula,
                 fixed_bindings,
             )
+            .with_captures(if self.unit_capture {
+                0
+            } else {
+                self.captures.len()
+            })
             .with_binder_filters(filters, plan.is_some())
             .with_partial_tuples(partial))
         })())
@@ -487,7 +492,11 @@ impl QuantifierPlan {
         );
         Ok(PreparedQuantifierSearch {
             graph_version: 0,
-            source_captures: None,
+            application_captures: application_captures::ApplicationCaptures::new(
+                &self.rules,
+                &graph.terms,
+                graph,
+            ),
             additional_terms: graph.terms.clone(),
             representatives: graph.representatives(),
             evaluations: graph.evaluations.clone(),
@@ -510,7 +519,7 @@ struct CompiledBinderRules {
 }
 
 pub(crate) struct PreparedQuantifierSearch {
-    source_captures: Option<source_captures::SourceCaptures>,
+    application_captures: application_captures::ApplicationCaptures,
     graph_version: u64,
     additional_terms: Vec<crate::terms::language::TermExpr>,
     representatives: HashMap<egg::Id, crate::terms::language::TermExpr>,
@@ -549,6 +558,11 @@ impl PreparedQuantifierSearch {
             return;
         }
         self.graph_version = version;
+        self.application_captures = application_captures::ApplicationCaptures::new(
+            &self.compiled.sources,
+            &graph.terms,
+            graph,
+        );
         self.additional_terms = graph.terms.clone();
         self.representatives = graph.representatives();
         self.evaluations.extend(graph.evaluations.clone());
@@ -681,12 +695,15 @@ impl PreparedQuantifierSearch {
             Some(request) => &mut self.requests.get_mut(request).unwrap().cursor,
             None => self.cursors.entry(phase).or_default(),
         };
-        let mut matched = search::search_binder_model_page(
+        let mut matched = search::search_application_page(
+            &self.application_captures,
             egraph,
             rules,
             cursor,
-            page.map(|(rule, _)| rule),
-            &page.map(|(_, allowance)| allowance).unwrap_or_default(),
+            (
+                page.map(|(rule, _)| rule),
+                &page.map(|(_, allowance)| allowance).unwrap_or_default(),
+            ),
             &profiling,
             |pattern, substitution| {
                 let expression = instantiate_with_bindings(pattern, |variable| {
@@ -870,14 +887,11 @@ impl PreparedQuantifierSearch {
                     .iter()
                     .filter_map(|(_, term)| egraph.lookup_expr(term).map(|id| egraph.find(id))),
             );
-            if let Some(captures) = &self.source_captures {
-                candidate.preferred_bindings =
-                    captures.preferred(rule, &candidate.substitution, egraph);
-                if !candidate.preferred_bindings.is_empty() {
-                    count("source_capture_groundings");
-                    // Keep validation independent of representative preferences.
-                    candidate.model_violation_verified = false;
-                }
+            if !candidate.literal_bindings.is_empty() {
+                count("application_capture_groundings");
+                // A model-equivalence match is only a search hint. Validate the
+                // complete instance with its actual capture arguments again.
+                candidate.model_violation_verified = false;
             }
             kept.push(candidate);
         }

@@ -295,7 +295,7 @@ pub(crate) fn groundings<'a, N, CF>(
     subst: egg::Subst,
     egraph: &'a egg::EGraph<TermLanguage, N>,
     extractor: std::rc::Rc<TermExtractor<CF>>,
-    preferred_bindings: Vec<(egg::Var, TermExpr)>,
+    literal_bindings: Vec<(egg::Var, TermExpr)>,
     context: GroundContext<'a>,
 ) -> impl Iterator<Item = GroundSubstitution> + 'a
 where
@@ -309,16 +309,23 @@ where
         if first {
             first = false;
             let mut grounding = GroundSubstitution::default();
-            for (variable, expression) in &preferred_bindings {
+            for (variable, expression) in &literal_bindings {
                 let actual = egraph.lookup_expr(expression).map(|id| egraph.find(id));
                 assert_eq!(
                     actual,
                     subst.get(*variable).map(|id| egraph.find(*id)),
-                    "preferred grounding must preserve the matched model class"
+                    "literal grounding must preserve the matched model class"
                 );
                 grounding
-                    .bind_source_choice(*variable, expression.clone(), egraph, &extractor, context)
-                    .expect("preferred source binding is present in the graph");
+                    .bind_choice(
+                        *variable,
+                        actual.unwrap(),
+                        expression.clone(),
+                        egraph,
+                        &extractor,
+                        context,
+                    )
+                    .expect("literal application binding is present in the graph");
             }
             ground_pattern(
                 pattern,
@@ -336,6 +343,11 @@ where
                     .to_string(),
             );
             return Some(grounding);
+        }
+        // Literal application captures cannot be changed by source-write
+        // alternatives. Quantified variables already have their own match stream.
+        if !literal_bindings.is_empty() {
+            return None;
         }
         alternatives
             .get_or_insert_with(|| {
@@ -739,7 +751,7 @@ mod tests {
         );
     }
     #[test]
-    fn preferred_capture_survives_equivalent_extraction_and_keeps_observations() {
+    fn literal_capture_survives_equivalent_extraction_and_keeps_observations() {
         let pattern: TermPattern = "(= ?capture ?bound)".parse().unwrap();
         let capture: egg::Var = "?capture".parse().unwrap();
         let bound: egg::Var = "?bound".parse().unwrap();

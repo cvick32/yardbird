@@ -10,6 +10,7 @@ use egg::*;
 
 #[derive(Default)]
 pub(crate) struct BinderMatchPlan {
+    pub(super) captures: Vec<Var>,
     filters: Vec<(TermPattern, bool)>,
     planned: bool,
     pub(super) partial: Option<super::partial_tuple::PartialTuplePlan>,
@@ -40,6 +41,13 @@ impl<N: Analysis<TermLanguage>> CompiledBinderRule<N> {
             details: BinderMatchPlan::default(),
             grouping: RuleGrouping::Rule,
         }
+    }
+
+    pub(super) fn with_captures(mut self, count: usize) -> Self {
+        self.details.captures = (0..count)
+            .map(|i| format!("?binding{i}").parse().unwrap())
+            .collect();
+        self
     }
 
     pub(crate) fn with_binder_filters(

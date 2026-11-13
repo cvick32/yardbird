@@ -138,7 +138,6 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
     let policy = run.configure_eager_policy(policy);
     let strategy = Abstract::new(run.depth, run.run_ic3ia, policy, run.profiling_enabled())
         .with_guided_exact_grounding(run.guided_exact_grounding)
-        .with_guided_source_captures(run.guided_source_captures)
         .with_guided_read_frontiers(run.guided_read_frontiers)
         .with_guided_read_support(run.guided_read_support)
         .with_countermodel_trace_work(run.countermodel_trace_work)

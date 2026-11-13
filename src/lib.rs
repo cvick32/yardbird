@@ -250,11 +250,6 @@ pub struct YardbirdOptions {
     #[serde(default)]
     pub guided_exact_grounding: bool,
 
-    /// Prefer intact source capture tuples when grounding quantified rules.
-    #[arg(long, requires = "policy")]
-    #[serde(default)]
-    pub guided_source_captures: bool,
-
     /// Reserve discovery work for traced reads and prefer their quantifier tuples.
     #[arg(long, requires = "policy")]
     #[serde(default)]
@@ -394,7 +389,6 @@ impl Default for YardbirdOptions {
             guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
             guidance_work: None,
             guided_exact_grounding: false,
-            guided_source_captures: false,
             guided_read_frontiers: false,
             guided_read_support: false,
             reuse_proved_properties: false,
@@ -627,11 +621,6 @@ impl YardbirdOptions {
             !self.guided_exact_grounding
                 || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
             "--guided-exact-grounding requires --policy countermodel-guided"
-        );
-        anyhow::ensure!(
-            !self.guided_source_captures
-                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
-            "--guided-source-captures requires --policy countermodel-guided"
         );
         if self.guidance_transition_order.is_some() || self.guidance_action_requirements.is_some() {
             anyhow::ensure!(
@@ -1285,25 +1274,22 @@ mod option_tests {
     }
 
     #[test]
-    fn guided_source_captures_requires_guided_policy_and_defaults_off() {
-        let mut run = YardbirdOptions::default();
-        run.filename = Some("test.vmt".into());
-        assert!(!run.guided_source_captures);
-        run.guided_source_captures = true;
-        assert!(run.validate_countermodel_trace_options().is_err());
-        run.policy = Some(policy::NamedPolicy::GermanFast);
-        assert!(run.validate_countermodel_trace_options().is_err());
-        run.policy = Some(policy::NamedPolicy::CountermodelGuided);
-        assert!(run.validate_countermodel_trace_options().is_ok());
-        let mut old = serde_json::to_value(&run).unwrap();
-        old.as_object_mut()
+    fn removed_capture_flag_is_rejected() {
+        use clap::Parser;
+        let error = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "test.vmt",
+            "--policy",
+            "countermodel-guided",
+            "--guided-source-captures",
+        ])
+        .unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+        assert!(serde_json::to_value(YardbirdOptions::default())
             .unwrap()
-            .remove("guided_source_captures");
-        assert!(
-            !serde_json::from_value::<YardbirdOptions>(old)
-                .unwrap()
-                .guided_source_captures
-        );
+            .get("guided_source_captures")
+            .is_none());
     }
 
     #[test]
