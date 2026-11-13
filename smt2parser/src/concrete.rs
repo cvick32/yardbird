@@ -1354,7 +1354,7 @@ where
                     term,
                     cases.iter().format_with(" ", |(pattern, term), f| {
                         if pattern.len() == 1 {
-                            f(&format_args!("({} {})", &pattern[0], term))
+                            f(&format_args!("({} {})", pattern[0], term))
                         } else {
                             f(&format_args!("(({}) {})", pattern.iter().format(" "), term))
                         }

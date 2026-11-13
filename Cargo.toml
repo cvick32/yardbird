@@ -37,6 +37,16 @@ default = []
 cvc5-backend = ["dep:cvc5"]
 training = ["sqlx"]
 
+[workspace]
+members = [
+    "coop",
+    "smt2parser",
+    "garden",
+    "to_vmt",
+    "to_vmt/vmt_macros",
+    "to_vmt/vmtil"
+]
+
 [workspace.dependencies]
 anyhow = "1.0.93"
 clap = { version = "4.5.20" }
@@ -53,15 +63,6 @@ insta = "1.41.1"
 name = "yardbird"
 path = "src/main.rs"
 
-[workspace]
-members = [
-    "coop",
-    "smt2parser",
-    "garden",
-    "to_vmt",
-    "to_vmt/vmt_macros",
-    "to_vmt/vmtil"
-]
 
 [profile.release]
 codegen-units = 1
