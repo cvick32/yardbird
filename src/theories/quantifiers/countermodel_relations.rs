@@ -19,6 +19,7 @@ pub(crate) fn extend<F: TermCostFactory>(
     context: &SearchContext<'_, F>,
 ) {
     extend_bodies(trace, context);
+    extend_observed_witnesses(trace, context);
     let plan = context.formulas.quantifiers;
     let smt = context.smt;
     let limit = context.allowance.dependency_work;
@@ -167,6 +168,92 @@ pub(crate) fn extend<F: TermCostFactory>(
             status: TraceStatus::ViolatedQuantifierInstance,
         });
     }
+}
+
+/// An earlier-frame observation can suggest the quantified values of a false
+/// existential at this frame. Keep the demanded helper's captures unchanged,
+/// and trace its actual body: a satisfied introduction may expose missing frame
+/// instances rather than directly refuting the existential abstraction.
+fn extend_observed_witnesses<F: TermCostFactory>(
+    trace: &mut CountermodelTrace,
+    context: &SearchContext<'_, F>,
+) {
+    let plan = context.formulas.quantifiers;
+    let limit = context.allowance.dependency_work;
+    let mut agenda = ClauseAgenda::default();
+    let mut roots = Vec::new();
+    for node in trace.nodes.iter().filter(|node| {
+        node.model_value.as_deref() == Some("false")
+            && matches!(node.status, TraceStatus::Unsupported { .. })
+    }) {
+        if trace.work >= limit {
+            trace.budget_exhausted = true;
+            return;
+        }
+        trace.work += 1;
+        if agenda.add_demand(plan, &node.expression, false) {
+            roots.push((node.id, node.expression.clone()));
+        }
+    }
+    if roots.is_empty() || !add_trace_observations(trace, &mut agenda, limit) {
+        return;
+    }
+    while agenda.pending() > 0 && trace.work < limit {
+        trace.work += 1;
+        let instance = agenda.step_capture_hints(plan, |left, right| {
+            if trace.work >= limit {
+                trace.budget_exhausted = true;
+                return false;
+            }
+            trace.work += 1;
+            context
+                .smt
+                .eval_partial(&super::app("=", vec![left.clone(), right.clone()]))
+                .is_ok_and(|value| value.as_known() == Some("true"))
+        });
+        let Some(instance) = instance else { continue };
+        let anchors = roots
+            .iter()
+            .filter(|(_, helper)| contains(&instance.term, helper))
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        let Some(parent) = anchors.first().copied() else {
+            continue;
+        };
+        // False-existential demands produce only introductions B => E.
+        let Term::Application { arguments, .. } = &instance.term else {
+            continue;
+        };
+        let body = arguments[0].clone();
+        append_trace(
+            trace,
+            context
+                .formulas
+                .index
+                .expect("VMT guidance requires an index"),
+            &context.smt.get_array_types(),
+            limit,
+            |term| context.smt.eval_partial(term),
+            Some(plan),
+            Some(parent),
+            TraceStep {
+                frontier: None,
+                term: body,
+                reason: TraceReason::QuantifierMatch { anchors },
+                conditions: vec![],
+                lemma: Some(TraceLemma {
+                    rule: instance.rule.name().to_owned(),
+                    formula: instance.term.clone(),
+                    model_value: None,
+                    instance: Some(instance),
+                }),
+            },
+        );
+        if trace.budget_exhausted {
+            break;
+        }
+    }
+    trace.budget_exhausted |= agenda.pending() > 0 && trace.work >= limit;
 }
 
 /// Observations propose bindings, never asserted facts. Keep model polarity

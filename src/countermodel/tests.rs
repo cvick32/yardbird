@@ -2380,3 +2380,71 @@ fn relational_matching_anchors_background_axioms_to_observed_reads() {
         "../../tests/fixtures/background_relational_prerequisite.vmt"
     ));
 }
+
+#[test]
+fn earlier_action_witness_resolves_later_existential_property() {
+    use crate::{
+        policy::{
+            effort::{ActionRequirementGuidance, WorkAllowance},
+            term_selection::array::ArrayAstSize,
+        },
+        SolverBackend, YardbirdOptions,
+    };
+    let mut options = YardbirdOptions::from_filename("client-server-existential-goal.vmt".into());
+    options.profile = true;
+    let policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
+        crate::policy::DefaultEffort::default()
+            .with_countermodel_refinement(true)
+            .with_allowance(WorkAllowance {
+                guidance_action_requirements: ActionRequirementGuidance::Always,
+                guidance_transition_order: GuidanceTransitionOrder::PredecessorFirst,
+                ..Default::default()
+            })
+            .with_guidance_work(16384)
+            .with_winners_per_group(20),
+    );
+    let strategy = crate::strategies::Abstract::new(4, false, policy, true);
+    let mut driver = crate::Driver::new(
+        model(include_str!(
+            "../../tests/fixtures/client_server_existential_goal.vmt"
+        )),
+        options.build_instantiation_strategy(),
+        SolverBackend::Z3,
+    )
+    .with_profiler(options.build_profiler())
+    .with_wall_timeout(Some(std::time::Duration::from_secs(20)));
+    // Three actions are the first point at which a response can be received.
+    let result = driver.check_strategy(4, Box::new(strategy)).unwrap();
+    assert_eq!(
+        result
+            .run_progress
+            .as_ref()
+            .unwrap()
+            .deepest_completed_depth,
+        Some(3)
+    );
+    assert!(!result.counterexample);
+    let mut traced_current_body = false;
+    for record in &result.profiling.cost_records {
+        let Some(trace) = &record.countermodel_trace else {
+            continue;
+        };
+        assert!(trace.work <= 16384);
+        for node in &trace.nodes {
+            if trace.depth >= 3
+                && matches!(node.reason, TraceReason::QuantifierMatch { .. })
+                && node
+                    .expression
+                    .to_string()
+                    .contains(&format!("s_request_5f_sent@{}", trace.depth))
+                && node.expression.to_string().contains("__yardbird_witness_")
+            {
+                traced_current_body = true;
+            }
+        }
+    }
+    assert!(
+        traced_current_body,
+        "must trace the demanded frame with an action witness"
+    );
+}

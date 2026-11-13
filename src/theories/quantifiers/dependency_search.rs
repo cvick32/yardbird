@@ -549,6 +549,43 @@ pub(super) fn unify_modulo(
     bindings: &mut HashMap<Symbol, Term>,
     equivalent: &mut impl FnMut(&Term, &Term) -> bool,
 ) -> bool {
+    unify_scoped(
+        pattern, ground, variables, signatures, bindings, equivalent, None,
+    )
+}
+
+/// Capture mismatches may suggest quantified values, but never replace the
+/// captures of an emitted instance. Repeated quantified variables still unify.
+pub(super) fn unify_capture_hints(
+    pattern: &Term,
+    ground: &Term,
+    variables: &HashMap<Symbol, Sort>,
+    signatures: &HashMap<String, (Vec<Sort>, Sort)>,
+    bindings: &mut HashMap<Symbol, Term>,
+    equivalent: &mut impl FnMut(&Term, &Term) -> bool,
+    captures: &HashSet<Term>,
+) -> bool {
+    unify_scoped(
+        pattern,
+        ground,
+        variables,
+        signatures,
+        bindings,
+        equivalent,
+        Some(captures),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn unify_scoped(
+    pattern: &Term,
+    ground: &Term,
+    variables: &HashMap<Symbol, Sort>,
+    signatures: &HashMap<String, (Vec<Sort>, Sort)>,
+    bindings: &mut HashMap<Symbol, Term>,
+    equivalent: &mut impl FnMut(&Term, &Term) -> bool,
+    captures: Option<&HashSet<Term>>,
+) -> bool {
     if let Term::QualIdentifier(id) = pattern {
         let name = Symbol(id.get_name());
         if let Some(expected) = variables.get(&name) {
@@ -561,6 +598,10 @@ pub(super) fn unify_modulo(
             bindings.insert(name, ground.clone());
             return true;
         }
+    }
+    if captures.is_some_and(|terms| terms.contains(pattern)) && !has_variable(pattern, variables) {
+        return term_sort(pattern, signatures, &HashMap::new())
+            .is_ok_and(|sort| term_sort(ground, signatures, &HashMap::new()).ok() == Some(sort));
     }
     match (pattern, ground) {
         (
@@ -575,9 +616,9 @@ pub(super) fn unify_modulo(
         ) if a == b && left.len() == right.len() => {
             // Preserve correlations within matching source applications. Equal
             // results alone do not identify corresponding argument bindings.
-            left.iter()
-                .zip(right)
-                .all(|(a, b)| unify_modulo(a, b, variables, signatures, bindings, equivalent))
+            left.iter().zip(right).all(|(a, b)| {
+                unify_scoped(a, b, variables, signatures, bindings, equivalent, captures)
+            })
         }
         _ => {
             if pattern == ground {
