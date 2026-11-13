@@ -1,0 +1,550 @@
+{
+  "binary": "/tmp/yardbird-witness-hints",
+  "binary_sha256": "9cc9f88bea28188f3789695622681aac51e5f72b4eba746d2b16aab41fcb2c38",
+  "baseline": [
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always",
+      "status": "timeout",
+      "elapsed_secs": 60.97944537398871,
+      "returncode": 0,
+      "command": [
+        "/tmp/yardbird-observed-roots",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "60",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/always-screen/r00-000-always.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "4096",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r00-000-always",
+      "progress": {
+        "termination_reason": "timeout",
+        "elapsed_wall_secs": 60.87664122,
+        "target_depth": 5,
+        "deepest_completed_depth": 2,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.035055676
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.648918246
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.286213039
+          }
+        ],
+        "current_depth": 3,
+        "current_refinement_step": 86,
+        "last_completed_action": "strategy_action"
+      },
+      "counterexample": false,
+      "found_proof": false,
+      "refinements": 128,
+      "instances": 573,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 0
+    },
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always-wide",
+      "status": "external_timeout",
+      "elapsed_secs": 61.01410471496638,
+      "returncode": null,
+      "command": [
+        "/tmp/yardbird-observed-roots",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "60",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/always-screen/r00-000-always-wide.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "16384",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r00-000-always-wide",
+      "progress": {
+        "termination_reason": "timeout",
+        "elapsed_wall_secs": 60.969655122,
+        "target_depth": 5,
+        "deepest_completed_depth": 2,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.035125011
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.644700082
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.272255845
+          }
+        ],
+        "current_depth": 3,
+        "current_refinement_step": 86,
+        "last_completed_action": "strategy_action"
+      },
+      "counterexample": null,
+      "found_proof": null,
+      "refinements": null,
+      "instances": null,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 0
+    }
+  ],
+  "after": [
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always",
+      "status": "depth_limit",
+      "elapsed_secs": 4.48326522205025,
+      "returncode": 0,
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "60",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/witness-hints-screen/r00-000-always.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "4096",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r00-000-always",
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 4.417156556,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.03446441
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.613708593
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.297696032
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 2.696966142
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 4.334045135
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 17,
+        "last_completed_action": "depth_completed"
+      },
+      "counterexample": false,
+      "found_proof": false,
+      "refinements": 73,
+      "instances": 272,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 0
+    },
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always-wide",
+      "status": "depth_limit",
+      "elapsed_secs": 4.3823882199358195,
+      "returncode": 0,
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "60",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/witness-hints-screen/r00-000-always-wide.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "16384",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r00-000-always-wide",
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 4.309200636,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.035206104
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.593517207
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.27376235
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 2.563731729
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 4.229157455
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 17,
+        "last_completed_action": "depth_completed"
+      },
+      "counterexample": false,
+      "found_proof": false,
+      "refinements": 73,
+      "instances": 272,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 0
+    }
+  ],
+  "confirmations": [
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always",
+      "status": "depth_limit",
+      "elapsed_secs": 4.433901073061861,
+      "returncode": 0,
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "10",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/witness-hints-confirm/r00-000-always.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "4096",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r00-000-always",
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 4.392379303,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.035238955
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.60865941
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.354893903
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 2.619379387
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 4.312956561
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 17,
+        "last_completed_action": "depth_completed"
+      },
+      "counterexample": false,
+      "found_proof": false,
+      "refinements": 73,
+      "instances": 272,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 0
+    },
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always",
+      "status": "depth_limit",
+      "elapsed_secs": 4.283871961059049,
+      "returncode": 0,
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "10",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/witness-hints-confirm/r01-000-always.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "4096",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r01-000-always",
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 4.236039528,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.03517694
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.603377603
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.262959379
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 2.536494834
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 4.1566158380000005
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 17,
+        "last_completed_action": "depth_completed"
+      },
+      "counterexample": false,
+      "found_proof": false,
+      "refinements": 73,
+      "instances": 272,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 1
+    },
+    {
+      "path": "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+      "variant": "always",
+      "status": "depth_limit",
+      "elapsed_secs": 4.382369043072686,
+      "returncode": 0,
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/mypyvy/examples/client_server_ae.pyv.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "10",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/witness-hints-confirm/r02-000-always.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "4096",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "always"
+      ],
+      "artifact": "r02-000-always",
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 4.325351593,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.035405236
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 0.598003185
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 1.255447631
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 2.525227595
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 4.245653278
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 17,
+        "last_completed_action": "depth_completed"
+      },
+      "counterexample": false,
+      "found_proof": false,
+      "refinements": 73,
+      "instances": 272,
+      "profile": {
+        "driver_secs": {},
+        "cost_secs": {},
+        "counters": {},
+        "operation_secs": {},
+        "operation_calls": {},
+        "operation_selected": {},
+        "solver_checks": 0,
+        "batches": []
+      },
+      "repeat": 2
+    }
+  ],
+  "confirmed_process_median_secs": 4.382369043072686,
+  "confirmed_check5_median_secs": 4.245653278,
+  "library_tests_passed": 517,
+  "standard_sample20": {
+    "completed_cases": 13,
+    "completed_checks": 84,
+    "per_case_counts_unchanged": true
+  },
+  "requires_prerequisite_policy": "always",
+  "note": "Depth five is bounded checks 0--4, not an unbounded proof."
+}

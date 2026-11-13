@@ -1,0 +1,57 @@
+#+TITLE: Database chain replication: early conflicts and shorter dependency bursts
+#+DATE: 2026-11-12
+
+* Result
+The combined scheduling experiment regressed database chain replication.
+The previous production schedule has been restored exactly; its source hash
+matches the prior successful benchmark metadata. No other implementation changes
+from earlier work were reverted.
+
+| Schedule | Profiling | Completed checks | Completion / limit | Process time |
+|-
+| Previous | yes | 5/5 | 202.120s | 213.051s |
+| Experimental | yes | 3/5 | 300s timeout | 330.936s, including external grace |
+| Previous | no | 5/5 | 203.794s | 214.536s |
+| Experimental | no | 3/5 | 300s timeout | 301.469s, including external grace |
+
+The first three checks were faster: cumulative check-2 completion fell from
+57.155s to 41.020s with profiling, and from 52.281s to 40.559s without it.
+But the experimental run needed more than 65 refinement rounds at check 3;
+the baseline needed 54 refining rounds there. Both experimental runs were killed
+while inside a long refinement operation and emitted no final profile JSON.
+The final exact internal bottleneck therefore remains unmeasured. Do not treat
+missing profile counters as zero work, or infer a precise final-runtime slowdown
+from these censored results.
+
+* Tested implementation
+- After an empty countermodel-guidance pass, try a bounded triggered-conflict
+  operation before dependency and witness fallback.
+- Retain the old fallback ordering every eighth refinement step to avoid starving
+  witness search. An empty early conflict operation falls through to dependencies.
+- Reduce guided dependency bursts from eight slices to two. Ordinary unguided
+  search retains its old burst limit; pending dependency agendas are preserved.
+- No changes to captures, formula validation, installation, or input encoding.
+
+All 518 library tests passed, including a new scheduling regression that checks
+prefix fallback, the two-slice bound, and periodic witness access. The optimized
+build used the same release/LTO configuration as the baseline.
+
+* Interpretation and next experiment
+The earlier profile's high triggered-conflict selection rate did not establish
+that it would be effective earlier in the schedule. Moving it changes available
+vocabulary, selected instances, and later solver models. The faster early prefix
+was offset by worse later refinement. Since both changes were applied together,
+the measurements do not isolate early conflict ordering from dependency burst
+length or their interaction. The next controlled experiment should shorten
+bursts alone, keeping conflict ordering fixed, before considering a new default.
+
+* Reproduction
+Same input: examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt
+Same guided settings: work 16384, immediate, predecessor-first,
+prerequisites when-unproductive, array and quantifier ownership, depth 5.
+Experimental binary retained: /tmp/yardbird-early-triggered
+Baseline binary retained: /tmp/yardbird-witness-hints
+Exact commands, hashes and progress: companion JSON.
+Raw artifacts: benchmark_results/database-chain/early-triggered/{profile,confirm}
+Experimental patch against the restored source:
+notes/quantified-search/database-chain-early-triggered.patch

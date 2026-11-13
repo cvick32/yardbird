@@ -1,0 +1,263 @@
+#+TITLE: Database chain replication investigation
+#+DATE: 2026-11-12
+
+Active investigation; experimental search changes are not yet validated as improvements.
+Use only the generated quantified-transition-system VMT input.
+Baseline binary: /tmp/yardbird-enabling-only.
+Raw artifacts: benchmark_results/database-chain/.
+
+The five-second immediate-guidance profile contains 13 traces, eight exhausting
+the 4096-work allowance. Scalar/current-frame expansion reaches large existential
+action bodies with ten parameters and multiple universally quantified relational
+requirements. Unsupported nested helper frontiers remain. CountermodelCandidates
+selects 13 instances; ordinary Binder search selects 12; dependency discovery
+selects none. Relational extension shares the exhausted trace budget, so increasing
+raw traversal may not reserve useful work for joining those requirements.
+
+Ten-second controls: immediate-wide, proved-prefix reuse, native arrays,
+predecessor-only lookup, split-property checking, and axiom-first guidance all
+complete only check 0. Ordinary batch100 completes checks 0 and 1. Native Z3
+completes checks 0--3, then reaches the external timeout. These controls do not
+identify a generally successful configuration.
+
+A 120-second batch100 run is in progress in batch-long/. Next investigate the
+instances selected by the ordinary batch relative to unsupported relational
+frontiers, and whether relational matching needs a reserved allowance rather
+than allowing value tracing to consume the entire budget. Do not claim that
+this diagnosis or a change has been validated yet.
+
+* Reservation experiment in progress
+The 120-second batch100 run was externally stopped after 121 seconds; its last
+progress checkpoint still showed only checks 0 and 1 complete. This is not a
+successful fallback.
+
+An experimental effort-policy reservation now gives value tracing half of the
+shared guidance allowance when quantifiers are present. Relational matching may
+use the remainder. Value-phase exhaustion remains reported in the final trace;
+no solver semantics or instantiation validation changed. Implementation is in
+WorkAllowance::value_trace_work and countermodel::search. This is unvalidated
+as a performance change and should be reverted if matched runs do not help.
+
+512 library tests passed with the reservation logic. The arithmetic was then
+moved unchanged into WorkAllowance to preserve policy ownership; the release
+build is running in unified exec session 26839. Logs: reserve-tests.log and
+reserve-build.log. The prior source is saved as countermodel-before-reserve.rs;
+remove the added value_trace_work method too if reverting the experiment.
+Baseline binary remains /tmp/yardbird-before-relational-reserve (same as
+/tmp/yardbird-enabling-only). Do not overwrite it. Next: verify build completion,
+run the database profile and ten-second matched benchmark, inspect whether
+relational selection improves, then keep/revise/revert based on those results.
+A final test run must cover the final source if the experiment is retained.
+
+* Reservation result and next experiment
+The reservation build finished and was preserved as /tmp/yardbird-relational-reserve.
+Matched ten-second progress remained 1/5. Both five-second profiles recorded
+13 traces, eight exhausted, 13 guided selections, 12 ordinary Binder selections,
+and zero QuantifierMatch nodes. Reservation alone therefore has no demonstrated
+benefit and has been reverted in source (including the WorkAllowance method).
+
+A second experiment now feeds known Boolean trace observations to ClauseAgenda
+when it has demanded helper clauses. It preserves literal terms/polarities,
+deduplicates observations, charges scanning to the existing allowance, and keeps
+full-instance model validation unchanged. Motivation: get_source_subterms excludes
+refinement-instance terms, including concrete reads reached inside witness bodies.
+This change is in theories/quantifiers/countermodel_relations.rs only. It has not
+yet been validated for performance. Tests/build run in unified exec session 32214,
+with observations-tests.log and observations-build.log. Check that handle before
+starting another build. Next: add/inspect targeted regression coverage for joining
+witness-body observations, then compare matched database profiles and progress.
+If full value tracing still exhausts all work before joins, test the combination
+with reservation separately; the two mechanisms must not be conflated.
+
+* Observation regression added
+Fact ingestion was extracted to add_trace_observations with unchanged behavior.
+A focused regression joins two known Boolean observations without source atoms,
+checks unknown exclusion and deduplication, preserves state@1 captures, verifies
+work accounting and exhaustion, and asserts that observations carry no lemma.
+It is in countermodel_relations::observation_tests. The original test/build chain
+remains session 32214; a final-source full library test run is now queued, logging
+to observations-final-tests.log. Wait for both before timing benchmarks. The final
+suite should contain 513 tests. The experimental observations change remains
+unproven for performance. The budget reservation remains reverted.
+
+* Observation-only result and stage-order diagnosis
+The observations build completed (513 library tests passed) and is saved as
+/tmp/yardbird-trace-observations, SHA256
+8f9f415a407d2c5cf000fdf246d2203d456a85837d7c3e45c420fabf82973e01.
+The ten-second observations-screen run still completed only check 0, with 59
+instances and 25 refinements. observations-profile again has 13 traces, eight
+exhausted, and no QuantifierMatch nodes. Its per-trace work/node counts match the
+baseline exactly. This is not a demonstrated improvement.
+
+Inspection found a concrete ordering gap: countermodel::search runs relational
+extension BEFORE requirements::extend. The latter creates the witness-body facts
+and unsupported helpers, but no relational pass follows it. Reserving work only
+for the initial trace therefore did not address the phase producing the frontiers.
+The database implication/De Morgan clause shapes ARE supported by clauses.rs;
+do not attribute this result to an unsupported conjunction antecedent.
+
+A new experiment reserves half of the work remaining at prerequisite-stage entry
+for a subsequent relational pass. The policy arithmetic is in
+WorkAllowance::prerequisite_allowance; search gives requirements a borrowed
+context with that allowance, then calls relation matching when new nodes were
+added. Local prerequisite exhaustion is temporarily cleared for the reserved
+pass and retained in the final trace. Total dependency allowance is unchanged.
+The observation ingestion experiment remains present for this combined test.
+No performance result yet. Library tests run in session 11993, logging to
+followup-tests.log. Next: complete tests, build, preserve a separate binary,
+run matched database profile/timing, and confirm German/Chandra if beneficial.
+
+* Follow-up validation/build status
+All 513 library tests pass with the follow-up ordering/reservation change
+(followup-tests.log). Release build is running in unified exec session 20649,
+logging to followup-build.log. Poll this handle before starting another build.
+Preserve the resulting binary as /tmp/yardbird-prerequisite-followup, then run
+observations-screen/profile equivalents into fresh followup-screen/profile dirs.
+No benchmarks should run concurrently with compilation.
+
+Additional profile check: all 109 unsupported nodes across the observation-only
+profile are descendants of ActionRequirement nodes. Traces 5--12 each have
+100--104 prerequisite descendants, and all 11--14 unsupported frontiers per trace
+are within that subtree. This supports the stage-order diagnosis directly.
+Do not claim improvement until the pending build is benchmarked.
+
+* Follow-up result: productive matching, no depth gain yet
+Release binary /tmp/yardbird-prerequisite-followup has SHA256
+1c0c7502511cb8aa05d4623d68ce44707566bb0095c95673bedc7d87a446e7aa.
+followup-screen: 1/5 at ten seconds. followup-wide: 1/5 at ten seconds.
+followup-profile: 15 traces, ten exhausted, 14 QuantifierMatch nodes, all violated
+and selected (rules 87:1, 97:4, 100:4, 103:4, 106:1). Later models have no more
+matches. This validates the stage-order gap but not a speed improvement.
+followup-long: 2/5 at 60 seconds; check 1 completed at 23.872 seconds.
+Matched baseline-long: also 2/5, but check 1 completed at 12.805 seconds.
+Baseline hit external timeout at 61 seconds; its last progress checkpoint was
+36.087 seconds, current depth 2/refinement 28. Do not treat that checkpoint as
+completion of the full run. The new approach is slower to check 1 in these runs.
+
+followup-guards: German 5/5 at 3.53 seconds, Chandra 5/5 at 7.95 seconds.
+These are single confirmation runs, not a statistical speed claim.
+The small relational-prerequisite VMT completes 5/5 with both binaries; only the
+follow-up binary selects the quantified guard via QuantifierMatch underneath an
+ActionRequirement. It requires enabled(p), not ready(p), and forall i.
+enabled(i) implies ready(i), so the action is inconsistent. This model is now
+in tests/fixtures/relational_prerequisite.vmt, with an integration regression
+asserting selected matching provenance and depth completion.
+
+* Demand-first scheduling experiment
+Inspection found that ClauseAgenda previously added all source helpers before
+observed trace demands. Its FIFO jobs therefore preferred unrelated clauses.
+The next experiment adds observed demands first, then source helpers, retaining
+all candidates and full validation. Observation ingestion and the prerequisite
+follow-up/reservation remain present. No performance claim yet.
+Full library tests (now expected 514) followed by a release build run in unified
+exec session 87071. Logs: demand-first-tests.log and demand-first-build.log.
+Poll that handle; do not start duplicate builds. Preserve the completed binary
+separately, benchmark database ten-second/profile cases, then repeat longer
+comparison if warranted. The previous follow-up binary stays available for
+ablation. Revisit or revert experiments if no performance improvement emerges.
+
+Demand-first validation update: all 514 library tests passed, including
+relational_matching_consumes_new_prerequisite_observations. The chained release
+build is now running in session 87071; demand-first-build.log confirms compilation.
+Keep this handle and wait for completion before benchmarking. No performance
+result for demand-first exists yet.
+
+* Provenance limitation to investigate after pending build
+Code inspection: countermodel_relations builds anchors only from Unsupported
+Boolean nodes. After validating a complete candidate, it discards that candidate
+unless its formula contains one of those anchor expressions. Background axiom
+instances may join concrete Boolean reads already marked Expanded, so they need
+not contain an opaque helper frontier. This appears to exclude useful static
+ordering/uniqueness instances from the new observation path. It is a hypothesis,
+not a measured explanation of the database runtime yet.
+A second small input, background-relational-prerequisite.vmt, moves the forall
+enabled=>ready condition from the action guard to init while preserving both
+arrays. The impossible action still requires enabled(p) and not ready(p).
+Use it to test background-axiom provenance if demand-first alone does not help.
+Do not change production source while session 87071 is building. That handle was
+confirmed live; tests514 passed and release compilation is still running.
+
+* Demand-first result and observed-root experiment
+Demand-first binary /tmp/yardbird-demand-first SHA256
+3d0f92e5abbeabf9af5a6db66a4135020769b8161231f46e7506d2c7841c7091.
+514 tests passed; normal optimized build completed. demand-first-screen remains
+1/5 at ten seconds. demand-first-profile is effectively the same as follow-up:
+15 traces, ten exhausted, 14 violated relational instances. Ordering alone did
+not produce a measured improvement.
+background-before solves the reduced background relational prerequisite case,
+but the profile has zero QuantifierMatch nodes (ordinary refinement solves it).
+
+New observed-root experiment: when prerequisite observations exist, allow the
+relational pass even without Unsupported helpers. Supply known Boolean atoms
+from tracing as before, and permit the validated full instance's provenance to
+point at those atoms, normalized through Goal::new. Previously roots were
+restricted to Unsupported helpers, dropping background-axiom joins whose concrete
+reads were successfully traced. Full-instance validation and capture syntax stay
+unchanged. Production changes are in countermodel_relations.rs. No performance
+result yet.
+The original integration regression was factored into a helper, with a second
+case for background_relational_prerequisite.vmt requiring a selected relational
+instance beneath an ActionRequirement. Tests now expected 515.
+An earlier-source test run is session 13955. Final-source full tests followed by
+a release build are queued in session 21719, logs observed-roots-final-tests.log
+and observed-roots-build.log. Poll both; do not duplicate the build. Only run
+benchmarks after both are terminal. Preserve a distinct observed-roots binary.
+If tests fail, inspect the selected provenance before loosening assertions.
+
+Observed-root validation update: session 13955 completed with 514 tests passing.
+Final-source suite in session 21719 passed all 515 tests, including both relational
+prerequisite regressions. The chained release build is now running under the
+same session 21719. Benchmark results are still pending; poll that handle.
+
+* Observed-root benchmark results
+515 tests passed and optimized build completed. Binary /tmp/yardbird-observed-roots
+SHA256 01da1ab39475e44ac7daf81c009ffed25f8ba5c0f80c19ab283c63c9476f3736.
+observed-roots-screen: 1/5 at ten seconds (4096 work).
+observed-roots-profile: 16 traces, 11 exhausted, 32 violated relational instances
+versus 14 for demand-first. More matches alone did not solve the case.
+observed-roots-long: 2/5 at 60 seconds, check 1 at 14.316 seconds; baseline
+standard-budget check 1 was 12.805 seconds, so no standard-budget speed claim.
+observed-roots-wide: 2/5 at ten seconds, check 1 at 9.9997 seconds (borderline).
+observed-roots-wide-long: 3/5 at 60 seconds, check 1 at 9.903 and check 2 at
+51.326 seconds. Matched baseline-wide-long: only 2/5 at 60 seconds, check 1 at
+14.276 seconds; externally killed at 61 seconds, last checkpoint 59.666 seconds.
+This is the first matched depth improvement for this database investigation.
+Single runs so far, not a statistical guarantee. Normal work=4096; wide=16384.
+observed-roots-guards: German 5/5 at 3.783s, Chandra 5/5 at 8.002s.
+
+A 300-second wide-work run is now active in unified exec session 19529 (the
+preceding baseline-wide-long command completed). Output directory:
+observed-roots-wide-extended. Early progress: check 1 at 9.940 seconds, now depth2.
+Poll this handle; do not launch concurrent tests/builds/benchmarks. Next determine
+whether it reaches depth5, then confirm the improvement and rerun the original
+sample if keeping these generic matching changes. Goal remains active.
+
+* Database reaches depth five
+Session19529 completed successfully. observed-roots-wide-extended reached all
+five checks: completion times 0.061, 9.940, 51.743, 203.132, 203.427 seconds for
+depths0--4. Total external runtime214.116 seconds (result assembly adds time).
+No counterexample; depth_limit, not an unbounded proof. This is the first complete
+depth5 run in this database investigation. Command uses guided-immediate-wide
+(16384 guidance work), all other guided settings as previously recorded.
+
+Next confirmation chain is active in unified exec session16527:
+1. /tmp/yardbird-enabling-only, same wide configuration, timeout300 seconds,
+   output baseline-wide-extended (matched full-depth baseline).
+2. /tmp/yardbird-observed-roots, original20 inputs, immediate4096, timeout10sec,
+   output sample20-regression.
+3. /tmp/yardbird-observed-roots, nativeZ3, timeout60sec, output z3-depth5.
+These run sequentially to avoid contention. Poll session16527, do not launch
+competing benchmark/test/build jobs. Source unchanged since515 passing tests.
+Next compare completed counts/timings, investigate any sample regressions, and
+write a concise consolidated report/JSON. Goal remains active pending validation.
+
+* Confirmation chain complete
+Session16527 completed. Matched baselinewide300 timed out externally at301sec
+with only2/5; last progress checkpoint299.033 seconds. Updatedwide300 completed
+5/5 at203.427 seconds. NativeZ3 completed5/5 at43.965 seconds. Original20 standard
+budget screen preserves every previous completed-check count:13/20 complete,
+84/100 checks versus82/100. Multisig increases2->4. All515 tests pass.
+Consolidated report/JSON: database-chain-results-2026-11-12.org/.json.
+No active process remains from this investigation chain. Database depth5 target
+is met under the documented wider configuration; short-budget remaining cases
+are listed in the consolidated report. No statistical repeat claim.

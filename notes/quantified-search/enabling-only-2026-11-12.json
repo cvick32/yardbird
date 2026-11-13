@@ -1,0 +1,29 @@
+{
+  "german.ctc.cub.vmt": {
+    "median_secs": 3.13074301101733,
+    "times_secs": [
+      3.177578510949388,
+      3.1283308800775558,
+      3.13074301101733
+    ],
+    "completed_checks": [
+      5,
+      5,
+      5
+    ]
+  },
+  "chandra_buggy.in.vmt": {
+    "median_secs": 8.000266732997261,
+    "times_secs": [
+      8.000266732997261,
+      8.35613417206332,
+      7.954369304003194
+    ],
+    "completed_checks": [
+      5,
+      5,
+      5
+    ]
+  },
+  "binary_sha256": "6f57dcb59c757dead1923bcee46400e23c9cd974da12ba04f677f8569b560e06"
+}

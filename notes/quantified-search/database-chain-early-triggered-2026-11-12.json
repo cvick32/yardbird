@@ -1,0 +1,260 @@
+{
+  "production_schedule_restored": true,
+  "experimental_tests_passed": 518,
+  "results": [
+    {
+      "name": "baseline-profile",
+      "binary_sha256": "9cc9f88bea28188f3789695622681aac51e5f72b4eba746d2b16aab41fcb2c38",
+      "input_hashes": {
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt": "2f389bd5d478197acdebc6d7adad749d12367dfb528ac8401f086d5d04f9327b"
+      },
+      "budget_secs": 600,
+      "profile": true,
+      "status": "depth_limit",
+      "process_secs": 213.0514690229902,
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 208.353029492,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.066370417
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 11.239928216
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 57.154867178
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 201.808095309
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 202.120081537
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 0,
+        "last_completed_action": "depth_completed"
+      },
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "600",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/database-chain/full-depth5-profile/r00-000-guided-immediate-wide.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "16384",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "when-unproductive",
+        "--profile"
+      ],
+      "artifact": "benchmark_results/database-chain/full-depth5-profile/r00-000-guided-immediate-wide"
+    },
+    {
+      "name": "baseline",
+      "binary_sha256": "9cc9f88bea28188f3789695622681aac51e5f72b4eba746d2b16aab41fcb2c38",
+      "input_hashes": {
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt": "2f389bd5d478197acdebc6d7adad749d12367dfb528ac8401f086d5d04f9327b"
+      },
+      "budget_secs": 300,
+      "profile": false,
+      "status": "depth_limit",
+      "process_secs": 214.53570873301942,
+      "progress": {
+        "termination_reason": "depth_limit",
+        "elapsed_wall_secs": 214.201086162,
+        "target_depth": 5,
+        "deepest_completed_depth": 4,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.063577715
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 10.14661364
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 52.280965732
+          },
+          {
+            "depth": 3,
+            "elapsed_wall_secs": 203.487728258
+          },
+          {
+            "depth": 4,
+            "elapsed_wall_secs": 203.794098895
+          }
+        ],
+        "current_depth": 4,
+        "current_refinement_step": 0,
+        "last_completed_action": "depth_completed"
+      },
+      "command": [
+        "/tmp/yardbird-witness-hints",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "300",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/client-server/database-confirm/r00-000-guided-immediate-wide.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "16384",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "when-unproductive"
+      ],
+      "artifact": "benchmark_results/client-server/database-confirm/r00-000-guided-immediate-wide"
+    },
+    {
+      "name": "experiment-profile",
+      "binary_sha256": "058496413c9c2f6953e6872e8e705217c304bd6f4a519119251d952261d95c32",
+      "input_hashes": {
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt": "2f389bd5d478197acdebc6d7adad749d12367dfb528ac8401f086d5d04f9327b"
+      },
+      "budget_secs": 300,
+      "profile": true,
+      "status": "external_timeout",
+      "process_secs": 330.93581152299885,
+      "progress": {
+        "termination_reason": "running",
+        "elapsed_wall_secs": 238.645694189,
+        "target_depth": 5,
+        "deepest_completed_depth": 2,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.069017516
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 9.595980267
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 41.019991382
+          }
+        ],
+        "current_depth": 3,
+        "current_refinement_step": 65,
+        "last_completed_action": "strategy_action"
+      },
+      "command": [
+        "/tmp/yardbird-early-triggered",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "300",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/database-chain/early-triggered/profile/r00-000-guided-immediate-wide.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "16384",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "when-unproductive",
+        "--profile"
+      ],
+      "artifact": "benchmark_results/database-chain/early-triggered/profile/r00-000-guided-immediate-wide"
+    },
+    {
+      "name": "experiment",
+      "binary_sha256": "058496413c9c2f6953e6872e8e705217c304bd6f4a519119251d952261d95c32",
+      "input_hashes": {
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt": "2f389bd5d478197acdebc6d7adad749d12367dfb528ac8401f086d5d04f9327b"
+      },
+      "budget_secs": 300,
+      "profile": false,
+      "status": "external_timeout",
+      "process_secs": 301.469173062942,
+      "progress": {
+        "termination_reason": "running",
+        "elapsed_wall_secs": 209.506779017,
+        "target_depth": 5,
+        "deepest_completed_depth": 2,
+        "depth_completions": [
+          {
+            "depth": 0,
+            "elapsed_wall_secs": 0.068746701
+          },
+          {
+            "depth": 1,
+            "elapsed_wall_secs": 9.307964624
+          },
+          {
+            "depth": 2,
+            "elapsed_wall_secs": 40.558881775
+          }
+        ],
+        "current_depth": 3,
+        "current_refinement_step": 65,
+        "last_completed_action": "strategy_action"
+      },
+      "command": [
+        "/tmp/yardbird-early-triggered",
+        "-f",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/examples/quantified-transition-systems/generated-vmt/ivybench/i4/vmt/database_chain_replication.vmt.vmt",
+        "-d",
+        "5",
+        "--wall-timeout-secs",
+        "300",
+        "--json-output",
+        "--progress-file",
+        "/home/yardbird/.codex/worktrees/quantifier-main-investigation/yardbird/benchmark_results/database-chain/early-triggered/confirm/r00-000-guided-immediate-wide.progress.json",
+        "--policy",
+        "countermodel-guided",
+        "--theory",
+        "array,quantifiers",
+        "--guidance-schedule",
+        "immediate",
+        "--guidance-work",
+        "16384",
+        "--guidance-transition-order",
+        "predecessor-first",
+        "--guidance-action-requirements",
+        "when-unproductive"
+      ],
+      "artifact": "benchmark_results/database-chain/early-triggered/confirm/r00-000-guided-immediate-wide"
+    }
+  ]
+}
