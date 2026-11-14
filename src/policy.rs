@@ -41,12 +41,21 @@ pub enum NamedPolicy {
     /// Choose axiom bindings sequentially, conditioned on earlier choices.
     ConditionalBinding,
     /// Choose an axiom and every binding in one LLM response, with ordinary fallback.
-    LlmOneShot,
+    #[value(alias = "llm-one-shot")]
+    #[serde(rename = "llm", alias = "LlmOneShot", alias = "llm-one-shot")]
+    Llm,
+    /// Alternate bounded symbolic search with LLM fallback on the same model.
+    #[serde(rename = "symbolic-llm")]
+    SymbolicLlm,
     /// Uniformly sample well-sorted array-axiom proposals from the shared catalogue.
     RandomInstantiation,
 }
 
 impl NamedPolicy {
+    pub fn uses_llm(self) -> bool {
+        matches!(self, Self::Llm | Self::SymbolicLlm)
+    }
+
     pub(crate) fn uses_decision_model(self) -> bool {
         matches!(self, Self::OneShot | Self::ConditionalBinding)
     }
@@ -54,7 +63,7 @@ impl NamedPolicy {
     pub fn build_plan(self, run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
         match self {
             Self::RandomInstantiation => random::build_plan(run),
-            Self::LlmOneShot => llm::build_plan(run),
+            Self::Llm | Self::SymbolicLlm => llm::build_plan(run),
             Self::GermanFast => run_german_fast(run),
             Self::CountermodelGuided => run_countermodel_guided(run),
             Self::OneShot => decision_model::build_plan(run, decision_model::BindingMode::OneShot),
@@ -197,6 +206,12 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
         self
     }
 
+    pub(crate) fn has_input_binder_discovery(&self) -> bool {
+        self.discovery
+            .as_ref()
+            .is_some_and(|d| d.supports_input_binders())
+    }
+
     pub(crate) fn has_discovery(&self) -> bool {
         self.discovery.is_some()
     }
@@ -220,6 +235,11 @@ impl<F: TermCostFactory> YardbirdPolicy<F> {
 
     pub fn with_instantiation_ranker(mut self, ranker: Box<dyn InstantiationRanker>) -> Self {
         self.instances = ranker;
+        self
+    }
+
+    pub(crate) fn with_boxed_effort(mut self, effort: Box<dyn ProofEffort>) -> Self {
+        self.effort = effort;
         self
     }
 

@@ -1,6 +1,6 @@
 # LLM-guided instantiation
 
-`--policy llm-one-shot` asks an LLM to choose an array axiom and all of its
+`--policy llm` asks an LLM to choose an offered theory rule and all of its
 bindings together. The default is one complete proposal in one inference call
 per abstract countermodel. Yardbird constructs the formula itself and accepts
 it only if it is installable, new, and evaluates to known false in that model.
@@ -8,12 +8,60 @@ Accepted instances use the existing selection and full-unroll installation path.
 Failure or abstention yields to ordinary refinement; neither establishes a real
 counterexample or a proof.
 
-This first implementation supports VMT inputs with Z3 and Int-indexed,
-Int-valued arrays, matching the JEV experiment. Use `--theory auto` (default) or
-`--theory array`. As with JEV, the plan owns array abstraction and leaves input
-quantifiers to the solver. Other array sorts cause snapshot capture to skip
-inference and use ordinary refinement. Eager seeding, countermodel tracing,
-auxiliary synthesis, and prefer-axioms cannot be combined with this policy.
+The `llm` policy supports VMT inputs with Z3 and typed arrays, including Boolean
+and nested-array values. `--theory auto` owns both arrays and input quantifiers;
+explicit `array`, `quantifiers`, and `array,quantifiers` selections are also
+available. For distributed protocols use **only `*.encoding.vmt` companions**.
+Direct lambda guidance is unsupported. JEV and random instantiation retain their
+existing Int/Int array-only catalogue.
+
+Input-binder rules come exclusively from the actual input's registered lowering
+plan. Each rule exposes its source/parent identity, captures, bound variables,
+logical direction, and deterministic witness dependencies. The LLM supplies only
+rule and typed term IDs; Yardbird constructs and validates the exact instance.
+There is no invariant, predicate, arbitrary lemma, or new-assumption synthesis.
+Built-in array axioms are identified separately. Uninterpreted sorts and relations
+have no arithmetic semantics inferred from their names.
+
+`llm-one-shot` remains a CLI/serialized-input alias; new results use `llm`.
+The renamed policy remains LLM-first with optional ordinary fallback.
+
+## Bounded symbolic search with LLM fallback
+
+`--policy symbolic-llm` starts with symbolic search, gives the LLM a turn after
+its bounded slice (or earlier symbolic exhaustion), then resumes symbolic search.
+An accepted instance returns to the solver. Without an installation, the next
+cycle uses the same model, stable term IDs, cumulative rejection feedback, and
+symbolic continuations. Every operation yields to the driver for deadline checks.
+The dependency prefix is limited to one discovery slice and one directed request
+per pass. With the default eight-operation budget, an unproductive prefix leaves
+room for binder witnesses, guarded reads, array expansion and candidates, and
+binder conflict search before calling the LLM. Unavailable operations are skipped;
+a selected instance returns to the solver immediately. Smaller operation budgets
+can intentionally truncate this sweep. Dependency cursors survive the scheduling
+limit and can resume in later passes on the same model.
+Concrete validation is disabled for this policy, including array-only inputs.
+Exhausting either inference cap stops inconclusively (`NoProgress`), never as SAT
+or a proof. `--no-guided-fallback` is incompatible with this hybrid policy.
+
+| Control | Default | Scope |
+| --- | --- | --- |
+| `--symbolic-operations` | 8 | Symbolic operations before an LLM turn |
+| `--symbolic-match-work` | 128 | Match/page limit per operation; array search uses one round |
+| `--symbolic-dependency-work` | 128 | Dependency work per operation |
+| `--symbolic-vocabulary-work` | 64 | Term-construction attempts per growth operation |
+| `--llm-attempts` | 1 | Maximum calls per LLM turn; hybrid executes one call per operation |
+| `--llm-max-calls-per-model` | 8 | Inference calls across all turns for one solver model |
+| `--llm-max-calls` | 100 | Inference calls across the entire run |
+
+Symbolic allowances are fixed, not automatically widened beyond these limits.
+Calls include rejected responses and transport failures. Provider/transport or
+refused/incomplete-response failures disable further inference for the run;
+abstentions and invalid substitutions can be revisited with feedback in later
+hybrid turns. Dry-run/oversize/snapshot failures end the hybrid search without
+an empty busy loop. Each request still has its own timeout and token/byte limits.
+A single operation is cooperative, not forcibly interrupted by the wall timeout.
+The normal `llm` policy retains ordinary fallback when inference is exhausted.
 
 ## Running
 
@@ -26,7 +74,7 @@ Inspect the complete OpenAI request without a key or any inference calls:
 
 ```bash
 cargo run --release -- -f examples/array/array_copy.vmt -d 3 \
-  --policy llm-one-shot --llm-provider openai \
+  --policy llm --llm-provider openai \
   --llm-model YOUR_MODEL_ID --llm-dry-run \
   --llm-log /tmp/yardbird-llm-dry-run.jsonl --json-output
 ```
@@ -39,7 +87,7 @@ For Anthropic, configure `ANTHROPIC_API_KEY` and select the Messages adapter:
 
 ```bash
 cargo run --release -- -f examples/array/array_copy.vmt -d 3 \
-  --policy llm-one-shot --llm-provider anthropic \
+  --policy llm --llm-provider anthropic \
   --llm-model YOUR_MODEL_ID --llm-log /tmp/yardbird-anthropic.jsonl \
   --json-output
 ```
@@ -86,12 +134,11 @@ The LLM receives ordered JSON content blocks:
 
 1. Complete original VMT, axiom schemas, notation, and other static context.
 2. Initial vocabulary followed by immutable additions of declarations and terms.
-3. Complete current model, depth/version, installed instances, and retry feedback.
+3. Complete current model, depth/version, installed instances, and retry feedback (plus symbolic-search observations for the hybrid).
 
 Concatenate the vocabulary arrays and combine the other fields to reconstruct
 the shared flat snapshot that JEV uses. All blocks are sent on every request.
-No terms are shortlisted, no model defaults are omitted, and no previous models
-or LLM answers are accumulated. JEV retains its existing staged request format;
+No terms are shortlisted and no model defaults are omitted. Compact rejection feedback persists for the current model. JEV retains its existing staged request format;
 its binding choices use the same stable IDs and full current catalogue.
 
 `--llm-explicit-cache true` is the default. The adapters mark the static block
@@ -115,7 +162,7 @@ and [Anthropic caching guide](https://platform.claude.com/docs/en/build-with-cla
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--llm-attempts` | 1 | Complete proposals per countermodel, including feedback retries |
+| `--llm-attempts` | 1 | Complete proposals per LLM turn, including feedback retries |
 | `--llm-timeout-secs` | 120 | Deadline for each HTTP request including body reads |
 | `--llm-max-request-bytes` | 2097152 | Maximum serialized request size; larger requests are logged and skipped |
 | `--llm-max-output-tokens` | 4096 | Provider output budget, including reasoning/thinking |
@@ -123,9 +170,7 @@ and [Anthropic caching guide](https://platform.claude.com/docs/en/build-with-cla
 Set `--llm-attempts 3` to retry malformed or rejected proposals with compact
 feedback on the same frozen model and catalogue. Refusals, incomplete responses,
 abstentions, and transport errors end the episode immediately. There are no
-hidden transport retries or repair calls. Each subsequent solver model starts
-a new episode and gets a fresh attempt budget. There is no aggregate API-call
-or dollar budget in this initial policy.
+hidden transport retries or repair calls. Each subsequent solver model resets model-local feedback and its call budget. The per-model and run-wide call caps also apply to this policy; there is no dollar budget.
 
 The driver's wall timeout is cooperative: an in-flight discovery episode can
 finish after that timeout. Use the request timeout and attempt budget to bound
@@ -201,16 +246,15 @@ Events include `request`, `request_skipped`, `response`, `attempt_result`,
 `transport_error`, `snapshot_error`, and `episode_end`. Records contain provider
 configuration, model version, depth, refinement step, and a run-local query ID.
 Responses retain raw provider usage, including any cache/reasoning breakdown,
-and the resolved model name. Log schema version 3 retains per-response `cost`
+and the resolved model name. Log schema version 4 retains per-response `cost`
 and cumulative `run_cost` from version 2, and changes request content to ordered
-JSON blocks with explicit cache controls. The shared snapshot schema is also
-version 3, reflecting stable run-scoped IDs. Keys and authorization headers are
+JSON blocks with explicit cache controls. The shared snapshot schema is version 4, adding typed input-binder schemas and source provenance. Keys and authorization headers are
 not written to the log. Requests contain the full verification source and model.
 
 `accepted_instances` counts proposals passing discovery validation. Discovery
 cannot observe the installer, so `installation_status` explicitly reports
 `not_observed_by_discovery`. Use the normal profiling/solver results for actual
-installation totals. `ordinary_fallback` records the discovery handoff decision.
+installation totals. `ordinary_fallback` records the `llm` discovery handoff decision. For `symbolic-llm` it is null: the effort policy chooses the next operation, and profiling records the actual sequence of symbolic and LLM work.
 The policy enables profiling automatically, as JEV does.
 
 For the strict comparison, use LLM defaults and JEV `--policy conditional-binding

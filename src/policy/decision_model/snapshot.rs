@@ -3,11 +3,11 @@ use std::collections::BTreeMap;
 
 use super::feedback::FailureSummary;
 use crate::{
+    policy::instantiation::InstantiationSchema,
     policy::{
         discovery::DiscoveryContext,
         instantiation::{InstantiationProposal, InstantiationSession, InstantiationSnapshot},
     },
-    theories::array::instantiation_schema::ArrayInstantiationSchema,
 };
 use serde_json::{json, Value};
 
@@ -81,7 +81,7 @@ impl Snapshot {
         &'a self,
         request: &Value,
         response: &Value,
-    ) -> anyhow::Result<&'a ArrayInstantiationSchema> {
+    ) -> anyhow::Result<&'a InstantiationSchema> {
         let id = offered_choice(request, response, "axiom")?;
         self.shared.schema(id)
     }

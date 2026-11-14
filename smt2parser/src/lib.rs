@@ -74,9 +74,9 @@ pub fn get_commands(content: BufReader<File>, filename: String) -> Result<Vec<Co
     let command_stream = CommandStream::new(content, SyntaxBuilder, Some(filename));
     let mut commands = vec![];
     for result in command_stream {
-        match result {
-            Ok(command) => commands.push(command),
-            Err(err) => return Err(err),
+        {
+            let command = result?;
+            commands.push(command)
         }
     }
     Ok(commands)

@@ -23,8 +23,12 @@ const INPUT: &str = r#"
 "#;
 
 pub(super) fn fixture() -> VmtBmcSession {
+    fixture_from_source(INPUT)
+}
+
+fn fixture_from_source(source: &str) -> VmtBmcSession {
     let model = VMTModel::checked_from(
-        CommandStream::new(INPUT.as_bytes(), SyntaxBuilder, None)
+        CommandStream::new(source.as_bytes(), SyntaxBuilder, None)
             .collect::<Result<Vec<_>, _>>()
             .unwrap(),
     )
@@ -49,6 +53,82 @@ pub(super) fn fixture() -> VmtBmcSession {
     .unwrap();
     assert_eq!(smt.check_property(), SolverCheckResult::Sat);
     smt
+}
+
+#[test]
+fn typed_catalogue_preserves_bitvector_result_sorts_and_rejects_boolean_indices() {
+    let source = r#"
+        (declare-fun a () (Array (_ BitVec 8) Bool))
+        (declare-fun x () (_ BitVec 8))
+        (define-fun init () Bool (! (and
+            (= a (store a x true))
+            (= x (_ bv0 8))
+            (= ((_ extract 3 0) x) #x0)
+            (= (concat #x0 #x1) #x01)
+            (= ((_ zero_extend 4) #x0) #x00)
+            (= ((_ sign_extend 4) #x0) #x00)
+            (= (bvcomp x x) #b1)) :init true))
+        (define-fun trans () Bool (! true :trans true))
+        (define-fun prop () Bool (!
+            (select a (ite (bvult x #xff) x #x00)) :invar-property 0))
+    "#;
+    let smt = fixture_from_source(source);
+    let pending = HashSet::new();
+    let plan = crate::theories::quantifiers::QuantifierPlan::default();
+    let provenance = Default::default();
+    let context = DiscoveryContext {
+        quantifiers: Some((&plan, &provenance)),
+        call_limit: usize::MAX,
+        symbolic_feedback: &Value::Null,
+        smt: &smt,
+        depth: 0,
+        refinement_step: 0,
+        model_version: 1,
+        pending: &pending,
+    };
+    let snapshot = InstantiationSession::default()
+        .capture(&context, source)
+        .unwrap();
+    let term = |expression: &str| {
+        snapshot
+            .terms
+            .iter()
+            .find(|t| t.expression == expression)
+            .unwrap()
+    };
+    for (expression, sort) in [
+        ("(bvult x@0 #xff)", "Bool"),
+        ("((_ extract 3 0) x@0)", "BitVec4"),
+        ("(concat #x0 #x1)", "BitVec8"),
+        ("((_ zero_extend 4) #x0)", "BitVec8"),
+        ("((_ sign_extend 4) #x0)", "BitVec8"),
+        ("(bvcomp x@0 x@0)", "BitVec1"),
+        ("(_ bv0 8)", "BitVec8"),
+    ] {
+        assert_eq!(term(expression).sort, sort, "{expression}");
+    }
+    let schema = snapshot
+        .schemas
+        .iter()
+        .find(|s| s.name().starts_with("read-after-write"))
+        .unwrap();
+    let mut proposal = InstantiationProposal {
+        axiom_id: schema.id.clone(),
+        bindings: std::collections::BTreeMap::from([
+            ("a".into(), term("a@0").id.clone()),
+            ("idx".into(), term("(bvult x@0 #xff)").id.clone()),
+            ("val".into(), term("true").id.clone()),
+        ]),
+    };
+    assert!(snapshot
+        .resolve(&proposal)
+        .unwrap_err()
+        .to_string()
+        .contains("wrong sort for idx"));
+    proposal
+        .bindings
+        .insert("idx".into(), term("x@0").id.clone());
+    assert!(snapshot.resolve(&proposal).is_ok());
 }
 
 fn proposal(snapshot: &InstantiationSnapshot, rule: &str) -> InstantiationProposal {
@@ -84,6 +164,9 @@ fn context_is_complete_owned_and_independent_of_provider_request_edits() {
     let smt = fixture();
     let pending = HashSet::new();
     let context = DiscoveryContext {
+        quantifiers: None,
+        call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 2,
@@ -129,6 +212,9 @@ fn joint_proposals_use_exact_schemas_and_shared_whole_formula_validation() {
     let smt = fixture();
     let pending = HashSet::new();
     let context = DiscoveryContext {
+        quantifiers: None,
+        call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,
@@ -162,6 +248,9 @@ fn joint_proposals_reject_unknown_ids_wrong_sorts_and_inexact_slots() {
     let smt = fixture();
     let pending = HashSet::new();
     let context = DiscoveryContext {
+        quantifiers: None,
+        call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt: &smt,
         depth: 0,
         refinement_step: 0,

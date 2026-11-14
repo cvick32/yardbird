@@ -60,7 +60,7 @@ pub(super) fn request(
         LlmProvider::Openai => json!({
             "model":model,
             "input":[{"role":"developer", "content":PROMPT.trim()}, {"role":"user", "content":input}],
-            "text":{"format":{"type":"json_schema", "name":"array_instantiation", "strict":true, "schema":schema}},
+            "text":{"format":{"type":"json_schema", "name":"theory_instantiation", "strict":true, "schema":schema}},
             "max_output_tokens":options.llm_max_output_tokens,
             "store":false, "truncation":"disabled"
         }),
@@ -173,4 +173,35 @@ pub(super) fn proposal(text: &str) -> anyhow::Result<Option<InstantiationProposa
                 .context("invalid complete proposal")?,
         ))
     }
+}
+
+/// Search observations belong to the changing suffix, never the cached prefix.
+pub(super) fn add_symbolic_feedback(
+    request: &mut Value,
+    provider: LlmProvider,
+    feedback: &Value,
+) -> anyhow::Result<()> {
+    if feedback.is_null() {
+        return Ok(());
+    }
+    let key = match provider {
+        LlmProvider::Openai => "input",
+        LlmProvider::Anthropic => "messages",
+    };
+    let messages = request[key]
+        .as_array_mut()
+        .context("missing request messages")?;
+    let user = messages
+        .iter_mut()
+        .find(|m| m["role"] == "user")
+        .context("missing user message")?;
+    let block = user["content"]
+        .as_array_mut()
+        .context("missing content")?
+        .last_mut()
+        .context("missing model suffix")?;
+    let mut state: Value = serde_json::from_str(block["text"].as_str().context("missing text")?)?;
+    state["symbolic_search"] = feedback.clone();
+    block["text"] = json!(serde_json::to_string(&state)?);
+    Ok(())
 }

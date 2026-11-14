@@ -53,7 +53,7 @@ parameter_matrices:
     instantiation_strategies: [full-unroll]
 
   openai:
-    policy: llm-one-shot
+    policy: llm
     no_guided_fallback: true
     llm:
       llm_provider: openai

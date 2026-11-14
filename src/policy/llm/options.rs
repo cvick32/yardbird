@@ -38,7 +38,7 @@ pub struct LlmOptions {
     /// Provider for joint axiom-and-binding inference.
     #[arg(long, value_enum, default_value_t = LlmProvider::Openai)]
     pub llm_provider: LlmProvider,
-    /// Explicit provider model ID (required with --policy llm-one-shot).
+    /// Explicit provider model ID (required with --policy llm).
     #[arg(long)]
     pub llm_model: Option<String>,
     /// New JSONL file containing requests, responses, usage, and validation outcomes.
@@ -47,9 +47,27 @@ pub struct LlmOptions {
     /// Log complete requests and use ordinary refinement without network calls.
     #[arg(long)]
     pub llm_dry_run: bool,
-    /// Complete-proposal attempts per countermodel, including feedback retries.
+    /// Complete-proposal attempts per LLM turn, including feedback retries.
     #[arg(long, default_value_t = 1)]
     pub llm_attempts: usize,
+    /// Hard cap on inference calls across the run (including rejected replies).
+    #[arg(long, default_value_t = 100)]
+    pub llm_max_calls: usize,
+    /// Hard cap on inference calls for one solver model, across fallback cycles.
+    #[arg(long, default_value_t = 8)]
+    pub llm_max_calls_per_model: usize,
+    /// Maximum symbolic operations before an LLM turn in symbolic-llm.
+    #[arg(long, default_value_t = 8)]
+    pub symbolic_operations: usize,
+    /// Match/page allowance per symbolic operation (no automatic widening).
+    #[arg(long, default_value_t = 128)]
+    pub symbolic_match_work: usize,
+    /// Dependency traversal work per symbolic operation.
+    #[arg(long, default_value_t = 128)]
+    pub symbolic_dependency_work: usize,
+    /// Term-construction attempts per symbolic vocabulary-growth operation.
+    #[arg(long, default_value_t = 64)]
+    pub symbolic_vocabulary_work: usize,
     /// Per-request deadline; the driver wall timeout remains cooperative.
     #[arg(long, default_value_t = 120)]
     pub llm_timeout_secs: u64,
@@ -77,6 +95,12 @@ impl Default for LlmOptions {
             llm_log: None,
             llm_dry_run: false,
             llm_attempts: 1,
+            llm_max_calls: 100,
+            llm_max_calls_per_model: 8,
+            symbolic_operations: 8,
+            symbolic_match_work: 128,
+            symbolic_dependency_work: 128,
+            symbolic_vocabulary_work: 64,
             llm_timeout_secs: 120,
             llm_max_request_bytes: 2_097_152,
             llm_max_output_tokens: 4096,
@@ -88,10 +112,10 @@ impl Default for LlmOptions {
 
 impl LlmOptions {
     pub fn validate(&self, run: &YardbirdOptions) -> anyhow::Result<()> {
-        if run.policy != Some(NamedPolicy::LlmOneShot) {
+        if !run.policy.is_some_and(|p| p.uses_llm()) {
             anyhow::ensure!(
                 self == &Self::default(),
-                "--llm-* options require --policy llm-one-shot"
+                "--llm-* options require --policy llm"
             );
             return Ok(());
         }
@@ -102,8 +126,8 @@ impl LlmOptions {
         anyhow::ensure!(
             run.solver == SolverBackend::Z3
                 && (run.theory == TheorySelection::Auto
-                    || run.theory == TheorySelection::Explicit(vec![Theory::Array])),
-            "LLM policy requires Z3 and --theory auto or array"
+                    || matches!(&run.theory, TheorySelection::Explicit(theories) if !theories.is_empty() && theories.iter().all(|t| matches!(t, Theory::Array | Theory::Quantifiers)))),
+            "LLM policy requires Z3 and --theory auto, array, quantifiers, or array,quantifiers"
         );
         anyhow::ensure!(!run.eager && run.countermodel_trace_work == 0 &&
             run.synthesis_trigger == crate::SynthesisTrigger::Off && !run.prefer_axioms,
@@ -131,6 +155,17 @@ impl LlmOptions {
             !self.llm_adaptive_thinking || self.llm_provider == LlmProvider::Anthropic,
             "--llm-adaptive-thinking requires --llm-provider anthropic"
         );
+        anyhow::ensure!(
+            self.llm_max_calls > 0
+                && self.llm_max_calls_per_model > 0
+                && self.symbolic_operations > 0
+                && self.symbolic_match_work > 0
+                && self.symbolic_dependency_work > 0
+                && self.symbolic_vocabulary_work > 0,
+            "LLM and symbolic budgets must be positive"
+        );
+        anyhow::ensure!(run.policy != Some(NamedPolicy::SymbolicLlm) || !run.no_guided_fallback,
+            "symbolic-llm requires symbolic fallback; use llm --no-guided-fallback for strict guidance");
         self.pricing.validate()?;
         let log = self
             .llm_log

@@ -17,6 +17,7 @@ mod application_captures;
 mod compiled_rule;
 mod demanded_indices;
 pub(crate) mod eager;
+pub(crate) mod instantiation_schema;
 pub(crate) mod ground;
 mod lowering;
 pub(crate) mod proved_properties;

@@ -57,6 +57,9 @@ fn context<'a>(
     pending: &'a HashSet<smt2parser::concrete::Term>,
 ) -> DiscoveryContext<'a> {
     DiscoveryContext {
+        quantifiers: None,
+        call_limit: usize::MAX,
+        symbolic_feedback: &serde_json::Value::Null,
         smt,
         depth: 0,
         refinement_step: 0,

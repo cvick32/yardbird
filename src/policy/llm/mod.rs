@@ -3,6 +3,7 @@
 //! to ordinary refinement; providers cannot report proofs or counterexamples.
 mod client;
 mod cost;
+mod effort;
 mod options;
 mod protocol;
 #[cfg(test)]
@@ -20,7 +21,7 @@ use crate::{
     rule_matching::candidate::SymbolicInstance,
     solver::PropertyCheckMode,
     strategies::Abstract,
-    ArrayProofPlan, SolverBackend, Theory, TheorySelection, YardbirdOptions,
+    ArrayProofPlan, SolverBackend, YardbirdOptions,
 };
 use client::{HttpClient, LlmClient};
 pub use cost::LlmPricing;
@@ -37,6 +38,12 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
     let options = run.llm.clone();
     let experiment = Experiment {
         no_fallback: run.no_guided_fallback,
+        policy_name: if run.policy == Some(crate::policy::NamedPolicy::SymbolicLlm) {
+            "symbolic-llm"
+        } else {
+            "llm"
+        },
+        progress: Default::default(),
         client: Box::new(HttpClient::new(
             options.llm_provider,
             options.llm_timeout_secs,
@@ -49,9 +56,19 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
         input: run.filename.clone(),
         problem_source: None,
     };
+    let effort: Box<dyn crate::policy::effort::ProofEffort> =
+        if run.policy == Some(crate::policy::NamedPolicy::SymbolicLlm) {
+            Box::new(effort::SymbolicLlmEffort::new(&run.llm))
+        } else {
+            Box::new(
+                DiscoveryFirst::default()
+                    .with_no_fallback(run.no_guided_fallback)
+                    .with_discovery_calls(run.llm.llm_attempts),
+            )
+        };
     let policy = YardbirdPolicy::<ArrayBMCCost>::new(())
         .with_instantiation_ranker(Box::new(TermCostInstantiationRanker))
-        .with_effort(DiscoveryFirst::default().with_no_fallback(run.no_guided_fallback))
+        .with_boxed_effort(effort)
         .with_discovery(experiment);
     ArrayProofPlan {
         solver: SolverBackend::Z3,
@@ -59,14 +76,26 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
         strategy: Box::new(
             Abstract::new(run.depth, run.run_ic3ia, policy, true)
                 .with_artifact_capture(run.build_array_artifact_capture())
-                .with_theory_selection(TheorySelection::Explicit(vec![Theory::Array]))
+                .with_theory_selection(run.theory.clone())
                 .with_property_check_mode(PropertyCheckMode::Assumptions),
         ),
         conditional_history: None,
     }
 }
 
+#[derive(Default)]
+struct EpisodeProgress {
+    model: Option<u64>,
+    model_calls: usize,
+    total_calls: usize,
+    failures: Vec<Value>,
+    disabled: bool,
+    usage: crate::policy::discovery::DiscoveryUsage,
+}
+
 struct Experiment {
+    policy_name: &'static str,
+    progress: EpisodeProgress,
     no_fallback: bool,
     options: LlmOptions,
     client: Box<dyn LlmClient>,
@@ -89,9 +118,9 @@ impl Experiment {
             self.log = Some(OpenOptions::new().write(true).create_new(true).open(path)?);
         }
         record["no_guided_fallback"] = json!(self.no_fallback);
-        record["schema_version"] = json!(3);
+        record["schema_version"] = json!(4);
         record["run_cost"] = self.spend.summary();
-        record["policy"] = json!("llm-one-shot");
+        record["policy"] = json!(self.policy_name);
         record["query_id"] = json!(self.query_id);
         record["input"] = json!(self.input);
         record["depth"] = json!(context.depth);
@@ -115,17 +144,54 @@ impl Experiment {
         self.record(
             context,
             json!({"event":"episode_end", "outcome":outcome,
-            "api_calls":calls, "ordinary_fallback":!self.no_fallback && outcome != "violated",
+            "api_calls":calls,
+            "ordinary_fallback":if self.policy_name == "symbolic-llm" { Value::Null } else { json!(!self.no_fallback && outcome != "violated") },
+            "scheduling_owner":if self.policy_name == "symbolic-llm" { "effort_policy" } else { "discovery_first" },
+            "call_budget":{"run_used":self.progress.total_calls,"run_limit":self.options.llm_max_calls,
+                "model_used":self.progress.model_calls,"model_limit":self.options.llm_max_calls_per_model},
+            "inference_disabled":self.progress.disabled || self.progress.usage.disabled,
             "installation_status":"not_observed_by_discovery"}),
         )
     }
 }
 
 impl InstanceDiscovery for Experiment {
+    fn supports_input_binders(&self) -> bool {
+        true
+    }
+    fn take_usage(&mut self) -> crate::policy::discovery::DiscoveryUsage {
+        std::mem::take(&mut self.progress.usage)
+    }
+
     fn discover(
         &mut self,
         context: &DiscoveryContext<'_>,
     ) -> anyhow::Result<Vec<SymbolicInstance>> {
+        self.progress.usage = Default::default();
+        if self.progress.model != Some(context.model_version) {
+            self.progress.model = Some(context.model_version);
+            self.progress.model_calls = 0;
+            self.progress.failures.clear();
+        }
+        let attempts = self
+            .options
+            .llm_attempts
+            .min(context.call_limit)
+            .min(
+                self.options
+                    .llm_max_calls
+                    .saturating_sub(self.progress.total_calls),
+            )
+            .min(
+                self.options
+                    .llm_max_calls_per_model
+                    .saturating_sub(self.progress.model_calls),
+            );
+        if self.progress.disabled || attempts == 0 {
+            self.progress.usage.disabled = true;
+            self.finish(context, "budget_or_provider_exhausted", 0)?;
+            return Ok(vec![]);
+        }
         if self.problem_source.is_none() {
             let path = self
                 .input
@@ -143,13 +209,18 @@ impl InstanceDiscovery for Experiment {
                     context,
                     json!({"event":"snapshot_error", "error":format!("{error:#}")}),
                 )?;
+                self.progress.usage.disabled = true;
                 self.finish(context, "snapshot_error", 0)?;
                 return Ok(vec![]);
             }
         };
-        let mut failures = Vec::new();
-        for attempt in 1..=self.options.llm_attempts {
-            let request = protocol::request(&self.options, &snapshot, &failures)?;
+        for attempt in 1..=attempts {
+            let mut request = protocol::request(&self.options, &snapshot, &self.progress.failures)?;
+            protocol::add_symbolic_feedback(
+                &mut request,
+                self.options.llm_provider,
+                context.symbolic_feedback,
+            )?;
             self.query_id += 1;
             let bytes = serde_json::to_vec(&request)?.len();
             self.record(context, json!({"event":"request", "attempt":attempt,
@@ -166,10 +237,14 @@ impl InstanceDiscovery for Experiment {
                     context,
                     json!({"event":"request_skipped", "attempt":attempt, "outcome":outcome}),
                 )?;
+                self.progress.usage.disabled = true;
                 self.finish(context, outcome, attempt - 1)?;
                 return Ok(vec![]);
             }
             let started = Instant::now();
+            self.progress.total_calls += 1;
+            self.progress.model_calls += 1;
+            self.progress.usage.calls += 1;
             let response = match self.client.infer(&request) {
                 Ok(response) => response,
                 Err(error) => {
@@ -177,6 +252,8 @@ impl InstanceDiscovery for Experiment {
                     self.spend.observe(&cost);
                     self.record(context, json!({"event":"transport_error", "attempt":attempt,
                         "error":format!("{error:#}"), "elapsed_secs":started.elapsed().as_secs_f64(), "usage":null, "cost":cost}))?;
+                    self.progress.disabled = true;
+                    self.progress.usage.disabled = true;
                     self.finish(context, "transport_error", attempt)?;
                     return Ok(vec![]);
                 }
@@ -199,6 +276,8 @@ impl InstanceDiscovery for Experiment {
                         json!({"event":"attempt_result", "attempt":attempt,
                         "feedback":{"outcome":"response_rejected", "error":format!("{error:#}")}}),
                     )?;
+                    self.progress.disabled = true;
+                    self.progress.usage.disabled = true;
                     self.finish(context, "response_rejected", attempt)?;
                     return Ok(vec![]);
                 }
@@ -207,6 +286,7 @@ impl InstanceDiscovery for Experiment {
             let (feedback, instance) = match protocol::proposal(text) {
                 Ok(None) => {
                     self.record(context, json!({"event":"attempt_result", "attempt":attempt, "feedback":{"outcome":"abstained"}}))?;
+                    self.progress.failures.push(json!({"outcome":"abstained", "explanation":"A previous attempt abstained on this model. Try another registered rule and complete substitution; abstention did not establish completeness."}));
                     self.finish(context, "abstained", attempt)?;
                     return Ok(vec![]);
                 }
@@ -233,9 +313,9 @@ impl InstanceDiscovery for Experiment {
             // Full observations remain in the log, as in the JEV experiment.
             let mut compact = feedback;
             compact.as_object_mut().unwrap().remove("observations");
-            failures.push(compact);
+            self.progress.failures.push(compact);
         }
-        self.finish(context, "attempts_exhausted", self.options.llm_attempts)?;
+        self.finish(context, "attempts_exhausted", attempts)?;
         Ok(vec![])
     }
 }

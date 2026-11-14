@@ -11,8 +11,10 @@
 //! `InstantiationProposal`. It calls `resolve()` followed by `validate()` using
 //! the same live solver model, then returns accepted instances to discovery.
 //! Reuse the snapshot across retries; recapture after the solver model changes.
-//! The initial shared vocabulary supports Int-indexed, Int-valued arrays only.
+//! Legacy producers use Int/Int arrays. LLM guidance opts into typed arrays and registered input binders.
+mod schema;
 mod session;
+pub(crate) use schema::InstantiationSchema;
 mod snapshot;
 #[cfg(test)]
 mod tests;

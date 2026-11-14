@@ -415,7 +415,7 @@ where
                 preprocess_arrays: self.preprocess_exact_read_after_write,
                 encoding: self.encoding_options,
                 property_cone: self.policy.effort().requires_property_cone(),
-                profile: self.profile,
+                profile: self.profile || self.policy.has_input_binder_discovery(),
             },
         );
         match prepared {
@@ -491,7 +491,7 @@ where
     }
 
     fn allows_concrete_validation(&self) -> bool {
-        !self.quantifier.owns_quantifiers
+        !self.quantifier.owns_quantifiers && self.policy.effort().allows_concrete_validation()
     }
 
     fn configuration_error(&self) -> Option<&str> {
@@ -633,7 +633,8 @@ where
             }
             self.offer_sequence += 1;
             let mut kinds = Vec::new();
-            if self.ownership.arrays && self.policy.has_discovery() {
+            if (self.ownership.arrays || self.ownership.quantifiers) && self.policy.has_discovery()
+            {
                 kinds.push((
                     OperationKind::PolicyCandidates,
                     "policy-proposed symbolic instances".into(),
@@ -783,6 +784,7 @@ where
                 smt.make_unquantified_instance(expr_to_term(candidate.expression.clone()))
                     .map(|instance| crate::instance_installation::assertion_tracker::canonical_instantiation_key(instance.get_term()))
             }).collect::<HashSet<_>>();
+            let symbolic_feedback = self.policy.effort().discovery_feedback();
             let PolicyParts {
                 term_config,
                 ranker,
@@ -820,10 +822,15 @@ where
                     retain = report.selected > 0;
                 }
                 OperationKind::PolicyCandidates => {
-                    let instances = discovery
-                        .as_mut()
-                        .expect("offered discovery producer")
-                        .discover(&crate::policy::discovery::DiscoveryContext {
+                    let producer = discovery.as_mut().expect("offered discovery producer");
+                    let quantifiers = producer
+                        .supports_input_binders()
+                        .then_some((&self.quantifier.plan, &self.quantifier.provenance));
+                    let instances =
+                        producer.discover(&crate::policy::discovery::DiscoveryContext {
+                            quantifiers,
+                            call_limit: allowance.discovery_calls,
+                            symbolic_feedback: &symbolic_feedback,
                             smt,
                             depth: state.depth,
                             refinement_step,
@@ -835,6 +842,9 @@ where
                     pool.remember(instances);
                     batch = pool.candidates_partial(&context)?;
                     report = WorkReport::from_batch(&batch);
+                    let usage = producer.take_usage();
+                    report.discovery_calls = usage.calls;
+                    report.discovery_disabled = usage.disabled;
                     retain = report.selected > 0;
                 }
                 OperationKind::CountermodelCandidates => {

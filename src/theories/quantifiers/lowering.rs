@@ -64,6 +64,23 @@ pub(crate) fn term_sort(
 ) -> anyhow::Result<Sort> {
     match term {
         Term::QualIdentifier(id) => {
+            if let QualIdentifier::Simple {
+                identifier: Identifier::Indexed { symbol, indices },
+            } = id
+            {
+                if symbol
+                    .0
+                    .strip_prefix("bv")
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+                {
+                    if let [smt2parser::visitors::Index::Numeral(n)] = indices.as_slice() {
+                        let width = n.to_string().parse::<u32>()?;
+                        anyhow::ensure!(width > 0, "zero-width bitvector literal: {term}");
+                        return Ok(string_to_sort(&format!("BitVec{width}")));
+                    }
+                    anyhow::bail!("invalid bitvector literal: {term}");
+                }
+            }
             let name = id.get_name();
             if name == "true" || name == "false" {
                 return Ok(string_to_sort("Bool"));
@@ -97,9 +114,52 @@ pub(crate) fn term_sort(
             if let Some((_, sort)) = signatures.get(&name) {
                 return Ok(sort.clone());
             }
+            let width = |argument: &Term| bitvector_width(&term_sort(argument, signatures, scope)?);
+            let identifier = match qual_identifier {
+                QualIdentifier::Simple { identifier }
+                | QualIdentifier::Sorted { identifier, .. } => identifier,
+            };
+            if let Identifier::Indexed { indices, .. } = identifier {
+                let indices = indices
+                    .iter()
+                    .map(|index| match index {
+                        smt2parser::visitors::Index::Numeral(n) => {
+                            Ok(n.to_string().parse::<u32>()?)
+                        }
+                        _ => anyhow::bail!("non-numeral index in {term}"),
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                anyhow::ensure!(
+                    arguments.len() == 1,
+                    "indexed operator requires one argument: {term}"
+                );
+                let input_width = width(&arguments[0])?;
+                let result_width = match (name.as_str(), indices.as_slice()) {
+                    ("extract", [high, low]) if low <= high && *high < input_width => {
+                        high - low + 1
+                    }
+                    ("zero_extend" | "sign_extend", [extra]) => input_width
+                        .checked_add(*extra)
+                        .ok_or_else(|| anyhow::anyhow!("bitvector width overflow in {term}"))?,
+                    _ => anyhow::bail!("unsupported indexed operator or indices in {term}"),
+                };
+                return Ok(string_to_sort(&format!("BitVec{result_width}")));
+            }
             match name.as_str() {
                 "and" | "or" | "not" | "=>" | "=" | "distinct" | "<" | "<=" | ">" | ">="
-                | "xor" => Ok(string_to_sort("Bool")),
+                | "xor" | "bvult" | "bvule" | "bvugt" | "bvuge" | "bvslt" | "bvsle" | "bvsgt"
+                | "bvsge" => Ok(string_to_sort("Bool")),
+                "bvcomp" => Ok(string_to_sort("BitVec1")),
+                "concat" => {
+                    anyhow::ensure!(
+                        arguments.len() == 2,
+                        "concat requires two arguments: {term}"
+                    );
+                    let result_width = width(&arguments[0])?
+                        .checked_add(width(&arguments[1])?)
+                        .ok_or_else(|| anyhow::anyhow!("bitvector width overflow in {term}"))?;
+                    Ok(string_to_sort(&format!("BitVec{result_width}")))
+                }
                 "ite" => term_sort(&arguments[1], signatures, scope),
                 "select" => match term_sort(&arguments[0], signatures, scope)? {
                     Sort::Parameterized { parameters, .. } => Ok(parameters[1].clone()),
@@ -138,6 +198,22 @@ pub(crate) fn term_sort(
         Term::Let { .. } => term_sort(&LetExtract::substitute(term.clone()), signatures, scope),
         _ => anyhow::bail!("unsupported binder body {term}"),
     }
+}
+
+fn bitvector_width(sort: &Sort) -> anyhow::Result<u32> {
+    if let Sort::Simple {
+        identifier: Identifier::Indexed { symbol, indices },
+    } = sort
+    {
+        if let ("BitVec", [smt2parser::visitors::Index::Numeral(n)]) =
+            (symbol.0.as_str(), indices.as_slice())
+        {
+            let width = n.to_string().parse::<u32>()?;
+            anyhow::ensure!(width > 0, "zero-width bitvector");
+            return Ok(width);
+        }
+    }
+    anyhow::bail!("expected a bitvector sort, got {sort}")
 }
 
 impl Lowerer<'_> {
