@@ -1,7 +1,7 @@
 //! Join signed frontier atoms to bind universal and existential instances. This
 //! searches atoms already demanded by the explanation, not sort products.
 use super::{
-    dependency_search::{unify_modulo, Goal},
+    dependency_search::{unify_capture_hints, unify_modulo, Goal},
     substitute, BinderKind, QuantifierPlan,
 };
 use crate::{
@@ -49,6 +49,7 @@ pub(crate) struct ClauseAgenda {
 struct Clause {
     rule: usize,
     arguments: Vec<Term>,
+    captures: HashSet<Term>,
     patterns: Vec<Goal>,
     variables: HashMap<Symbol, smt2parser::concrete::Sort>,
     bindings: Vec<HashMap<Symbol, Term>>,
@@ -120,6 +121,7 @@ impl ClauseAgenda {
         self.clauses.push(Clause {
             rule: rule_id,
             arguments: arguments.clone(),
+            captures: arguments.iter().cloned().collect(),
             patterns,
             variables: rule.variables.iter().cloned().collect(),
             bindings: vec![HashMap::new()],
@@ -188,20 +190,51 @@ impl ClauseAgenda {
     pub fn step_modulo(
         &mut self,
         plan: &QuantifierPlan,
+        equivalent: impl FnMut(&Term, &Term) -> bool,
+    ) -> Option<SymbolicInstance> {
+        self.step_inner(plan, equivalent, false)
+    }
+
+    /// Propose tuples from structurally matching observations even when their
+    /// captured state differs. The result is a hint, not a verified violation.
+    pub fn step_capture_hints(
+        &mut self,
+        plan: &QuantifierPlan,
+        equivalent: impl FnMut(&Term, &Term) -> bool,
+    ) -> Option<SymbolicInstance> {
+        self.step_inner(plan, equivalent, true)
+    }
+
+    fn step_inner(
+        &mut self,
+        plan: &QuantifierPlan,
         mut equivalent: impl FnMut(&Term, &Term) -> bool,
+        capture_hints: bool,
     ) -> Option<SymbolicInstance> {
         let (c, b, p, g) = self.queue.pop_front()?;
         let clause = &mut self.clauses[c];
         let mut joined = clause.bindings[b].clone();
-        if !unify_modulo(
-            &clause.patterns[p].atom,
-            &self.goals[g].atom,
-            &clause.variables,
-            &plan.signatures,
-            &mut joined,
-            &mut equivalent,
-        ) || joined.len() == clause.bindings[b].len()
-        {
+        let matched = if capture_hints {
+            unify_capture_hints(
+                &clause.patterns[p].atom,
+                &self.goals[g].atom,
+                &clause.variables,
+                &plan.signatures,
+                &mut joined,
+                &mut equivalent,
+                &clause.captures,
+            )
+        } else {
+            unify_modulo(
+                &clause.patterns[p].atom,
+                &self.goals[g].atom,
+                &clause.variables,
+                &plan.signatures,
+                &mut joined,
+                &mut equivalent,
+            )
+        };
+        if !matched || joined.len() == clause.bindings[b].len() {
             return None;
         }
         let rule = &plan.rules[clause.rule];
@@ -329,5 +362,52 @@ mod tests {
             &mut implication
         ));
         assert_eq!(actual, implication);
+    }
+    #[test]
+    fn capture_hints_keep_target_state_and_repeated_variable_correlations() {
+        use super::super::BinderRule;
+        use smt2parser::vmt::array_abstractor::string_to_sort;
+        let int = string_to_sort("Int");
+        let rule = BinderRule {
+            name: "q".into(),
+            kind: BinderKind::Exists,
+            captures: vec![(Symbol("state".into()), int.clone())],
+            variables: vec![(Symbol("x".into()), int.clone())],
+            body: "(p state x x)".parse().unwrap(),
+            witnesses: vec![],
+            result_sort: string_to_sort("Bool"),
+            unit_capture: false,
+        };
+        let expected = rule.instantiate(&["state@1".parse().unwrap()], &["1".parse().unwrap()]);
+        let mut plan = QuantifierPlan::default();
+        plan.signatures
+            .insert("state@0".into(), (vec![], int.clone()));
+        plan.signatures.insert("state@1".into(), (vec![], int));
+        plan.rules.push(rule);
+        for hints in [false, true] {
+            let mut agenda = ClauseAgenda::default();
+            assert!(agenda.add_demand(&plan, &"(q state@1)".parse().unwrap(), false));
+            // Neither inconsistent repeated values nor a wrongly typed capture
+            // may supply a tuple, even in hint mode.
+            for fact in ["(p state@0 1 2)", "(p true 1 1)"] {
+                agenda.add_goal(Goal::new(&fact.parse().unwrap(), false));
+                while agenda.pending() > 0 {
+                    assert!(agenda.step_capture_hints(&plan, |_, _| false).is_none());
+                }
+            }
+            agenda.add_goal(Goal::new(&"(p state@0 1 1)".parse().unwrap(), false));
+            let mut instances = Vec::new();
+            while agenda.pending() > 0 {
+                instances.extend(if hints {
+                    agenda.step_capture_hints(&plan, |_, _| false)
+                } else {
+                    agenda.step(&plan)
+                });
+            }
+            assert_eq!(instances.len(), usize::from(hints));
+            if hints {
+                assert_eq!(instances[0].term, expected);
+            }
+        }
     }
 }

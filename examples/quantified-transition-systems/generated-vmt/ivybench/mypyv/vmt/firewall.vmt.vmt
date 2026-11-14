@@ -1,0 +1,81 @@
+; Generated offline from ivybench/mypyv/vmt/firewall.vmt
+; Source SHA-256: 940edce3e15554d27e806920a2ecc41ed896325f928ec1ab4768aa223b280ec1
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_node 0)
+(declare-fun s__5f__5f_allowed_5f_in () (Array s_node Bool))
+(declare-fun s__5f__5f_allowed_5f_in_next () (Array s_node Bool))
+(declare-fun s__5f__5f_sent () (Array s_node (Array s_node Bool)))
+(declare-fun s__5f__5f_sent_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_internal () (Array s_node Bool))
+(declare-fun s_internal_next () (Array s_node Bool))
+; source symbol: __allowed_in
+(define-fun link_0 () (Array s_node Bool) (! s__5f__5f_allowed_5f_in :next s__5f__5f_allowed_5f_in_next))
+; source symbol: __sent
+(define-fun link_1 () (Array s_node (Array s_node Bool)) (! s__5f__5f_sent :next s__5f__5f_sent_next))
+; source symbol: internal
+(define-fun link_2 () (Array s_node Bool) (! s_internal :next s_internal_next))
+; action: ext:send_from_internal
+(define-fun action_0 () Bool
+  (and
+    (exists ((q_7_s_V_5f__5f_fml_3a_dst s_node) (q_8_s_V_5f__5f_fml_3a_src s_node))
+      (and
+        (forall ((q_9_s_V0 s_node) (q_10_s_V1 s_node))
+          (=
+            (select (select s__5f__5f_sent_next q_9_s_V0) q_10_s_V1)
+            (ite
+              (and (= q_9_s_V0 q_8_s_V_5f__5f_fml_3a_src) (= q_10_s_V1 q_7_s_V_5f__5f_fml_3a_dst))
+              true
+              (select (select s__5f__5f_sent q_9_s_V0) q_10_s_V1))))
+        (forall ((q_11_s_V0 s_node))
+          (=
+            (select s__5f__5f_allowed_5f_in_next q_11_s_V0)
+            (ite
+              (= q_11_s_V0 q_7_s_V_5f__5f_fml_3a_dst)
+              true
+              (select s__5f__5f_allowed_5f_in q_11_s_V0))))
+        (select s_internal q_8_s_V_5f__5f_fml_3a_src)
+        (not (select s_internal q_7_s_V_5f__5f_fml_3a_dst))))))
+; action: ext:send_to_internal
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_12_s_V_5f__5f_fml_3a_dst s_node) (q_13_s_V_5f__5f_fml_3a_src s_node))
+        (and
+          (forall ((q_14_s_V0 s_node) (q_15_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_sent_next q_14_s_V0) q_15_s_V1)
+              (ite
+                (and
+                  (= q_14_s_V0 q_13_s_V_5f__5f_fml_3a_src)
+                  (= q_15_s_V1 q_12_s_V_5f__5f_fml_3a_dst))
+                true
+                (select (select s__5f__5f_sent q_14_s_V0) q_15_s_V1))))
+          (not (select s_internal q_13_s_V_5f__5f_fml_3a_src))
+          (select s_internal q_12_s_V_5f__5f_fml_3a_dst)
+          (select s__5f__5f_allowed_5f_in q_13_s_V_5f__5f_fml_3a_src))))
+    (= s__5f__5f_allowed_5f_in_next s__5f__5f_allowed_5f_in)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (forall ((q_4_s_V0 s_node) (q_5_s_V1 s_node))
+          (= (select (select s__5f__5f_sent q_4_s_V0) q_5_s_V1) false))
+        (forall ((q_6_s_V0 s_node)) (= (select s__5f__5f_allowed_5f_in q_6_s_V0) false))))
+    :init
+    true))
+(define-fun trans () Bool
+  (! (and (or action_0 action_1) (= s_internal_next s_internal)) :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_D s_node) (q_2_s_S s_node))
+        (=>
+          (and (select (select s__5f__5f_sent q_2_s_S) q_1_s_D) (select s_internal q_1_s_D))
+          (exists ((q_3_s_I s_node))
+            (and (select s_internal q_3_s_I) (select (select s__5f__5f_sent q_3_s_I) q_2_s_S))))))
+    :invar-property
+    0))

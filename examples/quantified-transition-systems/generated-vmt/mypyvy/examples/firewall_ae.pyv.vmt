@@ -1,0 +1,68 @@
+; Generated offline from mypyvy/examples/firewall_ae.pyv
+; Source SHA-256: c64803f8e285bfd73fa1cb096e88bb214efdc16cc80a19df3191824f62beffd0
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-fun s_internal () (Array s_node Bool))
+(declare-fun s_internal_next () (Array s_node Bool))
+(declare-fun s_sent () (Array s_node (Array s_node Bool)))
+(declare-fun s_sent_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_allowed_5f_in () (Array s_node Bool))
+(declare-fun s_allowed_5f_in_next () (Array s_node Bool))
+; source symbol: internal
+(define-fun link_0 () (Array s_node Bool) (! s_internal :next s_internal_next))
+; source symbol: sent
+(define-fun link_1 () (Array s_node (Array s_node Bool)) (! s_sent :next s_sent_next))
+; source symbol: allowed_in
+(define-fun link_2 () (Array s_node Bool) (! s_allowed_5f_in :next s_allowed_5f_in_next))
+; action: send_from_internal
+(define-fun action_0 () Bool
+  (exists ((q_4_s_src s_node) (q_5_s_dst s_node))
+    (and
+      (select s_internal q_4_s_src)
+      (not (select s_internal q_5_s_dst))
+      (forall ((q_6_s_S s_node) (q_7_s_D s_node))
+        (=
+          (select (select s_sent_next q_6_s_S) q_7_s_D)
+          (or
+            (select (select s_sent q_6_s_S) q_7_s_D)
+            (and (= q_6_s_S q_4_s_src) (= q_7_s_D q_5_s_dst)))))
+      (forall ((q_8_s_N s_node))
+        (=
+          (select s_allowed_5f_in_next q_8_s_N)
+          (or (select s_allowed_5f_in q_8_s_N) (= q_8_s_N q_5_s_dst)))))))
+; action: send_to_internal
+(define-fun action_1 () Bool
+  (exists ((q_9_s_src s_node) (q_10_s_dst s_node))
+    (and
+      (and
+        (not (select s_internal q_9_s_src))
+        (select s_internal q_10_s_dst)
+        (select s_allowed_5f_in q_9_s_src)
+        (forall ((q_11_s_S s_node) (q_12_s_D s_node))
+          (=
+            (select (select s_sent_next q_11_s_S) q_12_s_D)
+            (or
+              (select (select s_sent q_11_s_S) q_12_s_D)
+              (and (= q_11_s_S q_9_s_src) (= q_12_s_D q_10_s_dst))))))
+      (forall ((q_13_s_x0 s_node))
+        (= (select s_allowed_5f_in_next q_13_s_x0) (select s_allowed_5f_in q_13_s_x0))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_S s_node) (q_2_s_D s_node)) (not (select (select s_sent q_1_s_S) q_2_s_D)))
+      (forall ((q_3_s_N s_node)) (not (select s_allowed_5f_in q_3_s_N))))
+    :init
+    true))
+(define-fun trans () Bool
+  (! (and (or action_0 action_1) (= s_internal_next s_internal)) :trans true))
+(define-fun property () Bool
+  (!
+    (forall ((q_14_s_S s_node) (q_15_s_D s_node))
+      (=>
+        (and (select (select s_sent q_14_s_S) q_15_s_D) (select s_internal q_15_s_D))
+        (exists ((q_16_s_I s_node))
+          (and (select s_internal q_16_s_I) (select (select s_sent q_16_s_I) q_14_s_S)))))
+    :invar-property
+    0))

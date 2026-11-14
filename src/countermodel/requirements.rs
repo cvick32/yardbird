@@ -12,6 +12,7 @@ pub(super) fn extend<F: TermCostFactory>(
     let plan = context.formulas.quantifiers;
     let types = context.smt.get_array_types();
     let mut actions = HashSet::new();
+    let mut existential_bodies = HashSet::new();
     let mut helpers = HashSet::new();
     let mut ground = HashMap::<String, Vec<(Term, Term)>>::new();
     let mut seen_bodies = HashSet::new();
@@ -52,6 +53,69 @@ pub(super) fn extend<F: TermCostFactory>(
         trace.work += 1;
         let node = trace.nodes[scanned].clone();
         scanned += 1;
+        if let TraceReason::QuantifiedTransition { frame, path, .. } = &node.reason {
+            // Path entries have already passed equation-chain validation. Recheck
+            // the exact helper and witness implication before tracing the body.
+            // Deduplicate by the full instance, retaining every capture/frame.
+            if *frame < trace.depth {
+                for lemma in path {
+                    if !existential_bodies.insert((*frame, lemma.formula.clone())) {
+                        continue;
+                    }
+                    let mut evaluate = |term: &Term| context.smt.eval_partial(term);
+                    let mut cx = TraceContext {
+                        index,
+                        types: &types,
+                        evaluate: &mut evaluate,
+                        remaining: limit.saturating_sub(trace.work),
+                        initializers: None,
+                        transitions: None,
+                    };
+                    let result =
+                        crate::theories::quantifiers::countermodel::existential_requirement(
+                            plan, lemma, *frame, &mut cx,
+                        );
+                    trace.work = limit - cx.remaining;
+                    match result {
+                        Ok(Some(mut step)) => {
+                            step.conditions.extend(node.conditions.iter().cloned());
+                            append_trace(
+                                trace,
+                                index,
+                                &types,
+                                limit,
+                                |t| context.smt.eval_partial(t),
+                                Some(plan),
+                                Some(node.id),
+                                step,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(TraceError::Budget) => trace.budget_exhausted = true,
+                        Err(error) => {
+                            let mut step = TraceStep::child(
+                                lemma.formula.clone(),
+                                TraceReason::AssertedQuantifierBody,
+                            );
+                            step.frontier = Some(error);
+                            append_trace(
+                                trace,
+                                index,
+                                &types,
+                                limit,
+                                |t| context.smt.eval_partial(t),
+                                Some(plan),
+                                Some(node.id),
+                                step,
+                            );
+                        }
+                    }
+                    if trace.budget_exhausted {
+                        return;
+                    }
+                }
+            }
+        }
         let action = match &node.reason {
             TraceReason::Transition {
                 frame,

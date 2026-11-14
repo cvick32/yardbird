@@ -1,0 +1,48 @@
+sort data
+
+immutable relation le(data, data)
+axiom le(X,X)
+axiom le(X,Y) & le(Y,X) -> X = Y
+axiom le(X,Y) & le(Y,Z) -> le(X,Z)
+axiom le(X,Y) | le(Y,X)
+
+immutable constant zero: data
+axiom le(zero, X)
+
+mutable relation primary(data)
+mutable relation backup(data)
+mutable relation msg(data)
+
+init primary(X) <-> X = zero
+init backup(X) <-> X = zero
+init !msg(X)
+
+transition send(x: data)
+  modifies msg
+  primary(x) &
+  (forall X. new(msg(X)) <-> msg(X) | X = x)
+
+transition recv(x: data)
+  modifies backup, msg
+  msg(x) &
+  (forall X. new(backup(X)) <-> X = x) &
+  (forall X. new(msg(X)) <-> msg(X) & X != x)
+
+transition increment(current: data, next: data)
+  modifies primary
+  primary(current) &
+  le(current, next) &
+  (forall X. new(primary(X)) <-> X = next)
+
+safety exists X, Y. primary(X) & backup(Y) & le(Y, X)
+
+sat trace {
+  any transition
+  any transition
+  any transition
+  assert exists one. le(zero, one) & zero != one & (forall D. le(zero, D) & le(D, one) -> D = zero | D = one) & primary(one) & backup(one)
+  any transition
+  any transition
+  any transition
+  assert exists one, two. le(zero, one) & zero != one & le(one, two) & one != two & primary(two) & backup(two)
+}

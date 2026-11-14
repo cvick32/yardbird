@@ -1,0 +1,89 @@
+
+
+
+
+:comment SOURCE:      Abdulla et al., TACAS 2007
+
+
+:smt (define-type locations (subrange 1 4))
+
+:local a locations
+
+
+:initial 
+:var x
+:cnj (= a[x] 1)
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= a[x] 3)  (= a[y] 3)
+ 
+
+
+:comment t1 
+:transition
+:var x
+:var j
+:guard (= a[x] 4)
+:numcases 3
+:case (= x j)
+ :val 1
+:case  (= a[j] 3)
+ :val 2
+:case  (not (= a[j] 3))
+ :val a[j]
+
+  
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 1)
+:numcases 4
+:case (= x j)
+ :val 1
+:case  (= a[j] 2)
+ :val 4
+:case  (= a[j] 1)
+ :val 4
+:case  (not (= a[j] 2)) (not (= a[j] 1))
+ :val a[j]
+
+  
+:comment t3
+:transition
+:var x
+:var j
+:guard (= a[x] 2)
+:numcases 4
+:case (= x j)
+ :val 3
+:case  (= a[j] 1)
+ :val 4
+:case  (= a[j] 2)
+ :val 4
+:case  (not (= a[j] 1)) (not (= a[j] 2))
+ :val a[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 4)
+:numcases 5
+:case (= x j)
+ :val 3
+:case  (= a[j] 2)
+ :val 4
+:case  (= a[j] 3)
+ :val 4
+:case  (= a[j] 1)
+ :val 4
+:case  (not (= a[j] 2)) (not (= a[j] 3)) (not (= a[j] 1))
+ :val a[j]
+
+  
+
+
+

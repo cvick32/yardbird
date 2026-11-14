@@ -1,0 +1,37 @@
+; Generated offline from mypyvy/examples/fbii/toy_examples/dealer_rev_proph.pyv
+; Source SHA-256: 1b804196fe26cc250cad6d1a3f3afa2caa7494a79a83cdc6f997d9eaeed2a078
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_T 0)
+(declare-fun s_a () (Array s_T Bool))
+(declare-fun s_a_next () (Array s_T Bool))
+(declare-fun s_d () (Array s_T (Array s_T Bool)))
+(declare-fun s_d_next () (Array s_T (Array s_T Bool)))
+; source symbol: a
+(define-fun link_0 () (Array s_T Bool) (! s_a :next s_a_next))
+; source symbol: d
+(define-fun link_1 () (Array s_T (Array s_T Bool)) (! s_d :next s_d_next))
+; action: undeal
+(define-fun action_0 () Bool
+  (exists ((q_3_s_x s_T) (q_4_s_y s_T))
+    (and
+      (select s_a q_3_s_x)
+      (forall ((q_5_s_X s_T) (q_6_s_Y s_T))
+        (=
+          (select (select s_d_next q_5_s_X) q_6_s_Y)
+          (or (select (select s_d q_5_s_X) q_6_s_Y) (and (= q_5_s_X q_3_s_x) (= q_6_s_Y q_4_s_y))))))))
+(define-fun init () Bool
+  (!
+    (forall ((q_1_s_X s_T)) (exists ((q_2_s_Y s_T)) (not (select (select s_d q_1_s_X) q_2_s_Y))))
+    :init
+    true))
+(define-fun trans () Bool (! (and action_0 (= s_a_next s_a)) :trans true))
+(define-fun property () Bool
+  (!
+    (forall ((q_7_s_X s_T))
+      (=>
+        (not (select s_a q_7_s_X))
+        (exists ((q_8_s_X s_T) (q_9_s_Y s_T)) (not (select (select s_d q_8_s_X) q_9_s_Y)))))
+    :invar-property
+    0))

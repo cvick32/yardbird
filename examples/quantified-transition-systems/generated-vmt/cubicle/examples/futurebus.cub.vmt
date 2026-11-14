@@ -1,0 +1,423 @@
+; Generated offline from cubicle/examples/futurebus.cub
+; Source SHA-256: b89f18c8078146160dde94bbbaf267406bef4be36dcffdff63d656165acf8396
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_t 0)
+(declare-fun s_Inv () s_t)
+(declare-fun s_Inv_next () s_t)
+(declare-fun s_ShU () s_t)
+(declare-fun s_ShU_next () s_t)
+(declare-fun s_ExclU () s_t)
+(declare-fun s_ExclU_next () s_t)
+(declare-fun s_ExclM () s_t)
+(declare-fun s_ExclM_next () s_t)
+(declare-fun s_PendR () s_t)
+(declare-fun s_PendR_next () s_t)
+(declare-fun s_PendE () s_t)
+(declare-fun s_PendE_next () s_t)
+(declare-fun s_PendSU () s_t)
+(declare-fun s_PendSU_next () s_t)
+(declare-fun s_PendEW () s_t)
+(declare-fun s_PendEW_next () s_t)
+(declare-fun s_PendW () s_t)
+(declare-fun s_PendW_next () s_t)
+(declare-fun s_A () (Array Proc s_t))
+(declare-fun s_A_next () (Array Proc s_t))
+; source symbol: Inv
+(define-fun link_0 () s_t (! s_Inv :next s_Inv_next))
+; source symbol: ShU
+(define-fun link_1 () s_t (! s_ShU :next s_ShU_next))
+; source symbol: ExclU
+(define-fun link_2 () s_t (! s_ExclU :next s_ExclU_next))
+; source symbol: ExclM
+(define-fun link_3 () s_t (! s_ExclM :next s_ExclM_next))
+; source symbol: PendR
+(define-fun link_4 () s_t (! s_PendR :next s_PendR_next))
+; source symbol: PendE
+(define-fun link_5 () s_t (! s_PendE :next s_PendE_next))
+; source symbol: PendSU
+(define-fun link_6 () s_t (! s_PendSU :next s_PendSU_next))
+; source symbol: PendEW
+(define-fun link_7 () s_t (! s_PendEW :next s_PendEW_next))
+; source symbol: PendW
+(define-fun link_8 () s_t (! s_PendW :next s_PendW_next))
+; source symbol: A
+(define-fun link_9 () (Array Proc s_t) (! s_A :next s_A_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_15_s_x Proc))
+    (and
+      (and
+        (= (select s_A q_15_s_x) s_Inv)
+        (forall ((q_16_s_j Proc))
+          (=> (not (= q_16_s_j q_15_s_x)) (not (= (select s_A q_16_s_j) s_PendW)))))
+      (forall ((q_17_s_j Proc))
+        (=
+          (select s_A_next q_17_s_j)
+          (ite
+            (= q_17_s_j q_15_s_x)
+            s_PendR
+            (ite
+              (= (select s_A q_17_s_j) s_ExclM)
+              s_PendE
+              (ite
+                (= (select s_A q_17_s_j) s_ShU)
+                s_PendSU
+                (ite (= (select s_A q_17_s_j) s_ExclU) s_PendSU (select s_A q_17_s_j))))))))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_18_s_x Proc))
+    (and
+      (= (select s_A q_18_s_x) s_PendE)
+      (forall ((q_19_s_j Proc))
+        (=
+          (select s_A_next q_19_s_j)
+          (ite
+            (= q_19_s_j q_18_s_x)
+            s_ShU
+            (ite (= (select s_A q_19_s_j) s_PendR) s_ShU (select s_A q_19_s_j))))))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_20_s_x Proc))
+    (and
+      (= (select s_A q_20_s_x) s_PendSU)
+      (forall ((q_21_s_j Proc))
+        (=
+          (select s_A_next q_21_s_j)
+          (ite
+            (= q_21_s_j q_20_s_x)
+            s_ShU
+            (ite
+              (= (select s_A q_21_s_j) s_PendR)
+              s_ShU
+              (ite (= (select s_A q_21_s_j) s_PendSU) s_ShU (select s_A q_21_s_j)))))))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_22_s_x Proc) (q_23_s_y Proc))
+    (and
+      (not (= q_22_s_x q_23_s_y))
+      (and
+        (= (select s_A q_22_s_x) s_PendR)
+        (forall ((q_24_s_j Proc))
+          (=>
+            (and (not (= q_24_s_j q_22_s_x)) (not (= q_24_s_j q_23_s_y)))
+            (and
+              (and (not (= (select s_A q_24_s_j) s_PendSU)) (not (= (select s_A q_24_s_j) s_PendE)))
+              (= (select s_A q_23_s_y) s_PendR)))))
+      (forall ((q_25_s_j Proc))
+        (=
+          (select s_A_next q_25_s_j)
+          (ite
+            (= q_25_s_j q_22_s_x)
+            s_ShU
+            (ite (= (select s_A q_25_s_j) s_PendR) s_ShU (select s_A q_25_s_j))))))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_26_s_x Proc))
+    (and
+      (and
+        (= (select s_A q_26_s_x) s_PendR)
+        (forall ((q_27_s_j Proc))
+          (=>
+            (not (= q_27_s_j q_26_s_x))
+            (and
+              (not (= (select s_A q_27_s_j) s_PendSU))
+              (and (not (= (select s_A q_27_s_j) s_PendE)) (not (= (select s_A q_27_s_j) s_PendR)))))))
+      (forall ((q_28_s_j Proc))
+        (= (select s_A_next q_28_s_j) (ite (= q_28_s_j q_26_s_x) s_ExclU (select s_A q_28_s_j)))))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_29_s_x Proc))
+    (and
+      (and
+        (= (select s_A q_29_s_x) s_Inv)
+        (forall ((q_30_s_j Proc))
+          (=> (not (= q_30_s_j q_29_s_x)) (not (= (select s_A q_30_s_j) s_PendW)))))
+      (forall ((q_31_s_j Proc))
+        (=
+          (select s_A_next q_31_s_j)
+          (ite
+            (= q_31_s_j q_29_s_x)
+            s_PendW
+            (ite
+              (= (select s_A q_31_s_j) s_PendE)
+              s_Inv
+              (ite
+                (= (select s_A q_31_s_j) s_ShU)
+                s_Inv
+                (ite
+                  (= (select s_A q_31_s_j) s_ExclU)
+                  s_Inv
+                  (ite
+                    (= (select s_A q_31_s_j) s_PendSU)
+                    s_Inv
+                    (ite
+                      (= (select s_A q_31_s_j) s_PendR)
+                      s_Inv
+                      (ite
+                        (= (select s_A q_31_s_j) s_PendEW)
+                        s_Inv
+                        (ite (= (select s_A q_31_s_j) s_ExclM) s_PendEW (select s_A q_31_s_j))))))))))))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_32_s_x Proc))
+    (and
+      (= (select s_A q_32_s_x) s_PendEW)
+      (forall ((q_33_s_j Proc))
+        (=
+          (select s_A_next q_33_s_j)
+          (ite
+            (= q_33_s_j q_32_s_x)
+            s_Inv
+            (ite (= (select s_A q_33_s_j) s_PendW) s_ExclM (select s_A q_33_s_j))))))))
+; action: t8
+(define-fun action_7 () Bool
+  (exists ((q_34_s_x Proc))
+    (and
+      (and
+        (= (select s_A q_34_s_x) s_PendW)
+        (forall ((q_35_s_j Proc))
+          (=> (not (= q_35_s_j q_34_s_x)) (not (= (select s_A q_35_s_j) s_PendEW)))))
+      (forall ((q_36_s_j Proc))
+        (=
+          (select s_A_next q_36_s_j)
+          (ite
+            (= q_36_s_j q_34_s_x)
+            s_ExclM
+            (ite (= (select s_A q_36_s_j) s_PendW) s_ExclM (select s_A q_36_s_j))))))))
+; action: t9
+(define-fun action_8 () Bool
+  (exists ((q_37_s_x Proc))
+    (and
+      (= (select s_A q_37_s_x) s_ExclU)
+      (forall ((q_38_s_j Proc))
+        (= (select s_A_next q_38_s_j) (ite (= q_38_s_j q_37_s_x) s_ExclM (select s_A q_38_s_j)))))))
+; action: t10
+(define-fun action_9 () Bool
+  (exists ((q_39_s_x Proc))
+    (and
+      (= (select s_A q_39_s_x) s_ExclM)
+      (forall ((q_40_s_j Proc))
+        (= (select s_A_next q_40_s_j) (ite (= q_40_s_j q_39_s_x) s_ExclM (select s_A q_40_s_j)))))))
+; action: t11
+(define-fun action_10 () Bool
+  (exists ((q_41_s_x Proc))
+    (and
+      (= (select s_A q_41_s_x) s_ShU)
+      (forall ((q_42_s_j Proc))
+        (=
+          (select s_A_next q_42_s_j)
+          (ite
+            (= q_42_s_j q_41_s_x)
+            s_ExclM
+            (ite (= (select s_A q_42_s_j) s_ShU) s_Inv (select s_A q_42_s_j))))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_z Proc)) (= (select s_A q_2_s_z) s_Inv))
+      (and
+        (not (= s_Inv s_ShU))
+        (not (= s_Inv s_ExclU))
+        (not (= s_Inv s_ExclM))
+        (not (= s_Inv s_PendR))
+        (not (= s_Inv s_PendE))
+        (not (= s_Inv s_PendSU))
+        (not (= s_Inv s_PendEW))
+        (not (= s_Inv s_PendW))
+        (not (= s_ShU s_ExclU))
+        (not (= s_ShU s_ExclM))
+        (not (= s_ShU s_PendR))
+        (not (= s_ShU s_PendE))
+        (not (= s_ShU s_PendSU))
+        (not (= s_ShU s_PendEW))
+        (not (= s_ShU s_PendW))
+        (not (= s_ExclU s_ExclM))
+        (not (= s_ExclU s_PendR))
+        (not (= s_ExclU s_PendE))
+        (not (= s_ExclU s_PendSU))
+        (not (= s_ExclU s_PendEW))
+        (not (= s_ExclU s_PendW))
+        (not (= s_ExclM s_PendR))
+        (not (= s_ExclM s_PendE))
+        (not (= s_ExclM s_PendSU))
+        (not (= s_ExclM s_PendEW))
+        (not (= s_ExclM s_PendW))
+        (not (= s_PendR s_PendE))
+        (not (= s_PendR s_PendSU))
+        (not (= s_PendR s_PendEW))
+        (not (= s_PendR s_PendW))
+        (not (= s_PendE s_PendSU))
+        (not (= s_PendE s_PendEW))
+        (not (= s_PendE s_PendW))
+        (not (= s_PendSU s_PendEW))
+        (not (= s_PendSU s_PendW))
+        (not (= s_PendEW s_PendW)))
+      (forall ((q_1_s_enum s_t))
+        (or
+          (= q_1_s_enum s_Inv)
+          (= q_1_s_enum s_ShU)
+          (= q_1_s_enum s_ExclU)
+          (= q_1_s_enum s_ExclM)
+          (= q_1_s_enum s_PendR)
+          (= q_1_s_enum s_PendE)
+          (= q_1_s_enum s_PendSU)
+          (= q_1_s_enum s_PendEW)
+          (= q_1_s_enum s_PendW))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10)
+      (= s_Inv_next s_Inv)
+      (= s_ShU_next s_ShU)
+      (= s_ExclU_next s_ExclU)
+      (= s_ExclM_next s_ExclM)
+      (= s_PendR_next s_PendR)
+      (= s_PendE_next s_PendE)
+      (= s_PendSU_next s_PendSU)
+      (= s_PendEW_next s_PendEW)
+      (= s_PendW_next s_PendW)
+      (and
+        (not (= s_Inv s_ShU))
+        (not (= s_Inv s_ExclU))
+        (not (= s_Inv s_ExclM))
+        (not (= s_Inv s_PendR))
+        (not (= s_Inv s_PendE))
+        (not (= s_Inv s_PendSU))
+        (not (= s_Inv s_PendEW))
+        (not (= s_Inv s_PendW))
+        (not (= s_ShU s_ExclU))
+        (not (= s_ShU s_ExclM))
+        (not (= s_ShU s_PendR))
+        (not (= s_ShU s_PendE))
+        (not (= s_ShU s_PendSU))
+        (not (= s_ShU s_PendEW))
+        (not (= s_ShU s_PendW))
+        (not (= s_ExclU s_ExclM))
+        (not (= s_ExclU s_PendR))
+        (not (= s_ExclU s_PendE))
+        (not (= s_ExclU s_PendSU))
+        (not (= s_ExclU s_PendEW))
+        (not (= s_ExclU s_PendW))
+        (not (= s_ExclM s_PendR))
+        (not (= s_ExclM s_PendE))
+        (not (= s_ExclM s_PendSU))
+        (not (= s_ExclM s_PendEW))
+        (not (= s_ExclM s_PendW))
+        (not (= s_PendR s_PendE))
+        (not (= s_PendR s_PendSU))
+        (not (= s_PendR s_PendEW))
+        (not (= s_PendR s_PendW))
+        (not (= s_PendE s_PendSU))
+        (not (= s_PendE s_PendEW))
+        (not (= s_PendE s_PendW))
+        (not (= s_PendSU s_PendEW))
+        (not (= s_PendSU s_PendW))
+        (not (= s_PendEW s_PendW)))
+      (forall ((q_1_s_enum s_t))
+        (or
+          (= q_1_s_enum s_Inv)
+          (= q_1_s_enum s_ShU)
+          (= q_1_s_enum s_ExclU)
+          (= q_1_s_enum s_ExclM)
+          (= q_1_s_enum s_PendR)
+          (= q_1_s_enum s_PendE)
+          (= q_1_s_enum s_PendSU)
+          (= q_1_s_enum s_PendEW)
+          (= q_1_s_enum s_PendW)))
+      (and
+        (not (= s_Inv s_ShU))
+        (not (= s_Inv s_ExclU))
+        (not (= s_Inv s_ExclM))
+        (not (= s_Inv s_PendR))
+        (not (= s_Inv s_PendE))
+        (not (= s_Inv s_PendSU))
+        (not (= s_Inv s_PendEW))
+        (not (= s_Inv s_PendW))
+        (not (= s_ShU s_ExclU))
+        (not (= s_ShU s_ExclM))
+        (not (= s_ShU s_PendR))
+        (not (= s_ShU s_PendE))
+        (not (= s_ShU s_PendSU))
+        (not (= s_ShU s_PendEW))
+        (not (= s_ShU s_PendW))
+        (not (= s_ExclU s_ExclM))
+        (not (= s_ExclU s_PendR))
+        (not (= s_ExclU s_PendE))
+        (not (= s_ExclU s_PendSU))
+        (not (= s_ExclU s_PendEW))
+        (not (= s_ExclU s_PendW))
+        (not (= s_ExclM s_PendR))
+        (not (= s_ExclM s_PendE))
+        (not (= s_ExclM s_PendSU))
+        (not (= s_ExclM s_PendEW))
+        (not (= s_ExclM s_PendW))
+        (not (= s_PendR s_PendE))
+        (not (= s_PendR s_PendSU))
+        (not (= s_PendR s_PendEW))
+        (not (= s_PendR s_PendW))
+        (not (= s_PendE s_PendSU))
+        (not (= s_PendE s_PendEW))
+        (not (= s_PendE s_PendW))
+        (not (= s_PendSU s_PendEW))
+        (not (= s_PendSU s_PendW))
+        (not (= s_PendEW s_PendW)))
+      (forall ((q_1_s_enum s_t))
+        (or
+          (= q_1_s_enum s_Inv)
+          (= q_1_s_enum s_ShU)
+          (= q_1_s_enum s_ExclU)
+          (= q_1_s_enum s_ExclM)
+          (= q_1_s_enum s_PendR)
+          (= q_1_s_enum s_PendE)
+          (= q_1_s_enum s_PendSU)
+          (= q_1_s_enum s_PendEW)
+          (= q_1_s_enum s_PendW))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_3_s_z1 Proc) (q_4_s_z2 Proc))
+        (=>
+          (not (= q_3_s_z1 q_4_s_z2))
+          (not (and (= (select s_A q_3_s_z1) s_ShU) (= (select s_A q_4_s_z2) s_ExclM)))))
+      (forall ((q_5_s_z1 Proc) (q_6_s_z2 Proc))
+        (=>
+          (not (= q_5_s_z1 q_6_s_z2))
+          (not (and (= (select s_A q_5_s_z1) s_ShU) (= (select s_A q_6_s_z2) s_ExclU)))))
+      (forall ((q_7_s_z1 Proc) (q_8_s_z2 Proc))
+        (=>
+          (not (= q_7_s_z1 q_8_s_z2))
+          (not (and (= (select s_A q_7_s_z1) s_ExclU) (= (select s_A q_8_s_z2) s_ExclU)))))
+      (forall ((q_9_s_z1 Proc) (q_10_s_z2 Proc))
+        (=>
+          (not (= q_9_s_z1 q_10_s_z2))
+          (not (and (= (select s_A q_9_s_z1) s_ExclU) (= (select s_A q_10_s_z2) s_ExclM)))))
+      (forall ((q_11_s_z1 Proc) (q_12_s_z2 Proc))
+        (=>
+          (not (= q_11_s_z1 q_12_s_z2))
+          (not (and (= (select s_A q_11_s_z1) s_PendW) (= (select s_A q_12_s_z2) s_PendW)))))
+      (forall ((q_13_s_z1 Proc) (q_14_s_z2 Proc))
+        (=>
+          (not (= q_13_s_z1 q_14_s_z2))
+          (not (and (= (select s_A q_13_s_z1) s_PendW) (= (select s_A q_14_s_z2) s_PendR))))))
+    :invar-property
+    0))

@@ -1,0 +1,88 @@
+; Generated offline from lambda/benchmarks/protocols/mutex.cub
+; Source SHA-256: 0955905544f537b49dc6cd95e870a4c3030c6e6aa880fd94ba24b4576f0f58d1
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-fun s_Turn () Int)
+(declare-fun s_Turn_next () Int)
+(declare-fun s_Want () (Array Proc Bool))
+(declare-fun s_Want_next () (Array Proc Bool))
+(declare-fun s_Crit () (Array Proc Bool))
+(declare-fun s_Crit_next () (Array Proc Bool))
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: Turn
+(define-fun link_0 () Int (! s_Turn :next s_Turn_next))
+; source symbol: Want
+(define-fun link_1 () (Array Proc Bool) (! s_Want :next s_Want_next))
+; source symbol: Crit
+(define-fun link_2 () (Array Proc Bool) (! s_Crit :next s_Crit_next))
+; source symbol: __proc_rank
+(define-fun link_3 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: req
+(define-fun action_0 () Bool
+  (exists ((q_4_s_i Proc))
+    (and
+      (= (select s_Want q_4_s_i) false)
+      (forall ((q_5_s_j Proc))
+        (= (select s_Want_next q_5_s_j) (ite (= q_4_s_i q_5_s_j) true (select s_Want q_5_s_j))))
+      (= s_Turn_next s_Turn)
+      (= s_Crit_next s_Crit))))
+; action: enter
+(define-fun action_1 () Bool
+  (exists ((q_6_s_i Proc))
+    (and
+      (and
+        (= (select s_Want q_6_s_i) true)
+        (and (= (select s_Crit q_6_s_i) false) (= s_Turn (select s__5f__5f_proc_5f_rank q_6_s_i))))
+      (forall ((q_7_s_j Proc))
+        (= (select s_Crit_next q_7_s_j) (ite (= q_6_s_i q_7_s_j) true (select s_Crit q_7_s_j))))
+      (= s_Turn_next s_Turn)
+      (= s_Want_next s_Want))))
+; action: exit
+(define-fun action_2 () Bool
+  (exists ((q_8_s_i Proc))
+    (and
+      (= (select s_Crit q_8_s_i) true)
+      (forall ((q_9_s_j Proc))
+        (= (select s_Crit_next q_9_s_j) (ite (= q_8_s_i q_9_s_j) false (select s_Crit q_9_s_j))))
+      (forall ((q_10_s_j Proc))
+        (= (select s_Want_next q_10_s_j) (ite (= q_8_s_i q_10_s_j) false (select s_Want q_10_s_j)))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_z Proc))
+        (and (= (select s_Want q_1_s_z) false) (= (select s_Crit q_1_s_z) false)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_2_s_x Proc) (q_3_s_y Proc))
+      (=>
+        (not (= q_2_s_x q_3_s_y))
+        (not (and (= (select s_Crit q_2_s_x) true) (= (select s_Crit q_3_s_y) true)))))
+    :invar-property
+    0))

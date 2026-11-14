@@ -71,36 +71,7 @@ impl PreparedQuantifierSearch {
             .iter()
             .find(|rule| rule.name == request.helper)
             .ok_or_else(|| anyhow::anyhow!("unknown binder helper {}", request.helper))?;
-        let mut seen = HashSet::new();
-        for (symbol, term) in &request.bindings {
-            anyhow::ensure!(seen.insert(symbol), "duplicate binding for {symbol}");
-            anyhow::ensure!(
-                !contains_binders(term),
-                "binding {symbol} must be quantifier-free"
-            );
-            let (_, expected) = rule
-                .captures
-                .iter()
-                .chain(&rule.variables)
-                .find(|(name, _)| name == symbol)
-                .ok_or_else(|| anyhow::anyhow!("unknown binding {symbol} for {}", rule.name))?;
-            anyhow::ensure!(
-                request.phase != SearchPhase::Witnesses
-                    || rule.captures.iter().any(|(name, _)| name == symbol),
-                "witness requests bind captures, not quantified variable {symbol}"
-            );
-            anyhow::ensure!(
-                !rule.unit_capture
-                    || !rule.captures.iter().any(|(name, _)| name == symbol)
-                    || term == &app("true", vec![]),
-                "the dummy capture must be true"
-            );
-            let actual = term_sort(term, &self.compiled.signatures, &HashMap::new())?;
-            anyhow::ensure!(
-                actual == *expected,
-                "binding {symbol} expects {expected}, got {actual}"
-            );
-        }
+        validate_request(rule, &self.compiled.signatures, request)?;
         let compiled = rule
             .compile_with_bindings(request.phase, &self.compiled.types, &request.bindings)
             .ok_or_else(|| anyhow::anyhow!("binder {} has no witness direction", rule.name))??;
@@ -115,6 +86,50 @@ impl PreparedQuantifierSearch {
         );
         Ok(rule)
     }
+}
+
+/// Validate literal bindings before preparing a graph-backed request.
+pub(super) fn validate_request(
+    rule: &BinderRule,
+    signatures: &HashMap<String, (Vec<Sort>, Sort)>,
+    request: &BinderSearchRequest,
+) -> anyhow::Result<()> {
+    let mut seen = HashSet::new();
+    for (symbol, term) in &request.bindings {
+        anyhow::ensure!(seen.insert(symbol), "duplicate binding for {symbol}");
+        anyhow::ensure!(
+            !contains_binders(term),
+            "binding {symbol} must be quantifier-free"
+        );
+        let (_, expected) = rule
+            .captures
+            .iter()
+            .chain(&rule.variables)
+            .find(|(name, _)| name == symbol)
+            .ok_or_else(|| anyhow::anyhow!("unknown binding {symbol} for {}", rule.name))?;
+        anyhow::ensure!(
+            request.phase != SearchPhase::Witnesses
+                || rule.captures.iter().any(|(name, _)| name == symbol),
+            "witness requests bind captures, not quantified variable {symbol}"
+        );
+        anyhow::ensure!(
+            !rule.unit_capture
+                || !rule.captures.iter().any(|(name, _)| name == symbol)
+                || term == &app("true", vec![]),
+            "the dummy capture must be true"
+        );
+        let actual = term_sort(term, signatures, &HashMap::new())?;
+        anyhow::ensure!(
+            actual == *expected,
+            "binding {symbol} expects {expected}, got {actual}"
+        );
+    }
+    anyhow::ensure!(
+        request.phase != SearchPhase::Witnesses || rule.kind != BinderKind::Lambda,
+        "binder {} has no witness direction",
+        rule.name
+    );
+    Ok(())
 }
 
 /// Substitute at the pattern level so a supplied symbol can never accidentally

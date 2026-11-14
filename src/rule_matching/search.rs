@@ -22,11 +22,14 @@ pub struct RuleSearchReport {
     pub rounds: usize,
 }
 
+#[derive(Clone)]
 pub(crate) struct RuleMatch {
     pub rule_index: usize,
     pub root: egg::Id,
     pub substitution: egg::Subst,
     pub model_violation_verified: bool,
+    /// Correlated literal bindings supplied by a theory; extraction must retain them.
+    pub literal_bindings: Vec<(egg::Var, crate::terms::language::TermExpr)>,
 }
 
 #[derive(Default)]
@@ -62,6 +65,7 @@ pub(crate) fn search<N: egg::Analysis<TermLanguage>, M>(
                     root: matched.eclass,
                     substitution,
                     model_violation_verified: false,
+                    literal_bindings: vec![],
                 })
         })
         .collect();

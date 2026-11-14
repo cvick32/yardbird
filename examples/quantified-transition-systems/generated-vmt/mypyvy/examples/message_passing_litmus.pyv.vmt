@@ -1,0 +1,252 @@
+; Generated offline from mypyvy/examples/message_passing_litmus.pyv
+; Source SHA-256: cfbe2485e33df7c315771827a17cd9b2400be2c5c372534625bb245604fead22
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_pc 0)
+(declare-sort s_proc 0)
+(declare-fun s_pc0 () s_pc)
+(declare-fun s_pc0_next () s_pc)
+(declare-fun s_pc1 () s_pc)
+(declare-fun s_pc1_next () s_pc)
+(declare-fun s_pc2 () s_pc)
+(declare-fun s_pc2_next () s_pc)
+(declare-fun s_pc_5f_le () (Array s_pc (Array s_pc Bool)))
+(declare-fun s_pc_5f_le_next () (Array s_pc (Array s_pc Bool)))
+(declare-fun s_t1 () s_proc)
+(declare-fun s_t1_next () s_proc)
+(declare-fun s_t2 () s_proc)
+(declare-fun s_t2_next () s_proc)
+(declare-fun s_proc_5f_le () (Array s_proc (Array s_proc Bool)))
+(declare-fun s_proc_5f_le_next () (Array s_proc (Array s_proc Bool)))
+(declare-fun s_current_5f_pc () (Array s_proc s_pc))
+(declare-fun s_current_5f_pc_next () (Array s_proc s_pc))
+(declare-fun s_x () Bool)
+(declare-fun s_x_next () Bool)
+(declare-fun s_y () Bool)
+(declare-fun s_y_next () Bool)
+(declare-fun s_a () Bool)
+(declare-fun s_a_next () Bool)
+(declare-fun s_b () Bool)
+(declare-fun s_b_next () Bool)
+; source symbol: pc0
+(define-fun link_0 () s_pc (! s_pc0 :next s_pc0_next))
+; source symbol: pc1
+(define-fun link_1 () s_pc (! s_pc1 :next s_pc1_next))
+; source symbol: pc2
+(define-fun link_2 () s_pc (! s_pc2 :next s_pc2_next))
+; source symbol: pc_le
+(define-fun link_3 () (Array s_pc (Array s_pc Bool)) (! s_pc_5f_le :next s_pc_5f_le_next))
+; source symbol: t1
+(define-fun link_4 () s_proc (! s_t1 :next s_t1_next))
+; source symbol: t2
+(define-fun link_5 () s_proc (! s_t2 :next s_t2_next))
+; source symbol: proc_le
+(define-fun link_6 () (Array s_proc (Array s_proc Bool)) (! s_proc_5f_le :next s_proc_5f_le_next))
+; source symbol: current_pc
+(define-fun link_7 () (Array s_proc s_pc) (! s_current_5f_pc :next s_current_5f_pc_next))
+; source symbol: x
+(define-fun link_8 () Bool (! s_x :next s_x_next))
+; source symbol: y
+(define-fun link_9 () Bool (! s_y :next s_y_next))
+; source symbol: a
+(define-fun link_10 () Bool (! s_a :next s_a_next))
+; source symbol: b
+(define-fun link_11 () Bool (! s_b :next s_b_next))
+; action: t1_x
+(define-fun action_0 () Bool
+  (and
+    (and
+      (= (select s_current_5f_pc s_t1) s_pc0)
+      (= (select s_current_5f_pc_next s_t1) s_pc1)
+      (= (select s_current_5f_pc_next s_t2) (select s_current_5f_pc s_t2))
+      s_x_next)
+    (= s_y_next s_y)
+    (= s_a_next s_a)
+    (= s_b_next s_b)))
+; action: t1_y
+(define-fun action_1 () Bool
+  (and
+    (and
+      (= (select s_current_5f_pc s_t1) s_pc1)
+      (= (select s_current_5f_pc_next s_t1) s_pc2)
+      (= (select s_current_5f_pc_next s_t2) (select s_current_5f_pc s_t2))
+      s_y_next)
+    (= s_x_next s_x)
+    (= s_a_next s_a)
+    (= s_b_next s_b)))
+; action: t2_a
+(define-fun action_2 () Bool
+  (and
+    (and
+      (= (select s_current_5f_pc s_t2) s_pc0)
+      (= (select s_current_5f_pc_next s_t2) s_pc1)
+      (= (select s_current_5f_pc_next s_t1) (select s_current_5f_pc s_t1))
+      (= s_a_next s_y))
+    (= s_x_next s_x)
+    (= s_y_next s_y)
+    (= s_b_next s_b)))
+; action: t2_b
+(define-fun action_3 () Bool
+  (and
+    (and
+      (= (select s_current_5f_pc s_t2) s_pc1)
+      (= (select s_current_5f_pc_next s_t2) s_pc2)
+      (= (select s_current_5f_pc_next s_t1) (select s_current_5f_pc s_t1))
+      (= s_b_next s_x))
+    (= s_x_next s_x)
+    (= s_y_next s_y)
+    (= s_a_next s_a)))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_T s_proc)) (= (select s_current_5f_pc q_1_s_T) s_pc0))
+      (not s_x)
+      (not s_y)
+      (not s_a)
+      (not s_b)
+      (and (not (= s_pc0 s_pc1)) (not (= s_pc0 s_pc2)) (not (= s_pc1 s_pc2)))
+      (forall ((q_2_s_PC s_pc)) (or (= q_2_s_PC s_pc0) (= q_2_s_PC s_pc1) (= q_2_s_PC s_pc2)))
+      (forall ((q_3_s_T s_pc)) (select (select s_pc_5f_le q_3_s_T) q_3_s_T))
+      (forall ((q_4_s_T1 s_pc) (q_5_s_T2 s_pc) (q_6_s_T3 s_pc))
+        (=>
+          (and
+            (select (select s_pc_5f_le q_4_s_T1) q_5_s_T2)
+            (select (select s_pc_5f_le q_5_s_T2) q_6_s_T3))
+          (select (select s_pc_5f_le q_4_s_T1) q_6_s_T3)))
+      (forall ((q_7_s_T1 s_pc) (q_8_s_T2 s_pc))
+        (=>
+          (and
+            (select (select s_pc_5f_le q_7_s_T1) q_8_s_T2)
+            (select (select s_pc_5f_le q_8_s_T2) q_7_s_T1))
+          (= q_7_s_T1 q_8_s_T2)))
+      (forall ((q_9_s_T1 s_pc) (q_10_s_T2 s_pc))
+        (or
+          (select (select s_pc_5f_le q_9_s_T1) q_10_s_T2)
+          (select (select s_pc_5f_le q_10_s_T2) q_9_s_T1)))
+      (select (select s_pc_5f_le s_pc0) s_pc1)
+      (select (select s_pc_5f_le s_pc1) s_pc2)
+      (not (= s_t1 s_t2))
+      (forall ((q_11_s_P s_proc)) (or (= q_11_s_P s_t1) (= q_11_s_P s_t2)))
+      (forall ((q_12_s_T s_proc)) (select (select s_proc_5f_le q_12_s_T) q_12_s_T))
+      (forall ((q_13_s_T1 s_proc) (q_14_s_T2 s_proc) (q_15_s_T3 s_proc))
+        (=>
+          (and
+            (select (select s_proc_5f_le q_13_s_T1) q_14_s_T2)
+            (select (select s_proc_5f_le q_14_s_T2) q_15_s_T3))
+          (select (select s_proc_5f_le q_13_s_T1) q_15_s_T3)))
+      (forall ((q_16_s_T1 s_proc) (q_17_s_T2 s_proc))
+        (=>
+          (and
+            (select (select s_proc_5f_le q_16_s_T1) q_17_s_T2)
+            (select (select s_proc_5f_le q_17_s_T2) q_16_s_T1))
+          (= q_16_s_T1 q_17_s_T2)))
+      (forall ((q_18_s_T1 s_proc) (q_19_s_T2 s_proc))
+        (or
+          (select (select s_proc_5f_le q_18_s_T1) q_19_s_T2)
+          (select (select s_proc_5f_le q_19_s_T2) q_18_s_T1)))
+      (select (select s_proc_5f_le s_t1) s_t2))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3)
+      (= s_pc0_next s_pc0)
+      (= s_pc1_next s_pc1)
+      (= s_pc2_next s_pc2)
+      (= s_pc_5f_le_next s_pc_5f_le)
+      (= s_t1_next s_t1)
+      (= s_t2_next s_t2)
+      (= s_proc_5f_le_next s_proc_5f_le)
+      (and (not (= s_pc0 s_pc1)) (not (= s_pc0 s_pc2)) (not (= s_pc1 s_pc2)))
+      (forall ((q_2_s_PC s_pc)) (or (= q_2_s_PC s_pc0) (= q_2_s_PC s_pc1) (= q_2_s_PC s_pc2)))
+      (forall ((q_3_s_T s_pc)) (select (select s_pc_5f_le q_3_s_T) q_3_s_T))
+      (forall ((q_4_s_T1 s_pc) (q_5_s_T2 s_pc) (q_6_s_T3 s_pc))
+        (=>
+          (and
+            (select (select s_pc_5f_le q_4_s_T1) q_5_s_T2)
+            (select (select s_pc_5f_le q_5_s_T2) q_6_s_T3))
+          (select (select s_pc_5f_le q_4_s_T1) q_6_s_T3)))
+      (forall ((q_7_s_T1 s_pc) (q_8_s_T2 s_pc))
+        (=>
+          (and
+            (select (select s_pc_5f_le q_7_s_T1) q_8_s_T2)
+            (select (select s_pc_5f_le q_8_s_T2) q_7_s_T1))
+          (= q_7_s_T1 q_8_s_T2)))
+      (forall ((q_9_s_T1 s_pc) (q_10_s_T2 s_pc))
+        (or
+          (select (select s_pc_5f_le q_9_s_T1) q_10_s_T2)
+          (select (select s_pc_5f_le q_10_s_T2) q_9_s_T1)))
+      (select (select s_pc_5f_le s_pc0) s_pc1)
+      (select (select s_pc_5f_le s_pc1) s_pc2)
+      (not (= s_t1 s_t2))
+      (forall ((q_11_s_P s_proc)) (or (= q_11_s_P s_t1) (= q_11_s_P s_t2)))
+      (forall ((q_12_s_T s_proc)) (select (select s_proc_5f_le q_12_s_T) q_12_s_T))
+      (forall ((q_13_s_T1 s_proc) (q_14_s_T2 s_proc) (q_15_s_T3 s_proc))
+        (=>
+          (and
+            (select (select s_proc_5f_le q_13_s_T1) q_14_s_T2)
+            (select (select s_proc_5f_le q_14_s_T2) q_15_s_T3))
+          (select (select s_proc_5f_le q_13_s_T1) q_15_s_T3)))
+      (forall ((q_16_s_T1 s_proc) (q_17_s_T2 s_proc))
+        (=>
+          (and
+            (select (select s_proc_5f_le q_16_s_T1) q_17_s_T2)
+            (select (select s_proc_5f_le q_17_s_T2) q_16_s_T1))
+          (= q_16_s_T1 q_17_s_T2)))
+      (forall ((q_18_s_T1 s_proc) (q_19_s_T2 s_proc))
+        (or
+          (select (select s_proc_5f_le q_18_s_T1) q_19_s_T2)
+          (select (select s_proc_5f_le q_19_s_T2) q_18_s_T1)))
+      (select (select s_proc_5f_le s_t1) s_t2)
+      (and (not (= s_pc0 s_pc1)) (not (= s_pc0 s_pc2)) (not (= s_pc1 s_pc2)))
+      (forall ((q_2_s_PC s_pc)) (or (= q_2_s_PC s_pc0) (= q_2_s_PC s_pc1) (= q_2_s_PC s_pc2)))
+      (forall ((q_3_s_T s_pc)) (select (select s_pc_5f_le q_3_s_T) q_3_s_T))
+      (forall ((q_4_s_T1 s_pc) (q_5_s_T2 s_pc) (q_6_s_T3 s_pc))
+        (=>
+          (and
+            (select (select s_pc_5f_le q_4_s_T1) q_5_s_T2)
+            (select (select s_pc_5f_le q_5_s_T2) q_6_s_T3))
+          (select (select s_pc_5f_le q_4_s_T1) q_6_s_T3)))
+      (forall ((q_7_s_T1 s_pc) (q_8_s_T2 s_pc))
+        (=>
+          (and
+            (select (select s_pc_5f_le q_7_s_T1) q_8_s_T2)
+            (select (select s_pc_5f_le q_8_s_T2) q_7_s_T1))
+          (= q_7_s_T1 q_8_s_T2)))
+      (forall ((q_9_s_T1 s_pc) (q_10_s_T2 s_pc))
+        (or
+          (select (select s_pc_5f_le q_9_s_T1) q_10_s_T2)
+          (select (select s_pc_5f_le q_10_s_T2) q_9_s_T1)))
+      (select (select s_pc_5f_le s_pc0) s_pc1)
+      (select (select s_pc_5f_le s_pc1) s_pc2)
+      (not (= s_t1 s_t2))
+      (forall ((q_11_s_P s_proc)) (or (= q_11_s_P s_t1) (= q_11_s_P s_t2)))
+      (forall ((q_12_s_T s_proc)) (select (select s_proc_5f_le q_12_s_T) q_12_s_T))
+      (forall ((q_13_s_T1 s_proc) (q_14_s_T2 s_proc) (q_15_s_T3 s_proc))
+        (=>
+          (and
+            (select (select s_proc_5f_le q_13_s_T1) q_14_s_T2)
+            (select (select s_proc_5f_le q_14_s_T2) q_15_s_T3))
+          (select (select s_proc_5f_le q_13_s_T1) q_15_s_T3)))
+      (forall ((q_16_s_T1 s_proc) (q_17_s_T2 s_proc))
+        (=>
+          (and
+            (select (select s_proc_5f_le q_16_s_T1) q_17_s_T2)
+            (select (select s_proc_5f_le q_17_s_T2) q_16_s_T1))
+          (= q_16_s_T1 q_17_s_T2)))
+      (forall ((q_18_s_T1 s_proc) (q_19_s_T2 s_proc))
+        (or
+          (select (select s_proc_5f_le q_18_s_T1) q_19_s_T2)
+          (select (select s_proc_5f_le q_19_s_T2) q_18_s_T1)))
+      (select (select s_proc_5f_le s_t1) s_t2))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (=>
+      (and (= (select s_current_5f_pc s_t1) s_pc2) (= (select s_current_5f_pc s_t2) s_pc2) s_a)
+      s_b)
+    :invar-property
+    0))

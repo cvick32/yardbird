@@ -1,0 +1,431 @@
+; Generated offline from cubicle/examples/bakery_lamport_na.cub
+; Source SHA-256: 952d691dd488dd571a742b4168a0eaeb5592063fd343b4b4327f65cdda7967d4
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Supplied forbidden-cube invariant retained in source only; not assumed: []
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-fun s_NCS () s_location)
+(declare-fun s_NCS_next () s_location)
+(declare-fun s_Choosing () s_location)
+(declare-fun s_Choosing_next () s_location)
+(declare-fun s_Choosen () s_location)
+(declare-fun s_Choosen_next () s_location)
+(declare-fun s_Wait () s_location)
+(declare-fun s_Wait_next () s_location)
+(declare-fun s_CS () s_location)
+(declare-fun s_CS_next () s_location)
+(declare-fun s_Crash () s_location)
+(declare-fun s_Crash_next () s_location)
+(declare-fun s_PC () (Array Proc s_location))
+(declare-fun s_PC_next () (Array Proc s_location))
+(declare-fun s_Ticket () (Array Proc Int))
+(declare-fun s_Ticket_next () (Array Proc Int))
+(declare-fun s_Num () (Array Proc Int))
+(declare-fun s_Num_next () (Array Proc Int))
+(declare-fun s_Choose () (Array Proc Bool))
+(declare-fun s_Choose_next () (Array Proc Bool))
+(declare-fun s_Max () Int)
+(declare-fun s_Max_next () Int)
+(declare-fun s_Cpt () (Array Proc (Array Proc Bool)))
+(declare-fun s_Cpt_next () (Array Proc (Array Proc Bool)))
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: NCS
+(define-fun link_0 () s_location (! s_NCS :next s_NCS_next))
+; source symbol: Choosing
+(define-fun link_1 () s_location (! s_Choosing :next s_Choosing_next))
+; source symbol: Choosen
+(define-fun link_2 () s_location (! s_Choosen :next s_Choosen_next))
+; source symbol: Wait
+(define-fun link_3 () s_location (! s_Wait :next s_Wait_next))
+; source symbol: CS
+(define-fun link_4 () s_location (! s_CS :next s_CS_next))
+; source symbol: Crash
+(define-fun link_5 () s_location (! s_Crash :next s_Crash_next))
+; source symbol: PC
+(define-fun link_6 () (Array Proc s_location) (! s_PC :next s_PC_next))
+; source symbol: Ticket
+(define-fun link_7 () (Array Proc Int) (! s_Ticket :next s_Ticket_next))
+; source symbol: Num
+(define-fun link_8 () (Array Proc Int) (! s_Num :next s_Num_next))
+; source symbol: Choose
+(define-fun link_9 () (Array Proc Bool) (! s_Choose :next s_Choose_next))
+; source symbol: Max
+(define-fun link_10 () Int (! s_Max :next s_Max_next))
+; source symbol: Cpt
+(define-fun link_11 () (Array Proc (Array Proc Bool)) (! s_Cpt :next s_Cpt_next))
+; source symbol: __proc_rank
+(define-fun link_12 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: next_ticket
+(define-fun action_0 () Bool
+  (and
+    (= s_Max_next (+ s_Max 1))
+    (= s_PC_next s_PC)
+    (= s_Ticket_next s_Ticket)
+    (= s_Num_next s_Num)
+    (= s_Choose_next s_Choose)
+    (= s_Cpt_next s_Cpt)))
+; action: take_ticket
+(define-fun action_1 () Bool
+  (exists ((q_6_s_x Proc))
+    (and
+      (= (select s_PC q_6_s_x) s_NCS)
+      (forall ((q_7_s_index0 Proc))
+        (=
+          (select s_PC_next q_7_s_index0)
+          (ite (= q_7_s_index0 q_6_s_x) s_Choosing (select s_PC q_7_s_index0))))
+      (forall ((q_8_s_index0 Proc))
+        (=
+          (select s_Choose_next q_8_s_index0)
+          (ite (= q_8_s_index0 q_6_s_x) true (select s_Choose q_8_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Max_next s_Max)
+      (= s_Cpt_next s_Cpt))))
+; action: find_ticket_found
+(define-fun action_2 () Bool
+  (exists ((q_9_s_x Proc))
+    (and
+      (and
+        (= (select s_PC q_9_s_x) s_Choosing)
+        (forall ((q_10_s_j Proc))
+          (=> (not (= q_10_s_j q_9_s_x)) (= (select (select s_Cpt q_9_s_x) q_10_s_j) true))))
+      (forall ((q_11_s_i Proc) (q_12_s_j Proc))
+        (=
+          (select (select s_Cpt_next q_11_s_i) q_12_s_j)
+          (ite (= q_11_s_i q_9_s_x) false (select (select s_Cpt q_11_s_i) q_12_s_j))))
+      (forall ((q_13_s_index0 Proc))
+        (=
+          (select s_Ticket_next q_13_s_index0)
+          (ite (= q_13_s_index0 q_9_s_x) s_Max (select s_Ticket q_13_s_index0))))
+      (forall ((q_14_s_index0 Proc))
+        (=
+          (select s_PC_next q_14_s_index0)
+          (ite (= q_14_s_index0 q_9_s_x) s_Choosen (select s_PC q_14_s_index0))))
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max))))
+; action: find_ticket_iter
+(define-fun action_3 () Bool
+  (exists ((q_15_s_x Proc) (q_16_s_j Proc))
+    (and
+      (not (= q_15_s_x q_16_s_j))
+      (and
+        (= (select s_PC q_15_s_x) s_Choosing)
+        (and (= (select (select s_Cpt q_15_s_x) q_16_s_j) false) (< (select s_Num q_16_s_j) s_Max)))
+      (forall ((q_17_s_index0 Proc) (q_18_s_index1 Proc))
+        (=
+          (select (select s_Cpt_next q_17_s_index0) q_18_s_index1)
+          (ite
+            (and (= q_17_s_index0 q_15_s_x) (= q_18_s_index1 q_16_s_j))
+            true
+            (select (select s_Cpt q_17_s_index0) q_18_s_index1))))
+      (= s_PC_next s_PC)
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max))))
+; action: assigned
+(define-fun action_4 () Bool
+  (exists ((q_19_s_x Proc))
+    (and
+      (= (select s_PC q_19_s_x) s_Choosen)
+      (forall ((q_20_s_index0 Proc))
+        (=
+          (select s_Choose_next q_20_s_index0)
+          (ite (= q_20_s_index0 q_19_s_x) false (select s_Choose q_20_s_index0))))
+      (forall ((q_21_s_index0 Proc))
+        (=
+          (select s_PC_next q_21_s_index0)
+          (ite (= q_21_s_index0 q_19_s_x) s_Wait (select s_PC q_21_s_index0))))
+      (forall ((q_22_s_index0 Proc))
+        (=
+          (select s_Num_next q_22_s_index0)
+          (ite (= q_22_s_index0 q_19_s_x) (select s_Ticket q_19_s_x) (select s_Num q_22_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Max_next s_Max)
+      (= s_Cpt_next s_Cpt))))
+; action: wait_exit
+(define-fun action_5 () Bool
+  (exists ((q_23_s_x Proc))
+    (and
+      (and
+        (= (select s_PC q_23_s_x) s_Wait)
+        (forall ((q_24_s_j Proc))
+          (=> (not (= q_24_s_j q_23_s_x)) (= (select (select s_Cpt q_23_s_x) q_24_s_j) true))))
+      (forall ((q_25_s_i Proc) (q_26_s_j Proc))
+        (=
+          (select (select s_Cpt_next q_25_s_i) q_26_s_j)
+          (ite (= q_25_s_i q_23_s_x) false (select (select s_Cpt q_25_s_i) q_26_s_j))))
+      (forall ((q_27_s_index0 Proc))
+        (=
+          (select s_PC_next q_27_s_index0)
+          (ite (= q_27_s_index0 q_23_s_x) s_CS (select s_PC q_27_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max))))
+; action: wait_iter1
+(define-fun action_6 () Bool
+  (exists ((q_28_s_x Proc) (q_29_s_j Proc))
+    (and
+      (not (= q_28_s_x q_29_s_j))
+      (and
+        (= (select s_PC q_28_s_x) s_Wait)
+        (and
+          (= (select (select s_Cpt q_28_s_x) q_29_s_j) false)
+          (and (= (select s_Choose q_29_s_j) false) (= (select s_Num q_29_s_j) 0))))
+      (forall ((q_30_s_index0 Proc) (q_31_s_index1 Proc))
+        (=
+          (select (select s_Cpt_next q_30_s_index0) q_31_s_index1)
+          (ite
+            (and (= q_30_s_index0 q_28_s_x) (= q_31_s_index1 q_29_s_j))
+            true
+            (select (select s_Cpt q_30_s_index0) q_31_s_index1))))
+      (= s_PC_next s_PC)
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max))))
+; action: wait_iter2
+(define-fun action_7 () Bool
+  (exists ((q_32_s_x Proc) (q_33_s_j Proc))
+    (and
+      (not (= q_32_s_x q_33_s_j))
+      (and
+        (= (select s_PC q_32_s_x) s_Wait)
+        (and
+          (= (select (select s_Cpt q_32_s_x) q_33_s_j) false)
+          (and
+            (= (select s_Choose q_33_s_j) false)
+            (< (select s_Num q_32_s_x) (select s_Num q_33_s_j)))))
+      (forall ((q_34_s_index0 Proc) (q_35_s_index1 Proc))
+        (=
+          (select (select s_Cpt_next q_34_s_index0) q_35_s_index1)
+          (ite
+            (and (= q_34_s_index0 q_32_s_x) (= q_35_s_index1 q_33_s_j))
+            true
+            (select (select s_Cpt q_34_s_index0) q_35_s_index1))))
+      (= s_PC_next s_PC)
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max))))
+; action: wait_iter3
+(define-fun action_8 () Bool
+  (exists ((q_36_s_x Proc) (q_37_s_j Proc))
+    (and
+      (not (= q_36_s_x q_37_s_j))
+      (and
+        (= (select s_PC q_36_s_x) s_Wait)
+        (and
+          (= (select (select s_Cpt q_36_s_x) q_37_s_j) false)
+          (and
+            (= (select s_Choose q_37_s_j) false)
+            (and
+              (= (select s_Num q_36_s_x) (select s_Num q_37_s_j))
+              (< (select s__5f__5f_proc_5f_rank q_36_s_x) (select s__5f__5f_proc_5f_rank q_37_s_j))))))
+      (forall ((q_38_s_index0 Proc) (q_39_s_index1 Proc))
+        (=
+          (select (select s_Cpt_next q_38_s_index0) q_39_s_index1)
+          (ite
+            (and (= q_38_s_index0 q_36_s_x) (= q_39_s_index1 q_37_s_j))
+            true
+            (select (select s_Cpt q_38_s_index0) q_39_s_index1))))
+      (= s_PC_next s_PC)
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max))))
+; action: exit
+(define-fun action_9 () Bool
+  (exists ((q_40_s_x Proc))
+    (and
+      (= (select s_PC q_40_s_x) s_CS)
+      (forall ((q_41_s_index0 Proc))
+        (=
+          (select s_PC_next q_41_s_index0)
+          (ite (= q_41_s_index0 q_40_s_x) s_NCS (select s_PC q_41_s_index0))))
+      (forall ((q_42_s_index0 Proc))
+        (=
+          (select s_Num_next q_42_s_index0)
+          (ite (= q_42_s_index0 q_40_s_x) 0 (select s_Num q_42_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max)
+      (= s_Cpt_next s_Cpt))))
+; action: fail
+(define-fun action_10 () Bool
+  (exists ((q_43_s_x Proc))
+    (and
+      (forall ((q_44_s_index0 Proc))
+        (=
+          (select s_PC_next q_44_s_index0)
+          (ite (= q_44_s_index0 q_43_s_x) s_Crash (select s_PC q_44_s_index0))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Num_next s_Num)
+      (= s_Choose_next s_Choose)
+      (= s_Max_next s_Max)
+      (= s_Cpt_next s_Cpt))))
+; action: recover
+(define-fun action_11 () Bool
+  (exists ((q_45_s_x Proc))
+    (and
+      (= (select s_PC q_45_s_x) s_Crash)
+      (forall ((q_46_s_index0 Proc))
+        (=
+          (select s_PC_next q_46_s_index0)
+          (ite (= q_46_s_index0 q_45_s_x) s_NCS (select s_PC q_46_s_index0))))
+      (forall ((q_47_s_index0 Proc))
+        (=
+          (select s_Num_next q_47_s_index0)
+          (ite (= q_47_s_index0 q_45_s_x) 0 (select s_Num q_47_s_index0))))
+      (forall ((q_48_s_index0 Proc))
+        (=
+          (select s_Choose_next q_48_s_index0)
+          (ite (= q_48_s_index0 q_45_s_x) false (select s_Choose q_48_s_index0))))
+      (forall ((q_49_s_i Proc) (q_50_s_j Proc))
+        (=
+          (select (select s_Cpt_next q_49_s_i) q_50_s_j)
+          (ite (= q_49_s_i q_45_s_x) false (select (select s_Cpt q_49_s_i) q_50_s_j))))
+      (= s_Ticket_next s_Ticket)
+      (= s_Max_next s_Max))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_x Proc) (q_3_s_y Proc))
+        (and
+          (= (select s_PC q_2_s_x) s_NCS)
+          (and
+            (= (select s_Num q_2_s_x) 0)
+            (and
+              (= (select s_Choose q_2_s_x) false)
+              (and
+                (= s_Max 1)
+                (and
+                  (= (select s_Ticket q_2_s_x) 0)
+                  (= (select (select s_Cpt q_2_s_x) q_3_s_y) false)))))))
+      (and
+        (not (= s_NCS s_Choosing))
+        (not (= s_NCS s_Choosen))
+        (not (= s_NCS s_Wait))
+        (not (= s_NCS s_CS))
+        (not (= s_NCS s_Crash))
+        (not (= s_Choosing s_Choosen))
+        (not (= s_Choosing s_Wait))
+        (not (= s_Choosing s_CS))
+        (not (= s_Choosing s_Crash))
+        (not (= s_Choosen s_Wait))
+        (not (= s_Choosen s_CS))
+        (not (= s_Choosen s_Crash))
+        (not (= s_Wait s_CS))
+        (not (= s_Wait s_Crash))
+        (not (= s_CS s_Crash)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_NCS)
+          (= q_1_s_enum s_Choosing)
+          (= q_1_s_enum s_Choosen)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_CS)
+          (= q_1_s_enum s_Crash)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11)
+      (= s_NCS_next s_NCS)
+      (= s_Choosing_next s_Choosing)
+      (= s_Choosen_next s_Choosen)
+      (= s_Wait_next s_Wait)
+      (= s_CS_next s_CS)
+      (= s_Crash_next s_Crash)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_NCS s_Choosing))
+        (not (= s_NCS s_Choosen))
+        (not (= s_NCS s_Wait))
+        (not (= s_NCS s_CS))
+        (not (= s_NCS s_Crash))
+        (not (= s_Choosing s_Choosen))
+        (not (= s_Choosing s_Wait))
+        (not (= s_Choosing s_CS))
+        (not (= s_Choosing s_Crash))
+        (not (= s_Choosen s_Wait))
+        (not (= s_Choosen s_CS))
+        (not (= s_Choosen s_Crash))
+        (not (= s_Wait s_CS))
+        (not (= s_Wait s_Crash))
+        (not (= s_CS s_Crash)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_NCS)
+          (= q_1_s_enum s_Choosing)
+          (= q_1_s_enum s_Choosen)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_CS)
+          (= q_1_s_enum s_Crash)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_NCS s_Choosing))
+        (not (= s_NCS s_Choosen))
+        (not (= s_NCS s_Wait))
+        (not (= s_NCS s_CS))
+        (not (= s_NCS s_Crash))
+        (not (= s_Choosing s_Choosen))
+        (not (= s_Choosing s_Wait))
+        (not (= s_Choosing s_CS))
+        (not (= s_Choosing s_Crash))
+        (not (= s_Choosen s_Wait))
+        (not (= s_Choosen s_CS))
+        (not (= s_Choosen s_Crash))
+        (not (= s_Wait s_CS))
+        (not (= s_Wait s_Crash))
+        (not (= s_CS s_Crash)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_NCS)
+          (= q_1_s_enum s_Choosing)
+          (= q_1_s_enum s_Choosen)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_CS)
+          (= q_1_s_enum s_Crash)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_4_s_x Proc) (q_5_s_y Proc))
+      (=>
+        (not (= q_4_s_x q_5_s_y))
+        (not (and (= (select s_PC q_4_s_x) s_CS) (= (select s_PC q_5_s_y) s_CS)))))
+    :invar-property
+    0))

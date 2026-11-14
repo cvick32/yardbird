@@ -148,8 +148,98 @@ Library callers select `yardbird::policy::NamedPolicy::GermanFast` and call
 `build_plan(&run_options)`. The returned plan supplies the solver, instantiation
 strategy, proof strategy and optional synthesis extension to execute.
 
+`--policy countermodel-guided --guided-exact-grounding --theory array,quantifiers`
+adds typed source-term grounding within existing guided binder requests, preserving
+the guidance/supplement schedule and independent instance validation. It remains
+opt-in: in the 30-case experiment it gained one completed check on
+`ring_leader_election` (9 versus 8), but lost one on `client_server_db_ae` and two on
+`flash-coherence`. It is useful for that individual depth gain, not a general default.
+
+`--policy countermodel-guided --guided-read-support --theory array,quantifiers`
+adds a runtime source-index support pool. It interleaves instances of
+single-variable universal binders whose variable indexes an array read with
+ground array axioms, including stores exposed by quantified bodies. Satisfied
+instances stay available across models; only validated violations are installed.
+Source indices are frozen at each BMC depth, so generated reads cannot feed back
+into this pool. The prelude generates at most 2,048 instances per model and yields
+every eighth refinement to ordinary guided search. Other binder shapes and
+scalar/domain axioms remain available through ordinary search.
+
+Array support uses complete equations:
+`Read(Write(a, i, v), j) = ite(i = j, v, Read(a, j))`.
+The constructor's own index keeps its read-after-write equation, without an
+additional equivalent ITE equation. This optional runtime refinement keeps both
+theories in Yardbird and performs no input preprocessing.
+
+`--reuse-proved-properties` retains each UNSAT-checked property at its original
+BMC frame when advancing to the next depth. It preserves the proved formula's
+source vocabulary for subsequent Yardbird search. No formula is shifted to a
+future frame, and bounded proofs are never treated as inductive invariants.
+Assertions are deferred until unrolling, preserving access to the preceding
+UNSAT core. This VMT-only experiment defaults off and works with either property
+check mechanism. It does not change theory ownership or search scheduling.
+Adding `--proved-property-instance-limit 512` also generates up to 512 ground
+instances per depth from previously proved universal properties, using typed
+source indices. Only fresh property witnesses recorded by Herbrandization are
+substituted; state terms retain the proved frame. This is disabled when auxiliary
+property restrictions are present. Generated terms do not enter the source pool,
+and no universal formula is delegated to the backend.
+
+`--split-property-checks` checks positive top-level property conjuncts in source
+order under the countermodel-guided policy. After each UNSAT result, its proved
+conjunct is shared at the same frame with subsequent checks. When enabled,
+proved-property instances share the existing per-depth instance budget. A depth
+is completed only after every conjunct passes; a SAT or unknown part receives no
+depth credit. Disjunctions, guarded formulas, and binders are not split. This
+VMT-only experiment defaults off and keeps theory ownership unchanged.
+
+`--policy countermodel-guided --guided-read-frontiers --theory array,quantifiers`
+reserves half the dependency-discovery work for unresolved traced reads and
+tries their exact-index quantifier requests before ordinary candidates. At most
+four requests share half the binder-page budget; ordinary binder pages also
+prefer typed indices observed in traced reads, with half their page reserved
+for fallback. Unused discovery work returns
+to ordinary search. The existing guidance/supplement schedule and independent
+model validation remain in force. This experimental option defaults off. Actual
+helper capture tuples are preserved with or without this option.
+
+Quantifier refinement preserves each actual helper application's capture arguments
+by default, including applications introduced by earlier instances. Model-equal
+applications retain their distinct symbolic tuples; only quantified variables use
+ordinary term selection. Explicit request bindings stay literal. Occurrence
+expansion is paged, and candidates with preserved captures are independently
+validated. Profiling records `application_capture_groundings` per binder.
+Capture preservation is unconditional; there is no capture-selection switch.
+
+Countermodel guidance follows scalar state values as well as array reads through
+asserted predecessor transitions. Quantified action equations retain their actual
+captures and existential witness terms. For guarded frame equations, tracing
+checks each enclosing instance and branch guard in source order; false guards
+disable the equation, and unknown guards remain explicit trace frontiers.
+Scalar equations inside universal binders use declared, typed seed terms for
+variables absent from the demand. Refinement still installs the full guarded
+binder instance, never the traced equation by itself.
+
+Action-prerequisite guidance also follows existential action bodies reached by
+quantified transition tracing, without requiring `:action` annotations. It checks
+the exact helper application and its witness implication, then traces its
+source-state enabling conditions with the original captures and guards. Update
+clauses are excluded; witness captures remain opaque action parameters even when
+they contain future-state terms. The projection is an observation, not an asserted
+lemma. Repeated bodies are deduplicated within the model and share the trace work
+budget. `--guidance-action-requirements when-unproductive` includes completed
+cyclic explanations; unresolved frontiers retain their existing handling.
+
+Prerequisite tracing reserves half its remaining work for a second relational
+matching pass. Known Boolean observations can supply correlated tuples for full
+background-axiom instances; unknown observations are excluded. Earlier-frame
+observations can also suggest quantified values for a false existential helper,
+while preserving that helper's actual captures. Guidance traces the resulting
+current-frame body and validates the full binder instance before installation.
+Observed facts and model equalities are never asserted as lemmas.
+
 For an axiom-first ablation, add `--prefer-axioms` to the abstract VMT strategy
-or either named policy. Each solver model gets a bounded pass over array axioms
+or these named policies. Each solver model gets a bounded pass over array axioms
 and quantified background assertions before the existing search resumes:
 
 ```bash

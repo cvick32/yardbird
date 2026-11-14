@@ -1,0 +1,245 @@
+; Generated offline from cubicle/examples/challenges/ref_count.cub
+; Source SHA-256: e01b42218402d1c498323fa6cf085a289be08e4caef589583464c925e8e7f1e2
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_sort 0)
+(declare-fun s_Process () s_sort)
+(declare-fun s_Process_next () s_sort)
+(declare-fun s_Resource () s_sort)
+(declare-fun s_Resource_next () s_sort)
+(declare-fun s_Sort () (Array Proc s_sort))
+(declare-fun s_Sort_next () (Array Proc s_sort))
+(declare-fun s_Count () (Array Proc Int))
+(declare-fun s_Count_next () (Array Proc Int))
+(declare-fun s_Valid () (Array Proc Bool))
+(declare-fun s_Valid_next () (Array Proc Bool))
+(declare-fun s_Ptr () (Array Proc Int))
+(declare-fun s_Ptr_next () (Array Proc Int))
+(declare-fun s_Handles () (Array Proc (Array Proc Bool)))
+(declare-fun s_Handles_next () (Array Proc (Array Proc Bool)))
+(declare-fun s_Null () Int)
+(declare-fun s_Null_next () Int)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: Process
+(define-fun link_0 () s_sort (! s_Process :next s_Process_next))
+; source symbol: Resource
+(define-fun link_1 () s_sort (! s_Resource :next s_Resource_next))
+; source symbol: Sort
+(define-fun link_2 () (Array Proc s_sort) (! s_Sort :next s_Sort_next))
+; source symbol: Count
+(define-fun link_3 () (Array Proc Int) (! s_Count :next s_Count_next))
+; source symbol: Valid
+(define-fun link_4 () (Array Proc Bool) (! s_Valid :next s_Valid_next))
+; source symbol: Ptr
+(define-fun link_5 () (Array Proc Int) (! s_Ptr :next s_Ptr_next))
+; source symbol: Handles
+(define-fun link_6 () (Array Proc (Array Proc Bool)) (! s_Handles :next s_Handles_next))
+; source symbol: Null
+(define-fun link_7 () Int (! s_Null :next s_Null_next))
+; source symbol: __proc_rank
+(define-fun link_8 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: alloc
+(define-fun action_0 () Bool
+  (exists ((q_10_s_r Proc))
+    (and
+      (and
+        (= (select s_Sort q_10_s_r) s_Resource)
+        (and
+          (not (= (select s__5f__5f_proc_5f_rank q_10_s_r) s_Null))
+          (= (select s_Valid q_10_s_r) false)))
+      (forall ((q_11_s_index0 Proc))
+        (=
+          (select s_Valid_next q_11_s_index0)
+          (ite (= q_11_s_index0 q_10_s_r) true (select s_Valid q_11_s_index0))))
+      (forall ((q_12_s_index0 Proc))
+        (=
+          (select s_Count_next q_12_s_index0)
+          (ite (= q_12_s_index0 q_10_s_r) 0 (select s_Count q_12_s_index0))))
+      (forall ((q_13_s_s Proc) (q_14_s_q Proc))
+        (=
+          (select (select s_Handles_next q_13_s_s) q_14_s_q)
+          (ite
+            (and (= q_10_s_r q_13_s_s) (= (select s_Sort q_14_s_q) s_Process))
+            false
+            (select (select s_Handles q_13_s_s) q_14_s_q))))
+      (= s_Sort_next s_Sort)
+      (= s_Ptr_next s_Ptr)
+      (= s_Null_next s_Null))))
+; action: ref
+(define-fun action_1 () Bool
+  (exists ((q_15_s_p Proc) (q_16_s_r Proc))
+    (and
+      (not (= q_15_s_p q_16_s_r))
+      (and
+        (= (select s_Sort q_15_s_p) s_Process)
+        (and
+          (= (select s_Sort q_16_s_r) s_Resource)
+          (and (= (select s_Valid q_16_s_r) true) (= (select s_Ptr q_15_s_p) s_Null))))
+      (forall ((q_17_s_index0 Proc))
+        (=
+          (select s_Ptr_next q_17_s_index0)
+          (ite
+            (= q_17_s_index0 q_15_s_p)
+            (select s__5f__5f_proc_5f_rank q_16_s_r)
+            (select s_Ptr q_17_s_index0))))
+      (forall ((q_18_s_index0 Proc))
+        (=
+          (select s_Count_next q_18_s_index0)
+          (ite
+            (= q_18_s_index0 q_16_s_r)
+            (+ (select s_Count q_16_s_r) 1)
+            (select s_Count q_18_s_index0))))
+      (forall ((q_19_s_index0 Proc) (q_20_s_index1 Proc))
+        (=
+          (select (select s_Handles_next q_19_s_index0) q_20_s_index1)
+          (ite
+            (and (= q_19_s_index0 q_16_s_r) (= q_20_s_index1 q_15_s_p))
+            true
+            (select (select s_Handles q_19_s_index0) q_20_s_index1))))
+      (= s_Sort_next s_Sort)
+      (= s_Valid_next s_Valid)
+      (= s_Null_next s_Null))))
+; action: deref
+(define-fun action_2 () Bool
+  (exists ((q_21_s_p Proc) (q_22_s_r Proc))
+    (and
+      (not (= q_21_s_p q_22_s_r))
+      (and
+        (= (select s_Sort q_21_s_p) s_Process)
+        (and
+          (not (= (select s_Ptr q_21_s_p) s_Null))
+          (and
+            (= (select s_Sort q_22_s_r) s_Resource)
+            (= (select s_Ptr q_21_s_p) (select s__5f__5f_proc_5f_rank q_22_s_r)))))
+      (forall ((q_23_s_index0 Proc))
+        (=
+          (select s_Ptr_next q_23_s_index0)
+          (ite (= q_23_s_index0 q_21_s_p) s_Null (select s_Ptr q_23_s_index0))))
+      (forall ((q_24_s_index0 Proc))
+        (=
+          (select s_Count_next q_24_s_index0)
+          (ite
+            (= q_24_s_index0 q_22_s_r)
+            (- (select s_Count q_22_s_r) 1)
+            (select s_Count q_24_s_index0))))
+      (forall ((q_25_s_index0 Proc) (q_26_s_index1 Proc))
+        (=
+          (select (select s_Handles_next q_25_s_index0) q_26_s_index1)
+          (ite
+            (and (= q_25_s_index0 q_22_s_r) (= q_26_s_index1 q_21_s_p))
+            false
+            (select (select s_Handles q_25_s_index0) q_26_s_index1))))
+      (= s_Sort_next s_Sort)
+      (= s_Valid_next s_Valid)
+      (= s_Null_next s_Null))))
+; action: free
+(define-fun action_3 () Bool
+  (exists ((q_27_s_r Proc))
+    (and
+      (and
+        (= (select s_Sort q_27_s_r) s_Resource)
+        (and (= (select s_Valid q_27_s_r) true) (= (select s_Count q_27_s_r) 0)))
+      (forall ((q_28_s_index0 Proc))
+        (=
+          (select s_Valid_next q_28_s_index0)
+          (ite (= q_28_s_index0 q_27_s_r) false (select s_Valid q_28_s_index0))))
+      (= s_Sort_next s_Sort)
+      (= s_Count_next s_Count)
+      (= s_Ptr_next s_Ptr)
+      (= s_Handles_next s_Handles)
+      (= s_Null_next s_Null))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_p Proc))
+        (and
+          (= (select s_Valid q_2_s_p) false)
+          (and (= (select s_Ptr q_2_s_p) s_Null) (= (select s_Count q_2_s_p) 0))))
+      (not (= s_Process s_Resource))
+      (forall ((q_1_s_enum s_sort)) (or (= q_1_s_enum s_Process) (= q_1_s_enum s_Resource)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3)
+      (= s_Process_next s_Process)
+      (= s_Resource_next s_Resource)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (not (= s_Process s_Resource))
+      (forall ((q_1_s_enum s_sort)) (or (= q_1_s_enum s_Process) (= q_1_s_enum s_Resource)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (not (= s_Process s_Resource))
+      (forall ((q_1_s_enum s_sort)) (or (= q_1_s_enum s_Process) (= q_1_s_enum s_Resource)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_3_s_p Proc) (q_4_s_r Proc))
+        (=>
+          (not (= q_3_s_p q_4_s_r))
+          (not
+            (and
+              (= (select s_Sort q_3_s_p) s_Process)
+              (and
+                (= (select s_Sort q_4_s_r) s_Resource)
+                (and
+                  (not (= (select s_Ptr q_3_s_p) s_Null))
+                  (and
+                    (= (select s_Ptr q_3_s_p) (select s__5f__5f_proc_5f_rank q_4_s_r))
+                    (and (< 0 (select s_Count q_4_s_r)) (= (select s_Valid q_4_s_r) false)))))))))
+      (forall ((q_5_s_p Proc) (q_6_s_r Proc))
+        (=>
+          (not (= q_5_s_p q_6_s_r))
+          (not
+            (and
+              (= (select s_Sort q_5_s_p) s_Process)
+              (and
+                (= (select s_Sort q_6_s_r) s_Resource)
+                (and
+                  (not (= (select s_Ptr q_5_s_p) s_Null))
+                  (and
+                    (= (select s_Ptr q_5_s_p) (select s__5f__5f_proc_5f_rank q_6_s_r))
+                    (= (select s_Valid q_6_s_r) false))))))))
+      (forall ((q_7_s_r Proc))
+        (=>
+          true
+          (not
+            (and
+              (= (select s_Sort q_7_s_r) s_Resource)
+              (and (= (select s_Valid q_7_s_r) true) (< (select s_Count q_7_s_r) 0))))))
+      (forall ((q_8_s_p Proc) (q_9_s_r Proc))
+        (=>
+          (not (= q_8_s_p q_9_s_r))
+          (not
+            (and
+              (= (select s_Sort q_8_s_p) s_Process)
+              (and
+                (= (select s_Sort q_9_s_r) s_Resource)
+                (and
+                  (not (= (select s__5f__5f_proc_5f_rank q_9_s_r) s_Null))
+                  (and
+                    (= (select s_Valid q_9_s_r) true)
+                    (and
+                      (= (select (select s_Handles q_9_s_r) q_8_s_p) true)
+                      (not (= (select s_Ptr q_8_s_p) (select s__5f__5f_proc_5f_rank q_9_s_r))))))))))))
+    :invar-property
+    0))

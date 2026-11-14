@@ -1,0 +1,69 @@
+
+:smt (define-type locations (subrange 1 2))
+:local a locations
+:local b locations
+:global c int
+
+
+:initial 
+:var x
+:cnj (= a[x] 1) (= b[x] 1) 
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= b[x] 2)  (= b[y] 2)
+
+ 
+
+
+:comment t1
+:transition
+:var x
+:var j
+:guard (= a[x] 1)
+:numcases 2
+:case (= x j)
+ :val 2
+ :val b[j]
+ :val c[j]
+:case  
+ :val a[j]
+ :val b[j]
+ :val c[j]
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 2) (= x c[x])
+:numcases 2
+:case (= x j)
+ :val a[x]
+ :val 2
+ :val c[x]
+:case  
+ :val a[j]
+ :val b[j]
+ :val c[x]
+
+
+:comment t3
+:transition
+:var x
+:var j
+:guard (= b[x] 2)
+:numcases 2
+:case (= x j)
+ :val 1
+ :val 1
+ :val (+ c[x] 1)
+:case   
+ :val a[j]
+ :val b[j]
+ :val (+ c[x] 1)
+
+
+
+
+

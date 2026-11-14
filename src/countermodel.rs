@@ -258,14 +258,27 @@ pub(crate) fn search<F: TermCostFactory>(context: &SearchContext<'_, F>) -> Coun
         ActionRequirementGuidance::Disabled => false,
         ActionRequirementGuidance::WhenUnproductive => {
             !trace.budget_exhausted
-                && trace
-                    .nodes
-                    .iter()
-                    .all(|node| matches!(node.status, TraceStatus::Expanded | TraceStatus::Value))
+                && trace.nodes.iter().all(|node| {
+                    matches!(
+                        node.status,
+                        TraceStatus::Expanded | TraceStatus::Value | TraceStatus::Cycle
+                    )
+                })
         }
         ActionRequirementGuidance::Always => true,
     } {
-        requirements::extend(&mut trace, context);
+        let before = trace.nodes.len();
+        let allowance = context.allowance.prerequisite_allowance(trace.work);
+        requirements::extend(&mut trace, &context.with_allowance(allowance));
+        // Requirements discover concrete witness-body observations after the
+        // initial relation pass. Give those new frontiers a matching pass too.
+        // A local traversal cutoff must not prevent use of its reserved work.
+        let traversal_exhausted = trace.budget_exhausted;
+        if trace.nodes.len() > before {
+            trace.budget_exhausted = false;
+            countermodel_relations::extend(&mut trace, context);
+        }
+        trace.budget_exhausted |= traversal_exhausted;
     }
     trace
 }
@@ -534,6 +547,27 @@ fn expand(
             }
         }
         return Ok(vec![]);
+    }
+    // Scalar state demands need the same predecessor/helper validation as reads.
+    // Do not descend into a witness's captures or treat arbitrary leaves as state.
+    if let Some(frame) = cx.index.state_frame(term) {
+        if frame == 0 {
+            if let Some(mut search) = cx.initializers.take() {
+                let result = search.steps(term, cx);
+                cx.initializers = Some(search);
+                let children = result?;
+                if !children.is_empty() {
+                    return Ok(children);
+                }
+            }
+        }
+        let current_first = cx.transitions.as_ref().is_some_and(|s| s.current_first());
+        for current in [current_first, !current_first] {
+            let children = transition_steps(term, cx, current)?;
+            if !children.is_empty() {
+                return Ok(children);
+            }
+        }
     }
     let Term::Application {
         qual_identifier,

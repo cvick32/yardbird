@@ -1,0 +1,201 @@
+
+
+
+:comment   SOURCE:      Abdulla et al., TACAS 2007
+:comment   standard rendez-vous version  of  Dijkstra  algorithm
+
+ 
+:smt (define-type locations (subrange 1 7))
+:local a locations
+
+:local p bool
+:local f int
+
+:initial 
+:var x
+:cnj (= a[x] 1) (= p[x] false) (= f[x] 0)
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= a[x] 6)  (= a[y] 6)
+ 
+
+
+:comment t1 
+:transition
+:var x
+:var j
+:guard (= a[x] 1)
+:numcases 2
+:case (= x j)
+ :val 2
+ :val p[j]
+ :val 1
+:case  
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+
+
+
+
+:comment t2 
+:transition
+:var x
+:var j
+:guard (= a[x] 2)
+:uguard (= p[j] false)
+:uguard (= p[j] true) (= f[j] 0) 
+:numcases 2
+:case (= x j)
+ :val 3
+ :val p[j]
+ :val f[j]
+:case  
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+
+
+
+:comment t3 
+:transition
+:var x
+:var y
+:var j
+:guard (= a[x] 3) (= p[y] true) 
+:numcases 3
+:case (= x j)
+ :val 4
+ :val true
+ :val f[j]
+:case (= y j)
+ :val a[j]
+ :val false
+ :val f[j]
+:case  (not (= y j))
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+
+
+
+
+
+:comment t4 
+:transition
+:var x
+:var j
+:guard (= a[x] 4)
+:numcases 2
+:case (= x j)
+ :val 5
+ :val p[j]
+ :val 2
+:case  
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+
+
+:comment t5 
+:transition
+:var x
+:var j
+:guard (= a[x] 5)
+:uguard (not (= f[j] 2)) 
+:numcases 2
+:case (= x j)
+ :val 6
+ :val p[j]
+ :val f[j]
+:case  
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+
+:comment t6
+:transition
+:var x
+:var y
+:var j
+:guard (= a[x] 5)  (= f[y] 2) 
+:numcases 2
+:case (= x j)
+ :val 1
+ :val p[j]
+ :val f[j]
+:case    
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+:comment t7 
+:transition
+:var x
+:var j
+:guard (= a[x] 6)
+:numcases 2
+:case (= x j)
+ :val 7
+ :val p[j]
+ :val 0
+:case   
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+:comment t8 
+:transition
+:var x
+:var j
+:guard (= a[x] 7)
+:numcases 2
+:case (= x j)
+ :val 1
+ :val p[j]
+ :val f[j]
+:case   
+ :val a[j]
+ :val p[j]
+ :val f[j]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

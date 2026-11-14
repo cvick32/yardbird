@@ -11,11 +11,14 @@ struct Equation {
     right: Term,
     variables: HashMap<Symbol, Sort>,
     path: Vec<SymbolicInstance>,
+    // Check each guard after this many enclosing binder instances.
+    guards: Vec<(usize, Term)>,
 }
 
 #[derive(Default)]
 pub(crate) struct QuantifiedEquations {
     by_head: HashMap<String, Vec<Equation>>,
+    trace: bool,
 }
 
 impl QuantifiedEquations {
@@ -28,6 +31,7 @@ struct CompilationFrame {
     terms: std::vec::IntoIter<Term>,
     variables: HashMap<Symbol, Sort>,
     path: Vec<SymbolicInstance>,
+    guards: Vec<(usize, Term)>,
 }
 
 /// Retain sibling and binder-body traversal across policy slices. One step
@@ -45,7 +49,20 @@ impl EquationCompiler {
                 terms: vec![root].into_iter(),
                 variables: HashMap::new(),
                 path: Vec::new(),
+                guards: Vec::new(),
             }]),
+        }
+    }
+
+    /// Tracing validates every helper and witness implication before using an
+    /// equation. Ordinary partial requests still use universal instantiation.
+    pub(crate) fn for_trace(root: Term) -> Self {
+        Self {
+            equations: QuantifiedEquations {
+                trace: true,
+                ..Default::default()
+            },
+            ..Self::new(root)
         }
     }
 
@@ -76,6 +93,7 @@ impl EquationCompiler {
         let term = frame.terms.next().expect("nonempty compilation frame");
         let mut variables = frame.variables.clone();
         let mut path = frame.path.clone();
+        let mut guards = frame.guards.clone();
         if frame.terms.len() > 0 {
             self.queue.push_front(frame);
         }
@@ -93,6 +111,7 @@ impl EquationCompiler {
                 terms: vec![expanded].into_iter(),
                 variables,
                 path,
+                guards,
             });
             return;
         }
@@ -110,22 +129,40 @@ impl EquationCompiler {
                     terms: arguments.into_iter(),
                     variables,
                     path,
+                    guards,
                 });
             }
+        } else if self.equations.trace && name == "=>" && arguments.len() == 2 {
+            guards.push((path.len(), arguments[0].clone()));
+            self.queue.push_back(CompilationFrame {
+                terms: vec![arguments[1].clone()].into_iter(),
+                variables,
+                path,
+                guards,
+            });
         } else if name == "=" && arguments.len() == 2 {
             for (left, right) in [
                 (&arguments[0], &arguments[1]),
                 (&arguments[1], &arguments[0]),
             ] {
-                let Term::Application {
-                    qual_identifier, ..
-                } = left
-                else {
-                    continue;
+                let head = match left {
+                    Term::Application {
+                        qual_identifier, ..
+                    } => qual_identifier.get_name(),
+                    Term::QualIdentifier(identifier) if self.equations.trace => {
+                        let name = identifier.get_name();
+                        // Bound variables and constants are not state assignments.
+                        if variables.contains_key(&Symbol(name.clone()))
+                            || smt2parser::vmt::split_framed_symbol(&name).is_none()
+                        {
+                            continue;
+                        }
+                        name
+                    }
+                    _ => continue,
                 };
                 // Boolean connectives describe a body, not a function to
                 // look up. Either orientation of a functional equality is usable.
-                let head = qual_identifier.get_name();
                 if matches!(head.as_str(), "and" | "or" | "not" | "=>" | "ite" | "=") {
                     continue;
                 }
@@ -138,24 +175,39 @@ impl EquationCompiler {
                         right: right.clone(),
                         variables: variables.clone(),
                         path: path.clone(),
+                        guards: guards.clone(),
                     });
             }
-        } else if let Some(rule) = plan
-            .rules
-            .iter()
-            .find(|r| r.name == name && r.kind == BinderKind::Forall)
-        {
+        } else if let Some(rule) = plan.rules.iter().find(|r| {
+            r.name == name
+                && (r.kind == BinderKind::Forall
+                    || (self.equations.trace && r.kind == BinderKind::Exists))
+        }) {
             if arguments.len() != rule.captures.len() {
                 return;
             }
             // Binder nesting is finite in the lowered source DAG.
-            variables.extend(rule.variables.iter().cloned());
-            let values = rule
-                .variables
-                .iter()
-                .map(|(s, _)| app(&s.0, vec![]))
-                .collect::<Vec<_>>();
-            let instance = rule.instantiate(&arguments, &values);
+            let (values, instance) = if rule.kind == BinderKind::Exists {
+                // Existential parameters are the source-defined witness terms,
+                // not new matching variables. Retain their implication in the
+                // path so a missing witness is itself a refinement frontier.
+                let values = rule
+                    .witnesses
+                    .iter()
+                    .map(|name| app(name, arguments.clone()))
+                    .collect::<Vec<_>>();
+                let instance = rule.witness_instance(&arguments).unwrap();
+                (values, instance)
+            } else {
+                variables.extend(rule.variables.iter().cloned());
+                let values = rule
+                    .variables
+                    .iter()
+                    .map(|(s, _)| app(&s.0, vec![]))
+                    .collect::<Vec<_>>();
+                let instance = rule.instantiate(&arguments, &values);
+                (values, instance)
+            };
             let Term::Application {
                 arguments: implication,
                 ..
@@ -179,6 +231,7 @@ impl EquationCompiler {
                 terms: vec![body].into_iter(),
                 variables,
                 path,
+                guards,
             });
         }
     }
@@ -219,7 +272,18 @@ impl EquationCursor {
         plan: &QuantifierPlan,
         instances: &mut Vec<SymbolicInstance>,
     ) -> Option<Term> {
-        self.step_with_requests(equations, root, plan, instances, None)
+        self.step_with_requests(equations, root, plan, instances, &mut Vec::new(), None)
+    }
+
+    pub(crate) fn step_trace(
+        &mut self,
+        equations: &QuantifiedEquations,
+        root: &Term,
+        plan: &QuantifierPlan,
+        instances: &mut Vec<SymbolicInstance>,
+        guards: &mut Vec<(usize, Term)>,
+    ) -> Option<Term> {
+        self.step_with_requests(equations, root, plan, instances, guards, None)
     }
 
     /// A matching left-hand side can identify useful binders before every
@@ -232,7 +296,14 @@ impl EquationCursor {
         plan: &QuantifierPlan,
         requests: &mut Vec<super::BinderSearchRequest>,
     ) {
-        self.step_with_requests(equations, root, plan, &mut Vec::new(), Some(requests));
+        self.step_with_requests(
+            equations,
+            root,
+            plan,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            Some(requests),
+        );
     }
 
     fn step_with_requests(
@@ -241,6 +312,7 @@ impl EquationCursor {
         root: &Term,
         plan: &QuantifierPlan,
         instances: &mut Vec<SymbolicInstance>,
+        guards: &mut Vec<(usize, Term)>,
         requests: Option<&mut Vec<super::BinderSearchRequest>>,
     ) -> Option<Term> {
         let mut term = root;
@@ -258,15 +330,17 @@ impl EquationCursor {
             term = &arguments[child];
         }
         let frame = self.stack.last_mut()?;
-        let Term::Application {
-            qual_identifier,
-            arguments,
-        } = term
-        else {
-            self.stack.pop();
-            return None;
+        let (name, arguments) = match term {
+            Term::Application {
+                qual_identifier,
+                arguments,
+            } => (qual_identifier.get_name(), arguments.as_slice()),
+            Term::QualIdentifier(identifier) if equations.trace => (identifier.get_name(), &[][..]),
+            _ => {
+                self.stack.pop();
+                return None;
+            }
         };
-        let name = qual_identifier.get_name();
         if let Some(equation) = equations
             .by_head
             .get(&name)
@@ -282,6 +356,18 @@ impl EquationCursor {
                 &mut bindings,
             ) {
                 return None;
+            }
+            // A scalar equation may not mention its enclosing universal's
+            // variable. Instantiate the remaining slots with declared, typed
+            // seed terms; the full instance still goes through model validation.
+            if equations.trace {
+                for (variable, sort) in &equation.variables {
+                    if !bindings.contains_key(variable) {
+                        if let Some((_, seed)) = plan.seeds.iter().find(|(s, _)| s == sort) {
+                            bindings.insert(variable.clone(), seed.clone());
+                        }
+                    }
+                }
             }
             let complete = equation.variables.keys().all(|v| bindings.contains_key(v));
             let bindings = bindings.into_iter().collect::<Vec<_>>();
@@ -314,6 +400,11 @@ impl EquationCursor {
             if !complete {
                 return None;
             }
+            guards.extend(
+                equation.guards.iter().map(|(position, guard)| {
+                    (*position, substitute(guard.clone(), bindings.clone()))
+                }),
+            );
             for template in &equation.path {
                 instances.push(SymbolicInstance {
                     rule: template.rule.clone(),
@@ -424,8 +515,10 @@ mod tests {
                     right: "(g x)".parse().unwrap(),
                     variables: HashMap::from([(Symbol("x".into()), int)]),
                     path: vec![],
+                    guards: vec![],
                 }],
             )]),
+            trace: false,
         };
         let goal: Term = "(and (= (f 0) 0) (= (f true) 0) (= (f 1) 1) (= (opaque (f 2)) 2))"
             .parse()

@@ -1,0 +1,1141 @@
+; Generated offline from ivybench/paxos/vmt/MultiPaxos.vmt
+; Source SHA-256: 1f6a924f71f17e5fe88f36733c6bf962db1620087368000c2fe2fe62e06a52f0
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_acceptor 0)
+(declare-sort s_ballot 0)
+(declare-sort s_instances 0)
+(declare-sort s_quorum 0)
+(declare-sort s_value 0)
+(declare-fun s__5f__5f_chosen () (Array s_instances (Array s_value Bool)))
+(declare-fun s__5f__5f_chosen_next () (Array s_instances (Array s_value Bool)))
+(declare-fun s__5f__5f_chosenAt () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_chosenAt_next () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_isSafeAt () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_isSafeAt_next () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_isSafeAtMultiPaxos () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_isSafeAtMultiPaxos_next () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_isSafeAtPaxosSimple () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_isSafeAtPaxosSimple_next () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_maxBal () (Array s_acceptor s_ballot))
+(declare-fun s__5f__5f_maxBal_next () (Array s_acceptor s_ballot))
+(declare-fun s__5f__5f_maxVBal () (Array s_instances (Array s_acceptor s_ballot)))
+(declare-fun s__5f__5f_maxVBal_next () (Array s_instances (Array s_acceptor s_ballot)))
+(declare-fun s__5f__5f_maxVal () (Array s_instances (Array s_acceptor s_value)))
+(declare-fun s__5f__5f_maxVal_next () (Array s_instances (Array s_acceptor s_value)))
+(declare-fun s__5f__5f_msg_5f_1a () (Array s_ballot Bool))
+(declare-fun s__5f__5f_msg_5f_1a_next () (Array s_ballot Bool))
+(declare-fun s__5f__5f_msg_5f_1b () (Array s_instances (Array s_acceptor (Array s_ballot (Array s_ballot (Array s_value Bool))))))
+(declare-fun s__5f__5f_msg_5f_1b_next () (Array s_instances (Array s_acceptor (Array s_ballot (Array s_ballot (Array s_value Bool))))))
+(declare-fun s__5f__5f_msg_5f_2a () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_msg_5f_2a_next () (Array s_instances (Array s_ballot (Array s_value Bool))))
+(declare-fun s__5f__5f_msg_5f_2b () (Array s_instances (Array s_acceptor (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_msg_5f_2b_next () (Array s_instances (Array s_acceptor (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_propCmds () (Array s_value Bool))
+(declare-fun s__5f__5f_propCmds_next () (Array s_value Bool))
+(declare-fun s__5f__5f_showsSafeAt () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_showsSafeAt_next () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_showsSafeAtMultiPaxos () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_showsSafeAtMultiPaxos_next () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_showsSafeAtPaxosSimple () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))))
+(declare-fun s__5f__5f_showsSafeAtPaxosSimple_next () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))))
+(declare-fun s_le () (Array s_ballot (Array s_ballot Bool)))
+(declare-fun s_le_next () (Array s_ballot (Array s_ballot Bool)))
+(declare-fun s_max () s_ballot)
+(declare-fun s_max_next () s_ballot)
+(declare-fun s_member () (Array s_acceptor (Array s_quorum Bool)))
+(declare-fun s_member_next () (Array s_acceptor (Array s_quorum Bool)))
+(declare-fun s_negone () s_ballot)
+(declare-fun s_negone_next () s_ballot)
+(declare-fun s_none () s_value)
+(declare-fun s_none_next () s_value)
+; source symbol: __chosen
+(define-fun link_0 () (Array s_instances (Array s_value Bool)) (! s__5f__5f_chosen :next s__5f__5f_chosen_next))
+; source symbol: __chosenAt
+(define-fun link_1 () (Array s_instances (Array s_ballot (Array s_value Bool))) (! s__5f__5f_chosenAt :next s__5f__5f_chosenAt_next))
+; source symbol: __isSafeAt
+(define-fun link_2 () (Array s_instances (Array s_ballot (Array s_value Bool))) (! s__5f__5f_isSafeAt :next s__5f__5f_isSafeAt_next))
+; source symbol: __isSafeAtMultiPaxos
+(define-fun link_3 () (Array s_instances (Array s_ballot (Array s_value Bool))) (! s__5f__5f_isSafeAtMultiPaxos :next s__5f__5f_isSafeAtMultiPaxos_next))
+; source symbol: __isSafeAtPaxosSimple
+(define-fun link_4 () (Array s_instances (Array s_ballot (Array s_value Bool))) (! s__5f__5f_isSafeAtPaxosSimple :next s__5f__5f_isSafeAtPaxosSimple_next))
+; source symbol: __maxBal
+(define-fun link_5 () (Array s_acceptor s_ballot) (! s__5f__5f_maxBal :next s__5f__5f_maxBal_next))
+; source symbol: __maxVBal
+(define-fun link_6 () (Array s_instances (Array s_acceptor s_ballot)) (! s__5f__5f_maxVBal :next s__5f__5f_maxVBal_next))
+; source symbol: __maxVal
+(define-fun link_7 () (Array s_instances (Array s_acceptor s_value)) (! s__5f__5f_maxVal :next s__5f__5f_maxVal_next))
+; source symbol: __msg_1a
+(define-fun link_8 () (Array s_ballot Bool) (! s__5f__5f_msg_5f_1a :next s__5f__5f_msg_5f_1a_next))
+; source symbol: __msg_1b
+(define-fun link_9 () (Array s_instances (Array s_acceptor (Array s_ballot (Array s_ballot (Array s_value Bool))))) (! s__5f__5f_msg_5f_1b :next s__5f__5f_msg_5f_1b_next))
+; source symbol: __msg_2a
+(define-fun link_10 () (Array s_instances (Array s_ballot (Array s_value Bool))) (! s__5f__5f_msg_5f_2a :next s__5f__5f_msg_5f_2a_next))
+; source symbol: __msg_2b
+(define-fun link_11 () (Array s_instances (Array s_acceptor (Array s_ballot (Array s_value Bool)))) (! s__5f__5f_msg_5f_2b :next s__5f__5f_msg_5f_2b_next))
+; source symbol: __propCmds
+(define-fun link_12 () (Array s_value Bool) (! s__5f__5f_propCmds :next s__5f__5f_propCmds_next))
+; source symbol: __showsSafeAt
+(define-fun link_13 () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))) (! s__5f__5f_showsSafeAt :next s__5f__5f_showsSafeAt_next))
+; source symbol: __showsSafeAtMultiPaxos
+(define-fun link_14 () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))) (! s__5f__5f_showsSafeAtMultiPaxos :next s__5f__5f_showsSafeAtMultiPaxos_next))
+; source symbol: __showsSafeAtPaxosSimple
+(define-fun link_15 () (Array s_instances (Array s_quorum (Array s_ballot (Array s_value Bool)))) (! s__5f__5f_showsSafeAtPaxosSimple :next s__5f__5f_showsSafeAtPaxosSimple_next))
+; source symbol: le
+(define-fun link_16 () (Array s_ballot (Array s_ballot Bool)) (! s_le :next s_le_next))
+; source symbol: max
+(define-fun link_17 () s_ballot (! s_max :next s_max_next))
+; source symbol: member
+(define-fun link_18 () (Array s_acceptor (Array s_quorum Bool)) (! s_member :next s_member_next))
+; source symbol: negone
+(define-fun link_19 () s_ballot (! s_negone :next s_negone_next))
+; source symbol: none
+(define-fun link_20 () s_value (! s_none :next s_none_next))
+; action: ext:phase_1a
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_141_s_V_5f__5f_fml_3a_b s_ballot))
+        (and
+          (forall ((q_142_s_V0 s_ballot))
+            (=
+              (select s__5f__5f_msg_5f_1a_next q_142_s_V0)
+              (ite
+                (= q_142_s_V0 q_141_s_V_5f__5f_fml_3a_b)
+                true
+                (select s__5f__5f_msg_5f_1a q_142_s_V0))))
+          (not (= q_141_s_V_5f__5f_fml_3a_b s_negone)))))
+    (= s__5f__5f_maxBal_next s__5f__5f_maxBal)
+    (= s__5f__5f_maxVBal_next s__5f__5f_maxVBal)
+    (= s__5f__5f_maxVal_next s__5f__5f_maxVal)
+    (= s__5f__5f_msg_5f_1b_next s__5f__5f_msg_5f_1b)
+    (= s__5f__5f_msg_5f_2a_next s__5f__5f_msg_5f_2a)
+    (= s__5f__5f_msg_5f_2b_next s__5f__5f_msg_5f_2b)
+    (= s__5f__5f_propCmds_next s__5f__5f_propCmds)))
+; action: ext:phase_1b
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_143_s_V_5f__5f_fml_3a_a s_acceptor) (q_144_s_V_5f__5f_fml_3a_b s_ballot))
+        (and
+          (forall ((q_145_s_V0 s_acceptor))
+            (=
+              (select s__5f__5f_maxBal_next q_145_s_V0)
+              (ite
+                (= q_145_s_V0 q_143_s_V_5f__5f_fml_3a_a)
+                q_144_s_V_5f__5f_fml_3a_b
+                (select s__5f__5f_maxBal q_145_s_V0))))
+          (forall ((q_146_s_I s_instances) (q_147_s_V0 s_instances) (q_148_s_V1 s_acceptor) (q_149_s_V2 s_ballot) (q_150_s_V3 s_ballot) (q_151_s_V4 s_value))
+            (=
+              (select
+                (select
+                  (select
+                    (select (select s__5f__5f_msg_5f_1b_next q_147_s_V0) q_148_s_V1)
+                    q_149_s_V2)
+                  q_150_s_V3)
+                q_151_s_V4)
+              (ite
+                (and
+                  (= q_148_s_V1 q_143_s_V_5f__5f_fml_3a_a)
+                  (= q_149_s_V2 q_144_s_V_5f__5f_fml_3a_b)
+                  (=
+                    q_150_s_V3
+                    (select (select s__5f__5f_maxVBal q_146_s_I) q_143_s_V_5f__5f_fml_3a_a))
+                  (=
+                    q_151_s_V4
+                    (select (select s__5f__5f_maxVal q_146_s_I) q_143_s_V_5f__5f_fml_3a_a)))
+                true
+                (select
+                  (select
+                    (select (select (select s__5f__5f_msg_5f_1b q_147_s_V0) q_148_s_V1) q_149_s_V2)
+                    q_150_s_V3)
+                  q_151_s_V4))))
+          (not (= q_144_s_V_5f__5f_fml_3a_b s_negone))
+          (select s__5f__5f_msg_5f_1a q_144_s_V_5f__5f_fml_3a_b)
+          (not
+            (select
+              (select s_le q_144_s_V_5f__5f_fml_3a_b)
+              (select s__5f__5f_maxBal q_143_s_V_5f__5f_fml_3a_a))))))
+    (= s__5f__5f_maxVBal_next s__5f__5f_maxVBal)
+    (= s__5f__5f_maxVal_next s__5f__5f_maxVal)
+    (= s__5f__5f_msg_5f_1a_next s__5f__5f_msg_5f_1a)
+    (= s__5f__5f_msg_5f_2a_next s__5f__5f_msg_5f_2a)
+    (= s__5f__5f_msg_5f_2b_next s__5f__5f_msg_5f_2b)
+    (= s__5f__5f_propCmds_next s__5f__5f_propCmds)))
+; action: ext:phase_2a
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_152_s_V_5f__5f_fml_3a_b s_ballot) (q_153_s_V_5f__5f_fml_3a_i s_instances) (q_154_s_V_5f__5f_fml_3a_v s_value))
+        (and
+          (forall ((q_155_s_V0 s_instances) (q_156_s_V1 s_ballot) (q_157_s_V2 s_value))
+            (=
+              (select (select (select s__5f__5f_msg_5f_2a_next q_155_s_V0) q_156_s_V1) q_157_s_V2)
+              (ite
+                (and
+                  (= q_155_s_V0 q_153_s_V_5f__5f_fml_3a_i)
+                  (= q_156_s_V1 q_152_s_V_5f__5f_fml_3a_b)
+                  (= q_157_s_V2 q_154_s_V_5f__5f_fml_3a_v))
+                true
+                (select (select (select s__5f__5f_msg_5f_2a q_155_s_V0) q_156_s_V1) q_157_s_V2))))
+          (not (= q_152_s_V_5f__5f_fml_3a_b s_negone))
+          (not (= q_154_s_V_5f__5f_fml_3a_v s_none))
+          (forall ((q_158_s_V s_value))
+            (not
+              (select
+                (select
+                  (select s__5f__5f_msg_5f_2a q_153_s_V_5f__5f_fml_3a_i)
+                  q_152_s_V_5f__5f_fml_3a_b)
+                q_158_s_V)))
+          (select
+            (select
+              (select s__5f__5f_isSafeAtMultiPaxos q_153_s_V_5f__5f_fml_3a_i)
+              q_152_s_V_5f__5f_fml_3a_b)
+            q_154_s_V_5f__5f_fml_3a_v))))
+    (= s__5f__5f_maxBal_next s__5f__5f_maxBal)
+    (= s__5f__5f_maxVBal_next s__5f__5f_maxVBal)
+    (= s__5f__5f_maxVal_next s__5f__5f_maxVal)
+    (= s__5f__5f_msg_5f_1a_next s__5f__5f_msg_5f_1a)
+    (= s__5f__5f_msg_5f_1b_next s__5f__5f_msg_5f_1b)
+    (= s__5f__5f_msg_5f_2b_next s__5f__5f_msg_5f_2b)
+    (= s__5f__5f_propCmds_next s__5f__5f_propCmds)))
+; action: ext:phase_2b
+(define-fun action_3 () Bool
+  (and
+    (and
+      (exists ((q_159_s_V_5f__5f_fml_3a_a s_acceptor) (q_160_s_V_5f__5f_fml_3a_b s_ballot) (q_161_s_V_5f__5f_fml_3a_i s_instances) (q_162_s_V_5f__5f_fml_3a_v s_value))
+        (and
+          (forall ((q_163_s_V0 s_instances) (q_164_s_V1 s_acceptor))
+            (=
+              (select (select s__5f__5f_maxVBal_next q_163_s_V0) q_164_s_V1)
+              (ite
+                (and
+                  (= q_163_s_V0 q_161_s_V_5f__5f_fml_3a_i)
+                  (= q_164_s_V1 q_159_s_V_5f__5f_fml_3a_a))
+                q_160_s_V_5f__5f_fml_3a_b
+                (select (select s__5f__5f_maxVBal q_163_s_V0) q_164_s_V1))))
+          (forall ((q_165_s_V0 s_instances) (q_166_s_V1 s_acceptor))
+            (=
+              (select (select s__5f__5f_maxVal_next q_165_s_V0) q_166_s_V1)
+              (ite
+                (and
+                  (= q_165_s_V0 q_161_s_V_5f__5f_fml_3a_i)
+                  (= q_166_s_V1 q_159_s_V_5f__5f_fml_3a_a))
+                q_162_s_V_5f__5f_fml_3a_v
+                (select (select s__5f__5f_maxVal q_165_s_V0) q_166_s_V1))))
+          (forall ((q_167_s_V0 s_instances) (q_168_s_V1 s_acceptor) (q_169_s_V2 s_ballot) (q_170_s_V3 s_value))
+            (=
+              (select
+                (select (select (select s__5f__5f_msg_5f_2b_next q_167_s_V0) q_168_s_V1) q_169_s_V2)
+                q_170_s_V3)
+              (ite
+                (and
+                  (= q_167_s_V0 q_161_s_V_5f__5f_fml_3a_i)
+                  (= q_168_s_V1 q_159_s_V_5f__5f_fml_3a_a)
+                  (= q_169_s_V2 q_160_s_V_5f__5f_fml_3a_b)
+                  (= q_170_s_V3 q_162_s_V_5f__5f_fml_3a_v))
+                true
+                (select
+                  (select (select (select s__5f__5f_msg_5f_2b q_167_s_V0) q_168_s_V1) q_169_s_V2)
+                  q_170_s_V3))))
+          (not (= q_160_s_V_5f__5f_fml_3a_b s_negone))
+          (not (= q_162_s_V_5f__5f_fml_3a_v s_none))
+          (select
+            (select
+              (select s__5f__5f_msg_5f_2a q_161_s_V_5f__5f_fml_3a_i)
+              q_160_s_V_5f__5f_fml_3a_b)
+            q_162_s_V_5f__5f_fml_3a_v)
+          (= (select s__5f__5f_maxBal q_159_s_V_5f__5f_fml_3a_a) q_160_s_V_5f__5f_fml_3a_b))))
+    (= s__5f__5f_maxBal_next s__5f__5f_maxBal)
+    (= s__5f__5f_msg_5f_1a_next s__5f__5f_msg_5f_1a)
+    (= s__5f__5f_msg_5f_1b_next s__5f__5f_msg_5f_1b)
+    (= s__5f__5f_msg_5f_2a_next s__5f__5f_msg_5f_2a)
+    (= s__5f__5f_propCmds_next s__5f__5f_propCmds)))
+; action: ext:propose
+(define-fun action_4 () Bool
+  (and
+    (and
+      (exists ((q_171_s_V_5f__5f_fml_3a_c s_value))
+        (and
+          (forall ((q_172_s_V0 s_value))
+            (=
+              (select s__5f__5f_propCmds_next q_172_s_V0)
+              (ite
+                (= q_172_s_V0 q_171_s_V_5f__5f_fml_3a_c)
+                true
+                (select s__5f__5f_propCmds q_172_s_V0))))
+          (not (= q_171_s_V_5f__5f_fml_3a_c s_none)))))
+    (= s__5f__5f_maxBal_next s__5f__5f_maxBal)
+    (= s__5f__5f_maxVBal_next s__5f__5f_maxVBal)
+    (= s__5f__5f_maxVal_next s__5f__5f_maxVal)
+    (= s__5f__5f_msg_5f_1a_next s__5f__5f_msg_5f_1a)
+    (= s__5f__5f_msg_5f_1b_next s__5f__5f_msg_5f_1b)
+    (= s__5f__5f_msg_5f_2a_next s__5f__5f_msg_5f_2a)
+    (= s__5f__5f_msg_5f_2b_next s__5f__5f_msg_5f_2b)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_122_s_V0 s_acceptor)) (= (select s__5f__5f_maxBal q_122_s_V0) s_negone))
+          (forall ((q_123_s_V0 s_instances) (q_124_s_V1 s_acceptor))
+            (= (select (select s__5f__5f_maxVBal q_123_s_V0) q_124_s_V1) s_negone))
+          (forall ((q_125_s_V0 s_instances) (q_126_s_V1 s_acceptor))
+            (= (select (select s__5f__5f_maxVal q_125_s_V0) q_126_s_V1) s_none))
+          (forall ((q_127_s_V0 s_ballot)) (= (select s__5f__5f_msg_5f_1a q_127_s_V0) false))
+          (forall ((q_128_s_V0 s_instances) (q_129_s_V1 s_acceptor) (q_130_s_V2 s_ballot) (q_131_s_V3 s_ballot) (q_132_s_V4 s_value))
+            (=
+              (select
+                (select
+                  (select (select (select s__5f__5f_msg_5f_1b q_128_s_V0) q_129_s_V1) q_130_s_V2)
+                  q_131_s_V3)
+                q_132_s_V4)
+              false))
+          (forall ((q_133_s_V0 s_instances) (q_134_s_V1 s_ballot) (q_135_s_V2 s_value))
+            (=
+              (select (select (select s__5f__5f_msg_5f_2a q_133_s_V0) q_134_s_V1) q_135_s_V2)
+              false))
+          (forall ((q_136_s_V0 s_instances) (q_137_s_V1 s_acceptor) (q_138_s_V2 s_ballot) (q_139_s_V3 s_value))
+            (=
+              (select
+                (select (select (select s__5f__5f_msg_5f_2b q_136_s_V0) q_137_s_V1) q_138_s_V2)
+                q_139_s_V3)
+              false))
+          (forall ((q_140_s_V0 s_value)) (= (select s__5f__5f_propCmds q_140_s_V0) false))))
+      (and
+        (forall ((q_1_s_V0 s_instances) (q_2_s_V1 s_value))
+          (=
+            (select (select s__5f__5f_chosen q_1_s_V0) q_2_s_V1)
+            (exists ((q_3_s_B s_ballot))
+              (select (select (select s__5f__5f_chosenAt q_1_s_V0) q_3_s_B) q_2_s_V1)))))
+      (and
+        (forall ((q_4_s_V0 s_instances) (q_5_s_V1 s_ballot) (q_6_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_chosenAt q_4_s_V0) q_5_s_V1) q_6_s_V2)
+            (exists ((q_7_s_Q s_quorum))
+              (forall ((q_8_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_8_s_A) q_7_s_Q)
+                  (select
+                    (select (select (select s__5f__5f_msg_5f_2b q_4_s_V0) q_8_s_A) q_5_s_V1)
+                    q_6_s_V2)))))))
+      (and
+        (forall ((q_9_s_V0 s_instances) (q_10_s_V1 s_ballot) (q_11_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAt q_9_s_V0) q_10_s_V1) q_11_s_V2)
+            (exists ((q_12_s_Q s_quorum))
+              (select
+                (select (select (select s__5f__5f_showsSafeAt q_9_s_V0) q_12_s_Q) q_10_s_V1)
+                q_11_s_V2)))))
+      (and
+        (forall ((q_13_s_V0 s_instances) (q_14_s_V1 s_ballot) (q_15_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAtMultiPaxos q_13_s_V0) q_14_s_V1) q_15_s_V2)
+            (exists ((q_16_s_Q s_quorum))
+              (select
+                (select
+                  (select (select s__5f__5f_showsSafeAtMultiPaxos q_13_s_V0) q_16_s_Q)
+                  q_14_s_V1)
+                q_15_s_V2)))))
+      (and
+        (forall ((q_17_s_V0 s_instances) (q_18_s_V1 s_ballot) (q_19_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAtPaxosSimple q_17_s_V0) q_18_s_V1) q_19_s_V2)
+            (exists ((q_20_s_Q s_quorum))
+              (select
+                (select
+                  (select (select s__5f__5f_showsSafeAtPaxosSimple q_17_s_V0) q_20_s_Q)
+                  q_18_s_V1)
+                q_19_s_V2)))))
+      (and
+        (forall ((q_21_s_V0 s_instances) (q_22_s_V1 s_quorum) (q_23_s_V2 s_ballot) (q_24_s_V3 s_value))
+          (=
+            (select
+              (select (select (select s__5f__5f_showsSafeAt q_21_s_V0) q_22_s_V1) q_23_s_V2)
+              q_24_s_V3)
+            (and
+              (forall ((q_25_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_25_s_A) q_22_s_V1)
+                  (select (select s_le q_23_s_V2) (select s__5f__5f_maxBal q_25_s_A))))
+              (exists ((q_26_s_C s_ballot))
+                (and
+                  (not (select (select s_le q_23_s_V2) q_26_s_C))
+                  (=>
+                    (not (= q_26_s_C s_negone))
+                    (exists ((q_27_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_27_s_A) q_22_s_V1)
+                        (select
+                          (select (select (select s__5f__5f_msg_5f_2b q_21_s_V0) q_27_s_A) q_26_s_C)
+                          q_24_s_V3))))
+                  (forall ((q_28_s_D s_ballot))
+                    (=>
+                      (and
+                        (not (select (select s_le q_28_s_D) q_26_s_C))
+                        (not (select (select s_le q_23_s_V2) q_28_s_D)))
+                      (forall ((q_29_s_A s_acceptor))
+                        (=>
+                          (select (select s_member q_29_s_A) q_22_s_V1)
+                          (forall ((q_30_s_Vd s_value))
+                            (not
+                              (select
+                                (select
+                                  (select (select s__5f__5f_msg_5f_2b q_21_s_V0) q_29_s_A)
+                                  q_28_s_D)
+                                q_30_s_Vd)))))))))))))
+      (and
+        (forall ((q_31_s_V0 s_instances) (q_32_s_V1 s_quorum) (q_33_s_V2 s_ballot) (q_34_s_V3 s_value))
+          (=
+            (select
+              (select
+                (select (select s__5f__5f_showsSafeAtMultiPaxos q_31_s_V0) q_32_s_V1)
+                q_33_s_V2)
+              q_34_s_V3)
+            (and
+              (forall ((q_35_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_35_s_A) q_32_s_V1)
+                  (exists ((q_36_s_MBAL s_ballot) (q_37_s_MVAL s_value))
+                    (select
+                      (select
+                        (select (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_35_s_A) q_33_s_V2)
+                        q_36_s_MBAL)
+                      q_37_s_MVAL))))
+              (or
+                (and
+                  (forall ((q_38_s_A s_acceptor) (q_39_s_MBAL s_ballot) (q_40_s_MVAL s_value))
+                    (not
+                      (and
+                        (select (select s_member q_38_s_A) q_32_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_38_s_A)
+                              q_33_s_V2)
+                            q_39_s_MBAL)
+                          q_40_s_MVAL)
+                        (not (= q_39_s_MBAL s_negone)))))
+                  (select s__5f__5f_propCmds q_34_s_V3))
+                (exists ((q_41_s_MBAL s_ballot))
+                  (and
+                    (exists ((q_42_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_42_s_A) q_32_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_42_s_A)
+                              q_33_s_V2)
+                            q_41_s_MBAL)
+                          q_34_s_V3)
+                        (not (= q_41_s_MBAL s_negone))))
+                    (forall ((q_43_s_A s_acceptor) (q_44_s_MBAL2 s_ballot) (q_45_s_MVAL2 s_value))
+                      (=>
+                        (and
+                          (select (select s_member q_43_s_A) q_32_s_V1)
+                          (select
+                            (select
+                              (select
+                                (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_43_s_A)
+                                q_33_s_V2)
+                              q_44_s_MBAL2)
+                            q_45_s_MVAL2)
+                          (not (= q_44_s_MBAL2 s_negone)))
+                        (select (select s_le q_44_s_MBAL2) q_41_s_MBAL))))))))))
+      (and
+        (forall ((q_46_s_V0 s_instances) (q_47_s_V1 s_quorum) (q_48_s_V2 s_ballot) (q_49_s_V3 s_value))
+          (=
+            (select
+              (select
+                (select (select s__5f__5f_showsSafeAtPaxosSimple q_46_s_V0) q_47_s_V1)
+                q_48_s_V2)
+              q_49_s_V3)
+            (and
+              (forall ((q_50_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_50_s_A) q_47_s_V1)
+                  (exists ((q_51_s_MBAL s_ballot) (q_52_s_MVAL s_value))
+                    (select
+                      (select
+                        (select (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_50_s_A) q_48_s_V2)
+                        q_51_s_MBAL)
+                      q_52_s_MVAL))))
+              (or
+                (and
+                  (forall ((q_53_s_A s_acceptor) (q_54_s_MBAL s_ballot) (q_55_s_MVAL s_value))
+                    (not
+                      (and
+                        (select (select s_member q_53_s_A) q_47_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_53_s_A)
+                              q_48_s_V2)
+                            q_54_s_MBAL)
+                          q_55_s_MVAL)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b q_46_s_V0) q_53_s_A)
+                            q_54_s_MBAL)
+                          q_55_s_MVAL))))
+                  (select s__5f__5f_propCmds q_49_s_V3))
+                (exists ((q_56_s_MBAL s_ballot))
+                  (and
+                    (exists ((q_57_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_57_s_A) q_47_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_57_s_A)
+                              q_48_s_V2)
+                            q_56_s_MBAL)
+                          q_49_s_V3)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b q_46_s_V0) q_57_s_A)
+                            q_56_s_MBAL)
+                          q_49_s_V3)))
+                    (forall ((q_58_s_A s_acceptor) (q_59_s_MBAL2 s_ballot) (q_60_s_MVAL2 s_value))
+                      (=>
+                        (and
+                          (select (select s_member q_58_s_A) q_47_s_V1)
+                          (select
+                            (select
+                              (select
+                                (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_58_s_A)
+                                q_48_s_V2)
+                              q_59_s_MBAL2)
+                            q_60_s_MVAL2)
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_2b q_46_s_V0) q_58_s_A)
+                              q_59_s_MBAL2)
+                            q_60_s_MVAL2))
+                        (select (select s_le q_59_s_MBAL2) q_56_s_MBAL))))))))))
+      (and
+        (and
+          (forall ((q_109_s_X s_ballot)) (select (select s_le q_109_s_X) q_109_s_X))
+          (forall ((q_110_s_X s_ballot) (q_111_s_Y s_ballot) (q_112_s_Z s_ballot))
+            (=>
+              (and
+                (select (select s_le q_110_s_X) q_111_s_Y)
+                (select (select s_le q_111_s_Y) q_112_s_Z))
+              (select (select s_le q_110_s_X) q_112_s_Z)))
+          (forall ((q_113_s_X s_ballot) (q_114_s_Y s_ballot))
+            (=>
+              (and
+                (select (select s_le q_113_s_X) q_114_s_Y)
+                (select (select s_le q_114_s_Y) q_113_s_X))
+              (= q_113_s_X q_114_s_Y)))
+          (forall ((q_115_s_X s_ballot) (q_116_s_Y s_ballot))
+            (or
+              (select (select s_le q_115_s_X) q_116_s_Y)
+              (select (select s_le q_116_s_Y) q_115_s_X)))
+          (forall ((q_117_s_X s_ballot)) (select (select s_le s_negone) q_117_s_X))
+          (forall ((q_118_s_X s_ballot)) (select (select s_le q_118_s_X) s_max))
+          (forall ((q_119_s_Q1 s_quorum) (q_120_s_Q2 s_quorum))
+            (exists ((q_121_s_A s_acceptor))
+              (and
+                (select (select s_member q_121_s_A) q_119_s_Q1)
+                (select (select s_member q_121_s_A) q_120_s_Q2)))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4)
+      (= s_le_next s_le)
+      (= s_max_next s_max)
+      (= s_member_next s_member)
+      (= s_negone_next s_negone)
+      (= s_none_next s_none)
+      (and
+        (forall ((q_1_s_V0 s_instances) (q_2_s_V1 s_value))
+          (=
+            (select (select s__5f__5f_chosen q_1_s_V0) q_2_s_V1)
+            (exists ((q_3_s_B s_ballot))
+              (select (select (select s__5f__5f_chosenAt q_1_s_V0) q_3_s_B) q_2_s_V1)))))
+      (and
+        (forall ((q_4_s_V0 s_instances) (q_5_s_V1 s_ballot) (q_6_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_chosenAt q_4_s_V0) q_5_s_V1) q_6_s_V2)
+            (exists ((q_7_s_Q s_quorum))
+              (forall ((q_8_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_8_s_A) q_7_s_Q)
+                  (select
+                    (select (select (select s__5f__5f_msg_5f_2b q_4_s_V0) q_8_s_A) q_5_s_V1)
+                    q_6_s_V2)))))))
+      (and
+        (forall ((q_9_s_V0 s_instances) (q_10_s_V1 s_ballot) (q_11_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAt q_9_s_V0) q_10_s_V1) q_11_s_V2)
+            (exists ((q_12_s_Q s_quorum))
+              (select
+                (select (select (select s__5f__5f_showsSafeAt q_9_s_V0) q_12_s_Q) q_10_s_V1)
+                q_11_s_V2)))))
+      (and
+        (forall ((q_13_s_V0 s_instances) (q_14_s_V1 s_ballot) (q_15_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAtMultiPaxos q_13_s_V0) q_14_s_V1) q_15_s_V2)
+            (exists ((q_16_s_Q s_quorum))
+              (select
+                (select
+                  (select (select s__5f__5f_showsSafeAtMultiPaxos q_13_s_V0) q_16_s_Q)
+                  q_14_s_V1)
+                q_15_s_V2)))))
+      (and
+        (forall ((q_17_s_V0 s_instances) (q_18_s_V1 s_ballot) (q_19_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAtPaxosSimple q_17_s_V0) q_18_s_V1) q_19_s_V2)
+            (exists ((q_20_s_Q s_quorum))
+              (select
+                (select
+                  (select (select s__5f__5f_showsSafeAtPaxosSimple q_17_s_V0) q_20_s_Q)
+                  q_18_s_V1)
+                q_19_s_V2)))))
+      (and
+        (forall ((q_21_s_V0 s_instances) (q_22_s_V1 s_quorum) (q_23_s_V2 s_ballot) (q_24_s_V3 s_value))
+          (=
+            (select
+              (select (select (select s__5f__5f_showsSafeAt q_21_s_V0) q_22_s_V1) q_23_s_V2)
+              q_24_s_V3)
+            (and
+              (forall ((q_25_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_25_s_A) q_22_s_V1)
+                  (select (select s_le q_23_s_V2) (select s__5f__5f_maxBal q_25_s_A))))
+              (exists ((q_26_s_C s_ballot))
+                (and
+                  (not (select (select s_le q_23_s_V2) q_26_s_C))
+                  (=>
+                    (not (= q_26_s_C s_negone))
+                    (exists ((q_27_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_27_s_A) q_22_s_V1)
+                        (select
+                          (select (select (select s__5f__5f_msg_5f_2b q_21_s_V0) q_27_s_A) q_26_s_C)
+                          q_24_s_V3))))
+                  (forall ((q_28_s_D s_ballot))
+                    (=>
+                      (and
+                        (not (select (select s_le q_28_s_D) q_26_s_C))
+                        (not (select (select s_le q_23_s_V2) q_28_s_D)))
+                      (forall ((q_29_s_A s_acceptor))
+                        (=>
+                          (select (select s_member q_29_s_A) q_22_s_V1)
+                          (forall ((q_30_s_Vd s_value))
+                            (not
+                              (select
+                                (select
+                                  (select (select s__5f__5f_msg_5f_2b q_21_s_V0) q_29_s_A)
+                                  q_28_s_D)
+                                q_30_s_Vd)))))))))))))
+      (and
+        (forall ((q_31_s_V0 s_instances) (q_32_s_V1 s_quorum) (q_33_s_V2 s_ballot) (q_34_s_V3 s_value))
+          (=
+            (select
+              (select
+                (select (select s__5f__5f_showsSafeAtMultiPaxos q_31_s_V0) q_32_s_V1)
+                q_33_s_V2)
+              q_34_s_V3)
+            (and
+              (forall ((q_35_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_35_s_A) q_32_s_V1)
+                  (exists ((q_36_s_MBAL s_ballot) (q_37_s_MVAL s_value))
+                    (select
+                      (select
+                        (select (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_35_s_A) q_33_s_V2)
+                        q_36_s_MBAL)
+                      q_37_s_MVAL))))
+              (or
+                (and
+                  (forall ((q_38_s_A s_acceptor) (q_39_s_MBAL s_ballot) (q_40_s_MVAL s_value))
+                    (not
+                      (and
+                        (select (select s_member q_38_s_A) q_32_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_38_s_A)
+                              q_33_s_V2)
+                            q_39_s_MBAL)
+                          q_40_s_MVAL)
+                        (not (= q_39_s_MBAL s_negone)))))
+                  (select s__5f__5f_propCmds q_34_s_V3))
+                (exists ((q_41_s_MBAL s_ballot))
+                  (and
+                    (exists ((q_42_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_42_s_A) q_32_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_42_s_A)
+                              q_33_s_V2)
+                            q_41_s_MBAL)
+                          q_34_s_V3)
+                        (not (= q_41_s_MBAL s_negone))))
+                    (forall ((q_43_s_A s_acceptor) (q_44_s_MBAL2 s_ballot) (q_45_s_MVAL2 s_value))
+                      (=>
+                        (and
+                          (select (select s_member q_43_s_A) q_32_s_V1)
+                          (select
+                            (select
+                              (select
+                                (select (select s__5f__5f_msg_5f_1b q_31_s_V0) q_43_s_A)
+                                q_33_s_V2)
+                              q_44_s_MBAL2)
+                            q_45_s_MVAL2)
+                          (not (= q_44_s_MBAL2 s_negone)))
+                        (select (select s_le q_44_s_MBAL2) q_41_s_MBAL))))))))))
+      (and
+        (forall ((q_46_s_V0 s_instances) (q_47_s_V1 s_quorum) (q_48_s_V2 s_ballot) (q_49_s_V3 s_value))
+          (=
+            (select
+              (select
+                (select (select s__5f__5f_showsSafeAtPaxosSimple q_46_s_V0) q_47_s_V1)
+                q_48_s_V2)
+              q_49_s_V3)
+            (and
+              (forall ((q_50_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_50_s_A) q_47_s_V1)
+                  (exists ((q_51_s_MBAL s_ballot) (q_52_s_MVAL s_value))
+                    (select
+                      (select
+                        (select (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_50_s_A) q_48_s_V2)
+                        q_51_s_MBAL)
+                      q_52_s_MVAL))))
+              (or
+                (and
+                  (forall ((q_53_s_A s_acceptor) (q_54_s_MBAL s_ballot) (q_55_s_MVAL s_value))
+                    (not
+                      (and
+                        (select (select s_member q_53_s_A) q_47_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_53_s_A)
+                              q_48_s_V2)
+                            q_54_s_MBAL)
+                          q_55_s_MVAL)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b q_46_s_V0) q_53_s_A)
+                            q_54_s_MBAL)
+                          q_55_s_MVAL))))
+                  (select s__5f__5f_propCmds q_49_s_V3))
+                (exists ((q_56_s_MBAL s_ballot))
+                  (and
+                    (exists ((q_57_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_57_s_A) q_47_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_57_s_A)
+                              q_48_s_V2)
+                            q_56_s_MBAL)
+                          q_49_s_V3)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b q_46_s_V0) q_57_s_A)
+                            q_56_s_MBAL)
+                          q_49_s_V3)))
+                    (forall ((q_58_s_A s_acceptor) (q_59_s_MBAL2 s_ballot) (q_60_s_MVAL2 s_value))
+                      (=>
+                        (and
+                          (select (select s_member q_58_s_A) q_47_s_V1)
+                          (select
+                            (select
+                              (select
+                                (select (select s__5f__5f_msg_5f_1b q_46_s_V0) q_58_s_A)
+                                q_48_s_V2)
+                              q_59_s_MBAL2)
+                            q_60_s_MVAL2)
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_2b q_46_s_V0) q_58_s_A)
+                              q_59_s_MBAL2)
+                            q_60_s_MVAL2))
+                        (select (select s_le q_59_s_MBAL2) q_56_s_MBAL))))))))))
+      (and
+        (and
+          (forall ((q_109_s_X s_ballot)) (select (select s_le q_109_s_X) q_109_s_X))
+          (forall ((q_110_s_X s_ballot) (q_111_s_Y s_ballot) (q_112_s_Z s_ballot))
+            (=>
+              (and
+                (select (select s_le q_110_s_X) q_111_s_Y)
+                (select (select s_le q_111_s_Y) q_112_s_Z))
+              (select (select s_le q_110_s_X) q_112_s_Z)))
+          (forall ((q_113_s_X s_ballot) (q_114_s_Y s_ballot))
+            (=>
+              (and
+                (select (select s_le q_113_s_X) q_114_s_Y)
+                (select (select s_le q_114_s_Y) q_113_s_X))
+              (= q_113_s_X q_114_s_Y)))
+          (forall ((q_115_s_X s_ballot) (q_116_s_Y s_ballot))
+            (or
+              (select (select s_le q_115_s_X) q_116_s_Y)
+              (select (select s_le q_116_s_Y) q_115_s_X)))
+          (forall ((q_117_s_X s_ballot)) (select (select s_le s_negone) q_117_s_X))
+          (forall ((q_118_s_X s_ballot)) (select (select s_le q_118_s_X) s_max))
+          (forall ((q_119_s_Q1 s_quorum) (q_120_s_Q2 s_quorum))
+            (exists ((q_121_s_A s_acceptor))
+              (and
+                (select (select s_member q_121_s_A) q_119_s_Q1)
+                (select (select s_member q_121_s_A) q_120_s_Q2))))))
+      (and
+        (forall ((q_1_s_V0 s_instances) (q_2_s_V1 s_value))
+          (=
+            (select (select s__5f__5f_chosen_next q_1_s_V0) q_2_s_V1)
+            (exists ((q_3_s_B s_ballot))
+              (select (select (select s__5f__5f_chosenAt_next q_1_s_V0) q_3_s_B) q_2_s_V1)))))
+      (and
+        (forall ((q_4_s_V0 s_instances) (q_5_s_V1 s_ballot) (q_6_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_chosenAt_next q_4_s_V0) q_5_s_V1) q_6_s_V2)
+            (exists ((q_7_s_Q s_quorum))
+              (forall ((q_8_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_8_s_A) q_7_s_Q)
+                  (select
+                    (select (select (select s__5f__5f_msg_5f_2b_next q_4_s_V0) q_8_s_A) q_5_s_V1)
+                    q_6_s_V2)))))))
+      (and
+        (forall ((q_9_s_V0 s_instances) (q_10_s_V1 s_ballot) (q_11_s_V2 s_value))
+          (=
+            (select (select (select s__5f__5f_isSafeAt_next q_9_s_V0) q_10_s_V1) q_11_s_V2)
+            (exists ((q_12_s_Q s_quorum))
+              (select
+                (select (select (select s__5f__5f_showsSafeAt_next q_9_s_V0) q_12_s_Q) q_10_s_V1)
+                q_11_s_V2)))))
+      (and
+        (forall ((q_13_s_V0 s_instances) (q_14_s_V1 s_ballot) (q_15_s_V2 s_value))
+          (=
+            (select
+              (select (select s__5f__5f_isSafeAtMultiPaxos_next q_13_s_V0) q_14_s_V1)
+              q_15_s_V2)
+            (exists ((q_16_s_Q s_quorum))
+              (select
+                (select
+                  (select (select s__5f__5f_showsSafeAtMultiPaxos_next q_13_s_V0) q_16_s_Q)
+                  q_14_s_V1)
+                q_15_s_V2)))))
+      (and
+        (forall ((q_17_s_V0 s_instances) (q_18_s_V1 s_ballot) (q_19_s_V2 s_value))
+          (=
+            (select
+              (select (select s__5f__5f_isSafeAtPaxosSimple_next q_17_s_V0) q_18_s_V1)
+              q_19_s_V2)
+            (exists ((q_20_s_Q s_quorum))
+              (select
+                (select
+                  (select (select s__5f__5f_showsSafeAtPaxosSimple_next q_17_s_V0) q_20_s_Q)
+                  q_18_s_V1)
+                q_19_s_V2)))))
+      (and
+        (forall ((q_21_s_V0 s_instances) (q_22_s_V1 s_quorum) (q_23_s_V2 s_ballot) (q_24_s_V3 s_value))
+          (=
+            (select
+              (select (select (select s__5f__5f_showsSafeAt_next q_21_s_V0) q_22_s_V1) q_23_s_V2)
+              q_24_s_V3)
+            (and
+              (forall ((q_25_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_25_s_A) q_22_s_V1)
+                  (select (select s_le q_23_s_V2) (select s__5f__5f_maxBal_next q_25_s_A))))
+              (exists ((q_26_s_C s_ballot))
+                (and
+                  (not (select (select s_le q_23_s_V2) q_26_s_C))
+                  (=>
+                    (not (= q_26_s_C s_negone))
+                    (exists ((q_27_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_27_s_A) q_22_s_V1)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b_next q_21_s_V0) q_27_s_A)
+                            q_26_s_C)
+                          q_24_s_V3))))
+                  (forall ((q_28_s_D s_ballot))
+                    (=>
+                      (and
+                        (not (select (select s_le q_28_s_D) q_26_s_C))
+                        (not (select (select s_le q_23_s_V2) q_28_s_D)))
+                      (forall ((q_29_s_A s_acceptor))
+                        (=>
+                          (select (select s_member q_29_s_A) q_22_s_V1)
+                          (forall ((q_30_s_Vd s_value))
+                            (not
+                              (select
+                                (select
+                                  (select (select s__5f__5f_msg_5f_2b_next q_21_s_V0) q_29_s_A)
+                                  q_28_s_D)
+                                q_30_s_Vd)))))))))))))
+      (and
+        (forall ((q_31_s_V0 s_instances) (q_32_s_V1 s_quorum) (q_33_s_V2 s_ballot) (q_34_s_V3 s_value))
+          (=
+            (select
+              (select
+                (select (select s__5f__5f_showsSafeAtMultiPaxos_next q_31_s_V0) q_32_s_V1)
+                q_33_s_V2)
+              q_34_s_V3)
+            (and
+              (forall ((q_35_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_35_s_A) q_32_s_V1)
+                  (exists ((q_36_s_MBAL s_ballot) (q_37_s_MVAL s_value))
+                    (select
+                      (select
+                        (select
+                          (select (select s__5f__5f_msg_5f_1b_next q_31_s_V0) q_35_s_A)
+                          q_33_s_V2)
+                        q_36_s_MBAL)
+                      q_37_s_MVAL))))
+              (or
+                (and
+                  (forall ((q_38_s_A s_acceptor) (q_39_s_MBAL s_ballot) (q_40_s_MVAL s_value))
+                    (not
+                      (and
+                        (select (select s_member q_38_s_A) q_32_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b_next q_31_s_V0) q_38_s_A)
+                              q_33_s_V2)
+                            q_39_s_MBAL)
+                          q_40_s_MVAL)
+                        (not (= q_39_s_MBAL s_negone)))))
+                  (select s__5f__5f_propCmds_next q_34_s_V3))
+                (exists ((q_41_s_MBAL s_ballot))
+                  (and
+                    (exists ((q_42_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_42_s_A) q_32_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b_next q_31_s_V0) q_42_s_A)
+                              q_33_s_V2)
+                            q_41_s_MBAL)
+                          q_34_s_V3)
+                        (not (= q_41_s_MBAL s_negone))))
+                    (forall ((q_43_s_A s_acceptor) (q_44_s_MBAL2 s_ballot) (q_45_s_MVAL2 s_value))
+                      (=>
+                        (and
+                          (select (select s_member q_43_s_A) q_32_s_V1)
+                          (select
+                            (select
+                              (select
+                                (select (select s__5f__5f_msg_5f_1b_next q_31_s_V0) q_43_s_A)
+                                q_33_s_V2)
+                              q_44_s_MBAL2)
+                            q_45_s_MVAL2)
+                          (not (= q_44_s_MBAL2 s_negone)))
+                        (select (select s_le q_44_s_MBAL2) q_41_s_MBAL))))))))))
+      (and
+        (forall ((q_46_s_V0 s_instances) (q_47_s_V1 s_quorum) (q_48_s_V2 s_ballot) (q_49_s_V3 s_value))
+          (=
+            (select
+              (select
+                (select (select s__5f__5f_showsSafeAtPaxosSimple_next q_46_s_V0) q_47_s_V1)
+                q_48_s_V2)
+              q_49_s_V3)
+            (and
+              (forall ((q_50_s_A s_acceptor))
+                (=>
+                  (select (select s_member q_50_s_A) q_47_s_V1)
+                  (exists ((q_51_s_MBAL s_ballot) (q_52_s_MVAL s_value))
+                    (select
+                      (select
+                        (select
+                          (select (select s__5f__5f_msg_5f_1b_next q_46_s_V0) q_50_s_A)
+                          q_48_s_V2)
+                        q_51_s_MBAL)
+                      q_52_s_MVAL))))
+              (or
+                (and
+                  (forall ((q_53_s_A s_acceptor) (q_54_s_MBAL s_ballot) (q_55_s_MVAL s_value))
+                    (not
+                      (and
+                        (select (select s_member q_53_s_A) q_47_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b_next q_46_s_V0) q_53_s_A)
+                              q_48_s_V2)
+                            q_54_s_MBAL)
+                          q_55_s_MVAL)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b_next q_46_s_V0) q_53_s_A)
+                            q_54_s_MBAL)
+                          q_55_s_MVAL))))
+                  (select s__5f__5f_propCmds_next q_49_s_V3))
+                (exists ((q_56_s_MBAL s_ballot))
+                  (and
+                    (exists ((q_57_s_A s_acceptor))
+                      (and
+                        (select (select s_member q_57_s_A) q_47_s_V1)
+                        (select
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_1b_next q_46_s_V0) q_57_s_A)
+                              q_48_s_V2)
+                            q_56_s_MBAL)
+                          q_49_s_V3)
+                        (select
+                          (select
+                            (select (select s__5f__5f_msg_5f_2b_next q_46_s_V0) q_57_s_A)
+                            q_56_s_MBAL)
+                          q_49_s_V3)))
+                    (forall ((q_58_s_A s_acceptor) (q_59_s_MBAL2 s_ballot) (q_60_s_MVAL2 s_value))
+                      (=>
+                        (and
+                          (select (select s_member q_58_s_A) q_47_s_V1)
+                          (select
+                            (select
+                              (select
+                                (select (select s__5f__5f_msg_5f_1b_next q_46_s_V0) q_58_s_A)
+                                q_48_s_V2)
+                              q_59_s_MBAL2)
+                            q_60_s_MVAL2)
+                          (select
+                            (select
+                              (select (select s__5f__5f_msg_5f_2b_next q_46_s_V0) q_58_s_A)
+                              q_59_s_MBAL2)
+                            q_60_s_MVAL2))
+                        (select (select s_le q_59_s_MBAL2) q_56_s_MBAL))))))))))
+      (and
+        (and
+          (forall ((q_109_s_X s_ballot)) (select (select s_le q_109_s_X) q_109_s_X))
+          (forall ((q_110_s_X s_ballot) (q_111_s_Y s_ballot) (q_112_s_Z s_ballot))
+            (=>
+              (and
+                (select (select s_le q_110_s_X) q_111_s_Y)
+                (select (select s_le q_111_s_Y) q_112_s_Z))
+              (select (select s_le q_110_s_X) q_112_s_Z)))
+          (forall ((q_113_s_X s_ballot) (q_114_s_Y s_ballot))
+            (=>
+              (and
+                (select (select s_le q_113_s_X) q_114_s_Y)
+                (select (select s_le q_114_s_Y) q_113_s_X))
+              (= q_113_s_X q_114_s_Y)))
+          (forall ((q_115_s_X s_ballot) (q_116_s_Y s_ballot))
+            (or
+              (select (select s_le q_115_s_X) q_116_s_Y)
+              (select (select s_le q_116_s_Y) q_115_s_X)))
+          (forall ((q_117_s_X s_ballot)) (select (select s_le s_negone) q_117_s_X))
+          (forall ((q_118_s_X s_ballot)) (select (select s_le q_118_s_X) s_max))
+          (forall ((q_119_s_Q1 s_quorum) (q_120_s_Q2 s_quorum))
+            (exists ((q_121_s_A s_acceptor))
+              (and
+                (select (select s_member q_121_s_A) q_119_s_Q1)
+                (select (select s_member q_121_s_A) q_120_s_Q2)))))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (and
+        (forall ((q_61_s_I s_instances) (q_62_s_V1 s_value) (q_63_s_V2 s_value))
+          (=>
+            (and
+              (select (select s__5f__5f_chosen q_61_s_I) q_62_s_V1)
+              (select (select s__5f__5f_chosen q_61_s_I) q_63_s_V2))
+            (= q_62_s_V1 q_63_s_V2)))
+        (forall ((q_64_s_A1 s_acceptor) (q_65_s_B1 s_ballot) (q_66_s_I s_instances) (q_67_s_V1 s_value))
+          (=>
+            (select
+              (select (select (select s__5f__5f_msg_5f_2b q_66_s_I) q_64_s_A1) q_65_s_B1)
+              q_67_s_V1)
+            (select (select (select s__5f__5f_isSafeAt q_66_s_I) q_65_s_B1) q_67_s_V1)))
+        (forall ((q_68_s_A1 s_acceptor) (q_69_s_B1 s_ballot) (q_70_s_I s_instances) (q_71_s_V1 s_value) (q_72_s_V2 s_value))
+          (=>
+            (and
+              (select (select (select s__5f__5f_chosenAt q_70_s_I) q_69_s_B1) q_72_s_V2)
+              (select
+                (select (select (select s__5f__5f_msg_5f_2b q_70_s_I) q_68_s_A1) q_69_s_B1)
+                q_71_s_V1))
+            (= q_71_s_V1 q_72_s_V2)))
+        (forall ((q_73_s_B1 s_ballot) (q_74_s_I s_instances) (q_75_s_V1 s_value) (q_76_s_V2 s_value))
+          (=>
+            (and
+              (select (select (select s__5f__5f_msg_5f_2a q_74_s_I) q_73_s_B1) q_75_s_V1)
+              (select (select (select s__5f__5f_msg_5f_2a q_74_s_I) q_73_s_B1) q_76_s_V2))
+            (= q_75_s_V1 q_76_s_V2)))
+        (forall ((q_77_s_B1 s_ballot) (q_78_s_I s_instances) (q_79_s_V1 s_value))
+          (=>
+            (select (select (select s__5f__5f_msg_5f_2a q_78_s_I) q_77_s_B1) q_79_s_V1)
+            (select (select (select s__5f__5f_isSafeAt q_78_s_I) q_77_s_B1) q_79_s_V1)))
+        (forall ((q_80_s_A1 s_acceptor) (q_81_s_B1 s_ballot) (q_82_s_I s_instances) (q_83_s_V1 s_value))
+          (=>
+            (select
+              (select (select (select s__5f__5f_msg_5f_2b q_82_s_I) q_80_s_A1) q_81_s_B1)
+              q_83_s_V1)
+            (select (select (select s__5f__5f_msg_5f_2a q_82_s_I) q_81_s_B1) q_83_s_V1)))
+        (forall ((q_84_s_A1 s_acceptor) (q_85_s_B1 s_ballot) (q_86_s_I s_instances) (q_87_s_MBAL s_ballot) (q_88_s_MVAL s_value))
+          (=>
+            (select
+              (select
+                (select (select (select s__5f__5f_msg_5f_1b q_86_s_I) q_84_s_A1) q_85_s_B1)
+                q_87_s_MBAL)
+              q_88_s_MVAL)
+            (select (select s_le q_85_s_B1) (select s__5f__5f_maxBal q_84_s_A1))))
+        (forall ((q_89_s_A1 s_acceptor) (q_90_s_B1 s_ballot) (q_91_s_B2 s_ballot) (q_92_s_I s_instances) (q_93_s_V1 s_value))
+          (=>
+            (select
+              (select
+                (select (select (select s__5f__5f_msg_5f_1b q_92_s_I) q_89_s_A1) q_91_s_B2)
+                q_90_s_B1)
+              q_93_s_V1)
+            (or
+              (select (select s_le q_90_s_B1) s_negone)
+              (select
+                (select (select (select s__5f__5f_msg_5f_2b q_92_s_I) q_89_s_A1) q_90_s_B1)
+                q_93_s_V1)
+              (select (select s_le q_91_s_B2) s_negone))))
+        (forall ((q_94_s_A1 s_acceptor) (q_95_s_B1 s_ballot) (q_96_s_B2 s_ballot) (q_97_s_B3 s_ballot) (q_98_s_I s_instances) (q_99_s_V1 s_value) (q_100_s_V2 s_value))
+          (=>
+            (and
+              (select
+                (select
+                  (select (select (select s__5f__5f_msg_5f_1b q_98_s_I) q_94_s_A1) q_95_s_B1)
+                  q_96_s_B2)
+                q_100_s_V2)
+              (select
+                (select (select (select s__5f__5f_msg_5f_2b q_98_s_I) q_94_s_A1) q_97_s_B3)
+                q_99_s_V1))
+            (or
+              (select (select s_le q_97_s_B3) q_96_s_B2)
+              (select (select s_le q_95_s_B1) q_97_s_B3))))
+        (forall ((q_101_s_A1 s_acceptor) (q_102_s_I s_instances))
+          (select
+            (select s_le (select (select s__5f__5f_maxVBal q_102_s_I) q_101_s_A1))
+            (select s__5f__5f_maxBal q_101_s_A1)))
+        (forall ((q_103_s_A1 s_acceptor) (q_104_s_B1 s_ballot) (q_105_s_I s_instances) (q_106_s_V1 s_value))
+          (=>
+            (select
+              (select (select (select s__5f__5f_msg_5f_2b q_105_s_I) q_103_s_A1) q_104_s_B1)
+              q_106_s_V1)
+            (select
+              (select s_le q_104_s_B1)
+              (select (select s__5f__5f_maxVBal q_105_s_I) q_103_s_A1))))
+        (forall ((q_107_s_A1 s_acceptor) (q_108_s_I s_instances))
+          (or
+            (select
+              (select
+                (select (select s__5f__5f_msg_5f_2b q_108_s_I) q_107_s_A1)
+                (select (select s__5f__5f_maxVBal q_108_s_I) q_107_s_A1))
+              (select (select s__5f__5f_maxVal q_108_s_I) q_107_s_A1))
+            (select (select s_le (select (select s__5f__5f_maxVBal q_108_s_I) q_107_s_A1)) s_negone)))))
+    :invar-property
+    0))

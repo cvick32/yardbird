@@ -1,0 +1,103 @@
+; Generated offline from lambda/benchmarks/protocols/mutex.in
+; Source SHA-256: c8917eb973ba27f6ac43378988123051e6b2fb64cd25e6112b15f1578361bc7e
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Semantics profile: pinned CADE 2021 Lambda MCMT frontend and its index-sort proof export.
+; nat/subrange data use Int, matching Lambda; source range bounds are not additional axioms.
+; Process indices use an injective integer embedding; infinite process domains are admitted.
+; First x-case and special y-case are local updates; remaining cases are guarded constraints.
+(declare-sort Proc 0)
+(declare-fun s__5f__5f_index_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_index_5f_rank_next () (Array Proc Int))
+(declare-fun s_a () (Array Proc Int))
+(declare-fun s_a_next () (Array Proc Int))
+(declare-fun s_b () (Array Proc Int))
+(declare-fun s_b_next () (Array Proc Int))
+(declare-fun s_c () Int)
+(declare-fun s_c_next () Int)
+; source symbol: __index_rank
+(define-fun link_0 () (Array Proc Int) (! s__5f__5f_index_5f_rank :next s__5f__5f_index_5f_rank_next))
+; source symbol: a
+(define-fun link_1 () (Array Proc Int) (! s_a :next s_a_next))
+; source symbol: b
+(define-fun link_2 () (Array Proc Int) (! s_b :next s_b_next))
+; source symbol: c
+(define-fun link_3 () Int (! s_c :next s_c_next))
+; action: transition_0
+(define-fun action_0 () Bool
+  (exists ((q_4_s_x Proc))
+    (and
+      (= (select s_a q_4_s_x) 1)
+      (and
+        (= (select s_a_next q_4_s_x) 2)
+        (= (select s_b_next q_4_s_x) (select s_b q_4_s_x))
+        (= s_c_next s_c))
+      (forall ((q_5_s_j Proc))
+        (=>
+          (not (= q_5_s_j q_4_s_x))
+          (and
+            (= (select s_a_next q_5_s_j) (select s_a q_5_s_j))
+            (= (select s_b_next q_5_s_j) (select s_b q_5_s_j))
+            (= s_c_next s_c)))))))
+; action: transition_1
+(define-fun action_1 () Bool
+  (exists ((q_6_s_x Proc))
+    (and
+      (and (= (select s_a q_6_s_x) 2) (= (select s__5f__5f_index_5f_rank q_6_s_x) s_c))
+      (and
+        (= (select s_a_next q_6_s_x) (select s_a q_6_s_x))
+        (= (select s_b_next q_6_s_x) 2)
+        (= s_c_next s_c))
+      (forall ((q_7_s_j Proc))
+        (=>
+          (not (= q_7_s_j q_6_s_x))
+          (and
+            (= (select s_a_next q_7_s_j) (select s_a q_7_s_j))
+            (= (select s_b_next q_7_s_j) (select s_b q_7_s_j))
+            (= s_c_next s_c)))))))
+; action: transition_2
+(define-fun action_2 () Bool
+  (exists ((q_8_s_x Proc))
+    (and
+      (= (select s_b q_8_s_x) 2)
+      (and (= (select s_a_next q_8_s_x) 1) (= (select s_b_next q_8_s_x) 1) (= s_c_next (+ s_c 1)))
+      (forall ((q_9_s_j Proc))
+        (=>
+          (not (= q_9_s_j q_8_s_x))
+          (and
+            (= (select s_a_next q_9_s_j) (select s_a q_9_s_j))
+            (= (select s_b_next q_9_s_j) (select s_b q_9_s_j))
+            (= s_c_next (+ s_c 1))))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_x Proc)) (and (= (select s_a q_1_s_x) 1) (= (select s_b q_1_s_x) 1)))
+      (forall ((q_10_s_a Proc) (q_11_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_10_s_a) (select s__5f__5f_index_5f_rank q_11_s_b))
+          (= q_10_s_a q_11_s_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2)
+      (= s__5f__5f_index_5f_rank_next s__5f__5f_index_5f_rank)
+      (forall ((q_10_s_a Proc) (q_11_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_10_s_a) (select s__5f__5f_index_5f_rank q_11_s_b))
+          (= q_10_s_a q_11_s_b)))
+      (forall ((q_10_s_a Proc) (q_11_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_10_s_a) (select s__5f__5f_index_5f_rank q_11_s_b))
+          (= q_10_s_a q_11_s_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_2_s_x Proc) (q_3_s_y Proc))
+      (=>
+        (not (= q_2_s_x q_3_s_y))
+        (not (and (= (select s_b q_2_s_x) 2) (= (select s_b q_3_s_y) 2)))))
+    :invar-property
+    0))

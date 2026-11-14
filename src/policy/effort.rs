@@ -18,7 +18,7 @@ pub enum GuidanceSchedule {
 pub enum ActionRequirementGuidance {
     #[default]
     Disabled,
-    /// Extend a completed value/relational explanation with no violated
+    /// Extend a completed value/relational explanation (including cycles) with no violated
     /// instance or unresolved frontier. Ordinary search keeps incomplete ones.
     WhenUnproductive,
     Always,
@@ -87,6 +87,22 @@ impl Default for WorkAllowance {
     }
 }
 impl WorkAllowance {
+    /// Let prerequisite traversal use half the remaining work, leaving the
+    /// rest for joining the new Boolean frontiers it discovers.
+    pub(crate) fn prerequisite_allowance(&self, used: usize) -> Self {
+        Self {
+            dependency_work: used.min(self.dependency_work)
+                + self.dependency_work.saturating_sub(used) / 2,
+            ..*self
+        }
+    }
+
+    /// Keep half the discovery/page allowance available to ordinary search.
+    /// Zero for a one-unit budget: it cannot fairly support both producers.
+    pub(crate) fn read_frontier_reservation(&self) -> (usize, usize) {
+        (self.dependency_work / 2, self.binder_page_size / 2)
+    }
+
     fn widen(&mut self) {
         self.winners = self.winners.saturating_mul(2);
         self.binder_search_limit = self
@@ -148,6 +164,7 @@ pub struct OperationId {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OperationKind {
+    ReadSupport,
     PolicyCandidates,
     CountermodelCandidates,
     DiscoverDependencies,
@@ -605,9 +622,9 @@ impl ProofEffort for DefaultEffort {
                     return;
                 }
                 self.stage = match operation {
-                    OperationKind::CountermodelCandidates | OperationKind::PolicyCandidates => {
-                        self.stage
-                    }
+                    OperationKind::ReadSupport
+                    | OperationKind::CountermodelCandidates
+                    | OperationKind::PolicyCandidates => self.stage,
                     OperationKind::GrowVocabulary => Stage::Dependencies,
                     OperationKind::DiscoverDependencies => {
                         self.dependency_slices += 1;
@@ -924,6 +941,28 @@ mod guidance_followup_tests {
                         EffortDecision::ReturnToDriver
                     ));
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod frontier_budget_tests {
+    use super::*;
+
+    #[test]
+    fn frontier_reservation_is_bounded_and_retains_ordinary_work() {
+        for work in [0, 1, 2, 3, 128, 512, usize::MAX] {
+            let allowance = WorkAllowance {
+                dependency_work: work,
+                binder_page_size: work,
+                ..Default::default()
+            };
+            let (discovery, matching) = allowance.read_frontier_reservation();
+            assert_eq!(discovery, matching);
+            assert!(discovery <= work / 2);
+            if work > 0 {
+                assert!(work - discovery > 0);
             }
         }
     }

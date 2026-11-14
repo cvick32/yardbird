@@ -152,6 +152,7 @@ where
     array: ArrayRefinement,
     quantifier: QuantifierRefinement,
     obligations: crate::refinement_obligations::RefinementObligations,
+    read_support: Option<crate::rule_matching::read_support::ReadSupport>,
     decision_data: Vec<DecisionRecord>,
     abstract_instantiations: Vec<AbstractInstantiationRecord>,
     term_selection_counts: FxHashMap<String, u32>,
@@ -186,6 +187,7 @@ where
             array: ArrayRefinement::default(),
             quantifier: QuantifierRefinement::default(),
             obligations: Default::default(),
+            read_support: None,
             decision_data: vec![],
             abstract_instantiations: vec![],
             term_selection_counts: FxHashMap::default(),
@@ -207,6 +209,21 @@ where
             },
             preparation_error: None,
         }
+    }
+
+    pub(crate) fn with_guided_read_support(mut self, enabled: bool) -> Self {
+        self.read_support = enabled.then(Default::default);
+        self
+    }
+
+    pub(crate) fn with_guided_read_frontiers(mut self, enabled: bool) -> Self {
+        self.quantifier.read_frontiers = enabled;
+        self
+    }
+
+    pub fn with_guided_exact_grounding(mut self, enabled: bool) -> Self {
+        self.quantifier.exact_grounding = enabled;
+        self
     }
 
     pub fn with_countermodel_trace_work(mut self, work: usize) -> Self {
@@ -357,6 +374,22 @@ where
         }
     }
 
+    fn universal_property_witnesses(
+        &self,
+    ) -> Vec<(smt2parser::concrete::Symbol, smt2parser::concrete::Sort)> {
+        self.quantifier
+            .property_witnesses
+            .iter()
+            .filter_map(|w| {
+                self.quantifier
+                    .plan
+                    .signatures
+                    .get(&w.0)
+                    .map(|(_, sort)| (w.clone(), sort.clone()))
+            })
+            .collect()
+    }
+
     fn property_check_mode(&self) -> PropertyCheckMode {
         self.property_check_mode
     }
@@ -372,6 +405,7 @@ where
         use crate::theories::preparation::{prepare_vmt, PreparationOptions};
         self.policy.effort_mut().observe(&EffortEvent::NewProblem);
         self.obligations = Default::default();
+        self.read_support = self.read_support.take().map(|_| Default::default());
         self.preparation_error = None;
         self.formula_index = None;
         let prepared = prepare_vmt(
@@ -432,7 +466,11 @@ where
                         .collect(),
                 ));
                 self.array = prepared.array;
+                let exact_grounding = self.quantifier.exact_grounding;
+                let read_frontiers = self.quantifier.read_frontiers;
                 self.quantifier = prepared.quantifier;
+                self.quantifier.exact_grounding = exact_grounding;
+                self.quantifier.read_frontiers = read_frontiers;
                 self.ownership = prepared.ownership;
                 self.prepared_theory = Some(prepared.theory);
                 prepared.model
@@ -611,6 +649,12 @@ where
                     "trace violated properties to array and quantifier instances".into(),
                 ));
             }
+            if self.read_support.is_some() {
+                kinds.push((
+                    OperationKind::ReadSupport,
+                    "source-index quantifier and array support".into(),
+                ));
+            }
             if !self.quantifier.plan.rules.is_empty() {
                 kinds.push((
                     OperationKind::DiscoverDependencies,
@@ -769,6 +813,14 @@ where
             let mut report = WorkReport::default();
             let mut retain = false;
             match operation.kind {
+                OperationKind::ReadSupport => {
+                    (report, batch) = self
+                        .read_support
+                        .as_mut()
+                        .expect("offered read support")
+                        .candidates(&context)?;
+                    retain = report.selected > 0;
+                }
                 OperationKind::PolicyCandidates => {
                     let producer = discovery.as_mut().expect("offered discovery producer");
                     let quantifiers = producer
@@ -1381,6 +1433,47 @@ mod tests {
         .unwrap();
         assert_eq!(smt.check_property(), SolverCheckResult::Sat);
         (strategy, smt)
+    }
+
+    #[test]
+    fn read_support_does_not_reuse_instances_from_another_problem_at_the_same_depth() {
+        let source = |value| {
+            format!(
+                "(declare-fun a () (Array Int Int))
+             (define-fun init () Bool (! true :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool
+               (! (= (select (store a 0 {value}) 0) {value}) :invar-property 0))"
+            )
+        };
+        let (mut strategy, first_smt) = sat_fixture(&source(1));
+        strategy.read_support = Some(Default::default());
+        strategy.policy = crate::YardbirdPolicy::new(()).with_effort(
+            crate::policy::read_support::ReadSupportEffort::new(
+                crate::policy::DefaultEffort::default(),
+                WorkAllowance::default(),
+            ),
+        );
+        let mut state = strategy.setup(&first_smt, 0).unwrap();
+        strategy.sat(&mut state, &first_smt, 0).unwrap();
+        assert!(!state.candidates.is_empty());
+        let second_source = source(2);
+        let commands = smt2parser::CommandStream::new(
+            std::io::Cursor::new(second_source.as_bytes()),
+            smt2parser::concrete::SyntaxBuilder,
+            None,
+        )
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+        strategy.configure_model(VMTModel::checked_from(commands).unwrap());
+        let (_, second_smt) = sat_fixture(&second_source);
+        let mut state = strategy.setup(&second_smt, 0).unwrap();
+        strategy.sat(&mut state, &second_smt, 0).unwrap();
+        assert!(!state.candidates.is_empty());
+        for candidate in &state.candidates {
+            assert!(candidate.expression.to_string().contains("a@0 0 2"));
+            assert!(!candidate.expression.to_string().contains("a@0 0 1"));
+        }
     }
 
     fn round_robin_fixture() -> (Abstract<ArrayAstSize>, VmtBmcSession) {

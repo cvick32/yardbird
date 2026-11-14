@@ -1,0 +1,180 @@
+
+
+
+:comment SOURCE:      Abdulla et al., TACAS 2007
+
+:smt (define-type locations (subrange 1 5))
+:smt (define-type locks (subrange 0 3))
+
+ 
+
+:local a locations
+:global b bool
+:global h locks
+:global c int
+
+:initial 
+:var x
+:cnj (= a[x] 1) (= b[x] false) (= h[x] 0) (> c[x] 0)
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= a[x] 2)  (= a[y] 2)
+ 
+
+:comment t1 
+:transition
+:var x
+:var j
+:guard (= a[x] 1) (= b[x] false) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 2
+ :val true
+ :val h[j]
+ :val c[j]
+:case      
+ :val a[j]
+ :val true
+ :val h[j]
+ :val c[j]
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= a[x] 1) (= b[x] true) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 3
+ :val b[j]
+ :val h[j]
+ :val (+ 1 c[j])
+:case      
+ :val a[j]
+ :val b[j]
+ :val h[j]
+ :val (+ 1 c[j])
+ 
+:comment t3
+:transition
+:var x
+:var j
+:guard (= a[x] 2) (= b[x] true) (= c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 1
+ :val false
+ :val h[j]
+ :val c[j]
+:case      
+ :val a[j]
+ :val false
+ :val h[j]
+ :val c[j]
+
+:comment t4
+:transition
+:var x
+:var j
+:guard (= a[x] 2) (= b[x] true) (> c[x] 0)
+:numcases 2
+:case (= x j) 
+ :val 4
+ :val b[j]
+ :val h[j]
+ :val (+ c[j] -1)
+:case      
+ :val a[j]
+ :val b[j]
+ :val h[j]
+ :val (+ c[j] -1)
+
+:comment t5
+:transition
+:var x
+:var j
+:guard (= a[x] 3) (= h[x] 0) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 5
+ :val b[j]
+ :val 1
+ :val c[j]
+:case      
+ :val a[j]
+ :val b[j]
+ :val 1
+ :val c[j]
+
+:comment t6
+:transition
+:var x
+:var j
+:guard (= a[x] 4) (= h[x] 0) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 1
+ :val b[j]
+ :val 2
+ :val c[j]
+:case      
+ :val a[j]
+ :val b[j]
+ :val 2
+ :val c[j]
+
+:comment t7
+:transition
+:var x
+:var j
+:guard (= a[x] 4) (= h[x] 1) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 1
+ :val b[j]
+ :val 3
+ :val c[j]
+:case      
+ :val a[j]
+ :val b[j]
+ :val 3
+ :val c[j]
+
+:comment t8
+:transition
+:var x
+:var j
+:guard (= a[x] 3) (= h[x] 2) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 5
+ :val b[j]
+ :val 3
+ :val c[j]
+:case      
+ :val a[j]
+ :val b[j]
+ :val 3
+ :val c[j]
+
+:comment t9
+:transition
+:var x
+:var j
+:guard (= a[x] 5) (= h[x] 3) (> c[x] 0)
+:numcases 2
+:case (= x j)
+ :val 2
+ :val b[j]
+ :val 0
+ :val c[j]
+:case      
+ :val a[j]
+ :val b[j]
+ :val 0
+ :val c[j]
+
+
+

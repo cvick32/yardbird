@@ -1,0 +1,261 @@
+; Generated offline from cubicle/examples/dijkstra.cub
+; Source SHA-256: be8835dee1072189addd56ba858598db902cd098b291f375462d927cc6e005ef
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_location 0)
+(declare-fun s_Q1 () s_location)
+(declare-fun s_Q1_next () s_location)
+(declare-fun s_Q2 () s_location)
+(declare-fun s_Q2_next () s_location)
+(declare-fun s_Q3 () s_location)
+(declare-fun s_Q3_next () s_location)
+(declare-fun s_Q4 () s_location)
+(declare-fun s_Q4_next () s_location)
+(declare-fun s_Q5 () s_location)
+(declare-fun s_Q5_next () s_location)
+(declare-fun s_Q6 () s_location)
+(declare-fun s_Q6_next () s_location)
+(declare-fun s_Q7 () s_location)
+(declare-fun s_Q7_next () s_location)
+(declare-fun s_A () (Array Proc s_location))
+(declare-fun s_A_next () (Array Proc s_location))
+(declare-fun s_F () (Array Proc Int))
+(declare-fun s_F_next () (Array Proc Int))
+(declare-fun s_P () (Array Proc Bool))
+(declare-fun s_P_next () (Array Proc Bool))
+; source symbol: Q1
+(define-fun link_0 () s_location (! s_Q1 :next s_Q1_next))
+; source symbol: Q2
+(define-fun link_1 () s_location (! s_Q2 :next s_Q2_next))
+; source symbol: Q3
+(define-fun link_2 () s_location (! s_Q3 :next s_Q3_next))
+; source symbol: Q4
+(define-fun link_3 () s_location (! s_Q4 :next s_Q4_next))
+; source symbol: Q5
+(define-fun link_4 () s_location (! s_Q5 :next s_Q5_next))
+; source symbol: Q6
+(define-fun link_5 () s_location (! s_Q6 :next s_Q6_next))
+; source symbol: Q7
+(define-fun link_6 () s_location (! s_Q7 :next s_Q7_next))
+; source symbol: A
+(define-fun link_7 () (Array Proc s_location) (! s_A :next s_A_next))
+; source symbol: F
+(define-fun link_8 () (Array Proc Int) (! s_F :next s_F_next))
+; source symbol: P
+(define-fun link_9 () (Array Proc Bool) (! s_P :next s_P_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_5_s_x Proc))
+    (and
+      (= (select s_A q_5_s_x) s_Q1)
+      (forall ((q_6_s_j Proc))
+        (= (select s_A_next q_6_s_j) (ite (= q_6_s_j q_5_s_x) s_Q2 (select s_A q_6_s_j))))
+      (forall ((q_7_s_j Proc))
+        (= (select s_F_next q_7_s_j) (ite (= q_7_s_j q_5_s_x) 1 (select s_F q_7_s_j))))
+      (= s_P_next s_P))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_8_s_x Proc))
+    (and
+      (and
+        (= (select s_A q_8_s_x) s_Q2)
+        (forall ((q_9_s_j Proc))
+          (=>
+            (not (= q_9_s_j q_8_s_x))
+            (or
+              (= (select s_P q_9_s_j) false)
+              (and (= (select s_P q_9_s_j) true) (= (select s_F q_9_s_j) 0))))))
+      (forall ((q_10_s_j Proc))
+        (= (select s_A_next q_10_s_j) (ite (= q_10_s_j q_8_s_x) s_Q3 (select s_A q_10_s_j))))
+      (= s_F_next s_F)
+      (= s_P_next s_P))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_11_s_x Proc) (q_12_s_y Proc))
+    (and
+      (not (= q_11_s_x q_12_s_y))
+      (= (select s_A q_11_s_x) s_Q3)
+      (forall ((q_13_s_j Proc))
+        (= (select s_A_next q_13_s_j) (ite (= q_13_s_j q_11_s_x) s_Q4 (select s_A q_13_s_j))))
+      (forall ((q_14_s_j Proc))
+        (= (select s_P_next q_14_s_j) (ite (= q_14_s_j q_12_s_y) true false)))
+      (= s_F_next s_F))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_15_s_x Proc))
+    (and
+      (= (select s_A q_15_s_x) s_Q4)
+      (forall ((q_16_s_j Proc))
+        (= (select s_A_next q_16_s_j) (ite (= q_16_s_j q_15_s_x) s_Q5 (select s_A q_16_s_j))))
+      (forall ((q_17_s_j Proc))
+        (= (select s_F_next q_17_s_j) (ite (= q_17_s_j q_15_s_x) 2 (select s_F q_17_s_j))))
+      (= s_P_next s_P))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_18_s_x Proc))
+    (and
+      (and
+        (= (select s_A q_18_s_x) s_Q5)
+        (forall ((q_19_s_j Proc))
+          (=> (not (= q_19_s_j q_18_s_x)) (not (= (select s_F q_19_s_j) 2)))))
+      (forall ((q_20_s_j Proc))
+        (= (select s_A_next q_20_s_j) (ite (= q_20_s_j q_18_s_x) s_Q6 (select s_A q_20_s_j))))
+      (= s_F_next s_F)
+      (= s_P_next s_P))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_21_s_x Proc) (q_22_s_y Proc))
+    (and
+      (not (= q_21_s_x q_22_s_y))
+      (and (= (select s_A q_21_s_x) s_Q5) (= (select s_F q_22_s_y) 2))
+      (forall ((q_23_s_j Proc))
+        (= (select s_A_next q_23_s_j) (ite (= q_23_s_j q_21_s_x) s_Q1 (select s_A q_23_s_j))))
+      (= s_F_next s_F)
+      (= s_P_next s_P))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_24_s_x Proc))
+    (and
+      (= (select s_A q_24_s_x) s_Q6)
+      (forall ((q_25_s_j Proc))
+        (= (select s_A_next q_25_s_j) (ite (= q_25_s_j q_24_s_x) s_Q7 (select s_A q_25_s_j))))
+      (forall ((q_26_s_j Proc))
+        (= (select s_F_next q_26_s_j) (ite (= q_26_s_j q_24_s_x) 0 (select s_F q_26_s_j))))
+      (= s_P_next s_P))))
+; action: t8
+(define-fun action_7 () Bool
+  (exists ((q_27_s_x Proc))
+    (and
+      (= (select s_A q_27_s_x) s_Q7)
+      (forall ((q_28_s_j Proc))
+        (= (select s_A_next q_28_s_j) (ite (= q_28_s_j q_27_s_x) s_Q1 (select s_A q_28_s_j))))
+      (= s_F_next s_F)
+      (= s_P_next s_P))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_x Proc))
+        (and
+          (= (select s_A q_2_s_x) s_Q1)
+          (and (= (select s_P q_2_s_x) false) (= (select s_F q_2_s_x) 0))))
+      (and
+        (not (= s_Q1 s_Q2))
+        (not (= s_Q1 s_Q3))
+        (not (= s_Q1 s_Q4))
+        (not (= s_Q1 s_Q5))
+        (not (= s_Q1 s_Q6))
+        (not (= s_Q1 s_Q7))
+        (not (= s_Q2 s_Q3))
+        (not (= s_Q2 s_Q4))
+        (not (= s_Q2 s_Q5))
+        (not (= s_Q2 s_Q6))
+        (not (= s_Q2 s_Q7))
+        (not (= s_Q3 s_Q4))
+        (not (= s_Q3 s_Q5))
+        (not (= s_Q3 s_Q6))
+        (not (= s_Q3 s_Q7))
+        (not (= s_Q4 s_Q5))
+        (not (= s_Q4 s_Q6))
+        (not (= s_Q4 s_Q7))
+        (not (= s_Q5 s_Q6))
+        (not (= s_Q5 s_Q7))
+        (not (= s_Q6 s_Q7)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_Q1)
+          (= q_1_s_enum s_Q2)
+          (= q_1_s_enum s_Q3)
+          (= q_1_s_enum s_Q4)
+          (= q_1_s_enum s_Q5)
+          (= q_1_s_enum s_Q6)
+          (= q_1_s_enum s_Q7))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6 action_7)
+      (= s_Q1_next s_Q1)
+      (= s_Q2_next s_Q2)
+      (= s_Q3_next s_Q3)
+      (= s_Q4_next s_Q4)
+      (= s_Q5_next s_Q5)
+      (= s_Q6_next s_Q6)
+      (= s_Q7_next s_Q7)
+      (and
+        (not (= s_Q1 s_Q2))
+        (not (= s_Q1 s_Q3))
+        (not (= s_Q1 s_Q4))
+        (not (= s_Q1 s_Q5))
+        (not (= s_Q1 s_Q6))
+        (not (= s_Q1 s_Q7))
+        (not (= s_Q2 s_Q3))
+        (not (= s_Q2 s_Q4))
+        (not (= s_Q2 s_Q5))
+        (not (= s_Q2 s_Q6))
+        (not (= s_Q2 s_Q7))
+        (not (= s_Q3 s_Q4))
+        (not (= s_Q3 s_Q5))
+        (not (= s_Q3 s_Q6))
+        (not (= s_Q3 s_Q7))
+        (not (= s_Q4 s_Q5))
+        (not (= s_Q4 s_Q6))
+        (not (= s_Q4 s_Q7))
+        (not (= s_Q5 s_Q6))
+        (not (= s_Q5 s_Q7))
+        (not (= s_Q6 s_Q7)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_Q1)
+          (= q_1_s_enum s_Q2)
+          (= q_1_s_enum s_Q3)
+          (= q_1_s_enum s_Q4)
+          (= q_1_s_enum s_Q5)
+          (= q_1_s_enum s_Q6)
+          (= q_1_s_enum s_Q7)))
+      (and
+        (not (= s_Q1 s_Q2))
+        (not (= s_Q1 s_Q3))
+        (not (= s_Q1 s_Q4))
+        (not (= s_Q1 s_Q5))
+        (not (= s_Q1 s_Q6))
+        (not (= s_Q1 s_Q7))
+        (not (= s_Q2 s_Q3))
+        (not (= s_Q2 s_Q4))
+        (not (= s_Q2 s_Q5))
+        (not (= s_Q2 s_Q6))
+        (not (= s_Q2 s_Q7))
+        (not (= s_Q3 s_Q4))
+        (not (= s_Q3 s_Q5))
+        (not (= s_Q3 s_Q6))
+        (not (= s_Q3 s_Q7))
+        (not (= s_Q4 s_Q5))
+        (not (= s_Q4 s_Q6))
+        (not (= s_Q4 s_Q7))
+        (not (= s_Q5 s_Q6))
+        (not (= s_Q5 s_Q7))
+        (not (= s_Q6 s_Q7)))
+      (forall ((q_1_s_enum s_location))
+        (or
+          (= q_1_s_enum s_Q1)
+          (= q_1_s_enum s_Q2)
+          (= q_1_s_enum s_Q3)
+          (= q_1_s_enum s_Q4)
+          (= q_1_s_enum s_Q5)
+          (= q_1_s_enum s_Q6)
+          (= q_1_s_enum s_Q7))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_z1 Proc) (q_4_s_z2 Proc))
+      (=>
+        (not (= q_3_s_z1 q_4_s_z2))
+        (not (and (= (select s_A q_3_s_z1) s_Q6) (= (select s_A q_4_s_z2) s_Q6)))))
+    :invar-property
+    0))

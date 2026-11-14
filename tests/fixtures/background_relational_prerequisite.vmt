@@ -1,0 +1,22 @@
+; A disabled action whose contradiction requires joining a quantified guard
+; with concrete reads of its existential parameter.
+(declare-fun enabled () (Array Int Bool))
+(declare-fun enabled_next () (Array Int Bool))
+(declare-fun ready () (Array Int Bool))
+(declare-fun ready_next () (Array Int Bool))
+(declare-fun data () (Array Int Int))
+(declare-fun data_next () (Array Int Int))
+(define-fun .enabled () (Array Int Bool) (! enabled :next enabled_next))
+(define-fun .ready () (Array Int Bool) (! ready :next ready_next))
+(define-fun .data () (Array Int Int) (! data :next data_next))
+(define-fun init () Bool (! (and (= data ((as const (Array Int Int)) 0))
+  (forall ((i Int)) (=> (select enabled i) (select ready i)))) :init true))
+(define-fun trans () Bool (! (or
+  (exists ((p Int)) (and
+    (select enabled p)
+    (not (select ready p))
+    (= enabled_next enabled)
+    (= ready_next ready)
+    (forall ((i Int)) (= (select data_next i) (ite (= i p) 1 (select data i))))))
+  (and (= enabled_next enabled) (= ready_next ready) (= data_next data))) :trans true))
+(define-fun prop () Bool (! (= (select data 0) 0) :invar-property 0))

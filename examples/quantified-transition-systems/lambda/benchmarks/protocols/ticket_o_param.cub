@@ -1,0 +1,61 @@
+type locations = L1 | L2 | L3
+
+array A[proc] : locations
+array B[proc] : locations
+var C : int
+var D : int
+var E : int
+var F : int
+
+init(x)
+{E = F && A[x] = L1 && B[x] = L1}
+
+unsafe(x)
+{A[x] = L3 && B[x] = L3}
+
+
+transition one (x)
+requires{ A[x] = L1}
+{
+ A[x] := L2; 
+ C := E; 
+ E := E + 1;
+}
+
+transition two (x)
+requires {A[x] = L2 && C <= F}
+{
+ A[x] := L3;
+}
+
+transition three (x)
+requires {A[x] = L3}
+{
+F := F+1;
+A[x] := L1;
+}
+
+transition four (x)
+requires{ B[x] = L1}
+{
+B[x] := L2; 
+D := E;
+E := E + 1;
+}
+
+transition five (x)
+requires {B[x] = L2 && D <= F}
+{
+ B[x] := L3;
+
+}
+
+transition six (x)
+requires {B[x] = L3}
+{
+F := F+1;
+B[x] := L1;
+}
+
+
+

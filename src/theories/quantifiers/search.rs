@@ -1,5 +1,9 @@
 //! Binder paging and model-local continuation cursors.
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+    rc::Rc,
+};
 
 use crate::profiling::RefinementProfilingCollector;
 
@@ -19,6 +23,91 @@ pub(crate) struct BinderSearchCursor {
     rules: Vec<BinderRuleCursor>,
     next_rule: usize,
     partial: HashMap<usize, super::partial_tuple::PartialTupleCursor>,
+    applications: HashMap<usize, VecDeque<super::application_captures::CaptureMatches>>,
+    application_work: HashMap<usize, usize>,
+}
+
+/// Restore concrete application contexts after e-matching coalesces model-equal
+/// helpers. Page the occurrence expansion as well as the quantified-variable
+/// search; a merged eclass must not erase distinct actual capture tuples.
+pub(super) fn search_application_page<N: egg::Analysis<TermLanguage>>(
+    applications: &super::application_captures::ApplicationCaptures,
+    egraph: &egg::EGraph<TermLanguage, N>,
+    rules: &[CompiledBinderRule<N>],
+    cursor: &mut BinderSearchCursor,
+    (index, allowance): (Option<usize>, &crate::policy::effort::WorkAllowance),
+    profiling: &Option<Rc<RefCell<RefinementProfilingCollector>>>,
+    evaluate: impl FnMut(
+        &crate::terms::language::TermPattern,
+        &egg::Subst,
+    ) -> anyhow::Result<Option<bool>>,
+) -> anyhow::Result<MatchedRules> {
+    cursor
+        .rules
+        .resize(rules.len(), BinderRuleCursor::Pending { offset: 0 });
+    let index = index.or_else(|| {
+        let pending = cursor.pending_rules(rules.len());
+        (0..rules.len())
+            .map(|d| (cursor.next_rule + d) % rules.len())
+            .find(|i| pending.contains(i))
+    });
+    let Some(index) = index else {
+        let mut result = MatchedRules::default();
+        report_progress(rules, cursor, &mut result);
+        return Ok(result);
+    };
+    let mut result = if cursor
+        .applications
+        .get(&index)
+        .is_some_and(|queue| !queue.is_empty())
+    {
+        MatchedRules::default()
+    } else {
+        let mut page = search_binder_model_page(
+            egraph,
+            rules,
+            cursor,
+            Some(index),
+            allowance,
+            profiling,
+            evaluate,
+        )?;
+        let queue = cursor.applications.entry(index).or_default();
+        for matched in std::mem::take(&mut page.matches) {
+            let occurrences = applications.occurrences(&rules[index], matched, egraph);
+            if occurrences.pending() {
+                queue.push_back(occurrences);
+            }
+        }
+        page
+    };
+    let queue = cursor.applications.entry(index).or_default();
+    let work = cursor.application_work.entry(index).or_default();
+    for _ in 0..allowance.binder_page_size {
+        if *work >= allowance.binder_search_limit {
+            break;
+        }
+        let Some(occurrences) = queue.front_mut() else {
+            break;
+        };
+        *work += 1;
+        if let Some(matched) = occurrences.step() {
+            result.matches.push(matched);
+        }
+        if !occurrences.pending() {
+            queue.pop_front();
+        }
+    }
+    if *work >= allowance.binder_search_limit && !queue.is_empty() {
+        queue.clear();
+        cursor.rules[index] = BinderRuleCursor::Exhausted;
+    }
+    result.report.returned_substitutions = result.matches.len();
+    result.report.continuable_rules.clear();
+    result.report.budget_exhausted_rules.clear();
+    cursor.next_rule = (index + 1) % rules.len();
+    report_progress(rules, cursor, &mut result);
+    Ok(result)
 }
 
 /// Conflict fallback can test signed conditions on incomplete domain tuples.
@@ -109,6 +198,17 @@ fn report_progress<N: egg::Analysis<TermLanguage>>(
     result: &mut MatchedRules,
 ) {
     for (index, rule) in rules.iter().enumerate() {
+        if cursor
+            .applications
+            .get(&index)
+            .is_some_and(|queue| !queue.is_empty())
+        {
+            result
+                .report
+                .continuable_rules
+                .push(rule.metadata().name().to_owned());
+            continue;
+        }
         match cursor.rules[index] {
             BinderRuleCursor::Pending { .. } => result
                 .report
@@ -134,17 +234,23 @@ impl BinderSearchCursor {
     pub(crate) fn pending_rules(&self, count: usize) -> Vec<usize> {
         (0..count)
             .filter(|i| {
-                self.rules
-                    .get(*i)
-                    .is_none_or(|r| matches!(r, BinderRuleCursor::Pending { .. }))
+                self.applications
+                    .get(i)
+                    .is_some_and(|queue| !queue.is_empty())
+                    || self
+                        .rules
+                        .get(*i)
+                        .is_none_or(|r| matches!(r, BinderRuleCursor::Pending { .. }))
             })
             .collect()
     }
     #[cfg(test)]
     pub fn can_continue(&self) -> bool {
-        self.rules
-            .iter()
-            .any(|rule| matches!(rule, BinderRuleCursor::Pending { .. }))
+        self.applications.values().any(|queue| !queue.is_empty())
+            || self
+                .rules
+                .iter()
+                .any(|rule| matches!(rule, BinderRuleCursor::Pending { .. }))
     }
 }
 
@@ -181,6 +287,7 @@ fn search_binder_rule_page<N: egg::Analysis<TermLanguage>>(
                     .id,
                 substitution: egg::Subst::default(),
                 model_violation_verified: false,
+                literal_bindings: vec![],
             }],
             report: RuleSearchReport {
                 returned_substitutions: 1,

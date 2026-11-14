@@ -10,3 +10,6 @@ pub mod scope;
 pub(crate) mod search;
 pub(crate) mod search_context;
 pub(crate) mod symbolic_pool;
+
+pub(crate) mod read_support;
+pub(crate) mod source_terms;

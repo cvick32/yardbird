@@ -1,0 +1,619 @@
+; Generated offline from cubicle/examples/distrib_channels_int1.cub
+; Source SHA-256: f99946b82ad222ebfd0198acff1c2247ad88d37eea236ab92f64335bab21242b
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_state 0)
+(declare-sort s_msg 0)
+(declare-fun s_Idle () s_state)
+(declare-fun s_Idle_next () s_state)
+(declare-fun s_Choose () s_state)
+(declare-fun s_Choose_next () s_state)
+(declare-fun s_Wait () s_state)
+(declare-fun s_Wait_next () s_state)
+(declare-fun s_Use () s_state)
+(declare-fun s_Use_next () s_state)
+(declare-fun s_Empty () s_msg)
+(declare-fun s_Empty_next () s_msg)
+(declare-fun s_Req1 () s_msg)
+(declare-fun s_Req1_next () s_msg)
+(declare-fun s_Ack1 () s_msg)
+(declare-fun s_Ack1_next () s_msg)
+(declare-fun s_Ok1 () s_msg)
+(declare-fun s_Ok1_next () s_msg)
+(declare-fun s_Req2 () s_msg)
+(declare-fun s_Req2_next () s_msg)
+(declare-fun s_Ack2 () s_msg)
+(declare-fun s_Ack2_next () s_msg)
+(declare-fun s_Ok2 () s_msg)
+(declare-fun s_Ok2_next () s_msg)
+(declare-fun s_State () (Array Proc s_state))
+(declare-fun s_State_next () (Array Proc s_state))
+(declare-fun s_Num () (Array Proc Int))
+(declare-fun s_Num_next () (Array Proc Int))
+(declare-fun s_Aux () (Array Proc Int))
+(declare-fun s_Aux_next () (Array Proc Int))
+(declare-fun s_Channel_5f_msg () (Array Proc (Array Proc s_msg)))
+(declare-fun s_Channel_5f_msg_next () (Array Proc (Array Proc s_msg)))
+(declare-fun s_Channel_5f_v () (Array Proc (Array Proc Int)))
+(declare-fun s_Channel_5f_v_next () (Array Proc (Array Proc Int)))
+(declare-fun s_Tick () Int)
+(declare-fun s_Tick_next () Int)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: Idle
+(define-fun link_0 () s_state (! s_Idle :next s_Idle_next))
+; source symbol: Choose
+(define-fun link_1 () s_state (! s_Choose :next s_Choose_next))
+; source symbol: Wait
+(define-fun link_2 () s_state (! s_Wait :next s_Wait_next))
+; source symbol: Use
+(define-fun link_3 () s_state (! s_Use :next s_Use_next))
+; source symbol: Empty
+(define-fun link_4 () s_msg (! s_Empty :next s_Empty_next))
+; source symbol: Req1
+(define-fun link_5 () s_msg (! s_Req1 :next s_Req1_next))
+; source symbol: Ack1
+(define-fun link_6 () s_msg (! s_Ack1 :next s_Ack1_next))
+; source symbol: Ok1
+(define-fun link_7 () s_msg (! s_Ok1 :next s_Ok1_next))
+; source symbol: Req2
+(define-fun link_8 () s_msg (! s_Req2 :next s_Req2_next))
+; source symbol: Ack2
+(define-fun link_9 () s_msg (! s_Ack2 :next s_Ack2_next))
+; source symbol: Ok2
+(define-fun link_10 () s_msg (! s_Ok2 :next s_Ok2_next))
+; source symbol: State
+(define-fun link_11 () (Array Proc s_state) (! s_State :next s_State_next))
+; source symbol: Num
+(define-fun link_12 () (Array Proc Int) (! s_Num :next s_Num_next))
+; source symbol: Aux
+(define-fun link_13 () (Array Proc Int) (! s_Aux :next s_Aux_next))
+; source symbol: Channel_msg
+(define-fun link_14 () (Array Proc (Array Proc s_msg)) (! s_Channel_5f_msg :next s_Channel_5f_msg_next))
+; source symbol: Channel_v
+(define-fun link_15 () (Array Proc (Array Proc Int)) (! s_Channel_5f_v :next s_Channel_5f_v_next))
+; source symbol: Tick
+(define-fun link_16 () Int (! s_Tick :next s_Tick_next))
+; source symbol: __proc_rank
+(define-fun link_17 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_7_s_z Proc))
+    (and
+      (= (select s_State q_7_s_z) s_Idle)
+      (forall ((q_8_s_index0 Proc))
+        (=
+          (select s_State_next q_8_s_index0)
+          (ite (= q_8_s_index0 q_7_s_z) s_Choose (select s_State q_8_s_index0))))
+      (forall ((q_9_s_index0 Proc))
+        (=
+          (select s_Aux_next q_9_s_index0)
+          (ite (= q_9_s_index0 q_7_s_z) (select s_Num q_7_s_z) (select s_Aux q_9_s_index0))))
+      (forall ((q_10_s_s Proc) (q_11_s_r Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_10_s_s) q_11_s_r)
+          (ite
+            (and
+              (= q_10_s_s q_7_s_z)
+              (and
+                (not (= q_11_s_r q_7_s_z))
+                (= (select (select s_Channel_5f_msg q_10_s_s) q_11_s_r) s_Empty)))
+            s_Req1
+            (select (select s_Channel_5f_msg q_10_s_s) q_11_s_r))))
+      (forall ((q_12_s_s Proc) (q_13_s_r Proc))
+        (=
+          (select (select s_Channel_5f_v_next q_12_s_s) q_13_s_r)
+          (ite
+            (and
+              (= q_12_s_s q_7_s_z)
+              (and
+                (not (= q_13_s_r q_7_s_z))
+                (= (select (select s_Channel_5f_msg q_12_s_s) q_13_s_r) s_Empty)))
+            (select s_Num q_7_s_z)
+            (select (select s_Channel_5f_v q_12_s_s) q_13_s_r))))
+      (= s_Num_next s_Num))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_14_s_z Proc) (q_15_s_r Proc))
+    (and
+      (not (= q_14_s_z q_15_s_r))
+      (and
+        (= (select s_State q_14_s_z) s_Choose)
+        (and
+          (= (select (select s_Channel_5f_msg q_14_s_z) q_15_s_r) s_Ack1)
+          (< (select s_Aux q_14_s_z) (select (select s_Channel_5f_v q_14_s_z) q_15_s_r))))
+      (forall ((q_16_s_index0 Proc) (q_17_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_16_s_index0) q_17_s_index1)
+          (ite
+            (and (= q_16_s_index0 q_14_s_z) (= q_17_s_index1 q_15_s_r))
+            s_Ok1
+            (select (select s_Channel_5f_msg q_16_s_index0) q_17_s_index1))))
+      (forall ((q_18_s_index0 Proc))
+        (=
+          (select s_Aux_next q_18_s_index0)
+          (ite
+            (= q_18_s_index0 q_14_s_z)
+            (select (select s_Channel_5f_v q_14_s_z) q_15_s_r)
+            (select s_Aux q_18_s_index0))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_19_s_z Proc) (q_20_s_r Proc))
+    (and
+      (not (= q_19_s_z q_20_s_r))
+      (and
+        (= (select s_State q_19_s_z) s_Choose)
+        (and
+          (= (select (select s_Channel_5f_msg q_19_s_z) q_20_s_r) s_Ack1)
+          (<= (select (select s_Channel_5f_v q_19_s_z) q_20_s_r) (select s_Aux q_19_s_z))))
+      (forall ((q_21_s_index0 Proc) (q_22_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_21_s_index0) q_22_s_index1)
+          (ite
+            (and (= q_21_s_index0 q_19_s_z) (= q_22_s_index1 q_20_s_r))
+            s_Ok1
+            (select (select s_Channel_5f_msg q_21_s_index0) q_22_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_23_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_23_s_z) s_Choose)
+        (forall ((q_24_s_r Proc))
+          (=>
+            (not (= q_24_s_r q_23_s_z))
+            (= (select (select s_Channel_5f_msg q_23_s_z) q_24_s_r) s_Ok1))))
+      (forall ((q_25_s_index0 Proc))
+        (=
+          (select s_State_next q_25_s_index0)
+          (ite (= q_25_s_index0 q_23_s_z) s_Wait (select s_State q_25_s_index0))))
+      (forall ((q_26_s_index0 Proc))
+        (=
+          (select s_Num_next q_26_s_index0)
+          (ite
+            (= q_26_s_index0 q_23_s_z)
+            (+ (select s_Aux q_23_s_z) 1)
+            (select s_Num q_26_s_index0))))
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_msg_next s_Channel_5f_msg)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_27_s_z Proc) (q_28_s_s Proc))
+    (and
+      (not (= q_27_s_z q_28_s_s))
+      (= (select (select s_Channel_5f_msg q_28_s_s) q_27_s_z) s_Req1)
+      (forall ((q_29_s_index0 Proc) (q_30_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_29_s_index0) q_30_s_index1)
+          (ite
+            (and (= q_29_s_index0 q_28_s_s) (= q_30_s_index1 q_27_s_z))
+            s_Ack1
+            (select (select s_Channel_5f_msg q_29_s_index0) q_30_s_index1))))
+      (forall ((q_31_s_index0 Proc) (q_32_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_v_next q_31_s_index0) q_32_s_index1)
+          (ite
+            (and (= q_31_s_index0 q_28_s_s) (= q_32_s_index1 q_27_s_z))
+            (select s_Num q_27_s_z)
+            (select (select s_Channel_5f_v q_31_s_index0) q_32_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_33_s_z Proc) (q_34_s_s Proc))
+    (and
+      (not (= q_33_s_z q_34_s_s))
+      (= (select (select s_Channel_5f_msg q_34_s_s) q_33_s_z) s_Req2)
+      (forall ((q_35_s_index0 Proc) (q_36_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_35_s_index0) q_36_s_index1)
+          (ite
+            (and (= q_35_s_index0 q_34_s_s) (= q_36_s_index1 q_33_s_z))
+            s_Ack2
+            (select (select s_Channel_5f_msg q_35_s_index0) q_36_s_index1))))
+      (forall ((q_37_s_index0 Proc) (q_38_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_v_next q_37_s_index0) q_38_s_index1)
+          (ite
+            (and (= q_37_s_index0 q_34_s_s) (= q_38_s_index1 q_33_s_z))
+            (select s_Num q_33_s_z)
+            (select (select s_Channel_5f_v q_37_s_index0) q_38_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_39_s_z Proc))
+    (and
+      (= (select s_State q_39_s_z) s_Wait)
+      (forall ((q_40_s_i Proc) (q_41_s_j Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_40_s_i) q_41_s_j)
+          (ite
+            (and
+              (= q_40_s_i q_39_s_z)
+              (= (select (select s_Channel_5f_msg q_39_s_z) q_41_s_j) s_Ok1))
+            s_Req2
+            (select (select s_Channel_5f_msg q_40_s_i) q_41_s_j))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t8_1
+(define-fun action_7 () Bool
+  (exists ((q_42_s_z Proc) (q_43_s_r Proc))
+    (and
+      (not (= q_42_s_z q_43_s_r))
+      (and
+        (= (select s_State q_42_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_42_s_z) q_43_s_r) s_Ack2)
+          (and
+            (< 0 (select (select s_Channel_5f_v q_42_s_z) q_43_s_r))
+            (< (select (select s_Channel_5f_v q_42_s_z) q_43_s_r) (select s_Num q_42_s_z)))))
+      (forall ((q_44_s_index0 Proc) (q_45_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_44_s_index0) q_45_s_index1)
+          (ite
+            (and (= q_44_s_index0 q_42_s_z) (= q_45_s_index1 q_43_s_r))
+            s_Req2
+            (select (select s_Channel_5f_msg q_44_s_index0) q_45_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t8_2
+(define-fun action_8 () Bool
+  (exists ((q_46_s_z Proc) (q_47_s_r Proc))
+    (and
+      (not (= q_46_s_z q_47_s_r))
+      (and
+        (= (select s_State q_46_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_46_s_z) q_47_s_r) s_Ack2)
+          (and
+            (< 0 (select (select s_Channel_5f_v q_46_s_z) q_47_s_r))
+            (and
+              (= (select (select s_Channel_5f_v q_46_s_z) q_47_s_r) (select s_Num q_46_s_z))
+              (< (select s__5f__5f_proc_5f_rank q_47_s_r) (select s__5f__5f_proc_5f_rank q_46_s_z))))))
+      (forall ((q_48_s_index0 Proc) (q_49_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_48_s_index0) q_49_s_index1)
+          (ite
+            (and (= q_48_s_index0 q_46_s_z) (= q_49_s_index1 q_47_s_r))
+            s_Req2
+            (select (select s_Channel_5f_msg q_48_s_index0) q_49_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t9_1
+(define-fun action_9 () Bool
+  (exists ((q_50_s_z Proc) (q_51_s_r Proc))
+    (and
+      (not (= q_50_s_z q_51_s_r))
+      (and
+        (= (select s_State q_50_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_50_s_z) q_51_s_r) s_Ack2)
+          (= (select (select s_Channel_5f_v q_50_s_z) q_51_s_r) 0)))
+      (forall ((q_52_s_index0 Proc) (q_53_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_52_s_index0) q_53_s_index1)
+          (ite
+            (and (= q_52_s_index0 q_50_s_z) (= q_53_s_index1 q_51_s_r))
+            s_Ok2
+            (select (select s_Channel_5f_msg q_52_s_index0) q_53_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t9_2
+(define-fun action_10 () Bool
+  (exists ((q_54_s_z Proc) (q_55_s_r Proc))
+    (and
+      (not (= q_54_s_z q_55_s_r))
+      (and
+        (= (select s_State q_54_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_54_s_z) q_55_s_r) s_Ack2)
+          (< (select s_Num q_54_s_z) (select (select s_Channel_5f_v q_54_s_z) q_55_s_r))))
+      (forall ((q_56_s_index0 Proc) (q_57_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_56_s_index0) q_57_s_index1)
+          (ite
+            (and (= q_56_s_index0 q_54_s_z) (= q_57_s_index1 q_55_s_r))
+            s_Ok2
+            (select (select s_Channel_5f_msg q_56_s_index0) q_57_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t9_3
+(define-fun action_11 () Bool
+  (exists ((q_58_s_z Proc) (q_59_s_r Proc))
+    (and
+      (not (= q_58_s_z q_59_s_r))
+      (and
+        (= (select s_State q_58_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_58_s_z) q_59_s_r) s_Ack2)
+          (and
+            (= (select s_Num q_58_s_z) (select (select s_Channel_5f_v q_58_s_z) q_59_s_r))
+            (< (select s__5f__5f_proc_5f_rank q_58_s_z) (select s__5f__5f_proc_5f_rank q_59_s_r)))))
+      (forall ((q_60_s_index0 Proc) (q_61_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_60_s_index0) q_61_s_index1)
+          (ite
+            (and (= q_60_s_index0 q_58_s_z) (= q_61_s_index1 q_59_s_r))
+            s_Ok2
+            (select (select s_Channel_5f_msg q_60_s_index0) q_61_s_index1))))
+      (= s_State_next s_State)
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t10
+(define-fun action_12 () Bool
+  (exists ((q_62_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_62_s_z) s_Wait)
+        (forall ((q_63_s_r Proc))
+          (=>
+            (not (= q_63_s_r q_62_s_z))
+            (= (select (select s_Channel_5f_msg q_62_s_z) q_63_s_r) s_Ok2))))
+      (forall ((q_64_s_index0 Proc))
+        (=
+          (select s_State_next q_64_s_index0)
+          (ite (= q_64_s_index0 q_62_s_z) s_Use (select s_State q_64_s_index0))))
+      (= s_Num_next s_Num)
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_msg_next s_Channel_5f_msg)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+; action: t11
+(define-fun action_13 () Bool
+  (exists ((q_65_s_z Proc))
+    (and
+      (= (select s_State q_65_s_z) s_Use)
+      (forall ((q_66_s_index0 Proc))
+        (=
+          (select s_State_next q_66_s_index0)
+          (ite (= q_66_s_index0 q_65_s_z) s_Idle (select s_State q_66_s_index0))))
+      (forall ((q_67_s_index0 Proc))
+        (=
+          (select s_Num_next q_67_s_index0)
+          (ite (= q_67_s_index0 q_65_s_z) 0 (select s_Num q_67_s_index0))))
+      (forall ((q_68_s_i Proc) (q_69_s_j Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_68_s_i) q_69_s_j)
+          (ite
+            (and
+              (= q_68_s_i q_65_s_z)
+              (and
+                (not (= q_69_s_j q_65_s_z))
+                (= (select (select s_Channel_5f_msg q_68_s_i) q_69_s_j) s_Ok2)))
+            s_Empty
+            (select (select s_Channel_5f_msg q_68_s_i) q_69_s_j))))
+      (= s_Aux_next s_Aux)
+      (= s_Channel_5f_v_next s_Channel_5f_v))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_3_s_z Proc) (q_4_s_z1 Proc))
+        (and
+          (= (select s_State q_3_s_z) s_Idle)
+          (and
+            (= (select s_Num q_3_s_z) 0)
+            (and
+              (= (select s_Aux q_3_s_z) 0)
+              (and
+                (= (select (select s_Channel_5f_msg q_3_s_z) q_4_s_z1) s_Empty)
+                (= (select (select s_Channel_5f_v q_3_s_z) q_4_s_z1) 0))))))
+      (and
+        (not (= s_Idle s_Choose))
+        (not (= s_Idle s_Wait))
+        (not (= s_Idle s_Use))
+        (not (= s_Choose s_Wait))
+        (not (= s_Choose s_Use))
+        (not (= s_Wait s_Use)))
+      (forall ((q_1_s_enum s_state))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Choose)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Use)))
+      (and
+        (not (= s_Empty s_Req1))
+        (not (= s_Empty s_Ack1))
+        (not (= s_Empty s_Ok1))
+        (not (= s_Empty s_Req2))
+        (not (= s_Empty s_Ack2))
+        (not (= s_Empty s_Ok2))
+        (not (= s_Req1 s_Ack1))
+        (not (= s_Req1 s_Ok1))
+        (not (= s_Req1 s_Req2))
+        (not (= s_Req1 s_Ack2))
+        (not (= s_Req1 s_Ok2))
+        (not (= s_Ack1 s_Ok1))
+        (not (= s_Ack1 s_Req2))
+        (not (= s_Ack1 s_Ack2))
+        (not (= s_Ack1 s_Ok2))
+        (not (= s_Ok1 s_Req2))
+        (not (= s_Ok1 s_Ack2))
+        (not (= s_Ok1 s_Ok2))
+        (not (= s_Req2 s_Ack2))
+        (not (= s_Req2 s_Ok2))
+        (not (= s_Ack2 s_Ok2)))
+      (forall ((q_2_s_enum s_msg))
+        (or
+          (= q_2_s_enum s_Empty)
+          (= q_2_s_enum s_Req1)
+          (= q_2_s_enum s_Ack1)
+          (= q_2_s_enum s_Ok1)
+          (= q_2_s_enum s_Req2)
+          (= q_2_s_enum s_Ack2)
+          (= q_2_s_enum s_Ok2)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13)
+      (= s_Idle_next s_Idle)
+      (= s_Choose_next s_Choose)
+      (= s_Wait_next s_Wait)
+      (= s_Use_next s_Use)
+      (= s_Empty_next s_Empty)
+      (= s_Req1_next s_Req1)
+      (= s_Ack1_next s_Ack1)
+      (= s_Ok1_next s_Ok1)
+      (= s_Req2_next s_Req2)
+      (= s_Ack2_next s_Ack2)
+      (= s_Ok2_next s_Ok2)
+      (= s_Tick_next s_Tick)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_Idle s_Choose))
+        (not (= s_Idle s_Wait))
+        (not (= s_Idle s_Use))
+        (not (= s_Choose s_Wait))
+        (not (= s_Choose s_Use))
+        (not (= s_Wait s_Use)))
+      (forall ((q_1_s_enum s_state))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Choose)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Use)))
+      (and
+        (not (= s_Empty s_Req1))
+        (not (= s_Empty s_Ack1))
+        (not (= s_Empty s_Ok1))
+        (not (= s_Empty s_Req2))
+        (not (= s_Empty s_Ack2))
+        (not (= s_Empty s_Ok2))
+        (not (= s_Req1 s_Ack1))
+        (not (= s_Req1 s_Ok1))
+        (not (= s_Req1 s_Req2))
+        (not (= s_Req1 s_Ack2))
+        (not (= s_Req1 s_Ok2))
+        (not (= s_Ack1 s_Ok1))
+        (not (= s_Ack1 s_Req2))
+        (not (= s_Ack1 s_Ack2))
+        (not (= s_Ack1 s_Ok2))
+        (not (= s_Ok1 s_Req2))
+        (not (= s_Ok1 s_Ack2))
+        (not (= s_Ok1 s_Ok2))
+        (not (= s_Req2 s_Ack2))
+        (not (= s_Req2 s_Ok2))
+        (not (= s_Ack2 s_Ok2)))
+      (forall ((q_2_s_enum s_msg))
+        (or
+          (= q_2_s_enum s_Empty)
+          (= q_2_s_enum s_Req1)
+          (= q_2_s_enum s_Ack1)
+          (= q_2_s_enum s_Ok1)
+          (= q_2_s_enum s_Req2)
+          (= q_2_s_enum s_Ack2)
+          (= q_2_s_enum s_Ok2)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_Idle s_Choose))
+        (not (= s_Idle s_Wait))
+        (not (= s_Idle s_Use))
+        (not (= s_Choose s_Wait))
+        (not (= s_Choose s_Use))
+        (not (= s_Wait s_Use)))
+      (forall ((q_1_s_enum s_state))
+        (or
+          (= q_1_s_enum s_Idle)
+          (= q_1_s_enum s_Choose)
+          (= q_1_s_enum s_Wait)
+          (= q_1_s_enum s_Use)))
+      (and
+        (not (= s_Empty s_Req1))
+        (not (= s_Empty s_Ack1))
+        (not (= s_Empty s_Ok1))
+        (not (= s_Empty s_Req2))
+        (not (= s_Empty s_Ack2))
+        (not (= s_Empty s_Ok2))
+        (not (= s_Req1 s_Ack1))
+        (not (= s_Req1 s_Ok1))
+        (not (= s_Req1 s_Req2))
+        (not (= s_Req1 s_Ack2))
+        (not (= s_Req1 s_Ok2))
+        (not (= s_Ack1 s_Ok1))
+        (not (= s_Ack1 s_Req2))
+        (not (= s_Ack1 s_Ack2))
+        (not (= s_Ack1 s_Ok2))
+        (not (= s_Ok1 s_Req2))
+        (not (= s_Ok1 s_Ack2))
+        (not (= s_Ok1 s_Ok2))
+        (not (= s_Req2 s_Ack2))
+        (not (= s_Req2 s_Ok2))
+        (not (= s_Ack2 s_Ok2)))
+      (forall ((q_2_s_enum s_msg))
+        (or
+          (= q_2_s_enum s_Empty)
+          (= q_2_s_enum s_Req1)
+          (= q_2_s_enum s_Ack1)
+          (= q_2_s_enum s_Ok1)
+          (= q_2_s_enum s_Req2)
+          (= q_2_s_enum s_Ack2)
+          (= q_2_s_enum s_Ok2)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_5_s_z1 Proc) (q_6_s_z2 Proc))
+      (=>
+        (not (= q_5_s_z1 q_6_s_z2))
+        (not
+          (and
+            (= (select s_State q_5_s_z1) s_Use)
+            (and
+              (= (select s_State q_6_s_z2) s_Use)
+              (and
+                (= (select (select s_Channel_5f_msg q_5_s_z1) q_6_s_z2) s_Ok2)
+                (= (select (select s_Channel_5f_msg q_6_s_z2) q_5_s_z1) s_Ok2)))))))
+    :invar-property
+    0))

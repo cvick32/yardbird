@@ -1,0 +1,41 @@
+; Generated offline from mypyvy/examples/misc/splitter.pyv
+; Source SHA-256: 4d86a3680294d3ae9e310ccdb0a98891eb476506fec6c69308432e346d8ad76f
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-fun s_n () Int)
+(declare-fun s_n_next () Int)
+(declare-fun s_m () Int)
+(declare-fun s_m_next () Int)
+(declare-fun s_x () Int)
+(declare-fun s_x_next () Int)
+(declare-fun s_y () Int)
+(declare-fun s_y_next () Int)
+; source symbol: n
+(define-fun link_0 () Int (! s_n :next s_n_next))
+; source symbol: m
+(define-fun link_1 () Int (! s_m :next s_m_next))
+; source symbol: x
+(define-fun link_2 () Int (! s_x :next s_x_next))
+; source symbol: y
+(define-fun link_3 () Int (! s_y :next s_y_next))
+; action: loop_body
+(define-fun action_0 () Bool
+  (and (< s_x s_n) (= s_x_next (+ s_x 1)) (= s_y_next (ite (> s_x_next s_m) (+ s_y 1) s_y))))
+(define-fun init () Bool
+  (! (and (= s_x 0) (= s_y s_m) (>= s_n 0) (>= s_m 0) (< s_m s_n)) :init true))
+(define-fun trans () Bool
+  (!
+    (and
+      action_0
+      (= s_n_next s_n)
+      (= s_m_next s_m)
+      (>= s_n 0)
+      (>= s_m 0)
+      (< s_m s_n)
+      (>= s_n 0)
+      (>= s_m 0)
+      (< s_m s_n))
+    :trans
+    true))
+(define-fun property () Bool (! (=> (>= s_x s_n) (= s_y s_n)) :invar-property 0))

@@ -1,0 +1,125 @@
+; Generated offline from ivybench/tla/vmt/TCommit.vmt
+; Source SHA-256: 3c259d3fcab6c64ca602db155146e04dc7aa27828e22399e75fbcccb0b1a4eb5
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_resource_5f_manager 0)
+(declare-fun s__5f__5f_aborted () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_aborted_next () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_committed () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_committed_next () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_prepared () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_prepared_next () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_working () (Array s_resource_5f_manager Bool))
+(declare-fun s__5f__5f_working_next () (Array s_resource_5f_manager Bool))
+; source symbol: __aborted
+(define-fun link_0 () (Array s_resource_5f_manager Bool) (! s__5f__5f_aborted :next s__5f__5f_aborted_next))
+; source symbol: __committed
+(define-fun link_1 () (Array s_resource_5f_manager Bool) (! s__5f__5f_committed :next s__5f__5f_committed_next))
+; source symbol: __prepared
+(define-fun link_2 () (Array s_resource_5f_manager Bool) (! s__5f__5f_prepared :next s__5f__5f_prepared_next))
+; source symbol: __working
+(define-fun link_3 () (Array s_resource_5f_manager Bool) (! s__5f__5f_working :next s__5f__5f_working_next))
+; action: ext:decide_abort
+(define-fun action_0 () Bool
+  (and
+    (exists ((q_7_s_V_5f__5f_fml_3a_rm s_resource_5f_manager))
+      (and
+        (forall ((q_8_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_working_next q_8_s_V0)
+            (ite (= q_8_s_V0 q_7_s_V_5f__5f_fml_3a_rm) false (select s__5f__5f_working q_8_s_V0))))
+        (forall ((q_9_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_prepared_next q_9_s_V0)
+            (ite (= q_9_s_V0 q_7_s_V_5f__5f_fml_3a_rm) false (select s__5f__5f_prepared q_9_s_V0))))
+        (forall ((q_10_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_committed_next q_10_s_V0)
+            (ite
+              (= q_10_s_V0 q_7_s_V_5f__5f_fml_3a_rm)
+              false
+              (select s__5f__5f_committed q_10_s_V0))))
+        (forall ((q_11_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_aborted_next q_11_s_V0)
+            (ite (= q_11_s_V0 q_7_s_V_5f__5f_fml_3a_rm) true (select s__5f__5f_aborted q_11_s_V0))))
+        (or
+          (select s__5f__5f_working q_7_s_V_5f__5f_fml_3a_rm)
+          (select s__5f__5f_prepared q_7_s_V_5f__5f_fml_3a_rm))
+        (forall ((q_12_s_R s_resource_5f_manager)) (not (select s__5f__5f_committed q_12_s_R)))))))
+; action: ext:decide_commit
+(define-fun action_1 () Bool
+  (and
+    (exists ((q_13_s_V_5f__5f_fml_3a_rm s_resource_5f_manager))
+      (and
+        (forall ((q_14_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_working_next q_14_s_V0)
+            (ite (= q_14_s_V0 q_13_s_V_5f__5f_fml_3a_rm) false (select s__5f__5f_working q_14_s_V0))))
+        (forall ((q_15_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_prepared_next q_15_s_V0)
+            (ite
+              (= q_15_s_V0 q_13_s_V_5f__5f_fml_3a_rm)
+              false
+              (select s__5f__5f_prepared q_15_s_V0))))
+        (forall ((q_16_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_committed_next q_16_s_V0)
+            (ite
+              (= q_16_s_V0 q_13_s_V_5f__5f_fml_3a_rm)
+              true
+              (select s__5f__5f_committed q_16_s_V0))))
+        (forall ((q_17_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_aborted_next q_17_s_V0)
+            (ite (= q_17_s_V0 q_13_s_V_5f__5f_fml_3a_rm) false (select s__5f__5f_aborted q_17_s_V0))))
+        (select s__5f__5f_prepared q_13_s_V_5f__5f_fml_3a_rm)
+        (forall ((q_18_s_R s_resource_5f_manager))
+          (or (select s__5f__5f_prepared q_18_s_R) (select s__5f__5f_committed q_18_s_R)))))))
+; action: ext:prepare
+(define-fun action_2 () Bool
+  (and
+    (exists ((q_19_s_V_5f__5f_fml_3a_rm s_resource_5f_manager))
+      (and
+        (forall ((q_20_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_working_next q_20_s_V0)
+            (ite (= q_20_s_V0 q_19_s_V_5f__5f_fml_3a_rm) false (select s__5f__5f_working q_20_s_V0))))
+        (forall ((q_21_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_prepared_next q_21_s_V0)
+            (ite (= q_21_s_V0 q_19_s_V_5f__5f_fml_3a_rm) true (select s__5f__5f_prepared q_21_s_V0))))
+        (forall ((q_22_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_committed_next q_22_s_V0)
+            (ite
+              (= q_22_s_V0 q_19_s_V_5f__5f_fml_3a_rm)
+              false
+              (select s__5f__5f_committed q_22_s_V0))))
+        (forall ((q_23_s_V0 s_resource_5f_manager))
+          (=
+            (select s__5f__5f_aborted_next q_23_s_V0)
+            (ite (= q_23_s_V0 q_19_s_V_5f__5f_fml_3a_rm) false (select s__5f__5f_aborted q_23_s_V0))))
+        (select s__5f__5f_working q_19_s_V_5f__5f_fml_3a_rm)))))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (forall ((q_3_s_V0 s_resource_5f_manager)) (= (select s__5f__5f_working q_3_s_V0) true))
+        (forall ((q_4_s_V0 s_resource_5f_manager)) (= (select s__5f__5f_prepared q_4_s_V0) false))
+        (forall ((q_5_s_V0 s_resource_5f_manager)) (= (select s__5f__5f_committed q_5_s_V0) false))
+        (forall ((q_6_s_V0 s_resource_5f_manager)) (= (select s__5f__5f_aborted q_6_s_V0) false))))
+    :init
+    true))
+(define-fun trans () Bool (! (or action_0 action_1 action_2) :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_R1 s_resource_5f_manager) (q_2_s_R2 s_resource_5f_manager))
+        (not (and (select s__5f__5f_aborted q_1_s_R1) (select s__5f__5f_committed q_2_s_R2)))))
+    :invar-property
+    0))

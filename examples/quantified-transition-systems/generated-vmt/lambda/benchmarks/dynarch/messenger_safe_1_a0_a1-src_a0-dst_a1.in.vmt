@@ -1,0 +1,524 @@
+; Generated offline from lambda/benchmarks/dynarch/messenger_safe_1_a0_a1-src_a0-dst_a1.in
+; Source SHA-256: 9e04d0f3a13705a27a00da0a29f0ff99b189eeae5d1c380f9af30b67faf1b429
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Semantics profile: pinned CADE 2021 Lambda MCMT frontend and its index-sort proof export.
+; nat/subrange data use Int, matching Lambda; source range bounds are not additional axioms.
+; Process indices use an injective integer embedding; infinite process domains are admitted.
+; First x-case and special y-case are local updates; remaining cases are guarded constraints.
+(declare-sort Proc 0)
+(declare-fun s__5f__5f_index_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_index_5f_rank_next () (Array Proc Int))
+(declare-fun s__5f_A0 () (Array Proc Bool))
+(declare-fun s__5f_A0_next () (Array Proc Bool))
+(declare-fun s__5f_A1 () (Array Proc Bool))
+(declare-fun s__5f_A1_next () (Array Proc Bool))
+(declare-fun s__5f_m0_5f_conn_5f_a0 () Int)
+(declare-fun s__5f_m0_5f_conn_5f_a0_next () Int)
+(declare-fun s__5f_m0_5f_taint_5f_a0 () Bool)
+(declare-fun s__5f_m0_5f_taint_5f_a0_next () Bool)
+(declare-fun s__5f_m0_5f_conn_5f_a1 () Int)
+(declare-fun s__5f_m0_5f_conn_5f_a1_next () Int)
+(declare-fun s__5f_m0_5f_taint_5f_a1 () Bool)
+(declare-fun s__5f_m0_5f_taint_5f_a1_next () Bool)
+(declare-fun s__5f_m0_5f_present () Bool)
+(declare-fun s__5f_m0_5f_present_next () Bool)
+(declare-fun s__5f_a0_5f_token () (Array Proc Bool))
+(declare-fun s__5f_a0_5f_token_next () (Array Proc Bool))
+(declare-fun s__5f_a1_5f_token () (Array Proc Bool))
+(declare-fun s__5f_a1_5f_token_next () (Array Proc Bool))
+(declare-fun s__5f_m0_5f_token () Bool)
+(declare-fun s__5f_m0_5f_token_next () Bool)
+; source symbol: __index_rank
+(define-fun link_0 () (Array Proc Int) (! s__5f__5f_index_5f_rank :next s__5f__5f_index_5f_rank_next))
+; source symbol: _A0
+(define-fun link_1 () (Array Proc Bool) (! s__5f_A0 :next s__5f_A0_next))
+; source symbol: _A1
+(define-fun link_2 () (Array Proc Bool) (! s__5f_A1 :next s__5f_A1_next))
+; source symbol: _m0_conn_a0
+(define-fun link_3 () Int (! s__5f_m0_5f_conn_5f_a0 :next s__5f_m0_5f_conn_5f_a0_next))
+; source symbol: _m0_taint_a0
+(define-fun link_4 () Bool (! s__5f_m0_5f_taint_5f_a0 :next s__5f_m0_5f_taint_5f_a0_next))
+; source symbol: _m0_conn_a1
+(define-fun link_5 () Int (! s__5f_m0_5f_conn_5f_a1 :next s__5f_m0_5f_conn_5f_a1_next))
+; source symbol: _m0_taint_a1
+(define-fun link_6 () Bool (! s__5f_m0_5f_taint_5f_a1 :next s__5f_m0_5f_taint_5f_a1_next))
+; source symbol: _m0_present
+(define-fun link_7 () Bool (! s__5f_m0_5f_present :next s__5f_m0_5f_present_next))
+; source symbol: _a0_token
+(define-fun link_8 () (Array Proc Bool) (! s__5f_a0_5f_token :next s__5f_a0_5f_token_next))
+; source symbol: _a1_token
+(define-fun link_9 () (Array Proc Bool) (! s__5f_a1_5f_token :next s__5f_a1_5f_token_next))
+; source symbol: _m0_token
+(define-fun link_10 () Bool (! s__5f_m0_5f_token :next s__5f_m0_5f_token_next))
+; action: transition_0
+(define-fun action_0 () Bool
+  (exists ((q_4_s_x Proc))
+    (and
+      (and
+        (= (select s__5f__5f_index_5f_rank q_4_s_x) s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_present true)
+        (= (select s__5f_A0 q_4_s_x) true)
+        (= (select s__5f_a0_5f_token q_4_s_x) true))
+      (and
+        (= (select s__5f_A0_next q_4_s_x) (select s__5f_A0 q_4_s_x))
+        (= (select s__5f_A1_next q_4_s_x) (select s__5f_A1 q_4_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_4_s_x) (select s__5f_a0_5f_token q_4_s_x))
+        (= (select s__5f_a1_5f_token_next q_4_s_x) (select s__5f_a1_5f_token q_4_s_x))
+        (= s__5f_m0_5f_token_next true))
+      (forall ((q_5_s_j Proc))
+        (=>
+          (and (not (= q_5_s_j q_4_s_x)) (not (= q_5_s_j q_4_s_x)))
+          (and
+            (= (select s__5f_A0_next q_5_s_j) (select s__5f_A0 q_5_s_j))
+            (= (select s__5f_A1_next q_5_s_j) (select s__5f_A1 q_5_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_5_s_j) (select s__5f_a0_5f_token q_5_s_j))
+            (= (select s__5f_a1_5f_token_next q_5_s_j) (select s__5f_a1_5f_token q_5_s_j))
+            (= s__5f_m0_5f_token_next true)))))))
+; action: transition_1
+(define-fun action_1 () Bool
+  (exists ((q_6_s_x Proc))
+    (and
+      (and
+        (= (select s__5f__5f_index_5f_rank q_6_s_x) s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_present true)
+        (= s__5f_m0_5f_token true)
+        (= (select s__5f_A0 q_6_s_x) true))
+      (and
+        (= (select s__5f_A0_next q_6_s_x) (select s__5f_A0 q_6_s_x))
+        (= (select s__5f_A1_next q_6_s_x) (select s__5f_A1 q_6_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_6_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_6_s_x) (select s__5f_a1_5f_token q_6_s_x))
+        (= s__5f_m0_5f_token_next s__5f_m0_5f_token))
+      (forall ((q_7_s_j Proc))
+        (=>
+          (and (not (= q_7_s_j q_6_s_x)) (not (= q_7_s_j q_6_s_x)))
+          (and
+            (= (select s__5f_A0_next q_7_s_j) (select s__5f_A0 q_7_s_j))
+            (= (select s__5f_A1_next q_7_s_j) (select s__5f_A1 q_7_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_7_s_j) (select s__5f_a0_5f_token q_7_s_j))
+            (= (select s__5f_a1_5f_token_next q_7_s_j) (select s__5f_a1_5f_token q_7_s_j))
+            (= s__5f_m0_5f_token_next s__5f_m0_5f_token)))))))
+; action: transition_2
+(define-fun action_2 () Bool
+  (exists ((q_8_s_x Proc))
+    (and
+      (and
+        (= (select s__5f__5f_index_5f_rank q_8_s_x) s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_present true)
+        (= (select s__5f_A1 q_8_s_x) true)
+        (= (select s__5f_a1_5f_token q_8_s_x) true))
+      (and
+        (= (select s__5f_A0_next q_8_s_x) (select s__5f_A0 q_8_s_x))
+        (= (select s__5f_A1_next q_8_s_x) (select s__5f_A1 q_8_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_8_s_x) (select s__5f_a0_5f_token q_8_s_x))
+        (= (select s__5f_a1_5f_token_next q_8_s_x) (select s__5f_a1_5f_token q_8_s_x))
+        (= s__5f_m0_5f_token_next true))
+      (forall ((q_9_s_j Proc))
+        (=>
+          (and (not (= q_9_s_j q_8_s_x)) (not (= q_9_s_j q_8_s_x)))
+          (and
+            (= (select s__5f_A0_next q_9_s_j) (select s__5f_A0 q_9_s_j))
+            (= (select s__5f_A1_next q_9_s_j) (select s__5f_A1 q_9_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_9_s_j) (select s__5f_a0_5f_token q_9_s_j))
+            (= (select s__5f_a1_5f_token_next q_9_s_j) (select s__5f_a1_5f_token q_9_s_j))
+            (= s__5f_m0_5f_token_next true)))))))
+; action: transition_3
+(define-fun action_3 () Bool
+  (exists ((q_10_s_x Proc))
+    (and
+      (and
+        (= (select s__5f__5f_index_5f_rank q_10_s_x) s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_present true)
+        (= s__5f_m0_5f_token true)
+        (= (select s__5f_A1 q_10_s_x) true))
+      (and
+        (= (select s__5f_A0_next q_10_s_x) (select s__5f_A0 q_10_s_x))
+        (= (select s__5f_A1_next q_10_s_x) (select s__5f_A1 q_10_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_10_s_x) (select s__5f_a0_5f_token q_10_s_x))
+        (= (select s__5f_a1_5f_token_next q_10_s_x) true)
+        (= s__5f_m0_5f_token_next s__5f_m0_5f_token))
+      (forall ((q_11_s_j Proc))
+        (=>
+          (and (not (= q_11_s_j q_10_s_x)) (not (= q_11_s_j q_10_s_x)))
+          (and
+            (= (select s__5f_A0_next q_11_s_j) (select s__5f_A0 q_11_s_j))
+            (= (select s__5f_A1_next q_11_s_j) (select s__5f_A1 q_11_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_11_s_j) (select s__5f_a0_5f_token q_11_s_j))
+            (= (select s__5f_a1_5f_token_next q_11_s_j) (select s__5f_a1_5f_token q_11_s_j))
+            (= s__5f_m0_5f_token_next s__5f_m0_5f_token)))))))
+; action: transition_4
+(define-fun action_4 () Bool
+  (exists ((q_13_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_A0 q_13_s_x) false)
+        (> (select s__5f__5f_index_5f_rank q_13_s_x) 0)
+        (= (select s__5f_A0 q_13_s_x) false))
+      (and
+        (= (select s__5f_A0_next q_13_s_x) true)
+        (= (select s__5f_A1_next q_13_s_x) (select s__5f_A1 q_13_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_13_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_13_s_x) (and (select s__5f_a1_5f_token q_13_s_x) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true))))
+      (forall ((q_12_s_j Proc))
+        (=>
+          (and (not (= q_13_s_x q_12_s_j)) (not (= q_12_s_j q_13_s_x)))
+          (and
+            (= (select s__5f_A0_next q_12_s_j) (select s__5f_A0 q_12_s_j))
+            (= (select s__5f_A1_next q_12_s_j) (select s__5f_A1 q_12_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_12_s_j) true)
+            (=
+              (select s__5f_a1_5f_token_next q_12_s_j)
+              (and (select s__5f_a1_5f_token q_12_s_j) true))
+            (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))))
+; action: transition_5
+(define-fun action_5 () Bool
+  (exists ((q_15_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_A1 q_15_s_x) false)
+        (> (select s__5f__5f_index_5f_rank q_15_s_x) 0)
+        (= (select s__5f_A1 q_15_s_x) false))
+      (and
+        (= (select s__5f_A0_next q_15_s_x) (select s__5f_A0 q_15_s_x))
+        (= (select s__5f_A1_next q_15_s_x) true)
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_15_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_15_s_x) false)
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true))))
+      (forall ((q_14_s_j Proc))
+        (=>
+          (and (not (= q_15_s_x q_14_s_j)) (not (= q_14_s_j q_15_s_x)))
+          (and
+            (= (select s__5f_A0_next q_14_s_j) (select s__5f_A0 q_14_s_j))
+            (= (select s__5f_A1_next q_14_s_j) (select s__5f_A1 q_14_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_14_s_j) true)
+            (=
+              (select s__5f_a1_5f_token_next q_14_s_j)
+              (and (select s__5f_a1_5f_token q_14_s_j) true))
+            (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))))
+; action: transition_6
+(define-fun action_6 () Bool
+  (exists ((q_17_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_A0 q_17_s_x) true)
+        (= (select s__5f_A0 q_17_s_x) true)
+        (not (= s__5f_m0_5f_conn_5f_a0 (select s__5f__5f_index_5f_rank q_17_s_x))))
+      (and
+        (= (select s__5f_A0_next q_17_s_x) false)
+        (= (select s__5f_A1_next q_17_s_x) (select s__5f_A1 q_17_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_17_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_17_s_x) (and (select s__5f_a1_5f_token q_17_s_x) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true))))
+      (forall ((q_16_s_j Proc))
+        (=>
+          (and (not (= q_17_s_x q_16_s_j)) (not (= q_16_s_j q_17_s_x)))
+          (and
+            (= (select s__5f_A0_next q_16_s_j) (select s__5f_A0 q_16_s_j))
+            (= (select s__5f_A1_next q_16_s_j) (select s__5f_A1 q_16_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_16_s_j) true)
+            (=
+              (select s__5f_a1_5f_token_next q_16_s_j)
+              (and (select s__5f_a1_5f_token q_16_s_j) true))
+            (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))))
+; action: transition_7
+(define-fun action_7 () Bool
+  (exists ((q_19_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_A1 q_19_s_x) true)
+        (= (select s__5f_A1 q_19_s_x) true)
+        (not (= s__5f_m0_5f_conn_5f_a1 (select s__5f__5f_index_5f_rank q_19_s_x))))
+      (and
+        (= (select s__5f_A0_next q_19_s_x) (select s__5f_A0 q_19_s_x))
+        (= (select s__5f_A1_next q_19_s_x) false)
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_19_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_19_s_x) false)
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true))))
+      (forall ((q_18_s_j Proc))
+        (=>
+          (and (not (= q_19_s_x q_18_s_j)) (not (= q_18_s_j q_19_s_x)))
+          (and
+            (= (select s__5f_A0_next q_18_s_j) (select s__5f_A0 q_18_s_j))
+            (= (select s__5f_A1_next q_18_s_j) (select s__5f_A1 q_18_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_18_s_j) true)
+            (=
+              (select s__5f_a1_5f_token_next q_18_s_j)
+              (and (select s__5f_a1_5f_token q_18_s_j) true))
+            (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))))
+; action: transition_8
+(define-fun action_8 () Bool
+  (exists ((q_21_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_A0 q_21_s_x) true)
+        (= s__5f_m0_5f_taint_5f_a1 false)
+        (= s__5f_m0_5f_conn_5f_a0 0))
+      (and
+        (= (select s__5f_A0_next q_21_s_x) (select s__5f_A0 q_21_s_x))
+        (= (select s__5f_A1_next q_21_s_x) (select s__5f_A1 q_21_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next (select s__5f__5f_index_5f_rank q_21_s_x))
+        (= s__5f_m0_5f_taint_5f_a0_next true)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_21_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_21_s_x) (and (select s__5f_a1_5f_token q_21_s_x) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true))))
+      (forall ((q_20_s_j Proc))
+        (=>
+          (and (not (= q_21_s_x q_20_s_j)) (not (= q_20_s_j q_21_s_x)))
+          (and
+            (= (select s__5f_A0_next q_20_s_j) (select s__5f_A0 q_20_s_j))
+            (= (select s__5f_A1_next q_20_s_j) (select s__5f_A1 q_20_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next (select s__5f__5f_index_5f_rank q_21_s_x))
+            (= s__5f_m0_5f_taint_5f_a0_next true)
+            (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+            (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_20_s_j) true)
+            (=
+              (select s__5f_a1_5f_token_next q_20_s_j)
+              (and (select s__5f_a1_5f_token q_20_s_j) true))
+            (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))))
+; action: transition_9
+(define-fun action_9 () Bool
+  (exists ((q_23_s_x Proc))
+    (and
+      (and
+        (= (select s__5f_A1 q_23_s_x) true)
+        (= s__5f_m0_5f_taint_5f_a0 false)
+        (= s__5f_m0_5f_conn_5f_a1 0))
+      (and
+        (= (select s__5f_A0_next q_23_s_x) (select s__5f_A0 q_23_s_x))
+        (= (select s__5f_A1_next q_23_s_x) (select s__5f_A1 q_23_s_x))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next (select s__5f__5f_index_5f_rank q_23_s_x))
+        (= s__5f_m0_5f_taint_5f_a1_next true)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_23_s_x) true)
+        (= (select s__5f_a1_5f_token_next q_23_s_x) (and (select s__5f_a1_5f_token q_23_s_x) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true))))
+      (forall ((q_22_s_j Proc))
+        (=>
+          (and (not (= q_23_s_x q_22_s_j)) (not (= q_22_s_j q_23_s_x)))
+          (and
+            (= (select s__5f_A0_next q_22_s_j) (select s__5f_A0 q_22_s_j))
+            (= (select s__5f_A1_next q_22_s_j) (select s__5f_A1 q_22_s_j))
+            (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+            (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+            (= s__5f_m0_5f_conn_5f_a1_next (select s__5f__5f_index_5f_rank q_23_s_x))
+            (= s__5f_m0_5f_taint_5f_a1_next true)
+            (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+            (= (select s__5f_a0_5f_token_next q_22_s_j) true)
+            (=
+              (select s__5f_a1_5f_token_next q_22_s_j)
+              (and (select s__5f_a1_5f_token q_22_s_j) true))
+            (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))))
+; action: transition_10
+(define-fun action_10 () Bool
+  (forall ((q_24_s_j Proc))
+    (=>
+      true
+      (and
+        (= (select s__5f_A0_next q_24_s_j) (select s__5f_A0 q_24_s_j))
+        (= (select s__5f_A1_next q_24_s_j) (select s__5f_A1 q_24_s_j))
+        (= s__5f_m0_5f_conn_5f_a0_next 0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_24_s_j) true)
+        (= (select s__5f_a1_5f_token_next q_24_s_j) (and (select s__5f_a1_5f_token q_24_s_j) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))
+; action: transition_11
+(define-fun action_11 () Bool
+  (forall ((q_25_s_j Proc))
+    (=>
+      true
+      (and
+        (= (select s__5f_A0_next q_25_s_j) (select s__5f_A0 q_25_s_j))
+        (= (select s__5f_A1_next q_25_s_j) (select s__5f_A1 q_25_s_j))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next 0)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next s__5f_m0_5f_present)
+        (= (select s__5f_a0_5f_token_next q_25_s_j) true)
+        (= (select s__5f_a1_5f_token_next q_25_s_j) (and (select s__5f_a1_5f_token q_25_s_j) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= s__5f_m0_5f_present true)))))))
+; action: transition_12
+(define-fun action_12 () Bool
+  (and
+    (and (= s__5f_m0_5f_conn_5f_a0 0) (= s__5f_m0_5f_conn_5f_a1 0))
+    (forall ((q_26_s_j Proc))
+      (=>
+        true
+        (and
+          (= (select s__5f_A0_next q_26_s_j) (select s__5f_A0 q_26_s_j))
+          (= (select s__5f_A1_next q_26_s_j) (select s__5f_A1 q_26_s_j))
+          (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+          (= s__5f_m0_5f_taint_5f_a0_next false)
+          (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+          (= s__5f_m0_5f_taint_5f_a1_next false)
+          (= s__5f_m0_5f_present_next false)
+          (= (select s__5f_a0_5f_token_next q_26_s_j) true)
+          (=
+            (select s__5f_a1_5f_token_next q_26_s_j)
+            (and (select s__5f_a1_5f_token q_26_s_j) true))
+          (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= false true))))))))
+; action: transition_13
+(define-fun action_13 () Bool
+  (forall ((q_27_s_j Proc))
+    (=>
+      true
+      (and
+        (= (select s__5f_A0_next q_27_s_j) (select s__5f_A0 q_27_s_j))
+        (= (select s__5f_A1_next q_27_s_j) (select s__5f_A1 q_27_s_j))
+        (= s__5f_m0_5f_conn_5f_a0_next s__5f_m0_5f_conn_5f_a0)
+        (= s__5f_m0_5f_taint_5f_a0_next s__5f_m0_5f_taint_5f_a0)
+        (= s__5f_m0_5f_conn_5f_a1_next s__5f_m0_5f_conn_5f_a1)
+        (= s__5f_m0_5f_taint_5f_a1_next s__5f_m0_5f_taint_5f_a1)
+        (= s__5f_m0_5f_present_next true)
+        (= (select s__5f_a0_5f_token_next q_27_s_j) true)
+        (= (select s__5f_a1_5f_token_next q_27_s_j) (and (select s__5f_a1_5f_token q_27_s_j) true))
+        (= s__5f_m0_5f_token_next (and s__5f_m0_5f_token (= true true)))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_x Proc) (q_2_s_y Proc))
+        (and
+          (and
+            (and
+              (and
+                (and
+                  (and (= s__5f_m0_5f_conn_5f_a0 0) (= s__5f_m0_5f_conn_5f_a1 0))
+                  (= s__5f_m0_5f_taint_5f_a0 false))
+                (= s__5f_m0_5f_taint_5f_a1 false))
+              (=> (select s__5f_A0 q_1_s_x) (> (select s__5f__5f_index_5f_rank q_1_s_x) 0)))
+            (=> (select s__5f_A1 q_1_s_x) (> (select s__5f__5f_index_5f_rank q_1_s_x) 0)))
+          (= (select s__5f_a0_5f_token q_1_s_x) true)
+          (= (select s__5f_a1_5f_token q_1_s_x) false)
+          (= s__5f_m0_5f_token false)))
+      (forall ((q_28_s_a Proc) (q_29_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_28_s_a) (select s__5f__5f_index_5f_rank q_29_s_b))
+          (= q_28_s_a q_29_s_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13)
+      (= s__5f__5f_index_5f_rank_next s__5f__5f_index_5f_rank)
+      (forall ((q_28_s_a Proc) (q_29_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_28_s_a) (select s__5f__5f_index_5f_rank q_29_s_b))
+          (= q_28_s_a q_29_s_b)))
+      (forall ((q_28_s_a Proc) (q_29_s_b Proc))
+        (=>
+          (= (select s__5f__5f_index_5f_rank q_28_s_a) (select s__5f__5f_index_5f_rank q_29_s_b))
+          (= q_28_s_a q_29_s_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_x Proc)) (=> true (not (= (select s__5f_a1_5f_token q_3_s_x) true))))
+    :invar-property
+    0))

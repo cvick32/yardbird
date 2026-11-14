@@ -1,0 +1,83 @@
+; Generated offline from ivybench/ex/vmt/simple-decentralized-lock.vmt
+; Source SHA-256: 2351866617c82b556570c386c57893f40e09ca25f210b4739947ad4086209892
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_node 0)
+(declare-fun s__5f__5f_has_5f_lock () (Array s_node Bool))
+(declare-fun s__5f__5f_has_5f_lock_next () (Array s_node Bool))
+(declare-fun s__5f__5f_message () (Array s_node (Array s_node Bool)))
+(declare-fun s__5f__5f_message_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_start_5f_node () s_node)
+(declare-fun s_start_5f_node_next () s_node)
+; source symbol: __has_lock
+(define-fun link_0 () (Array s_node Bool) (! s__5f__5f_has_5f_lock :next s__5f__5f_has_5f_lock_next))
+; source symbol: __message
+(define-fun link_1 () (Array s_node (Array s_node Bool)) (! s__5f__5f_message :next s__5f__5f_message_next))
+; source symbol: start_node
+(define-fun link_2 () s_node (! s_start_5f_node :next s_start_5f_node_next))
+; action: ext:recv
+(define-fun action_0 () Bool
+  (and
+    (exists ((q_6_s_V_5f__5f_fml_3a_dst s_node) (q_7_s_V_5f__5f_fml_3a_src s_node))
+      (and
+        (forall ((q_8_s_V0 s_node) (q_9_s_V1 s_node))
+          (=
+            (select (select s__5f__5f_message_next q_8_s_V0) q_9_s_V1)
+            (ite
+              (and (= q_8_s_V0 q_7_s_V_5f__5f_fml_3a_src) (= q_9_s_V1 q_6_s_V_5f__5f_fml_3a_dst))
+              false
+              (select (select s__5f__5f_message q_8_s_V0) q_9_s_V1))))
+        (forall ((q_10_s_V0 s_node))
+          (=
+            (select s__5f__5f_has_5f_lock_next q_10_s_V0)
+            (ite
+              (= q_10_s_V0 q_6_s_V_5f__5f_fml_3a_dst)
+              true
+              (select s__5f__5f_has_5f_lock q_10_s_V0))))
+        (select (select s__5f__5f_message q_7_s_V_5f__5f_fml_3a_src) q_6_s_V_5f__5f_fml_3a_dst)))))
+; action: ext:send
+(define-fun action_1 () Bool
+  (and
+    (exists ((q_11_s_V_5f__5f_fml_3a_dst s_node) (q_12_s_V_5f__5f_fml_3a_src s_node))
+      (and
+        (forall ((q_13_s_V0 s_node) (q_14_s_V1 s_node))
+          (=
+            (select (select s__5f__5f_message_next q_13_s_V0) q_14_s_V1)
+            (ite
+              (and
+                (= q_13_s_V0 q_12_s_V_5f__5f_fml_3a_src)
+                (= q_14_s_V1 q_11_s_V_5f__5f_fml_3a_dst))
+              true
+              (select (select s__5f__5f_message q_13_s_V0) q_14_s_V1))))
+        (forall ((q_15_s_V0 s_node))
+          (=
+            (select s__5f__5f_has_5f_lock_next q_15_s_V0)
+            (ite
+              (= q_15_s_V0 q_12_s_V_5f__5f_fml_3a_src)
+              false
+              (select s__5f__5f_has_5f_lock q_15_s_V0))))
+        (select s__5f__5f_has_5f_lock q_12_s_V_5f__5f_fml_3a_src)))))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (forall ((q_3_s_V0 s_node) (q_4_s_V1 s_node))
+          (= (select (select s__5f__5f_message q_3_s_V0) q_4_s_V1) false))
+        (forall ((q_5_s_V0 s_node))
+          (= (select s__5f__5f_has_5f_lock q_5_s_V0) (= q_5_s_V0 s_start_5f_node)))))
+    :init
+    true))
+(define-fun trans () Bool
+  (! (and (or action_0 action_1) (= s_start_5f_node_next s_start_5f_node)) :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_1_s_X s_node) (q_2_s_Y s_node))
+        (=>
+          (not (= q_1_s_X q_2_s_Y))
+          (not (and (select s__5f__5f_has_5f_lock q_1_s_X) (select s__5f__5f_has_5f_lock q_2_s_Y))))))
+    :invar-property
+    0))

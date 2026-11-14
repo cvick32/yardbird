@@ -1,0 +1,3627 @@
+; Generated offline from cubicle/examples/challenges/hierarchical_snoop_cygc_nodata.cub
+; Source SHA-256: 0eb7b2c2e1fa347404450ec6d2b46dcc99c2385ff3738b0ba48382bc5cdedfcc
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c1', 'c2']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c1', 'c2']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c1', 'c2']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c1', 'c2']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c', 'i']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c', 'i']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c', 'i']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c', 'i']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Supplied forbidden-cube invariant retained in source only; not assumed: ['c']
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_proc_5f_type 0)
+(declare-sort s_cache_5f_state 0)
+(declare-sort s_command 0)
+(declare-fun s_L1Id () s_proc_5f_type)
+(declare-fun s_L1Id_next () s_proc_5f_type)
+(declare-fun s_CId () s_proc_5f_type)
+(declare-fun s_CId_next () s_proc_5f_type)
+(declare-fun s_Invld () s_cache_5f_state)
+(declare-fun s_Invld_next () s_cache_5f_state)
+(declare-fun s_Shrd () s_cache_5f_state)
+(declare-fun s_Shrd_next () s_cache_5f_state)
+(declare-fun s_Excl () s_cache_5f_state)
+(declare-fun s_Excl_next () s_cache_5f_state)
+(declare-fun s_None () s_command)
+(declare-fun s_None_next () s_command)
+(declare-fun s_Get () s_command)
+(declare-fun s_Get_next () s_command)
+(declare-fun s_GetX () s_command)
+(declare-fun s_GetX_next () s_command)
+(declare-fun s_Putt () s_command)
+(declare-fun s_Putt_next () s_command)
+(declare-fun s_PutX () s_command)
+(declare-fun s_PutX_next () s_command)
+(declare-fun s_NAck () s_command)
+(declare-fun s_NAck_next () s_command)
+(declare-fun s_Inv () s_command)
+(declare-fun s_Inv_next () s_command)
+(declare-fun s_InvAck () s_command)
+(declare-fun s_InvAck_next () s_command)
+(declare-fun s_WINV () s_command)
+(declare-fun s_WINV_next () s_command)
+(declare-fun s_WB () s_command)
+(declare-fun s_WB_next () s_command)
+(declare-fun s_GUniMsg_5f_Cmd () (Array Proc s_command))
+(declare-fun s_GUniMsg_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_GUniMsg_5f_Cluster () (Array Proc Int))
+(declare-fun s_GUniMsg_5f_Cluster_next () (Array Proc Int))
+(declare-fun s_GUniMsg_5f_ToInv () (Array Proc (Array Proc Bool)))
+(declare-fun s_GUniMsg_5f_ToInv_next () (Array Proc (Array Proc Bool)))
+(declare-fun s_GInvMsg_5f_Cmd () (Array Proc s_command))
+(declare-fun s_GInvMsg_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_GInvMsg_5f_Cluster () (Array Proc Int))
+(declare-fun s_GInvMsg_5f_Cluster_next () (Array Proc Int))
+(declare-fun s_GInvMsg_5f_Cluster_5f_defined () (Array Proc Bool))
+(declare-fun s_GInvMsg_5f_Cluster_5f_defined_next () (Array Proc Bool))
+(declare-fun s_GShWbMsg_5f_Cmd () s_command)
+(declare-fun s_GShWbMsg_5f_Cmd_next () s_command)
+(declare-fun s_GShWbMsg_5f_Cluster () Int)
+(declare-fun s_GShWbMsg_5f_Cluster_next () Int)
+(declare-fun s_GWbMsg_5f_Cmd () s_command)
+(declare-fun s_GWbMsg_5f_Cmd_next () s_command)
+(declare-fun s_GWbMsg_5f_Cluster () Int)
+(declare-fun s_GWbMsg_5f_Cluster_next () Int)
+(declare-fun s_GDir_5f_State () s_cache_5f_state)
+(declare-fun s_GDir_5f_State_next () s_cache_5f_state)
+(declare-fun s_GDir_5f_ShrSet () (Array Proc Bool))
+(declare-fun s_GDir_5f_ShrSet_next () (Array Proc Bool))
+(declare-fun s_GDir_5f_Owner () Int)
+(declare-fun s_GDir_5f_Owner_next () Int)
+(declare-fun s_GDir_5f_Owner_5f_defined () Bool)
+(declare-fun s_GDir_5f_Owner_5f_defined_next () Bool)
+(declare-fun s_GDir_5f_pending () Bool)
+(declare-fun s_GDir_5f_pending_next () Bool)
+(declare-fun s_Clusters_5f_L1s_5f_State () (Array Proc (Array Proc s_cache_5f_state)))
+(declare-fun s_Clusters_5f_L1s_5f_State_next () (Array Proc (Array Proc s_cache_5f_state)))
+(declare-fun s_Clusters_5f_L1s_5f_Req () (Array Proc (Array Proc s_command)))
+(declare-fun s_Clusters_5f_L1s_5f_Req_next () (Array Proc (Array Proc s_command)))
+(declare-fun s_Clusters_5f_L2_5f_State () (Array Proc s_cache_5f_state))
+(declare-fun s_Clusters_5f_L2_5f_State_next () (Array Proc s_cache_5f_state))
+(declare-fun s_Clusters_5f_L2_5f_pending () (Array Proc Bool))
+(declare-fun s_Clusters_5f_L2_5f_pending_next () (Array Proc Bool))
+(declare-fun s_Clusters_5f_OnlyCopy () (Array Proc Bool))
+(declare-fun s_Clusters_5f_OnlyCopy_next () (Array Proc Bool))
+(declare-fun s_Clusters_5f_ifInReq () (Array Proc Bool))
+(declare-fun s_Clusters_5f_ifInReq_next () (Array Proc Bool))
+(declare-fun s_Clusters_5f_ReqCmd () (Array Proc s_command))
+(declare-fun s_Clusters_5f_ReqCmd_next () (Array Proc s_command))
+(declare-fun s_Clusters_5f_ifOutRpy () (Array Proc Bool))
+(declare-fun s_Clusters_5f_ifOutRpy_next () (Array Proc Bool))
+(declare-fun s_Clusters_5f_outRpy_5f_Cmd () (Array Proc s_command))
+(declare-fun s_Clusters_5f_outRpy_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_Clusters_5f_ifOutReq () (Array Proc Bool))
+(declare-fun s_Clusters_5f_ifOutReq_next () (Array Proc Bool))
+(declare-fun s_Clusters_5f_outReq_5f_Cmd () (Array Proc s_command))
+(declare-fun s_Clusters_5f_outReq_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_Clusters_5f_outReq_5f_Cluster () (Array Proc Int))
+(declare-fun s_Clusters_5f_outReq_5f_Cluster_next () (Array Proc Int))
+(declare-fun s_Clusters_5f_ifInRpy () (Array Proc Bool))
+(declare-fun s_Clusters_5f_ifInRpy_next () (Array Proc Bool))
+(declare-fun s_Clusters_5f_inRpy_5f_Cmd () (Array Proc s_command))
+(declare-fun s_Clusters_5f_inRpy_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_Clusters_5f_inRpy_5f_Dest () (Array Proc Int))
+(declare-fun s_Clusters_5f_inRpy_5f_Dest_next () (Array Proc Int))
+(declare-fun s_Clusters_5f_WbReq_5f_Cmd () (Array Proc s_command))
+(declare-fun s_Clusters_5f_WbReq_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_Clusters_5f_RAC_5f_Cmd () (Array Proc s_command))
+(declare-fun s_Clusters_5f_RAC_5f_Cmd_next () (Array Proc s_command))
+(declare-fun s_Clusters_5f_RAC_5f_Inved () (Array Proc (Array Proc Bool)))
+(declare-fun s_Clusters_5f_RAC_5f_Inved_next () (Array Proc (Array Proc Bool)))
+(declare-fun s_Clusters_5f_RAC_5f_ToInv () (Array Proc (Array Proc Bool)))
+(declare-fun s_Clusters_5f_RAC_5f_ToInv_next () (Array Proc (Array Proc Bool)))
+(declare-fun s_Sort () (Array Proc s_proc_5f_type))
+(declare-fun s_Sort_next () (Array Proc s_proc_5f_type))
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: L1Id
+(define-fun link_0 () s_proc_5f_type (! s_L1Id :next s_L1Id_next))
+; source symbol: CId
+(define-fun link_1 () s_proc_5f_type (! s_CId :next s_CId_next))
+; source symbol: Invld
+(define-fun link_2 () s_cache_5f_state (! s_Invld :next s_Invld_next))
+; source symbol: Shrd
+(define-fun link_3 () s_cache_5f_state (! s_Shrd :next s_Shrd_next))
+; source symbol: Excl
+(define-fun link_4 () s_cache_5f_state (! s_Excl :next s_Excl_next))
+; source symbol: None
+(define-fun link_5 () s_command (! s_None :next s_None_next))
+; source symbol: Get
+(define-fun link_6 () s_command (! s_Get :next s_Get_next))
+; source symbol: GetX
+(define-fun link_7 () s_command (! s_GetX :next s_GetX_next))
+; source symbol: Putt
+(define-fun link_8 () s_command (! s_Putt :next s_Putt_next))
+; source symbol: PutX
+(define-fun link_9 () s_command (! s_PutX :next s_PutX_next))
+; source symbol: NAck
+(define-fun link_10 () s_command (! s_NAck :next s_NAck_next))
+; source symbol: Inv
+(define-fun link_11 () s_command (! s_Inv :next s_Inv_next))
+; source symbol: InvAck
+(define-fun link_12 () s_command (! s_InvAck :next s_InvAck_next))
+; source symbol: WINV
+(define-fun link_13 () s_command (! s_WINV :next s_WINV_next))
+; source symbol: WB
+(define-fun link_14 () s_command (! s_WB :next s_WB_next))
+; source symbol: GUniMsg_Cmd
+(define-fun link_15 () (Array Proc s_command) (! s_GUniMsg_5f_Cmd :next s_GUniMsg_5f_Cmd_next))
+; source symbol: GUniMsg_Cluster
+(define-fun link_16 () (Array Proc Int) (! s_GUniMsg_5f_Cluster :next s_GUniMsg_5f_Cluster_next))
+; source symbol: GUniMsg_ToInv
+(define-fun link_17 () (Array Proc (Array Proc Bool)) (! s_GUniMsg_5f_ToInv :next s_GUniMsg_5f_ToInv_next))
+; source symbol: GInvMsg_Cmd
+(define-fun link_18 () (Array Proc s_command) (! s_GInvMsg_5f_Cmd :next s_GInvMsg_5f_Cmd_next))
+; source symbol: GInvMsg_Cluster
+(define-fun link_19 () (Array Proc Int) (! s_GInvMsg_5f_Cluster :next s_GInvMsg_5f_Cluster_next))
+; source symbol: GInvMsg_Cluster_defined
+(define-fun link_20 () (Array Proc Bool) (! s_GInvMsg_5f_Cluster_5f_defined :next s_GInvMsg_5f_Cluster_5f_defined_next))
+; source symbol: GShWbMsg_Cmd
+(define-fun link_21 () s_command (! s_GShWbMsg_5f_Cmd :next s_GShWbMsg_5f_Cmd_next))
+; source symbol: GShWbMsg_Cluster
+(define-fun link_22 () Int (! s_GShWbMsg_5f_Cluster :next s_GShWbMsg_5f_Cluster_next))
+; source symbol: GWbMsg_Cmd
+(define-fun link_23 () s_command (! s_GWbMsg_5f_Cmd :next s_GWbMsg_5f_Cmd_next))
+; source symbol: GWbMsg_Cluster
+(define-fun link_24 () Int (! s_GWbMsg_5f_Cluster :next s_GWbMsg_5f_Cluster_next))
+; source symbol: GDir_State
+(define-fun link_25 () s_cache_5f_state (! s_GDir_5f_State :next s_GDir_5f_State_next))
+; source symbol: GDir_ShrSet
+(define-fun link_26 () (Array Proc Bool) (! s_GDir_5f_ShrSet :next s_GDir_5f_ShrSet_next))
+; source symbol: GDir_Owner
+(define-fun link_27 () Int (! s_GDir_5f_Owner :next s_GDir_5f_Owner_next))
+; source symbol: GDir_Owner_defined
+(define-fun link_28 () Bool (! s_GDir_5f_Owner_5f_defined :next s_GDir_5f_Owner_5f_defined_next))
+; source symbol: GDir_pending
+(define-fun link_29 () Bool (! s_GDir_5f_pending :next s_GDir_5f_pending_next))
+; source symbol: Clusters_L1s_State
+(define-fun link_30 () (Array Proc (Array Proc s_cache_5f_state)) (! s_Clusters_5f_L1s_5f_State :next s_Clusters_5f_L1s_5f_State_next))
+; source symbol: Clusters_L1s_Req
+(define-fun link_31 () (Array Proc (Array Proc s_command)) (! s_Clusters_5f_L1s_5f_Req :next s_Clusters_5f_L1s_5f_Req_next))
+; source symbol: Clusters_L2_State
+(define-fun link_32 () (Array Proc s_cache_5f_state) (! s_Clusters_5f_L2_5f_State :next s_Clusters_5f_L2_5f_State_next))
+; source symbol: Clusters_L2_pending
+(define-fun link_33 () (Array Proc Bool) (! s_Clusters_5f_L2_5f_pending :next s_Clusters_5f_L2_5f_pending_next))
+; source symbol: Clusters_OnlyCopy
+(define-fun link_34 () (Array Proc Bool) (! s_Clusters_5f_OnlyCopy :next s_Clusters_5f_OnlyCopy_next))
+; source symbol: Clusters_ifInReq
+(define-fun link_35 () (Array Proc Bool) (! s_Clusters_5f_ifInReq :next s_Clusters_5f_ifInReq_next))
+; source symbol: Clusters_ReqCmd
+(define-fun link_36 () (Array Proc s_command) (! s_Clusters_5f_ReqCmd :next s_Clusters_5f_ReqCmd_next))
+; source symbol: Clusters_ifOutRpy
+(define-fun link_37 () (Array Proc Bool) (! s_Clusters_5f_ifOutRpy :next s_Clusters_5f_ifOutRpy_next))
+; source symbol: Clusters_outRpy_Cmd
+(define-fun link_38 () (Array Proc s_command) (! s_Clusters_5f_outRpy_5f_Cmd :next s_Clusters_5f_outRpy_5f_Cmd_next))
+; source symbol: Clusters_ifOutReq
+(define-fun link_39 () (Array Proc Bool) (! s_Clusters_5f_ifOutReq :next s_Clusters_5f_ifOutReq_next))
+; source symbol: Clusters_outReq_Cmd
+(define-fun link_40 () (Array Proc s_command) (! s_Clusters_5f_outReq_5f_Cmd :next s_Clusters_5f_outReq_5f_Cmd_next))
+; source symbol: Clusters_outReq_Cluster
+(define-fun link_41 () (Array Proc Int) (! s_Clusters_5f_outReq_5f_Cluster :next s_Clusters_5f_outReq_5f_Cluster_next))
+; source symbol: Clusters_ifInRpy
+(define-fun link_42 () (Array Proc Bool) (! s_Clusters_5f_ifInRpy :next s_Clusters_5f_ifInRpy_next))
+; source symbol: Clusters_inRpy_Cmd
+(define-fun link_43 () (Array Proc s_command) (! s_Clusters_5f_inRpy_5f_Cmd :next s_Clusters_5f_inRpy_5f_Cmd_next))
+; source symbol: Clusters_inRpy_Dest
+(define-fun link_44 () (Array Proc Int) (! s_Clusters_5f_inRpy_5f_Dest :next s_Clusters_5f_inRpy_5f_Dest_next))
+; source symbol: Clusters_WbReq_Cmd
+(define-fun link_45 () (Array Proc s_command) (! s_Clusters_5f_WbReq_5f_Cmd :next s_Clusters_5f_WbReq_5f_Cmd_next))
+; source symbol: Clusters_RAC_Cmd
+(define-fun link_46 () (Array Proc s_command) (! s_Clusters_5f_RAC_5f_Cmd :next s_Clusters_5f_RAC_5f_Cmd_next))
+; source symbol: Clusters_RAC_Inved
+(define-fun link_47 () (Array Proc (Array Proc Bool)) (! s_Clusters_5f_RAC_5f_Inved :next s_Clusters_5f_RAC_5f_Inved_next))
+; source symbol: Clusters_RAC_ToInv
+(define-fun link_48 () (Array Proc (Array Proc Bool)) (! s_Clusters_5f_RAC_5f_ToInv :next s_Clusters_5f_RAC_5f_ToInv_next))
+; source symbol: Sort
+(define-fun link_49 () (Array Proc s_proc_5f_type) (! s_Sort :next s_Sort_next))
+; source symbol: __proc_rank
+(define-fun link_50 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: t2
+(define-fun action_0 () Bool
+  (exists ((q_50_s_c Proc) (q_51_s_i Proc))
+    (and
+      (not (= q_50_s_c q_51_s_i))
+      (and
+        (= (select s_Sort q_50_s_c) s_CId)
+        (and
+          (= (select s_Sort q_51_s_i) s_L1Id)
+          (= (select (select s_Clusters_5f_L1s_5f_State q_50_s_c) q_51_s_i) s_Excl)))
+      (forall ((q_52_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_52_s_index0)
+          (ite (= q_52_s_index0 q_50_s_c) s_Excl (select s_Clusters_5f_L2_5f_State q_52_s_index0))))
+      (forall ((q_53_s_index0 Proc) (q_54_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_53_s_index0) q_54_s_index1)
+          (ite
+            (and (= q_53_s_index0 q_50_s_c) (= q_54_s_index1 q_51_s_i))
+            s_Invld
+            (select (select s_Clusters_5f_L1s_5f_State q_53_s_index0) q_54_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t3
+(define-fun action_1 () Bool
+  (exists ((q_55_s_c Proc) (q_56_s_i Proc))
+    (and
+      (not (= q_55_s_c q_56_s_i))
+      (and
+        (= (select s_Sort q_55_s_c) s_CId)
+        (and
+          (= (select s_Sort q_56_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_State q_55_s_c) q_56_s_i) s_Invld)
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_55_s_c) q_56_s_i) s_None))))
+      (forall ((q_57_s_index0 Proc) (q_58_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_57_s_index0) q_58_s_index1)
+          (ite
+            (and (= q_57_s_index0 q_55_s_c) (= q_58_s_index1 q_56_s_i))
+            s_Get
+            (select (select s_Clusters_5f_L1s_5f_Req q_57_s_index0) q_58_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t4
+(define-fun action_2 () Bool
+  (exists ((q_59_s_c Proc) (q_60_s_i Proc))
+    (and
+      (not (= q_59_s_c q_60_s_i))
+      (and
+        (= (select s_Sort q_59_s_c) s_CId)
+        (and
+          (= (select s_Sort q_60_s_i) s_L1Id)
+          (and
+            (not (= (select (select s_Clusters_5f_L1s_5f_State q_59_s_c) q_60_s_i) s_Excl))
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_59_s_c) q_60_s_i) s_None))))
+      (forall ((q_61_s_index0 Proc) (q_62_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_61_s_index0) q_62_s_index1)
+          (ite
+            (and (= q_61_s_index0 q_59_s_c) (= q_62_s_index1 q_60_s_i))
+            s_GetX
+            (select (select s_Clusters_5f_L1s_5f_Req q_61_s_index0) q_62_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t5
+(define-fun action_3 () Bool
+  (exists ((q_63_s_c Proc) (q_64_s_i Proc))
+    (and
+      (not (= q_63_s_c q_64_s_i))
+      (and
+        (= (select s_Sort q_63_s_c) s_CId)
+        (and
+          (= (select s_Sort q_64_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_63_s_c) q_64_s_i) s_Get)
+            (and
+              (= (select (select s_Clusters_5f_L1s_5f_State q_63_s_c) q_64_s_i) s_Invld)
+              (forall ((q_65_s_j Proc))
+                (=>
+                  (and (not (= q_65_s_j q_63_s_c)) (not (= q_65_s_j q_64_s_i)))
+                  (and
+                    (or
+                      (= (select s_Sort q_65_s_j) s_CId)
+                      (= (select (select s_Clusters_5f_L1s_5f_State q_63_s_c) q_65_s_j) s_Invld))
+                    (and
+                      (= (select s_Clusters_5f_L2_5f_State q_63_s_c) s_Invld)
+                      (= (select s_Clusters_5f_L2_5f_pending q_63_s_c) false)))))))))
+      (forall ((q_66_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_pending_next q_66_s_index0)
+          (ite (= q_66_s_index0 q_63_s_c) true (select s_Clusters_5f_L2_5f_pending q_66_s_index0))))
+      (forall ((q_67_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ifInReq_next q_67_s_index0)
+          (ite (= q_67_s_index0 q_63_s_c) true (select s_Clusters_5f_ifInReq q_67_s_index0))))
+      (forall ((q_68_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_68_s_index0)
+          (ite
+            (= q_68_s_index0 q_63_s_c)
+            (select (select s_Clusters_5f_L1s_5f_Req q_63_s_c) q_64_s_i)
+            (select s_Clusters_5f_ReqCmd q_68_s_index0))))
+      (forall ((q_69_s_index0 Proc) (q_70_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_69_s_index0) q_70_s_index1)
+          (ite
+            (and (= q_69_s_index0 q_63_s_c) (= q_70_s_index1 q_64_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_69_s_index0) q_70_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t5_x
+(define-fun action_4 () Bool
+  (exists ((q_71_s_c Proc) (q_72_s_i Proc))
+    (and
+      (not (= q_71_s_c q_72_s_i))
+      (and
+        (= (select s_Sort q_71_s_c) s_CId)
+        (and
+          (= (select s_Sort q_72_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_71_s_c) q_72_s_i) s_GetX)
+            (and
+              (= (select (select s_Clusters_5f_L1s_5f_State q_71_s_c) q_72_s_i) s_Invld)
+              (forall ((q_73_s_j Proc))
+                (=>
+                  (and (not (= q_73_s_j q_71_s_c)) (not (= q_73_s_j q_72_s_i)))
+                  (and
+                    (or
+                      (= (select s_Sort q_73_s_j) s_CId)
+                      (= (select (select s_Clusters_5f_L1s_5f_State q_71_s_c) q_73_s_j) s_Invld))
+                    (and
+                      (= (select s_Clusters_5f_L2_5f_State q_71_s_c) s_Invld)
+                      (= (select s_Clusters_5f_L2_5f_pending q_71_s_c) false)))))))))
+      (forall ((q_74_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_pending_next q_74_s_index0)
+          (ite (= q_74_s_index0 q_71_s_c) true (select s_Clusters_5f_L2_5f_pending q_74_s_index0))))
+      (forall ((q_75_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ifInReq_next q_75_s_index0)
+          (ite (= q_75_s_index0 q_71_s_c) true (select s_Clusters_5f_ifInReq q_75_s_index0))))
+      (forall ((q_76_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_76_s_index0)
+          (ite
+            (= q_76_s_index0 q_71_s_c)
+            (select (select s_Clusters_5f_L1s_5f_Req q_71_s_c) q_72_s_i)
+            (select s_Clusters_5f_ReqCmd q_76_s_index0))))
+      (forall ((q_77_s_index0 Proc) (q_78_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_77_s_index0) q_78_s_index1)
+          (ite
+            (and (= q_77_s_index0 q_71_s_c) (= q_78_s_index1 q_72_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_77_s_index0) q_78_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_79_s_c Proc) (q_80_s_i Proc))
+    (and
+      (not (= q_79_s_c q_80_s_i))
+      (and
+        (= (select s_Sort q_79_s_c) s_CId)
+        (and
+          (= (select s_Sort q_80_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_79_s_c) q_80_s_i) s_Get)
+            (= (select s_Clusters_5f_L2_5f_pending q_79_s_c) true))))
+      (forall ((q_81_s_index0 Proc) (q_82_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_81_s_index0) q_82_s_index1)
+          (ite
+            (and (= q_81_s_index0 q_79_s_c) (= q_82_s_index1 q_80_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_81_s_index0) q_82_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t6_x
+(define-fun action_6 () Bool
+  (exists ((q_83_s_c Proc) (q_84_s_i Proc))
+    (and
+      (not (= q_83_s_c q_84_s_i))
+      (and
+        (= (select s_Sort q_83_s_c) s_CId)
+        (and
+          (= (select s_Sort q_84_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_83_s_c) q_84_s_i) s_GetX)
+            (= (select s_Clusters_5f_L2_5f_pending q_83_s_c) true))))
+      (forall ((q_85_s_index0 Proc) (q_86_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_85_s_index0) q_86_s_index1)
+          (ite
+            (and (= q_85_s_index0 q_83_s_c) (= q_86_s_index1 q_84_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_85_s_index0) q_86_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t7
+(define-fun action_7 () Bool
+  (exists ((q_87_s_c Proc) (q_88_s_i Proc))
+    (and
+      (not (= q_87_s_c q_88_s_i))
+      (and
+        (= (select s_Sort q_87_s_c) s_CId)
+        (and
+          (= (select s_Sort q_88_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_87_s_c) q_88_s_i) s_Get)
+            (and
+              (= (select s_Clusters_5f_L2_5f_State q_87_s_c) s_Shrd)
+              (= (select s_Clusters_5f_L2_5f_pending q_87_s_c) false)))))
+      (forall ((q_89_s_index0 Proc) (q_90_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_89_s_index0) q_90_s_index1)
+          (ite
+            (and (= q_89_s_index0 q_87_s_c) (= q_90_s_index1 q_88_s_i))
+            s_Shrd
+            (select (select s_Clusters_5f_L1s_5f_State q_89_s_index0) q_90_s_index1))))
+      (forall ((q_91_s_index0 Proc) (q_92_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_91_s_index0) q_92_s_index1)
+          (ite
+            (and (= q_91_s_index0 q_87_s_c) (= q_92_s_index1 q_88_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_91_s_index0) q_92_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t8
+(define-fun action_8 () Bool
+  (exists ((q_93_s_c Proc) (q_94_s_i Proc) (q_95_s_j Proc))
+    (and
+      (and (not (= q_93_s_c q_94_s_i)) (not (= q_93_s_c q_95_s_j)) (not (= q_94_s_i q_95_s_j)))
+      (and
+        (= (select s_Sort q_93_s_c) s_CId)
+        (and
+          (= (select s_Sort q_94_s_i) s_L1Id)
+          (and
+            (= (select s_Sort q_95_s_j) s_L1Id)
+            (and
+              (= (select (select s_Clusters_5f_L1s_5f_Req q_93_s_c) q_94_s_i) s_Get)
+              (and
+                (= (select (select s_Clusters_5f_L1s_5f_State q_93_s_c) q_95_s_j) s_Shrd)
+                (and
+                  (= (select s_Clusters_5f_L2_5f_State q_93_s_c) s_Invld)
+                  (= (select s_Clusters_5f_L2_5f_pending q_93_s_c) false)))))))
+      (forall ((q_96_s_index0 Proc) (q_97_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_96_s_index0) q_97_s_index1)
+          (ite
+            (and (= q_96_s_index0 q_93_s_c) (= q_97_s_index1 q_94_s_i))
+            s_Shrd
+            (select (select s_Clusters_5f_L1s_5f_State q_96_s_index0) q_97_s_index1))))
+      (forall ((q_98_s_index0 Proc) (q_99_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_98_s_index0) q_99_s_index1)
+          (ite
+            (and (= q_98_s_index0 q_93_s_c) (= q_99_s_index1 q_94_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_98_s_index0) q_99_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t9
+(define-fun action_9 () Bool
+  (exists ((q_100_s_c Proc) (q_101_s_i Proc))
+    (and
+      (not (= q_100_s_c q_101_s_i))
+      (and
+        (= (select s_Sort q_100_s_c) s_CId)
+        (and
+          (= (select s_Sort q_101_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_100_s_c) q_101_s_i) s_GetX)
+            (and
+              (= (select s_Clusters_5f_L2_5f_State q_100_s_c) s_Excl)
+              (= (select s_Clusters_5f_L2_5f_pending q_100_s_c) false)))))
+      (forall ((q_102_s_index0 Proc) (q_103_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_102_s_index0) q_103_s_index1)
+          (ite
+            (and (= q_102_s_index0 q_100_s_c) (= q_103_s_index1 q_101_s_i))
+            s_Excl
+            (select (select s_Clusters_5f_L1s_5f_State q_102_s_index0) q_103_s_index1))))
+      (forall ((q_104_s_index0 Proc) (q_105_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_104_s_index0) q_105_s_index1)
+          (ite
+            (and (= q_104_s_index0 q_100_s_c) (= q_105_s_index1 q_101_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_104_s_index0) q_105_s_index1))))
+      (forall ((q_106_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_106_s_index0)
+          (ite
+            (= q_106_s_index0 q_100_s_c)
+            s_Invld
+            (select s_Clusters_5f_L2_5f_State q_106_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t10
+(define-fun action_10 () Bool
+  (exists ((q_107_s_c Proc) (q_108_s_i Proc) (q_109_s_j Proc))
+    (and
+      (and
+        (not (= q_107_s_c q_108_s_i))
+        (not (= q_107_s_c q_109_s_j))
+        (not (= q_108_s_i q_109_s_j)))
+      (and
+        (= (select s_Sort q_107_s_c) s_CId)
+        (and
+          (= (select s_Sort q_108_s_i) s_L1Id)
+          (and
+            (= (select s_Sort q_109_s_j) s_L1Id)
+            (and
+              (= (select (select s_Clusters_5f_L1s_5f_Req q_107_s_c) q_108_s_i) s_GetX)
+              (and
+                (= (select (select s_Clusters_5f_L1s_5f_State q_107_s_c) q_109_s_j) s_Excl)
+                (and
+                  (= (select s_Clusters_5f_L2_5f_State q_107_s_c) s_Invld)
+                  (= (select s_Clusters_5f_L2_5f_pending q_107_s_c) false)))))))
+      (forall ((q_110_s_oc Proc) (q_111_s_x Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_110_s_oc) q_111_s_x)
+          (ite
+            (and (= q_110_s_oc q_107_s_c) (= q_111_s_x q_108_s_i))
+            s_Excl
+            (ite
+              (and (= q_110_s_oc q_107_s_c) (= q_111_s_x q_109_s_j))
+              s_Invld
+              (select (select s_Clusters_5f_L1s_5f_State q_110_s_oc) q_111_s_x)))))
+      (forall ((q_112_s_index0 Proc) (q_113_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_112_s_index0) q_113_s_index1)
+          (ite
+            (and (= q_112_s_index0 q_107_s_c) (= q_113_s_index1 q_108_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_112_s_index0) q_113_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t11
+(define-fun action_11 () Bool
+  (exists ((q_114_s_c Proc) (q_115_s_i Proc))
+    (and
+      (not (= q_114_s_c q_115_s_i))
+      (and
+        (= (select s_Sort q_114_s_c) s_CId)
+        (and
+          (= (select s_Sort q_115_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_114_s_c) q_115_s_i) s_GetX)
+            (and
+              (= (select s_Clusters_5f_L2_5f_State q_114_s_c) s_Shrd)
+              (and
+                (= (select s_Clusters_5f_OnlyCopy q_114_s_c) true)
+                (= (select s_Clusters_5f_L2_5f_pending q_114_s_c) false))))))
+      (forall ((q_116_s_oc Proc) (q_117_s_j Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_116_s_oc) q_117_s_j)
+          (ite
+            (and (= q_116_s_oc q_114_s_c) (not (= q_117_s_j q_115_s_i)))
+            s_Invld
+            (ite
+              (and (= q_116_s_oc q_114_s_c) (= q_117_s_j q_115_s_i))
+              s_Excl
+              (select (select s_Clusters_5f_L1s_5f_State q_116_s_oc) q_117_s_j)))))
+      (forall ((q_118_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_118_s_index0)
+          (ite
+            (= q_118_s_index0 q_114_s_c)
+            s_Invld
+            (select s_Clusters_5f_L2_5f_State q_118_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t12
+(define-fun action_12 () Bool
+  (exists ((q_119_s_c Proc) (q_120_s_i Proc))
+    (and
+      (not (= q_119_s_c q_120_s_i))
+      (and
+        (= (select s_Sort q_119_s_c) s_CId)
+        (and
+          (= (select s_Sort q_120_s_i) s_L1Id)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_119_s_c) q_120_s_i) s_GetX)
+            (and
+              (= (select s_Clusters_5f_OnlyCopy q_119_s_c) false)
+              (= (select s_Clusters_5f_L2_5f_pending q_119_s_c) false)))))
+      (forall ((q_121_s_oc Proc) (q_122_s_j Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_121_s_oc) q_122_s_j)
+          (ite
+            (and
+              (= q_121_s_oc q_119_s_c)
+              (= (select (select s_Clusters_5f_L1s_5f_State q_121_s_oc) q_122_s_j) s_Shrd))
+            s_Invld
+            (select (select s_Clusters_5f_L1s_5f_State q_121_s_oc) q_122_s_j))))
+      (forall ((q_123_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_123_s_index0)
+          (ite
+            (= q_123_s_index0 q_119_s_c)
+            s_Invld
+            (select s_Clusters_5f_L2_5f_State q_123_s_index0))))
+      (forall ((q_124_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_pending_next q_124_s_index0)
+          (ite
+            (= q_124_s_index0 q_119_s_c)
+            true
+            (select s_Clusters_5f_L2_5f_pending q_124_s_index0))))
+      (forall ((q_125_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ifInReq_next q_125_s_index0)
+          (ite (= q_125_s_index0 q_119_s_c) true (select s_Clusters_5f_ifInReq q_125_s_index0))))
+      (forall ((q_126_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_126_s_index0)
+          (ite
+            (= q_126_s_index0 q_119_s_c)
+            (select (select s_Clusters_5f_L1s_5f_Req q_119_s_c) q_120_s_i)
+            (select s_Clusters_5f_ReqCmd q_126_s_index0))))
+      (forall ((q_127_s_index0 Proc) (q_128_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_Req_next q_127_s_index0) q_128_s_index1)
+          (ite
+            (and (= q_127_s_index0 q_119_s_c) (= q_128_s_index1 q_120_s_i))
+            s_None
+            (select (select s_Clusters_5f_L1s_5f_Req q_127_s_index0) q_128_s_index1))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t13
+(define-fun action_13 () Bool
+  (exists ((q_129_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_129_s_c) s_CId)
+        (and
+          (= (select s_Clusters_5f_ifInReq q_129_s_c) true)
+          (and
+            (= (select s_Clusters_5f_RAC_5f_Cmd q_129_s_c) s_None)
+            (= (select s_Clusters_5f_WbReq_5f_Cmd q_129_s_c) s_None))))
+      (forall ((q_130_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_RAC_5f_Cmd_next q_130_s_index0)
+          (ite
+            (= q_130_s_index0 q_129_s_c)
+            (select s_Clusters_5f_ReqCmd q_129_s_c)
+            (select s_Clusters_5f_RAC_5f_Cmd q_130_s_index0))))
+      (forall ((q_131_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_131_s_index0)
+          (ite
+            (= q_131_s_index0 q_129_s_c)
+            (select s_Clusters_5f_ReqCmd q_129_s_c)
+            (select s_GUniMsg_5f_Cmd q_131_s_index0))))
+      (forall ((q_132_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cluster_next q_132_s_index0)
+          (ite
+            (= q_132_s_index0 q_129_s_c)
+            (select s__5f__5f_proc_5f_rank q_129_s_c)
+            (select s_GUniMsg_5f_Cluster q_132_s_index0))))
+      (forall ((q_133_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ifInReq_next q_133_s_index0)
+          (ite (= q_133_s_index0 q_129_s_c) false (select s_Clusters_5f_ifInReq q_133_s_index0))))
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t14
+(define-fun action_14 () Bool
+  (exists ((q_134_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_134_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_134_s_c) s_Get)
+          (and
+            (= (select s_GUniMsg_5f_Cluster q_134_s_c) (select s__5f__5f_proc_5f_rank q_134_s_c))
+            (and (not (= s_GDir_5f_State s_Excl)) (= s_GDir_5f_pending false)))))
+      (forall ((q_135_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_135_s_index0)
+          (ite (= q_135_s_index0 q_134_s_c) s_Putt (select s_GUniMsg_5f_Cmd q_135_s_index0))))
+      (forall ((q_136_s_index0 Proc))
+        (=
+          (select s_GDir_5f_ShrSet_next q_136_s_index0)
+          (ite (= q_136_s_index0 q_134_s_c) true (select s_GDir_5f_ShrSet q_136_s_index0))))
+      (= s_GDir_5f_State_next s_Shrd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t15
+(define-fun action_15 () Bool
+  (exists ((q_137_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_137_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_137_s_c) s_GetX)
+          (and
+            (= (select s_GUniMsg_5f_Cluster q_137_s_c) (select s__5f__5f_proc_5f_rank q_137_s_c))
+            (and (= s_GDir_5f_State s_Invld) (= s_GDir_5f_pending false)))))
+      (forall ((q_138_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_138_s_index0)
+          (ite (= q_138_s_index0 q_137_s_c) s_PutX (select s_GUniMsg_5f_Cmd q_138_s_index0))))
+      (forall ((q_139_s_oc Proc) (q_140_s_x Proc))
+        (=
+          (select (select s_GUniMsg_5f_ToInv_next q_139_s_oc) q_140_s_x)
+          (ite
+            (= q_139_s_oc q_137_s_c)
+            false
+            (select (select s_GUniMsg_5f_ToInv q_139_s_oc) q_140_s_x))))
+      (= s_GDir_5f_Owner_next (select s__5f__5f_proc_5f_rank q_137_s_c))
+      (= s_GDir_5f_State_next s_Excl)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t16_o
+(define-fun action_16 () Bool
+  (exists ((q_141_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_141_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_141_s_c) s_Get)
+          (and
+            (= (select s_GUniMsg_5f_Cluster q_141_s_c) (select s__5f__5f_proc_5f_rank q_141_s_c))
+            (and
+              (= s_GDir_5f_State s_Excl)
+              (and
+                (= s_GDir_5f_pending false)
+                (= s_GDir_5f_Owner (select s__5f__5f_proc_5f_rank q_141_s_c)))))))
+      (forall ((q_142_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_142_s_index0)
+          (ite (= q_142_s_index0 q_141_s_c) s_NAck (select s_GUniMsg_5f_Cmd q_142_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t16_no
+(define-fun action_17 () Bool
+  (exists ((q_143_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_143_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_143_s_c) s_Get)
+          (and
+            (= (select s_GUniMsg_5f_Cluster q_143_s_c) (select s__5f__5f_proc_5f_rank q_143_s_c))
+            (and
+              (= s_GDir_5f_State s_Excl)
+              (and
+                (= s_GDir_5f_pending false)
+                (not (= s_GDir_5f_Owner (select s__5f__5f_proc_5f_rank q_143_s_c))))))))
+      (= s_GDir_5f_pending_next true)
+      (forall ((q_144_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cluster_next q_144_s_index0)
+          (ite
+            (= q_144_s_index0 q_143_s_c)
+            s_GDir_5f_Owner
+            (select s_GUniMsg_5f_Cluster q_144_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t16_x_o
+(define-fun action_18 () Bool
+  (exists ((q_145_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_145_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_145_s_c) s_GetX)
+          (and
+            (= (select s_GUniMsg_5f_Cluster q_145_s_c) (select s__5f__5f_proc_5f_rank q_145_s_c))
+            (and
+              (= s_GDir_5f_State s_Excl)
+              (and
+                (= s_GDir_5f_pending false)
+                (= s_GDir_5f_Owner (select s__5f__5f_proc_5f_rank q_145_s_c)))))))
+      (forall ((q_146_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_146_s_index0)
+          (ite (= q_146_s_index0 q_145_s_c) s_NAck (select s_GUniMsg_5f_Cmd q_146_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t16_x_no
+(define-fun action_19 () Bool
+  (exists ((q_147_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_147_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_147_s_c) s_GetX)
+          (and
+            (= (select s_GUniMsg_5f_Cluster q_147_s_c) (select s__5f__5f_proc_5f_rank q_147_s_c))
+            (and
+              (= s_GDir_5f_State s_Excl)
+              (and
+                (= s_GDir_5f_pending false)
+                (not (= s_GDir_5f_Owner (select s__5f__5f_proc_5f_rank q_147_s_c))))))))
+      (= s_GDir_5f_pending_next true)
+      (forall ((q_148_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cluster_next q_148_s_index0)
+          (ite
+            (= q_148_s_index0 q_147_s_c)
+            s_GDir_5f_Owner
+            (select s_GUniMsg_5f_Cluster q_148_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t17
+(define-fun action_20 () Bool
+  (exists ((q_149_s_c1 Proc) (q_150_s_c2 Proc))
+    (and
+      (not (= q_149_s_c1 q_150_s_c2))
+      (and
+        (= (select s_Sort q_149_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_150_s_c2) s_CId)
+          (and
+            (= (select s_GUniMsg_5f_Cmd q_149_s_c1) s_Get)
+            (and
+              (=
+                (select s_GUniMsg_5f_Cluster q_149_s_c1)
+                (select s__5f__5f_proc_5f_rank q_150_s_c2))
+              (not (= (select s_Clusters_5f_RAC_5f_Cmd q_150_s_c2) s_None))))))
+      (forall ((q_151_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_151_s_index0)
+          (ite (= q_151_s_index0 q_149_s_c1) s_NAck (select s_GUniMsg_5f_Cmd q_151_s_index0))))
+      (= s_GShWbMsg_5f_Cmd_next s_NAck)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t17_x
+(define-fun action_21 () Bool
+  (exists ((q_152_s_c1 Proc) (q_153_s_c2 Proc))
+    (and
+      (not (= q_152_s_c1 q_153_s_c2))
+      (and
+        (= (select s_Sort q_152_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_153_s_c2) s_CId)
+          (and
+            (= (select s_GUniMsg_5f_Cmd q_152_s_c1) s_GetX)
+            (and
+              (=
+                (select s_GUniMsg_5f_Cluster q_152_s_c1)
+                (select s__5f__5f_proc_5f_rank q_153_s_c2))
+              (not (= (select s_Clusters_5f_RAC_5f_Cmd q_153_s_c2) s_None))))))
+      (forall ((q_154_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_154_s_index0)
+          (ite (= q_154_s_index0 q_152_s_c1) s_NAck (select s_GUniMsg_5f_Cmd q_154_s_index0))))
+      (= s_GShWbMsg_5f_Cmd_next s_NAck)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t18
+(define-fun action_22 () Bool
+  (and
+    (and (= s_GShWbMsg_5f_Cmd s_NAck) (= s_GDir_5f_pending true))
+    (= s_GShWbMsg_5f_Cmd_next s_None)
+    (= s_GDir_5f_pending_next false)
+    (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+    (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+    (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+    (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+    (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+    (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+    (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+    (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+    (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+    (= s_GDir_5f_State_next s_GDir_5f_State)
+    (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+    (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+    (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+    (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+    (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+    (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+    (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+    (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+    (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+    (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+    (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+    (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+    (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+    (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+    (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+    (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+    (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+    (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+    (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+    (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+    (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+    (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+    (= s_Sort_next s_Sort)))
+; action: t19
+(define-fun action_23 () Bool
+  (exists ((q_155_s_c1 Proc) (q_156_s_c2 Proc))
+    (and
+      (not (= q_155_s_c1 q_156_s_c2))
+      (and
+        (= (select s_Sort q_155_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_156_s_c2) s_CId)
+          (and
+            (= (select s_GUniMsg_5f_Cmd q_155_s_c1) s_Get)
+            (and
+              (=
+                (select s_GUniMsg_5f_Cluster q_155_s_c1)
+                (select s__5f__5f_proc_5f_rank q_156_s_c2))
+              (= (select s_Clusters_5f_RAC_5f_Cmd q_156_s_c2) s_None)))))
+      (forall ((q_157_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_157_s_index0)
+          (ite
+            (= q_157_s_index0 q_156_s_c2)
+            (select s_GUniMsg_5f_Cmd q_155_s_c1)
+            (select s_Clusters_5f_outReq_5f_Cmd q_157_s_index0))))
+      (forall ((q_158_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cluster_next q_158_s_index0)
+          (ite
+            (= q_158_s_index0 q_156_s_c2)
+            (select s__5f__5f_proc_5f_rank q_155_s_c1)
+            (select s_Clusters_5f_outReq_5f_Cluster q_158_s_index0))))
+      (forall ((q_159_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_159_s_index0)
+          (ite (= q_159_s_index0 q_155_s_c1) s_None (select s_GUniMsg_5f_Cmd q_159_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t19_x
+(define-fun action_24 () Bool
+  (exists ((q_160_s_c1 Proc) (q_161_s_c2 Proc))
+    (and
+      (not (= q_160_s_c1 q_161_s_c2))
+      (and
+        (= (select s_Sort q_160_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_161_s_c2) s_CId)
+          (and
+            (= (select s_GUniMsg_5f_Cmd q_160_s_c1) s_GetX)
+            (and
+              (=
+                (select s_GUniMsg_5f_Cluster q_160_s_c1)
+                (select s__5f__5f_proc_5f_rank q_161_s_c2))
+              (= (select s_Clusters_5f_RAC_5f_Cmd q_161_s_c2) s_None)))))
+      (forall ((q_162_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_162_s_index0)
+          (ite
+            (= q_162_s_index0 q_161_s_c2)
+            (select s_GUniMsg_5f_Cmd q_160_s_c1)
+            (select s_Clusters_5f_outReq_5f_Cmd q_162_s_index0))))
+      (forall ((q_163_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cluster_next q_163_s_index0)
+          (ite
+            (= q_163_s_index0 q_161_s_c2)
+            (select s__5f__5f_proc_5f_rank q_160_s_c1)
+            (select s_Clusters_5f_outReq_5f_Cluster q_163_s_index0))))
+      (forall ((q_164_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_164_s_index0)
+          (ite (= q_164_s_index0 q_160_s_c1) s_None (select s_GUniMsg_5f_Cmd q_164_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t20
+(define-fun action_25 () Bool
+  (exists ((q_165_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_165_s_c) s_CId)
+        (and
+          (= (select s_Clusters_5f_outReq_5f_Cmd q_165_s_c) s_Get)
+          (= (select s_Clusters_5f_L2_5f_pending q_165_s_c) true)))
+      (forall ((q_166_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_166_s_index0)
+          (ite
+            (= q_166_s_index0 q_165_s_c)
+            s_NAck
+            (select s_Clusters_5f_inRpy_5f_Cmd q_166_s_index0))))
+      (forall ((q_167_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_167_s_index0)
+          (ite
+            (= q_167_s_index0 q_165_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_165_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_167_s_index0))))
+      (forall ((q_168_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_168_s_index0)
+          (ite
+            (= q_168_s_index0 q_165_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_168_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t20_x
+(define-fun action_26 () Bool
+  (exists ((q_169_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_169_s_c) s_CId)
+        (and
+          (= (select s_Clusters_5f_outReq_5f_Cmd q_169_s_c) s_GetX)
+          (= (select s_Clusters_5f_L2_5f_pending q_169_s_c) true)))
+      (forall ((q_170_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_170_s_index0)
+          (ite
+            (= q_170_s_index0 q_169_s_c)
+            s_NAck
+            (select s_Clusters_5f_inRpy_5f_Cmd q_170_s_index0))))
+      (forall ((q_171_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_171_s_index0)
+          (ite
+            (= q_171_s_index0 q_169_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_169_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_171_s_index0))))
+      (forall ((q_172_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_172_s_index0)
+          (ite
+            (= q_172_s_index0 q_169_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_172_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t21
+(define-fun action_27 () Bool
+  (exists ((q_173_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_173_s_c) s_CId)
+        (and
+          (= (select s_Clusters_5f_outReq_5f_Cmd q_173_s_c) s_Get)
+          (and
+            (= (select s_Clusters_5f_L2_5f_pending q_173_s_c) false)
+            (= (select s_Clusters_5f_L2_5f_State q_173_s_c) s_Shrd))))
+      (forall ((q_174_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_174_s_index0)
+          (ite
+            (= q_174_s_index0 q_173_s_c)
+            s_Putt
+            (select s_Clusters_5f_inRpy_5f_Cmd q_174_s_index0))))
+      (forall ((q_175_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_175_s_index0)
+          (ite
+            (= q_175_s_index0 q_173_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_173_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_175_s_index0))))
+      (forall ((q_176_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_176_s_index0)
+          (ite (= q_176_s_index0 q_173_s_c) false (select s_Clusters_5f_OnlyCopy q_176_s_index0))))
+      (forall ((q_177_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_177_s_index0)
+          (ite
+            (= q_177_s_index0 q_173_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_177_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t22
+(define-fun action_28 () Bool
+  (exists ((q_178_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_178_s_c) s_CId)
+        (and
+          (= (select s_Clusters_5f_outReq_5f_Cmd q_178_s_c) s_GetX)
+          (and
+            (= (select s_Clusters_5f_L2_5f_pending q_178_s_c) false)
+            (= (select s_Clusters_5f_L2_5f_State q_178_s_c) s_Excl))))
+      (forall ((q_179_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_179_s_index0)
+          (ite
+            (= q_179_s_index0 q_178_s_c)
+            s_PutX
+            (select s_Clusters_5f_inRpy_5f_Cmd q_179_s_index0))))
+      (forall ((q_180_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_180_s_index0)
+          (ite
+            (= q_180_s_index0 q_178_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_178_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_180_s_index0))))
+      (forall ((q_181_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_181_s_index0)
+          (ite (= q_181_s_index0 q_178_s_c) false (select s_Clusters_5f_OnlyCopy q_181_s_index0))))
+      (forall ((q_182_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_182_s_index0)
+          (ite
+            (= q_182_s_index0 q_178_s_c)
+            s_Invld
+            (select s_Clusters_5f_L2_5f_State q_182_s_index0))))
+      (forall ((q_183_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_183_s_index0)
+          (ite
+            (= q_183_s_index0 q_178_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_183_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t23
+(define-fun action_29 () Bool
+  (exists ((q_184_s_c Proc) (q_185_s_i Proc))
+    (and
+      (not (= q_184_s_c q_185_s_i))
+      (and
+        (= (select s_Sort q_184_s_c) s_CId)
+        (and
+          (= (select s_Sort q_185_s_i) s_L1Id)
+          (and
+            (= (select s_Clusters_5f_outReq_5f_Cmd q_184_s_c) s_GetX)
+            (and
+              (= (select s_Clusters_5f_L2_5f_pending q_184_s_c) false)
+              (and
+                (= (select s_Clusters_5f_L2_5f_State q_184_s_c) s_Invld)
+                (= (select (select s_Clusters_5f_L1s_5f_State q_184_s_c) q_185_s_i) s_Excl))))))
+      (forall ((q_186_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_186_s_index0)
+          (ite
+            (= q_186_s_index0 q_184_s_c)
+            s_PutX
+            (select s_Clusters_5f_inRpy_5f_Cmd q_186_s_index0))))
+      (forall ((q_187_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_187_s_index0)
+          (ite
+            (= q_187_s_index0 q_184_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_184_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_187_s_index0))))
+      (forall ((q_188_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_188_s_index0)
+          (ite (= q_188_s_index0 q_184_s_c) false (select s_Clusters_5f_OnlyCopy q_188_s_index0))))
+      (forall ((q_189_s_index0 Proc) (q_190_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_189_s_index0) q_190_s_index1)
+          (ite
+            (and (= q_189_s_index0 q_184_s_c) (= q_190_s_index1 q_185_s_i))
+            s_Invld
+            (select (select s_Clusters_5f_L1s_5f_State q_189_s_index0) q_190_s_index1))))
+      (forall ((q_191_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_191_s_index0)
+          (ite
+            (= q_191_s_index0 q_184_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_191_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t24
+(define-fun action_30 () Bool
+  (exists ((q_192_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_192_s_c) s_CId)
+        (and
+          (= (select s_Clusters_5f_outReq_5f_Cmd q_192_s_c) s_GetX)
+          (and
+            (= (select s_Clusters_5f_L2_5f_pending q_192_s_c) false)
+            (= (select s_Clusters_5f_L2_5f_State q_192_s_c) s_Shrd))))
+      (forall ((q_193_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_193_s_index0)
+          (ite
+            (= q_193_s_index0 q_192_s_c)
+            s_PutX
+            (select s_Clusters_5f_inRpy_5f_Cmd q_193_s_index0))))
+      (forall ((q_194_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_194_s_index0)
+          (ite
+            (= q_194_s_index0 q_192_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_192_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_194_s_index0))))
+      (forall ((q_195_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_195_s_index0)
+          (ite (= q_195_s_index0 q_192_s_c) false (select s_Clusters_5f_OnlyCopy q_195_s_index0))))
+      (forall ((q_196_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_196_s_index0)
+          (ite
+            (= q_196_s_index0 q_192_s_c)
+            s_Invld
+            (select s_Clusters_5f_L2_5f_State q_196_s_index0))))
+      (forall ((q_197_s_oc Proc) (q_198_s_i Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_197_s_oc) q_198_s_i)
+          (ite
+            (= q_197_s_oc q_192_s_c)
+            s_Invld
+            (select (select s_Clusters_5f_L1s_5f_State q_197_s_oc) q_198_s_i))))
+      (forall ((q_199_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_199_s_index0)
+          (ite
+            (= q_199_s_index0 q_192_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_199_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t25
+(define-fun action_31 () Bool
+  (exists ((q_200_s_c Proc) (q_201_s_i Proc))
+    (and
+      (not (= q_200_s_c q_201_s_i))
+      (and
+        (= (select s_Sort q_200_s_c) s_CId)
+        (and
+          (= (select s_Sort q_201_s_i) s_L1Id)
+          (and
+            (= (select s_Clusters_5f_outReq_5f_Cmd q_200_s_c) s_Get)
+            (and
+              (= (select s_Clusters_5f_L2_5f_pending q_200_s_c) false)
+              (and
+                (= (select s_Clusters_5f_L2_5f_State q_200_s_c) s_Invld)
+                (= (select (select s_Clusters_5f_L1s_5f_State q_200_s_c) q_201_s_i) s_Shrd))))))
+      (forall ((q_202_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_202_s_index0)
+          (ite
+            (= q_202_s_index0 q_200_s_c)
+            s_Putt
+            (select s_Clusters_5f_inRpy_5f_Cmd q_202_s_index0))))
+      (forall ((q_203_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_203_s_index0)
+          (ite
+            (= q_203_s_index0 q_200_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_200_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_203_s_index0))))
+      (forall ((q_204_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_204_s_index0)
+          (ite (= q_204_s_index0 q_200_s_c) false (select s_Clusters_5f_OnlyCopy q_204_s_index0))))
+      (forall ((q_205_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_205_s_index0)
+          (ite
+            (= q_205_s_index0 q_200_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_205_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t30
+(define-fun action_32 () Bool
+  (exists ((q_206_s_c1 Proc) (q_207_s_c2 Proc))
+    (and
+      (not (= q_206_s_c1 q_207_s_c2))
+      (and
+        (= (select s_Sort q_206_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_207_s_c2) s_CId)
+          (and
+            (= (select s_Clusters_5f_inRpy_5f_Cmd q_206_s_c1) s_NAck)
+            (=
+              (select s_Clusters_5f_inRpy_5f_Dest q_206_s_c1)
+              (select s__5f__5f_proc_5f_rank q_207_s_c2)))))
+      (forall ((q_208_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_208_s_index0)
+          (ite (= q_208_s_index0 q_207_s_c2) s_NAck (select s_GUniMsg_5f_Cmd q_208_s_index0))))
+      (= s_GShWbMsg_5f_Cmd_next s_NAck)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t31
+(define-fun action_33 () Bool
+  (exists ((q_209_s_c Proc))
+    (and
+      (and (= (select s_Sort q_209_s_c) s_CId) (= (select s_GUniMsg_5f_Cmd q_209_s_c) s_NAck))
+      (forall ((q_210_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_RAC_5f_Cmd_next q_210_s_index0)
+          (ite (= q_210_s_index0 q_209_s_c) s_None (select s_Clusters_5f_RAC_5f_Cmd q_210_s_index0))))
+      (forall ((q_211_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_211_s_index0)
+          (ite
+            (= q_211_s_index0 q_209_s_c)
+            s_NAck
+            (select s_Clusters_5f_outRpy_5f_Cmd q_211_s_index0))))
+      (forall ((q_212_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_212_s_index0)
+          (ite (= q_212_s_index0 q_209_s_c) s_None (select s_GUniMsg_5f_Cmd q_212_s_index0))))
+      (forall ((q_213_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_213_s_index0)
+          (ite (= q_213_s_index0 q_209_s_c) s_None (select s_Clusters_5f_ReqCmd q_213_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t32
+(define-fun action_34 () Bool
+  (exists ((q_214_s_c Proc))
+    (and
+      (and (= (select s_Sort q_214_s_c) s_CId) (= (select s_GUniMsg_5f_Cmd q_214_s_c) s_Putt))
+      (forall ((q_215_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_RAC_5f_Cmd_next q_215_s_index0)
+          (ite (= q_215_s_index0 q_214_s_c) s_None (select s_Clusters_5f_RAC_5f_Cmd q_215_s_index0))))
+      (forall ((q_216_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_216_s_index0)
+          (ite
+            (= q_216_s_index0 q_214_s_c)
+            (select s_GUniMsg_5f_Cmd q_214_s_c)
+            (select s_Clusters_5f_outRpy_5f_Cmd q_216_s_index0))))
+      (forall ((q_217_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_217_s_index0)
+          (ite (= q_217_s_index0 q_214_s_c) s_None (select s_GUniMsg_5f_Cmd q_217_s_index0))))
+      (forall ((q_218_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_218_s_index0)
+          (ite (= q_218_s_index0 q_214_s_c) s_None (select s_Clusters_5f_ReqCmd q_218_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t33_then
+(define-fun action_35 () Bool
+  (exists ((q_219_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_219_s_c) s_CId)
+        (and
+          (= (select s_GUniMsg_5f_Cmd q_219_s_c) s_PutX)
+          (forall ((q_220_s_i Proc))
+            (=>
+              (not (= q_220_s_i q_219_s_c))
+              (or
+                (not (= (select s_Sort q_220_s_i) s_CId))
+                (or
+                  (= (select (select s_GUniMsg_5f_ToInv q_219_s_c) q_220_s_i) false)
+                  (= (select (select s_Clusters_5f_RAC_5f_Inved q_219_s_c) q_220_s_i) true)))))))
+      (forall ((q_221_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_RAC_5f_Cmd_next q_221_s_index0)
+          (ite (= q_221_s_index0 q_219_s_c) s_None (select s_Clusters_5f_RAC_5f_Cmd q_221_s_index0))))
+      (forall ((q_222_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_222_s_index0)
+          (ite
+            (= q_222_s_index0 q_219_s_c)
+            (select s_GUniMsg_5f_Cmd q_219_s_c)
+            (select s_Clusters_5f_outRpy_5f_Cmd q_222_s_index0))))
+      (forall ((q_223_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_223_s_index0)
+          (ite (= q_223_s_index0 q_219_s_c) s_None (select s_GUniMsg_5f_Cmd q_223_s_index0))))
+      (forall ((q_224_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_224_s_index0)
+          (ite (= q_224_s_index0 q_219_s_c) s_None (select s_Clusters_5f_ReqCmd q_224_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t33_else
+(define-fun action_36 () Bool
+  (exists ((q_225_s_c Proc) (q_226_s_c2 Proc))
+    (and
+      (not (= q_225_s_c q_226_s_c2))
+      (and
+        (= (select s_Sort q_225_s_c) s_CId)
+        (and
+          (= (select s_Sort q_226_s_c2) s_CId)
+          (and
+            (= (select s_GUniMsg_5f_Cmd q_225_s_c) s_PutX)
+            (and
+              (= (select (select s_GUniMsg_5f_ToInv q_225_s_c) q_226_s_c2) true)
+              (= (select (select s_Clusters_5f_RAC_5f_Inved q_225_s_c) q_226_s_c2) false)))))
+      (forall ((q_227_s_x Proc) (q_228_s_y Proc))
+        (=
+          (select (select s_Clusters_5f_RAC_5f_ToInv_next q_227_s_x) q_228_s_y)
+          (ite
+            (and
+              (= q_227_s_x q_225_s_c)
+              (and
+                (= (select (select s_GUniMsg_5f_ToInv q_225_s_c) q_228_s_y) true)
+                (= (select (select s_Clusters_5f_RAC_5f_Inved q_225_s_c) q_228_s_y) false)))
+            true
+            (ite
+              (= q_227_s_x q_225_s_c)
+              false
+              (select (select s_Clusters_5f_RAC_5f_ToInv q_227_s_x) q_228_s_y)))))
+      (forall ((q_229_s_x Proc) (q_230_s_y Proc))
+        (=
+          (select (select s_Clusters_5f_RAC_5f_Inved_next q_229_s_x) q_230_s_y)
+          (ite
+            (= q_229_s_x q_225_s_c)
+            false
+            (select (select s_Clusters_5f_RAC_5f_ToInv q_229_s_x) q_230_s_y))))
+      (forall ((q_231_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_RAC_5f_Cmd_next q_231_s_index0)
+          (ite (= q_231_s_index0 q_225_s_c) s_WINV (select s_Clusters_5f_RAC_5f_Cmd q_231_s_index0))))
+      (forall ((q_232_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_232_s_index0)
+          (ite
+            (= q_232_s_index0 q_225_s_c)
+            (select s_GUniMsg_5f_Cmd q_225_s_c)
+            (select s_Clusters_5f_outRpy_5f_Cmd q_232_s_index0))))
+      (forall ((q_233_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_233_s_index0)
+          (ite (= q_233_s_index0 q_225_s_c) s_None (select s_GUniMsg_5f_Cmd q_233_s_index0))))
+      (forall ((q_234_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_ReqCmd_next q_234_s_index0)
+          (ite (= q_234_s_index0 q_225_s_c) s_None (select s_Clusters_5f_ReqCmd q_234_s_index0))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Sort_next s_Sort))))
+; action: t34
+(define-fun action_37 () Bool
+  (exists ((q_235_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_235_s_c) s_CId)
+        (= (select s_Clusters_5f_outRpy_5f_Cmd q_235_s_c) s_NAck))
+      (forall ((q_236_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_pending_next q_236_s_index0)
+          (ite
+            (= q_236_s_index0 q_235_s_c)
+            false
+            (select s_Clusters_5f_L2_5f_pending q_236_s_index0))))
+      (forall ((q_237_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_237_s_index0)
+          (ite
+            (= q_237_s_index0 q_235_s_c)
+            s_None
+            (select s_Clusters_5f_outRpy_5f_Cmd q_237_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t35
+(define-fun action_38 () Bool
+  (exists ((q_238_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_238_s_c) s_CId)
+        (= (select s_Clusters_5f_outRpy_5f_Cmd q_238_s_c) s_Putt))
+      (forall ((q_239_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_pending_next q_239_s_index0)
+          (ite
+            (= q_239_s_index0 q_238_s_c)
+            false
+            (select s_Clusters_5f_L2_5f_pending q_239_s_index0))))
+      (forall ((q_240_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_240_s_index0)
+          (ite
+            (= q_240_s_index0 q_238_s_c)
+            s_Shrd
+            (select s_Clusters_5f_L2_5f_State q_240_s_index0))))
+      (forall ((q_241_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_241_s_index0)
+          (ite (= q_241_s_index0 q_238_s_c) false (select s_Clusters_5f_OnlyCopy q_241_s_index0))))
+      (forall ((q_242_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_242_s_index0)
+          (ite
+            (= q_242_s_index0 q_238_s_c)
+            s_None
+            (select s_Clusters_5f_outRpy_5f_Cmd q_242_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t36
+(define-fun action_39 () Bool
+  (exists ((q_243_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_243_s_c) s_CId)
+        (= (select s_Clusters_5f_outRpy_5f_Cmd q_243_s_c) s_PutX))
+      (forall ((q_244_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_pending_next q_244_s_index0)
+          (ite
+            (= q_244_s_index0 q_243_s_c)
+            false
+            (select s_Clusters_5f_L2_5f_pending q_244_s_index0))))
+      (forall ((q_245_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_245_s_index0)
+          (ite
+            (= q_245_s_index0 q_243_s_c)
+            s_Excl
+            (select s_Clusters_5f_L2_5f_State q_245_s_index0))))
+      (forall ((q_246_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_OnlyCopy_next q_246_s_index0)
+          (ite (= q_246_s_index0 q_243_s_c) true (select s_Clusters_5f_OnlyCopy q_246_s_index0))))
+      (forall ((q_247_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outRpy_5f_Cmd_next q_247_s_index0)
+          (ite
+            (= q_247_s_index0 q_243_s_c)
+            s_None
+            (select s_Clusters_5f_outRpy_5f_Cmd q_247_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t37
+(define-fun action_40 () Bool
+  (exists ((q_248_s_c Proc) (q_249_s_i Proc))
+    (and
+      (not (= q_248_s_c q_249_s_i))
+      (and
+        (= (select s_Sort q_248_s_c) s_CId)
+        (and
+          (= (select s_Sort q_249_s_i) s_CId)
+          (and
+            (= (select s_GUniMsg_5f_Cmd q_248_s_c) s_GetX)
+            (and
+              (= s_GDir_5f_pending false)
+              (and (= s_GDir_5f_State s_Shrd) (= (select s_GDir_5f_ShrSet q_249_s_i) true))))))
+      (forall ((q_250_s_index0 Proc))
+        (=
+          (select s_GUniMsg_5f_Cmd_next q_250_s_index0)
+          (ite (= q_250_s_index0 q_248_s_c) s_PutX (select s_GUniMsg_5f_Cmd q_250_s_index0))))
+      (= s_GDir_5f_State_next s_Excl)
+      (= s_GDir_5f_Owner_next (select s__5f__5f_proc_5f_rank q_248_s_c))
+      (forall ((q_251_s_y Proc))
+        (=
+          (select s_GDir_5f_ShrSet_next q_251_s_y)
+          (ite
+            (and (= (select s_Sort q_251_s_y) s_CId) (= (select s_GDir_5f_ShrSet q_251_s_y) true))
+            false
+            (select s_GDir_5f_ShrSet q_251_s_y))))
+      (forall ((q_252_s_y Proc))
+        (=
+          (select s_GInvMsg_5f_Cmd_next q_252_s_y)
+          (ite
+            (and
+              (= (select s_Sort q_252_s_y) s_CId)
+              (and (= (select s_GDir_5f_ShrSet q_252_s_y) true) (not (= q_252_s_y q_248_s_c))))
+            s_Inv
+            (select s_GInvMsg_5f_Cmd q_252_s_y))))
+      (forall ((q_253_s_y Proc))
+        (=
+          (select s_GInvMsg_5f_Cluster_next q_253_s_y)
+          (ite
+            (and
+              (= (select s_Sort q_253_s_y) s_CId)
+              (and (= (select s_GDir_5f_ShrSet q_253_s_y) true) (not (= q_253_s_y q_248_s_c))))
+            (select s__5f__5f_proc_5f_rank q_248_s_c)
+            (select s_GInvMsg_5f_Cluster q_253_s_y))))
+      (forall ((q_254_s_oc Proc) (q_255_s_y Proc))
+        (=
+          (select (select s_GUniMsg_5f_ToInv_next q_254_s_oc) q_255_s_y)
+          (ite
+            (and
+              (= q_254_s_oc q_248_s_c)
+              (and
+                (= (select s_Sort q_255_s_y) s_CId)
+                (and (= (select s_GDir_5f_ShrSet q_255_s_y) true) (not (= q_255_s_y q_248_s_c)))))
+            true
+            (ite
+              (= q_254_s_oc q_248_s_c)
+              false
+              (select (select s_GUniMsg_5f_ToInv q_254_s_oc) q_255_s_y)))))
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t38
+(define-fun action_41 () Bool
+  (exists ((q_256_s_c Proc))
+    (and
+      (and (= (select s_Sort q_256_s_c) s_CId) (= (select s_GInvMsg_5f_Cmd q_256_s_c) s_Inv))
+      (forall ((q_257_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cmd_next q_257_s_index0)
+          (ite (= q_257_s_index0 q_256_s_c) s_None (select s_GInvMsg_5f_Cmd q_257_s_index0))))
+      (forall ((q_258_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_258_s_index0)
+          (ite
+            (= q_258_s_index0 q_256_s_c)
+            s_Inv
+            (select s_Clusters_5f_outReq_5f_Cmd q_258_s_index0))))
+      (forall ((q_259_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cluster_next q_259_s_index0)
+          (ite
+            (= q_259_s_index0 q_256_s_c)
+            (select s_GInvMsg_5f_Cluster q_256_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_259_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t38_1
+(define-fun action_42 () Bool
+  (exists ((q_260_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_260_s_c) s_CId)
+        (= (select s_Clusters_5f_inRpy_5f_Cmd q_260_s_c) s_InvAck))
+      (forall ((q_261_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cmd_next q_261_s_index0)
+          (ite (= q_261_s_index0 q_260_s_c) s_InvAck (select s_GInvMsg_5f_Cmd q_261_s_index0))))
+      (forall ((q_262_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cluster_next q_262_s_index0)
+          (ite
+            (= q_262_s_index0 q_260_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_260_s_c)
+            (select s_GInvMsg_5f_Cluster q_262_s_index0))))
+      (forall ((q_263_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_263_s_index0)
+          (ite
+            (= q_263_s_index0 q_260_s_c)
+            s_None
+            (select s_Clusters_5f_inRpy_5f_Cmd q_263_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t39
+(define-fun action_43 () Bool
+  (exists ((q_264_s_c1 Proc) (q_265_s_c2 Proc))
+    (and
+      (not (= q_264_s_c1 q_265_s_c2))
+      (and
+        (= (select s_Sort q_264_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_265_s_c2) s_CId)
+          (and
+            (= (select s_GInvMsg_5f_Cmd q_264_s_c1) s_InvAck)
+            (and
+              (= (select s_GInvMsg_5f_Cluster_5f_defined q_264_s_c1) true)
+              (and
+                (=
+                  (select s_GInvMsg_5f_Cluster q_264_s_c1)
+                  (select s__5f__5f_proc_5f_rank q_265_s_c2))
+                (not (= (select s_Clusters_5f_RAC_5f_Cmd q_265_s_c2) s_WINV)))))))
+      (forall ((q_266_s_index0 Proc) (q_267_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_RAC_5f_Inved_next q_266_s_index0) q_267_s_index1)
+          (ite
+            (and (= q_266_s_index0 q_265_s_c2) (= q_267_s_index1 q_264_s_c1))
+            true
+            (select (select s_Clusters_5f_RAC_5f_Inved q_266_s_index0) q_267_s_index1))))
+      (forall ((q_268_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cmd_next q_268_s_index0)
+          (ite (= q_268_s_index0 q_264_s_c1) s_None (select s_GInvMsg_5f_Cmd q_268_s_index0))))
+      (forall ((q_269_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cluster_5f_defined_next q_269_s_index0)
+          (ite
+            (= q_269_s_index0 q_264_s_c1)
+            false
+            (select s_GInvMsg_5f_Cluster_5f_defined q_269_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+; action: t40_then
+(define-fun action_44 () Bool
+  (exists ((q_270_s_c1 Proc) (q_271_s_c2 Proc))
+    (and
+      (not (= q_270_s_c1 q_271_s_c2))
+      (and
+        (= (select s_Sort q_270_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_271_s_c2) s_CId)
+          (and
+            (= (select s_GInvMsg_5f_Cmd q_270_s_c1) s_InvAck)
+            (and
+              (=
+                (select s_GInvMsg_5f_Cluster q_270_s_c1)
+                (select s__5f__5f_proc_5f_rank q_271_s_c2))
+              (and
+                (= (select s_Clusters_5f_RAC_5f_Cmd q_271_s_c2) s_WINV)
+                (forall ((q_272_s_j Proc))
+                  (=>
+                    (and (not (= q_272_s_j q_270_s_c1)) (not (= q_272_s_j q_271_s_c2)))
+                    (or
+                      (not (= (select s_Sort q_272_s_j) s_CId))
+                      (= (select (select s_Clusters_5f_RAC_5f_ToInv q_271_s_c2) q_272_s_j) false)))))))))
+      (forall ((q_273_s_index0 Proc) (q_274_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_RAC_5f_ToInv_next q_273_s_index0) q_274_s_index1)
+          (ite
+            (and (= q_273_s_index0 q_271_s_c2) (= q_274_s_index1 q_270_s_c1))
+            false
+            (select (select s_Clusters_5f_RAC_5f_ToInv q_273_s_index0) q_274_s_index1))))
+      (forall ((q_275_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_RAC_5f_Cmd_next q_275_s_index0)
+          (ite
+            (= q_275_s_index0 q_271_s_c2)
+            s_None
+            (select s_Clusters_5f_RAC_5f_Cmd q_275_s_index0))))
+      (forall ((q_276_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cmd_next q_276_s_index0)
+          (ite (= q_276_s_index0 q_270_s_c1) s_None (select s_GInvMsg_5f_Cmd q_276_s_index0))))
+      (forall ((q_277_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cluster_5f_defined_next q_277_s_index0)
+          (ite
+            (= q_277_s_index0 q_270_s_c1)
+            false
+            (select s_GInvMsg_5f_Cluster_5f_defined q_277_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Sort_next s_Sort))))
+; action: t40_more
+(define-fun action_45 () Bool
+  (exists ((q_278_s_c1 Proc) (q_279_s_c2 Proc) (q_280_s_y Proc))
+    (and
+      (and
+        (not (= q_278_s_c1 q_279_s_c2))
+        (not (= q_278_s_c1 q_280_s_y))
+        (not (= q_279_s_c2 q_280_s_y)))
+      (and
+        (= (select s_Sort q_278_s_c1) s_CId)
+        (and
+          (= (select s_Sort q_279_s_c2) s_CId)
+          (and
+            (= (select s_Sort q_280_s_y) s_CId)
+            (and
+              (= (select s_GInvMsg_5f_Cmd q_278_s_c1) s_InvAck)
+              (and
+                (=
+                  (select s_GInvMsg_5f_Cluster q_278_s_c1)
+                  (select s__5f__5f_proc_5f_rank q_279_s_c2))
+                (and
+                  (= (select s_Clusters_5f_RAC_5f_Cmd q_279_s_c2) s_WINV)
+                  (= (select (select s_Clusters_5f_RAC_5f_ToInv q_279_s_c2) q_280_s_y) true)))))))
+      (forall ((q_281_s_index0 Proc) (q_282_s_index1 Proc))
+        (=
+          (select (select s_Clusters_5f_RAC_5f_ToInv_next q_281_s_index0) q_282_s_index1)
+          (ite
+            (and (= q_281_s_index0 q_279_s_c2) (= q_282_s_index1 q_278_s_c1))
+            false
+            (select (select s_Clusters_5f_RAC_5f_ToInv q_281_s_index0) q_282_s_index1))))
+      (forall ((q_283_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cmd_next q_283_s_index0)
+          (ite (= q_283_s_index0 q_278_s_c1) s_None (select s_GInvMsg_5f_Cmd q_283_s_index0))))
+      (forall ((q_284_s_index0 Proc))
+        (=
+          (select s_GInvMsg_5f_Cluster_5f_defined_next q_284_s_index0)
+          (ite
+            (= q_284_s_index0 q_278_s_c1)
+            false
+            (select s_GInvMsg_5f_Cluster_5f_defined q_284_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_State_next s_Clusters_5f_L1s_5f_State)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_State_next s_Clusters_5f_L2_5f_State)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cmd_next s_Clusters_5f_outReq_5f_Cmd)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_inRpy_5f_Cmd_next s_Clusters_5f_inRpy_5f_Cmd)
+      (= s_Clusters_5f_inRpy_5f_Dest_next s_Clusters_5f_inRpy_5f_Dest)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Sort_next s_Sort))))
+; action: t44
+(define-fun action_46 () Bool
+  (exists ((q_285_s_c Proc))
+    (and
+      (and
+        (= (select s_Sort q_285_s_c) s_CId)
+        (= (select s_Clusters_5f_outReq_5f_Cmd q_285_s_c) s_Inv))
+      (forall ((q_286_s_oc Proc) (q_287_s_i Proc))
+        (=
+          (select (select s_Clusters_5f_L1s_5f_State_next q_286_s_oc) q_287_s_i)
+          (ite
+            (and (= q_286_s_oc q_285_s_c) (= (select s_Sort q_287_s_i) s_L1Id))
+            s_Invld
+            (select (select s_Clusters_5f_L1s_5f_State q_286_s_oc) q_287_s_i))))
+      (forall ((q_288_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_L2_5f_State_next q_288_s_index0)
+          (ite
+            (= q_288_s_index0 q_285_s_c)
+            s_Invld
+            (select s_Clusters_5f_L2_5f_State q_288_s_index0))))
+      (forall ((q_289_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Cmd_next q_289_s_index0)
+          (ite
+            (= q_289_s_index0 q_285_s_c)
+            s_InvAck
+            (select s_Clusters_5f_inRpy_5f_Cmd q_289_s_index0))))
+      (forall ((q_290_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_inRpy_5f_Dest_next q_290_s_index0)
+          (ite
+            (= q_290_s_index0 q_285_s_c)
+            (select s_Clusters_5f_outReq_5f_Cluster q_285_s_c)
+            (select s_Clusters_5f_inRpy_5f_Dest q_290_s_index0))))
+      (forall ((q_291_s_index0 Proc))
+        (=
+          (select s_Clusters_5f_outReq_5f_Cmd_next q_291_s_index0)
+          (ite
+            (= q_291_s_index0 q_285_s_c)
+            s_None
+            (select s_Clusters_5f_outReq_5f_Cmd q_291_s_index0))))
+      (= s_GUniMsg_5f_Cmd_next s_GUniMsg_5f_Cmd)
+      (= s_GUniMsg_5f_Cluster_next s_GUniMsg_5f_Cluster)
+      (= s_GUniMsg_5f_ToInv_next s_GUniMsg_5f_ToInv)
+      (= s_GInvMsg_5f_Cmd_next s_GInvMsg_5f_Cmd)
+      (= s_GInvMsg_5f_Cluster_next s_GInvMsg_5f_Cluster)
+      (= s_GInvMsg_5f_Cluster_5f_defined_next s_GInvMsg_5f_Cluster_5f_defined)
+      (= s_GShWbMsg_5f_Cmd_next s_GShWbMsg_5f_Cmd)
+      (= s_GShWbMsg_5f_Cluster_next s_GShWbMsg_5f_Cluster)
+      (= s_GWbMsg_5f_Cmd_next s_GWbMsg_5f_Cmd)
+      (= s_GWbMsg_5f_Cluster_next s_GWbMsg_5f_Cluster)
+      (= s_GDir_5f_State_next s_GDir_5f_State)
+      (= s_GDir_5f_ShrSet_next s_GDir_5f_ShrSet)
+      (= s_GDir_5f_Owner_next s_GDir_5f_Owner)
+      (= s_GDir_5f_Owner_5f_defined_next s_GDir_5f_Owner_5f_defined)
+      (= s_GDir_5f_pending_next s_GDir_5f_pending)
+      (= s_Clusters_5f_L1s_5f_Req_next s_Clusters_5f_L1s_5f_Req)
+      (= s_Clusters_5f_L2_5f_pending_next s_Clusters_5f_L2_5f_pending)
+      (= s_Clusters_5f_OnlyCopy_next s_Clusters_5f_OnlyCopy)
+      (= s_Clusters_5f_ifInReq_next s_Clusters_5f_ifInReq)
+      (= s_Clusters_5f_ReqCmd_next s_Clusters_5f_ReqCmd)
+      (= s_Clusters_5f_ifOutRpy_next s_Clusters_5f_ifOutRpy)
+      (= s_Clusters_5f_outRpy_5f_Cmd_next s_Clusters_5f_outRpy_5f_Cmd)
+      (= s_Clusters_5f_ifOutReq_next s_Clusters_5f_ifOutReq)
+      (= s_Clusters_5f_outReq_5f_Cluster_next s_Clusters_5f_outReq_5f_Cluster)
+      (= s_Clusters_5f_ifInRpy_next s_Clusters_5f_ifInRpy)
+      (= s_Clusters_5f_WbReq_5f_Cmd_next s_Clusters_5f_WbReq_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Cmd_next s_Clusters_5f_RAC_5f_Cmd)
+      (= s_Clusters_5f_RAC_5f_Inved_next s_Clusters_5f_RAC_5f_Inved)
+      (= s_Clusters_5f_RAC_5f_ToInv_next s_Clusters_5f_RAC_5f_ToInv)
+      (= s_Sort_next s_Sort))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_4_s_c Proc) (q_5_s_i Proc))
+        (and
+          (= (select (select s_Clusters_5f_L1s_5f_State q_4_s_c) q_5_s_i) s_Invld)
+          (and
+            (= (select (select s_Clusters_5f_L1s_5f_Req q_4_s_c) q_5_s_i) s_None)
+            (and
+              (= (select s_Clusters_5f_L2_5f_State q_4_s_c) s_Invld)
+              (and
+                (= (select s_Clusters_5f_L2_5f_pending q_4_s_c) false)
+                (and
+                  (= (select s_Clusters_5f_OnlyCopy q_4_s_c) false)
+                  (and
+                    (= (select s_Clusters_5f_ifInReq q_4_s_c) false)
+                    (and
+                      (= (select s_Clusters_5f_ReqCmd q_4_s_c) s_None)
+                      (and
+                        (= (select s_Clusters_5f_ifOutRpy q_4_s_c) false)
+                        (and
+                          (= (select s_Clusters_5f_outRpy_5f_Cmd q_4_s_c) s_None)
+                          (and
+                            (= (select s_Clusters_5f_ifOutReq q_4_s_c) false)
+                            (and
+                              (= (select s_Clusters_5f_outReq_5f_Cmd q_4_s_c) s_None)
+                              (and
+                                (= (select s_Clusters_5f_ifInRpy q_4_s_c) false)
+                                (and
+                                  (= (select s_Clusters_5f_inRpy_5f_Cmd q_4_s_c) s_None)
+                                  (and
+                                    (= (select s_Clusters_5f_WbReq_5f_Cmd q_4_s_c) s_None)
+                                    (and
+                                      (= (select s_Clusters_5f_RAC_5f_Cmd q_4_s_c) s_None)
+                                      (and
+                                        (=
+                                          (select
+                                            (select s_Clusters_5f_RAC_5f_Inved q_4_s_c)
+                                            q_5_s_i)
+                                          false)
+                                        (and
+                                          (=
+                                            (select
+                                              (select s_Clusters_5f_RAC_5f_ToInv q_4_s_c)
+                                              q_5_s_i)
+                                            false)
+                                          (and
+                                            (= (select s_GUniMsg_5f_Cmd q_4_s_c) s_None)
+                                            (and
+                                              (=
+                                                (select (select s_GUniMsg_5f_ToInv q_4_s_c) q_5_s_i)
+                                                false)
+                                              (and
+                                                (= (select s_GInvMsg_5f_Cmd q_4_s_c) s_None)
+                                                (and
+                                                  (=
+                                                    (select s_GInvMsg_5f_Cluster_5f_defined q_4_s_c)
+                                                    false)
+                                                  (and
+                                                    (= s_GShWbMsg_5f_Cmd s_None)
+                                                    (and
+                                                      (= s_GWbMsg_5f_Cmd s_None)
+                                                      (and
+                                                        (= s_GDir_5f_Owner_5f_defined false)
+                                                        (and
+                                                          (= s_GDir_5f_State s_Invld)
+                                                          (and
+                                                            (= s_GDir_5f_pending false)
+                                                            (=
+                                                              (select s_GDir_5f_ShrSet q_4_s_c)
+                                                              false))))))))))))))))))))))))))))
+      (not (= s_L1Id s_CId))
+      (forall ((q_1_s_enum s_proc_5f_type)) (or (= q_1_s_enum s_L1Id) (= q_1_s_enum s_CId)))
+      (and (not (= s_Invld s_Shrd)) (not (= s_Invld s_Excl)) (not (= s_Shrd s_Excl)))
+      (forall ((q_2_s_enum s_cache_5f_state))
+        (or (= q_2_s_enum s_Invld) (= q_2_s_enum s_Shrd) (= q_2_s_enum s_Excl)))
+      (and
+        (not (= s_None s_Get))
+        (not (= s_None s_GetX))
+        (not (= s_None s_Putt))
+        (not (= s_None s_PutX))
+        (not (= s_None s_NAck))
+        (not (= s_None s_Inv))
+        (not (= s_None s_InvAck))
+        (not (= s_None s_WINV))
+        (not (= s_None s_WB))
+        (not (= s_Get s_GetX))
+        (not (= s_Get s_Putt))
+        (not (= s_Get s_PutX))
+        (not (= s_Get s_NAck))
+        (not (= s_Get s_Inv))
+        (not (= s_Get s_InvAck))
+        (not (= s_Get s_WINV))
+        (not (= s_Get s_WB))
+        (not (= s_GetX s_Putt))
+        (not (= s_GetX s_PutX))
+        (not (= s_GetX s_NAck))
+        (not (= s_GetX s_Inv))
+        (not (= s_GetX s_InvAck))
+        (not (= s_GetX s_WINV))
+        (not (= s_GetX s_WB))
+        (not (= s_Putt s_PutX))
+        (not (= s_Putt s_NAck))
+        (not (= s_Putt s_Inv))
+        (not (= s_Putt s_InvAck))
+        (not (= s_Putt s_WINV))
+        (not (= s_Putt s_WB))
+        (not (= s_PutX s_NAck))
+        (not (= s_PutX s_Inv))
+        (not (= s_PutX s_InvAck))
+        (not (= s_PutX s_WINV))
+        (not (= s_PutX s_WB))
+        (not (= s_NAck s_Inv))
+        (not (= s_NAck s_InvAck))
+        (not (= s_NAck s_WINV))
+        (not (= s_NAck s_WB))
+        (not (= s_Inv s_InvAck))
+        (not (= s_Inv s_WINV))
+        (not (= s_Inv s_WB))
+        (not (= s_InvAck s_WINV))
+        (not (= s_InvAck s_WB))
+        (not (= s_WINV s_WB)))
+      (forall ((q_3_s_enum s_command))
+        (or
+          (= q_3_s_enum s_None)
+          (= q_3_s_enum s_Get)
+          (= q_3_s_enum s_GetX)
+          (= q_3_s_enum s_Putt)
+          (= q_3_s_enum s_PutX)
+          (= q_3_s_enum s_NAck)
+          (= q_3_s_enum s_Inv)
+          (= q_3_s_enum s_InvAck)
+          (= q_3_s_enum s_WINV)
+          (= q_3_s_enum s_WB)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13
+        action_14
+        action_15
+        action_16
+        action_17
+        action_18
+        action_19
+        action_20
+        action_21
+        action_22
+        action_23
+        action_24
+        action_25
+        action_26
+        action_27
+        action_28
+        action_29
+        action_30
+        action_31
+        action_32
+        action_33
+        action_34
+        action_35
+        action_36
+        action_37
+        action_38
+        action_39
+        action_40
+        action_41
+        action_42
+        action_43
+        action_44
+        action_45
+        action_46)
+      (= s_L1Id_next s_L1Id)
+      (= s_CId_next s_CId)
+      (= s_Invld_next s_Invld)
+      (= s_Shrd_next s_Shrd)
+      (= s_Excl_next s_Excl)
+      (= s_None_next s_None)
+      (= s_Get_next s_Get)
+      (= s_GetX_next s_GetX)
+      (= s_Putt_next s_Putt)
+      (= s_PutX_next s_PutX)
+      (= s_NAck_next s_NAck)
+      (= s_Inv_next s_Inv)
+      (= s_InvAck_next s_InvAck)
+      (= s_WINV_next s_WINV)
+      (= s_WB_next s_WB)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (not (= s_L1Id s_CId))
+      (forall ((q_1_s_enum s_proc_5f_type)) (or (= q_1_s_enum s_L1Id) (= q_1_s_enum s_CId)))
+      (and (not (= s_Invld s_Shrd)) (not (= s_Invld s_Excl)) (not (= s_Shrd s_Excl)))
+      (forall ((q_2_s_enum s_cache_5f_state))
+        (or (= q_2_s_enum s_Invld) (= q_2_s_enum s_Shrd) (= q_2_s_enum s_Excl)))
+      (and
+        (not (= s_None s_Get))
+        (not (= s_None s_GetX))
+        (not (= s_None s_Putt))
+        (not (= s_None s_PutX))
+        (not (= s_None s_NAck))
+        (not (= s_None s_Inv))
+        (not (= s_None s_InvAck))
+        (not (= s_None s_WINV))
+        (not (= s_None s_WB))
+        (not (= s_Get s_GetX))
+        (not (= s_Get s_Putt))
+        (not (= s_Get s_PutX))
+        (not (= s_Get s_NAck))
+        (not (= s_Get s_Inv))
+        (not (= s_Get s_InvAck))
+        (not (= s_Get s_WINV))
+        (not (= s_Get s_WB))
+        (not (= s_GetX s_Putt))
+        (not (= s_GetX s_PutX))
+        (not (= s_GetX s_NAck))
+        (not (= s_GetX s_Inv))
+        (not (= s_GetX s_InvAck))
+        (not (= s_GetX s_WINV))
+        (not (= s_GetX s_WB))
+        (not (= s_Putt s_PutX))
+        (not (= s_Putt s_NAck))
+        (not (= s_Putt s_Inv))
+        (not (= s_Putt s_InvAck))
+        (not (= s_Putt s_WINV))
+        (not (= s_Putt s_WB))
+        (not (= s_PutX s_NAck))
+        (not (= s_PutX s_Inv))
+        (not (= s_PutX s_InvAck))
+        (not (= s_PutX s_WINV))
+        (not (= s_PutX s_WB))
+        (not (= s_NAck s_Inv))
+        (not (= s_NAck s_InvAck))
+        (not (= s_NAck s_WINV))
+        (not (= s_NAck s_WB))
+        (not (= s_Inv s_InvAck))
+        (not (= s_Inv s_WINV))
+        (not (= s_Inv s_WB))
+        (not (= s_InvAck s_WINV))
+        (not (= s_InvAck s_WB))
+        (not (= s_WINV s_WB)))
+      (forall ((q_3_s_enum s_command))
+        (or
+          (= q_3_s_enum s_None)
+          (= q_3_s_enum s_Get)
+          (= q_3_s_enum s_GetX)
+          (= q_3_s_enum s_Putt)
+          (= q_3_s_enum s_PutX)
+          (= q_3_s_enum s_NAck)
+          (= q_3_s_enum s_Inv)
+          (= q_3_s_enum s_InvAck)
+          (= q_3_s_enum s_WINV)
+          (= q_3_s_enum s_WB)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (not (= s_L1Id s_CId))
+      (forall ((q_1_s_enum s_proc_5f_type)) (or (= q_1_s_enum s_L1Id) (= q_1_s_enum s_CId)))
+      (and (not (= s_Invld s_Shrd)) (not (= s_Invld s_Excl)) (not (= s_Shrd s_Excl)))
+      (forall ((q_2_s_enum s_cache_5f_state))
+        (or (= q_2_s_enum s_Invld) (= q_2_s_enum s_Shrd) (= q_2_s_enum s_Excl)))
+      (and
+        (not (= s_None s_Get))
+        (not (= s_None s_GetX))
+        (not (= s_None s_Putt))
+        (not (= s_None s_PutX))
+        (not (= s_None s_NAck))
+        (not (= s_None s_Inv))
+        (not (= s_None s_InvAck))
+        (not (= s_None s_WINV))
+        (not (= s_None s_WB))
+        (not (= s_Get s_GetX))
+        (not (= s_Get s_Putt))
+        (not (= s_Get s_PutX))
+        (not (= s_Get s_NAck))
+        (not (= s_Get s_Inv))
+        (not (= s_Get s_InvAck))
+        (not (= s_Get s_WINV))
+        (not (= s_Get s_WB))
+        (not (= s_GetX s_Putt))
+        (not (= s_GetX s_PutX))
+        (not (= s_GetX s_NAck))
+        (not (= s_GetX s_Inv))
+        (not (= s_GetX s_InvAck))
+        (not (= s_GetX s_WINV))
+        (not (= s_GetX s_WB))
+        (not (= s_Putt s_PutX))
+        (not (= s_Putt s_NAck))
+        (not (= s_Putt s_Inv))
+        (not (= s_Putt s_InvAck))
+        (not (= s_Putt s_WINV))
+        (not (= s_Putt s_WB))
+        (not (= s_PutX s_NAck))
+        (not (= s_PutX s_Inv))
+        (not (= s_PutX s_InvAck))
+        (not (= s_PutX s_WINV))
+        (not (= s_PutX s_WB))
+        (not (= s_NAck s_Inv))
+        (not (= s_NAck s_InvAck))
+        (not (= s_NAck s_WINV))
+        (not (= s_NAck s_WB))
+        (not (= s_Inv s_InvAck))
+        (not (= s_Inv s_WINV))
+        (not (= s_Inv s_WB))
+        (not (= s_InvAck s_WINV))
+        (not (= s_InvAck s_WB))
+        (not (= s_WINV s_WB)))
+      (forall ((q_3_s_enum s_command))
+        (or
+          (= q_3_s_enum s_None)
+          (= q_3_s_enum s_Get)
+          (= q_3_s_enum s_GetX)
+          (= q_3_s_enum s_Putt)
+          (= q_3_s_enum s_PutX)
+          (= q_3_s_enum s_NAck)
+          (= q_3_s_enum s_Inv)
+          (= q_3_s_enum s_InvAck)
+          (= q_3_s_enum s_WINV)
+          (= q_3_s_enum s_WB)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_38_s_c Proc) (q_39_s_i Proc) (q_40_s_j Proc))
+        (=>
+          (and (not (= q_38_s_c q_39_s_i)) (not (= q_38_s_c q_40_s_j)) (not (= q_39_s_i q_40_s_j)))
+          (not
+            (and
+              (= (select s_Sort q_38_s_c) s_CId)
+              (and
+                (= (select s_Sort q_39_s_i) s_L1Id)
+                (and
+                  (= (select s_Sort q_40_s_j) s_L1Id)
+                  (and
+                    (= (select (select s_Clusters_5f_L1s_5f_State q_38_s_c) q_39_s_i) s_Excl)
+                    (= (select (select s_Clusters_5f_L1s_5f_State q_38_s_c) q_40_s_j) s_Excl))))))))
+      (forall ((q_41_s_c1 Proc) (q_42_s_c2 Proc) (q_43_s_i Proc) (q_44_s_j Proc))
+        (=>
+          (and
+            (not (= q_41_s_c1 q_42_s_c2))
+            (not (= q_41_s_c1 q_43_s_i))
+            (not (= q_41_s_c1 q_44_s_j))
+            (not (= q_42_s_c2 q_43_s_i))
+            (not (= q_42_s_c2 q_44_s_j))
+            (not (= q_43_s_i q_44_s_j)))
+          (not
+            (and
+              (= (select s_Sort q_41_s_c1) s_CId)
+              (and
+                (= (select s_Sort q_42_s_c2) s_CId)
+                (and
+                  (= (select s_Sort q_43_s_i) s_L1Id)
+                  (and
+                    (= (select s_Sort q_44_s_j) s_L1Id)
+                    (and
+                      (= (select (select s_Clusters_5f_L1s_5f_State q_41_s_c1) q_43_s_i) s_Excl)
+                      (= (select (select s_Clusters_5f_L1s_5f_State q_42_s_c2) q_44_s_j) s_Excl)))))))))
+      (forall ((q_45_s_c1 Proc) (q_46_s_c2 Proc) (q_47_s_i Proc))
+        (=>
+          (and
+            (not (= q_45_s_c1 q_46_s_c2))
+            (not (= q_45_s_c1 q_47_s_i))
+            (not (= q_46_s_c2 q_47_s_i)))
+          (not
+            (and
+              (= (select s_Sort q_45_s_c1) s_CId)
+              (and
+                (= (select s_Sort q_46_s_c2) s_CId)
+                (and
+                  (= (select s_Sort q_47_s_i) s_L1Id)
+                  (and
+                    (= (select s_Clusters_5f_L2_5f_State q_45_s_c1) s_Excl)
+                    (= (select (select s_Clusters_5f_L1s_5f_State q_46_s_c2) q_47_s_i) s_Excl))))))))
+      (forall ((q_48_s_c1 Proc) (q_49_s_c2 Proc))
+        (=>
+          (not (= q_48_s_c1 q_49_s_c2))
+          (not
+            (and
+              (= (select s_Sort q_48_s_c1) s_CId)
+              (and
+                (= (select s_Sort q_49_s_c2) s_CId)
+                (and
+                  (= (select s_Clusters_5f_L2_5f_State q_48_s_c1) s_Excl)
+                  (= (select s_Clusters_5f_L2_5f_State q_49_s_c2) s_Excl))))))))
+    :invar-property
+    0))

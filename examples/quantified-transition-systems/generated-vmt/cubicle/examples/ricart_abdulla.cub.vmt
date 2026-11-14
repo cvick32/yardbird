@@ -1,0 +1,393 @@
+; Generated offline from cubicle/examples/ricart_abdulla.cub
+; Source SHA-256: 3eadfcb6a1efffa5588b3cd31ce4f1335864300f2de832cddf92b458b8a4a008
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_state 0)
+(declare-sort s_msg 0)
+(declare-fun s_Idle () s_state)
+(declare-fun s_Idle_next () s_state)
+(declare-fun s_Wait () s_state)
+(declare-fun s_Wait_next () s_state)
+(declare-fun s_Use () s_state)
+(declare-fun s_Use_next () s_state)
+(declare-fun s_Empty () s_msg)
+(declare-fun s_Empty_next () s_msg)
+(declare-fun s_Req () s_msg)
+(declare-fun s_Req_next () s_msg)
+(declare-fun s_Ack () s_msg)
+(declare-fun s_Ack_next () s_msg)
+(declare-fun s_Ok () s_msg)
+(declare-fun s_Ok_next () s_msg)
+(declare-fun s_Timer () Real)
+(declare-fun s_Timer_next () Real)
+(declare-fun s_State () (Array Proc s_state))
+(declare-fun s_State_next () (Array Proc s_state))
+(declare-fun s_Clock () (Array Proc Real))
+(declare-fun s_Clock_next () (Array Proc Real))
+(declare-fun s_Last () (Array Proc Real))
+(declare-fun s_Last_next () (Array Proc Real))
+(declare-fun s_Channel_5f_msg () (Array Proc (Array Proc s_msg)))
+(declare-fun s_Channel_5f_msg_next () (Array Proc (Array Proc s_msg)))
+(declare-fun s_Channel_5f_timestamp () (Array Proc (Array Proc Real)))
+(declare-fun s_Channel_5f_timestamp_next () (Array Proc (Array Proc Real)))
+(declare-fun s_Tick () Real)
+(declare-fun s_Tick_next () Real)
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: Idle
+(define-fun link_0 () s_state (! s_Idle :next s_Idle_next))
+; source symbol: Wait
+(define-fun link_1 () s_state (! s_Wait :next s_Wait_next))
+; source symbol: Use
+(define-fun link_2 () s_state (! s_Use :next s_Use_next))
+; source symbol: Empty
+(define-fun link_3 () s_msg (! s_Empty :next s_Empty_next))
+; source symbol: Req
+(define-fun link_4 () s_msg (! s_Req :next s_Req_next))
+; source symbol: Ack
+(define-fun link_5 () s_msg (! s_Ack :next s_Ack_next))
+; source symbol: Ok
+(define-fun link_6 () s_msg (! s_Ok :next s_Ok_next))
+; source symbol: Timer
+(define-fun link_7 () Real (! s_Timer :next s_Timer_next))
+; source symbol: State
+(define-fun link_8 () (Array Proc s_state) (! s_State :next s_State_next))
+; source symbol: Clock
+(define-fun link_9 () (Array Proc Real) (! s_Clock :next s_Clock_next))
+; source symbol: Last
+(define-fun link_10 () (Array Proc Real) (! s_Last :next s_Last_next))
+; source symbol: Channel_msg
+(define-fun link_11 () (Array Proc (Array Proc s_msg)) (! s_Channel_5f_msg :next s_Channel_5f_msg_next))
+; source symbol: Channel_timestamp
+(define-fun link_12 () (Array Proc (Array Proc Real)) (! s_Channel_5f_timestamp :next s_Channel_5f_timestamp_next))
+; source symbol: Tick
+(define-fun link_13 () Real (! s_Tick :next s_Tick_next))
+; source symbol: __proc_rank
+(define-fun link_14 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_7_s_z Proc))
+    (and
+      (and (= (select s_State q_7_s_z) s_Idle) (< (/ (to_real 0) (to_real 10)) s_Tick))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_8_s_index0 Proc))
+        (=
+          (select s_State_next q_8_s_index0)
+          (ite (= q_8_s_index0 q_7_s_z) s_Wait (select s_State q_8_s_index0))))
+      (forall ((q_9_s_index0 Proc))
+        (=
+          (select s_Clock_next q_9_s_index0)
+          (ite (= q_9_s_index0 q_7_s_z) s_Timer (select s_Clock q_9_s_index0))))
+      (forall ((q_10_s_index0 Proc))
+        (=
+          (select s_Last_next q_10_s_index0)
+          (ite (= q_10_s_index0 q_7_s_z) s_Timer (select s_Last q_10_s_index0))))
+      (forall ((q_11_s_s Proc) (q_12_s_r Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_11_s_s) q_12_s_r)
+          (ite
+            (and
+              (= q_11_s_s q_7_s_z)
+              (= (select (select s_Channel_5f_msg q_11_s_s) q_12_s_r) s_Empty))
+            s_Req
+            (select (select s_Channel_5f_msg q_11_s_s) q_12_s_r))))
+      (forall ((q_13_s_s Proc) (q_14_s_r Proc))
+        (=
+          (select (select s_Channel_5f_timestamp_next q_13_s_s) q_14_s_r)
+          (ite
+            (and
+              (= q_13_s_s q_7_s_z)
+              (= (select (select s_Channel_5f_msg q_13_s_s) q_14_s_r) s_Empty))
+            s_Timer
+            (select (select s_Channel_5f_timestamp q_13_s_s) q_14_s_r)))))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_15_s_z Proc) (q_16_s_r Proc))
+    (and
+      (not (= q_15_s_z q_16_s_r))
+      (and
+        (= (select s_State q_15_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_15_s_z) q_16_s_r) s_Ack)
+          (< (/ (to_real 0) (to_real 10)) s_Tick)))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_17_s_index0 Proc))
+        (=
+          (select s_Clock_next q_17_s_index0)
+          (ite (= q_17_s_index0 q_15_s_z) s_Timer (select s_Clock q_17_s_index0))))
+      (forall ((q_18_s_index0 Proc) (q_19_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_18_s_index0) q_19_s_index1)
+          (ite
+            (and (= q_18_s_index0 q_15_s_z) (= q_19_s_index1 q_16_s_r))
+            s_Ok
+            (select (select s_Channel_5f_msg q_18_s_index0) q_19_s_index1))))
+      (forall ((q_20_s_index0 Proc) (q_21_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_timestamp_next q_20_s_index0) q_21_s_index1)
+          (ite
+            (and (= q_20_s_index0 q_15_s_z) (= q_21_s_index1 q_16_s_r))
+            s_Timer
+            (select (select s_Channel_5f_timestamp q_20_s_index0) q_21_s_index1))))
+      (= s_State_next s_State)
+      (= s_Last_next s_Last))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_22_s_z Proc))
+    (and
+      (and
+        (= (select s_State q_22_s_z) s_Wait)
+        (forall ((q_23_s_j Proc))
+          (=>
+            (not (= q_23_s_j q_22_s_z))
+            (= (select (select s_Channel_5f_msg q_22_s_z) q_23_s_j) s_Ok))))
+      (forall ((q_24_s_index0 Proc))
+        (=
+          (select s_State_next q_24_s_index0)
+          (ite (= q_24_s_index0 q_22_s_z) s_Use (select s_State q_24_s_index0))))
+      (= s_Timer_next s_Timer)
+      (= s_Clock_next s_Clock)
+      (= s_Last_next s_Last)
+      (= s_Channel_5f_msg_next s_Channel_5f_msg)
+      (= s_Channel_5f_timestamp_next s_Channel_5f_timestamp))))
+; action: t4
+(define-fun action_3 () Bool
+  (exists ((q_25_s_z Proc))
+    (and
+      (and (= (select s_State q_25_s_z) s_Use) (< (/ (to_real 0) (to_real 10)) s_Tick))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_26_s_index0 Proc))
+        (=
+          (select s_State_next q_26_s_index0)
+          (ite (= q_26_s_index0 q_25_s_z) s_Idle (select s_State q_26_s_index0))))
+      (forall ((q_27_s_index0 Proc))
+        (=
+          (select s_Clock_next q_27_s_index0)
+          (ite (= q_27_s_index0 q_25_s_z) s_Timer (select s_Clock q_27_s_index0))))
+      (forall ((q_28_s_s Proc) (q_29_s_r Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_28_s_s) q_29_s_r)
+          (ite
+            (and
+              (= q_28_s_s q_25_s_z)
+              (= (select (select s_Channel_5f_msg q_28_s_s) q_29_s_r) s_Ok))
+            s_Empty
+            (ite
+              (and
+                (= q_29_s_r q_25_s_z)
+                (= (select (select s_Channel_5f_msg q_28_s_s) q_29_s_r) s_Req))
+              s_Ack
+              (select (select s_Channel_5f_msg q_28_s_s) q_29_s_r)))))
+      (forall ((q_30_s_s Proc) (q_31_s_r Proc))
+        (=
+          (select (select s_Channel_5f_timestamp_next q_30_s_s) q_31_s_r)
+          (ite
+            (and
+              (= q_31_s_r q_25_s_z)
+              (= (select (select s_Channel_5f_msg q_30_s_s) q_31_s_r) s_Req))
+            s_Timer
+            (select (select s_Channel_5f_timestamp q_30_s_s) q_31_s_r))))
+      (= s_Last_next s_Last))))
+; action: t5
+(define-fun action_4 () Bool
+  (exists ((q_32_s_z Proc) (q_33_s_s Proc))
+    (and
+      (not (= q_32_s_z q_33_s_s))
+      (and
+        (= (select s_State q_32_s_z) s_Idle)
+        (and
+          (= (select (select s_Channel_5f_msg q_33_s_s) q_32_s_z) s_Req)
+          (and
+            (< (select (select s_Channel_5f_timestamp q_33_s_s) q_32_s_z) (select s_Clock q_32_s_z))
+            (< (/ (to_real 0) (to_real 10)) s_Tick))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_34_s_index0 Proc))
+        (=
+          (select s_Clock_next q_34_s_index0)
+          (ite (= q_34_s_index0 q_32_s_z) s_Timer (select s_Clock q_34_s_index0))))
+      (forall ((q_35_s_index0 Proc) (q_36_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_35_s_index0) q_36_s_index1)
+          (ite
+            (and (= q_35_s_index0 q_33_s_s) (= q_36_s_index1 q_32_s_z))
+            s_Ack
+            (select (select s_Channel_5f_msg q_35_s_index0) q_36_s_index1))))
+      (forall ((q_37_s_index0 Proc) (q_38_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_timestamp_next q_37_s_index0) q_38_s_index1)
+          (ite
+            (and (= q_37_s_index0 q_33_s_s) (= q_38_s_index1 q_32_s_z))
+            s_Timer
+            (select (select s_Channel_5f_timestamp q_37_s_index0) q_38_s_index1))))
+      (= s_State_next s_State)
+      (= s_Last_next s_Last))))
+; action: t6
+(define-fun action_5 () Bool
+  (exists ((q_39_s_z Proc) (q_40_s_s Proc))
+    (and
+      (not (= q_39_s_z q_40_s_s))
+      (and
+        (= (select s_State q_39_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_40_s_s) q_39_s_z) s_Req)
+          (and
+            (< (select (select s_Channel_5f_timestamp q_40_s_s) q_39_s_z) (select s_Last q_39_s_z))
+            (< (/ (to_real 0) (to_real 10)) s_Tick))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_41_s_index0 Proc))
+        (=
+          (select s_Clock_next q_41_s_index0)
+          (ite (= q_41_s_index0 q_39_s_z) s_Timer (select s_Clock q_41_s_index0))))
+      (forall ((q_42_s_index0 Proc) (q_43_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_42_s_index0) q_43_s_index1)
+          (ite
+            (and (= q_42_s_index0 q_40_s_s) (= q_43_s_index1 q_39_s_z))
+            s_Ack
+            (select (select s_Channel_5f_msg q_42_s_index0) q_43_s_index1))))
+      (forall ((q_44_s_index0 Proc) (q_45_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_timestamp_next q_44_s_index0) q_45_s_index1)
+          (ite
+            (and (= q_44_s_index0 q_40_s_s) (= q_45_s_index1 q_39_s_z))
+            s_Timer
+            (select (select s_Channel_5f_timestamp q_44_s_index0) q_45_s_index1))))
+      (= s_State_next s_State)
+      (= s_Last_next s_Last))))
+; action: t7
+(define-fun action_6 () Bool
+  (exists ((q_46_s_z Proc) (q_47_s_s Proc))
+    (and
+      (not (= q_46_s_z q_47_s_s))
+      (and
+        (= (select s_State q_46_s_z) s_Wait)
+        (and
+          (= (select (select s_Channel_5f_msg q_47_s_s) q_46_s_z) s_Req)
+          (and
+            (= (select (select s_Channel_5f_timestamp q_47_s_s) q_46_s_z) (select s_Last q_46_s_z))
+            (and
+              (< (select s__5f__5f_proc_5f_rank q_47_s_s) (select s__5f__5f_proc_5f_rank q_46_s_z))
+              (< (/ (to_real 0) (to_real 10)) s_Tick)))))
+      (= s_Timer_next (+ s_Timer s_Tick))
+      (forall ((q_48_s_index0 Proc))
+        (=
+          (select s_Clock_next q_48_s_index0)
+          (ite (= q_48_s_index0 q_46_s_z) s_Timer (select s_Clock q_48_s_index0))))
+      (forall ((q_49_s_index0 Proc) (q_50_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_msg_next q_49_s_index0) q_50_s_index1)
+          (ite
+            (and (= q_49_s_index0 q_47_s_s) (= q_50_s_index1 q_46_s_z))
+            s_Ack
+            (select (select s_Channel_5f_msg q_49_s_index0) q_50_s_index1))))
+      (forall ((q_51_s_index0 Proc) (q_52_s_index1 Proc))
+        (=
+          (select (select s_Channel_5f_timestamp_next q_51_s_index0) q_52_s_index1)
+          (ite
+            (and (= q_51_s_index0 q_47_s_s) (= q_52_s_index1 q_46_s_z))
+            s_Timer
+            (select (select s_Channel_5f_timestamp q_51_s_index0) q_52_s_index1))))
+      (= s_State_next s_State)
+      (= s_Last_next s_Last))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_3_s_z Proc) (q_4_s_z1 Proc))
+        (and
+          (= (select s_State q_3_s_z) s_Idle)
+          (and
+            (= (select s_Clock q_3_s_z) (/ (to_real 0) (to_real 10)))
+            (and
+              (= (select s_Last q_3_s_z) (/ (to_real 0) (to_real 10)))
+              (and
+                (= s_Timer (/ (to_real 10) (to_real 10)))
+                (and
+                  (= (select (select s_Channel_5f_msg q_3_s_z) q_4_s_z1) s_Empty)
+                  (=
+                    (select (select s_Channel_5f_timestamp q_3_s_z) q_4_s_z1)
+                    (/ (to_real 0) (to_real 10)))))))))
+      (and (not (= s_Idle s_Wait)) (not (= s_Idle s_Use)) (not (= s_Wait s_Use)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Idle) (= q_1_s_enum s_Wait) (= q_1_s_enum s_Use)))
+      (and
+        (not (= s_Empty s_Req))
+        (not (= s_Empty s_Ack))
+        (not (= s_Empty s_Ok))
+        (not (= s_Req s_Ack))
+        (not (= s_Req s_Ok))
+        (not (= s_Ack s_Ok)))
+      (forall ((q_2_s_enum s_msg))
+        (or (= q_2_s_enum s_Empty) (= q_2_s_enum s_Req) (= q_2_s_enum s_Ack) (= q_2_s_enum s_Ok)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5 action_6)
+      (= s_Idle_next s_Idle)
+      (= s_Wait_next s_Wait)
+      (= s_Use_next s_Use)
+      (= s_Empty_next s_Empty)
+      (= s_Req_next s_Req)
+      (= s_Ack_next s_Ack)
+      (= s_Ok_next s_Ok)
+      (= s_Tick_next s_Tick)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and (not (= s_Idle s_Wait)) (not (= s_Idle s_Use)) (not (= s_Wait s_Use)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Idle) (= q_1_s_enum s_Wait) (= q_1_s_enum s_Use)))
+      (and
+        (not (= s_Empty s_Req))
+        (not (= s_Empty s_Ack))
+        (not (= s_Empty s_Ok))
+        (not (= s_Req s_Ack))
+        (not (= s_Req s_Ok))
+        (not (= s_Ack s_Ok)))
+      (forall ((q_2_s_enum s_msg))
+        (or (= q_2_s_enum s_Empty) (= q_2_s_enum s_Req) (= q_2_s_enum s_Ack) (= q_2_s_enum s_Ok)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and (not (= s_Idle s_Wait)) (not (= s_Idle s_Use)) (not (= s_Wait s_Use)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Idle) (= q_1_s_enum s_Wait) (= q_1_s_enum s_Use)))
+      (and
+        (not (= s_Empty s_Req))
+        (not (= s_Empty s_Ack))
+        (not (= s_Empty s_Ok))
+        (not (= s_Req s_Ack))
+        (not (= s_Req s_Ok))
+        (not (= s_Ack s_Ok)))
+      (forall ((q_2_s_enum s_msg))
+        (or (= q_2_s_enum s_Empty) (= q_2_s_enum s_Req) (= q_2_s_enum s_Ack) (= q_2_s_enum s_Ok)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_5_s_z1 Proc) (q_6_s_z2 Proc))
+      (=>
+        (not (= q_5_s_z1 q_6_s_z2))
+        (not
+          (and
+            (= (select s_State q_5_s_z1) s_Use)
+            (and
+              (= (select s_State q_6_s_z2) s_Use)
+              (and
+                (= (select (select s_Channel_5f_msg q_5_s_z1) q_6_s_z2) s_Ok)
+                (= (select (select s_Channel_5f_msg q_6_s_z2) q_5_s_z1) s_Ok)))))))
+    :invar-property
+    0))

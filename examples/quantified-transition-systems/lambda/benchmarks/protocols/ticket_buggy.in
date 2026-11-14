@@ -1,0 +1,72 @@
+:local r bool
+:local l bool 
+:local t int
+:global curr int
+
+:initial 
+:var x
+:cnj (= r[x] false) (= l[x] false) (= t[x] 0)
+ 
+:unsafe 
+:var x 
+:var y
+:cnj (= l[x] true)  (= l[y] true)
+
+
+:comment t1
+:transition
+:var x
+:var j
+:guard (= r[x] false)
+:numcases 2
+:case (= x j)
+ :val true
+ :val l[x]
+ :val curr[x]
+ :val (+ curr[x] 1)
+:case  
+ :val r[j]
+ :val l[j]
+ :val t[j]
+ :val (+ curr[x] 1)
+
+
+:comment t2
+:transition
+:var x
+:var j
+:guard (= r[x] true)
+:uguard (< t[j] t[x]) 
+:numcases 2
+:case (= x j)
+ :val false
+ :val true
+ :val t[j]
+ :val curr[x]
+:case  
+ :val r[j]
+ :val l[j]
+ :val t[j]
+ :val curr[x]
+
+:comment t3
+:transition
+:var x
+:var j
+:guard (= l[x] true)
+:numcases 2
+:case (= x j)
+ :val r[j]
+ :val false
+ :val 0
+ :val curr[x]
+:case  
+ :val r[j]
+ :val l[j]
+ :val t[j]
+ :val curr[x]
+
+
+
+
+

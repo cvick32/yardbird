@@ -17,6 +17,9 @@ pub(crate) struct QuantifierRefinement {
     pub(crate) provenance: crate::theories::quantifiers::provenance::QuantifierProvenance,
     pub(crate) configuration_error: Option<String>,
     pub(crate) owns_quantifiers: bool,
+    pub(crate) property_witnesses: Vec<smt2parser::concrete::Symbol>,
+    pub(crate) exact_grounding: bool,
+    pub(crate) read_frontiers: bool,
 }
 
 /// One solver model's compiled searches and graph-versioned unsuccessful passes.
@@ -26,6 +29,11 @@ pub(crate) struct BinderSearchState {
     pub(crate) requests: Vec<DependencyWork>,
     pub(crate) dependencies_searched: bool,
     traced: Option<super::countermodel_requests::TracedEquationSearch>,
+    traced_attempted: std::collections::HashSet<usize>,
+    demanded_indices: super::demanded_indices::DemandedIndices,
+    // Source tuples and their attempted work belong to this solver model.
+    exact_work: HashMap<super::BinderSearchRequest, usize>,
+    ground_terms: Option<super::ground::GroundTerms>,
 }
 
 pub(crate) struct DependencyWork {
@@ -89,6 +97,10 @@ impl QuantifierRefinement {
                 }
             };
         let (model, bindings) = model.herbrandize_universal_property_with_bindings();
+        self.property_witnesses = bindings
+            .iter()
+            .map(|(_, witness)| witness.clone())
+            .collect();
         self.provenance.record_property_witnesses(&bindings);
         let herbrand_witnesses = bindings.len();
         if herbrand_witnesses > 0 {
@@ -141,6 +153,10 @@ impl QuantifierRefinement {
                 dependencies_searched: false,
                 requests: Vec::new(),
                 traced: None,
+                traced_attempted: Default::default(),
+                demanded_indices: Default::default(),
+                exact_work: HashMap::new(),
+                ground_terms: None,
             });
             if let Some(profiling) = profiling {
                 let mut profiling = profiling.borrow_mut();
@@ -166,6 +182,9 @@ impl QuantifierRefinement {
         trace: Option<&crate::countermodel::CountermodelTrace>,
         context: &SearchContext<'_, F>,
     ) -> anyhow::Result<(crate::policy::effort::WorkReport, InstantiationBatch)> {
+        if self.read_frontiers {
+            return self.discover_read_frontiers(state, obligations, trace, context);
+        }
         // A frontier supplements ordinary discovery within its policy budget.
         // It must not replace the action/order/initializer work already queued.
         let (mut report, batch) =
@@ -194,6 +213,116 @@ impl QuantifierRefinement {
             report.budget_exhausted |= traced.pending();
             search.dependencies_searched = !report.continuable;
         }
+        Ok((report, batch))
+    }
+
+    /// Execute demanded tuples before ordinary candidates can consume this
+    /// model's batch. The existing DiscoverDependencies operation still owns
+    /// both producers, including its supplement scheduling and total budgets.
+    fn discover_read_frontiers<F: TermCostFactory + 'static>(
+        &self,
+        state: &mut Option<BinderSearchState>,
+        obligations: &mut crate::refinement_obligations::RefinementObligations,
+        trace: Option<&crate::countermodel::CountermodelTrace>,
+        context: &SearchContext<'_, F>,
+    ) -> anyhow::Result<(crate::policy::effort::WorkReport, InstantiationBatch)> {
+        let (reserved_work, reserved_page) = context.allowance.read_frontier_reservation();
+        let search = state.as_mut().unwrap();
+        if search.traced.is_none() {
+            if let Some(trace) = trace.filter(|t| t.model_version == context.model_version) {
+                search.demanded_indices =
+                    super::demanded_indices::DemandedIndices::new(trace, &self.plan);
+                search.traced = Some(super::countermodel_requests::TracedEquationSearch::new(
+                    trace,
+                    &self.plan,
+                    context.smt,
+                ));
+            }
+        }
+        let before = search
+            .requests
+            .iter()
+            .filter(|r| r.origin.is_some())
+            .count();
+        let work = search.traced.as_mut().map_or(0, |traced| {
+            traced.advance(&self.plan, reserved_work, &mut search.requests)
+        });
+        let pending = search.traced.as_ref().is_some_and(|t| t.pending());
+        let after = search
+            .requests
+            .iter()
+            .filter(|r| r.origin.is_some())
+            .count();
+        if let Some(profile) = &context.profiling {
+            let mut p = profile.borrow_mut();
+            p.add_counter("traced_frontier_reserved_work", reserved_work as u64);
+            p.add_counter("traced_frontier_work", work as u64);
+            p.add_counter(
+                "traced_frontier_requests_discovered",
+                (after - before) as u64,
+            );
+        }
+        // Stable indices refer to symbolic, model-local requests. A page that
+        // finds nothing cannot monopolize later slices; ordinary search still
+        // offers these same requests through its normal fallback schedule.
+        let requests = search
+            .requests
+            .iter()
+            .enumerate()
+            .filter(|(i, r)| r.origin.is_some() && !search.traced_attempted.contains(i))
+            .map(|(i, _)| i)
+            .take(4.min(reserved_page))
+            .collect::<Vec<_>>();
+        let page = reserved_page / requests.len().max(1);
+        let mut charged_page = 0;
+        let mut examined = 0;
+        let mut returned = 0;
+        for index in requests {
+            state.as_mut().unwrap().traced_attempted.insert(index);
+            let mut allowance = context.allowance;
+            allowance.dependency_work = 0; // no second discovery budget
+            allowance.binder_page_size = page;
+            allowance.binder_search_limit = allowance.binder_search_limit.min(page);
+            let batch =
+                self.dependency_request(state, index, &context.with_allowance(allowance))?;
+            charged_page += page;
+            examined += batch.search.examined_substitutions;
+            returned += batch.search.returned_substitutions;
+            let mut report = crate::policy::effort::WorkReport::from_batch(&batch);
+            if let Some(profile) = &context.profiling {
+                let mut p = profile.borrow_mut();
+                p.add_counter("traced_frontier_requests_attempted", 1);
+                p.add_counter("traced_frontier_instances_selected", report.selected as u64);
+            }
+            if report.selected > 0 {
+                report.dependency_work = work;
+                report.examined_substitutions = examined;
+                report.returned_substitutions = returned;
+                report.continuable |= pending;
+                report.budget_exhausted |= pending;
+                return Ok((report, batch));
+            }
+        }
+        let mut allowance = context.allowance;
+        allowance.dependency_work -= work; // return unused reservation
+        allowance.binder_page_size -= charged_page;
+        let (mut report, batch) = self.discover_ordinary_obligations(
+            state,
+            obligations,
+            &context.with_allowance(allowance),
+        )?;
+        if let Some(profile) = &context.profiling {
+            profile.borrow_mut().add_counter(
+                "traced_frontier_ordinary_work",
+                report.dependency_work as u64,
+            );
+        }
+        report.dependency_work += work;
+        report.examined_substitutions += examined;
+        report.returned_substitutions += returned;
+        report.continuable |= pending;
+        report.budget_exhausted |= pending;
+        state.as_mut().unwrap().dependencies_searched = !report.continuable;
         Ok((report, batch))
     }
 
@@ -248,7 +377,13 @@ impl QuantifierRefinement {
             p.add_counter("obligation_search_contexts", discovery.contexts as u64);
         }
         if report.selected == 0 && !report.continuable {
-            let fallback = self.discover(state, context)?;
+            let mut allowance = context.allowance;
+            if self.read_frontiers {
+                allowance.dependency_work = allowance
+                    .dependency_work
+                    .saturating_sub(report.dependency_work);
+            }
+            let fallback = self.discover(state, &context.with_allowance(allowance))?;
             report.dependency_work += fallback.dependency_work;
             report.budget_exhausted |= fallback.budget_exhausted;
         } else {
@@ -322,6 +457,181 @@ impl QuantifierRefinement {
         })
     }
 
+    /// A preference within the rule/phase already chosen by effort. Literal
+    /// demanded indices survive extraction, while captures and other variables
+    /// still use ordinary matching. Failed attempts leave half the page free.
+    fn scheduled_indices<F: TermCostFactory + 'static>(
+        &self,
+        prepared: &mut super::PreparedQuantifierSearch,
+        indices: &mut super::demanded_indices::DemandedIndices,
+        helper: &str,
+        phase: super::SearchPhase,
+        context: &SearchContext<'_, F>,
+        known: &std::collections::HashSet<smt2parser::concrete::Term>,
+    ) -> anyhow::Result<(Option<InstantiationBatch>, usize, usize, usize)> {
+        if !self.read_frontiers || phase == super::SearchPhase::Witnesses {
+            return Ok((None, 0, 0, 0));
+        }
+        let reserved = context.allowance.binder_page_size / 2;
+        let requests = indices.requests(&self.plan, helper, phase, 4.min(reserved / 2));
+        let allocation = reserved / requests.len().max(1);
+        let mut charged = 0;
+        let mut examined = 0;
+        let mut returned = 0;
+        for request in requests {
+            indices.mark_attempted(&request);
+            let mut allowance = context.allowance;
+            // The regular matcher includes one lookahead in its work count.
+            allowance.binder_page_size = allocation - 1;
+            allowance.binder_search_limit = allowance.binder_search_limit.min(allocation - 1);
+            let mut batch = prepared.candidates(
+                context.graph,
+                |term| context.smt.eval_to_string(term),
+                super::BinderSearch::RequestPage(&request, allowance),
+                |cost_context| context.term_cost(cost_context, context.depth as u32),
+                InstantiationOptions {
+                    search_allowance: allowance,
+                    additional_terms: vec![],
+                    candidate_catalog: prepared.catalog.clone(),
+                    candidate_scope: crate::rule_matching::scope::CandidateScope::AllCandidates,
+                    refinement_step: context.refinement_step,
+                    selection_counts: context.selection_counts.clone(),
+                    depth: context.depth,
+                    instrumentation: InstantiationInstrumentation {
+                        artifact_capture: context.artifact_capture,
+                        profiling: context.profiling.clone(),
+                    },
+                },
+            )?;
+            charged += allocation;
+            examined += batch.search.examined_substitutions;
+            returned += batch.search.returned_substitutions;
+            let summary = self.select_scheduled(&mut batch, None, known, context)?;
+            if let Some(profile) = &context.profiling {
+                let mut p = profile.borrow_mut();
+                p.add_counter("demanded_index_requests_attempted", 1);
+                p.add_counter(
+                    "demanded_index_instances_selected",
+                    summary.selected_binders as u64,
+                );
+                p.add_counter(
+                    "demanded_index_work",
+                    batch.search.examined_substitutions as u64,
+                );
+            }
+            if batch.selected().next().is_some() {
+                // Caller accounts for all prefix attempts, including this batch.
+                batch.search.examined_substitutions = 0;
+                batch.search.returned_substitutions = 0;
+                return Ok((Some(batch), charged, examined, returned));
+            }
+        }
+        Ok((None, charged, examined, returned))
+    }
+
+    /// Exact search runs only after the policy chose a helper/phase/request.
+    /// Reserve at most a quarter of its page for it, charging those attempts
+    /// against both the current page and the rule's total search allowance.
+    fn scheduled_exact<F: TermCostFactory>(
+        &self,
+        attempted: &mut HashMap<super::BinderSearchRequest, usize>,
+        terms: &mut Option<super::ground::GroundTerms>,
+        request: &super::BinderSearchRequest,
+        context: &SearchContext<'_, F>,
+    ) -> anyhow::Result<(
+        Option<InstantiationBatch>,
+        crate::policy::effort::WorkAllowance,
+    )> {
+        let mut allowance = context.allowance;
+        if !self.exact_grounding {
+            return Ok((None, allowance));
+        }
+        let mut result = None;
+        if !attempted.contains_key(request) {
+            let limit = (allowance.binder_page_size / 4)
+                .min(allowance.binder_search_limit / 4)
+                .min(allowance.dependency_work);
+            let start = Instant::now();
+            let (report, batch) = if limit > 0 {
+                super::ground::GroundBinders::for_request(&self.plan, request.clone())?
+                    .candidates_indexed(
+                        context,
+                        limit,
+                        terms.get_or_insert_with(|| {
+                            super::ground::GroundTerms::new(context.smt.get_all_subterms())
+                        }),
+                    )?
+            } else {
+                (Default::default(), InstantiationBatch::default())
+            };
+            attempted.insert(request.clone(), report.examined_substitutions);
+            allowance.binder_page_size -= report.examined_substitutions;
+            if let Some(profile) = &context.profiling {
+                let mut p = profile.borrow_mut();
+                p.record_timing("input_binder_scheduled_exact", start.elapsed());
+                p.add_counter("input_binder_scheduled_exact_attempts", 1);
+                p.add_counter(
+                    "input_binder_scheduled_exact_work",
+                    report.examined_substitutions as u64,
+                );
+                p.add_counter(
+                    "input_binder_scheduled_exact_candidates",
+                    report.selected as u64,
+                );
+                p.add_counter(
+                    "input_binder_scheduled_exact_fallbacks",
+                    u64::from(report.selected == 0),
+                );
+            }
+            if report.selected > 0 {
+                result = Some(batch);
+            }
+        }
+        allowance.binder_search_limit = allowance
+            .binder_search_limit
+            .saturating_sub(attempted[request])
+            .max(1);
+        Ok((result, allowance))
+    }
+
+    /// Exact tuples supplement an unproductive page; they must not preempt
+    /// the policy's validated ordinary grounding choices (including witnesses).
+    /// Keep the ordinary continuation report even when exact tuples are used.
+    fn select_scheduled<F: TermCostFactory>(
+        &self,
+        batch: &mut InstantiationBatch,
+        exact: Option<InstantiationBatch>,
+        known: &std::collections::HashSet<smt2parser::concrete::Term>,
+        context: &SearchContext<'_, F>,
+    ) -> anyhow::Result<crate::rule_matching::candidate::BatchSummary> {
+        let scope = crate::rule_matching::scope::CandidateScope::AllCandidates;
+        let prepare = |batch: &mut InstantiationBatch| {
+            batch.prepare_with_ranker(
+                scope,
+                known,
+                context.allowance.winners,
+                context.ranker,
+                |term| context.smt.eval_to_string(term),
+                |c| context.installable_expression(&c.expression),
+            )
+        };
+        let had_exact = exact.is_some();
+        let (summary, used_exact) = select_ordinary_then_exact(batch, exact, prepare)?;
+        if let Some(profile) = &context.profiling {
+            if used_exact {
+                profile.borrow_mut().add_counter(
+                    "input_binder_scheduled_exact_selected",
+                    summary.selected_binders as u64,
+                );
+            } else if had_exact {
+                profile
+                    .borrow_mut()
+                    .add_counter("input_binder_scheduled_ordinary_preferred", 1);
+            }
+        }
+        Ok(summary)
+    }
+
     pub(crate) fn dependency_request<F: TermCostFactory + 'static>(
         &self,
         state: &mut Option<BinderSearchState>,
@@ -337,36 +647,41 @@ impl QuantifierRefinement {
             .ok_or_else(|| anyhow::anyhow!("unknown dependency request"))?;
         let origin = request.origin.clone();
         let request = &request.request;
+        let (exact, page_allowance) = self.scheduled_exact(
+            &mut search.exact_work,
+            &mut search.ground_terms,
+            request,
+            context,
+        )?;
+        let exact_work = context.allowance.binder_page_size - page_allowance.binder_page_size;
         let prepared = &mut search.prepared;
         let _phase_guard = context.profiling.as_ref().map(|p| {
             crate::profiling::QuantifierPhaseGuard::new(p.clone(), "input_binder_dependencies")
         });
         let scope = crate::rule_matching::scope::CandidateScope::AllCandidates;
-        let mut batch = prepared.candidates(
-            context.graph,
-            |term| context.smt.eval_to_string(term),
-            crate::theories::quantifiers::BinderSearch::RequestPage(request, context.allowance),
-            |cost_context| context.term_cost(cost_context, context.depth as u32),
-            InstantiationOptions {
-                search_allowance: context.allowance,
-                additional_terms: vec![],
-                candidate_catalog: prepared.catalog.clone(),
-                candidate_scope: scope,
-                refinement_step: context.refinement_step,
-                selection_counts: context.selection_counts.clone(),
-                depth: context.depth,
-                instrumentation: InstantiationInstrumentation {
-                    artifact_capture: context.artifact_capture,
-                    profiling: context.profiling.clone(),
+        let mut batch = {
+            let mut batch = prepared.candidates(
+                context.graph,
+                |term| context.smt.eval_to_string(term),
+                crate::theories::quantifiers::BinderSearch::RequestPage(request, page_allowance),
+                |cost_context| context.term_cost(cost_context, context.depth as u32),
+                InstantiationOptions {
+                    search_allowance: context.allowance,
+                    additional_terms: vec![],
+                    candidate_catalog: prepared.catalog.clone(),
+                    candidate_scope: scope,
+                    refinement_step: context.refinement_step,
+                    selection_counts: context.selection_counts.clone(),
+                    depth: context.depth,
+                    instrumentation: InstantiationInstrumentation {
+                        artifact_capture: context.artifact_capture,
+                        profiling: context.profiling.clone(),
+                    },
                 },
-            },
-        )?;
-        for candidate in &mut batch.candidates {
-            candidate.provenance = candidate
-                .provenance
-                .clone()
-                .with_countermodel_origin(origin.clone());
-        }
+            )?;
+            batch.search.examined_substitutions += exact_work;
+            batch
+        };
         let mut known: std::collections::HashSet<_> = context
             .smt
             .get_instantiations()
@@ -374,14 +689,13 @@ impl QuantifierRefinement {
             .map(canonical_instantiation_key)
             .collect();
         known.extend(context.pending_instances.iter().cloned());
-        let summary = batch.prepare_with_ranker(
-            scope,
-            &known,
-            context.allowance.winners,
-            context.ranker,
-            |term| context.smt.eval_to_string(term),
-            |c| context.installable_expression(&c.expression),
-        )?;
+        let summary = self.select_scheduled(&mut batch, exact, &known, context)?;
+        for candidate in &mut batch.candidates {
+            candidate.provenance = candidate
+                .provenance
+                .clone()
+                .with_countermodel_origin(origin.clone());
+        }
         if let Some(profiling) = &context.profiling {
             let mut p = profiling.borrow_mut();
             p.add_counter("input_binder_dependency_requests", 1);
@@ -445,7 +759,8 @@ impl QuantifierRefinement {
         // Derived terms remain available for witnesses and nested binders.
         // Model-violation eligibility is independent of this vocabulary scope.
         let scope = crate::rule_matching::scope::CandidateScope::AllCandidates;
-        let mut known: std::collections::HashSet<_> = smt
+        let mut known: std::collections::HashSet<_> = context
+            .smt
             .get_instantiations()
             .iter()
             .map(canonical_instantiation_key)
@@ -526,38 +841,67 @@ impl QuantifierRefinement {
                 "effort chose an unavailable binder rule"
             );
             let page_start = Instant::now();
-            let mut batch = prepared.candidates(
-                context.graph,
-                |term| smt.eval_to_string(term),
-                crate::theories::quantifiers::BinderSearch::Page {
-                    phase,
-                    rule,
-                    allowance: context.allowance,
-                },
-                |cost_context| context.term_cost(cost_context, context.depth as u32),
-                InstantiationOptions {
-                    search_allowance: context.allowance,
-                    additional_terms: vec![],
-                    candidate_catalog: prepared.catalog.clone(),
-                    candidate_scope: scope,
-                    refinement_step,
-                    selection_counts: context.selection_counts.clone(),
-                    depth: context.depth,
-                    instrumentation: InstantiationInstrumentation {
-                        artifact_capture: context.artifact_capture,
-                        profiling: profiling.clone(),
+            let (exact, page_allowance) = if matches!(
+                phase,
+                super::SearchPhase::Witnesses | super::SearchPhase::TriggeredConflicts
+            ) {
+                self.scheduled_exact(
+                    &mut search.exact_work,
+                    &mut search.ground_terms,
+                    &super::BinderSearchRequest {
+                        helper: prepared.rule_helper(phase, rule).to_owned(),
+                        phase,
+                        bindings: Vec::new(),
                     },
-                },
-            )?;
+                    context,
+                )?
+            } else {
+                (None, context.allowance)
+            };
+            let exact_work = context.allowance.binder_page_size - page_allowance.binder_page_size;
+            let helper = prepared.rule_helper(phase, rule).to_owned();
+            let (directed, charged, directed_examined, directed_returned) = self
+                .scheduled_indices(
+                    prepared,
+                    &mut search.demanded_indices,
+                    &helper,
+                    phase,
+                    &context.with_allowance(page_allowance),
+                    &known,
+                )?;
+            let mut page_allowance = page_allowance;
+            page_allowance.binder_page_size -= charged;
+            let mut batch = if let Some(batch) = directed {
+                batch
+            } else {
+                prepared.candidates(
+                    context.graph,
+                    |term| smt.eval_to_string(term),
+                    crate::theories::quantifiers::BinderSearch::Page {
+                        phase,
+                        rule,
+                        allowance: page_allowance,
+                    },
+                    |cost_context| context.term_cost(cost_context, context.depth as u32),
+                    InstantiationOptions {
+                        search_allowance: context.allowance,
+                        additional_terms: vec![],
+                        candidate_catalog: prepared.catalog.clone(),
+                        candidate_scope: scope,
+                        refinement_step,
+                        selection_counts: context.selection_counts.clone(),
+                        depth: context.depth,
+                        instrumentation: InstantiationInstrumentation {
+                            artifact_capture: context.artifact_capture,
+                            profiling: profiling.clone(),
+                        },
+                    },
+                )?
+            };
+            batch.search.examined_substitutions += exact_work + directed_examined;
+            batch.search.returned_substitutions += directed_returned;
             let selection_start = profiling.as_ref().map(|_| Instant::now());
-            let summary = batch.prepare_with_ranker(
-                scope,
-                &known,
-                context.allowance.winners,
-                context.ranker,
-                |term| smt.eval_to_string(term),
-                |candidate| context.installable_expression(&candidate.expression),
-            )?;
+            let summary = self.select_scheduled(&mut batch, exact, &known, context)?;
             if let Some(profiling) = profiling {
                 let mut profiling = profiling.borrow_mut();
                 if let Some(start) = selection_start {
@@ -645,4 +989,25 @@ impl QuantifierRefinement {
             // Continuations share this model's graph and explicit work bound.
         }
     }
+}
+
+/// Keep ordinary winners and their cursor state; exact tuples only fill an
+/// unproductive page after ordinary novelty and installation checks.
+pub(super) fn select_ordinary_then_exact(
+    batch: &mut InstantiationBatch,
+    exact: Option<InstantiationBatch>,
+    mut prepare: impl FnMut(
+        &mut InstantiationBatch,
+    ) -> anyhow::Result<crate::rule_matching::candidate::BatchSummary>,
+) -> anyhow::Result<(crate::rule_matching::candidate::BatchSummary, bool)> {
+    let summary = prepare(batch)?;
+    let Some(exact) = exact else {
+        return Ok((summary, false));
+    };
+    batch.search.returned_substitutions += exact.search.returned_substitutions;
+    if batch.selected().next().is_some() {
+        return Ok((summary, false));
+    }
+    batch.candidates.extend(exact.candidates);
+    Ok((prepare(batch)?, true))
 }

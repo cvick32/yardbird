@@ -1,0 +1,252 @@
+; Generated offline from mypyvy/examples/misc/pd/consensus_forall.pyv
+; Source SHA-256: c72997fb6836ae5cae8548c0c717d67facc4be30f3f981509c4711091ca842d1
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-sort s_quorum 0)
+(declare-sort s_value 0)
+(declare-fun s_member () (Array s_node (Array s_quorum Bool)))
+(declare-fun s_member_next () (Array s_node (Array s_quorum Bool)))
+(declare-fun s_vote_5f_request_5f_msg () (Array s_node (Array s_node Bool)))
+(declare-fun s_vote_5f_request_5f_msg_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_voted () (Array s_node Bool))
+(declare-fun s_voted_next () (Array s_node Bool))
+(declare-fun s_vote_5f_msg () (Array s_node (Array s_node Bool)))
+(declare-fun s_vote_5f_msg_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_votes () (Array s_node (Array s_node Bool)))
+(declare-fun s_votes_next () (Array s_node (Array s_node Bool)))
+(declare-fun s_leader () (Array s_node Bool))
+(declare-fun s_leader_next () (Array s_node Bool))
+(declare-fun s_voting_5f_quorum () s_quorum)
+(declare-fun s_voting_5f_quorum_next () s_quorum)
+(declare-fun s_decided () (Array s_node (Array s_value Bool)))
+(declare-fun s_decided_next () (Array s_node (Array s_value Bool)))
+; source symbol: member
+(define-fun link_0 () (Array s_node (Array s_quorum Bool)) (! s_member :next s_member_next))
+; source symbol: vote_request_msg
+(define-fun link_1 () (Array s_node (Array s_node Bool)) (! s_vote_5f_request_5f_msg :next s_vote_5f_request_5f_msg_next))
+; source symbol: voted
+(define-fun link_2 () (Array s_node Bool) (! s_voted :next s_voted_next))
+; source symbol: vote_msg
+(define-fun link_3 () (Array s_node (Array s_node Bool)) (! s_vote_5f_msg :next s_vote_5f_msg_next))
+; source symbol: votes
+(define-fun link_4 () (Array s_node (Array s_node Bool)) (! s_votes :next s_votes_next))
+; source symbol: leader
+(define-fun link_5 () (Array s_node Bool) (! s_leader :next s_leader_next))
+; source symbol: voting_quorum
+(define-fun link_6 () s_quorum (! s_voting_5f_quorum :next s_voting_5f_quorum_next))
+; source symbol: decided
+(define-fun link_7 () (Array s_node (Array s_value Bool)) (! s_decided :next s_decided_next))
+; action: send_request_vote
+(define-fun action_0 () Bool
+  (exists ((q_14_s_src s_node) (q_15_s_dst s_node))
+    (and
+      (forall ((q_16_s_N1 s_node) (q_17_s_N2 s_node))
+        (=
+          (select (select s_vote_5f_request_5f_msg_next q_16_s_N1) q_17_s_N2)
+          (or
+            (select (select s_vote_5f_request_5f_msg q_16_s_N1) q_17_s_N2)
+            (and (= q_16_s_N1 q_14_s_src) (= q_17_s_N2 q_15_s_dst)))))
+      (forall ((q_18_s_x0 s_node)) (= (select s_voted_next q_18_s_x0) (select s_voted q_18_s_x0)))
+      (forall ((q_19_s_x0 s_node) (q_20_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_msg_next q_19_s_x0) q_20_s_x1)
+          (select (select s_vote_5f_msg q_19_s_x0) q_20_s_x1)))
+      (forall ((q_21_s_x0 s_node) (q_22_s_x1 s_node))
+        (=
+          (select (select s_votes_next q_21_s_x0) q_22_s_x1)
+          (select (select s_votes q_21_s_x0) q_22_s_x1)))
+      (forall ((q_23_s_x0 s_node)) (= (select s_leader_next q_23_s_x0) (select s_leader q_23_s_x0)))
+      (forall ((q_24_s_x0 s_node) (q_25_s_x1 s_value))
+        (=
+          (select (select s_decided_next q_24_s_x0) q_25_s_x1)
+          (select (select s_decided q_24_s_x0) q_25_s_x1)))
+      (= s_voting_5f_quorum_next s_voting_5f_quorum))))
+; action: send_vote
+(define-fun action_1 () Bool
+  (exists ((q_26_s_src s_node) (q_27_s_dst s_node))
+    (and
+      (forall ((q_28_s_N1 s_node) (q_29_s_N2 s_node) (q_30_s_N s_node))
+        (and
+          (not (select s_voted q_26_s_src))
+          (select (select s_vote_5f_request_5f_msg q_27_s_dst) q_26_s_src)
+          (=
+            (select (select s_vote_5f_msg_next q_28_s_N1) q_29_s_N2)
+            (or
+              (select (select s_vote_5f_msg q_28_s_N1) q_29_s_N2)
+              (and (= q_28_s_N1 q_26_s_src) (= q_29_s_N2 q_27_s_dst))))
+          (= (select s_voted_next q_30_s_N) (or (select s_voted q_30_s_N) (= q_30_s_N q_26_s_src)))
+          (=>
+            (not (and (= q_28_s_N1 q_27_s_dst) (= q_29_s_N2 q_26_s_src)))
+            (=
+              (select (select s_vote_5f_request_5f_msg_next q_28_s_N1) q_29_s_N2)
+              (select (select s_vote_5f_request_5f_msg q_28_s_N1) q_29_s_N2)))))
+      (forall ((q_31_s_x0 s_node) (q_32_s_x1 s_node))
+        (=
+          (select (select s_votes_next q_31_s_x0) q_32_s_x1)
+          (select (select s_votes q_31_s_x0) q_32_s_x1)))
+      (forall ((q_33_s_x0 s_node)) (= (select s_leader_next q_33_s_x0) (select s_leader q_33_s_x0)))
+      (forall ((q_34_s_x0 s_node) (q_35_s_x1 s_value))
+        (=
+          (select (select s_decided_next q_34_s_x0) q_35_s_x1)
+          (select (select s_decided q_34_s_x0) q_35_s_x1)))
+      (= s_voting_5f_quorum_next s_voting_5f_quorum))))
+; action: recv_vote
+(define-fun action_2 () Bool
+  (exists ((q_36_s_n s_node) (q_37_s_sender s_node))
+    (and
+      (forall ((q_38_s_N1 s_node) (q_39_s_N2 s_node))
+        (and
+          (select (select s_vote_5f_msg q_37_s_sender) q_36_s_n)
+          (=
+            (select (select s_votes_next q_38_s_N1) q_39_s_N2)
+            (or
+              (select (select s_votes q_38_s_N1) q_39_s_N2)
+              (and (= q_38_s_N1 q_36_s_n) (= q_39_s_N2 q_37_s_sender))))))
+      (forall ((q_40_s_x0 s_node) (q_41_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_request_5f_msg_next q_40_s_x0) q_41_s_x1)
+          (select (select s_vote_5f_request_5f_msg q_40_s_x0) q_41_s_x1)))
+      (forall ((q_42_s_x0 s_node)) (= (select s_voted_next q_42_s_x0) (select s_voted q_42_s_x0)))
+      (forall ((q_43_s_x0 s_node) (q_44_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_msg_next q_43_s_x0) q_44_s_x1)
+          (select (select s_vote_5f_msg q_43_s_x0) q_44_s_x1)))
+      (forall ((q_45_s_x0 s_node)) (= (select s_leader_next q_45_s_x0) (select s_leader q_45_s_x0)))
+      (forall ((q_46_s_x0 s_node) (q_47_s_x1 s_value))
+        (=
+          (select (select s_decided_next q_46_s_x0) q_47_s_x1)
+          (select (select s_decided q_46_s_x0) q_47_s_x1)))
+      (= s_voting_5f_quorum_next s_voting_5f_quorum))))
+; action: choose_voting_quorum
+(define-fun action_3 () Bool
+  (exists ((q_48_s_q s_quorum) (q_49_s_sn s_node))
+    (and
+      (and
+        (forall ((q_50_s_N s_node))
+          (=>
+            (select (select s_member q_50_s_N) q_48_s_q)
+            (select (select s_votes q_49_s_sn) q_50_s_N)))
+        (= s_voting_5f_quorum_next q_48_s_q))
+      (forall ((q_51_s_x0 s_node) (q_52_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_request_5f_msg_next q_51_s_x0) q_52_s_x1)
+          (select (select s_vote_5f_request_5f_msg q_51_s_x0) q_52_s_x1)))
+      (forall ((q_53_s_x0 s_node)) (= (select s_voted_next q_53_s_x0) (select s_voted q_53_s_x0)))
+      (forall ((q_54_s_x0 s_node) (q_55_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_msg_next q_54_s_x0) q_55_s_x1)
+          (select (select s_vote_5f_msg q_54_s_x0) q_55_s_x1)))
+      (forall ((q_56_s_x0 s_node) (q_57_s_x1 s_node))
+        (=
+          (select (select s_votes_next q_56_s_x0) q_57_s_x1)
+          (select (select s_votes q_56_s_x0) q_57_s_x1)))
+      (forall ((q_58_s_x0 s_node)) (= (select s_leader_next q_58_s_x0) (select s_leader q_58_s_x0)))
+      (forall ((q_59_s_x0 s_node) (q_60_s_x1 s_value))
+        (=
+          (select (select s_decided_next q_59_s_x0) q_60_s_x1)
+          (select (select s_decided q_59_s_x0) q_60_s_x1))))))
+; action: become_leader
+(define-fun action_4 () Bool
+  (exists ((q_61_s_n s_node))
+    (and
+      (forall ((q_62_s_N s_node))
+        (and
+          (=>
+            (select (select s_member q_62_s_N) s_voting_5f_quorum)
+            (select (select s_votes q_61_s_n) q_62_s_N))
+          (= (select s_leader_next q_62_s_N) (or (select s_leader q_62_s_N) (= q_62_s_N q_61_s_n)))))
+      (forall ((q_63_s_x0 s_node) (q_64_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_request_5f_msg_next q_63_s_x0) q_64_s_x1)
+          (select (select s_vote_5f_request_5f_msg q_63_s_x0) q_64_s_x1)))
+      (forall ((q_65_s_x0 s_node)) (= (select s_voted_next q_65_s_x0) (select s_voted q_65_s_x0)))
+      (forall ((q_66_s_x0 s_node) (q_67_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_msg_next q_66_s_x0) q_67_s_x1)
+          (select (select s_vote_5f_msg q_66_s_x0) q_67_s_x1)))
+      (forall ((q_68_s_x0 s_node) (q_69_s_x1 s_node))
+        (=
+          (select (select s_votes_next q_68_s_x0) q_69_s_x1)
+          (select (select s_votes q_68_s_x0) q_69_s_x1)))
+      (forall ((q_70_s_x0 s_node) (q_71_s_x1 s_value))
+        (=
+          (select (select s_decided_next q_70_s_x0) q_71_s_x1)
+          (select (select s_decided q_70_s_x0) q_71_s_x1)))
+      (= s_voting_5f_quorum_next s_voting_5f_quorum))))
+; action: decide
+(define-fun action_5 () Bool
+  (exists ((q_72_s_n s_node) (q_73_s_v s_value))
+    (and
+      (forall ((q_74_s_V s_value) (q_75_s_N s_node))
+        (and
+          (select s_leader q_72_s_n)
+          (not (select (select s_decided q_72_s_n) q_74_s_V))
+          (=
+            (select (select s_decided_next q_75_s_N) q_74_s_V)
+            (or
+              (select (select s_decided q_75_s_N) q_74_s_V)
+              (and (= q_75_s_N q_72_s_n) (= q_74_s_V q_73_s_v))))))
+      (forall ((q_76_s_x0 s_node) (q_77_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_request_5f_msg_next q_76_s_x0) q_77_s_x1)
+          (select (select s_vote_5f_request_5f_msg q_76_s_x0) q_77_s_x1)))
+      (forall ((q_78_s_x0 s_node)) (= (select s_voted_next q_78_s_x0) (select s_voted q_78_s_x0)))
+      (forall ((q_79_s_x0 s_node) (q_80_s_x1 s_node))
+        (=
+          (select (select s_vote_5f_msg_next q_79_s_x0) q_80_s_x1)
+          (select (select s_vote_5f_msg q_79_s_x0) q_80_s_x1)))
+      (forall ((q_81_s_x0 s_node) (q_82_s_x1 s_node))
+        (=
+          (select (select s_votes_next q_81_s_x0) q_82_s_x1)
+          (select (select s_votes q_81_s_x0) q_82_s_x1)))
+      (forall ((q_83_s_x0 s_node)) (= (select s_leader_next q_83_s_x0) (select s_leader q_83_s_x0)))
+      (= s_voting_5f_quorum_next s_voting_5f_quorum))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_N1 s_node) (q_2_s_N2 s_node))
+        (not (select (select s_vote_5f_request_5f_msg q_1_s_N1) q_2_s_N2)))
+      (forall ((q_3_s_N s_node)) (not (select s_voted q_3_s_N)))
+      (forall ((q_4_s_N1 s_node) (q_5_s_N2 s_node))
+        (not (select (select s_vote_5f_msg q_4_s_N1) q_5_s_N2)))
+      (forall ((q_6_s_N1 s_node) (q_7_s_N2 s_node))
+        (not (select (select s_votes q_6_s_N1) q_7_s_N2)))
+      (forall ((q_8_s_N1 s_node)) (not (select s_leader q_8_s_N1)))
+      (forall ((q_9_s_N s_node) (q_10_s_V s_value))
+        (not (select (select s_decided q_9_s_N) q_10_s_V)))
+      (forall ((q_11_s_Q1 s_quorum) (q_12_s_Q2 s_quorum))
+        (exists ((q_13_s_N s_node))
+          (and
+            (select (select s_member q_13_s_N) q_11_s_Q1)
+            (select (select s_member q_13_s_N) q_12_s_Q2)))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5)
+      (= s_member_next s_member)
+      (forall ((q_11_s_Q1 s_quorum) (q_12_s_Q2 s_quorum))
+        (exists ((q_13_s_N s_node))
+          (and
+            (select (select s_member q_13_s_N) q_11_s_Q1)
+            (select (select s_member q_13_s_N) q_12_s_Q2))))
+      (forall ((q_11_s_Q1 s_quorum) (q_12_s_Q2 s_quorum))
+        (exists ((q_13_s_N s_node))
+          (and
+            (select (select s_member q_13_s_N) q_11_s_Q1)
+            (select (select s_member q_13_s_N) q_12_s_Q2)))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_84_s_N1 s_node) (q_85_s_V1 s_value) (q_86_s_N2 s_node) (q_87_s_V2 s_value))
+      (=>
+        (and
+          (select (select s_decided q_84_s_N1) q_85_s_V1)
+          (select (select s_decided q_86_s_N2) q_87_s_V2))
+        (= q_85_s_V1 q_87_s_V2)))
+    :invar-property
+    0))

@@ -1,0 +1,221 @@
+; Generated offline from ivybench/i4/vmt/two_phase_commit.vmt
+; Source SHA-256: 798dd46fdea8b8342adecac97eec751304cb1172d6771d592d48eedda438087b
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_node 0)
+(declare-fun s__5f__5f_abort_5f_flag () Bool)
+(declare-fun s__5f__5f_abort_5f_flag_next () Bool)
+(declare-fun s__5f__5f_alive () (Array s_node Bool))
+(declare-fun s__5f__5f_alive_next () (Array s_node Bool))
+(declare-fun s__5f__5f_decide_5f_abort () (Array s_node Bool))
+(declare-fun s__5f__5f_decide_5f_abort_next () (Array s_node Bool))
+(declare-fun s__5f__5f_decide_5f_commit () (Array s_node Bool))
+(declare-fun s__5f__5f_decide_5f_commit_next () (Array s_node Bool))
+(declare-fun s__5f__5f_go_5f_abort () (Array s_node Bool))
+(declare-fun s__5f__5f_go_5f_abort_next () (Array s_node Bool))
+(declare-fun s__5f__5f_go_5f_commit () (Array s_node Bool))
+(declare-fun s__5f__5f_go_5f_commit_next () (Array s_node Bool))
+(declare-fun s__5f__5f_vote_5f_no () (Array s_node Bool))
+(declare-fun s__5f__5f_vote_5f_no_next () (Array s_node Bool))
+(declare-fun s__5f__5f_vote_5f_yes () (Array s_node Bool))
+(declare-fun s__5f__5f_vote_5f_yes_next () (Array s_node Bool))
+; source symbol: __abort_flag
+(define-fun link_0 () Bool (! s__5f__5f_abort_5f_flag :next s__5f__5f_abort_5f_flag_next))
+; source symbol: __alive
+(define-fun link_1 () (Array s_node Bool) (! s__5f__5f_alive :next s__5f__5f_alive_next))
+; source symbol: __decide_abort
+(define-fun link_2 () (Array s_node Bool) (! s__5f__5f_decide_5f_abort :next s__5f__5f_decide_5f_abort_next))
+; source symbol: __decide_commit
+(define-fun link_3 () (Array s_node Bool) (! s__5f__5f_decide_5f_commit :next s__5f__5f_decide_5f_commit_next))
+; source symbol: __go_abort
+(define-fun link_4 () (Array s_node Bool) (! s__5f__5f_go_5f_abort :next s__5f__5f_go_5f_abort_next))
+; source symbol: __go_commit
+(define-fun link_5 () (Array s_node Bool) (! s__5f__5f_go_5f_commit :next s__5f__5f_go_5f_commit_next))
+; source symbol: __vote_no
+(define-fun link_6 () (Array s_node Bool) (! s__5f__5f_vote_5f_no :next s__5f__5f_vote_5f_no_next))
+; source symbol: __vote_yes
+(define-fun link_7 () (Array s_node Bool) (! s__5f__5f_vote_5f_yes :next s__5f__5f_vote_5f_yes_next))
+; action: ext:abort
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_13_s_V_5f__5f_fml_3a_n s_node))
+        (and
+          (forall ((q_14_s_V0 s_node))
+            (=
+              (select s__5f__5f_decide_5f_abort_next q_14_s_V0)
+              (ite
+                (= q_14_s_V0 q_13_s_V_5f__5f_fml_3a_n)
+                true
+                (select s__5f__5f_decide_5f_abort q_14_s_V0))))
+          (select s__5f__5f_alive q_13_s_V_5f__5f_fml_3a_n)
+          (select s__5f__5f_go_5f_abort q_13_s_V_5f__5f_fml_3a_n))))
+    (= s__5f__5f_abort_5f_flag_next s__5f__5f_abort_5f_flag)
+    (= s__5f__5f_alive_next s__5f__5f_alive)
+    (= s__5f__5f_decide_5f_commit_next s__5f__5f_decide_5f_commit)
+    (= s__5f__5f_go_5f_abort_next s__5f__5f_go_5f_abort)
+    (= s__5f__5f_go_5f_commit_next s__5f__5f_go_5f_commit)
+    (= s__5f__5f_vote_5f_no_next s__5f__5f_vote_5f_no)
+    (= s__5f__5f_vote_5f_yes_next s__5f__5f_vote_5f_yes)))
+; action: ext:commit
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_15_s_V_5f__5f_fml_3a_n s_node))
+        (and
+          (forall ((q_16_s_V0 s_node))
+            (=
+              (select s__5f__5f_decide_5f_commit_next q_16_s_V0)
+              (ite
+                (= q_16_s_V0 q_15_s_V_5f__5f_fml_3a_n)
+                true
+                (select s__5f__5f_decide_5f_commit q_16_s_V0))))
+          (select s__5f__5f_alive q_15_s_V_5f__5f_fml_3a_n)
+          (select s__5f__5f_go_5f_commit q_15_s_V_5f__5f_fml_3a_n))))
+    (= s__5f__5f_abort_5f_flag_next s__5f__5f_abort_5f_flag)
+    (= s__5f__5f_alive_next s__5f__5f_alive)
+    (= s__5f__5f_decide_5f_abort_next s__5f__5f_decide_5f_abort)
+    (= s__5f__5f_go_5f_abort_next s__5f__5f_go_5f_abort)
+    (= s__5f__5f_go_5f_commit_next s__5f__5f_go_5f_commit)
+    (= s__5f__5f_vote_5f_no_next s__5f__5f_vote_5f_no)
+    (= s__5f__5f_vote_5f_yes_next s__5f__5f_vote_5f_yes)))
+; action: ext:fail
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_17_s_V_5f__5f_fml_3a_n s_node))
+        (and
+          (forall ((q_18_s_V0 s_node))
+            (=
+              (select s__5f__5f_alive_next q_18_s_V0)
+              (ite (= q_18_s_V0 q_17_s_V_5f__5f_fml_3a_n) false (select s__5f__5f_alive q_18_s_V0))))
+          (= s__5f__5f_abort_5f_flag_next true)
+          (select s__5f__5f_alive q_17_s_V_5f__5f_fml_3a_n))))
+    (= s__5f__5f_decide_5f_abort_next s__5f__5f_decide_5f_abort)
+    (= s__5f__5f_decide_5f_commit_next s__5f__5f_decide_5f_commit)
+    (= s__5f__5f_go_5f_abort_next s__5f__5f_go_5f_abort)
+    (= s__5f__5f_go_5f_commit_next s__5f__5f_go_5f_commit)
+    (= s__5f__5f_vote_5f_no_next s__5f__5f_vote_5f_no)
+    (= s__5f__5f_vote_5f_yes_next s__5f__5f_vote_5f_yes)))
+; action: ext:go1
+(define-fun action_3 () Bool
+  (and
+    (and
+      (and
+        (forall ((q_19_s_V0 s_node)) (= (select s__5f__5f_go_5f_commit_next q_19_s_V0) true))
+        (forall ((q_20_s_N s_node)) (not (select s__5f__5f_go_5f_commit q_20_s_N)))
+        (forall ((q_21_s_N s_node)) (not (select s__5f__5f_go_5f_abort q_21_s_N)))
+        (forall ((q_22_s_N s_node)) (select s__5f__5f_vote_5f_yes q_22_s_N))))
+    (= s__5f__5f_abort_5f_flag_next s__5f__5f_abort_5f_flag)
+    (= s__5f__5f_alive_next s__5f__5f_alive)
+    (= s__5f__5f_decide_5f_abort_next s__5f__5f_decide_5f_abort)
+    (= s__5f__5f_decide_5f_commit_next s__5f__5f_decide_5f_commit)
+    (= s__5f__5f_go_5f_abort_next s__5f__5f_go_5f_abort)
+    (= s__5f__5f_vote_5f_no_next s__5f__5f_vote_5f_no)
+    (= s__5f__5f_vote_5f_yes_next s__5f__5f_vote_5f_yes)))
+; action: ext:go2
+(define-fun action_4 () Bool
+  (and
+    (and
+      (exists ((q_23_s_V_5f__5f_sk_5f__5f_N s_node))
+        (and
+          (forall ((q_24_s_V0 s_node)) (= (select s__5f__5f_go_5f_abort_next q_24_s_V0) true))
+          (forall ((q_25_s_N s_node)) (not (select s__5f__5f_go_5f_commit q_25_s_N)))
+          (forall ((q_26_s_N s_node)) (not (select s__5f__5f_go_5f_abort q_26_s_N)))
+          (or
+            (select s__5f__5f_vote_5f_no q_23_s_V_5f__5f_sk_5f__5f_N)
+            (not (select s__5f__5f_alive q_23_s_V_5f__5f_sk_5f__5f_N))))))
+    (= s__5f__5f_abort_5f_flag_next s__5f__5f_abort_5f_flag)
+    (= s__5f__5f_alive_next s__5f__5f_alive)
+    (= s__5f__5f_decide_5f_abort_next s__5f__5f_decide_5f_abort)
+    (= s__5f__5f_decide_5f_commit_next s__5f__5f_decide_5f_commit)
+    (= s__5f__5f_go_5f_commit_next s__5f__5f_go_5f_commit)
+    (= s__5f__5f_vote_5f_no_next s__5f__5f_vote_5f_no)
+    (= s__5f__5f_vote_5f_yes_next s__5f__5f_vote_5f_yes)))
+; action: ext:vote1
+(define-fun action_5 () Bool
+  (and
+    (and
+      (exists ((q_27_s_V_5f__5f_fml_3a_n s_node))
+        (and
+          (forall ((q_28_s_V0 s_node))
+            (=
+              (select s__5f__5f_vote_5f_yes_next q_28_s_V0)
+              (ite
+                (= q_28_s_V0 q_27_s_V_5f__5f_fml_3a_n)
+                true
+                (select s__5f__5f_vote_5f_yes q_28_s_V0))))
+          (select s__5f__5f_alive q_27_s_V_5f__5f_fml_3a_n)
+          (not (select s__5f__5f_vote_5f_no q_27_s_V_5f__5f_fml_3a_n))
+          (not (select s__5f__5f_decide_5f_commit q_27_s_V_5f__5f_fml_3a_n))
+          (not (select s__5f__5f_decide_5f_abort q_27_s_V_5f__5f_fml_3a_n)))))
+    (= s__5f__5f_abort_5f_flag_next s__5f__5f_abort_5f_flag)
+    (= s__5f__5f_alive_next s__5f__5f_alive)
+    (= s__5f__5f_decide_5f_abort_next s__5f__5f_decide_5f_abort)
+    (= s__5f__5f_decide_5f_commit_next s__5f__5f_decide_5f_commit)
+    (= s__5f__5f_go_5f_abort_next s__5f__5f_go_5f_abort)
+    (= s__5f__5f_go_5f_commit_next s__5f__5f_go_5f_commit)
+    (= s__5f__5f_vote_5f_no_next s__5f__5f_vote_5f_no)))
+; action: ext:vote2
+(define-fun action_6 () Bool
+  (and
+    (and
+      (exists ((q_29_s_V_5f__5f_fml_3a_n s_node))
+        (and
+          (forall ((q_30_s_V0 s_node))
+            (=
+              (select s__5f__5f_vote_5f_no_next q_30_s_V0)
+              (ite
+                (= q_30_s_V0 q_29_s_V_5f__5f_fml_3a_n)
+                true
+                (select s__5f__5f_vote_5f_no q_30_s_V0))))
+          (= s__5f__5f_abort_5f_flag_next true)
+          (forall ((q_31_s_V0 s_node))
+            (=
+              (select s__5f__5f_decide_5f_abort_next q_31_s_V0)
+              (ite
+                (= q_31_s_V0 q_29_s_V_5f__5f_fml_3a_n)
+                true
+                (select s__5f__5f_decide_5f_abort q_31_s_V0))))
+          (select s__5f__5f_alive q_29_s_V_5f__5f_fml_3a_n)
+          (not (select s__5f__5f_vote_5f_yes q_29_s_V_5f__5f_fml_3a_n))
+          (not (select s__5f__5f_decide_5f_commit q_29_s_V_5f__5f_fml_3a_n))
+          (not (select s__5f__5f_decide_5f_abort q_29_s_V_5f__5f_fml_3a_n)))))
+    (= s__5f__5f_alive_next s__5f__5f_alive)
+    (= s__5f__5f_decide_5f_commit_next s__5f__5f_decide_5f_commit)
+    (= s__5f__5f_go_5f_abort_next s__5f__5f_go_5f_abort)
+    (= s__5f__5f_go_5f_commit_next s__5f__5f_go_5f_commit)
+    (= s__5f__5f_vote_5f_yes_next s__5f__5f_vote_5f_yes)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (forall ((q_6_s_V0 s_node)) (= (select s__5f__5f_vote_5f_yes q_6_s_V0) false))
+        (forall ((q_7_s_V0 s_node)) (= (select s__5f__5f_vote_5f_no q_7_s_V0) false))
+        (forall ((q_8_s_V0 s_node)) (= (select s__5f__5f_alive q_8_s_V0) true))
+        (forall ((q_9_s_V0 s_node)) (= (select s__5f__5f_go_5f_commit q_9_s_V0) false))
+        (forall ((q_10_s_V0 s_node)) (= (select s__5f__5f_go_5f_abort q_10_s_V0) false))
+        (forall ((q_11_s_V0 s_node)) (= (select s__5f__5f_decide_5f_commit q_11_s_V0) false))
+        (forall ((q_12_s_V0 s_node)) (= (select s__5f__5f_decide_5f_abort q_12_s_V0) false))
+        (= s__5f__5f_abort_5f_flag false)))
+    :init
+    true))
+(define-fun trans () Bool
+  (! (or action_0 action_1 action_2 action_3 action_4 action_5 action_6) :trans true))
+(define-fun property () Bool
+  (!
+    (and
+      (and
+        (forall ((q_1_s_N s_node) (q_2_s_N2 s_node))
+          (=>
+            (select s__5f__5f_decide_5f_commit q_1_s_N)
+            (not (select s__5f__5f_decide_5f_abort q_2_s_N2))))
+        (forall ((q_3_s_N s_node) (q_4_s_N2 s_node))
+          (=> (select s__5f__5f_decide_5f_commit q_3_s_N) (select s__5f__5f_vote_5f_yes q_4_s_N2)))
+        (forall ((q_5_s_N s_node))
+          (=> (select s__5f__5f_decide_5f_abort q_5_s_N) s__5f__5f_abort_5f_flag))))
+    :invar-property
+    0))

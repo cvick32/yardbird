@@ -1,0 +1,486 @@
+; Generated offline from ivybench/distai/vmt/blockchain.vmt
+; Source SHA-256: ed295c802ff454dd9365a3b93f5855b4cfe1708629fb583e5a2d2510cf6461dc
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Normalized IC3PO :action dialect; omitted state symbols framed per action.
+; Unpaired non-global auxiliaries are unconstrained per-frame inputs.
+; :sort cardinalities are finite-instance hints, not domain axioms.
+(declare-sort s_block 0)
+(declare-sort s_node 0)
+(declare-sort s_time 0)
+(declare-sort s_transaction 0)
+(declare-fun s__5f__5f_block_5f_confirmed () (Array s_node (Array s_block (Array s_time Bool))))
+(declare-fun s__5f__5f_block_5f_confirmed_next () (Array s_node (Array s_block (Array s_time Bool))))
+(declare-fun s__5f__5f_block_5f_found () (Array s_node (Array s_block (Array s_time Bool))))
+(declare-fun s__5f__5f_block_5f_found_next () (Array s_node (Array s_block (Array s_time Bool))))
+(declare-fun s__5f__5f_broadcastable () (Array s_node (Array s_block (Array s_time Bool))))
+(declare-fun s__5f__5f_broadcastable_next () (Array s_node (Array s_block (Array s_time Bool))))
+(declare-fun s__5f__5f_broadcasted () (Array s_node Bool))
+(declare-fun s__5f__5f_broadcasted_next () (Array s_node Bool))
+(declare-fun s__5f__5f_transaction_5f_confirmed () (Array s_transaction (Array s_node Bool)))
+(declare-fun s__5f__5f_transaction_5f_confirmed_next () (Array s_transaction (Array s_node Bool)))
+(declare-fun s__5f__5f_transaction_5f_in_5f_block () (Array s_transaction (Array s_block Bool)))
+(declare-fun s__5f__5f_transaction_5f_in_5f_block_next () (Array s_transaction (Array s_block Bool)))
+(declare-fun s_honest () (Array s_node Bool))
+(declare-fun s_honest_next () (Array s_node Bool))
+(declare-fun s_le () (Array s_time (Array s_time Bool)))
+(declare-fun s_le_next () (Array s_time (Array s_time Bool)))
+(declare-fun s_leader () (Array s_node (Array s_time Bool)))
+(declare-fun s_leader_next () (Array s_node (Array s_time Bool)))
+(declare-fun s_transaction_5f_time () (Array s_transaction (Array s_time Bool)))
+(declare-fun s_transaction_5f_time_next () (Array s_transaction (Array s_time Bool)))
+; source symbol: __block_confirmed
+(define-fun link_0 () (Array s_node (Array s_block (Array s_time Bool))) (! s__5f__5f_block_5f_confirmed :next s__5f__5f_block_5f_confirmed_next))
+; source symbol: __block_found
+(define-fun link_1 () (Array s_node (Array s_block (Array s_time Bool))) (! s__5f__5f_block_5f_found :next s__5f__5f_block_5f_found_next))
+; source symbol: __broadcastable
+(define-fun link_2 () (Array s_node (Array s_block (Array s_time Bool))) (! s__5f__5f_broadcastable :next s__5f__5f_broadcastable_next))
+; source symbol: __broadcasted
+(define-fun link_3 () (Array s_node Bool) (! s__5f__5f_broadcasted :next s__5f__5f_broadcasted_next))
+; source symbol: __transaction_confirmed
+(define-fun link_4 () (Array s_transaction (Array s_node Bool)) (! s__5f__5f_transaction_5f_confirmed :next s__5f__5f_transaction_5f_confirmed_next))
+; source symbol: __transaction_in_block
+(define-fun link_5 () (Array s_transaction (Array s_block Bool)) (! s__5f__5f_transaction_5f_in_5f_block :next s__5f__5f_transaction_5f_in_5f_block_next))
+; source symbol: honest
+(define-fun link_6 () (Array s_node Bool) (! s_honest :next s_honest_next))
+; source symbol: le
+(define-fun link_7 () (Array s_time (Array s_time Bool)) (! s_le :next s_le_next))
+; source symbol: leader
+(define-fun link_8 () (Array s_node (Array s_time Bool)) (! s_leader :next s_leader_next))
+; source symbol: transaction_time
+(define-fun link_9 () (Array s_transaction (Array s_time Bool)) (! s_transaction_5f_time :next s_transaction_5f_time_next))
+; action: ext:add_transaction
+(define-fun action_0 () Bool
+  (and
+    (and
+      (exists ((q_44_s_V_5f__5f_fml_3a_b s_block) (q_45_s_V_5f__5f_fml_3a_tr s_transaction))
+        (forall ((q_46_s_V0 s_transaction) (q_47_s_V1 s_block))
+          (=
+            (select (select s__5f__5f_transaction_5f_in_5f_block_next q_46_s_V0) q_47_s_V1)
+            (ite
+              (and (= q_46_s_V0 q_45_s_V_5f__5f_fml_3a_tr) (= q_47_s_V1 q_44_s_V_5f__5f_fml_3a_b))
+              true
+              (select (select s__5f__5f_transaction_5f_in_5f_block q_46_s_V0) q_47_s_V1))))))
+    (= s__5f__5f_block_5f_confirmed_next s__5f__5f_block_5f_confirmed)
+    (= s__5f__5f_block_5f_found_next s__5f__5f_block_5f_found)
+    (= s__5f__5f_broadcastable_next s__5f__5f_broadcastable)
+    (= s__5f__5f_broadcasted_next s__5f__5f_broadcasted)
+    (= s__5f__5f_transaction_5f_confirmed_next s__5f__5f_transaction_5f_confirmed)))
+; action: ext:begin_broadcast
+(define-fun action_1 () Bool
+  (and
+    (and
+      (exists ((q_48_s_V_5f__5f_fml_3a_b s_block) (q_49_s_V_5f__5f_fml_3a_n s_node) (q_50_s_V_5f__5f_fml_3a_t s_time))
+        (and
+          (forall ((q_51_s_V0 s_node) (q_52_s_V1 s_block) (q_53_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_broadcastable_next q_51_s_V0) q_52_s_V1) q_53_s_V2)
+              (ite
+                (and
+                  (= q_51_s_V0 q_49_s_V_5f__5f_fml_3a_n)
+                  (= q_52_s_V1 q_48_s_V_5f__5f_fml_3a_b)
+                  (= q_53_s_V2 q_50_s_V_5f__5f_fml_3a_t))
+                true
+                (select (select (select s__5f__5f_broadcastable q_51_s_V0) q_52_s_V1) q_53_s_V2))))
+          (select (select s_leader q_49_s_V_5f__5f_fml_3a_n) q_50_s_V_5f__5f_fml_3a_t)
+          (select
+            (select
+              (select s__5f__5f_block_5f_found q_49_s_V_5f__5f_fml_3a_n)
+              q_48_s_V_5f__5f_fml_3a_b)
+            q_50_s_V_5f__5f_fml_3a_t)
+          (not (select s__5f__5f_broadcasted q_49_s_V_5f__5f_fml_3a_n)))))
+    (= s__5f__5f_block_5f_confirmed_next s__5f__5f_block_5f_confirmed)
+    (= s__5f__5f_block_5f_found_next s__5f__5f_block_5f_found)
+    (= s__5f__5f_broadcasted_next s__5f__5f_broadcasted)
+    (= s__5f__5f_transaction_5f_confirmed_next s__5f__5f_transaction_5f_confirmed)
+    (= s__5f__5f_transaction_5f_in_5f_block_next s__5f__5f_transaction_5f_in_5f_block)))
+; action: ext:begin_broadcast_adversary
+(define-fun action_2 () Bool
+  (and
+    (and
+      (exists ((q_54_s_V_5f__5f_fml_3a_b s_block) (q_55_s_V_5f__5f_fml_3a_n s_node) (q_56_s_V_5f__5f_fml_3a_t s_time))
+        (and
+          (forall ((q_57_s_V0 s_node) (q_58_s_V1 s_block) (q_59_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_broadcastable_next q_57_s_V0) q_58_s_V1) q_59_s_V2)
+              (ite
+                (and
+                  (= q_57_s_V0 q_55_s_V_5f__5f_fml_3a_n)
+                  (= q_58_s_V1 q_54_s_V_5f__5f_fml_3a_b)
+                  (= q_59_s_V2 q_56_s_V_5f__5f_fml_3a_t))
+                true
+                (select (select (select s__5f__5f_broadcastable q_57_s_V0) q_58_s_V1) q_59_s_V2))))
+          (not (select s_honest q_55_s_V_5f__5f_fml_3a_n)))))
+    (= s__5f__5f_block_5f_confirmed_next s__5f__5f_block_5f_confirmed)
+    (= s__5f__5f_block_5f_found_next s__5f__5f_block_5f_found)
+    (= s__5f__5f_broadcasted_next s__5f__5f_broadcasted)
+    (= s__5f__5f_transaction_5f_confirmed_next s__5f__5f_transaction_5f_confirmed)
+    (= s__5f__5f_transaction_5f_in_5f_block_next s__5f__5f_transaction_5f_in_5f_block)))
+; action: ext:byzantine_broadcast
+(define-fun action_3 () Bool
+  (and
+    (and
+      (exists ((q_60_s_V_5f__5f_fml_3a_b s_block) (q_61_s_V_5f__5f_fml_3a_n s_node) (q_62_s_V_5f__5f_fml_3a_t s_time))
+        (and
+          (forall ((q_63_s_V0 s_node))
+            (=
+              (select s__5f__5f_broadcasted_next q_63_s_V0)
+              (ite
+                (= q_63_s_V0 q_61_s_V_5f__5f_fml_3a_n)
+                true
+                (select s__5f__5f_broadcasted q_63_s_V0))))
+          (forall ((q_64_s_V0 s_node) (q_65_s_V1 s_block) (q_66_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_broadcastable_next q_64_s_V0) q_65_s_V1) q_66_s_V2)
+              (ite
+                (and
+                  (= q_64_s_V0 q_61_s_V_5f__5f_fml_3a_n)
+                  (= q_65_s_V1 q_60_s_V_5f__5f_fml_3a_b)
+                  (= q_66_s_V2 q_62_s_V_5f__5f_fml_3a_t))
+                false
+                (select (select (select s__5f__5f_broadcastable q_64_s_V0) q_65_s_V1) q_66_s_V2))))
+          (forall ((q_67_s_V0 s_transaction) (q_68_s_V1 s_node))
+            (=
+              (select (select s__5f__5f_transaction_5f_confirmed_next q_67_s_V0) q_68_s_V1)
+              (or
+                (select (select s__5f__5f_transaction_5f_confirmed q_67_s_V0) q_68_s_V1)
+                (ite
+                  (select s_honest q_61_s_V_5f__5f_fml_3a_n)
+                  (select
+                    (select s__5f__5f_transaction_5f_in_5f_block q_67_s_V0)
+                    q_60_s_V_5f__5f_fml_3a_b)
+                  (select (select s__5f__5f_transaction_5f_confirmed q_67_s_V0) q_68_s_V1)))))
+          (select
+            (select
+              (select s__5f__5f_broadcastable q_61_s_V_5f__5f_fml_3a_n)
+              q_60_s_V_5f__5f_fml_3a_b)
+            q_62_s_V_5f__5f_fml_3a_t)
+          (forall ((q_69_s_T s_time) (q_70_s_TR s_transaction))
+            (=>
+              (and
+                (select s_honest q_61_s_V_5f__5f_fml_3a_n)
+                (select (select s_transaction_5f_time q_70_s_TR) q_69_s_T)
+                (select (select s_le q_69_s_T) q_62_s_V_5f__5f_fml_3a_t)
+                (not
+                  (select
+                    (select s__5f__5f_transaction_5f_confirmed q_70_s_TR)
+                    q_61_s_V_5f__5f_fml_3a_n)))
+              (select
+                (select s__5f__5f_transaction_5f_in_5f_block q_70_s_TR)
+                q_60_s_V_5f__5f_fml_3a_b)))
+          (forall ((q_71_s_T s_time) (q_72_s_TR s_transaction))
+            (=>
+              (and
+                (select s_honest q_61_s_V_5f__5f_fml_3a_n)
+                (select
+                  (select s__5f__5f_transaction_5f_in_5f_block q_72_s_TR)
+                  q_60_s_V_5f__5f_fml_3a_b))
+              (and
+                (select (select s_transaction_5f_time q_72_s_TR) q_71_s_T)
+                (select (select s_le q_71_s_T) q_62_s_V_5f__5f_fml_3a_t)
+                (not
+                  (select
+                    (select s__5f__5f_transaction_5f_confirmed q_72_s_TR)
+                    q_61_s_V_5f__5f_fml_3a_n)))))
+          (forall ((q_73_s_X0 s_node) (q_74_s_X1 s_block) (q_75_s_X2 s_time))
+            (or
+              (not
+                (select
+                  (select (select s__5f__5f_block_5f_confirmed_next q_73_s_X0) q_74_s_X1)
+                  q_75_s_X2))
+              (select (select (select s__5f__5f_block_5f_confirmed q_73_s_X0) q_74_s_X1) q_75_s_X2)
+              (= q_75_s_X2 q_62_s_V_5f__5f_fml_3a_t)))
+          (forall ((q_76_s_X0 s_node) (q_77_s_X1 s_block) (q_78_s_X2 s_time))
+            (or
+              (select
+                (select (select s__5f__5f_block_5f_confirmed_next q_76_s_X0) q_77_s_X1)
+                q_78_s_X2)
+              (not
+                (select
+                  (select (select s__5f__5f_block_5f_confirmed q_76_s_X0) q_77_s_X1)
+                  q_78_s_X2))
+              (= q_78_s_X2 q_62_s_V_5f__5f_fml_3a_t)))
+          (forall ((q_79_s_B1 s_block) (q_80_s_B2 s_block) (q_81_s_N s_node))
+            (=>
+              (select s_honest q_81_s_N)
+              (not
+                (and
+                  (not (= q_79_s_B1 q_80_s_B2))
+                  (select
+                    (select (select s__5f__5f_block_5f_confirmed_next q_81_s_N) q_79_s_B1)
+                    q_62_s_V_5f__5f_fml_3a_t)
+                  (select
+                    (select (select s__5f__5f_block_5f_confirmed_next q_81_s_N) q_80_s_B2)
+                    q_62_s_V_5f__5f_fml_3a_t)))))
+          (forall ((q_82_s_B s_block) (q_83_s_N1 s_node) (q_84_s_N2 s_node))
+            (=>
+              (and (select s_honest q_83_s_N1) (select s_honest q_84_s_N2))
+              (or
+                (and
+                  (select
+                    (select
+                      (select s__5f__5f_block_5f_confirmed_next q_83_s_N1)
+                      q_60_s_V_5f__5f_fml_3a_b)
+                    q_62_s_V_5f__5f_fml_3a_t)
+                  (select
+                    (select
+                      (select s__5f__5f_block_5f_confirmed_next q_84_s_N2)
+                      q_60_s_V_5f__5f_fml_3a_b)
+                    q_62_s_V_5f__5f_fml_3a_t))
+                (and
+                  (not
+                    (select
+                      (select (select s__5f__5f_block_5f_confirmed_next q_83_s_N1) q_82_s_B)
+                      q_62_s_V_5f__5f_fml_3a_t))
+                  (not
+                    (select
+                      (select (select s__5f__5f_block_5f_confirmed_next q_84_s_N2) q_82_s_B)
+                      q_62_s_V_5f__5f_fml_3a_t))))))
+          (forall ((q_85_s_N s_node))
+            (=>
+              (and (select s_honest q_61_s_V_5f__5f_fml_3a_n) (select s_honest q_85_s_N))
+              (select
+                (select
+                  (select s__5f__5f_block_5f_confirmed_next q_85_s_N)
+                  q_60_s_V_5f__5f_fml_3a_b)
+                q_62_s_V_5f__5f_fml_3a_t))))))
+    (= s__5f__5f_block_5f_found_next s__5f__5f_block_5f_found)
+    (= s__5f__5f_transaction_5f_in_5f_block_next s__5f__5f_transaction_5f_in_5f_block)))
+; action: ext:find_block
+(define-fun action_4 () Bool
+  (and
+    (and
+      (exists ((q_86_s_V_5f__5f_fml_3a_b s_block) (q_87_s_V_5f__5f_fml_3a_n s_node) (q_88_s_V_5f__5f_fml_3a_t s_time))
+        (and
+          (forall ((q_89_s_V0 s_node) (q_90_s_V1 s_block) (q_91_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_block_5f_found_next q_89_s_V0) q_90_s_V1) q_91_s_V2)
+              (ite
+                (and
+                  (= q_89_s_V0 q_87_s_V_5f__5f_fml_3a_n)
+                  (= q_90_s_V1 q_86_s_V_5f__5f_fml_3a_b)
+                  (= q_91_s_V2 q_88_s_V_5f__5f_fml_3a_t))
+                true
+                (select (select (select s__5f__5f_block_5f_found q_89_s_V0) q_90_s_V1) q_91_s_V2))))
+          (select (select s_leader q_87_s_V_5f__5f_fml_3a_n) q_88_s_V_5f__5f_fml_3a_t))))
+    (= s__5f__5f_block_5f_confirmed_next s__5f__5f_block_5f_confirmed)
+    (= s__5f__5f_broadcastable_next s__5f__5f_broadcastable)
+    (= s__5f__5f_broadcasted_next s__5f__5f_broadcasted)
+    (= s__5f__5f_transaction_5f_confirmed_next s__5f__5f_transaction_5f_confirmed)
+    (= s__5f__5f_transaction_5f_in_5f_block_next s__5f__5f_transaction_5f_in_5f_block)))
+; action: ext:sabotage
+(define-fun action_5 () Bool
+  (and
+    (and
+      (exists ((q_92_s_V_5f__5f_fml_3a_n s_node))
+        (and
+          (not (select s_honest q_92_s_V_5f__5f_fml_3a_n))
+          (forall ((q_93_s_X0 s_node) (q_94_s_X1 s_block) (q_95_s_X2 s_time))
+            (or
+              (not
+                (select
+                  (select (select s__5f__5f_block_5f_confirmed_next q_93_s_X0) q_94_s_X1)
+                  q_95_s_X2))
+              (select (select (select s__5f__5f_block_5f_confirmed q_93_s_X0) q_94_s_X1) q_95_s_X2)
+              (= q_93_s_X0 q_92_s_V_5f__5f_fml_3a_n)))
+          (forall ((q_96_s_X0 s_node) (q_97_s_X1 s_block) (q_98_s_X2 s_time))
+            (or
+              (select
+                (select (select s__5f__5f_block_5f_confirmed_next q_96_s_X0) q_97_s_X1)
+                q_98_s_X2)
+              (not
+                (select
+                  (select (select s__5f__5f_block_5f_confirmed q_96_s_X0) q_97_s_X1)
+                  q_98_s_X2))
+              (= q_96_s_X0 q_92_s_V_5f__5f_fml_3a_n)))
+          (forall ((q_99_s_X0 s_transaction) (q_100_s_X1 s_node))
+            (or
+              (not (select (select s__5f__5f_transaction_5f_confirmed_next q_99_s_X0) q_100_s_X1))
+              (select (select s__5f__5f_transaction_5f_confirmed q_99_s_X0) q_100_s_X1)
+              (= q_100_s_X1 q_92_s_V_5f__5f_fml_3a_n)))
+          (forall ((q_101_s_X0 s_transaction) (q_102_s_X1 s_node))
+            (or
+              (select (select s__5f__5f_transaction_5f_confirmed_next q_101_s_X0) q_102_s_X1)
+              (not (select (select s__5f__5f_transaction_5f_confirmed q_101_s_X0) q_102_s_X1))
+              (= q_102_s_X1 q_92_s_V_5f__5f_fml_3a_n))))))
+    (= s__5f__5f_block_5f_found_next s__5f__5f_block_5f_found)
+    (= s__5f__5f_broadcastable_next s__5f__5f_broadcastable)
+    (= s__5f__5f_broadcasted_next s__5f__5f_broadcasted)
+    (= s__5f__5f_transaction_5f_in_5f_block_next s__5f__5f_transaction_5f_in_5f_block)))
+(define-fun init () Bool
+  (!
+    (and
+      (and
+        (and
+          (forall ((q_30_s_V0 s_node) (q_31_s_V1 s_block) (q_32_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_block_5f_found q_30_s_V0) q_31_s_V1) q_32_s_V2)
+              false))
+          (forall ((q_33_s_V0 s_node) (q_34_s_V1 s_block) (q_35_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_block_5f_confirmed q_33_s_V0) q_34_s_V1) q_35_s_V2)
+              false))
+          (forall ((q_36_s_V0 s_transaction) (q_37_s_V1 s_block))
+            (= (select (select s__5f__5f_transaction_5f_in_5f_block q_36_s_V0) q_37_s_V1) false))
+          (forall ((q_38_s_V0 s_transaction) (q_39_s_V1 s_node))
+            (= (select (select s__5f__5f_transaction_5f_confirmed q_38_s_V0) q_39_s_V1) false))
+          (forall ((q_40_s_V0 s_node)) (= (select s__5f__5f_broadcasted q_40_s_V0) false))
+          (forall ((q_41_s_V0 s_node) (q_42_s_V1 s_block) (q_43_s_V2 s_time))
+            (=
+              (select (select (select s__5f__5f_broadcastable q_41_s_V0) q_42_s_V1) q_43_s_V2)
+              false))))
+      (and
+        (and
+          (forall ((q_13_s_X s_time)) (select (select s_le q_13_s_X) q_13_s_X))
+          (forall ((q_14_s_X s_time) (q_15_s_Y s_time) (q_16_s_Z s_time))
+            (=>
+              (and
+                (select (select s_le q_14_s_X) q_15_s_Y)
+                (select (select s_le q_15_s_Y) q_16_s_Z))
+              (select (select s_le q_14_s_X) q_16_s_Z)))
+          (forall ((q_17_s_X s_time) (q_18_s_Y s_time))
+            (=>
+              (and
+                (select (select s_le q_17_s_X) q_18_s_Y)
+                (select (select s_le q_18_s_Y) q_17_s_X))
+              (= q_17_s_X q_18_s_Y)))
+          (forall ((q_19_s_X s_time) (q_20_s_Y s_time))
+            (or (select (select s_le q_19_s_X) q_20_s_Y) (select (select s_le q_20_s_Y) q_19_s_X)))
+          (forall ((q_21_s_N1 s_node) (q_22_s_N2 s_node) (q_23_s_T s_time))
+            (=>
+              (and
+                (select (select s_leader q_21_s_N1) q_23_s_T)
+                (select (select s_leader q_22_s_N2) q_23_s_T))
+              (= q_21_s_N1 q_22_s_N2)))
+          (forall ((q_24_s_N s_node) (q_25_s_T1 s_time) (q_26_s_T2 s_time))
+            (=>
+              (and
+                (select (select s_leader q_24_s_N) q_25_s_T1)
+                (select (select s_leader q_24_s_N) q_26_s_T2))
+              (= q_25_s_T1 q_26_s_T2)))
+          (forall ((q_27_s_T1 s_time) (q_28_s_T2 s_time) (q_29_s_TR s_transaction))
+            (=>
+              (and
+                (select (select s_transaction_5f_time q_29_s_TR) q_27_s_T1)
+                (select (select s_transaction_5f_time q_29_s_TR) q_28_s_T2))
+              (= q_27_s_T1 q_28_s_T2))))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3 action_4 action_5)
+      (= s_honest_next s_honest)
+      (= s_le_next s_le)
+      (= s_leader_next s_leader)
+      (= s_transaction_5f_time_next s_transaction_5f_time)
+      (and
+        (and
+          (forall ((q_13_s_X s_time)) (select (select s_le q_13_s_X) q_13_s_X))
+          (forall ((q_14_s_X s_time) (q_15_s_Y s_time) (q_16_s_Z s_time))
+            (=>
+              (and
+                (select (select s_le q_14_s_X) q_15_s_Y)
+                (select (select s_le q_15_s_Y) q_16_s_Z))
+              (select (select s_le q_14_s_X) q_16_s_Z)))
+          (forall ((q_17_s_X s_time) (q_18_s_Y s_time))
+            (=>
+              (and
+                (select (select s_le q_17_s_X) q_18_s_Y)
+                (select (select s_le q_18_s_Y) q_17_s_X))
+              (= q_17_s_X q_18_s_Y)))
+          (forall ((q_19_s_X s_time) (q_20_s_Y s_time))
+            (or (select (select s_le q_19_s_X) q_20_s_Y) (select (select s_le q_20_s_Y) q_19_s_X)))
+          (forall ((q_21_s_N1 s_node) (q_22_s_N2 s_node) (q_23_s_T s_time))
+            (=>
+              (and
+                (select (select s_leader q_21_s_N1) q_23_s_T)
+                (select (select s_leader q_22_s_N2) q_23_s_T))
+              (= q_21_s_N1 q_22_s_N2)))
+          (forall ((q_24_s_N s_node) (q_25_s_T1 s_time) (q_26_s_T2 s_time))
+            (=>
+              (and
+                (select (select s_leader q_24_s_N) q_25_s_T1)
+                (select (select s_leader q_24_s_N) q_26_s_T2))
+              (= q_25_s_T1 q_26_s_T2)))
+          (forall ((q_27_s_T1 s_time) (q_28_s_T2 s_time) (q_29_s_TR s_transaction))
+            (=>
+              (and
+                (select (select s_transaction_5f_time q_29_s_TR) q_27_s_T1)
+                (select (select s_transaction_5f_time q_29_s_TR) q_28_s_T2))
+              (= q_27_s_T1 q_28_s_T2)))))
+      (and
+        (and
+          (forall ((q_13_s_X s_time)) (select (select s_le q_13_s_X) q_13_s_X))
+          (forall ((q_14_s_X s_time) (q_15_s_Y s_time) (q_16_s_Z s_time))
+            (=>
+              (and
+                (select (select s_le q_14_s_X) q_15_s_Y)
+                (select (select s_le q_15_s_Y) q_16_s_Z))
+              (select (select s_le q_14_s_X) q_16_s_Z)))
+          (forall ((q_17_s_X s_time) (q_18_s_Y s_time))
+            (=>
+              (and
+                (select (select s_le q_17_s_X) q_18_s_Y)
+                (select (select s_le q_18_s_Y) q_17_s_X))
+              (= q_17_s_X q_18_s_Y)))
+          (forall ((q_19_s_X s_time) (q_20_s_Y s_time))
+            (or (select (select s_le q_19_s_X) q_20_s_Y) (select (select s_le q_20_s_Y) q_19_s_X)))
+          (forall ((q_21_s_N1 s_node) (q_22_s_N2 s_node) (q_23_s_T s_time))
+            (=>
+              (and
+                (select (select s_leader q_21_s_N1) q_23_s_T)
+                (select (select s_leader q_22_s_N2) q_23_s_T))
+              (= q_21_s_N1 q_22_s_N2)))
+          (forall ((q_24_s_N s_node) (q_25_s_T1 s_time) (q_26_s_T2 s_time))
+            (=>
+              (and
+                (select (select s_leader q_24_s_N) q_25_s_T1)
+                (select (select s_leader q_24_s_N) q_26_s_T2))
+              (= q_25_s_T1 q_26_s_T2)))
+          (forall ((q_27_s_T1 s_time) (q_28_s_T2 s_time) (q_29_s_TR s_transaction))
+            (=>
+              (and
+                (select (select s_transaction_5f_time q_29_s_TR) q_27_s_T1)
+                (select (select s_transaction_5f_time q_29_s_TR) q_28_s_T2))
+              (= q_27_s_T1 q_28_s_T2))))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (and
+        (forall ((q_1_s_B s_block) (q_2_s_N1 s_node) (q_3_s_N2 s_node) (q_4_s_T s_time))
+          (=>
+            (and (select s_honest q_2_s_N1) (select s_honest q_3_s_N2))
+            (or
+              (and
+                (select (select (select s__5f__5f_block_5f_confirmed q_2_s_N1) q_1_s_B) q_4_s_T)
+                (select (select (select s__5f__5f_block_5f_confirmed q_3_s_N2) q_1_s_B) q_4_s_T))
+              (and
+                (not
+                  (select (select (select s__5f__5f_block_5f_confirmed q_2_s_N1) q_1_s_B) q_4_s_T))
+                (not
+                  (select (select (select s__5f__5f_block_5f_confirmed q_3_s_N2) q_1_s_B) q_4_s_T))))))
+        (forall ((q_5_s_N1 s_node) (q_6_s_N2 s_node) (q_7_s_TR s_transaction))
+          (=>
+            (and (select s_honest q_5_s_N1) (select s_honest q_6_s_N2))
+            (or
+              (and
+                (select (select s__5f__5f_transaction_5f_confirmed q_7_s_TR) q_5_s_N1)
+                (select (select s__5f__5f_transaction_5f_confirmed q_7_s_TR) q_6_s_N2))
+              (and
+                (not (select (select s__5f__5f_transaction_5f_confirmed q_7_s_TR) q_5_s_N1))
+                (not (select (select s__5f__5f_transaction_5f_confirmed q_7_s_TR) q_6_s_N2))))))
+        (forall ((q_8_s_N s_node) (q_9_s_N1 s_node) (q_10_s_T1 s_time) (q_11_s_T2 s_time) (q_12_s_TR s_transaction))
+          (=>
+            (and
+              (select s_honest q_8_s_N)
+              (select (select s_leader q_8_s_N) q_11_s_T2)
+              (select (select s_transaction_5f_time q_12_s_TR) q_10_s_T1)
+              (select (select s_le q_10_s_T1) q_11_s_T2)
+              (select s__5f__5f_broadcasted q_8_s_N)
+              (select s_honest q_9_s_N1))
+            (select (select s__5f__5f_transaction_5f_confirmed q_12_s_TR) q_9_s_N1)))))
+    :invar-property
+    0))

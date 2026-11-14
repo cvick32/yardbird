@@ -1,0 +1,577 @@
+; Generated offline from cubicle/examples/german_pfs.cub
+; Source SHA-256: 929cda8ce62180d4b8c3e8395c394aff1ba7824ce0dc7f49d0af313e60f8b2e5
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_state 0)
+(declare-sort s_msg1 0)
+(declare-sort s_msg2 0)
+(declare-sort s_msg3 0)
+(declare-fun s_Invalid () s_state)
+(declare-fun s_Invalid_next () s_state)
+(declare-fun s_Shared () s_state)
+(declare-fun s_Shared_next () s_state)
+(declare-fun s_Exclusive () s_state)
+(declare-fun s_Exclusive_next () s_state)
+(declare-fun s_Empty1 () s_msg1)
+(declare-fun s_Empty1_next () s_msg1)
+(declare-fun s_Reqs () s_msg1)
+(declare-fun s_Reqs_next () s_msg1)
+(declare-fun s_Reqe () s_msg1)
+(declare-fun s_Reqe_next () s_msg1)
+(declare-fun s_Empty2 () s_msg2)
+(declare-fun s_Empty2_next () s_msg2)
+(declare-fun s_Inv () s_msg2)
+(declare-fun s_Inv_next () s_msg2)
+(declare-fun s_Gnts () s_msg2)
+(declare-fun s_Gnts_next () s_msg2)
+(declare-fun s_Gnte () s_msg2)
+(declare-fun s_Gnte_next () s_msg2)
+(declare-fun s_Empty3 () s_msg3)
+(declare-fun s_Empty3_next () s_msg3)
+(declare-fun s_Invack () s_msg3)
+(declare-fun s_Invack_next () s_msg3)
+(declare-fun s_Exgntd () Bool)
+(declare-fun s_Exgntd_next () Bool)
+(declare-fun s_Curcmd () s_msg1)
+(declare-fun s_Curcmd_next () s_msg1)
+(declare-fun s_Flag () Bool)
+(declare-fun s_Flag_next () Bool)
+(declare-fun s_Cache () (Array Proc s_state))
+(declare-fun s_Cache_next () (Array Proc s_state))
+(declare-fun s_Chan1 () (Array Proc s_msg1))
+(declare-fun s_Chan1_next () (Array Proc s_msg1))
+(declare-fun s_Chan2 () (Array Proc s_msg2))
+(declare-fun s_Chan2_next () (Array Proc s_msg2))
+(declare-fun s_Chan3 () (Array Proc s_msg3))
+(declare-fun s_Chan3_next () (Array Proc s_msg3))
+(declare-fun s_Curptr () (Array Proc Bool))
+(declare-fun s_Curptr_next () (Array Proc Bool))
+(declare-fun s_Shrset () (Array Proc Bool))
+(declare-fun s_Shrset_next () (Array Proc Bool))
+(declare-fun s_Invset () (Array Proc Bool))
+(declare-fun s_Invset_next () (Array Proc Bool))
+; source symbol: Invalid
+(define-fun link_0 () s_state (! s_Invalid :next s_Invalid_next))
+; source symbol: Shared
+(define-fun link_1 () s_state (! s_Shared :next s_Shared_next))
+; source symbol: Exclusive
+(define-fun link_2 () s_state (! s_Exclusive :next s_Exclusive_next))
+; source symbol: Empty1
+(define-fun link_3 () s_msg1 (! s_Empty1 :next s_Empty1_next))
+; source symbol: Reqs
+(define-fun link_4 () s_msg1 (! s_Reqs :next s_Reqs_next))
+; source symbol: Reqe
+(define-fun link_5 () s_msg1 (! s_Reqe :next s_Reqe_next))
+; source symbol: Empty2
+(define-fun link_6 () s_msg2 (! s_Empty2 :next s_Empty2_next))
+; source symbol: Inv
+(define-fun link_7 () s_msg2 (! s_Inv :next s_Inv_next))
+; source symbol: Gnts
+(define-fun link_8 () s_msg2 (! s_Gnts :next s_Gnts_next))
+; source symbol: Gnte
+(define-fun link_9 () s_msg2 (! s_Gnte :next s_Gnte_next))
+; source symbol: Empty3
+(define-fun link_10 () s_msg3 (! s_Empty3 :next s_Empty3_next))
+; source symbol: Invack
+(define-fun link_11 () s_msg3 (! s_Invack :next s_Invack_next))
+; source symbol: Exgntd
+(define-fun link_12 () Bool (! s_Exgntd :next s_Exgntd_next))
+; source symbol: Curcmd
+(define-fun link_13 () s_msg1 (! s_Curcmd :next s_Curcmd_next))
+; source symbol: Flag
+(define-fun link_14 () Bool (! s_Flag :next s_Flag_next))
+; source symbol: Cache
+(define-fun link_15 () (Array Proc s_state) (! s_Cache :next s_Cache_next))
+; source symbol: Chan1
+(define-fun link_16 () (Array Proc s_msg1) (! s_Chan1 :next s_Chan1_next))
+; source symbol: Chan2
+(define-fun link_17 () (Array Proc s_msg2) (! s_Chan2 :next s_Chan2_next))
+; source symbol: Chan3
+(define-fun link_18 () (Array Proc s_msg3) (! s_Chan3 :next s_Chan3_next))
+; source symbol: Curptr
+(define-fun link_19 () (Array Proc Bool) (! s_Curptr :next s_Curptr_next))
+; source symbol: Shrset
+(define-fun link_20 () (Array Proc Bool) (! s_Shrset :next s_Shrset_next))
+; source symbol: Invset
+(define-fun link_21 () (Array Proc Bool) (! s_Invset :next s_Invset_next))
+; action: t1
+(define-fun action_0 () Bool
+  (exists ((q_8_s_x Proc))
+    (and
+      (and
+        (= s_Curcmd s_Reqs)
+        (and
+          (= s_Exgntd false)
+          (and
+            (= (select s_Chan2 q_8_s_x) s_Empty2)
+            (and (= (select s_Curptr q_8_s_x) true) (= s_Flag false)))))
+      (= s_Curcmd_next s_Empty1)
+      (forall ((q_9_s_j Proc))
+        (= (select s_Chan2_next q_9_s_j) (ite (= q_9_s_j q_8_s_x) s_Gnts (select s_Chan2 q_9_s_j))))
+      (forall ((q_10_s_j Proc))
+        (=
+          (select s_Shrset_next q_10_s_j)
+          (ite (= q_10_s_j q_8_s_x) true (select s_Shrset q_10_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Invset_next s_Invset))))
+; action: t2
+(define-fun action_1 () Bool
+  (exists ((q_11_s_x Proc))
+    (and
+      (and
+        (= (select s_Shrset q_11_s_x) false)
+        (and
+          (= s_Curcmd s_Reqe)
+          (and
+            (= (select s_Chan2 q_11_s_x) s_Empty2)
+            (and
+              (= (select s_Curptr q_11_s_x) true)
+              (and
+                (= s_Flag false)
+                (forall ((q_12_s_j Proc))
+                  (=> (not (= q_12_s_j q_11_s_x)) (= (select s_Shrset q_12_s_j) false))))))))
+      (= s_Curcmd_next s_Empty1)
+      (= s_Exgntd_next true)
+      (forall ((q_13_s_j Proc))
+        (=
+          (select s_Chan2_next q_13_s_j)
+          (ite (= q_13_s_j q_11_s_x) s_Gnte (select s_Chan2 q_13_s_j))))
+      (forall ((q_14_s_j Proc))
+        (=
+          (select s_Shrset_next q_14_s_j)
+          (ite (= q_14_s_j q_11_s_x) true (select s_Shrset q_14_s_j))))
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Invset_next s_Invset))))
+; action: t3
+(define-fun action_2 () Bool
+  (exists ((q_15_s_x Proc))
+    (and
+      (and (= s_Curcmd s_Empty1) (and (= (select s_Chan1 q_15_s_x) s_Reqs) (= s_Flag false)))
+      (= s_Flag_next true)
+      (forall ((q_16_s_j Proc)) (= (select s_Invset_next q_16_s_j) (select s_Shrset q_16_s_j)))
+      (= s_Curcmd_next s_Reqs)
+      (forall ((q_17_s_j Proc))
+        (=
+          (select s_Chan1_next q_17_s_j)
+          (ite (= q_17_s_j q_15_s_x) s_Empty1 (select s_Chan1 q_17_s_j))))
+      (forall ((q_18_s_j Proc))
+        (= (select s_Curptr_next q_18_s_j) (ite (= q_18_s_j q_15_s_x) true false)))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Cache_next s_Cache)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Shrset_next s_Shrset))))
+; action: t3bis
+(define-fun action_3 () Bool
+  (exists ((q_19_s_x Proc))
+    (and
+      (and (= s_Curcmd s_Empty1) (and (= (select s_Chan1 q_19_s_x) s_Reqe) (= s_Flag false)))
+      (= s_Flag_next true)
+      (forall ((q_20_s_j Proc)) (= (select s_Invset_next q_20_s_j) (select s_Shrset q_20_s_j)))
+      (= s_Curcmd_next s_Reqe)
+      (forall ((q_21_s_j Proc))
+        (=
+          (select s_Chan1_next q_21_s_j)
+          (ite (= q_21_s_j q_19_s_x) s_Empty1 (select s_Chan1 q_21_s_j))))
+      (forall ((q_22_s_j Proc))
+        (= (select s_Curptr_next q_22_s_j) (ite (= q_22_s_j q_19_s_x) true false)))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Cache_next s_Cache)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Shrset_next s_Shrset))))
+; action: t4
+(define-fun action_4 () Bool
+  (exists ((q_23_s_x Proc))
+    (and
+      (and (= s_Flag true) (= (select s_Shrset q_23_s_x) false))
+      (forall ((q_24_s_j Proc))
+        (=
+          (select s_Invset_next q_24_s_j)
+          (ite (= q_24_s_j q_23_s_x) false (select s_Invset q_24_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset))))
+; action: t5
+(define-fun action_5 () Bool
+  (exists ((q_25_s_x Proc))
+    (and
+      (and (= s_Flag true) (= (select s_Shrset q_25_s_x) true))
+      (forall ((q_26_s_j Proc))
+        (=
+          (select s_Invset_next q_26_s_j)
+          (ite (= q_26_s_j q_25_s_x) true (select s_Invset q_26_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset))))
+; action: t6
+(define-fun action_6 () Bool
+  (exists ((q_27_s_x Proc))
+    (and
+      (and
+        (= s_Flag true)
+        (and
+          (= (select s_Invset q_27_s_x) (select s_Shrset q_27_s_x))
+          (forall ((q_28_s_j Proc))
+            (=>
+              (not (= q_28_s_j q_27_s_x))
+              (= (select s_Invset q_28_s_j) (select s_Shrset q_28_s_j))))))
+      (= s_Flag_next false)
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset)
+      (= s_Invset_next s_Invset))))
+; action: t7
+(define-fun action_7 () Bool
+  (exists ((q_29_s_x Proc))
+    (and
+      (and
+        (= s_Curcmd s_Reqs)
+        (and
+          (= s_Exgntd true)
+          (and
+            (= (select s_Invset q_29_s_x) true)
+            (and (= (select s_Chan2 q_29_s_x) s_Empty2) (= s_Flag false)))))
+      (forall ((q_30_s_j Proc))
+        (=
+          (select s_Chan2_next q_30_s_j)
+          (ite (= q_30_s_j q_29_s_x) s_Inv (select s_Chan2 q_30_s_j))))
+      (forall ((q_31_s_j Proc))
+        (=
+          (select s_Invset_next q_31_s_j)
+          (ite (= q_31_s_j q_29_s_x) false (select s_Invset q_31_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset))))
+; action: t8
+(define-fun action_8 () Bool
+  (exists ((q_32_s_x Proc))
+    (and
+      (and
+        (= s_Curcmd s_Reqe)
+        (and
+          (= (select s_Invset q_32_s_x) true)
+          (and (= (select s_Chan2 q_32_s_x) s_Empty2) (= s_Flag false))))
+      (forall ((q_33_s_j Proc))
+        (=
+          (select s_Chan2_next q_33_s_j)
+          (ite (= q_33_s_j q_32_s_x) s_Inv (select s_Chan2 q_33_s_j))))
+      (forall ((q_34_s_j Proc))
+        (=
+          (select s_Invset_next q_34_s_j)
+          (ite (= q_34_s_j q_32_s_x) false (select s_Invset q_34_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset))))
+; action: t9
+(define-fun action_9 () Bool
+  (exists ((q_35_s_x Proc))
+    (and
+      (and
+        (not (= s_Curcmd s_Empty1))
+        (and (= (select s_Chan3 q_35_s_x) s_Invack) (= s_Flag false)))
+      (= s_Exgntd_next false)
+      (forall ((q_36_s_j Proc))
+        (=
+          (select s_Chan3_next q_36_s_j)
+          (ite (= q_36_s_j q_35_s_x) s_Empty3 (select s_Chan3 q_36_s_j))))
+      (forall ((q_37_s_j Proc))
+        (=
+          (select s_Shrset_next q_37_s_j)
+          (ite (= q_37_s_j q_35_s_x) false (select s_Shrset q_37_s_j))))
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan2_next s_Chan2)
+      (= s_Curptr_next s_Curptr)
+      (= s_Invset_next s_Invset))))
+; action: t10
+(define-fun action_10 () Bool
+  (exists ((q_38_s_x Proc))
+    (and
+      (and
+        (= (select s_Cache q_38_s_x) s_Invalid)
+        (and (= (select s_Chan1 q_38_s_x) s_Empty1) (= s_Flag false)))
+      (forall ((q_39_s_j Proc))
+        (=
+          (select s_Cache_next q_39_s_j)
+          (ite (= q_39_s_j q_38_s_x) s_Invalid (select s_Cache q_39_s_j))))
+      (forall ((q_40_s_j Proc))
+        (=
+          (select s_Chan1_next q_40_s_j)
+          (ite (= q_40_s_j q_38_s_x) s_Reqs (select s_Chan1 q_40_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset)
+      (= s_Invset_next s_Invset))))
+; action: t11
+(define-fun action_11 () Bool
+  (exists ((q_41_s_x Proc))
+    (and
+      (and
+        (not (= (select s_Cache q_41_s_x) s_Exclusive))
+        (and (= (select s_Chan1 q_41_s_x) s_Empty1) (= s_Flag false)))
+      (forall ((q_42_s_j Proc))
+        (=
+          (select s_Chan1_next q_42_s_j)
+          (ite (= q_42_s_j q_41_s_x) s_Reqe (select s_Chan1 q_42_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Cache_next s_Cache)
+      (= s_Chan2_next s_Chan2)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset)
+      (= s_Invset_next s_Invset))))
+; action: t12
+(define-fun action_12 () Bool
+  (exists ((q_43_s_x Proc))
+    (and
+      (and
+        (= (select s_Chan2 q_43_s_x) s_Inv)
+        (and (= (select s_Chan3 q_43_s_x) s_Empty3) (= s_Flag false)))
+      (forall ((q_44_s_j Proc))
+        (=
+          (select s_Cache_next q_44_s_j)
+          (ite (= q_44_s_j q_43_s_x) s_Invalid (select s_Cache q_44_s_j))))
+      (forall ((q_45_s_j Proc))
+        (=
+          (select s_Chan2_next q_45_s_j)
+          (ite (= q_45_s_j q_43_s_x) s_Empty2 (select s_Chan2 q_45_s_j))))
+      (forall ((q_46_s_j Proc))
+        (=
+          (select s_Chan3_next q_46_s_j)
+          (ite (= q_46_s_j q_43_s_x) s_Invack (select s_Chan3 q_46_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Chan1_next s_Chan1)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset)
+      (= s_Invset_next s_Invset))))
+; action: t13
+(define-fun action_13 () Bool
+  (exists ((q_47_s_x Proc))
+    (and
+      (and (= (select s_Chan2 q_47_s_x) s_Gnts) (= s_Flag false))
+      (forall ((q_48_s_j Proc))
+        (=
+          (select s_Cache_next q_48_s_j)
+          (ite (= q_48_s_j q_47_s_x) s_Shared (select s_Cache q_48_s_j))))
+      (forall ((q_49_s_j Proc))
+        (=
+          (select s_Chan2_next q_49_s_j)
+          (ite (= q_49_s_j q_47_s_x) s_Empty2 (select s_Chan2 q_49_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset)
+      (= s_Invset_next s_Invset))))
+; action: t14
+(define-fun action_14 () Bool
+  (exists ((q_50_s_x Proc))
+    (and
+      (and (= (select s_Chan2 q_50_s_x) s_Gnte) (= s_Flag false))
+      (forall ((q_51_s_j Proc))
+        (=
+          (select s_Cache_next q_51_s_j)
+          (ite (= q_51_s_j q_50_s_x) s_Exclusive (select s_Cache q_51_s_j))))
+      (forall ((q_52_s_j Proc))
+        (=
+          (select s_Chan2_next q_52_s_j)
+          (ite (= q_52_s_j q_50_s_x) s_Empty2 (select s_Chan2 q_52_s_j))))
+      (= s_Exgntd_next s_Exgntd)
+      (= s_Curcmd_next s_Curcmd)
+      (= s_Flag_next s_Flag)
+      (= s_Chan1_next s_Chan1)
+      (= s_Chan3_next s_Chan3)
+      (= s_Curptr_next s_Curptr)
+      (= s_Shrset_next s_Shrset)
+      (= s_Invset_next s_Invset))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_5_s_z Proc))
+        (and
+          (= (select s_Cache q_5_s_z) s_Invalid)
+          (and
+            (= (select s_Chan1 q_5_s_z) s_Empty1)
+            (and
+              (= (select s_Chan2 q_5_s_z) s_Empty2)
+              (and
+                (= (select s_Chan3 q_5_s_z) s_Empty3)
+                (and
+                  (= (select s_Curptr q_5_s_z) false)
+                  (and
+                    (= (select s_Shrset q_5_s_z) false)
+                    (and
+                      (= (select s_Invset q_5_s_z) false)
+                      (and (= s_Exgntd false) (and (= s_Curcmd s_Empty1) (= s_Flag false)))))))))))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Invalid) (= q_1_s_enum s_Shared) (= q_1_s_enum s_Exclusive)))
+      (and (not (= s_Empty1 s_Reqs)) (not (= s_Empty1 s_Reqe)) (not (= s_Reqs s_Reqe)))
+      (forall ((q_2_s_enum s_msg1))
+        (or (= q_2_s_enum s_Empty1) (= q_2_s_enum s_Reqs) (= q_2_s_enum s_Reqe)))
+      (and
+        (not (= s_Empty2 s_Inv))
+        (not (= s_Empty2 s_Gnts))
+        (not (= s_Empty2 s_Gnte))
+        (not (= s_Inv s_Gnts))
+        (not (= s_Inv s_Gnte))
+        (not (= s_Gnts s_Gnte)))
+      (forall ((q_3_s_enum s_msg2))
+        (or
+          (= q_3_s_enum s_Empty2)
+          (= q_3_s_enum s_Inv)
+          (= q_3_s_enum s_Gnts)
+          (= q_3_s_enum s_Gnte)))
+      (not (= s_Empty3 s_Invack))
+      (forall ((q_4_s_enum s_msg3)) (or (= q_4_s_enum s_Empty3) (= q_4_s_enum s_Invack))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or
+        action_0
+        action_1
+        action_2
+        action_3
+        action_4
+        action_5
+        action_6
+        action_7
+        action_8
+        action_9
+        action_10
+        action_11
+        action_12
+        action_13
+        action_14)
+      (= s_Invalid_next s_Invalid)
+      (= s_Shared_next s_Shared)
+      (= s_Exclusive_next s_Exclusive)
+      (= s_Empty1_next s_Empty1)
+      (= s_Reqs_next s_Reqs)
+      (= s_Reqe_next s_Reqe)
+      (= s_Empty2_next s_Empty2)
+      (= s_Inv_next s_Inv)
+      (= s_Gnts_next s_Gnts)
+      (= s_Gnte_next s_Gnte)
+      (= s_Empty3_next s_Empty3)
+      (= s_Invack_next s_Invack)
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Invalid) (= q_1_s_enum s_Shared) (= q_1_s_enum s_Exclusive)))
+      (and (not (= s_Empty1 s_Reqs)) (not (= s_Empty1 s_Reqe)) (not (= s_Reqs s_Reqe)))
+      (forall ((q_2_s_enum s_msg1))
+        (or (= q_2_s_enum s_Empty1) (= q_2_s_enum s_Reqs) (= q_2_s_enum s_Reqe)))
+      (and
+        (not (= s_Empty2 s_Inv))
+        (not (= s_Empty2 s_Gnts))
+        (not (= s_Empty2 s_Gnte))
+        (not (= s_Inv s_Gnts))
+        (not (= s_Inv s_Gnte))
+        (not (= s_Gnts s_Gnte)))
+      (forall ((q_3_s_enum s_msg2))
+        (or
+          (= q_3_s_enum s_Empty2)
+          (= q_3_s_enum s_Inv)
+          (= q_3_s_enum s_Gnts)
+          (= q_3_s_enum s_Gnte)))
+      (not (= s_Empty3 s_Invack))
+      (forall ((q_4_s_enum s_msg3)) (or (= q_4_s_enum s_Empty3) (= q_4_s_enum s_Invack)))
+      (and
+        (not (= s_Invalid s_Shared))
+        (not (= s_Invalid s_Exclusive))
+        (not (= s_Shared s_Exclusive)))
+      (forall ((q_1_s_enum s_state))
+        (or (= q_1_s_enum s_Invalid) (= q_1_s_enum s_Shared) (= q_1_s_enum s_Exclusive)))
+      (and (not (= s_Empty1 s_Reqs)) (not (= s_Empty1 s_Reqe)) (not (= s_Reqs s_Reqe)))
+      (forall ((q_2_s_enum s_msg1))
+        (or (= q_2_s_enum s_Empty1) (= q_2_s_enum s_Reqs) (= q_2_s_enum s_Reqe)))
+      (and
+        (not (= s_Empty2 s_Inv))
+        (not (= s_Empty2 s_Gnts))
+        (not (= s_Empty2 s_Gnte))
+        (not (= s_Inv s_Gnts))
+        (not (= s_Inv s_Gnte))
+        (not (= s_Gnts s_Gnte)))
+      (forall ((q_3_s_enum s_msg2))
+        (or
+          (= q_3_s_enum s_Empty2)
+          (= q_3_s_enum s_Inv)
+          (= q_3_s_enum s_Gnts)
+          (= q_3_s_enum s_Gnte)))
+      (not (= s_Empty3 s_Invack))
+      (forall ((q_4_s_enum s_msg3)) (or (= q_4_s_enum s_Empty3) (= q_4_s_enum s_Invack))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_6_s_z1 Proc) (q_7_s_z2 Proc))
+      (=>
+        (not (= q_6_s_z1 q_7_s_z2))
+        (not
+          (and
+            (= (select s_Cache q_6_s_z1) s_Exclusive)
+            (not (= (select s_Cache q_7_s_z2) s_Invalid))))))
+    :invar-property
+    0))

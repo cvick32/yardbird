@@ -1,0 +1,65 @@
+; Generated offline from mypyvy/examples/fbii/toy_examples/dealer_two_players.pyv
+; Source SHA-256: 71eb18892b0e609fd90fca3fbb2fd4f1f377bbad3846c0f28d4f248c8d694017
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_T 0)
+(declare-fun s_a () (Array s_T Bool))
+(declare-fun s_a_next () (Array s_T Bool))
+(declare-fun s_d () (Array s_T Bool))
+(declare-fun s_d_next () (Array s_T Bool))
+(declare-fun s_p1 () (Array s_T Bool))
+(declare-fun s_p1_next () (Array s_T Bool))
+(declare-fun s_p2 () (Array s_T Bool))
+(declare-fun s_p2_next () (Array s_T Bool))
+; source symbol: a
+(define-fun link_0 () (Array s_T Bool) (! s_a :next s_a_next))
+; source symbol: d
+(define-fun link_1 () (Array s_T Bool) (! s_d :next s_d_next))
+; source symbol: p1
+(define-fun link_2 () (Array s_T Bool) (! s_p1 :next s_p1_next))
+; source symbol: p2
+(define-fun link_3 () (Array s_T Bool) (! s_p2 :next s_p2_next))
+; action: active_pass
+(define-fun action_0 () Bool
+  (exists ((q_2_s_x s_T) (q_3_s_y s_T))
+    (and
+      (and
+        (select s_a q_2_s_x)
+        (select s_d q_2_s_x)
+        (forall ((q_4_s_X s_T))
+          (= (select s_d_next q_4_s_X) (and (select s_d q_4_s_X) (not (= q_4_s_X q_2_s_x)))))
+        (forall ((q_5_s_Y s_T))
+          (= (select s_p1_next q_5_s_Y) (or (select s_p1 q_5_s_Y) (= q_5_s_Y q_3_s_y)))))
+      (forall ((q_6_s_x0 s_T)) (= (select s_p2_next q_6_s_x0) (select s_p2 q_6_s_x0))))))
+; action: player_pass
+(define-fun action_1 () Bool
+  (exists ((q_7_s_x s_T))
+    (and
+      (and
+        (select s_p1 q_7_s_x)
+        (forall ((q_8_s_X s_T))
+          (= (select s_p1_next q_8_s_X) (and (select s_p1 q_8_s_X) (not (= q_8_s_X q_7_s_x)))))
+        (forall ((q_9_s_X s_T))
+          (= (select s_p2_next q_9_s_X) (or (select s_p2 q_9_s_X) (= q_9_s_X q_7_s_x)))))
+      (forall ((q_10_s_x0 s_T)) (= (select s_d_next q_10_s_x0) (select s_d q_10_s_x0))))))
+; action: inactive_deal
+(define-fun action_2 () Bool
+  (exists ((q_11_s_x s_T))
+    (and
+      (and
+        (not (select s_a q_11_s_x))
+        (forall ((q_12_s_X s_T))
+          (= (select s_d_next q_12_s_X) (or (select s_d q_12_s_X) (= q_12_s_X q_11_s_x)))))
+      (forall ((q_13_s_x0 s_T)) (= (select s_p1_next q_13_s_x0) (select s_p1 q_13_s_x0)))
+      (forall ((q_14_s_x0 s_T)) (= (select s_p2_next q_14_s_x0) (select s_p2 q_14_s_x0))))))
+(define-fun init () Bool (! (forall ((q_1_s_X s_T)) (not (select s_p2 q_1_s_X))) :init true))
+(define-fun trans () Bool (! (and (or action_0 action_1 action_2) (= s_a_next s_a)) :trans true))
+(define-fun property () Bool
+  (!
+    (exists ((q_15_s_X s_T))
+      (=>
+        (select s_d q_15_s_X)
+        (forall ((q_16_s_Y s_T)) (or (not (select s_p1 q_16_s_Y)) (not (select s_p2 q_16_s_Y))))))
+    :invar-property
+    0))

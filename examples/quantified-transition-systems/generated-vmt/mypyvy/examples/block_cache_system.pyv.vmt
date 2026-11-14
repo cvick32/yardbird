@@ -1,0 +1,1702 @@
+; Generated offline from mypyvy/examples/block_cache_system.pyv
+; Source SHA-256: 169a86aff9f63b45771f84050a0c4ac49669fb7b3c9dfa45374670fd3ff5756a
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Auxiliary strengthening invariants are not assumed. Trace/theorem commands are not transition constraints.
+(declare-sort s_node 0)
+(declare-sort s_ref 0)
+(declare-sort s_location 0)
+(declare-sort s_req_5f_id 0)
+(declare-fun s_spec_5f_ephemeral () (Array s_ref (Array s_node Bool)))
+(declare-fun s_spec_5f_ephemeral_next () (Array s_ref (Array s_node Bool)))
+(declare-fun s_spec_5f_frozen () (Array s_ref (Array s_node Bool)))
+(declare-fun s_spec_5f_frozen_next () (Array s_ref (Array s_node Bool)))
+(declare-fun s_spec_5f_persistent () (Array s_ref (Array s_node Bool)))
+(declare-fun s_spec_5f_persistent_next () (Array s_ref (Array s_node Bool)))
+(declare-fun s_spec_5f_sync_5f_in_5f_progress () Bool)
+(declare-fun s_spec_5f_sync_5f_in_5f_progress_next () Bool)
+(declare-fun s_disk_5f_indirection_5f_tables () (Array s_location (Array s_ref (Array s_location Bool))))
+(declare-fun s_disk_5f_indirection_5f_tables_next () (Array s_location (Array s_ref (Array s_location Bool))))
+(declare-fun s_disk_5f_nodes () (Array s_location (Array s_node Bool)))
+(declare-fun s_disk_5f_nodes_next () (Array s_location (Array s_node Bool)))
+(declare-fun s_disk_5f_req_5f_write_5f_indirection_5f_tables () (Array s_req_5f_id (Array s_location Bool)))
+(declare-fun s_disk_5f_req_5f_write_5f_indirection_5f_tables_next () (Array s_req_5f_id (Array s_location Bool)))
+(declare-fun s_disk_5f_req_5f_write_5f_nodes () (Array s_req_5f_id (Array s_location Bool)))
+(declare-fun s_disk_5f_req_5f_write_5f_nodes_next () (Array s_req_5f_id (Array s_location Bool)))
+(declare-fun s_disk_5f_req_5f_read_5f_nodes () (Array s_req_5f_id (Array s_location Bool)))
+(declare-fun s_disk_5f_req_5f_read_5f_nodes_next () (Array s_req_5f_id (Array s_location Bool)))
+(declare-fun s_cache () (Array s_ref (Array s_node Bool)))
+(declare-fun s_cache_next () (Array s_ref (Array s_node Bool)))
+(declare-fun s_ephemeral_5f_clean () (Array s_ref (Array s_location Bool)))
+(declare-fun s_ephemeral_5f_clean_next () (Array s_ref (Array s_location Bool)))
+(declare-fun s_ephemeral_5f_dirty () (Array s_ref Bool))
+(declare-fun s_ephemeral_5f_dirty_next () (Array s_ref Bool))
+(declare-fun s_frozen_5f_clean () (Array s_ref (Array s_location Bool)))
+(declare-fun s_frozen_5f_clean_next () (Array s_ref (Array s_location Bool)))
+(declare-fun s_frozen_5f_dirty () (Array s_ref Bool))
+(declare-fun s_frozen_5f_dirty_next () (Array s_ref Bool))
+(declare-fun s_persistent () (Array s_ref (Array s_location Bool)))
+(declare-fun s_persistent_next () (Array s_ref (Array s_location Bool)))
+(declare-fun s_sync_5f_in_5f_progress () Bool)
+(declare-fun s_sync_5f_in_5f_progress_next () Bool)
+(declare-fun s_persistent_5f_indirection_5f_table_5f_loc () s_location)
+(declare-fun s_persistent_5f_indirection_5f_table_5f_loc_next () s_location)
+(declare-fun s_frozen_5f_indirection_5f_table_5f_loc () s_location)
+(declare-fun s_frozen_5f_indirection_5f_table_5f_loc_next () s_location)
+(declare-fun s_frozen_5f_indirection_5f_table_5f_loc_5f_some () Bool)
+(declare-fun s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next () Bool)
+(declare-fun s_outstanding_5f_indirection_5f_table_5f_write () (Array s_req_5f_id Bool))
+(declare-fun s_outstanding_5f_indirection_5f_table_5f_write_next () (Array s_req_5f_id Bool))
+(declare-fun s_outstanding_5f_block_5f_writes () (Array s_req_5f_id (Array s_ref (Array s_location Bool))))
+(declare-fun s_outstanding_5f_block_5f_writes_next () (Array s_req_5f_id (Array s_ref (Array s_location Bool))))
+(declare-fun s_outstanding_5f_block_5f_reads () (Array s_req_5f_id (Array s_ref Bool)))
+(declare-fun s_outstanding_5f_block_5f_reads_next () (Array s_req_5f_id (Array s_ref Bool)))
+; source symbol: spec_ephemeral
+(define-fun link_0 () (Array s_ref (Array s_node Bool)) (! s_spec_5f_ephemeral :next s_spec_5f_ephemeral_next))
+; source symbol: spec_frozen
+(define-fun link_1 () (Array s_ref (Array s_node Bool)) (! s_spec_5f_frozen :next s_spec_5f_frozen_next))
+; source symbol: spec_persistent
+(define-fun link_2 () (Array s_ref (Array s_node Bool)) (! s_spec_5f_persistent :next s_spec_5f_persistent_next))
+; source symbol: spec_sync_in_progress
+(define-fun link_3 () Bool (! s_spec_5f_sync_5f_in_5f_progress :next s_spec_5f_sync_5f_in_5f_progress_next))
+; source symbol: disk_indirection_tables
+(define-fun link_4 () (Array s_location (Array s_ref (Array s_location Bool))) (! s_disk_5f_indirection_5f_tables :next s_disk_5f_indirection_5f_tables_next))
+; source symbol: disk_nodes
+(define-fun link_5 () (Array s_location (Array s_node Bool)) (! s_disk_5f_nodes :next s_disk_5f_nodes_next))
+; source symbol: disk_req_write_indirection_tables
+(define-fun link_6 () (Array s_req_5f_id (Array s_location Bool)) (! s_disk_5f_req_5f_write_5f_indirection_5f_tables :next s_disk_5f_req_5f_write_5f_indirection_5f_tables_next))
+; source symbol: disk_req_write_nodes
+(define-fun link_7 () (Array s_req_5f_id (Array s_location Bool)) (! s_disk_5f_req_5f_write_5f_nodes :next s_disk_5f_req_5f_write_5f_nodes_next))
+; source symbol: disk_req_read_nodes
+(define-fun link_8 () (Array s_req_5f_id (Array s_location Bool)) (! s_disk_5f_req_5f_read_5f_nodes :next s_disk_5f_req_5f_read_5f_nodes_next))
+; source symbol: cache
+(define-fun link_9 () (Array s_ref (Array s_node Bool)) (! s_cache :next s_cache_next))
+; source symbol: ephemeral_clean
+(define-fun link_10 () (Array s_ref (Array s_location Bool)) (! s_ephemeral_5f_clean :next s_ephemeral_5f_clean_next))
+; source symbol: ephemeral_dirty
+(define-fun link_11 () (Array s_ref Bool) (! s_ephemeral_5f_dirty :next s_ephemeral_5f_dirty_next))
+; source symbol: frozen_clean
+(define-fun link_12 () (Array s_ref (Array s_location Bool)) (! s_frozen_5f_clean :next s_frozen_5f_clean_next))
+; source symbol: frozen_dirty
+(define-fun link_13 () (Array s_ref Bool) (! s_frozen_5f_dirty :next s_frozen_5f_dirty_next))
+; source symbol: persistent
+(define-fun link_14 () (Array s_ref (Array s_location Bool)) (! s_persistent :next s_persistent_next))
+; source symbol: sync_in_progress
+(define-fun link_15 () Bool (! s_sync_5f_in_5f_progress :next s_sync_5f_in_5f_progress_next))
+; source symbol: persistent_indirection_table_loc
+(define-fun link_16 () s_location (! s_persistent_5f_indirection_5f_table_5f_loc :next s_persistent_5f_indirection_5f_table_5f_loc_next))
+; source symbol: frozen_indirection_table_loc
+(define-fun link_17 () s_location (! s_frozen_5f_indirection_5f_table_5f_loc :next s_frozen_5f_indirection_5f_table_5f_loc_next))
+; source symbol: frozen_indirection_table_loc_some
+(define-fun link_18 () Bool (! s_frozen_5f_indirection_5f_table_5f_loc_5f_some :next s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next))
+; source symbol: outstanding_indirection_table_write
+(define-fun link_19 () (Array s_req_5f_id Bool) (! s_outstanding_5f_indirection_5f_table_5f_write :next s_outstanding_5f_indirection_5f_table_5f_write_next))
+; source symbol: outstanding_block_writes
+(define-fun link_20 () (Array s_req_5f_id (Array s_ref (Array s_location Bool))) (! s_outstanding_5f_block_5f_writes :next s_outstanding_5f_block_5f_writes_next))
+; source symbol: outstanding_block_reads
+(define-fun link_21 () (Array s_req_5f_id (Array s_ref Bool)) (! s_outstanding_5f_block_5f_reads :next s_outstanding_5f_block_5f_reads_next))
+; action: freeze
+(define-fun action_0 () Bool
+  (and
+    (and
+      (forall ((q_34_s_I s_req_5f_id))
+        (not (select s_outstanding_5f_indirection_5f_table_5f_write q_34_s_I)))
+      (forall ((q_35_s_R s_ref) (q_36_s_L s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_35_s_R) q_36_s_L)
+          (select (select s_ephemeral_5f_clean q_35_s_R) q_36_s_L)))
+      (forall ((q_37_s_R s_ref))
+        (= (select s_frozen_5f_dirty_next q_37_s_R) (select s_ephemeral_5f_dirty q_37_s_R)))
+      s_sync_5f_in_5f_progress_next
+      (not s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next)
+      (forall ((q_38_s_R s_ref) (q_39_s_N s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_38_s_R) q_39_s_N)
+          (select (select s_spec_5f_ephemeral q_38_s_R) q_39_s_N)))
+      s_spec_5f_sync_5f_in_5f_progress_next)
+    (forall ((q_40_s_x0 s_ref) (q_41_s_x1 s_node))
+      (=
+        (select (select s_spec_5f_ephemeral_next q_40_s_x0) q_41_s_x1)
+        (select (select s_spec_5f_ephemeral q_40_s_x0) q_41_s_x1)))
+    (forall ((q_42_s_x0 s_ref) (q_43_s_x1 s_node))
+      (=
+        (select (select s_spec_5f_persistent_next q_42_s_x0) q_43_s_x1)
+        (select (select s_spec_5f_persistent q_42_s_x0) q_43_s_x1)))
+    (forall ((q_44_s_x0 s_location) (q_45_s_x1 s_ref) (q_46_s_x2 s_location))
+      (=
+        (select
+          (select (select s_disk_5f_indirection_5f_tables_next q_44_s_x0) q_45_s_x1)
+          q_46_s_x2)
+        (select (select (select s_disk_5f_indirection_5f_tables q_44_s_x0) q_45_s_x1) q_46_s_x2)))
+    (forall ((q_47_s_x0 s_location) (q_48_s_x1 s_node))
+      (=
+        (select (select s_disk_5f_nodes_next q_47_s_x0) q_48_s_x1)
+        (select (select s_disk_5f_nodes q_47_s_x0) q_48_s_x1)))
+    (forall ((q_49_s_x0 s_req_5f_id) (q_50_s_x1 s_location))
+      (=
+        (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_49_s_x0) q_50_s_x1)
+        (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_49_s_x0) q_50_s_x1)))
+    (forall ((q_51_s_x0 s_req_5f_id) (q_52_s_x1 s_location))
+      (=
+        (select (select s_disk_5f_req_5f_write_5f_nodes_next q_51_s_x0) q_52_s_x1)
+        (select (select s_disk_5f_req_5f_write_5f_nodes q_51_s_x0) q_52_s_x1)))
+    (forall ((q_53_s_x0 s_req_5f_id) (q_54_s_x1 s_location))
+      (=
+        (select (select s_disk_5f_req_5f_read_5f_nodes_next q_53_s_x0) q_54_s_x1)
+        (select (select s_disk_5f_req_5f_read_5f_nodes q_53_s_x0) q_54_s_x1)))
+    (forall ((q_55_s_x0 s_ref) (q_56_s_x1 s_node))
+      (=
+        (select (select s_cache_next q_55_s_x0) q_56_s_x1)
+        (select (select s_cache q_55_s_x0) q_56_s_x1)))
+    (forall ((q_57_s_x0 s_ref) (q_58_s_x1 s_location))
+      (=
+        (select (select s_ephemeral_5f_clean_next q_57_s_x0) q_58_s_x1)
+        (select (select s_ephemeral_5f_clean q_57_s_x0) q_58_s_x1)))
+    (forall ((q_59_s_x0 s_ref))
+      (= (select s_ephemeral_5f_dirty_next q_59_s_x0) (select s_ephemeral_5f_dirty q_59_s_x0)))
+    (forall ((q_60_s_x0 s_ref) (q_61_s_x1 s_location))
+      (=
+        (select (select s_persistent_next q_60_s_x0) q_61_s_x1)
+        (select (select s_persistent q_60_s_x0) q_61_s_x1)))
+    (forall ((q_62_s_x0 s_req_5f_id))
+      (=
+        (select s_outstanding_5f_indirection_5f_table_5f_write_next q_62_s_x0)
+        (select s_outstanding_5f_indirection_5f_table_5f_write q_62_s_x0)))
+    (forall ((q_63_s_x0 s_req_5f_id) (q_64_s_x1 s_ref) (q_65_s_x2 s_location))
+      (=
+        (select
+          (select (select s_outstanding_5f_block_5f_writes_next q_63_s_x0) q_64_s_x1)
+          q_65_s_x2)
+        (select (select (select s_outstanding_5f_block_5f_writes q_63_s_x0) q_64_s_x1) q_65_s_x2)))
+    (forall ((q_66_s_x0 s_req_5f_id) (q_67_s_x1 s_ref))
+      (=
+        (select (select s_outstanding_5f_block_5f_reads_next q_66_s_x0) q_67_s_x1)
+        (select (select s_outstanding_5f_block_5f_reads q_66_s_x0) q_67_s_x1)))
+    (= s_persistent_5f_indirection_5f_table_5f_loc_next s_persistent_5f_indirection_5f_table_5f_loc)
+    (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc)))
+; action: write_back_indirection_table_req
+(define-fun action_1 () Bool
+  (exists ((q_68_s_i s_req_5f_id) (q_69_s_l s_location))
+    (and
+      (and
+        s_sync_5f_in_5f_progress
+        (forall ((q_70_s_R s_ref)) (not (select s_frozen_5f_dirty q_70_s_R)))
+        (not s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+        (not (= q_69_s_l s_persistent_5f_indirection_5f_table_5f_loc))
+        (forall ((q_71_s_I s_req_5f_id) (q_72_s_R s_ref) (q_73_s_L s_location))
+          (not
+            (select (select (select s_outstanding_5f_block_5f_writes q_71_s_I) q_72_s_R) q_73_s_L)))
+        (forall ((q_74_s_L s_location))
+          (not (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_68_s_i) q_74_s_L)))
+        (forall ((q_75_s_L1 s_location) (q_76_s_R s_ref) (q_77_s_L2 s_location))
+          (=
+            (select
+              (select (select s_disk_5f_indirection_5f_tables_next q_75_s_L1) q_76_s_R)
+              q_77_s_L2)
+            (or
+              (and
+                (not (= q_75_s_L1 q_69_s_l))
+                (select
+                  (select (select s_disk_5f_indirection_5f_tables q_75_s_L1) q_76_s_R)
+                  q_77_s_L2))
+              (and (= q_75_s_L1 q_69_s_l) (select (select s_frozen_5f_clean q_76_s_R) q_77_s_L2)))))
+        (forall ((q_78_s_I s_req_5f_id) (q_79_s_L s_location))
+          (=
+            (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_78_s_I) q_79_s_L)
+            (or
+              (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_78_s_I) q_79_s_L)
+              (and (= q_78_s_I q_68_s_i) (= q_79_s_L q_69_s_l)))))
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        (= s_frozen_5f_indirection_5f_table_5f_loc_next q_69_s_l)
+        (forall ((q_80_s_I s_req_5f_id))
+          (=
+            (select s_outstanding_5f_indirection_5f_table_5f_write_next q_80_s_I)
+            (or
+              (select s_outstanding_5f_indirection_5f_table_5f_write q_80_s_I)
+              (= q_80_s_I q_68_s_i)))))
+      (forall ((q_81_s_x0 s_ref) (q_82_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_81_s_x0) q_82_s_x1)
+          (select (select s_spec_5f_ephemeral q_81_s_x0) q_82_s_x1)))
+      (forall ((q_83_s_x0 s_ref) (q_84_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_83_s_x0) q_84_s_x1)
+          (select (select s_spec_5f_frozen q_83_s_x0) q_84_s_x1)))
+      (forall ((q_85_s_x0 s_ref) (q_86_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_85_s_x0) q_86_s_x1)
+          (select (select s_spec_5f_persistent q_85_s_x0) q_86_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_87_s_x0 s_location) (q_88_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_87_s_x0) q_88_s_x1)
+          (select (select s_disk_5f_nodes q_87_s_x0) q_88_s_x1)))
+      (forall ((q_89_s_x0 s_req_5f_id) (q_90_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_89_s_x0) q_90_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_89_s_x0) q_90_s_x1)))
+      (forall ((q_91_s_x0 s_req_5f_id) (q_92_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_91_s_x0) q_92_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_91_s_x0) q_92_s_x1)))
+      (forall ((q_93_s_x0 s_ref) (q_94_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_93_s_x0) q_94_s_x1)
+          (select (select s_cache q_93_s_x0) q_94_s_x1)))
+      (forall ((q_95_s_x0 s_ref) (q_96_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_95_s_x0) q_96_s_x1)
+          (select (select s_ephemeral_5f_clean q_95_s_x0) q_96_s_x1)))
+      (forall ((q_97_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_97_s_x0) (select s_ephemeral_5f_dirty q_97_s_x0)))
+      (forall ((q_98_s_x0 s_ref) (q_99_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_98_s_x0) q_99_s_x1)
+          (select (select s_frozen_5f_clean q_98_s_x0) q_99_s_x1)))
+      (forall ((q_100_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_100_s_x0) (select s_frozen_5f_dirty q_100_s_x0)))
+      (forall ((q_101_s_x0 s_ref) (q_102_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_101_s_x0) q_102_s_x1)
+          (select (select s_persistent q_101_s_x0) q_102_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (forall ((q_103_s_x0 s_req_5f_id) (q_104_s_x1 s_ref) (q_105_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_103_s_x0) q_104_s_x1)
+            q_105_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_103_s_x0) q_104_s_x1)
+            q_105_s_x2)))
+      (forall ((q_106_s_x0 s_req_5f_id) (q_107_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_106_s_x0) q_107_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_106_s_x0) q_107_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc))))
+; action: write_back_indirection_table_resp
+(define-fun action_2 () Bool
+  (exists ((q_108_s_i s_req_5f_id))
+    (and
+      (and
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some
+        (select s_outstanding_5f_indirection_5f_table_5f_write q_108_s_i)
+        (forall ((q_109_s_I s_req_5f_id))
+          (=
+            (select s_outstanding_5f_indirection_5f_table_5f_write_next q_109_s_I)
+            (and
+              (select s_outstanding_5f_indirection_5f_table_5f_write q_109_s_I)
+              (not (= q_109_s_I q_108_s_i)))))
+        (select
+          (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_108_s_i)
+          s_frozen_5f_indirection_5f_table_5f_loc)
+        (forall ((q_110_s_I s_req_5f_id) (q_111_s_L s_location))
+          (=
+            (select
+              (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_110_s_I)
+              q_111_s_L)
+            (and
+              (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_110_s_I) q_111_s_L)
+              (not (= q_110_s_I q_108_s_i))
+              (not (= q_111_s_L s_frozen_5f_indirection_5f_table_5f_loc))))))
+      (forall ((q_112_s_x0 s_ref) (q_113_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_112_s_x0) q_113_s_x1)
+          (select (select s_spec_5f_ephemeral q_112_s_x0) q_113_s_x1)))
+      (forall ((q_114_s_x0 s_ref) (q_115_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_114_s_x0) q_115_s_x1)
+          (select (select s_spec_5f_frozen q_114_s_x0) q_115_s_x1)))
+      (forall ((q_116_s_x0 s_ref) (q_117_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_116_s_x0) q_117_s_x1)
+          (select (select s_spec_5f_persistent q_116_s_x0) q_117_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_118_s_x0 s_location) (q_119_s_x1 s_ref) (q_120_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_118_s_x0) q_119_s_x1)
+            q_120_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_118_s_x0) q_119_s_x1)
+            q_120_s_x2)))
+      (forall ((q_121_s_x0 s_location) (q_122_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_121_s_x0) q_122_s_x1)
+          (select (select s_disk_5f_nodes q_121_s_x0) q_122_s_x1)))
+      (forall ((q_123_s_x0 s_req_5f_id) (q_124_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_123_s_x0) q_124_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_123_s_x0) q_124_s_x1)))
+      (forall ((q_125_s_x0 s_req_5f_id) (q_126_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_125_s_x0) q_126_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_125_s_x0) q_126_s_x1)))
+      (forall ((q_127_s_x0 s_ref) (q_128_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_127_s_x0) q_128_s_x1)
+          (select (select s_cache q_127_s_x0) q_128_s_x1)))
+      (forall ((q_129_s_x0 s_ref) (q_130_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_129_s_x0) q_130_s_x1)
+          (select (select s_ephemeral_5f_clean q_129_s_x0) q_130_s_x1)))
+      (forall ((q_131_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_131_s_x0) (select s_ephemeral_5f_dirty q_131_s_x0)))
+      (forall ((q_132_s_x0 s_ref) (q_133_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_132_s_x0) q_133_s_x1)
+          (select (select s_frozen_5f_clean q_132_s_x0) q_133_s_x1)))
+      (forall ((q_134_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_134_s_x0) (select s_frozen_5f_dirty q_134_s_x0)))
+      (forall ((q_135_s_x0 s_ref) (q_136_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_135_s_x0) q_136_s_x1)
+          (select (select s_persistent q_135_s_x0) q_136_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_137_s_x0 s_req_5f_id) (q_138_s_x1 s_ref) (q_139_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_137_s_x0) q_138_s_x1)
+            q_139_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_137_s_x0) q_138_s_x1)
+            q_139_s_x2)))
+      (forall ((q_140_s_x0 s_req_5f_id) (q_141_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_140_s_x0) q_141_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_140_s_x0) q_141_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: cleanup
+(define-fun action_3 () Bool
+  (and
+    (and
+      s_sync_5f_in_5f_progress
+      s_frozen_5f_indirection_5f_table_5f_loc_5f_some
+      (forall ((q_142_s_I s_req_5f_id))
+        (not (select s_outstanding_5f_indirection_5f_table_5f_write q_142_s_I)))
+      (forall ((q_143_s_R s_ref) (q_144_s_L s_location))
+        (=
+          (select (select s_persistent_next q_143_s_R) q_144_s_L)
+          (select (select s_frozen_5f_clean q_143_s_R) q_144_s_L)))
+      (= s_persistent_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc)
+      (not s_sync_5f_in_5f_progress_next)
+      (not s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next)
+      (forall ((q_145_s_R s_ref) (q_146_s_N s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_145_s_R) q_146_s_N)
+          (select (select s_spec_5f_frozen q_145_s_R) q_146_s_N)))
+      (not s_spec_5f_sync_5f_in_5f_progress_next))
+    (forall ((q_147_s_x0 s_ref) (q_148_s_x1 s_node))
+      (=
+        (select (select s_spec_5f_ephemeral_next q_147_s_x0) q_148_s_x1)
+        (select (select s_spec_5f_ephemeral q_147_s_x0) q_148_s_x1)))
+    (forall ((q_149_s_x0 s_ref) (q_150_s_x1 s_node))
+      (=
+        (select (select s_spec_5f_frozen_next q_149_s_x0) q_150_s_x1)
+        (select (select s_spec_5f_frozen q_149_s_x0) q_150_s_x1)))
+    (forall ((q_151_s_x0 s_location) (q_152_s_x1 s_ref) (q_153_s_x2 s_location))
+      (=
+        (select
+          (select (select s_disk_5f_indirection_5f_tables_next q_151_s_x0) q_152_s_x1)
+          q_153_s_x2)
+        (select (select (select s_disk_5f_indirection_5f_tables q_151_s_x0) q_152_s_x1) q_153_s_x2)))
+    (forall ((q_154_s_x0 s_location) (q_155_s_x1 s_node))
+      (=
+        (select (select s_disk_5f_nodes_next q_154_s_x0) q_155_s_x1)
+        (select (select s_disk_5f_nodes q_154_s_x0) q_155_s_x1)))
+    (forall ((q_156_s_x0 s_req_5f_id) (q_157_s_x1 s_location))
+      (=
+        (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_156_s_x0) q_157_s_x1)
+        (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_156_s_x0) q_157_s_x1)))
+    (forall ((q_158_s_x0 s_req_5f_id) (q_159_s_x1 s_location))
+      (=
+        (select (select s_disk_5f_req_5f_write_5f_nodes_next q_158_s_x0) q_159_s_x1)
+        (select (select s_disk_5f_req_5f_write_5f_nodes q_158_s_x0) q_159_s_x1)))
+    (forall ((q_160_s_x0 s_req_5f_id) (q_161_s_x1 s_location))
+      (=
+        (select (select s_disk_5f_req_5f_read_5f_nodes_next q_160_s_x0) q_161_s_x1)
+        (select (select s_disk_5f_req_5f_read_5f_nodes q_160_s_x0) q_161_s_x1)))
+    (forall ((q_162_s_x0 s_ref) (q_163_s_x1 s_node))
+      (=
+        (select (select s_cache_next q_162_s_x0) q_163_s_x1)
+        (select (select s_cache q_162_s_x0) q_163_s_x1)))
+    (forall ((q_164_s_x0 s_ref) (q_165_s_x1 s_location))
+      (=
+        (select (select s_ephemeral_5f_clean_next q_164_s_x0) q_165_s_x1)
+        (select (select s_ephemeral_5f_clean q_164_s_x0) q_165_s_x1)))
+    (forall ((q_166_s_x0 s_ref))
+      (= (select s_ephemeral_5f_dirty_next q_166_s_x0) (select s_ephemeral_5f_dirty q_166_s_x0)))
+    (forall ((q_167_s_x0 s_ref) (q_168_s_x1 s_location))
+      (=
+        (select (select s_frozen_5f_clean_next q_167_s_x0) q_168_s_x1)
+        (select (select s_frozen_5f_clean q_167_s_x0) q_168_s_x1)))
+    (forall ((q_169_s_x0 s_ref))
+      (= (select s_frozen_5f_dirty_next q_169_s_x0) (select s_frozen_5f_dirty q_169_s_x0)))
+    (forall ((q_170_s_x0 s_req_5f_id))
+      (=
+        (select s_outstanding_5f_indirection_5f_table_5f_write_next q_170_s_x0)
+        (select s_outstanding_5f_indirection_5f_table_5f_write q_170_s_x0)))
+    (forall ((q_171_s_x0 s_req_5f_id) (q_172_s_x1 s_ref) (q_173_s_x2 s_location))
+      (=
+        (select
+          (select (select s_outstanding_5f_block_5f_writes_next q_171_s_x0) q_172_s_x1)
+          q_173_s_x2)
+        (select (select (select s_outstanding_5f_block_5f_writes q_171_s_x0) q_172_s_x1) q_173_s_x2)))
+    (forall ((q_174_s_x0 s_req_5f_id) (q_175_s_x1 s_ref))
+      (=
+        (select (select s_outstanding_5f_block_5f_reads_next q_174_s_x0) q_175_s_x1)
+        (select (select s_outstanding_5f_block_5f_reads q_174_s_x0) q_175_s_x1)))
+    (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc)))
+; action: crash
+(define-fun action_4 () Bool
+  (and
+    (and
+      (forall ((q_176_s_X s_ref) (q_177_s_Y s_node))
+        (not (select (select s_cache_next q_176_s_X) q_177_s_Y)))
+      (forall ((q_178_s_R s_ref) (q_179_s_L s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_178_s_R) q_179_s_L)
+          (select
+            (select
+              (select s_disk_5f_indirection_5f_tables s_persistent_5f_indirection_5f_table_5f_loc)
+              q_178_s_R)
+            q_179_s_L)))
+      (forall ((q_180_s_R s_ref) (q_181_s_L s_location))
+        (=
+          (select (select s_persistent_next q_180_s_R) q_181_s_L)
+          (select
+            (select
+              (select s_disk_5f_indirection_5f_tables s_persistent_5f_indirection_5f_table_5f_loc)
+              q_180_s_R)
+            q_181_s_L)))
+      (forall ((q_182_s_R s_ref)) (not (select s_ephemeral_5f_dirty_next q_182_s_R)))
+      (not s_sync_5f_in_5f_progress_next)
+      (not s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next)
+      (forall ((q_183_s_I s_req_5f_id))
+        (not (select s_outstanding_5f_indirection_5f_table_5f_write_next q_183_s_I)))
+      (forall ((q_184_s_I s_req_5f_id) (q_185_s_R s_ref))
+        (not (select (select s_outstanding_5f_block_5f_reads_next q_184_s_I) q_185_s_R)))
+      (forall ((q_186_s_I s_req_5f_id) (q_187_s_R s_ref) (q_188_s_L s_location))
+        (not
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_186_s_I) q_187_s_R)
+            q_188_s_L)))
+      (forall ((q_189_s_L s_location) (q_190_s_R s_ref) (q_191_s_X s_location) (q_192_s_Y s_location))
+        (=>
+          (and
+            (select
+              (select (select s_disk_5f_indirection_5f_tables_next q_189_s_L) q_190_s_R)
+              q_191_s_X)
+            (select
+              (select (select s_disk_5f_indirection_5f_tables_next q_189_s_L) q_190_s_R)
+              q_192_s_Y))
+          (= q_191_s_X q_192_s_Y)))
+      (forall ((q_193_s_L1 s_location))
+        (=>
+          (forall ((q_194_s_I s_req_5f_id))
+            (not
+              (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_194_s_I) q_193_s_L1)))
+          (forall ((q_195_s_R s_ref) (q_196_s_L2 s_location))
+            (=
+              (select
+                (select (select s_disk_5f_indirection_5f_tables_next q_193_s_L1) q_195_s_R)
+                q_196_s_L2)
+              (select
+                (select (select s_disk_5f_indirection_5f_tables q_193_s_L1) q_195_s_R)
+                q_196_s_L2)))))
+      (forall ((q_197_s_I s_req_5f_id) (q_198_s_L s_location))
+        (not
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_197_s_I) q_198_s_L)))
+      (forall ((q_199_s_L s_location) (q_200_s_N1 s_node) (q_201_s_N2 s_node))
+        (=>
+          (and
+            (select (select s_disk_5f_nodes_next q_199_s_L) q_200_s_N1)
+            (select (select s_disk_5f_nodes_next q_199_s_L) q_201_s_N2))
+          (= q_200_s_N1 q_201_s_N2)))
+      (forall ((q_202_s_L s_location))
+        (=>
+          (forall ((q_203_s_I s_req_5f_id))
+            (not (select (select s_disk_5f_req_5f_write_5f_nodes q_203_s_I) q_202_s_L)))
+          (forall ((q_204_s_N s_node))
+            (=
+              (select (select s_disk_5f_nodes_next q_202_s_L) q_204_s_N)
+              (select (select s_disk_5f_nodes q_202_s_L) q_204_s_N)))))
+      (forall ((q_205_s_I s_req_5f_id) (q_206_s_L s_location))
+        (not (select (select s_disk_5f_req_5f_write_5f_nodes_next q_205_s_I) q_206_s_L)))
+      (forall ((q_207_s_I s_req_5f_id) (q_208_s_L s_location))
+        (not (select (select s_disk_5f_req_5f_read_5f_nodes_next q_207_s_I) q_208_s_L)))
+      (forall ((q_209_s_R s_ref) (q_210_s_N s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_209_s_R) q_210_s_N)
+          (select (select s_spec_5f_persistent q_209_s_R) q_210_s_N)))
+      (not s_spec_5f_sync_5f_in_5f_progress_next))
+    (forall ((q_211_s_x0 s_ref) (q_212_s_x1 s_node))
+      (=
+        (select (select s_spec_5f_frozen_next q_211_s_x0) q_212_s_x1)
+        (select (select s_spec_5f_frozen q_211_s_x0) q_212_s_x1)))
+    (forall ((q_213_s_x0 s_ref) (q_214_s_x1 s_node))
+      (=
+        (select (select s_spec_5f_persistent_next q_213_s_x0) q_214_s_x1)
+        (select (select s_spec_5f_persistent q_213_s_x0) q_214_s_x1)))
+    (forall ((q_215_s_x0 s_ref) (q_216_s_x1 s_location))
+      (=
+        (select (select s_frozen_5f_clean_next q_215_s_x0) q_216_s_x1)
+        (select (select s_frozen_5f_clean q_215_s_x0) q_216_s_x1)))
+    (forall ((q_217_s_x0 s_ref))
+      (= (select s_frozen_5f_dirty_next q_217_s_x0) (select s_frozen_5f_dirty q_217_s_x0)))
+    (= s_persistent_5f_indirection_5f_table_5f_loc_next s_persistent_5f_indirection_5f_table_5f_loc)
+    (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc)))
+; action: write_node
+(define-fun action_5 () Bool
+  (exists ((q_218_s_r s_ref) (q_219_s_n s_node))
+    (and
+      (and
+        (=> s_sync_5f_in_5f_progress (not (select s_frozen_5f_dirty q_218_s_r)))
+        (exists ((q_220_s_N s_node)) (select (select s_cache q_218_s_r) q_220_s_N))
+        (forall ((q_221_s_R s_ref) (q_222_s_N s_node))
+          (=
+            (select (select s_cache_next q_221_s_R) q_222_s_N)
+            (or
+              (and (not (= q_221_s_R q_218_s_r)) (select (select s_cache q_221_s_R) q_222_s_N))
+              (and (= q_221_s_R q_218_s_r) (= q_222_s_N q_219_s_n)))))
+        (forall ((q_223_s_R s_ref) (q_224_s_L s_location))
+          (=
+            (select (select s_ephemeral_5f_clean_next q_223_s_R) q_224_s_L)
+            (and
+              (select (select s_ephemeral_5f_clean q_223_s_R) q_224_s_L)
+              (not (= q_223_s_R q_218_s_r)))))
+        (forall ((q_225_s_R s_ref))
+          (=
+            (select s_ephemeral_5f_dirty_next q_225_s_R)
+            (or (select s_ephemeral_5f_dirty q_225_s_R) (= q_225_s_R q_218_s_r))))
+        (forall ((q_226_s_R s_ref) (q_227_s_N s_node))
+          (=
+            (select (select s_spec_5f_ephemeral_next q_226_s_R) q_227_s_N)
+            (or
+              (and
+                (not (= q_226_s_R q_218_s_r))
+                (select (select s_spec_5f_ephemeral q_226_s_R) q_227_s_N))
+              (and (= q_226_s_R q_218_s_r) (= q_227_s_N q_219_s_n))))))
+      (forall ((q_228_s_x0 s_ref) (q_229_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_228_s_x0) q_229_s_x1)
+          (select (select s_spec_5f_frozen q_228_s_x0) q_229_s_x1)))
+      (forall ((q_230_s_x0 s_ref) (q_231_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_230_s_x0) q_231_s_x1)
+          (select (select s_spec_5f_persistent q_230_s_x0) q_231_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_232_s_x0 s_location) (q_233_s_x1 s_ref) (q_234_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_232_s_x0) q_233_s_x1)
+            q_234_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_232_s_x0) q_233_s_x1)
+            q_234_s_x2)))
+      (forall ((q_235_s_x0 s_location) (q_236_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_235_s_x0) q_236_s_x1)
+          (select (select s_disk_5f_nodes q_235_s_x0) q_236_s_x1)))
+      (forall ((q_237_s_x0 s_req_5f_id) (q_238_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_237_s_x0)
+            q_238_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_237_s_x0) q_238_s_x1)))
+      (forall ((q_239_s_x0 s_req_5f_id) (q_240_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_239_s_x0) q_240_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_239_s_x0) q_240_s_x1)))
+      (forall ((q_241_s_x0 s_req_5f_id) (q_242_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_241_s_x0) q_242_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_241_s_x0) q_242_s_x1)))
+      (forall ((q_243_s_x0 s_ref) (q_244_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_243_s_x0) q_244_s_x1)
+          (select (select s_frozen_5f_clean q_243_s_x0) q_244_s_x1)))
+      (forall ((q_245_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_245_s_x0) (select s_frozen_5f_dirty q_245_s_x0)))
+      (forall ((q_246_s_x0 s_ref) (q_247_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_246_s_x0) q_247_s_x1)
+          (select (select s_persistent q_246_s_x0) q_247_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_248_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_248_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_248_s_x0)))
+      (forall ((q_249_s_x0 s_req_5f_id) (q_250_s_x1 s_ref) (q_251_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_249_s_x0) q_250_s_x1)
+            q_251_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_249_s_x0) q_250_s_x1)
+            q_251_s_x2)))
+      (forall ((q_252_s_x0 s_req_5f_id) (q_253_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_252_s_x0) q_253_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_252_s_x0) q_253_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: alloc
+(define-fun action_6 () Bool
+  (exists ((q_254_s_r s_ref) (q_255_s_n s_node))
+    (and
+      (and
+        (forall ((q_256_s_N s_node)) (not (select (select s_cache q_254_s_r) q_256_s_N)))
+        (forall ((q_257_s_L s_location))
+          (not (select (select s_ephemeral_5f_clean q_254_s_r) q_257_s_L)))
+        (not (select s_ephemeral_5f_dirty q_254_s_r))
+        (forall ((q_258_s_L s_location))
+          (=>
+            s_sync_5f_in_5f_progress
+            (and
+              (not (select (select s_frozen_5f_clean q_254_s_r) q_258_s_L))
+              (not (select s_frozen_5f_dirty q_254_s_r)))))
+        (forall ((q_259_s_R s_ref) (q_260_s_N s_node))
+          (=
+            (select (select s_cache_next q_259_s_R) q_260_s_N)
+            (or
+              (select (select s_cache q_259_s_R) q_260_s_N)
+              (and (= q_259_s_R q_254_s_r) (= q_260_s_N q_255_s_n)))))
+        (forall ((q_261_s_R s_ref))
+          (=
+            (select s_ephemeral_5f_dirty_next q_261_s_R)
+            (or (select s_ephemeral_5f_dirty q_261_s_R) (= q_261_s_R q_254_s_r))))
+        (forall ((q_262_s_R s_ref) (q_263_s_N s_node))
+          (=
+            (select (select s_spec_5f_ephemeral_next q_262_s_R) q_263_s_N)
+            (or
+              (and
+                (not (= q_262_s_R q_254_s_r))
+                (select (select s_spec_5f_ephemeral q_262_s_R) q_263_s_N))
+              (and (= q_262_s_R q_254_s_r) (= q_263_s_N q_255_s_n))))))
+      (forall ((q_264_s_x0 s_ref) (q_265_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_264_s_x0) q_265_s_x1)
+          (select (select s_spec_5f_frozen q_264_s_x0) q_265_s_x1)))
+      (forall ((q_266_s_x0 s_ref) (q_267_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_266_s_x0) q_267_s_x1)
+          (select (select s_spec_5f_persistent q_266_s_x0) q_267_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_268_s_x0 s_location) (q_269_s_x1 s_ref) (q_270_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_268_s_x0) q_269_s_x1)
+            q_270_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_268_s_x0) q_269_s_x1)
+            q_270_s_x2)))
+      (forall ((q_271_s_x0 s_location) (q_272_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_271_s_x0) q_272_s_x1)
+          (select (select s_disk_5f_nodes q_271_s_x0) q_272_s_x1)))
+      (forall ((q_273_s_x0 s_req_5f_id) (q_274_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_273_s_x0)
+            q_274_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_273_s_x0) q_274_s_x1)))
+      (forall ((q_275_s_x0 s_req_5f_id) (q_276_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_275_s_x0) q_276_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_275_s_x0) q_276_s_x1)))
+      (forall ((q_277_s_x0 s_req_5f_id) (q_278_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_277_s_x0) q_278_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_277_s_x0) q_278_s_x1)))
+      (forall ((q_279_s_x0 s_ref) (q_280_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_279_s_x0) q_280_s_x1)
+          (select (select s_ephemeral_5f_clean q_279_s_x0) q_280_s_x1)))
+      (forall ((q_281_s_x0 s_ref) (q_282_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_281_s_x0) q_282_s_x1)
+          (select (select s_frozen_5f_clean q_281_s_x0) q_282_s_x1)))
+      (forall ((q_283_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_283_s_x0) (select s_frozen_5f_dirty q_283_s_x0)))
+      (forall ((q_284_s_x0 s_ref) (q_285_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_284_s_x0) q_285_s_x1)
+          (select (select s_persistent q_284_s_x0) q_285_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_286_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_286_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_286_s_x0)))
+      (forall ((q_287_s_x0 s_req_5f_id) (q_288_s_x1 s_ref) (q_289_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_287_s_x0) q_288_s_x1)
+            q_289_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_287_s_x0) q_288_s_x1)
+            q_289_s_x2)))
+      (forall ((q_290_s_x0 s_req_5f_id) (q_291_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_290_s_x0) q_291_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_290_s_x0) q_291_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: page_in_node_req
+(define-fun action_7 () Bool
+  (exists ((q_292_s_i s_req_5f_id) (q_293_s_r s_ref) (q_294_s_l s_location))
+    (and
+      (and
+        (select (select s_ephemeral_5f_clean q_293_s_r) q_294_s_l)
+        (forall ((q_295_s_N s_node)) (not (select (select s_cache q_293_s_r) q_295_s_N)))
+        (forall ((q_296_s_I s_req_5f_id))
+          (not (select (select s_outstanding_5f_block_5f_reads q_296_s_I) q_293_s_r)))
+        (forall ((q_297_s_I s_req_5f_id) (q_298_s_R s_ref))
+          (=
+            (select (select s_outstanding_5f_block_5f_reads_next q_297_s_I) q_298_s_R)
+            (or
+              (and
+                (not (= q_297_s_I q_292_s_i))
+                (select (select s_outstanding_5f_block_5f_reads q_297_s_I) q_298_s_R))
+              (and (= q_297_s_I q_292_s_i) (= q_298_s_R q_293_s_r)))))
+        (forall ((q_299_s_L s_location))
+          (not (select (select s_disk_5f_req_5f_read_5f_nodes q_292_s_i) q_299_s_L)))
+        (forall ((q_300_s_I s_req_5f_id) (q_301_s_L s_location))
+          (=
+            (select (select s_disk_5f_req_5f_read_5f_nodes_next q_300_s_I) q_301_s_L)
+            (or
+              (and
+                (not (= q_300_s_I q_292_s_i))
+                (select (select s_disk_5f_req_5f_read_5f_nodes q_300_s_I) q_301_s_L))
+              (and (= q_300_s_I q_292_s_i) (= q_301_s_L q_294_s_l))))))
+      (forall ((q_302_s_x0 s_ref) (q_303_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_302_s_x0) q_303_s_x1)
+          (select (select s_spec_5f_ephemeral q_302_s_x0) q_303_s_x1)))
+      (forall ((q_304_s_x0 s_ref) (q_305_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_304_s_x0) q_305_s_x1)
+          (select (select s_spec_5f_frozen q_304_s_x0) q_305_s_x1)))
+      (forall ((q_306_s_x0 s_ref) (q_307_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_306_s_x0) q_307_s_x1)
+          (select (select s_spec_5f_persistent q_306_s_x0) q_307_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_308_s_x0 s_location) (q_309_s_x1 s_ref) (q_310_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_308_s_x0) q_309_s_x1)
+            q_310_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_308_s_x0) q_309_s_x1)
+            q_310_s_x2)))
+      (forall ((q_311_s_x0 s_location) (q_312_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_311_s_x0) q_312_s_x1)
+          (select (select s_disk_5f_nodes q_311_s_x0) q_312_s_x1)))
+      (forall ((q_313_s_x0 s_req_5f_id) (q_314_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_313_s_x0)
+            q_314_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_313_s_x0) q_314_s_x1)))
+      (forall ((q_315_s_x0 s_req_5f_id) (q_316_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_315_s_x0) q_316_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_315_s_x0) q_316_s_x1)))
+      (forall ((q_317_s_x0 s_ref) (q_318_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_317_s_x0) q_318_s_x1)
+          (select (select s_cache q_317_s_x0) q_318_s_x1)))
+      (forall ((q_319_s_x0 s_ref) (q_320_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_319_s_x0) q_320_s_x1)
+          (select (select s_ephemeral_5f_clean q_319_s_x0) q_320_s_x1)))
+      (forall ((q_321_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_321_s_x0) (select s_ephemeral_5f_dirty q_321_s_x0)))
+      (forall ((q_322_s_x0 s_ref) (q_323_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_322_s_x0) q_323_s_x1)
+          (select (select s_frozen_5f_clean q_322_s_x0) q_323_s_x1)))
+      (forall ((q_324_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_324_s_x0) (select s_frozen_5f_dirty q_324_s_x0)))
+      (forall ((q_325_s_x0 s_ref) (q_326_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_325_s_x0) q_326_s_x1)
+          (select (select s_persistent q_325_s_x0) q_326_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_327_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_327_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_327_s_x0)))
+      (forall ((q_328_s_x0 s_req_5f_id) (q_329_s_x1 s_ref) (q_330_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_328_s_x0) q_329_s_x1)
+            q_330_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_328_s_x0) q_329_s_x1)
+            q_330_s_x2)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: page_in_node_resp
+(define-fun action_8 () Bool
+  (exists ((q_331_s_i s_req_5f_id) (q_332_s_r s_ref) (q_333_s_l s_location) (q_334_s_n s_node))
+    (and
+      (and
+        (select (select s_outstanding_5f_block_5f_reads q_331_s_i) q_332_s_r)
+        (select (select s_disk_5f_req_5f_read_5f_nodes q_331_s_i) q_333_s_l)
+        (forall ((q_335_s_R s_ref) (q_336_s_N s_node))
+          (=
+            (select (select s_cache_next q_335_s_R) q_336_s_N)
+            (or
+              (select (select s_cache q_335_s_R) q_336_s_N)
+              (and (= q_335_s_R q_332_s_r) (= q_336_s_N q_334_s_n)))))
+        (forall ((q_337_s_I s_req_5f_id) (q_338_s_R s_ref))
+          (=
+            (select (select s_outstanding_5f_block_5f_reads_next q_337_s_I) q_338_s_R)
+            (and
+              (select (select s_outstanding_5f_block_5f_reads q_337_s_I) q_338_s_R)
+              (not (= q_337_s_I q_331_s_i)))))
+        (select (select s_disk_5f_req_5f_read_5f_nodes q_331_s_i) q_333_s_l)
+        (select (select s_disk_5f_nodes q_333_s_l) q_334_s_n)
+        (forall ((q_339_s_I s_req_5f_id) (q_340_s_L s_location))
+          (=
+            (select (select s_disk_5f_req_5f_read_5f_nodes_next q_339_s_I) q_340_s_L)
+            (and
+              (not (= q_339_s_I q_331_s_i))
+              (select (select s_disk_5f_req_5f_read_5f_nodes q_339_s_I) q_340_s_L)))))
+      (forall ((q_341_s_x0 s_ref) (q_342_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_341_s_x0) q_342_s_x1)
+          (select (select s_spec_5f_ephemeral q_341_s_x0) q_342_s_x1)))
+      (forall ((q_343_s_x0 s_ref) (q_344_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_343_s_x0) q_344_s_x1)
+          (select (select s_spec_5f_frozen q_343_s_x0) q_344_s_x1)))
+      (forall ((q_345_s_x0 s_ref) (q_346_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_345_s_x0) q_346_s_x1)
+          (select (select s_spec_5f_persistent q_345_s_x0) q_346_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_347_s_x0 s_location) (q_348_s_x1 s_ref) (q_349_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_347_s_x0) q_348_s_x1)
+            q_349_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_347_s_x0) q_348_s_x1)
+            q_349_s_x2)))
+      (forall ((q_350_s_x0 s_location) (q_351_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_350_s_x0) q_351_s_x1)
+          (select (select s_disk_5f_nodes q_350_s_x0) q_351_s_x1)))
+      (forall ((q_352_s_x0 s_req_5f_id) (q_353_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_352_s_x0)
+            q_353_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_352_s_x0) q_353_s_x1)))
+      (forall ((q_354_s_x0 s_req_5f_id) (q_355_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_354_s_x0) q_355_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_354_s_x0) q_355_s_x1)))
+      (forall ((q_356_s_x0 s_ref) (q_357_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_356_s_x0) q_357_s_x1)
+          (select (select s_ephemeral_5f_clean q_356_s_x0) q_357_s_x1)))
+      (forall ((q_358_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_358_s_x0) (select s_ephemeral_5f_dirty q_358_s_x0)))
+      (forall ((q_359_s_x0 s_ref) (q_360_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_359_s_x0) q_360_s_x1)
+          (select (select s_frozen_5f_clean q_359_s_x0) q_360_s_x1)))
+      (forall ((q_361_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_361_s_x0) (select s_frozen_5f_dirty q_361_s_x0)))
+      (forall ((q_362_s_x0 s_ref) (q_363_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_362_s_x0) q_363_s_x1)
+          (select (select s_persistent q_362_s_x0) q_363_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_364_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_364_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_364_s_x0)))
+      (forall ((q_365_s_x0 s_req_5f_id) (q_366_s_x1 s_ref) (q_367_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_365_s_x0) q_366_s_x1)
+            q_367_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_365_s_x0) q_366_s_x1)
+            q_367_s_x2)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: write_back_node_req_00
+(define-fun action_9 () Bool
+  (exists ((q_368_s_i s_req_5f_id) (q_369_s_r s_ref) (q_370_s_n s_node) (q_371_s_l s_location))
+    (and
+      (forall ((q_372_s_L s_location))
+        (and
+          (forall ((q_373_s_R s_ref))
+            (and
+              (not (select (select s_persistent q_373_s_R) q_371_s_l))
+              (not (select (select s_ephemeral_5f_clean q_373_s_R) q_371_s_l))
+              (not (select (select s_frozen_5f_clean q_373_s_R) q_371_s_l))))
+          (forall ((q_374_s_R s_ref))
+            (not
+              (select
+                (select (select s_outstanding_5f_block_5f_writes q_368_s_i) q_374_s_R)
+                q_372_s_L)))
+          (select (select s_cache q_369_s_r) q_370_s_n)
+          (forall ((q_375_s_L s_location))
+            (not (select (select s_disk_5f_req_5f_write_5f_nodes q_368_s_i) q_375_s_L)))
+          (forall ((q_376_s_L s_location) (q_377_s_N s_node))
+            (=
+              (select (select s_disk_5f_nodes_next q_376_s_L) q_377_s_N)
+              (or
+                (and
+                  (not (= q_376_s_L q_371_s_l))
+                  (select (select s_disk_5f_nodes q_376_s_L) q_377_s_N))
+                (and (= q_376_s_L q_371_s_l) (= q_377_s_N q_370_s_n)))))
+          (forall ((q_378_s_I s_req_5f_id) (q_379_s_L s_location))
+            (=
+              (select (select s_disk_5f_req_5f_write_5f_nodes_next q_378_s_I) q_379_s_L)
+              (or
+                (select (select s_disk_5f_req_5f_write_5f_nodes q_378_s_I) q_379_s_L)
+                (and (= q_378_s_I q_368_s_i) (= q_379_s_L q_371_s_l)))))
+          (select s_ephemeral_5f_dirty q_369_s_r)
+          (forall ((q_380_s_R s_ref))
+            (=
+              (select s_ephemeral_5f_dirty_next q_380_s_R)
+              (and (select s_ephemeral_5f_dirty q_380_s_R) (not (= q_380_s_R q_369_s_r)))))
+          (forall ((q_381_s_R s_ref) (q_382_s_L s_location))
+            (=
+              (select (select s_ephemeral_5f_clean_next q_381_s_R) q_382_s_L)
+              (or
+                (and
+                  (not (= q_381_s_R q_369_s_r))
+                  (select (select s_ephemeral_5f_clean q_381_s_R) q_382_s_L))
+                (and (= q_381_s_R q_369_s_r) (= q_382_s_L q_371_s_l)))))
+          (and s_sync_5f_in_5f_progress (select s_frozen_5f_dirty q_369_s_r))
+          (forall ((q_383_s_R s_ref))
+            (=
+              (select s_frozen_5f_dirty_next q_383_s_R)
+              (and (select s_frozen_5f_dirty q_383_s_R) (not (= q_383_s_R q_369_s_r)))))
+          (forall ((q_384_s_R s_ref) (q_385_s_L s_location))
+            (=
+              (select (select s_frozen_5f_clean_next q_384_s_R) q_385_s_L)
+              (or
+                (and
+                  (not (= q_384_s_R q_369_s_r))
+                  (select (select s_frozen_5f_clean q_384_s_R) q_385_s_L))
+                (and (= q_384_s_R q_369_s_r) (= q_385_s_L q_371_s_l)))))
+          (forall ((q_386_s_I s_req_5f_id) (q_387_s_R s_ref) (q_388_s_L s_location))
+            (=
+              (select
+                (select (select s_outstanding_5f_block_5f_writes_next q_386_s_I) q_387_s_R)
+                q_388_s_L)
+              (or
+                (select
+                  (select (select s_outstanding_5f_block_5f_writes q_386_s_I) q_387_s_R)
+                  q_388_s_L)
+                (and (= q_386_s_I q_368_s_i) (= q_387_s_R q_369_s_r) (= q_388_s_L q_371_s_l)))))))
+      (forall ((q_389_s_x0 s_ref) (q_390_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_389_s_x0) q_390_s_x1)
+          (select (select s_spec_5f_ephemeral q_389_s_x0) q_390_s_x1)))
+      (forall ((q_391_s_x0 s_ref) (q_392_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_391_s_x0) q_392_s_x1)
+          (select (select s_spec_5f_frozen q_391_s_x0) q_392_s_x1)))
+      (forall ((q_393_s_x0 s_ref) (q_394_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_393_s_x0) q_394_s_x1)
+          (select (select s_spec_5f_persistent q_393_s_x0) q_394_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_395_s_x0 s_location) (q_396_s_x1 s_ref) (q_397_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_395_s_x0) q_396_s_x1)
+            q_397_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_395_s_x0) q_396_s_x1)
+            q_397_s_x2)))
+      (forall ((q_398_s_x0 s_req_5f_id) (q_399_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_398_s_x0)
+            q_399_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_398_s_x0) q_399_s_x1)))
+      (forall ((q_400_s_x0 s_req_5f_id) (q_401_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_400_s_x0) q_401_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_400_s_x0) q_401_s_x1)))
+      (forall ((q_402_s_x0 s_ref) (q_403_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_402_s_x0) q_403_s_x1)
+          (select (select s_cache q_402_s_x0) q_403_s_x1)))
+      (forall ((q_404_s_x0 s_ref) (q_405_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_404_s_x0) q_405_s_x1)
+          (select (select s_persistent q_404_s_x0) q_405_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_406_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_406_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_406_s_x0)))
+      (forall ((q_407_s_x0 s_req_5f_id) (q_408_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_407_s_x0) q_408_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_407_s_x0) q_408_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: write_back_node_req_01
+(define-fun action_10 () Bool
+  (exists ((q_409_s_i s_req_5f_id) (q_410_s_r s_ref) (q_411_s_n s_node) (q_412_s_l s_location))
+    (and
+      (forall ((q_413_s_L s_location))
+        (and
+          (forall ((q_414_s_R s_ref))
+            (and
+              (not (select (select s_persistent q_414_s_R) q_412_s_l))
+              (not (select (select s_ephemeral_5f_clean q_414_s_R) q_412_s_l))
+              (not (select (select s_frozen_5f_clean q_414_s_R) q_412_s_l))))
+          (forall ((q_415_s_R s_ref))
+            (not
+              (select
+                (select (select s_outstanding_5f_block_5f_writes q_409_s_i) q_415_s_R)
+                q_413_s_L)))
+          (select (select s_cache q_410_s_r) q_411_s_n)
+          (forall ((q_416_s_L s_location))
+            (not (select (select s_disk_5f_req_5f_write_5f_nodes q_409_s_i) q_416_s_L)))
+          (forall ((q_417_s_L s_location) (q_418_s_N s_node))
+            (=
+              (select (select s_disk_5f_nodes_next q_417_s_L) q_418_s_N)
+              (or
+                (and
+                  (not (= q_417_s_L q_412_s_l))
+                  (select (select s_disk_5f_nodes q_417_s_L) q_418_s_N))
+                (and (= q_417_s_L q_412_s_l) (= q_418_s_N q_411_s_n)))))
+          (forall ((q_419_s_I s_req_5f_id) (q_420_s_L s_location))
+            (=
+              (select (select s_disk_5f_req_5f_write_5f_nodes_next q_419_s_I) q_420_s_L)
+              (or
+                (select (select s_disk_5f_req_5f_write_5f_nodes q_419_s_I) q_420_s_L)
+                (and (= q_419_s_I q_409_s_i) (= q_420_s_L q_412_s_l)))))
+          (select s_ephemeral_5f_dirty q_410_s_r)
+          (forall ((q_421_s_R s_ref))
+            (=
+              (select s_ephemeral_5f_dirty_next q_421_s_R)
+              (and (select s_ephemeral_5f_dirty q_421_s_R) (not (= q_421_s_R q_410_s_r)))))
+          (forall ((q_422_s_R s_ref) (q_423_s_L s_location))
+            (=
+              (select (select s_ephemeral_5f_clean_next q_422_s_R) q_423_s_L)
+              (or
+                (and
+                  (not (= q_422_s_R q_410_s_r))
+                  (select (select s_ephemeral_5f_clean q_422_s_R) q_423_s_L))
+                (and (= q_422_s_R q_410_s_r) (= q_423_s_L q_412_s_l)))))
+          (not (and s_sync_5f_in_5f_progress (select s_frozen_5f_dirty q_410_s_r)))
+          (forall ((q_424_s_I s_req_5f_id) (q_425_s_R s_ref) (q_426_s_L s_location))
+            (=
+              (select
+                (select (select s_outstanding_5f_block_5f_writes_next q_424_s_I) q_425_s_R)
+                q_426_s_L)
+              (or
+                (select
+                  (select (select s_outstanding_5f_block_5f_writes q_424_s_I) q_425_s_R)
+                  q_426_s_L)
+                (and (= q_424_s_I q_409_s_i) (= q_425_s_R q_410_s_r) (= q_426_s_L q_412_s_l)))))))
+      (forall ((q_427_s_x0 s_ref) (q_428_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_427_s_x0) q_428_s_x1)
+          (select (select s_spec_5f_ephemeral q_427_s_x0) q_428_s_x1)))
+      (forall ((q_429_s_x0 s_ref) (q_430_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_429_s_x0) q_430_s_x1)
+          (select (select s_spec_5f_frozen q_429_s_x0) q_430_s_x1)))
+      (forall ((q_431_s_x0 s_ref) (q_432_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_431_s_x0) q_432_s_x1)
+          (select (select s_spec_5f_persistent q_431_s_x0) q_432_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_433_s_x0 s_location) (q_434_s_x1 s_ref) (q_435_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_433_s_x0) q_434_s_x1)
+            q_435_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_433_s_x0) q_434_s_x1)
+            q_435_s_x2)))
+      (forall ((q_436_s_x0 s_req_5f_id) (q_437_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_436_s_x0)
+            q_437_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_436_s_x0) q_437_s_x1)))
+      (forall ((q_438_s_x0 s_req_5f_id) (q_439_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_438_s_x0) q_439_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_438_s_x0) q_439_s_x1)))
+      (forall ((q_440_s_x0 s_ref) (q_441_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_440_s_x0) q_441_s_x1)
+          (select (select s_cache q_440_s_x0) q_441_s_x1)))
+      (forall ((q_442_s_x0 s_ref) (q_443_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_442_s_x0) q_443_s_x1)
+          (select (select s_frozen_5f_clean q_442_s_x0) q_443_s_x1)))
+      (forall ((q_444_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_444_s_x0) (select s_frozen_5f_dirty q_444_s_x0)))
+      (forall ((q_445_s_x0 s_ref) (q_446_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_445_s_x0) q_446_s_x1)
+          (select (select s_persistent q_445_s_x0) q_446_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_447_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_447_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_447_s_x0)))
+      (forall ((q_448_s_x0 s_req_5f_id) (q_449_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_448_s_x0) q_449_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_448_s_x0) q_449_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: write_back_node_req_10
+(define-fun action_11 () Bool
+  (exists ((q_450_s_i s_req_5f_id) (q_451_s_r s_ref) (q_452_s_n s_node) (q_453_s_l s_location))
+    (and
+      (forall ((q_454_s_L s_location))
+        (and
+          (forall ((q_455_s_R s_ref))
+            (and
+              (not (select (select s_persistent q_455_s_R) q_453_s_l))
+              (not (select (select s_ephemeral_5f_clean q_455_s_R) q_453_s_l))
+              (not (select (select s_frozen_5f_clean q_455_s_R) q_453_s_l))))
+          (forall ((q_456_s_R s_ref))
+            (not
+              (select
+                (select (select s_outstanding_5f_block_5f_writes q_450_s_i) q_456_s_R)
+                q_454_s_L)))
+          (select (select s_cache q_451_s_r) q_452_s_n)
+          (forall ((q_457_s_L s_location))
+            (not (select (select s_disk_5f_req_5f_write_5f_nodes q_450_s_i) q_457_s_L)))
+          (forall ((q_458_s_L s_location) (q_459_s_N s_node))
+            (=
+              (select (select s_disk_5f_nodes_next q_458_s_L) q_459_s_N)
+              (or
+                (and
+                  (not (= q_458_s_L q_453_s_l))
+                  (select (select s_disk_5f_nodes q_458_s_L) q_459_s_N))
+                (and (= q_458_s_L q_453_s_l) (= q_459_s_N q_452_s_n)))))
+          (forall ((q_460_s_I s_req_5f_id) (q_461_s_L s_location))
+            (=
+              (select (select s_disk_5f_req_5f_write_5f_nodes_next q_460_s_I) q_461_s_L)
+              (or
+                (select (select s_disk_5f_req_5f_write_5f_nodes q_460_s_I) q_461_s_L)
+                (and (= q_460_s_I q_450_s_i) (= q_461_s_L q_453_s_l)))))
+          (not (select s_ephemeral_5f_dirty q_451_s_r))
+          (and s_sync_5f_in_5f_progress (select s_frozen_5f_dirty q_451_s_r))
+          (forall ((q_462_s_R s_ref))
+            (=
+              (select s_frozen_5f_dirty_next q_462_s_R)
+              (and (select s_frozen_5f_dirty q_462_s_R) (not (= q_462_s_R q_451_s_r)))))
+          (forall ((q_463_s_R s_ref) (q_464_s_L s_location))
+            (=
+              (select (select s_frozen_5f_clean_next q_463_s_R) q_464_s_L)
+              (or
+                (and
+                  (not (= q_463_s_R q_451_s_r))
+                  (select (select s_frozen_5f_clean q_463_s_R) q_464_s_L))
+                (and (= q_463_s_R q_451_s_r) (= q_464_s_L q_453_s_l)))))
+          (forall ((q_465_s_I s_req_5f_id) (q_466_s_R s_ref) (q_467_s_L s_location))
+            (=
+              (select
+                (select (select s_outstanding_5f_block_5f_writes_next q_465_s_I) q_466_s_R)
+                q_467_s_L)
+              (or
+                (select
+                  (select (select s_outstanding_5f_block_5f_writes q_465_s_I) q_466_s_R)
+                  q_467_s_L)
+                (and (= q_465_s_I q_450_s_i) (= q_466_s_R q_451_s_r) (= q_467_s_L q_453_s_l)))))))
+      (forall ((q_468_s_x0 s_ref) (q_469_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_468_s_x0) q_469_s_x1)
+          (select (select s_spec_5f_ephemeral q_468_s_x0) q_469_s_x1)))
+      (forall ((q_470_s_x0 s_ref) (q_471_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_470_s_x0) q_471_s_x1)
+          (select (select s_spec_5f_frozen q_470_s_x0) q_471_s_x1)))
+      (forall ((q_472_s_x0 s_ref) (q_473_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_472_s_x0) q_473_s_x1)
+          (select (select s_spec_5f_persistent q_472_s_x0) q_473_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_474_s_x0 s_location) (q_475_s_x1 s_ref) (q_476_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_474_s_x0) q_475_s_x1)
+            q_476_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_474_s_x0) q_475_s_x1)
+            q_476_s_x2)))
+      (forall ((q_477_s_x0 s_req_5f_id) (q_478_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_477_s_x0)
+            q_478_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_477_s_x0) q_478_s_x1)))
+      (forall ((q_479_s_x0 s_req_5f_id) (q_480_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_479_s_x0) q_480_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_479_s_x0) q_480_s_x1)))
+      (forall ((q_481_s_x0 s_ref) (q_482_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_481_s_x0) q_482_s_x1)
+          (select (select s_cache q_481_s_x0) q_482_s_x1)))
+      (forall ((q_483_s_x0 s_ref) (q_484_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_483_s_x0) q_484_s_x1)
+          (select (select s_ephemeral_5f_clean q_483_s_x0) q_484_s_x1)))
+      (forall ((q_485_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_485_s_x0) (select s_ephemeral_5f_dirty q_485_s_x0)))
+      (forall ((q_486_s_x0 s_ref) (q_487_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_486_s_x0) q_487_s_x1)
+          (select (select s_persistent q_486_s_x0) q_487_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_488_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_488_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_488_s_x0)))
+      (forall ((q_489_s_x0 s_req_5f_id) (q_490_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_489_s_x0) q_490_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_489_s_x0) q_490_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: write_back_node_req_11
+(define-fun action_12 () Bool
+  (exists ((q_491_s_i s_req_5f_id) (q_492_s_r s_ref) (q_493_s_n s_node) (q_494_s_l s_location))
+    (and
+      (forall ((q_495_s_L s_location))
+        (and
+          (forall ((q_496_s_R s_ref))
+            (and
+              (not (select (select s_persistent q_496_s_R) q_494_s_l))
+              (not (select (select s_ephemeral_5f_clean q_496_s_R) q_494_s_l))
+              (not (select (select s_frozen_5f_clean q_496_s_R) q_494_s_l))))
+          (forall ((q_497_s_R s_ref))
+            (not
+              (select
+                (select (select s_outstanding_5f_block_5f_writes q_491_s_i) q_497_s_R)
+                q_495_s_L)))
+          (select (select s_cache q_492_s_r) q_493_s_n)
+          (forall ((q_498_s_L s_location))
+            (not (select (select s_disk_5f_req_5f_write_5f_nodes q_491_s_i) q_498_s_L)))
+          (forall ((q_499_s_L s_location) (q_500_s_N s_node))
+            (=
+              (select (select s_disk_5f_nodes_next q_499_s_L) q_500_s_N)
+              (or
+                (and
+                  (not (= q_499_s_L q_494_s_l))
+                  (select (select s_disk_5f_nodes q_499_s_L) q_500_s_N))
+                (and (= q_499_s_L q_494_s_l) (= q_500_s_N q_493_s_n)))))
+          (forall ((q_501_s_I s_req_5f_id) (q_502_s_L s_location))
+            (=
+              (select (select s_disk_5f_req_5f_write_5f_nodes_next q_501_s_I) q_502_s_L)
+              (or
+                (select (select s_disk_5f_req_5f_write_5f_nodes q_501_s_I) q_502_s_L)
+                (and (= q_501_s_I q_491_s_i) (= q_502_s_L q_494_s_l)))))
+          (not (select s_ephemeral_5f_dirty q_492_s_r))
+          (not (and s_sync_5f_in_5f_progress (select s_frozen_5f_dirty q_492_s_r)))
+          (forall ((q_503_s_I s_req_5f_id) (q_504_s_R s_ref) (q_505_s_L s_location))
+            (=
+              (select
+                (select (select s_outstanding_5f_block_5f_writes_next q_503_s_I) q_504_s_R)
+                q_505_s_L)
+              (or
+                (select
+                  (select (select s_outstanding_5f_block_5f_writes q_503_s_I) q_504_s_R)
+                  q_505_s_L)
+                (and (= q_503_s_I q_491_s_i) (= q_504_s_R q_492_s_r) (= q_505_s_L q_494_s_l)))))))
+      (forall ((q_506_s_x0 s_ref) (q_507_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_506_s_x0) q_507_s_x1)
+          (select (select s_spec_5f_ephemeral q_506_s_x0) q_507_s_x1)))
+      (forall ((q_508_s_x0 s_ref) (q_509_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_508_s_x0) q_509_s_x1)
+          (select (select s_spec_5f_frozen q_508_s_x0) q_509_s_x1)))
+      (forall ((q_510_s_x0 s_ref) (q_511_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_510_s_x0) q_511_s_x1)
+          (select (select s_spec_5f_persistent q_510_s_x0) q_511_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_512_s_x0 s_location) (q_513_s_x1 s_ref) (q_514_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_512_s_x0) q_513_s_x1)
+            q_514_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_512_s_x0) q_513_s_x1)
+            q_514_s_x2)))
+      (forall ((q_515_s_x0 s_req_5f_id) (q_516_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_515_s_x0)
+            q_516_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_515_s_x0) q_516_s_x1)))
+      (forall ((q_517_s_x0 s_req_5f_id) (q_518_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_517_s_x0) q_518_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_517_s_x0) q_518_s_x1)))
+      (forall ((q_519_s_x0 s_ref) (q_520_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_519_s_x0) q_520_s_x1)
+          (select (select s_cache q_519_s_x0) q_520_s_x1)))
+      (forall ((q_521_s_x0 s_ref) (q_522_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_521_s_x0) q_522_s_x1)
+          (select (select s_ephemeral_5f_clean q_521_s_x0) q_522_s_x1)))
+      (forall ((q_523_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_523_s_x0) (select s_ephemeral_5f_dirty q_523_s_x0)))
+      (forall ((q_524_s_x0 s_ref) (q_525_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_524_s_x0) q_525_s_x1)
+          (select (select s_frozen_5f_clean q_524_s_x0) q_525_s_x1)))
+      (forall ((q_526_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_526_s_x0) (select s_frozen_5f_dirty q_526_s_x0)))
+      (forall ((q_527_s_x0 s_ref) (q_528_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_527_s_x0) q_528_s_x1)
+          (select (select s_persistent q_527_s_x0) q_528_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_529_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_529_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_529_s_x0)))
+      (forall ((q_530_s_x0 s_req_5f_id) (q_531_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_530_s_x0) q_531_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_530_s_x0) q_531_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: write_back_node_resp
+(define-fun action_13 () Bool
+  (exists ((q_532_s_i s_req_5f_id) (q_533_s_l s_location))
+    (and
+      (and
+        (exists ((q_534_s_R s_ref) (q_535_s_L s_location))
+          (select (select (select s_outstanding_5f_block_5f_writes q_532_s_i) q_534_s_R) q_535_s_L))
+        (select (select s_disk_5f_req_5f_write_5f_nodes q_532_s_i) q_533_s_l)
+        (forall ((q_536_s_I s_req_5f_id) (q_537_s_L s_location))
+          (=
+            (select (select s_disk_5f_req_5f_write_5f_nodes_next q_536_s_I) q_537_s_L)
+            (and
+              (select (select s_disk_5f_req_5f_write_5f_nodes q_536_s_I) q_537_s_L)
+              (or (not (= q_536_s_I q_532_s_i)) (not (= q_537_s_L q_533_s_l))))))
+        (forall ((q_538_s_I s_req_5f_id) (q_539_s_R s_ref) (q_540_s_L s_location))
+          (=
+            (select
+              (select (select s_outstanding_5f_block_5f_writes_next q_538_s_I) q_539_s_R)
+              q_540_s_L)
+            (and
+              (select
+                (select (select s_outstanding_5f_block_5f_writes q_538_s_I) q_539_s_R)
+                q_540_s_L)
+              (not (= q_538_s_I q_532_s_i))))))
+      (forall ((q_541_s_x0 s_ref) (q_542_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_541_s_x0) q_542_s_x1)
+          (select (select s_spec_5f_ephemeral q_541_s_x0) q_542_s_x1)))
+      (forall ((q_543_s_x0 s_ref) (q_544_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_543_s_x0) q_544_s_x1)
+          (select (select s_spec_5f_frozen q_543_s_x0) q_544_s_x1)))
+      (forall ((q_545_s_x0 s_ref) (q_546_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_545_s_x0) q_546_s_x1)
+          (select (select s_spec_5f_persistent q_545_s_x0) q_546_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_547_s_x0 s_location) (q_548_s_x1 s_ref) (q_549_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_547_s_x0) q_548_s_x1)
+            q_549_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_547_s_x0) q_548_s_x1)
+            q_549_s_x2)))
+      (forall ((q_550_s_x0 s_location) (q_551_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_550_s_x0) q_551_s_x1)
+          (select (select s_disk_5f_nodes q_550_s_x0) q_551_s_x1)))
+      (forall ((q_552_s_x0 s_req_5f_id) (q_553_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_552_s_x0)
+            q_553_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_552_s_x0) q_553_s_x1)))
+      (forall ((q_554_s_x0 s_req_5f_id) (q_555_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_554_s_x0) q_555_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_554_s_x0) q_555_s_x1)))
+      (forall ((q_556_s_x0 s_ref) (q_557_s_x1 s_node))
+        (=
+          (select (select s_cache_next q_556_s_x0) q_557_s_x1)
+          (select (select s_cache q_556_s_x0) q_557_s_x1)))
+      (forall ((q_558_s_x0 s_ref) (q_559_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_558_s_x0) q_559_s_x1)
+          (select (select s_ephemeral_5f_clean q_558_s_x0) q_559_s_x1)))
+      (forall ((q_560_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_560_s_x0) (select s_ephemeral_5f_dirty q_560_s_x0)))
+      (forall ((q_561_s_x0 s_ref) (q_562_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_561_s_x0) q_562_s_x1)
+          (select (select s_frozen_5f_clean q_561_s_x0) q_562_s_x1)))
+      (forall ((q_563_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_563_s_x0) (select s_frozen_5f_dirty q_563_s_x0)))
+      (forall ((q_564_s_x0 s_ref) (q_565_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_564_s_x0) q_565_s_x1)
+          (select (select s_persistent q_564_s_x0) q_565_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_566_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_566_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_566_s_x0)))
+      (forall ((q_567_s_x0 s_req_5f_id) (q_568_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_567_s_x0) q_568_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_567_s_x0) q_568_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+; action: evict
+(define-fun action_14 () Bool
+  (exists ((q_569_s_r s_ref))
+    (and
+      (and
+        (exists ((q_570_s_N s_node)) (select (select s_cache q_569_s_r) q_570_s_N))
+        (not (select s_ephemeral_5f_dirty q_569_s_r))
+        (forall ((q_571_s_R s_ref) (q_572_s_N s_node))
+          (=
+            (select (select s_cache_next q_571_s_R) q_572_s_N)
+            (and (select (select s_cache q_571_s_R) q_572_s_N) (not (= q_571_s_R q_569_s_r))))))
+      (forall ((q_573_s_x0 s_ref) (q_574_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_ephemeral_next q_573_s_x0) q_574_s_x1)
+          (select (select s_spec_5f_ephemeral q_573_s_x0) q_574_s_x1)))
+      (forall ((q_575_s_x0 s_ref) (q_576_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_frozen_next q_575_s_x0) q_576_s_x1)
+          (select (select s_spec_5f_frozen q_575_s_x0) q_576_s_x1)))
+      (forall ((q_577_s_x0 s_ref) (q_578_s_x1 s_node))
+        (=
+          (select (select s_spec_5f_persistent_next q_577_s_x0) q_578_s_x1)
+          (select (select s_spec_5f_persistent q_577_s_x0) q_578_s_x1)))
+      (= s_spec_5f_sync_5f_in_5f_progress_next s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_579_s_x0 s_location) (q_580_s_x1 s_ref) (q_581_s_x2 s_location))
+        (=
+          (select
+            (select (select s_disk_5f_indirection_5f_tables_next q_579_s_x0) q_580_s_x1)
+            q_581_s_x2)
+          (select
+            (select (select s_disk_5f_indirection_5f_tables q_579_s_x0) q_580_s_x1)
+            q_581_s_x2)))
+      (forall ((q_582_s_x0 s_location) (q_583_s_x1 s_node))
+        (=
+          (select (select s_disk_5f_nodes_next q_582_s_x0) q_583_s_x1)
+          (select (select s_disk_5f_nodes q_582_s_x0) q_583_s_x1)))
+      (forall ((q_584_s_x0 s_req_5f_id) (q_585_s_x1 s_location))
+        (=
+          (select
+            (select s_disk_5f_req_5f_write_5f_indirection_5f_tables_next q_584_s_x0)
+            q_585_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_584_s_x0) q_585_s_x1)))
+      (forall ((q_586_s_x0 s_req_5f_id) (q_587_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_write_5f_nodes_next q_586_s_x0) q_587_s_x1)
+          (select (select s_disk_5f_req_5f_write_5f_nodes q_586_s_x0) q_587_s_x1)))
+      (forall ((q_588_s_x0 s_req_5f_id) (q_589_s_x1 s_location))
+        (=
+          (select (select s_disk_5f_req_5f_read_5f_nodes_next q_588_s_x0) q_589_s_x1)
+          (select (select s_disk_5f_req_5f_read_5f_nodes q_588_s_x0) q_589_s_x1)))
+      (forall ((q_590_s_x0 s_ref) (q_591_s_x1 s_location))
+        (=
+          (select (select s_ephemeral_5f_clean_next q_590_s_x0) q_591_s_x1)
+          (select (select s_ephemeral_5f_clean q_590_s_x0) q_591_s_x1)))
+      (forall ((q_592_s_x0 s_ref))
+        (= (select s_ephemeral_5f_dirty_next q_592_s_x0) (select s_ephemeral_5f_dirty q_592_s_x0)))
+      (forall ((q_593_s_x0 s_ref) (q_594_s_x1 s_location))
+        (=
+          (select (select s_frozen_5f_clean_next q_593_s_x0) q_594_s_x1)
+          (select (select s_frozen_5f_clean q_593_s_x0) q_594_s_x1)))
+      (forall ((q_595_s_x0 s_ref))
+        (= (select s_frozen_5f_dirty_next q_595_s_x0) (select s_frozen_5f_dirty q_595_s_x0)))
+      (forall ((q_596_s_x0 s_ref) (q_597_s_x1 s_location))
+        (=
+          (select (select s_persistent_next q_596_s_x0) q_597_s_x1)
+          (select (select s_persistent q_596_s_x0) q_597_s_x1)))
+      (= s_sync_5f_in_5f_progress_next s_sync_5f_in_5f_progress)
+      (=
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some_next
+        s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_598_s_x0 s_req_5f_id))
+        (=
+          (select s_outstanding_5f_indirection_5f_table_5f_write_next q_598_s_x0)
+          (select s_outstanding_5f_indirection_5f_table_5f_write q_598_s_x0)))
+      (forall ((q_599_s_x0 s_req_5f_id) (q_600_s_x1 s_ref) (q_601_s_x2 s_location))
+        (=
+          (select
+            (select (select s_outstanding_5f_block_5f_writes_next q_599_s_x0) q_600_s_x1)
+            q_601_s_x2)
+          (select
+            (select (select s_outstanding_5f_block_5f_writes q_599_s_x0) q_600_s_x1)
+            q_601_s_x2)))
+      (forall ((q_602_s_x0 s_req_5f_id) (q_603_s_x1 s_ref))
+        (=
+          (select (select s_outstanding_5f_block_5f_reads_next q_602_s_x0) q_603_s_x1)
+          (select (select s_outstanding_5f_block_5f_reads q_602_s_x0) q_603_s_x1)))
+      (=
+        s_persistent_5f_indirection_5f_table_5f_loc_next
+        s_persistent_5f_indirection_5f_table_5f_loc)
+      (= s_frozen_5f_indirection_5f_table_5f_loc_next s_frozen_5f_indirection_5f_table_5f_loc))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_1_s_R s_ref) (q_2_s_N s_node))
+        (not (select (select s_spec_5f_ephemeral q_1_s_R) q_2_s_N)))
+      (forall ((q_3_s_R s_ref) (q_4_s_N s_node))
+        (not (select (select s_spec_5f_frozen q_3_s_R) q_4_s_N)))
+      (forall ((q_5_s_R s_ref) (q_6_s_N s_node))
+        (not (select (select s_spec_5f_persistent q_5_s_R) q_6_s_N)))
+      (not s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_7_s_L s_location) (q_8_s_N s_node))
+        (not (select (select s_disk_5f_nodes q_7_s_L) q_8_s_N)))
+      (forall ((q_9_s_L1 s_location) (q_10_s_R s_ref) (q_11_s_L2 s_location))
+        (not (select (select (select s_disk_5f_indirection_5f_tables q_9_s_L1) q_10_s_R) q_11_s_L2)))
+      (forall ((q_12_s_I s_req_5f_id) (q_13_s_L s_location))
+        (not (select (select s_disk_5f_req_5f_write_5f_indirection_5f_tables q_12_s_I) q_13_s_L)))
+      (forall ((q_14_s_I s_req_5f_id) (q_15_s_L s_location))
+        (not (select (select s_disk_5f_req_5f_write_5f_nodes q_14_s_I) q_15_s_L)))
+      (forall ((q_16_s_I s_req_5f_id) (q_17_s_L s_location))
+        (not (select (select s_disk_5f_req_5f_read_5f_nodes q_16_s_I) q_17_s_L)))
+      (forall ((q_18_s_R s_ref) (q_19_s_N s_node))
+        (not (select (select s_cache q_18_s_R) q_19_s_N)))
+      (forall ((q_20_s_R s_ref) (q_21_s_L s_location))
+        (not (select (select s_ephemeral_5f_clean q_20_s_R) q_21_s_L)))
+      (forall ((q_22_s_R s_ref)) (not (select s_ephemeral_5f_dirty q_22_s_R)))
+      (forall ((q_23_s_R s_ref) (q_24_s_L s_location))
+        (not (select (select s_persistent q_23_s_R) q_24_s_L)))
+      (forall ((q_25_s_R s_ref)) (not (select s_frozen_5f_dirty q_25_s_R)))
+      (forall ((q_26_s_R s_ref) (q_27_s_L s_location))
+        (not (select (select s_frozen_5f_clean q_26_s_R) q_27_s_L)))
+      (not s_frozen_5f_indirection_5f_table_5f_loc_5f_some)
+      (forall ((q_28_s_I s_req_5f_id))
+        (not (select s_outstanding_5f_indirection_5f_table_5f_write q_28_s_I)))
+      (forall ((q_29_s_I s_req_5f_id) (q_30_s_R s_ref) (q_31_s_L s_location))
+        (not (select (select (select s_outstanding_5f_block_5f_writes q_29_s_I) q_30_s_R) q_31_s_L)))
+      (forall ((q_32_s_I s_req_5f_id) (q_33_s_R s_ref))
+        (not (select (select s_outstanding_5f_block_5f_reads q_32_s_I) q_33_s_R)))
+      (not s_sync_5f_in_5f_progress))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (or
+      action_0
+      action_1
+      action_2
+      action_3
+      action_4
+      action_5
+      action_6
+      action_7
+      action_8
+      action_9
+      action_10
+      action_11
+      action_12
+      action_13
+      action_14)
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (and
+      (forall ((q_604_s_R s_ref))
+        (=>
+          (and
+            (forall ((q_605_s_N s_node)) (not (select (select s_cache q_604_s_R) q_605_s_N)))
+            (forall ((q_606_s_L s_location))
+              (not (select (select s_ephemeral_5f_clean q_604_s_R) q_606_s_L))))
+          (forall ((q_607_s_N s_node))
+            (not (select (select s_spec_5f_ephemeral q_604_s_R) q_607_s_N)))))
+      (=>
+        (and
+          s_sync_5f_in_5f_progress
+          s_frozen_5f_indirection_5f_table_5f_loc_5f_some
+          (forall ((q_608_s_I s_req_5f_id))
+            (not (select s_outstanding_5f_indirection_5f_table_5f_write q_608_s_I))))
+        s_spec_5f_sync_5f_in_5f_progress)
+      (forall ((q_609_s_R s_ref) (q_610_s_N s_node))
+        (=>
+          (select (select s_cache q_609_s_R) q_610_s_N)
+          (select (select s_spec_5f_ephemeral q_609_s_R) q_610_s_N))))
+    :invar-property
+    0))

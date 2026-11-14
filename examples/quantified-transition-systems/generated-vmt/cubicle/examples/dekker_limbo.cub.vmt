@@ -1,0 +1,133 @@
+; Generated offline from cubicle/examples/dekker_limbo.cub
+; Source SHA-256: 1d4dc6d1c9eb628b259380fad4fb446e9d94b7a13c078ff02d758fb69b69a437
+; Regenerate: python -m tools.benchmark_translation
+; Function/relation state is encoded as nested arrays.
+; Process witnesses form an uninterpreted sort with injective integer rank; stored proc values are integers and may lie outside its image.
+; First-order encoding admits infinite domains; no finiteness axiom is added.
+; Action and unsafe parameters are distinct. Init parameters need not be distinct.
+; Updates are simultaneous; the last case branch is unconditional.
+(declare-sort Proc 0)
+(declare-sort s_loc 0)
+(declare-fun s_L1 () s_loc)
+(declare-fun s_L1_next () s_loc)
+(declare-fun s_L2 () s_loc)
+(declare-fun s_L2_next () s_loc)
+(declare-fun s_L3 () s_loc)
+(declare-fun s_L3_next () s_loc)
+(declare-fun s_Limbo () s_loc)
+(declare-fun s_Limbo_next () s_loc)
+(declare-fun s_Turn () Int)
+(declare-fun s_Turn_next () Int)
+(declare-fun s_PC () (Array Proc s_loc))
+(declare-fun s_PC_next () (Array Proc s_loc))
+(declare-fun s__5f__5f_proc_5f_rank () (Array Proc Int))
+(declare-fun s__5f__5f_proc_5f_rank_next () (Array Proc Int))
+; source symbol: L1
+(define-fun link_0 () s_loc (! s_L1 :next s_L1_next))
+; source symbol: L2
+(define-fun link_1 () s_loc (! s_L2 :next s_L2_next))
+; source symbol: L3
+(define-fun link_2 () s_loc (! s_L3 :next s_L3_next))
+; source symbol: Limbo
+(define-fun link_3 () s_loc (! s_Limbo :next s_Limbo_next))
+; source symbol: Turn
+(define-fun link_4 () Int (! s_Turn :next s_Turn_next))
+; source symbol: PC
+(define-fun link_5 () (Array Proc s_loc) (! s_PC :next s_PC_next))
+; source symbol: __proc_rank
+(define-fun link_6 () (Array Proc Int) (! s__5f__5f_proc_5f_rank :next s__5f__5f_proc_5f_rank_next))
+; action: req
+(define-fun action_0 () Bool
+  (exists ((q_5_s_i Proc))
+    (and
+      (= (select s_PC q_5_s_i) s_L1)
+      (forall ((q_6_s_j Proc))
+        (= (select s_PC_next q_6_s_j) (ite (= q_5_s_i q_6_s_j) s_L2 (select s_PC q_6_s_j))))
+      (= s_Turn_next s_Turn))))
+; action: limbo
+(define-fun action_1 () Bool
+  (exists ((q_7_s_i Proc))
+    (and
+      (= (select s_PC q_7_s_i) s_L2)
+      (forall ((q_8_s_j Proc))
+        (= (select s_PC_next q_8_s_j) (ite (= q_7_s_i q_8_s_j) s_Limbo (select s_PC q_8_s_j))))
+      (= s_Turn_next s_Turn))))
+; action: enter
+(define-fun action_2 () Bool
+  (exists ((q_9_s_i Proc))
+    (and
+      (and (= (select s_PC q_9_s_i) s_Limbo) (= s_Turn (select s__5f__5f_proc_5f_rank q_9_s_i)))
+      (forall ((q_10_s_j Proc))
+        (= (select s_PC_next q_10_s_j) (ite (= q_9_s_i q_10_s_j) s_L3 (select s_PC q_10_s_j))))
+      (= s_Turn_next s_Turn))))
+; action: exit
+(define-fun action_3 () Bool
+  (exists ((q_11_s_i Proc))
+    (and
+      (= (select s_PC q_11_s_i) s_L3)
+      (forall ((q_12_s_j Proc))
+        (= (select s_PC_next q_12_s_j) (ite (= q_11_s_i q_12_s_j) s_L1 (select s_PC q_12_s_j)))))))
+(define-fun init () Bool
+  (!
+    (and
+      (forall ((q_2_s_z Proc)) (= (select s_PC q_2_s_z) s_L1))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_Limbo))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_Limbo))
+        (not (= s_L3 s_Limbo)))
+      (forall ((q_1_s_enum s_loc))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3) (= q_1_s_enum s_Limbo)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :init
+    true))
+(define-fun trans () Bool
+  (!
+    (and
+      (or action_0 action_1 action_2 action_3)
+      (= s_L1_next s_L1)
+      (= s_L2_next s_L2)
+      (= s_L3_next s_L3)
+      (= s_Limbo_next s_Limbo)
+      (= s__5f__5f_proc_5f_rank_next s__5f__5f_proc_5f_rank)
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_Limbo))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_Limbo))
+        (not (= s_L3 s_Limbo)))
+      (forall ((q_1_s_enum s_loc))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3) (= q_1_s_enum s_Limbo)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b)))
+      (and
+        (not (= s_L1 s_L2))
+        (not (= s_L1 s_L3))
+        (not (= s_L1 s_Limbo))
+        (not (= s_L2 s_L3))
+        (not (= s_L2 s_Limbo))
+        (not (= s_L3 s_Limbo)))
+      (forall ((q_1_s_enum s_loc))
+        (or (= q_1_s_enum s_L1) (= q_1_s_enum s_L2) (= q_1_s_enum s_L3) (= q_1_s_enum s_Limbo)))
+      (forall ((rank_a Proc) (rank_b Proc))
+        (=>
+          (= (select s__5f__5f_proc_5f_rank rank_a) (select s__5f__5f_proc_5f_rank rank_b))
+          (= rank_a rank_b))))
+    :trans
+    true))
+(define-fun property () Bool
+  (!
+    (forall ((q_3_s_z1 Proc) (q_4_s_z2 Proc))
+      (=>
+        (not (= q_3_s_z1 q_4_s_z2))
+        (not (and (= (select s_PC q_3_s_z1) s_L3) (= (select s_PC q_4_s_z2) s_L3)))))
+    :invar-property
+    0))

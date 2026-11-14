@@ -281,6 +281,7 @@ impl PartialTupleCursor {
                     root: self.root.unwrap(),
                     substitution,
                     model_violation_verified: false,
+                    literal_bindings: vec![],
                 });
             } else {
                 self.stack.push(Prefix {

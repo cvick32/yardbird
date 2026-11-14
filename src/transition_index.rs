@@ -204,6 +204,13 @@ impl TransitionIndex {
         builder.index_single_step_term(term.clone())
     }
 
+    /// Recognize actual state leaves, excluding framed definitions and witnesses.
+    pub(crate) fn state_frame(&self, term: &Term) -> Option<u16> {
+        let (base, frame) = smt2parser::vmt::split_framed_symbol(&leaf_symbol(term)?)?;
+        self.current_variables.contains(&base).then_some(())?;
+        u16::try_from(frame).ok()
+    }
+
     /// Expand a definition at its actual frame without reframing witness captures.
     pub(crate) fn expand_framed_leaf(&self, term: &Term) -> Option<Term> {
         let name = leaf_symbol(term)?;

@@ -374,3 +374,33 @@ fn real_paxos_witness_chain_is_grounded_without_matching_and_closes_agreement_br
         }
     }
 }
+
+#[test]
+fn scheduled_exact_page_reservation_preserves_request_continuations() {
+    let mut prepared = prepared_fixture(2, 7);
+    let fixed = request(&[("x0", "v0")]);
+    let mut seen = HashSet::new();
+    for size in [1, 2, 4] {
+        let allowance = crate::policy::effort::WorkAllowance {
+            binder_page_size: size,
+            ..Default::default()
+        };
+        let batch = prepared
+            .candidates(
+                |_| Ok("false".into()),
+                BinderSearch::RequestPage(&fixed, allowance),
+                |_| PreferLongName,
+                prepared_options(),
+            )
+            .unwrap();
+        assert_eq!(batch.candidates.len(), size);
+        for candidate in batch.candidates {
+            assert!(
+                seen.insert(expr_to_term(candidate.expression).to_string()),
+                "changing page size restarted a request"
+            );
+        }
+    }
+    assert_eq!(seen.len(), 7);
+    assert!(!prepared.can_continue(&fixed));
+}
