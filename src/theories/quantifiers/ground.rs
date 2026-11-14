@@ -431,12 +431,12 @@ mod tests {
         .map(|s| s.parse::<Term>().unwrap());
         let (instances, _) = search.generate(&plan, terms.iter().collect(), 100);
         let a = "a@0".parse::<Term>().unwrap();
-        assert!(instances
-            .iter()
-            .any(|i| i.term == plan.rules[0].instantiate(&[a.clone()], &["7".parse().unwrap()])));
-        assert!(instances
-            .iter()
-            .any(|i| i.term == plan.rules[0].witness_instance(&[a.clone()]).unwrap()));
+        assert!(instances.iter().any(|i| i.term
+            == plan.rules[0].instantiate(std::slice::from_ref(&a), &["7".parse().unwrap()])));
+        assert!(instances.iter().any(|i| i.term
+            == plan.rules[0]
+                .witness_instance(std::slice::from_ref(&a))
+                .unwrap()));
         assert_eq!(instances.len(), 2);
         assert!(instances
             .iter()
@@ -543,7 +543,9 @@ mod tests {
         assert_eq!(instances.len(), 1);
         assert_eq!(
             instances[0].term,
-            plan.rules[0].witness_instance(&[a.clone()]).unwrap()
+            plan.rules[0]
+                .witness_instance(std::slice::from_ref(&a))
+                .unwrap()
         );
         let mut ordinary = GroundBinders::for_request(
             &plan,

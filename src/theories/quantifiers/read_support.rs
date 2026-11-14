@@ -143,7 +143,7 @@ mod tests {
             "(=> (q a@0) (= (Read_Int_Int a@0 5) 7))"
         );
         let mut n = 1;
-        while let Some(_) = support.next(&plan) {
+        while support.next(&plan).is_some() {
             n += 1;
             assert!(n <= 4);
         }

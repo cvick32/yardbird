@@ -1257,8 +1257,11 @@ mod option_tests {
 
     #[test]
     fn guided_exact_grounding_requires_guided_policy() {
-        let mut run = YardbirdOptions::default();
-        run.filename = Some("test.vmt".into());
+        let mut run = YardbirdOptions {
+            filename: Some("test.vmt".into()),
+            guided_exact_grounding: true,
+            ..Default::default()
+        };
         run.guided_exact_grounding = true;
         assert!(run.validate_countermodel_trace_options().is_err());
         run.policy = Some(policy::NamedPolicy::GermanFast);
@@ -1297,8 +1300,11 @@ mod option_tests {
 
     #[test]
     fn guided_read_frontiers_requires_guided_policy_and_defaults_off() {
-        let mut run = YardbirdOptions::default();
-        run.filename = Some("test.vmt".into());
+        let mut run = YardbirdOptions {
+            filename: Some("test.vmt".into()),
+            guided_exact_grounding: true,
+            ..Default::default()
+        };
         assert!(!run.guided_read_frontiers);
         run.guided_read_frontiers = true;
         assert!(run.validate_countermodel_trace_options().is_err());
@@ -1317,8 +1323,11 @@ mod option_tests {
 
     #[test]
     fn guided_read_support_requires_guided_policy_and_defaults_off() {
-        let mut run = YardbirdOptions::default();
-        run.filename = Some("test.vmt".into());
+        let mut run = YardbirdOptions {
+            filename: Some("test.vmt".into()),
+            guided_exact_grounding: true,
+            ..Default::default()
+        };
         assert!(!run.guided_read_support);
         run.guided_read_support = true;
         assert!(run.validate_countermodel_trace_options().is_err());
