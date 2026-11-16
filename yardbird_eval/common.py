@@ -326,7 +326,7 @@ def require_reportable_run(manifest: dict[str, Any]) -> None:
         raise RuntimeError(f"Run {manifest['run_id']} has no completed subruns to report")
 
 
-def build_report_for_run(manifest: dict[str, Any]) -> None:
+def build_report_for_run(manifest: dict[str, Any], *, full: bool = False) -> None:
     require_reportable_run(manifest)
 
     run_dir = Path(manifest["run_dir"])
@@ -341,6 +341,7 @@ def build_report_for_run(manifest: dict[str, Any]) -> None:
             manifest["manifest_path"],
             "--run-dir",
             str(run_dir),
+            *(["--full"] if full else []),
         ],
         cwd=ROOT,
         check=True,

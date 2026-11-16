@@ -5,8 +5,7 @@ from pathlib import Path
 import re
 from typing import Optional
 
-CONCRETE_ARRAY_Z3_STATS = ["array ax1", "array ax2"]
-ABSTRACT_WITH_QUANTIFIERS = ["quant instantiations"]
+SOLVER_INSTANCE_STATS = ["array ax1", "array ax2", "array ext ax", "quant instantiations"]
 SOLVED_RESULT_TYPES = {"Success", "_FoundProof"}
 JSON_READ_CHUNK_SIZE = 1024 * 1024
 
@@ -69,9 +68,15 @@ class BenchmarkResult:
     policy: Optional[str] = None
     no_guided_fallback: Optional[bool] = None
     guidance_schedule: Optional[str] = None
+    guidance_work: Optional[int] = None
+    guidance_transition_order: Optional[str] = None
+    guidance_action_requirements: Optional[str] = None
+    prefer_axioms: Optional[bool] = None
+
 
     timeout_ms: Optional[float] = None
     guided_settings: dict = field(default_factory=dict)
+    report_label: Optional[str] = None
 
     def plot_runtime_ms(self) -> float:
         """Use the recorded limit for timeouts, elapsed time for other outcomes."""
@@ -85,6 +90,11 @@ class BenchmarkResult:
             for value in (
                 self.policy,
                 self.guidance_schedule,
+                self.guidance_work,
+                self.guidance_transition_order,
+                self.guidance_action_requirements,
+                self.prefer_axioms,
+
                 self.instantiation_ranker,
                 self.candidate_winners_per_group,
                 self.property_check_mode,
@@ -109,6 +119,11 @@ class BenchmarkResult:
             "policy": self.policy,
             "no_guided_fallback": self.no_guided_fallback,
             "guidance_schedule": self.guidance_schedule,
+            "guidance_work": self.guidance_work,
+            "guidance_transition_order": self.guidance_transition_order,
+            "guidance_action_requirements": self.guidance_action_requirements,
+            "prefer_axioms": self.prefer_axioms,
+
             "solver": self.solver,
             "strategy": self.strategy,
             "cost_function": self.cost_function,
@@ -143,6 +158,11 @@ class BenchmarkResult:
                     ("fallback", None if self.no_guided_fallback is None else
                      "disabled" if self.no_guided_fallback else "ordinary"),
                     ("guidance", self.guidance_schedule),
+                    ("work", self.guidance_work),
+                    ("transition", self.guidance_transition_order),
+                    ("requirements", self.guidance_action_requirements),
+                    ("prefer-axioms", self.prefer_axioms),
+
                     ("solver", self.solver),
                     ("depth", self.depth),
                     ("egraph", self.egraph_builder),
@@ -213,6 +233,8 @@ class BenchmarkResult:
         return self.strategy
 
     def get_display_name(self) -> str:
+        if self.report_label is not None:
+            return self.report_label
         if self.strategy == "concrete":
             name = "Z3 Array Theory"
             if not self.property_check_mode and self.solver in {None, "z3"}:
@@ -279,6 +301,14 @@ class BenchmarkResult:
                     details.append(f"seed={random['random_seed']}")
                 if self.no_guided_fallback is not None:
                     details.append("strict" if self.no_guided_fallback else "ordinary fallback")
+                if self.guidance_work is not None:
+                    details.append(f"work={self.guidance_work}")
+                if self.guidance_transition_order is not None:
+                    details.append(self.guidance_transition_order)
+                if self.guidance_action_requirements is not None:
+                    details.append(f"requirements={self.guidance_action_requirements}")
+                if self.prefer_axioms is not None:
+                    details.append("axioms first" if self.prefer_axioms else "default axiom order")
                 if self.guidance_schedule:
                     details.append(self.guidance_schedule)
                 if self.solver and self.solver != "z3":
@@ -470,25 +500,18 @@ def compute_axiom_instantiations(full_entry: dict, strategy: str, success: bool)
     entry = successful_payload(full_entry, success)
     if strategy == "abstract":
         return int(entry.get("total_instantiations_added") or 0)
-    elif strategy == "concrete":
-        # Concrete: sum of concrete Z3 array axiom stats
-        concrete_z3_count = 0
-        for stat in CONCRETE_ARRAY_Z3_STATS:
+    elif strategy in {"concrete", "abstract-with-quantifiers"}:
+        # Native solving can instantiate source quantifiers as well as array
+        # axioms. Prefer aggregated counters, without also adding their aliases.
+        stats = entry.get("solver_statistics", {}).get("stats", {})
+        count = 0
+        for stat in SOLVER_INSTANCE_STATS:
+            value = stats.get(f"total.{stat}", stats.get(stat, 0))
             try:
-                concrete_z3_count += int(
-                    entry["solver_statistics"]["stats"].get(stat, 0)
-                )
+                count += int(value)
             except (ValueError, TypeError):
                 pass
-        return concrete_z3_count
-    elif strategy == "abstract-with-quantifiers":
-        quant_count = 0
-        for stat in ABSTRACT_WITH_QUANTIFIERS:
-            try:
-                quant_count += int(entry["solver_statistics"]["stats"].get(stat, 0))
-            except (ValueError, TypeError):
-                pass
-        return quant_count
+        return count
 
     raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -634,6 +657,11 @@ class BenchmarkParser:
             no_guided_fallback=(result_entry.get("no_guided_fallback")
                 if result_entry.get("policy") in GUIDED_SETTINGS_SECTION else None),
             guidance_schedule=result_entry.get("guidance_schedule"),
+            guidance_work=result_entry.get("guidance_work"),
+            guidance_transition_order=result_entry.get("guidance_transition_order"),
+            guidance_action_requirements=result_entry.get("guidance_action_requirements"),
+            prefer_axioms=result_entry.get("prefer_axioms"),
+
             run_progress=run_progress,
             example_name=example_name,
             strategy=strategy,

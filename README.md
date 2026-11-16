@@ -428,7 +428,7 @@ uv run main_eval.py compare_with_instrumentation \
   --run-id test-compare
 
 # Generate the ordinary evaluation workbook with the instrumentation section.
-uv run main_eval.py generate-report --run-id test-compare
+uv run main_eval.py generate-report --run-id test-compare --full
 
 # Local run with a combined workbook report
 python3 main_eval.py \
@@ -494,7 +494,7 @@ python3 main_eval.py compare-downloaded-instrumentation \
   --z3-build-dir /path/to/z3-builder-output
 
 # Regenerate the combined workbook with the local replay measurements.
-python3 main_eval.py generate-report --run-id <run-id>
+python3 main_eval.py generate-report --run-id <run-id> --full
 ```
 
 Passing `--difficult-benchmarks` without a run id selects the newest downloaded
@@ -559,7 +559,9 @@ separate capture-free run for end-to-end benchmark timing.
 
 `--generate-report` also produces a self-contained analysis bundle:
 
-- `report/workbook.pdf` includes solved counts, baseline coverage comparisons, runtime wins/losses, exclusive solves, and the largest improvements and regressions
+- `report/workbook.pdf` defaults to a short coverage summary, runtime and instantiation cactus plots, and an annotated benchmark-by-strategy completed-depth heatmap for VMT inputs.
+- Add `--full` to `--generate-report` (or the `generate-report` subcommand) for detailed baseline comparisons, solver plots/statistics, and instrumentation sections. The report builder also accepts `--full`.
+- `report/data/completed_depths.csv` records exact completed/attempted/target depths and outcomes. Completed depths are zero-based: target 20 completes depths 0–19. Timeouts retain partial progress; missing progress is never inferred from the target.
 - `report/analysis.json` contains the complete structured analysis
 - `report/analysis.md` is a text-friendly summary
 - `report/data/strategy_summary.csv` and `baseline_comparisons.csv` contain aggregate metrics

@@ -116,6 +116,7 @@ def generate_figures(
     output_dir,
     *,
     include_pairwise=True,
+    full=True,
 ):
     """Generate all figures and save to output directory
 
@@ -135,55 +136,56 @@ def generate_figures(
     baseline_display_name = display_name_for_strategy(grouped, baseline_strategy)
     print(f"Using baseline strategy: {baseline_strategy} ({baseline_display_name})")
 
-    # Generate all-benchmarks table (every benchmark × every strategy with solve times)
-    print(f"\n{'=' * 60}")
-    print("Generating all-benchmarks solve time table")
-    print(f"{'=' * 60}")
+    if full:
+        # Generate all-benchmarks table (every benchmark × every strategy with solve times)
+        print(f"\n{'=' * 60}")
+        print("Generating all-benchmarks solve time table")
+        print(f"{'=' * 60}")
 
-    all_benchmarks_table = TableTikzGenerator.generate_all_benchmarks_table(
-        grouped,
-        strategy_keys,
-        baseline_strategy=baseline_strategy,
-    )
-    all_benchmarks_file = output_dir / "all_benchmarks_table.tex"
-    all_benchmarks_file.write_text(all_benchmarks_table)
-    print(f"  Saved: {all_benchmarks_file}")
+        all_benchmarks_table = TableTikzGenerator.generate_all_benchmarks_table(
+            grouped,
+            strategy_keys,
+            baseline_strategy=baseline_strategy,
+        )
+        all_benchmarks_file = output_dir / "all_benchmarks_table.tex"
+        all_benchmarks_file.write_text(all_benchmarks_table)
+        print(f"  Saved: {all_benchmarks_file}")
 
-    # Generate summary statistics table for all strategies
-    print(f"\n{'=' * 60}")
-    print("Generating summary statistics table")
-    print(f"{'=' * 60}")
+        # Generate summary statistics table for all strategies
+        print(f"\n{'=' * 60}")
+        print("Generating summary statistics table")
+        print(f"{'=' * 60}")
 
-    summary_table = TableTikzGenerator.generate_summary_statistics_table(
-        grouped,
-        strategy_keys,
-        baseline_strategy=baseline_strategy,
-        min_baseline_runtime_ms=1000.0,
-    )
-    summary_file = output_dir / "summary_statistics.tex"
-    summary_file.write_text(summary_table)
-    print(f"  Saved: {summary_file}")
+        summary_table = TableTikzGenerator.generate_summary_statistics_table(
+            grouped,
+            strategy_keys,
+            baseline_strategy=baseline_strategy,
+            min_baseline_runtime_ms=1000.0,
+        )
+        summary_file = output_dir / "summary_statistics.tex"
+        summary_file.write_text(summary_table)
+        print(f"  Saved: {summary_file}")
 
-    # Generate shared benchmark analysis table
-    print(f"\n{'=' * 60}")
-    print("Generating shared benchmark analysis table")
-    print(f"{'=' * 60}")
+        # Generate shared benchmark analysis table
+        print(f"\n{'=' * 60}")
+        print("Generating shared benchmark analysis table")
+        print(f"{'=' * 60}")
 
-    shared_analysis_table = TableTikzGenerator.generate_shared_benchmark_analysis_table(
-        grouped,
-        strategy_keys,
-        baseline_strategy=baseline_strategy,
-        min_baseline_runtime_ms=1000.0,
-    )
-    shared_analysis_file = output_dir / "shared_benchmark_analysis.tex"
-    shared_analysis_file.write_text(shared_analysis_table)
-    print(f"  Saved: {shared_analysis_file}")
+        shared_analysis_table = TableTikzGenerator.generate_shared_benchmark_analysis_table(
+            grouped,
+            strategy_keys,
+            baseline_strategy=baseline_strategy,
+            min_baseline_runtime_ms=1000.0,
+        )
+        shared_analysis_file = output_dir / "shared_benchmark_analysis.tex"
+        shared_analysis_file.write_text(shared_analysis_table)
+        print(f"  Saved: {shared_analysis_file}")
 
     # Compare every non-baseline strategy against the selected baseline.
     non_baseline_strategies = sorted(
         [s for s in strategy_keys if s != baseline_strategy]
     )
-    if not include_pairwise:
+    if not include_pairwise or not full:
         print(
             "Skipping per-configuration pairwise plots; "
             "the all-configuration plots and analysis remain enabled"
@@ -195,6 +197,14 @@ def generate_figures(
         style = result.get_plot_style()
         if style:
             series_styles.setdefault(result.get_display_name(), style)
+
+    # Configuration sweeps often share the same semantic style. Distinguish
+    # report series so ablations remain identifiable in both cactus plots.
+    report_names = list(dict.fromkeys(r.get_display_name() for r in all_results if r.report_label))
+    colors = ["blue", "red", "teal", "orange", "violet", "brown", "magenta", "olive"]
+    for index, name in enumerate(report_names):
+        line = "solid" if index < len(colors) else "densely dashed"
+        series_styles[name] = f"color={colors[index % len(colors)]}, {line}, mark=none"
 
     # Initialize generators
     runtime_gen = RuntimeScatterPlotGenerator(grouped)
@@ -378,60 +388,61 @@ def generate_figures(
         output_file.write_text(tikz_code)
         print(f"  Saved: {output_file}")
 
-    # Generate Z3-only runtime cactus plot
-    print(f"\n{'=' * 60}")
-    print("Generating Z3 runtime cactus plot")
-    print(f"{'=' * 60}")
+    if full:
+        # Generate Z3-only runtime cactus plot
+        print(f"\n{'=' * 60}")
+        print("Generating Z3 runtime cactus plot")
+        print(f"{'=' * 60}")
 
-    solver_runtime_gen = SolverRuntimeCactusPlotGenerator(all_results)
-    solver_runtime_data = solver_runtime_gen.generate_data()
+        solver_runtime_gen = SolverRuntimeCactusPlotGenerator(all_results)
+        solver_runtime_data = solver_runtime_gen.generate_data()
 
-    if solver_runtime_data:
-        tikz_code = CactusPlotTikzGenerator.generate(
-            solver_runtime_data,
-            title="Z3 Runtime Performance Comparison",
-            xlabel="Number of Solved Instances",
-            ylabel="Time in Z3 (s)",
-            caption=(
-                "Cactus plot of time spent inside Z3 for each strategy's successful "
-                "runs (lower lines are better). Runs without solver timing data are "
-                "omitted; curves may contain different solved benchmark populations."
-            ),
-            use_log_scale=True,
-            label="fig:cactus_z3_runtime",
-            series_styles=series_styles,
-        )
+        if solver_runtime_data:
+            tikz_code = CactusPlotTikzGenerator.generate(
+                solver_runtime_data,
+                title="Z3 Runtime Performance Comparison",
+                xlabel="Number of Solved Instances",
+                ylabel="Time in Z3 (s)",
+                caption=(
+                    "Cactus plot of time spent inside Z3 for each strategy's successful "
+                    "runs (lower lines are better). Runs without solver timing data are "
+                    "omitted; curves may contain different solved benchmark populations."
+                ),
+                use_log_scale=True,
+                label="fig:cactus_z3_runtime",
+                series_styles=series_styles,
+            )
 
-        output_file = output_dir / "solver_runtime_cactus_plot.tex"
-        output_file.write_text(tikz_code)
-        print(f"  Saved: {output_file}")
+            output_file = output_dir / "solver_runtime_cactus_plot.tex"
+            output_file.write_text(tikz_code)
+            print(f"  Saved: {output_file}")
 
-    # Generate Z3 check-count cactus plot
-    print(f"\n{'=' * 60}")
-    print("Generating Z3 check-count cactus plot")
-    print(f"{'=' * 60}")
+        # Generate Z3 check-count cactus plot
+        print(f"\n{'=' * 60}")
+        print("Generating Z3 check-count cactus plot")
+        print(f"{'=' * 60}")
 
-    solver_check_gen = SolverCheckCactusPlotGenerator(all_results)
-    solver_check_data = solver_check_gen.generate_data()
+        solver_check_gen = SolverCheckCactusPlotGenerator(all_results)
+        solver_check_data = solver_check_gen.generate_data()
 
-    if solver_check_data:
-        tikz_code = InstCactusPlotTikzGenerator.generate(
-            solver_check_data,
-            title="Z3 Check Count Comparison",
-            xlabel="Number of Solved Instances",
-            ylabel="Z3 Checks",
-            caption=(
-                "Cactus plot of cumulative check-sat calls for successful runs. "
-                "Lower curves indicate fewer solver queries."
-            ),
-            use_log_scale=True,
-            label="fig:cactus_z3_checks",
-            series_styles=series_styles,
-        )
+        if solver_check_data:
+            tikz_code = InstCactusPlotTikzGenerator.generate(
+                solver_check_data,
+                title="Z3 Check Count Comparison",
+                xlabel="Number of Solved Instances",
+                ylabel="Z3 Checks",
+                caption=(
+                    "Cactus plot of cumulative check-sat calls for successful runs. "
+                    "Lower curves indicate fewer solver queries."
+                ),
+                use_log_scale=True,
+                label="fig:cactus_z3_checks",
+                series_styles=series_styles,
+            )
 
-        output_file = output_dir / "solver_check_cactus_plot.tex"
-        output_file.write_text(tikz_code)
-        print(f"  Saved: {output_file}")
+            output_file = output_dir / "solver_check_cactus_plot.tex"
+            output_file.write_text(tikz_code)
+            print(f"  Saved: {output_file}")
 
     # Generate instantiation cactus plot
     print(f"\n{'=' * 60}")
@@ -447,7 +458,10 @@ def generate_figures(
             title="Instantiation Performance Comparison",
             xlabel="Number of Benchmarks",
             ylabel="Instantiations",
-            caption="Cactus plot comparing instantiation counts across all strategies (lower lines are better).",
+            caption=("Successful runs only, sorted independently. Yardbird: installed refinement instances. "
+                     "Native solvers: quantifier instantiations plus array ax1, ax2, and extensionality lemmas. "
+                     "These are different operational counts, not equivalent units of work. "
+                     "Zero counts are displayed at 1 on the logarithmic axis."),
             use_log_scale=True,
             series_styles=series_styles,
         )
@@ -456,32 +470,33 @@ def generate_figures(
         output_file.write_text(tikz_code)
         print(f"  Saved: {output_file}")
 
-    # Generate solver conflict cactus plot
-    print(f"\n{'=' * 60}")
-    print("Generating solver conflict cactus plot")
-    print(f"{'=' * 60}")
+    if full:
+        # Generate solver conflict cactus plot
+        print(f"\n{'=' * 60}")
+        print("Generating solver conflict cactus plot")
+        print(f"{'=' * 60}")
 
-    conflict_cactus_gen = ConflictCactusPlotGenerator(all_results)
-    conflict_cactus_data = conflict_cactus_gen.generate_data()
+        conflict_cactus_gen = ConflictCactusPlotGenerator(all_results)
+        conflict_cactus_data = conflict_cactus_gen.generate_data()
 
-    if conflict_cactus_data:
-        tikz_code = ConflictCactusPlotTikzGenerator.generate(
-            conflict_cactus_data,
-            title="Solver Conflict Count Comparison",
-            xlabel="Number of Benchmarks",
-            ylabel="Total Solver Conflicts",
-            caption=(
-                "Marginal cactus plot of conflict counts for each strategy's successful "
-                "runs. The curves include different solved benchmark populations; use the "
-                "paired conflict-reduction panel for shared-solve comparisons."
-            ),
-            use_log_scale=True,
-            series_styles=series_styles,
-        )
+        if conflict_cactus_data:
+            tikz_code = ConflictCactusPlotTikzGenerator.generate(
+                conflict_cactus_data,
+                title="Solver Conflict Count Comparison",
+                xlabel="Number of Benchmarks",
+                ylabel="Total Solver Conflicts",
+                caption=(
+                    "Marginal cactus plot of conflict counts for each strategy's successful "
+                    "runs. The curves include different solved benchmark populations; use the "
+                    "paired conflict-reduction panel for shared-solve comparisons."
+                ),
+                use_log_scale=True,
+                series_styles=series_styles,
+            )
 
-        output_file = output_dir / "conflict_cactus_plot.tex"
-        output_file.write_text(tikz_code)
-        print(f"  Saved: {output_file}")
+            output_file = output_dir / "conflict_cactus_plot.tex"
+            output_file.write_text(tikz_code)
+            print(f"  Saved: {output_file}")
 
     print(f"\n{'=' * 60}")
     print(f"All figures saved to: {output_dir}")

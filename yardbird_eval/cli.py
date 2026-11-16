@@ -52,7 +52,7 @@ def refresh_existing_run(manifest: dict, args: argparse.Namespace) -> dict:
     )
 
 
-def maybe_generate_report(manifest: dict) -> None:
+def maybe_generate_report(manifest: dict, *, full: bool = False) -> None:
     require_reportable_run(manifest)
 
     failed = [s["benchmark_type"] for s in manifest["subruns"] if s["status"] == "FAILED"]
@@ -64,7 +64,7 @@ def maybe_generate_report(manifest: dict) -> None:
     elif manifest["env"] == "lab":
         download_lab_artifacts(manifest)
 
-    build_report_for_run(manifest)
+    build_report_for_run(manifest, full=full)
 
 
 def maybe_teardown_subrun(manifest: dict, args: argparse.Namespace) -> dict:
@@ -160,6 +160,8 @@ def legacy_parser() -> argparse.ArgumentParser:
             "Disabled by default because capture I/O changes benchmark runtime."
         ),
     )
+    parser.add_argument("--full", action="store_true",
+                        help="Include detailed comparison tables and solver diagnostics in reports")
     parser.add_argument("--run-id", help="Existing run id to refresh or report on")
     parser.add_argument("--aws-run-id", help=argparse.SUPPRESS)
     parser.add_argument(
@@ -334,9 +336,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             description="Generate the workbook and PDF for a completed evaluation run"
         )
         report_parser.add_argument("--run-id", required=True)
+        report_parser.add_argument("--full", action="store_true")
         report_args = report_parser.parse_args(values[1:])
         args = legacy_parser().parse_args(
             ["--run-id", report_args.run_id, "--generate-report"]
+            + (["--full"] if report_args.full else [])
         )
         args.command = "generate-report"
         return args
@@ -406,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError("--sync-partial requires an AWS run")
             sync_partial_aws_artifacts(manifest)
         if args.generate_report:
-            maybe_generate_report(manifest)
+            maybe_generate_report(manifest, full=args.full)
 
         print_run_summary(manifest)
         return 0

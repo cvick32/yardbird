@@ -34,7 +34,23 @@ class FinishedAwsReportTests(unittest.TestCase):
         ) as report:
             cli.maybe_generate_report(manifest)
         download.assert_called_once_with(manifest)
-        report.assert_called_once_with(manifest)
+        report.assert_called_once_with(manifest, full=False)
+
+    def test_full_flag_in_both_cli_forms(self):
+        for prefix in (["--generate-report"], ["generate-report"]):
+            for full in (False, True):
+                args = cli.parse_args([*prefix, "--run-id", "test", *(["--full"] if full else [])])
+                self.assertEqual(args.full, full)
+
+    @patch("yardbird_eval.common.run_command")
+    def test_full_flag_reaches_report_builder(self, command):
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = {"run_id": "test", "status": "COMPLETED", "run_dir": directory,
+                        "manifest_path": str(Path(directory) / "run.json"),
+                        "subruns": [{"status": "COMPLETED"}]}
+            for full in (False, True):
+                build_report_for_run(manifest, full=full)
+                self.assertEqual("--full" in command.call_args.args[0], full)
 
     def test_failed_run_with_running_sibling_cannot_generate_report(self):
         manifest = {"run_id": "active", "status": "FAILED", "subruns": [

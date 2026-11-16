@@ -10,6 +10,43 @@ from src.benchmark_parsing import BenchmarkParser, group_benchmark_results
 
 
 class BenchmarkParserTests(unittest.TestCase):
+    def test_native_solver_counts_quantifiers_and_array_lemmas(self):
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        for strategy in ("concrete", "abstract-with-quantifiers"):
+            entry = {
+                "strategy": strategy, "cost_function": "bmc-cost",
+                "result": {"Success": {"solver_statistics": {"stats": {
+                    "quant instantiations": 12580032, "array ext ax": 18739,
+                    "array ax1": 2, "total.array ax1": 5,
+                    "array ax2": 3, "abstract.array ax1": 5,
+                }}}},
+            }
+            parsed = parser._parse_single_result("client_server.vmt", entry)
+            self.assertEqual(parsed.used_instantiations, 12580032 + 18739 + 5 + 3)
+
+    def test_countermodel_ablation_settings_remain_distinct(self):
+        parser = BenchmarkParser.__new__(BenchmarkParser)
+        base = {
+            "strategy": "abstract", "cost_function": "bmc-cost",
+            "policy": "countermodel-guided", "guidance_schedule": "immediate",
+            "guidance_work": 4096, "guidance_transition_order": "predecessor-first",
+            "guidance_action_requirements": "when-unproductive", "prefer_axioms": False,
+            "result": {"Timeout": 500000},
+        }
+        variants = [{}, {"guidance_work": 1024},
+                    {"guidance_transition_order": "current-first"},
+                    {"guidance_action_requirements": "always"},
+                    {"prefer_axioms": True}]
+        results = [parser._parse_single_result("bakery.vmt", {**base, **v})
+                   for v in variants]
+        _, keys = group_benchmark_results(results)
+        self.assertEqual(len(keys), len(variants))
+        self.assertEqual(len({r.get_display_name() for r in results}), len(variants))
+        for result, variant in zip(results, variants):
+            for key in ("guidance_work", "guidance_transition_order",
+                        "guidance_action_requirements", "prefer_axioms"):
+                self.assertEqual(result.get_configuration()[key], variant.get(key, base[key]))
+
     def test_reasoning_sweep_configurations_remain_distinct(self):
         parser = BenchmarkParser.__new__(BenchmarkParser)
         results = [parser._parse_single_result("a.vmt", {

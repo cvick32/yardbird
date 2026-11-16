@@ -24,6 +24,7 @@ from src.benchmark_parsing import (  # noqa: E402
 )
 from report.instrumentation import build_instrumentation_report  # noqa: E402
 from report.typst import typst_table  # noqa: E402
+from report.completed_depths import generate_depth_report  # noqa: E402
 from report.protocol_depths import protocol_depth_sections  # noqa: E402
 from guided_tables import generate as generate_guided_tables, supports as supports_guided_tables  # noqa: E402
 
@@ -54,6 +55,8 @@ GENERATED_TEX_PATTERNS = (
 )
 
 GENERATED_ASSET_PATTERNS = (
+    "completed_depths_*.png",
+    "completed_depths_*.pdf",
     "runtime_*.pdf",
     "instantiation_*.pdf",
     "conflict_*.pdf",
@@ -587,6 +590,8 @@ def workbook_body(
     table_sources: list[Path],
     instrumentation_sections: list[str],
     depth_sections: list[str] | None = None,
+    *,
+    full: bool = True,
 ) -> str:
     benchmark_types = ", ".join(manifest.get("benchmark_types", []))
     lines = [
@@ -602,7 +607,7 @@ def workbook_body(
         "",
         f"*Status:* `{manifest['status']}`",
         "",
-        f"*Benchmark Types:* `{benchmark_types}`",
+        f"*Benchmark Types:* `{benchmark_types}`" if full else "",
         "",
         f"*Started:* `{manifest['started_at']}`",
         "",
@@ -613,11 +618,11 @@ def workbook_body(
 
     lines.extend(
         [
-            "*Subruns:*",
+            "*Subruns:*" if full else "",
             "",
         ]
     )
-    for subrun in manifest["subruns"]:
+    for subrun in manifest["subruns"] if full else []:
         detail = f"- `{subrun['benchmark_type']}`: `{subrun['status']}`"
         if subrun.get("mode") == "aws":
             detail += f" via `{subrun.get('instance_id', 'unknown-instance')}`"
@@ -645,6 +650,25 @@ def workbook_body(
         for asset in figure_assets
         if asset not in runtime_cactus and asset not in solver_figures
     ]
+    if not full:
+        overview = analysis["overview"]
+        lines.extend([
+            "= Coverage", "",
+            f"{overview['benchmark_count']} benchmarks, {overview['strategy_count']} strategies. "
+            "Cactus plots summarize successful runs; the depth matrix includes partial progress. "
+            "A completed BMC bound is not an unbounded proof.", "",
+            typst_table(["Strategy", "Successful", "Unsuccessful", "Missing"], [
+                [row["display_name"], row["solved"], row["unsolved"], row["missing_results"]]
+                for row in analysis["strategy_summaries"]
+            ], columns="(2fr, 1fr, 1fr, 1fr)"), "",
+        ])
+        lines.extend(figure_workbook_sections(runtime_cactus))
+        lines.extend(depth_sections or [])
+        lines.extend(figure_workbook_sections([
+            asset for asset in figure_assets if asset.stem == "instantiation_cactus_plot"
+        ]))
+        return "\n".join(lines)
+
     lines.extend(summary_workbook_sections(analysis))
     lines.extend(figure_workbook_sections(runtime_cactus))
     lines.extend(comparison_workbook_sections(analysis))
@@ -692,6 +716,7 @@ def build_report_from_manifest(
     run_dir: Path,
     *,
     pairwise_figures: str = "auto",
+    full: bool = False,
 ) -> dict:
     report_dir = run_dir / "report"
     tex_dir = report_dir / "tex"
@@ -709,25 +734,45 @@ def build_report_from_manifest(
         if subrun["status"] == "COMPLETED"
     ]
     grouped, strategy_keys, all_results = benchmark_groupings(json_files)
+    # Use manifest experiment names when each subrun identifies one configuration.
+    # Keep full configuration identities in analysis exports and disambiguate reused names.
+    labels = {}
+    for subrun in manifest["subruns"]:
+        if subrun["status"] != "COMPLETED":
+            continue
+        parsed = BenchmarkParser([Path(subrun["result_path"])])
+        representatives = {r.get_strategy_id(): r for r in parsed.all_results}
+        for key, result in representatives.items():
+            label = (subrun["benchmark_type"] if len(representatives) == 1
+                     else result.get_display_name())
+            labels.setdefault(key, label)
+    repeated = {label for label in labels.values() if list(labels.values()).count(label) > 1}
+    for index, key in enumerate(labels):
+        if labels[key] in repeated:
+            labels[key] += f" (S{index + 1})"
+    for result in all_results:
+        result.report_label = labels[result.get_strategy_id()]
     baseline_strategy = choose_baseline_strategy(strategy_keys)
     if baseline_strategy is None:
         raise RuntimeError("No benchmark strategies were found in the run artifacts")
     analysis = build_analysis(grouped, strategy_keys, baseline_strategy)
     data_exports = write_analysis_exports(report_dir, analysis)
-    instrumentation_report = build_instrumentation_report(manifest, report_dir)
+    instrumentation_report = build_instrumentation_report(manifest, report_dir) if full else None
+    depth_sections, depth_exports = generate_depth_report(grouped, labels, report_dir)
     guided_tables = (
         generate_guided_tables(json_files, report_dir / "guided_tables")
-        if supports_guided_tables(json_files) else None
+        if full and supports_guided_tables(json_files) else None
     )
-    include_pairwise = pairwise_figures == "all" or (
+    include_pairwise = full and (pairwise_figures == "all" or (
         pairwise_figures == "auto" and len(strategy_keys) <= 8
-    )
+    ))
     generate_figures(
         grouped,
         strategy_keys,
         all_results,
         tex_dir,
         include_pairwise=include_pairwise,
+        full=full,
     )
 
     figure_sources = figure_tex_paths(tex_dir)
@@ -746,8 +791,9 @@ def build_report_from_manifest(
             analysis,
             compiled_assets,
             table_sources,
-            instrumentation_report.sections,
-            protocol_depth_sections(grouped) + guided_table_sections(guided_tables),
+            instrumentation_report.sections if instrumentation_report else [],
+            depth_sections + (protocol_depth_sections(grouped) + guided_table_sections(guided_tables) if full else []),
+            full=full,
         )
     )
     run_command(
@@ -765,7 +811,9 @@ def build_report_from_manifest(
         "table_tex": [str(path) for path in table_sources],
         "pairwise_figures": include_pairwise,
         "guided_table_data": str(report_dir / "guided_tables" / "table_data.json") if guided_tables else None,
-        **instrumentation_report.exports,
+        "full": full,
+        **depth_exports,
+        **(instrumentation_report.exports if instrumentation_report else {}),
         **data_exports,
     }
     write_json(report_dir / "report_metadata.json", report_metadata)
@@ -790,11 +838,13 @@ def build_report(
     run_dir: Path,
     *,
     pairwise_figures: str = "auto",
+    full: bool = False,
 ) -> dict:
     return build_report_from_manifest(
         load_json(manifest_path),
         run_dir,
         pairwise_figures=pairwise_figures,
+        full=full,
     )
 
 
@@ -837,6 +887,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-dir", required=True, type=Path, help="Path to the run directory"
     )
+    parser.add_argument("--full", action="store_true", help="Include detailed tables and solver diagnostics")
     parser.add_argument("--name", help="Display name for a standalone result report")
     parser.add_argument(
         "--pairwise-figures",
@@ -855,12 +906,14 @@ def main() -> int:
             manifest,
             args.run_dir,
             pairwise_figures=args.pairwise_figures,
+            full=args.full,
         )
     else:
         build_report(
             args.manifest,
             args.run_dir,
             pairwise_figures=args.pairwise_figures,
+            full=args.full,
         )
     return 0
 
