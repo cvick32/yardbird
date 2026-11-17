@@ -113,7 +113,7 @@ fn usage(provider: LlmProvider, response: &Value) -> anyhow::Result<TokenUsage> 
     let input = count(u, "input_tokens")?;
     let output = count(u, "output_tokens")?;
     let (uncached, cached, short, long, total) = match provider {
-        LlmProvider::Openai => {
+        LlmProvider::Openai | LlmProvider::Bedrock => {
             let details = &u["input_tokens_details"];
             let cached = count(details, "cached_tokens")?;
             let written = optional_count(details, "cache_write_tokens")?;

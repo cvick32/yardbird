@@ -299,8 +299,8 @@ mod tests {
         assert_eq!(summarize(None).estimated_total_usd, Some(0.0));
     }
     #[test]
-    fn usage_survives_unavailable_pricing_for_both_llm_providers() {
-        for provider in ["openai", "anthropic"] {
+    fn usage_survives_unavailable_pricing_for_all_llm_providers() {
+        for provider in ["openai", "anthropic", "bedrock"] {
             let mut a = Accounting::default();
             a.observe(json!({"event":"response", "query_id":1,
             "configuration":{"llm_provider":provider},
@@ -311,7 +311,10 @@ mod tests {
             }}));
             let s = a.finish();
             assert!(s.estimated_total_usd.is_none());
-            assert_eq!(s.input_tokens, if provider == "openai" { 100 } else { 140 });
+            assert_eq!(
+                s.input_tokens,
+                if provider == "anthropic" { 140 } else { 100 }
+            );
             assert_eq!(s.cached_input_tokens, 30);
             assert_eq!(s.output_tokens, 20);
         }

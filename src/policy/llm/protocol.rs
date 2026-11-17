@@ -34,7 +34,7 @@ pub(super) fn request(
     let mut state = snapshot.current_state();
     state["failure_summary"] = json!(failures);
     let block_type = match options.llm_provider {
-        LlmProvider::Openai => "input_text",
+        LlmProvider::Openai | LlmProvider::Bedrock => "input_text",
         LlmProvider::Anthropic => "text",
     };
     let prefix = snapshot.prefix();
@@ -46,6 +46,7 @@ pub(super) fn request(
         // lookup boundary after an append, without rewriting any block text.
         if options.llm_explicit_cache && (index == 0 || index >= prefix.len().saturating_sub(3)) {
             match options.llm_provider {
+                LlmProvider::Bedrock => {} // Use AWS/model caching defaults.
                 LlmProvider::Openai => {
                     block["prompt_cache_breakpoint"] = json!({"mode":"explicit"})
                 }
@@ -57,7 +58,7 @@ pub(super) fn request(
     input.push(json!({"type":block_type,"text":serde_json::to_string(&state)?}));
     let schema = response_schema(snapshot);
     let mut request = match options.llm_provider {
-        LlmProvider::Openai => json!({
+        LlmProvider::Openai | LlmProvider::Bedrock => json!({
             "model":model,
             "input":[{"role":"developer", "content":PROMPT.trim()}, {"role":"user", "content":input}],
             "text":{"format":{"type":"json_schema", "name":"theory_instantiation", "strict":true, "schema":schema}},
@@ -77,7 +78,9 @@ pub(super) fn request(
     }
     if let Some(effort) = &options.llm_reasoning_effort {
         match options.llm_provider {
-            LlmProvider::Openai => request["reasoning"] = json!({"effort":effort}),
+            LlmProvider::Openai | LlmProvider::Bedrock => {
+                request["reasoning"] = json!({"effort":effort})
+            }
             LlmProvider::Anthropic => request["output_config"]["effort"] = json!(effort),
         }
     }
@@ -92,15 +95,15 @@ pub(super) fn request(
 pub(super) fn response_text(provider: LlmProvider, response: &Value) -> anyhow::Result<&str> {
     let mut texts = Vec::new();
     match provider {
-        LlmProvider::Openai => {
+        LlmProvider::Openai | LlmProvider::Bedrock => {
             anyhow::ensure!(
                 response["status"] == "completed",
-                "OpenAI response not completed: {}",
+                "Responses API response not completed: {}",
                 response["status"]
             );
             for item in response["output"]
                 .as_array()
-                .context("missing OpenAI output")?
+                .context("missing Responses API output")?
             {
                 match item["type"].as_str() {
                     Some("reasoning") => continue,
@@ -115,12 +118,12 @@ pub(super) fn response_text(provider: LlmProvider, response: &Value) -> anyhow::
                         {
                             anyhow::ensure!(
                                 block["type"] == "output_text",
-                                "non-text or refused OpenAI output"
+                                "non-text or refused Responses API output"
                             );
                             texts.push(block["text"].as_str().context("missing output text")?);
                         }
                     }
-                    _ => anyhow::bail!("unexpected OpenAI output item"),
+                    _ => anyhow::bail!("unexpected Responses API output item"),
                 }
             }
         }
@@ -185,7 +188,7 @@ pub(super) fn add_symbolic_feedback(
         return Ok(());
     }
     let key = match provider {
-        LlmProvider::Openai => "input",
+        LlmProvider::Openai | LlmProvider::Bedrock => "input",
         LlmProvider::Anthropic => "messages",
     };
     let messages = request[key]

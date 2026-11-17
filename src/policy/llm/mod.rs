@@ -44,10 +44,7 @@ pub(crate) fn build_plan(run: &YardbirdOptions) -> ArrayProofPlan {
             "llm"
         },
         progress: Default::default(),
-        client: Box::new(HttpClient::new(
-            options.llm_provider,
-            options.llm_timeout_secs,
-        )),
+        client: Box::new(HttpClient::new(&options)),
         options,
         query_id: 0,
         session: Default::default(),
@@ -223,8 +220,11 @@ impl InstanceDiscovery for Experiment {
             )?;
             self.query_id += 1;
             let bytes = serde_json::to_vec(&request)?.len();
-            self.record(context, json!({"event":"request", "attempt":attempt,
-                "endpoint":self.options.llm_provider.endpoint(), "request_bytes":bytes, "request":request}))?;
+            self.record(
+                context,
+                json!({"event":"request", "attempt":attempt,
+                "endpoint":self.options.endpoint()?, "request_bytes":bytes, "request":request}),
+            )?;
             let skip = if bytes > self.options.llm_max_request_bytes {
                 Some("request_too_large")
             } else if self.options.llm_dry_run {

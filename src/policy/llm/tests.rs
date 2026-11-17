@@ -107,7 +107,7 @@ fn request_state(request: &Value) -> Value {
 
 fn envelope(provider: LlmProvider, text: &str) -> Value {
     match provider {
-        LlmProvider::Openai => {
+        LlmProvider::Openai | LlmProvider::Bedrock => {
             json!({"id":"response-1", "model":"resolved-openai-model", "status":"completed",
             "output":[{"type":"reasoning", "summary":[]}, {"type":"message", "role":"assistant", "status":"completed",
                 "content":[{"type":"output_text", "text":text}]}],
@@ -197,7 +197,7 @@ impl LlmClient for MockClient {
         }
         if matches!(reply, Reply::Refusal) {
             match self.provider {
-                LlmProvider::Openai => {
+                LlmProvider::Openai | LlmProvider::Bedrock => {
                     response["output"][1]["content"] =
                         json!([{"type":"refusal", "refusal":"fixture"}])
                 }
@@ -221,6 +221,7 @@ fn experiment(
             no_fallback: false,
             options: LlmOptions {
                 llm_provider: provider,
+                llm_bedrock_region: (provider == LlmProvider::Bedrock).then(|| "us-east-1".into()),
                 llm_model: Some("explicit-model-id".into()),
                 llm_log: Some(path),
                 pricing: LlmPricing {
@@ -319,7 +320,11 @@ fn default_single_call_accepts_complete_proposal_and_logs_provider_usage() {
     let smt = fixture();
     let pending = HashSet::new();
     let context = context(&smt, &pending);
-    for provider in [LlmProvider::Openai, LlmProvider::Anthropic] {
+    for provider in [
+        LlmProvider::Openai,
+        LlmProvider::Anthropic,
+        LlmProvider::Bedrock,
+    ] {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("episode.jsonl");
         let (mut experiment, requests) = experiment(path.clone(), provider, vec![Reply::Valid]);
@@ -421,7 +426,11 @@ fn malformed_proposals_exhaust_exactly_the_attempt_budget() {
 fn abstention_refusal_truncation_and_transport_errors_stop_without_repair_calls() {
     let smt = fixture();
     let pending = HashSet::new();
-    for provider in [LlmProvider::Openai, LlmProvider::Anthropic] {
+    for provider in [
+        LlmProvider::Openai,
+        LlmProvider::Anthropic,
+        LlmProvider::Bedrock,
+    ] {
         for (reply, outcome) in [
             (Reply::Abstain, "abstained"),
             (Reply::Refusal, "response_rejected"),
@@ -671,7 +680,11 @@ fn cached_requests_keep_full_context_and_prior_endpoints_across_models_and_retri
                 assert_eq!(new["id"], old["id"]);
             }
         }
-        for provider in [LlmProvider::Openai, LlmProvider::Anthropic] {
+        for provider in [
+            LlmProvider::Openai,
+            LlmProvider::Anthropic,
+            LlmProvider::Bedrock,
+        ] {
             let options = LlmOptions {
                 llm_provider: provider,
                 llm_model: Some("fixture".into()),
@@ -681,6 +694,14 @@ fn cached_requests_keep_full_context_and_prior_endpoints_across_models_and_retri
             let retry =
                 protocol::request(&options, &snapshot, &[json!({"outcome":"invalid"})]).unwrap();
             let (messages, retry_messages, marker) = match provider {
+                LlmProvider::Bedrock => {
+                    assert!(request.get("prompt_cache_options").is_none());
+                    (
+                        &request["input"],
+                        &retry["input"],
+                        "prompt_cache_breakpoint",
+                    )
+                }
                 LlmProvider::Openai => {
                     assert_eq!(
                         request["prompt_cache_options"],
@@ -708,8 +729,14 @@ fn cached_requests_keep_full_context_and_prior_endpoints_across_models_and_retri
             );
             assert!(blocks.last().unwrap().get(marker).is_none());
             assert!(blocks.iter().filter(|b| b.get(marker).is_some()).count() <= 4);
-            assert!(blocks[snapshot.prefix().len() - 1].get(marker).is_some());
-            if grows && !previous_prefix.is_empty() {
+            assert_eq!(
+                blocks[snapshot.prefix().len() - 1].get(marker).is_some(),
+                provider != LlmProvider::Bedrock
+            );
+            if provider == LlmProvider::Bedrock {
+                assert!(blocks.iter().all(|b| b.get(marker).is_none()));
+            }
+            if provider != LlmProvider::Bedrock && grows && !previous_prefix.is_empty() {
                 assert!(
                     blocks[previous_prefix.len() - 1].get(marker).is_some(),
                     "prior endpoint unavailable for lookup"
@@ -1134,4 +1161,110 @@ fn quantifier_only_input_offers_llm_discovery_without_array_types() {
     let result = driver.check_strategy(1, Box::new(strategy)).unwrap();
     assert!(!result.counterexample);
     assert!(result.total_instantiations_added > 0);
+}
+
+#[test]
+fn bedrock_responses_preserve_context_without_openai_cache_extensions() {
+    let smt = fixture();
+    let pending = HashSet::new();
+    let context = context(&smt, &pending);
+    let snapshot = InstantiationSession::default()
+        .capture(&context, INPUT)
+        .unwrap();
+    let options = LlmOptions {
+        llm_provider: LlmProvider::Bedrock,
+        llm_model: Some("aws-model-id".into()),
+        llm_reasoning_effort: Some("high".into()),
+        ..Default::default()
+    };
+    let mut request = protocol::request(&options, &snapshot, &[]).unwrap();
+    assert_eq!(request["model"], "aws-model-id");
+    assert_eq!(request["store"], false);
+    assert_eq!(request["text"]["format"]["strict"], true);
+    assert_eq!(request["reasoning"]["effort"], "high");
+    assert!(!request.to_string().contains("prompt_cache"));
+    let mut expected = snapshot.state();
+    expected["failure_summary"] = json!([]);
+    assert_eq!(request_state(&request), expected);
+    protocol::add_symbolic_feedback(&mut request, LlmProvider::Bedrock, &json!({"work":12}))
+        .unwrap();
+    expected["symbolic_search"] = json!({"work":12});
+    assert_eq!(request_state(&request), expected);
+    let mut response = envelope(LlmProvider::Bedrock, "{\"proposal\":null}");
+    assert!(protocol::response_text(LlmProvider::Bedrock, &response).is_ok());
+    response["status"] = json!("incomplete");
+    assert!(protocol::response_text(LlmProvider::Bedrock, &response).is_err());
+}
+
+#[test]
+fn bedrock_configuration_selects_regional_endpoint_and_separate_key() {
+    let mut options = LlmOptions {
+        llm_provider: LlmProvider::Bedrock,
+        llm_bedrock_region: Some("us-east-1".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        options.endpoint().unwrap(),
+        "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1/responses"
+    );
+    assert_eq!(options.llm_provider.key_env(), "BEDROCK_API_KEY");
+    options.llm_bedrock_region = Some("bad/region".into());
+    assert!(options.endpoint().is_err());
+    options.llm_bedrock_base_url = Some("https://bedrock-mantle.us-east-1.api.aws/v1/".into());
+    assert_eq!(
+        options.endpoint().unwrap(),
+        "https://bedrock-mantle.us-east-1.api.aws/v1/responses"
+    );
+    for invalid in [
+        "http://example.com/v1",
+        "https://user:secret@example.com/v1",
+        "https://example.com/v1?secret=x",
+    ] {
+        options.llm_bedrock_base_url = Some(invalid.into());
+        assert!(options.endpoint().is_err());
+    }
+    let decoded: LlmOptions =
+        serde_json::from_value(json!({"llm_provider":"bedrock", "llm_bedrock_region":"us-west-2"}))
+            .unwrap();
+    assert_eq!(decoded.llm_provider, LlmProvider::Bedrock);
+    assert_eq!(decoded.llm_bedrock_region.as_deref(), Some("us-west-2"));
+}
+
+#[test]
+fn bedrock_cli_validates_for_both_guided_policies() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("bedrock.jsonl");
+    for policy in ["llm", "symbolic-llm"] {
+        let mut run = YardbirdOptions::try_parse_from([
+            "yardbird",
+            "-f",
+            "fixture.vmt",
+            "--policy",
+            policy,
+            "--llm-provider",
+            "bedrock",
+            "--llm-model",
+            "bedrock-model",
+            "--llm-bedrock-region",
+            "us-west-2",
+            "--llm-dry-run",
+            "--llm-log",
+            path.to_str().unwrap(),
+        ])
+        .unwrap();
+        run.llm.validate(&run).unwrap();
+        let restored: YardbirdOptions =
+            serde_json::from_value(serde_json::to_value(&run).unwrap()).unwrap();
+        assert_eq!(restored.llm, run.llm);
+        run.llm.llm_provider = LlmProvider::Openai;
+        assert!(run
+            .llm
+            .validate(&run)
+            .unwrap_err()
+            .to_string()
+            .contains("--llm-bedrock-*"));
+        run.llm.llm_provider = LlmProvider::Bedrock;
+        run.llm.llm_adaptive_thinking = true;
+        assert!(run.llm.validate(&run).is_err());
+    }
 }

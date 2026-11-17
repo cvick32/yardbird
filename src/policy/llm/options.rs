@@ -9,6 +9,8 @@ pub enum LlmProvider {
     #[default]
     Openai,
     Anthropic,
+    /// Amazon Bedrock OpenAI-compatible Responses API.
+    Bedrock,
 }
 
 impl LlmProvider {
@@ -16,13 +18,7 @@ impl LlmProvider {
         match self {
             Self::Openai => "OPENAI_API_KEY",
             Self::Anthropic => "ANTHROPIC_API_KEY",
-        }
-    }
-
-    pub(super) fn endpoint(self) -> &'static str {
-        match self {
-            Self::Openai => "https://api.openai.com/v1/responses",
-            Self::Anthropic => "https://api.anthropic.com/v1/messages",
+            Self::Bedrock => "BEDROCK_API_KEY",
         }
     }
 }
@@ -38,6 +34,12 @@ pub struct LlmOptions {
     /// Provider for joint axiom-and-binding inference.
     #[arg(long, value_enum, default_value_t = LlmProvider::Openai)]
     pub llm_provider: LlmProvider,
+    /// Bedrock AWS region (otherwise BEDROCK_REGION, AWS_REGION, AWS_DEFAULT_REGION).
+    #[arg(long)]
+    pub llm_bedrock_region: Option<String>,
+    /// Bedrock base URL override, including /v1 or /openai/v1 (e.g. for Mantle).
+    #[arg(long)]
+    pub llm_bedrock_base_url: Option<String>,
     /// Explicit provider model ID (required with --policy llm).
     #[arg(long)]
     pub llm_model: Option<String>,
@@ -91,6 +93,8 @@ impl Default for LlmOptions {
             pricing: Default::default(),
             llm_explicit_cache: true,
             llm_provider: LlmProvider::Openai,
+            llm_bedrock_region: None,
+            llm_bedrock_base_url: None,
             llm_model: None,
             llm_log: None,
             llm_dry_run: false,
@@ -111,6 +115,49 @@ impl Default for LlmOptions {
 }
 
 impl LlmOptions {
+    pub(super) fn endpoint(&self) -> anyhow::Result<String> {
+        match self.llm_provider {
+            LlmProvider::Openai => Ok("https://api.openai.com/v1/responses".into()),
+            LlmProvider::Anthropic => Ok("https://api.anthropic.com/v1/messages".into()),
+            LlmProvider::Bedrock => {
+                if let Some(base) = &self.llm_bedrock_base_url {
+                    let url = reqwest::Url::parse(base)?;
+                    anyhow::ensure!(url.scheme() == "https" && url.host_str().is_some()
+                        && url.username().is_empty() && url.password().is_none()
+                        && url.query().is_none() && url.fragment().is_none(),
+                        "Bedrock base URL must be an HTTPS URL without credentials, query, or fragment");
+                    return Ok(format!("{}/responses", base.trim_end_matches('/')));
+                }
+                let region = self
+                    .llm_bedrock_region
+                    .clone()
+                    .or_else(|| std::env::var("BEDROCK_REGION").ok())
+                    .or_else(|| std::env::var("AWS_REGION").ok())
+                    .or_else(|| std::env::var("AWS_DEFAULT_REGION").ok())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "set --llm-bedrock-region, BEDROCK_REGION, AWS_REGION, or AWS_DEFAULT_REGION"
+                        )
+                    })?;
+                anyhow::ensure!(
+                    !region.is_empty()
+                        && region
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+                    "invalid Bedrock region"
+                );
+                let domain = if region.starts_with("cn-") {
+                    "amazonaws.com.cn"
+                } else {
+                    "amazonaws.com"
+                };
+                Ok(format!(
+                    "https://bedrock-runtime.{region}.{domain}/openai/v1/responses"
+                ))
+            }
+        }
+    }
+
     pub fn validate(&self, run: &YardbirdOptions) -> anyhow::Result<()> {
         if !run.policy.is_some_and(|p| p.uses_llm()) {
             anyhow::ensure!(
@@ -166,6 +213,12 @@ impl LlmOptions {
         );
         anyhow::ensure!(run.policy != Some(NamedPolicy::SymbolicLlm) || !run.no_guided_fallback,
             "symbolic-llm requires symbolic fallback; use llm --no-guided-fallback for strict guidance");
+        anyhow::ensure!(
+            self.llm_provider == LlmProvider::Bedrock
+                || (self.llm_bedrock_region.is_none() && self.llm_bedrock_base_url.is_none()),
+            "--llm-bedrock-* options require --llm-provider bedrock"
+        );
+        self.endpoint()?;
         self.pricing.validate()?;
         let log = self
             .llm_log

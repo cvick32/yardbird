@@ -1,4 +1,4 @@
-use super::LlmProvider;
+use super::{LlmOptions, LlmProvider};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -7,22 +7,22 @@ pub(super) trait LlmClient {
 }
 
 pub(super) struct HttpClient {
-    provider: LlmProvider,
+    options: LlmOptions,
     timeout: Duration,
 }
 
 impl HttpClient {
-    pub fn new(provider: LlmProvider, timeout_secs: u64) -> Self {
+    pub fn new(options: &LlmOptions) -> Self {
         Self {
-            provider,
-            timeout: Duration::from_secs(timeout_secs),
+            options: options.clone(),
+            timeout: Duration::from_secs(options.llm_timeout_secs),
         }
     }
 }
 
 impl LlmClient for HttpClient {
     fn infer(&mut self, request: &Value) -> anyhow::Result<Value> {
-        let name = self.provider.key_env();
+        let name = self.options.llm_provider.key_env();
         let key = std::env::var(name).map_err(|_| anyhow::anyhow!("{name} is not configured"))?;
         anyhow::ensure!(!key.trim().is_empty(), "{name} is empty");
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -34,9 +34,9 @@ impl LlmClient for HttpClient {
                 .redirect(reqwest::redirect::Policy::none())
                 .retry(reqwest::retry::never())
                 .build()?;
-            let request = client.post(self.provider.endpoint()).json(request);
-            let request = match self.provider {
-                LlmProvider::Openai => request.bearer_auth(&key),
+            let request = client.post(self.options.endpoint()?).json(request);
+            let request = match self.options.llm_provider {
+                LlmProvider::Openai | LlmProvider::Bedrock => request.bearer_auth(&key),
                 LlmProvider::Anthropic => request
                     .header("x-api-key", &key)
                     .header("anthropic-version", "2023-06-01"),
@@ -59,6 +59,7 @@ impl LlmClient for HttpClient {
                 let value = serde_json::from_slice::<Value>(&body).unwrap_or(Value::Null);
                 let message = value["error"]["message"]
                     .as_str()
+                    .or_else(|| value["message"].as_str())
                     .unwrap_or("no JSON error message");
                 let message = message
                     .replace(&key, "[REDACTED]")

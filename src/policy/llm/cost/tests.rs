@@ -5,6 +5,7 @@ fn options(provider: LlmProvider) -> LlmOptions {
         llm_provider: provider,
         llm_model: Some(
             match provider {
+                LlmProvider::Bedrock => "gpt-6-astra",
                 LlmProvider::Openai => "gpt-6-astra",
                 LlmProvider::Anthropic => "claude-sonnet-5-5",
             }
@@ -144,4 +145,19 @@ fn running_spend_preserves_known_subtotal_when_calls_have_unknown_cost() {
     assert_eq!(summary["status"], "incomplete");
     close(&summary["estimated_subtotal_usd"], 1.0);
     assert!(summary["estimated_total_usd"].is_null());
+}
+
+#[test]
+fn bedrock_never_inherits_openai_prices_but_accepts_configured_rates() {
+    let mut options = options(LlmProvider::Bedrock);
+    let response = openai(100);
+    assert_eq!(estimate(&options, &response)["status"], "unknown");
+    options.pricing = LlmPricing {
+        llm_input_usd_per_million: Some(2.0),
+        llm_output_usd_per_million: Some(10.0),
+        ..Default::default()
+    };
+    let cost = estimate(&options, &response);
+    assert_eq!(cost["tokens"]["input_tokens"], 100);
+    close(&cost["estimated_usd"], 0.0202);
 }
