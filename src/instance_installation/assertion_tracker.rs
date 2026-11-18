@@ -86,13 +86,21 @@ impl InstantiationAssertionMetrics {
 /// key; the original assertion is preserved when it is sent to the solver.
 #[derive(Clone, Debug, Default)]
 pub struct InstantiationAssertionTracker {
+    abstract_instance_keys: FxHashSet<Term>,
     seen_ground_equality_formulas: FxHashSet<Term>,
     metrics: InstantiationAssertionMetrics,
 }
 
 impl InstantiationAssertionTracker {
-    pub fn record_abstract_instance(&mut self) {
+    pub fn record_abstract_instance(&mut self, term: &Term) {
+        self.abstract_instance_keys
+            .insert(canonical_instantiation_key(term));
         self.metrics.abstract_instances += 1;
+    }
+
+    /// Membership in the stored schema history, independent of frame placement.
+    pub fn is_instantiation_known(&self, canonical_key: &Term) -> bool {
+        self.abstract_instance_keys.contains(canonical_key)
     }
 
     pub fn record_all_eligible_frame_placement(&mut self) {
@@ -257,6 +265,32 @@ fn canonicalize_term(term: &Term) -> (Term, bool, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stored_schema_index_matches_rebuilt_history_without_counting_placements() {
+        let mut tracker = InstantiationAssertionTracker::default();
+        let mut history = Vec::new();
+        for text in [
+            "(= x y)",
+            "(= y x)",
+            "(=> (= a b) (= x y))",
+            "(p x)",
+            "(forall ((i Int)) (= i i))",
+        ] {
+            let term: Term = text.parse().unwrap();
+            tracker.record_abstract_instance(&term);
+            history.push(term);
+            let rebuilt: FxHashSet<_> = history.iter().map(canonical_instantiation_key).collect();
+            assert_eq!(tracker.abstract_instance_keys, rebuilt);
+            assert_eq!(tracker.metrics().abstract_instances, history.len() as u64);
+        }
+        assert!(tracker.is_instantiation_known(&canonical_instantiation_key(
+            &"(=> (= b a) (= y x))".parse().unwrap()
+        )));
+        let placement: Term = "(= x@3 y@3)".parse().unwrap();
+        tracker.accept(&placement, AssertionKind::IndexedTheory);
+        assert!(!tracker.is_instantiation_known(&canonical_instantiation_key(&placement)));
+    }
 
     #[test]
     fn deduplicates_reversed_ground_equalities() {

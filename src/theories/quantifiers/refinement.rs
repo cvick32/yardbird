@@ -1,6 +1,5 @@
 //! Input-binder compilation and search. Policy-owned rotation survives solver checks;
 //! prepared matches and empty-pass caches belong to one model in coordinator state.
-use crate::instance_installation::assertion_tracker::canonical_instantiation_key;
 use crate::policy::term_selection::TermCostFactory;
 use crate::profiling::RefinementProfilingCollector;
 use crate::rule_matching::candidate::InstantiationBatch;
@@ -145,8 +144,11 @@ impl QuantifierRefinement {
     ) -> anyhow::Result<()> {
         if state.is_none() {
             let start = Instant::now();
-            let prepared = self.plan.prepare(smt, graph)?;
+            let mut prepared = self.plan.prepare(smt, graph)?;
             *graph_version += 1;
+            // Preparation already captured this graph. Avoid immediately
+            // rebuilding its indexes and cloning its model-local caches.
+            prepared.graph_version = *graph_version;
             *state = Some(BinderSearchState {
                 prepared,
                 empty_passes: HashMap::new(),
@@ -612,7 +614,11 @@ impl QuantifierRefinement {
                 context.allowance.winners,
                 context.ranker,
                 |term| context.smt.eval_to_string(term),
-                |c| context.installable_expression(&c.expression),
+                |c| {
+                    context
+                        .installable_expression(&c.expression)
+                        .filter(|key| !context.smt.is_instantiation_known(key))
+                },
             )
         };
         let had_exact = exact.is_some();
@@ -682,13 +688,8 @@ impl QuantifierRefinement {
             batch.search.examined_substitutions += exact_work;
             batch
         };
-        let mut known: std::collections::HashSet<_> = context
-            .smt
-            .get_instantiations()
-            .iter()
-            .map(canonical_instantiation_key)
-            .collect();
-        known.extend(context.pending_instances.iter().cloned());
+        // Installed history is indexed by the session; only pending keys are local.
+        let known = context.pending_instances;
         let summary = self.select_scheduled(&mut batch, exact, &known, context)?;
         for candidate in &mut batch.candidates {
             candidate.provenance = candidate
@@ -759,13 +760,7 @@ impl QuantifierRefinement {
         // Derived terms remain available for witnesses and nested binders.
         // Model-violation eligibility is independent of this vocabulary scope.
         let scope = crate::rule_matching::scope::CandidateScope::AllCandidates;
-        let mut known: std::collections::HashSet<_> = context
-            .smt
-            .get_instantiations()
-            .iter()
-            .map(canonical_instantiation_key)
-            .collect();
-        known.extend(context.pending_instances.iter().cloned());
+        let known = context.pending_instances;
         let mut examined_total = 0;
         let mut returned_total = 0;
         loop {

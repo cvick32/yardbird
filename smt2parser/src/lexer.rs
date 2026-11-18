@@ -5,6 +5,7 @@
 
 use crate::{parser::Token, Decimal, Numeral};
 use num::Num;
+use std::sync::LazyLock;
 
 /// Record a position in the input stream.
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -31,8 +32,8 @@ impl std::fmt::Display for Position {
 
 pub(crate) struct Lexer<R> {
     reader: R,
-    reserved_words: Vec<Token>,
-    reserved_words_map: fst::Map<Vec<u8>>,
+    reserved_words: &'static [Token],
+    reserved_words_map: &'static fst::Map<Vec<u8>>,
     current_offset: usize,
     current_line: usize,
     current_column: usize,
@@ -110,21 +111,23 @@ where
             .map(|index| &self.reserved_words[index as usize])
     }
 
-    fn make_reserved_words() -> (Vec<Token>, fst::Map<Vec<u8>>) {
-        let mut keywords = KEYWORDS.to_vec();
-        keywords.sort_by_key(|(key, _)| key.to_string());
-        let mut words = Vec::new();
-        for (_, token) in &keywords {
-            words.push(token.clone());
-        }
-        let map = fst::Map::from_iter(
-            keywords
-                .iter()
-                .enumerate()
-                .map(|(index, (key, _))| (key, index as u64)),
-        )
-        .expect("Failed to create reserved token map");
-        (words, map)
+    fn make_reserved_words() -> &'static (Vec<Token>, fst::Map<Vec<u8>>) {
+        // Term parsing creates many short-lived lexers during refinement. The
+        // keyword automaton is immutable and identical for every input/reader.
+        static RESERVED_WORDS: LazyLock<(Vec<Token>, fst::Map<Vec<u8>>)> = LazyLock::new(|| {
+            let mut keywords = KEYWORDS.to_vec();
+            keywords.sort_by_key(|(key, _)| *key);
+            let words = keywords.iter().map(|(_, token)| token.clone()).collect();
+            let map = fst::Map::from_iter(
+                keywords
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (key, _))| (key, index as u64)),
+            )
+            .expect("Failed to create reserved token map");
+            (words, map)
+        });
+        &RESERVED_WORDS
     }
 
     #[cfg(test)]
@@ -538,4 +541,24 @@ fn test_keyword() {
 fn test_token_size() {
     assert_eq!(std::mem::size_of::<Token>(), 64);
     assert_eq!(std::mem::size_of::<Box<Token>>(), 8);
+}
+
+#[test]
+fn test_reserved_words_and_quoted_symbols() {
+    for (word, token) in KEYWORDS {
+        assert_eq!(
+            Lexer::new(word.as_bytes()).collect::<Vec<_>>(),
+            vec![token.clone()]
+        );
+        let quoted = format!("|{word}|");
+        assert_eq!(
+            Lexer::new(quoted.as_bytes()).collect::<Vec<_>>(),
+            vec![Token::Symbol((*word).into())]
+        );
+        let extended = format!("{word}_suffix");
+        assert_eq!(
+            Lexer::new(extended.as_bytes()).collect::<Vec<_>>(),
+            vec![Token::Symbol(extended)]
+        );
+    }
 }

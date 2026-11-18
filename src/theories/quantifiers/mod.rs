@@ -458,13 +458,10 @@ impl QuantifierPlan {
     ) -> anyhow::Result<PreparedQuantifierSearch> {
         let types = smt.get_array_types();
         let compiled = self.compiled(&types)?;
-        let mut terms = smt
-            .get_all_subterms()
-            .into_iter()
-            .cloned()
-            .collect::<Vec<_>>();
-        terms.extend(self.seeds.iter().map(|(_, term)| term.clone()));
-        terms.extend([app("true", vec![]), app("false", vec![]), "0".parse()?]);
+        let constants = [app("true", vec![]), app("false", vec![]), "0".parse()?];
+        let mut terms = smt.get_all_subterms();
+        terms.extend(self.seeds.iter().map(|(_, term)| term));
+        terms.extend(&constants);
         terms.sort_by_cached_key(ToString::to_string);
         terms.dedup();
         let mut needed_sorts = self
@@ -480,8 +477,8 @@ impl QuantifierPlan {
         needed_sorts.insert(string_to_sort("Bool"));
         graph.set_domain_sorts(needed_sorts);
         for term in terms {
-            if translate_term_with_array_types(term.clone(), &types).is_some() {
-                graph.admit(smt, &term, false)?;
+            if let Some(expression) = translate_term_with_array_types(term.clone(), &types) {
+                graph.admit_translated(smt, term, expression, false)?;
             }
         }
         graph.rebuild();
