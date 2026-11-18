@@ -68,6 +68,13 @@ fn join_from_z3_statistics(stats: &mut SolverStatistics, z3_stats: z3::Statistic
 }
 
 impl YardbirdSolver for Z3SolverBackend {
+    fn set_timeout_millis(&mut self, timeout: u32) -> anyhow::Result<()> {
+        let mut params = z3::Params::new();
+        params.set_u32("timeout", timeout);
+        self.solver.set_params(&params);
+        Ok(())
+    }
+
     fn backend(&self) -> SolverBackend {
         SolverBackend::Z3
     }

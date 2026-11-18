@@ -1,0 +1,237 @@
+global:
+  examples_dir: examples/distributed_protocols/
+  timeout_seconds: 500
+  retry_count: 1
+  jobs: 1
+  benchmark_limit: null
+  sample_seed: 20261113
+  require_array_reads_and_writes: false
+  output_format: json
+  include_patterns:
+    - "**/*.encoding.vmt"
+  exclude_patterns: []
+parameter_matrices:
+  qts-z3:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - concrete
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 1
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+  qts-guided1024:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 1024
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: when-unproductive
+  qts-guided16384:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 16384
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: when-unproductive
+  qts-always4096:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 4096
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: always
+  qts-predecessor-only4096:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 4096
+    guidance_transition_order: predecessor-only
+    guidance_action_requirements: when-unproductive
+  qts-supplement4096:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: supplement
+    guidance_work: 4096
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: when-unproductive
+  qts-always16384:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 16384
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: always
+  qts-axioms-first:
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: true
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 4096
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: when-unproductive
+individual_configs: []
+output:
+  include_metadata: true
+  pretty_json: false
+  timestamp_format: "%Y%m%d_%H%M%S"

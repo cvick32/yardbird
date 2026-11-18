@@ -377,6 +377,34 @@ impl<'a> InstantiationContext<'a> {
         (materialized.root, introduced_support)
     }
 
+    /// Install an already schema-validated ground instance at its exact absolute frames.
+    /// This neither normalizes/replays it at other frames nor filters it by a model.
+    pub(crate) fn install_ground(&mut self, term: Term) -> InstantiationInstallResult {
+        let mut result = InstantiationInstallResult::default();
+        let (term, _) = self.materialize_indexed_instance(term, true, &mut result);
+        result.indexed_assertions_attempted = 1;
+        if !self
+            .assertion_tracker
+            .accept(&term, AssertionKind::IndexedTheory)
+        {
+            result.indexed_assertions_deduplicated = 1;
+            return result;
+        }
+        self.asserted_instantiations.push(term.clone());
+        *self.num_quantifiers_instantiated += 1;
+        result.indexed_assertions_added = 1;
+        self.assert_new_instances(
+            &[PreparedIndexedInstantiation {
+                term,
+                frame: self.bmc_builder.depth,
+                substitution: vec![],
+                provenance: None,
+            }],
+            self.bmc_builder.depth,
+        );
+        result
+    }
+
     fn assert_new_instances(
         &mut self,
         indexed_instances: &[PreparedIndexedInstantiation],

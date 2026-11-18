@@ -31,3 +31,5 @@ docs/
 condhist/
 yardbird-benchmark-key.pem
 /notes/
+/.yardbird/
+qts/

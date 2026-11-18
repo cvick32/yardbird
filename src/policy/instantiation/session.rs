@@ -9,6 +9,7 @@ use crate::policy::discovery::DiscoveryContext;
 
 #[derive(Default)]
 pub(crate) struct InstantiationSession {
+    admitted: BTreeMap<String, smt2parser::concrete::Term>,
     ids: BTreeMap<(String, String), usize>,
     active_ids: BTreeSet<String>,
     declarations: BTreeSet<String>,
@@ -23,8 +24,52 @@ impl InstantiationSession {
     ) -> anyhow::Result<InstantiationSnapshot> {
         // A failed capture must not advance identity or vocabulary history.
         let mut snapshot = InstantiationSnapshot::capture(context, problem_source)?;
+        for term in self.admitted.values() {
+            // A term can leave scope at a later boundary; do not invent a declaration.
+            if let Ok(terms) = snapshot.ground_terms(std::slice::from_ref(term), 4096) {
+                for term in terms {
+                    if !snapshot
+                        .terms
+                        .iter()
+                        .any(|t| t.expression == term.expression && t.sort == term.sort)
+                    {
+                        snapshot.terms.push(term);
+                    }
+                }
+            }
+        }
         self.prepare(&mut snapshot);
         Ok(snapshot)
+    }
+
+    /// Atomically type-check and intern roots/subterms, preserving run IDs.
+    pub(crate) fn admit(
+        &mut self,
+        snapshot: &mut InstantiationSnapshot,
+        roots: &[smt2parser::concrete::Term],
+        limit: usize,
+    ) -> anyhow::Result<Vec<String>> {
+        let terms = snapshot.ground_terms(roots, limit)?;
+        let mut added = Vec::new();
+        for term in terms {
+            if !snapshot
+                .terms
+                .iter()
+                .any(|t| t.expression == term.expression && t.sort == term.sort)
+            {
+                added.push(term.expression.clone());
+                self.admitted
+                    .insert(term.expression.clone(), term.term.clone());
+                snapshot.terms.push(term);
+            }
+        }
+        self.prepare(snapshot);
+        Ok(snapshot
+            .terms
+            .iter()
+            .filter(|t| added.contains(&t.expression))
+            .map(|t| t.id.clone())
+            .collect())
     }
 
     fn prepare(&mut self, snapshot: &mut InstantiationSnapshot) {

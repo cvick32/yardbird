@@ -14,6 +14,7 @@
 //! Legacy producers use Int/Int arrays. LLM guidance opts into typed arrays and registered input binders.
 mod schema;
 mod session;
+pub(crate) mod terms;
 pub(crate) use schema::InstantiationSchema;
 mod snapshot;
 #[cfg(test)]

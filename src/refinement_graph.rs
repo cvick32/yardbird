@@ -168,6 +168,46 @@ impl RefinementGraph {
         Ok(())
     }
 
+    /// Admit externally constructed typed vocabulary without completing a model
+    /// or asserting a model equality. The coordinator remains the sole owner.
+    pub(crate) fn admit_unobserved(
+        &mut self,
+        smt: &dyn ProblemContext,
+        term: &Term,
+    ) -> anyhow::Result<()> {
+        self.register_context(smt);
+        let expression = translate_term_with_array_types(term.clone(), &smt.get_array_types())
+            .ok_or_else(|| anyhow::anyhow!("could not translate refinement term: {term}"))?;
+        let id = self.egraph.add_expr(&expression);
+        let mut ids = Vec::new();
+        for node in expression.as_ref() {
+            let node_id = self
+                .egraph
+                .add(node.clone().map_children(|child| ids[usize::from(child)]));
+            ids.push(node_id);
+            if self.seen_originals.insert(node_id) {
+                self.originals.push((
+                    node_id,
+                    node.build_recexpr(|child| expression[child].clone()),
+                ));
+            }
+        }
+        if self.seen_terms.insert(expression.clone()) {
+            self.terms.push(expression);
+        }
+        if let Ok(sort) =
+            crate::theories::quantifiers::term_sort(term, &self.signatures, &HashMap::new())
+        {
+            if self.domain_sorts.contains(&sort) {
+                let sort_id = self
+                    .egraph
+                    .add(TermLanguage::SortTag(sort.to_string().into()));
+                self.egraph.add(TermLanguage::Domain([sort_id, id]));
+            }
+        }
+        Ok(())
+    }
+
     pub fn rebuild(&mut self) {
         self.egraph.rebuild();
     }

@@ -1,7 +1,7 @@
 //! One joint LLM proposal per call, using the same frozen context and validator
 //! as JEV. Optional feedback attempts reuse that model. Failure always yields
 //! to ordinary refinement; providers cannot report proofs or counterexamples.
-mod client;
+pub(crate) mod client;
 mod cost;
 mod effort;
 mod options;

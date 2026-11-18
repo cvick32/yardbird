@@ -178,6 +178,10 @@ fn interpolation_assertion_frame(term: &Term, depth: u16) -> u16 {
 
 #[allow(clippy::borrowed_box)]
 impl VmtBmcSession {
+    pub(crate) fn set_timeout_millis(&mut self, timeout: u32) -> anyhow::Result<()> {
+        self.solver.set_timeout_millis(timeout)
+    }
+
     pub(crate) fn new<S>(
         vmt_model: &VMTModel,
         strategy: &Box<dyn ProofStrategy<'_, S>>,
@@ -571,6 +575,23 @@ impl VmtBmcSession {
         result
     }
 
+    /// The batch caller must validate this formula against a trusted theory schema first.
+    pub(crate) fn install_ground_instance(&mut self, term: Term) -> InstantiationInstallResult {
+        InstantiationContext::new(
+            &mut self.instantiations,
+            &mut self.bmc_builder,
+            &mut self.definition_materializer,
+            self.solver.as_mut(),
+            &mut self.subterm_handler,
+            self.track_instantiations,
+            &mut self.tracked_labels,
+            &mut self.asserted_instantiation_terms,
+            &mut self.num_quantifiers_instantiated,
+            &mut self.assertion_tracker,
+        )
+        .install_ground(term)
+    }
+
     pub(crate) fn to_sequence_smtinterpol(&self) -> SequenceInterpolationQuery {
         let sort_names = unique_command_lines(&self.sorts);
         let function_definitions = unique_command_lines(&self.function_definitions);
@@ -726,7 +747,7 @@ impl VmtBmcSession {
         Ok(())
     }
 
-    fn smt2_string_with_property_check(&self) -> String {
+    pub(crate) fn smt2_string_with_property_check(&self) -> String {
         let mut sections = vec![
             unique_command_lines(&self.sorts),
             unique_command_lines(&self.function_definitions),

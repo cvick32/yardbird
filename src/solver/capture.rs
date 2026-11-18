@@ -405,6 +405,10 @@ impl CapturingSolver {
 }
 
 impl YardbirdSolver for CapturingSolver {
+    fn set_timeout_millis(&mut self, timeout: u32) -> anyhow::Result<()> {
+        self.inner.set_timeout_millis(timeout)
+    }
+
     fn backend(&self) -> SolverBackend {
         self.inner.backend()
     }

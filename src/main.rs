@@ -44,6 +44,13 @@ fn main() -> anyhow::Result<()> {
         None => {}
     }
 
+    options.agent.validate(&options)?;
+    options.advisor.validate(&options)?;
+    options.one_shot.validate(&options)?;
+    if options.agent.agent_stdio {
+        return yardbird::agent_interaction::run(&options);
+    }
+
     options.validate_prefer_axioms_options()?;
     options.decision_model.validate(&options)?;
     options.llm.validate(&options)?;
@@ -270,6 +277,9 @@ fn print_strategy_results(
 
 fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     options.validate_solver_backend_for_vmt_mode()?;
+    if options.one_shot.active() {
+        return yardbird::one_shot::run(options);
+    }
     info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
     let mut training_session = TrainingSession::from_options(options)?;
@@ -277,7 +287,15 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
 
     match options.theory.legacy_theory() {
         None => {
-            let proof_plan = options.build_array_proof_plan();
+            let recorder = options
+                .one_shot
+                .export_instantiations
+                .as_ref()
+                .map(|_| yardbird::one_shot::Recorder::default());
+            let mut proof_plan = options.build_array_proof_plan();
+            if let Some(advisor) = yardbird::advisor::Advisor::from_options(options)? {
+                proof_plan.strategy.attach_advisor(advisor)?;
+            }
             let mut driver = Driver::new(
                 vmt_model,
                 proof_plan.instantiation_strategy,
@@ -297,6 +315,9 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             .with_solver_capture(solver_capture.clone());
             if options.repl {
                 driver.add_extension(Repl);
+            }
+            if let Some(recorder) = &recorder {
+                driver.add_extension(recorder.clone());
             }
             if options.interpolate {
                 driver.add_extension(Interpolating);
@@ -325,6 +346,9 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
             };
             if let Some(session) = training_session.as_mut() {
                 session.complete_result(&res)?;
+            }
+            if let Some(recorder) = recorder {
+                recorder.save(options, &res)?;
             }
             finish_solver_capture(solver_capture.as_ref(), &res.profiling)?;
             print_file_results(res, options)?;

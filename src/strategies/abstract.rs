@@ -170,6 +170,8 @@ where
     prepared_theory: Option<crate::theories::preparation::PreparedTheory>,
     ownership: crate::theories::preparation::Ownership,
     preparation_error: Option<String>,
+    advisor: Option<crate::advisor::Advisor>,
+    capture_instantiation_sources: bool,
 }
 
 impl<F> Abstract<F>
@@ -208,6 +210,8 @@ where
                 quantifiers: true,
             },
             preparation_error: None,
+            advisor: None,
+            capture_instantiation_sources: false,
         }
     }
 
@@ -259,6 +263,75 @@ where
     pub fn with_theory_selection(mut self, selection: crate::TheorySelection) -> Self {
         self.theory_selection = selection;
         self
+    }
+
+    fn poll_advisor(
+        &mut self,
+        state: &mut RefinementState,
+        smt: &dyn crate::problem_context::ProblemContext,
+        refinement_step: u32,
+    ) -> anyhow::Result<()> {
+        let Some(advisor) = self.advisor.as_mut() else {
+            return Ok(());
+        };
+        let pending=state.candidates.iter().filter_map(|c|smt.make_unquantified_instance(expr_to_term(c.expression.clone()))
+            .map(|i|crate::instance_installation::assertion_tracker::canonical_instantiation_key(i.get_term()))).collect::<HashSet<_>>();
+        let instances = advisor.poll(
+            &crate::policy::discovery::DiscoveryContext {
+                smt,
+                depth: state.depth,
+                refinement_step,
+                model_version: state.model_version,
+                quantifiers: Some((&self.quantifier.plan, &self.quantifier.provenance)),
+                call_limit: 1,
+                symbolic_feedback: &serde_json::Value::Null,
+                pending: &pending,
+            },
+            self.formula_index.as_ref(),
+        );
+        if instances.is_empty() {
+            return Ok(());
+        }
+        let mut pool = crate::rule_matching::symbolic_pool::SymbolicCandidatePool::default();
+        pool.remember(instances);
+        let PolicyParts {
+            term_config,
+            ranker,
+            ..
+        } = self.policy.parts();
+        let context = search_context::<F>(
+            self.formula_index.as_ref(),
+            &self.quantifier.plan,
+            &self.term_selection_counts,
+            self.artifact_capture,
+            state.model_version,
+            &state.egraph,
+            state.graph_version,
+            state.depth,
+            smt,
+            term_config,
+            ranker,
+            WorkAllowance {
+                winners: 16,
+                ..WorkAllowance::default()
+            },
+            None,
+            &pending,
+            refinement_step,
+            None,
+        );
+        let batch = pool.candidates_partial(&context)?;
+        if let Some(advisor) = self.advisor.as_mut() {
+            advisor.selected(
+                batch
+                    .candidates
+                    .iter()
+                    .map(|c| expr_to_term(c.expression.clone()).to_string())
+                    .collect(),
+            );
+        }
+        self.absorb_candidates(state, batch);
+        Ok(())
     }
 }
 
@@ -363,6 +436,39 @@ impl<F> ProofStrategy<'_, RefinementState> for Abstract<F>
 where
     F: TermCostFactory + 'static,
 {
+    fn attach_advisor(&mut self, advisor: crate::advisor::Advisor) -> anyhow::Result<()> {
+        self.advisor = Some(advisor);
+        Ok(())
+    }
+
+    fn enable_instantiation_catalogue(&mut self) -> anyhow::Result<()> {
+        self.capture_instantiation_sources = true;
+        Ok(())
+    }
+
+    fn instantiation_catalogue(
+        &self,
+        smt: &dyn crate::problem_context::ProblemContext,
+        source: &str,
+        depth: u16,
+    ) -> anyhow::Result<super::proof_strategy::InstantiationCatalogue> {
+        let pending = HashSet::new();
+        let context = crate::policy::discovery::DiscoveryContext {
+            smt,
+            depth,
+            refinement_step: 0,
+            model_version: 0,
+            quantifiers: Some((&self.quantifier.plan, &self.quantifier.provenance)),
+            call_limit: 1,
+            symbolic_feedback: &serde_json::Value::Null,
+            pending: &pending,
+        };
+        Ok(super::proof_strategy::InstantiationCatalogue {
+            snapshot: crate::policy::instantiation::InstantiationSnapshot::capture_static(
+                &context, source,
+            )?,
+        })
+    }
     fn refinement_limit(&self) -> Option<u32> {
         None
     }
@@ -415,7 +521,10 @@ where
                 preprocess_arrays: self.preprocess_exact_read_after_write,
                 encoding: self.encoding_options,
                 property_cone: self.policy.effort().requires_property_cone(),
-                profile: self.profile || self.policy.has_input_binder_discovery(),
+                profile: self.profile
+                    || self.capture_instantiation_sources
+                    || self.policy.has_input_binder_discovery()
+                    || self.advisor.as_ref().is_some_and(|a| a.needs_context()),
             },
         );
         match prepared {
@@ -518,6 +627,9 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
     ) -> driver::Result<RefinementState> {
+        if let Some(advisor) = &mut self.advisor {
+            advisor.enter_depth(depth);
+        }
         let egraph =
             crate::refinement_graph::RefinementGraph::new(self.quantifier.plan.signatures.clone());
         let egraph_builder = self
@@ -608,6 +720,7 @@ where
                 });
             state.model_reported = true;
         }
+        self.poll_advisor(state, smt, refinement_step)?;
         let profiling = self.profile.then(|| {
             Rc::new(RefCell::new(RefinementProfilingCollector::new(
                 "array_refinement",
@@ -823,6 +936,7 @@ where
                 }
                 OperationKind::PolicyCandidates => {
                     let producer = discovery.as_mut().expect("offered discovery producer");
+                    producer.observe_formulas(self.formula_index.as_ref());
                     let quantifiers = producer
                         .supports_input_binders()
                         .then_some((&self.quantifier.plan, &self.quantifier.provenance));
@@ -937,13 +1051,35 @@ where
                         .chain(std::iter::once("ReturnToDriver".into()))
                         .collect(),
                     allowance: Some(allowance),
-                    report,
+                    report: report.clone(),
                     choice_elapsed_secs,
                     elapsed_secs: start.elapsed().as_secs_f64(),
                 });
             }
             if retain {
+                if let Some(limit) = self
+                    .policy
+                    .parts()
+                    .discovery
+                    .as_ref()
+                    .and_then(|d| d.candidate_limit())
+                {
+                    batch
+                        .candidates
+                        .truncate(limit.saturating_sub(state.candidates.len()));
+                }
                 self.absorb_candidates(state, batch);
+            }
+            if let Some(discovery) = self.policy.parts().discovery.as_mut() {
+                discovery.observe_operation(operation.kind, &report, &state.candidates, smt)?;
+                let terms = discovery.take_admitted_terms();
+                if !terms.is_empty() {
+                    for term in terms {
+                        state.egraph.admit_unobserved(smt, &term)?;
+                    }
+                    state.egraph.rebuild();
+                    state.graph_version += 1;
+                }
             }
         })();
         // Trace after selection: diagnostic model evaluation must not influence
@@ -1014,6 +1150,11 @@ where
                         });
                 }
             }
+            let advisor_expression = self
+                .advisor
+                .as_ref()
+                .filter(|a| a.has_pending_hints())
+                .map(|_| term.to_string());
             let Some(request) = smt.make_provenanced_unquantified_instance(term, provenance) else {
                 if trace_instantiations {
                     trace!(
@@ -1023,6 +1164,9 @@ where
                 continue;
             };
             let result = smt.add_instantiation(request);
+            if let (Some(advisor), Some(expression)) = (&mut self.advisor, advisor_expression) {
+                advisor.installed(&expression, &result);
+            }
             if let Some(record) = self
                 .profiling_records
                 .last_mut()

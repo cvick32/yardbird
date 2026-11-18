@@ -2,11 +2,11 @@ use super::{LlmOptions, LlmProvider};
 use serde_json::Value;
 use std::time::Duration;
 
-pub(super) trait LlmClient {
+pub(crate) trait LlmClient {
     fn infer(&mut self, request: &Value) -> anyhow::Result<Value>;
 }
 
-pub(super) struct HttpClient {
+pub(crate) struct HttpClient {
     options: LlmOptions,
     timeout: Duration,
 }

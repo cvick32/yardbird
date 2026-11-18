@@ -37,6 +37,7 @@ use crate::theories::array::array_egraph_builder::{
 };
 use crate::training::LogisticRegressionModel;
 
+pub mod agent_interaction;
 pub mod audit;
 pub mod auxiliary_synthesis;
 pub mod countermodel;
@@ -62,6 +63,8 @@ mod subterm_handler;
 pub mod terms;
 pub mod theories;
 pub use theories::preparation::TheorySelection;
+pub mod advisor;
+pub mod one_shot;
 pub mod theory_support;
 pub mod training;
 pub mod transition_index;
@@ -81,6 +84,15 @@ pub struct ArrayProofPlan {
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(version, about, long_about = None)]
 pub struct YardbirdOptions {
+    #[command(flatten)]
+    #[serde(default)]
+    pub agent: agent_interaction::AgentOptions,
+    #[command(flatten)]
+    #[serde(default)]
+    pub advisor: advisor::AdvisorOptions,
+    #[command(flatten)]
+    #[serde(default)]
+    pub one_shot: one_shot::OneShotOptions,
     /// Run a repository-level operation instead of solving one input file.
     #[command(subcommand)]
     pub command: Option<YardbirdCommand>,
@@ -350,6 +362,9 @@ pub struct YardbirdOptions {
 impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
+            agent: Default::default(),
+            advisor: Default::default(),
+            one_shot: Default::default(),
             command: None,
             options_json: None,
             policy: None,

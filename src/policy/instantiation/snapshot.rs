@@ -39,6 +39,7 @@ pub(crate) struct InstantiationSnapshot {
     pub schemas: Vec<super::InstantiationSchema>,
     model: String,
     pub(super) declarations: Vec<String>,
+    pub(super) signatures: HashMap<String, (Vec<Sort>, Sort)>,
     pub(super) prefix: Vec<Value>,
     depth: u16,
     refinement_step: u32,
@@ -53,6 +54,22 @@ impl InstantiationSnapshot {
         context: &DiscoveryContext<'_>,
         problem_source: &str,
     ) -> anyhow::Result<Self> {
+        Self::capture_with_model(context, problem_source, true)
+    }
+
+    /// Static bounded vocabulary for a complete batch, without asking the solver for a model.
+    pub(crate) fn capture_static(
+        context: &DiscoveryContext<'_>,
+        problem_source: &str,
+    ) -> anyhow::Result<Self> {
+        Self::capture_with_model(context, problem_source, false)
+    }
+
+    fn capture_with_model(
+        context: &DiscoveryContext<'_>,
+        problem_source: &str,
+        include_model: bool,
+    ) -> anyhow::Result<Self> {
         let types = context.smt.get_array_types();
         let extended = context.quantifiers.is_some();
         anyhow::ensure!(extended || !types.is_empty(), "no abstract array types");
@@ -60,7 +77,11 @@ impl InstantiationSnapshot {
             extended || types.iter().all(|(i, v)| i == "Int" && v == "Int"),
             "guided instantiation supports Int-indexed, Int-valued arrays only"
         );
-        let native_model = context.smt.native_model_to_string()?;
+        let native_model = if include_model {
+            context.smt.native_model_to_string()?
+        } else {
+            String::new()
+        };
         let mut declarations = context.smt.get_refinement_declarations();
         declarations.extend(
             ArrayTheorySupport::new(types.clone())
@@ -168,6 +189,7 @@ impl InstantiationSnapshot {
             schemas,
             model: native_model,
             declarations,
+            signatures,
             prefix: Vec::new(),
             depth: context.depth,
             refinement_step: context.refinement_step,
@@ -269,6 +291,37 @@ impl InstantiationSnapshot {
                 term.sort
             );
             bindings.insert(slot.clone(), term.term.clone());
+        }
+        schema.instantiate(&bindings)
+    }
+
+    /// Resolve inline SMT terms for an offline batch. Soundness depends on the schema,
+    /// typing and declaration checks, not whether a current countermodel violates it.
+    pub(crate) fn resolve_text(
+        &self,
+        schema_id: &str,
+        text: &BTreeMap<String, String>,
+    ) -> anyhow::Result<SymbolicInstance> {
+        let schema = self.schema(schema_id)?;
+        anyhow::ensure!(
+            text.keys().eq(schema.slots.keys()),
+            "substitution must bind exactly the schema's slots"
+        );
+        let bindings = text
+            .iter()
+            .map(|(name, text)| Ok((name.clone(), super::terms::parse(text)?)))
+            .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
+        let roots = bindings.values().cloned().collect::<Vec<_>>();
+        let typed = self.ground_terms(&roots, 16384)?;
+        let sorts = typed
+            .iter()
+            .map(|t| (t.expression.as_str(), t.sort.as_str()))
+            .collect::<HashMap<_, _>>();
+        for (name, term) in &bindings {
+            anyhow::ensure!(
+                sorts.get(term.to_string().as_str()) == Some(&schema.slots[name].as_str()),
+                "wrong sort for {name}"
+            );
         }
         schema.instantiate(&bindings)
     }

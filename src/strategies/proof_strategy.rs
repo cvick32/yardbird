@@ -17,6 +17,11 @@ pub enum ProofAction {
     FoundProof,
 }
 
+/// Opaque typed vocabulary captured from a prepared strategy without solver search.
+pub struct InstantiationCatalogue {
+    pub(crate) snapshot: crate::policy::instantiation::InstantiationSnapshot,
+}
+
 /// Describes how to respond to the solver returning `unsat`, `unknown`, or `sat` at
 /// each depth of the proof loop.
 ///
@@ -24,6 +29,23 @@ pub enum ProofAction {
 /// finalizing steps with `finish`. The `result` method describes how to construct a
 /// `ProofLoopResult` from `self`.
 pub trait ProofStrategy<'ctx, S> {
+    /// Request source provenance for a static, typed instantiation catalogue.
+    fn enable_instantiation_catalogue(&mut self) -> anyhow::Result<()> {
+        anyhow::bail!("this strategy does not expose an instantiation catalogue")
+    }
+    fn instantiation_catalogue(
+        &self,
+        _smt: &dyn ProblemContext,
+        _source: &str,
+        _depth: u16,
+    ) -> anyhow::Result<InstantiationCatalogue> {
+        anyhow::bail!("this strategy does not expose an instantiation catalogue")
+    }
+    /// Attach optional asynchronous advice without replacing the selected policy.
+    fn attach_advisor(&mut self, _advisor: crate::advisor::Advisor) -> anyhow::Result<()> {
+        anyhow::bail!("the selected strategy does not support asynchronous advice")
+    }
+
     fn get_theory_support(&self) -> Box<dyn TheorySupport>;
 
     fn configure_model(&mut self, model: VMTModel) -> VMTModel {

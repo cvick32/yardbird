@@ -114,6 +114,11 @@ pub trait YardbirdSolver {
     fn push(&mut self);
     fn pop(&mut self, levels: u32);
 
+    /// Set a per-check timeout for bounded interactive work.
+    fn set_timeout_millis(&mut self, _timeout: u32) -> anyhow::Result<()> {
+        anyhow::bail!("this solver does not support interactive check timeouts")
+    }
+
     /// Run the solver without acquiring a model.
     fn check_sat(&mut self) -> SolverCheckResult;
 
