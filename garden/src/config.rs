@@ -600,7 +600,8 @@ mod tests {
     #[test]
     fn protocol_config_contains_six_distinct_singleton_runs() {
         let config: BenchmarkConfig =
-            serde_yaml::from_str(include_str!("../protocol_encodings_config.yaml")).unwrap();
+            serde_yaml::from_str(include_str!("../configs/protocol_encodings_config.yaml"))
+                .unwrap();
         assert_eq!(config.parameter_matrices.len(), 6);
         for name in config.parameter_matrices.keys() {
             let runs = config.generate_benchmark_runs(Some(name)).unwrap();

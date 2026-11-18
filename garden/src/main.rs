@@ -1397,7 +1397,8 @@ individual_configs:
     #[test]
     fn scheduling_experiments_reach_subprocess_options_as_distinct_configurations() {
         let config: super::BenchmarkConfig =
-            serde_yaml::from_str(include_str!("../protocol_scheduling_config.yaml")).unwrap();
+            serde_yaml::from_str(include_str!("../configs/protocol_scheduling_config.yaml"))
+                .unwrap();
         assert_eq!(config.parameter_matrices.len(), 13);
         let garden = GardenOptions::try_parse_from(["garden", "--config", "unused.yaml"]).unwrap();
         let mut identities = std::collections::HashSet::new();
