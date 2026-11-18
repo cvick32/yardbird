@@ -143,7 +143,7 @@ impl<CF: YardbirdCostFunction<TermLanguage>> TermExtractor<CF> {
                 expressions.push(array);
             }
         }
-        expressions.sort_by_key(ToString::to_string);
+        expressions.sort_by_cached_key(ToString::to_string);
         expressions.dedup();
         expressions
     }

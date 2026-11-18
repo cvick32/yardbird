@@ -314,7 +314,7 @@ impl SmtlibRefinementSession {
         };
 
         let term = request.inst.get_term();
-        self.assertion_tracker.record_abstract_instance();
+        self.assertion_tracker.record_abstract_instance(term);
         if !self
             .assertion_tracker
             .accept(term, AssertionKind::IndexedTheory)
@@ -561,6 +561,10 @@ impl ProblemContext for SmtlibRefinementSession {
 
     fn get_instantiations(&self) -> Vec<Term> {
         self.get_instantiations()
+    }
+
+    fn is_instantiation_known(&self, canonical_key: &Term) -> bool {
+        self.assertion_tracker.is_instantiation_known(canonical_key)
     }
 
     fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {

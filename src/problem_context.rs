@@ -73,6 +73,14 @@ pub trait ProblemContext {
 
     fn add_instantiation(&mut self, request: InstantiationRequest) -> InstantiationInstallResult;
     fn get_instantiations(&self) -> Vec<Term>;
+    /// Test a canonical candidate key against stored abstract instances, not
+    /// their indexed placements. Sessions can maintain this index incrementally.
+    fn is_instantiation_known(&self, canonical_key: &Term) -> bool {
+        self.get_instantiations().iter().any(|term| {
+            crate::instance_installation::assertion_tracker::canonical_instantiation_key(term)
+                == *canonical_key
+        })
+    }
     /// Ground formulas already asserted by refinement, after frame placement
     /// and materialization. SMT-LIB inputs may also contain replayed instances.
     /// These are search hints; callers must not reinterpret them as schemas.
