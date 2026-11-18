@@ -165,7 +165,8 @@ impl<'a> InstantiationContext<'a> {
             .register_quantified_variables(stored.inst.get_term())
             .expect("solver should register quantified variables");
         self.instantiations.push(stored.clone());
-        self.assertion_tracker.record_abstract_instance();
+        self.assertion_tracker
+            .record_abstract_instance(stored.inst.get_term());
         Some(stored)
     }
 

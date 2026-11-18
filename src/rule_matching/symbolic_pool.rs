@@ -155,13 +155,7 @@ impl SymbolicCandidatePool {
             context.depth,
             context.model_version,
         );
-        let mut known = context
-            .smt
-            .get_instantiations()
-            .iter()
-            .map(canonical_instantiation_key)
-            .collect::<HashSet<_>>();
-        known.extend(context.pending_instances.iter().cloned());
+        let known = context.pending_instances;
         let mut batch = InstantiationBatch::default();
         let mut active = Vec::with_capacity(self.pool_cache.active.len());
         let mut installable_keys = HashMap::new();
@@ -171,7 +165,7 @@ impl SymbolicCandidatePool {
             let Some(key) = &entry.normalized_key else {
                 continue;
             };
-            if known.contains(key) {
+            if known.contains(key) || context.smt.is_instantiation_known(key) {
                 active.push(i);
                 continue;
             }
@@ -247,7 +241,13 @@ impl SymbolicCandidatePool {
             context.allowance.winners,
             context.ranker,
             evaluate,
-            |c| installable_keys.get(&c.expression).cloned().flatten(),
+            |c| {
+                installable_keys
+                    .get(&c.expression)
+                    .cloned()
+                    .flatten()
+                    .filter(|key| !context.smt.is_instantiation_known(key))
+            },
         )?;
         if let Some(profile) = &context.profiling {
             let mut p = profile.borrow_mut();

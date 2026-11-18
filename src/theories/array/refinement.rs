@@ -4,7 +4,6 @@ use crate::rule_matching::search_context::SearchContext;
 fn trace_conflicts_enabled() -> bool {
     log::log_enabled!(log::Level::Trace)
 }
-use crate::instance_installation::assertion_tracker::canonical_instantiation_key;
 use crate::policy::term_selection::context::TermCostContext;
 use crate::policy::term_selection::TermCostFactory;
 use crate::rule_matching::candidate::InstantiationBatch;
@@ -102,12 +101,7 @@ impl ArrayRefinement {
                 .record_timing("cost_factory", cost_factory_start.elapsed());
         }
 
-        let mut known_instantiations = smt
-            .get_instantiations()
-            .into_iter()
-            .map(|term| canonical_instantiation_key(&term))
-            .collect::<HashSet<_>>();
-        known_instantiations.extend(context.pending_instances.iter().cloned());
+        let known_instantiations = context.pending_instances;
 
         let instantiation_start = Instant::now();
         let mut seen = HashSet::new();
@@ -149,7 +143,10 @@ impl ArrayRefinement {
                 let Some(key) = context.installable_expression(&candidate.expression) else {
                     return Ok(false);
                 };
-                if known_instantiations.contains(&key) || seen.contains(&key) {
+                if smt.is_instantiation_known(&key)
+                    || known_instantiations.contains(&key)
+                    || seen.contains(&key)
+                {
                     return Ok(false);
                 }
                 if smt
@@ -171,7 +168,11 @@ impl ArrayRefinement {
             context.allowance.winners,
             context.ranker,
             |term| smt.eval_to_string(term),
-            |candidate| context.installable_expression(&candidate.expression),
+            |candidate| {
+                context
+                    .installable_expression(&candidate.expression)
+                    .filter(|key| !smt.is_instantiation_known(key))
+            },
         )?;
 
         if let Some(profiling) = profiling {

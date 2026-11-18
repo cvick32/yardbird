@@ -2,7 +2,10 @@
 //! matching only receives an immutable e-graph borrow.
 mod vocabulary;
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 use egg::Language;
 use smt2parser::concrete::{Command, Sort, Term};
@@ -103,8 +106,21 @@ impl RefinementGraph {
         self.register_context(smt);
         let expression = translate_term_with_array_types(term.clone(), &smt.get_array_types())
             .ok_or_else(|| anyhow::anyhow!("could not translate refinement term: {term}"))?;
-        let id = self.egraph.add_expr(&expression);
-        let mut ids = Vec::new();
+        self.admit_translated(smt, term, expression, model_literals)
+    }
+
+    /// Reuse a translation already produced while filtering binder vocabulary.
+    pub(crate) fn admit_translated(
+        &mut self,
+        smt: &dyn ProblemContext,
+        term: &Term,
+        expression: TermExpr,
+        model_literals: bool,
+    ) -> anyhow::Result<()> {
+        self.register_context(smt);
+        // This traversal both inserts the expression and records its originals;
+        // a preceding add_expr would insert every node a second time.
+        let mut ids = Vec::with_capacity(expression.as_ref().len());
         for node in expression.as_ref() {
             let id = self
                 .egraph
@@ -115,6 +131,7 @@ impl RefinementGraph {
                     .push((id, node.build_recexpr(|child| expression[child].clone())));
             }
         }
+        let id = *ids.last().expect("translated terms are nonempty");
         if self.seen_terms.insert(expression.clone()) {
             self.terms.push(expression);
         }
@@ -122,8 +139,8 @@ impl RefinementGraph {
             Term::Application {
                 qual_identifier,
                 arguments,
-            } if arguments.is_empty() => Term::QualIdentifier(qual_identifier.clone()),
-            _ => term.clone(),
+            } if arguments.is_empty() => Cow::Owned(Term::QualIdentifier(qual_identifier.clone())),
+            _ => Cow::Borrowed(term),
         };
         let sort =
             crate::theories::quantifiers::term_sort(&sort_term, &self.signatures, &HashMap::new())

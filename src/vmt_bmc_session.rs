@@ -1313,6 +1313,10 @@ impl ProblemContext for VmtBmcSession {
             .collect()
     }
 
+    fn is_instantiation_known(&self, canonical_key: &Term) -> bool {
+        self.assertion_tracker.is_instantiation_known(canonical_key)
+    }
+
     fn get_asserted_instantiation_terms(&self) -> Vec<&Term> {
         self.asserted_instantiation_terms.iter().collect()
     }
