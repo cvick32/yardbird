@@ -1,0 +1,1612 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Yardbird agent interaction v0 server messages",
+  "$defs": {
+    "evaluation": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "known",
+            "undetermined",
+            "not_evaluated",
+            "error"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expansion_work": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "search_operations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "solver_checks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "solver_statistics": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "elapsed_ms",
+        "expansion_work",
+        "search_operations",
+        "solver_checks",
+        "solver_statistics"
+      ],
+      "additionalProperties": false
+    },
+    "paused": {
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refinement_step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "model_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "epoch",
+        "depth",
+        "refinement_step",
+        "model_version",
+        "roots"
+      ],
+      "additionalProperties": false
+    },
+    "installation": {
+      "type": "object",
+      "properties": {
+        "abstract_instance_added": {
+          "type": "boolean"
+        },
+        "indexed_assertions_attempted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexed_assertions_added": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexed_assertions_deduplicated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "helper_assertions_attempted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "helper_assertions_added": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "helper_assertions_deduplicated": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "abstract_instance_added",
+        "indexed_assertions_attempted",
+        "indexed_assertions_added",
+        "indexed_assertions_deduplicated",
+        "helper_assertions_attempted",
+        "helper_assertions_added",
+        "helper_assertions_deduplicated"
+      ],
+      "additionalProperties": false
+    },
+    "candidate": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proposal_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "search_command_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "construction": {
+          "const": "constructed"
+        },
+        "validation": {
+          "enum": [
+            "violated",
+            "already_present",
+            "uninstallable",
+            "instance_true",
+            "undetermined",
+            "evaluation_error"
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observations": {
+          "type": "object"
+        },
+        "term_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "selection": {
+          "enum": [
+            "pending",
+            "selected",
+            "not_selected",
+            "not_eligible"
+          ]
+        },
+        "installation_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "installation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/installation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "installation_error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "candidate_id",
+        "proposal_ids",
+        "search_command_ids",
+        "expression",
+        "construction",
+        "validation",
+        "reason",
+        "observations",
+        "term_refs",
+        "selection",
+        "installation_id",
+        "installation",
+        "installation_error"
+      ],
+      "additionalProperties": false
+    },
+    "record": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "const": "term"
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "frame": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "origin": {
+                  "type": "object"
+                },
+                "evaluation": {
+                  "$ref": "#/$defs/evaluation"
+                }
+              },
+              "required": [
+                "origin",
+                "evaluation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "expression",
+            "sort",
+            "frame",
+            "links",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "const": "schema"
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "frame": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "slots": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "slot_names": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "direction": {
+                  "enum": [
+                    "instance",
+                    "witness",
+                    "array_axiom"
+                  ]
+                },
+                "source_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "parent_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "witness_dependencies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "slots",
+                "slot_names",
+                "direction",
+                "source_ref",
+                "parent_ref",
+                "witness_dependencies"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "expression",
+            "sort",
+            "frame",
+            "links",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "const": "action"
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "frame": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "prerequisite_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "update_refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "selection_evidence": {
+                  "$ref": "#/$defs/evaluation"
+                },
+                "requirements_expanded": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "arguments",
+                "prerequisite_refs",
+                "update_refs",
+                "selection_evidence",
+                "requirements_expanded"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "expression",
+            "sort",
+            "frame",
+            "links",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "const": "source"
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "frame": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "source_kind": {
+                  "enum": [
+                    "init",
+                    "transition",
+                    "property",
+                    "axiom",
+                    "definition"
+                  ]
+                },
+                "parent_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "source_kind",
+                "parent_ref"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "expression",
+            "sort",
+            "frame",
+            "links",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "const": "trace"
+            },
+            "expression": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sort": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "frame": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "links": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "evaluation": {
+                  "$ref": "#/$defs/evaluation"
+                },
+                "source_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "reason",
+                "status",
+                "evaluation",
+                "source_ref"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "expression",
+            "sort",
+            "frame",
+            "links",
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "depth_event": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "const": "depth_closed"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "event",
+        "depth"
+      ],
+      "additionalProperties": false
+    },
+    "snapshot_result": {
+      "type": "object",
+      "properties": {
+        "shared_snapshot": {
+          "type": "object"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        },
+        "paused": {
+          "$ref": "#/$defs/paused"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "snapshot",
+              "inspect",
+              "expand_action",
+              "make_term",
+              "instantiate",
+              "search",
+              "advance",
+              "stop"
+            ]
+          }
+        },
+        "pending_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "shared_snapshot",
+        "records",
+        "paused",
+        "capabilities",
+        "pending_ids",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "inspect_result": {
+      "type": "object",
+      "properties": {
+        "record": {
+          "$ref": "#/$defs/record"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "record",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "expand_action_result": {
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        },
+        "discovered_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "work_used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cutoff": {
+          "type": "boolean"
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "records",
+        "discovered_refs",
+        "work_used",
+        "cutoff",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "make_term_result": {
+      "type": "object",
+      "properties": {
+        "term_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "term_ref",
+        "records",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "instantiate_result": {
+      "type": "object",
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        },
+        "pending_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "candidates",
+        "records",
+        "pending_ids",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "search_result": {
+      "type": "object",
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        },
+        "pending_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "work": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "required": [
+              "name",
+              "work"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "cutoff": {
+          "type": "boolean"
+        },
+        "stop_reason": {
+          "enum": [
+            "operation_limit",
+            "policy_yield",
+            "exhausted",
+            "pending_limit"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "candidates",
+        "records",
+        "pending_ids",
+        "operations",
+        "cutoff",
+        "stop_reason",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "advance_result": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": [
+            "sat",
+            "no_progress",
+            "bounded_complete",
+            "proof",
+            "counterexample",
+            "unknown",
+            "timeout",
+            "internal_error"
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/depth_event"
+          }
+        },
+        "paused": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/paused"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "outcome",
+        "events",
+        "paused",
+        "candidates",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "stop_result": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "const": "stopped"
+        },
+        "pending_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "outcome",
+        "pending_ids",
+        "usage"
+      ],
+      "additionalProperties": false
+    },
+    "error_response": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "op": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ok": {
+          "const": false
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_json",
+                "invalid_command",
+                "stale_epoch",
+                "id_conflict",
+                "unknown_ref",
+                "inactive_term",
+                "unsupported",
+                "sort_error",
+                "invalid_bindings",
+                "limit_exceeded",
+                "response_too_large",
+                "internal_error"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "details": {
+              "type": "object"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "details"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "snapshot"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/snapshot_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "inspect"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/inspect_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "expand_action"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/expand_action_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "make_term"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/make_term_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "instantiate"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/instantiate_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "search"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/search_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "advance"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/advance_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op": {
+          "const": "stop"
+        },
+        "ok": {
+          "const": true
+        },
+        "epoch": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "$ref": "#/$defs/stop_result"
+        }
+      },
+      "required": [
+        "v",
+        "id",
+        "op",
+        "ok",
+        "epoch",
+        "result"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "$ref": "#/$defs/error_response"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "event": {
+          "const": "ready"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "snapshot",
+              "inspect",
+              "expand_action",
+              "make_term",
+              "instantiate",
+              "search",
+              "advance",
+              "stop"
+            ]
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "input_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "build_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "v",
+        "event",
+        "run_id",
+        "capabilities",
+        "limits",
+        "input_hash",
+        "build_id",
+        "config_hash"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "event": {
+          "const": "paused"
+        },
+        "paused": {
+          "$ref": "#/$defs/paused"
+        }
+      },
+      "required": [
+        "v",
+        "event",
+        "paused"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "v": {
+          "const": 0
+        },
+        "event": {
+          "const": "terminal"
+        },
+        "reason": {
+          "enum": [
+            "stopped",
+            "bounded_complete",
+            "proof",
+            "counterexample",
+            "unknown",
+            "timeout",
+            "internal_error",
+            "eof",
+            "target_not_reached"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
+      },
+      "required": [
+        "v",
+        "event",
+        "reason",
+        "usage"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
