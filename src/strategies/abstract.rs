@@ -170,7 +170,7 @@ where
     prepared_theory: Option<crate::theories::preparation::PreparedTheory>,
     ownership: crate::theories::preparation::Ownership,
     preparation_error: Option<String>,
-    advisor: Option<crate::advisor::Advisor>,
+    agent: Option<crate::agent_interaction::NativeAgent>,
     capture_instantiation_sources: bool,
 }
 
@@ -210,7 +210,7 @@ where
                 quantifiers: true,
             },
             preparation_error: None,
-            advisor: None,
+            agent: None,
             capture_instantiation_sources: false,
         }
     }
@@ -265,18 +265,18 @@ where
         self
     }
 
-    fn poll_advisor(
+    fn poll_agent(
         &mut self,
         state: &mut RefinementState,
         smt: &dyn crate::problem_context::ProblemContext,
         refinement_step: u32,
     ) -> anyhow::Result<()> {
-        let Some(advisor) = self.advisor.as_mut() else {
+        let Some(agent) = self.agent.as_mut() else {
             return Ok(());
         };
         let pending=state.candidates.iter().filter_map(|c|smt.make_unquantified_instance(expr_to_term(c.expression.clone()))
             .map(|i|crate::instance_installation::assertion_tracker::canonical_instantiation_key(i.get_term()))).collect::<HashSet<_>>();
-        let instances = advisor.poll(
+        let instances = agent.poll(
             &crate::policy::discovery::DiscoveryContext {
                 smt,
                 depth: state.depth,
@@ -321,8 +321,8 @@ where
             None,
         );
         let batch = pool.candidates_partial(&context)?;
-        if let Some(advisor) = self.advisor.as_mut() {
-            advisor.selected(
+        if let Some(agent) = self.agent.as_mut() {
+            agent.selected(
                 batch
                     .candidates
                     .iter()
@@ -436,8 +436,8 @@ impl<F> ProofStrategy<'_, RefinementState> for Abstract<F>
 where
     F: TermCostFactory + 'static,
 {
-    fn attach_advisor(&mut self, advisor: crate::advisor::Advisor) -> anyhow::Result<()> {
-        self.advisor = Some(advisor);
+    fn attach_agent(&mut self, agent: crate::agent_interaction::NativeAgent) -> anyhow::Result<()> {
+        self.agent = Some(agent);
         Ok(())
     }
 
@@ -524,7 +524,7 @@ where
                 profile: self.profile
                     || self.capture_instantiation_sources
                     || self.policy.has_input_binder_discovery()
-                    || self.advisor.as_ref().is_some_and(|a| a.needs_context()),
+                    || self.agent.as_ref().is_some_and(|a| a.needs_context()),
             },
         );
         match prepared {
@@ -627,8 +627,8 @@ where
         smt: &dyn crate::problem_context::ProblemContext,
         depth: u16,
     ) -> driver::Result<RefinementState> {
-        if let Some(advisor) = &mut self.advisor {
-            advisor.enter_depth(depth);
+        if let Some(agent) = &mut self.agent {
+            agent.enter_depth(depth);
         }
         let egraph =
             crate::refinement_graph::RefinementGraph::new(self.quantifier.plan.signatures.clone());
@@ -720,7 +720,7 @@ where
                 });
             state.model_reported = true;
         }
-        self.poll_advisor(state, smt, refinement_step)?;
+        self.poll_agent(state, smt, refinement_step)?;
         let profiling = self.profile.then(|| {
             Rc::new(RefCell::new(RefinementProfilingCollector::new(
                 "array_refinement",
@@ -1150,8 +1150,8 @@ where
                         });
                 }
             }
-            let advisor_expression = self
-                .advisor
+            let agent_expression = self
+                .agent
                 .as_ref()
                 .filter(|a| a.has_pending_hints())
                 .map(|_| term.to_string());
@@ -1164,8 +1164,8 @@ where
                 continue;
             };
             let result = smt.add_instantiation(request);
-            if let (Some(advisor), Some(expression)) = (&mut self.advisor, advisor_expression) {
-                advisor.installed(&expression, &result);
+            if let (Some(agent), Some(expression)) = (&mut self.agent, agent_expression) {
+                agent.installed(&expression, &result);
             }
             if let Some(record) = self
                 .profiling_records

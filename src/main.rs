@@ -45,10 +45,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     options.agent.validate(&options)?;
-    options.advisor.validate(&options)?;
     options.one_shot.validate(&options)?;
     if options.agent.agent_stdio {
-        return yardbird::agent_interaction::run(&options);
+        return yardbird::agent_interaction::run_stdio(&options);
     }
 
     options.validate_prefer_axioms_options()?;
@@ -278,7 +277,7 @@ fn print_strategy_results(
 fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
     options.validate_solver_backend_for_vmt_mode()?;
     if options.one_shot.active() {
-        return yardbird::one_shot::run(options);
+        return yardbird::agent_interaction::one_shot::run(options);
     }
     info!("Running in VMT mode with {} solver", options.solver);
     let vmt_model = model_from_options(options);
@@ -291,10 +290,10 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                 .one_shot
                 .export_instantiations
                 .as_ref()
-                .map(|_| yardbird::one_shot::Recorder::default());
+                .map(|_| yardbird::agent_interaction::one_shot::Recorder::default());
             let mut proof_plan = options.build_array_proof_plan();
-            if let Some(advisor) = yardbird::advisor::Advisor::from_options(options)? {
-                proof_plan.strategy.attach_advisor(advisor)?;
+            if let Some(agent) = yardbird::agent_interaction::NativeAgent::from_options(options)? {
+                proof_plan.strategy.attach_agent(agent)?;
             }
             let mut driver = Driver::new(
                 vmt_model,

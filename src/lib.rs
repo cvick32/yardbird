@@ -63,8 +63,6 @@ mod subterm_handler;
 pub mod terms;
 pub mod theories;
 pub use theories::preparation::TheorySelection;
-pub mod advisor;
-pub mod one_shot;
 pub mod theory_support;
 pub mod training;
 pub mod transition_index;
@@ -89,10 +87,7 @@ pub struct YardbirdOptions {
     pub agent: agent_interaction::AgentOptions,
     #[command(flatten)]
     #[serde(default)]
-    pub advisor: advisor::AdvisorOptions,
-    #[command(flatten)]
-    #[serde(default)]
-    pub one_shot: one_shot::OneShotOptions,
+    pub one_shot: agent_interaction::one_shot::OneShotOptions,
     /// Run a repository-level operation instead of solving one input file.
     #[command(subcommand)]
     pub command: Option<YardbirdCommand>,
@@ -363,7 +358,6 @@ impl Default for YardbirdOptions {
     fn default() -> Self {
         YardbirdOptions {
             agent: Default::default(),
-            advisor: Default::default(),
             one_shot: Default::default(),
             command: None,
             options_json: None,
@@ -546,8 +540,12 @@ impl YardbirdOptions {
         };
         let json = std::fs::read_to_string(path)
             .with_context(|| format!("reading --options-json {}", path.display()))?;
-        serde_json::from_str(&json)
-            .with_context(|| format!("parsing --options-json {}", path.display()))
+        let parse = || -> anyhow::Result<Self> {
+            let mut options: serde_json::Value = serde_json::from_str(&json)?;
+            agent_interaction::migrate_saved_options(&mut options)?;
+            Ok(serde_json::from_value(options)?)
+        };
+        parse().with_context(|| format!("parsing --options-json {}", path.display()))
     }
 
     pub fn validate_smtlib_mode(&self) -> anyhow::Result<()> {
@@ -1233,6 +1231,30 @@ mod option_tests {
         .unwrap();
 
         assert_eq!(format!("{loaded:?}"), format!("{written:?}"));
+    }
+
+    #[test]
+    fn resolve_preserves_native_agent_settings_from_older_runs() {
+        let mut saved = serde_json::to_value(YardbirdOptions::default()).unwrap();
+        saved["agent"] = serde_json::json!({"agent_pause_depth": 3, "agent_log": null});
+        saved["advisor"] = serde_json::json!({
+            "advisor": "bedrock", "advisor_max_calls": 2, "advisor_log": "run.jsonl"
+        });
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), saved.to_string()).unwrap();
+        let loaded = YardbirdOptions {
+            options_json: Some(file.path().into()),
+            ..Default::default()
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(
+            loaded.agent.mode,
+            Some(agent_interaction::AgentMode::Bedrock)
+        );
+        assert_eq!(loaded.agent.agent_max_calls, 2);
+        assert_eq!(loaded.agent.agent_pause_depth, 3);
+        assert_eq!(loaded.agent.agent_log, Some("run.jsonl".into()));
     }
 
     #[test]

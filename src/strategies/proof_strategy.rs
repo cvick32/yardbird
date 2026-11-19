@@ -42,7 +42,10 @@ pub trait ProofStrategy<'ctx, S> {
         anyhow::bail!("this strategy does not expose an instantiation catalogue")
     }
     /// Attach optional asynchronous advice without replacing the selected policy.
-    fn attach_advisor(&mut self, _advisor: crate::advisor::Advisor) -> anyhow::Result<()> {
+    fn attach_agent(
+        &mut self,
+        _agent: crate::agent_interaction::NativeAgent,
+    ) -> anyhow::Result<()> {
         anyhow::bail!("the selected strategy does not support asynchronous advice")
     }
 
