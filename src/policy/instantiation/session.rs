@@ -23,7 +23,13 @@ impl InstantiationSession {
         problem_source: &str,
     ) -> anyhow::Result<InstantiationSnapshot> {
         // A failed capture must not advance identity or vocabulary history.
-        let mut snapshot = InstantiationSnapshot::capture(context, problem_source)?;
+        self.restore_terms(InstantiationSnapshot::capture(context, problem_source)?)
+    }
+
+    pub(crate) fn restore_terms(
+        &mut self,
+        mut snapshot: InstantiationSnapshot,
+    ) -> anyhow::Result<InstantiationSnapshot> {
         for term in self.admitted.values() {
             // A term can leave scope at a later boundary; do not invent a declaration.
             if let Ok(terms) = snapshot.ground_terms(std::slice::from_ref(term), 4096) {

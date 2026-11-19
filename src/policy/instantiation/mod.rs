@@ -22,5 +22,5 @@ mod tests;
 mod validation;
 
 pub(crate) use session::InstantiationSession;
-pub(crate) use snapshot::{InstantiationProposal, InstantiationSnapshot};
+pub(crate) use snapshot::{InstantiationProposal, InstantiationSnapshot, SnapshotInput};
 pub(crate) use validation::validate;

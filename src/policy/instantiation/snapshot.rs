@@ -49,40 +49,84 @@ pub(crate) struct InstantiationSnapshot {
     binder_sources: Value,
 }
 
+/// Owned solver observations. Formatting the catalogue needs no live solver.
+pub(crate) struct SnapshotInput {
+    types: Vec<(String, String)>,
+    quantifiers: Option<(
+        Vec<crate::theories::quantifiers::BinderRule>,
+        crate::theories::quantifiers::provenance::QuantifierProvenance,
+    )>,
+    declarations: Vec<Command>,
+    roots: Vec<Term>,
+    installed: Vec<Term>,
+    model: String,
+    depth: u16,
+    refinement_step: u32,
+    model_version: u64,
+}
+
+impl SnapshotInput {
+    pub(crate) fn collect(
+        context: &DiscoveryContext<'_>,
+        include_model: bool,
+    ) -> anyhow::Result<Self> {
+        let mut roots: Vec<_> = context
+            .smt
+            .get_all_subterms()
+            .into_iter()
+            .chain(context.smt.get_asserted_instantiation_terms())
+            .cloned()
+            .collect();
+        if let Some((plan, _)) = context.quantifiers {
+            roots.extend(plan.seeds.iter().map(|(_, term)| term.clone()));
+            for literal in ["true", "false"] {
+                roots.push(crate::theories::quantifiers::app(literal, vec![]));
+            }
+        }
+        Ok(Self {
+            roots,
+            types: context.smt.get_array_types(),
+            quantifiers: context
+                .quantifiers
+                .map(|(p, sources)| (p.rules.clone(), sources.clone())),
+            declarations: context.smt.get_refinement_declarations(),
+            installed: context.smt.get_instantiations(),
+            model: if include_model {
+                context.smt.native_model_to_string()?
+            } else {
+                String::new()
+            },
+            depth: context.depth,
+            refinement_step: context.refinement_step,
+            model_version: context.model_version,
+        })
+    }
+}
+
 impl InstantiationSnapshot {
     pub(super) fn capture(
         context: &DiscoveryContext<'_>,
         problem_source: &str,
     ) -> anyhow::Result<Self> {
-        Self::capture_with_model(context, problem_source, true)
+        Self::from_input(SnapshotInput::collect(context, true)?, problem_source)
     }
 
-    /// Static bounded vocabulary for a complete batch, without asking the solver for a model.
     pub(crate) fn capture_static(
         context: &DiscoveryContext<'_>,
         problem_source: &str,
     ) -> anyhow::Result<Self> {
-        Self::capture_with_model(context, problem_source, false)
+        Self::from_input(SnapshotInput::collect(context, false)?, problem_source)
     }
 
-    fn capture_with_model(
-        context: &DiscoveryContext<'_>,
-        problem_source: &str,
-        include_model: bool,
-    ) -> anyhow::Result<Self> {
-        let types = context.smt.get_array_types();
-        let extended = context.quantifiers.is_some();
+    pub(crate) fn from_input(input: SnapshotInput, problem_source: &str) -> anyhow::Result<Self> {
+        let types = input.types;
+        let extended = input.quantifiers.is_some();
         anyhow::ensure!(extended || !types.is_empty(), "no abstract array types");
         anyhow::ensure!(
             extended || types.iter().all(|(i, v)| i == "Int" && v == "Int"),
             "guided instantiation supports Int-indexed, Int-valued arrays only"
         );
-        let native_model = if include_model {
-            context.smt.native_model_to_string()?
-        } else {
-            String::new()
-        };
-        let mut declarations = context.smt.get_refinement_declarations();
+        let mut declarations = input.declarations;
         declarations.extend(
             ArrayTheorySupport::new(types.clone())
                 .get_uninterpreted_functions()
@@ -118,24 +162,8 @@ impl InstantiationSnapshot {
         // cannot discard their integer/array descendants. No model-value,
         // property-relevance, cost-ranking, or e-class pruning here.
         let mut ground = BTreeMap::new();
-        for term in context
-            .smt
-            .get_all_subterms()
-            .into_iter()
-            .chain(context.smt.get_asserted_instantiation_terms())
-        {
+        for term in &input.roots {
             collect_ground(term, &mut ground)?;
-        }
-        if let Some((plan, _)) = context.quantifiers {
-            for (_, term) in &plan.seeds {
-                collect_ground(term, &mut ground)?;
-            }
-            for literal in ["true", "false"] {
-                collect_ground(
-                    &crate::theories::quantifiers::app(literal, vec![]),
-                    &mut ground,
-                )?;
-            }
         }
         let mut terms = vec![];
         for (expression, term) in ground {
@@ -158,8 +186,8 @@ impl InstantiationSnapshot {
             .into_iter()
             .map(super::InstantiationSchema::array)
             .collect::<Vec<_>>();
-        if let Some((plan, provenance)) = context.quantifiers {
-            for rule in &plan.rules {
+        if let Some((rules, provenance)) = &input.quantifiers {
+            for rule in rules {
                 for witness in [false, true] {
                     let schema = crate::theories::quantifiers::instantiation_schema::BinderInstantiationSchema::new(rule, provenance, witness)?;
                     schemas.push(super::InstantiationSchema::binder(
@@ -187,21 +215,16 @@ impl InstantiationSnapshot {
         Ok(Self {
             terms,
             schemas,
-            model: native_model,
+            model: input.model,
             declarations,
             signatures,
             prefix: Vec::new(),
-            depth: context.depth,
-            refinement_step: context.refinement_step,
-            model_version: context.model_version,
-            successful_instantiations: context
-                .smt
-                .get_instantiations()
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
+            depth: input.depth,
+            refinement_step: input.refinement_step,
+            model_version: input.model_version,
+            successful_instantiations: input.installed.iter().map(ToString::to_string).collect(),
             problem_source: problem_source.to_owned(),
-            binder_sources: context
+            binder_sources: input
                 .quantifiers
                 .map(|(_, provenance)| {
                     // The complete file is already present; avoid repeating entire
