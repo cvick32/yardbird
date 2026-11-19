@@ -77,6 +77,7 @@ class BenchmarkResult:
     timeout_ms: Optional[float] = None
     guided_settings: dict = field(default_factory=dict)
     report_label: Optional[str] = None
+    theory: str = "auto"
 
     def plot_runtime_ms(self) -> float:
         """Use the recorded limit for timeouts, elapsed time for other outcomes."""
@@ -85,7 +86,7 @@ class BenchmarkResult:
         return self.runtime_ms
 
     def has_extended_configuration(self) -> bool:
-        return any(
+        return self.theory != "auto" or any(
             value is not None
             for value in (
                 self.policy,
@@ -116,6 +117,7 @@ class BenchmarkResult:
     def get_configuration(self) -> dict[str, object]:
         return {
             **self.guided_settings,
+            "theory": self.theory,
             "policy": self.policy,
             "no_guided_fallback": self.no_guided_fallback,
             "guidance_schedule": self.guidance_schedule,
@@ -154,6 +156,7 @@ class BenchmarkResult:
             strategy_id = f"{self.strategy}_{self.cost_function}"
             if self.has_extended_configuration():
                 components: list[tuple[str, object | None]] = [
+                    ("theory", self.theory if self.theory != "auto" else None),
                     ("policy", self.policy),
                     ("fallback", None if self.no_guided_fallback is None else
                      "disabled" if self.no_guided_fallback else "ordinary"),
@@ -301,6 +304,8 @@ class BenchmarkResult:
                     details.append(f"seed={random['random_seed']}")
                 if self.no_guided_fallback is not None:
                     details.append("strict" if self.no_guided_fallback else "ordinary fallback")
+                if self.theory != "auto":
+                    details.append(f"theory={self.theory}")
                 if self.guidance_work is not None:
                     details.append(f"work={self.guidance_work}")
                 if self.guidance_transition_order is not None:
@@ -652,6 +657,7 @@ class BenchmarkParser:
         solver_stats = extract_solver_stats(result_entry, success)
 
         return BenchmarkResult(
+            theory=result_entry.get("theory", "auto"),
             guided_settings=guided_configuration(result_entry),
             policy=result_entry.get("policy"),
             no_guided_fallback=(result_entry.get("no_guided_fallback")

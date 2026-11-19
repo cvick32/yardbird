@@ -33,7 +33,7 @@ class BenchmarkParserTests(unittest.TestCase):
             "guidance_action_requirements": "when-unproductive", "prefer_axioms": False,
             "result": {"Timeout": 500000},
         }
-        variants = [{}, {"guidance_work": 1024},
+        variants = [{}, {"theory": "array"}, {"theory": "quantifiers"}, {"guidance_work": 1024},
                     {"guidance_transition_order": "current-first"},
                     {"guidance_action_requirements": "always"},
                     {"prefer_axioms": True}]
@@ -43,6 +43,7 @@ class BenchmarkParserTests(unittest.TestCase):
         self.assertEqual(len(keys), len(variants))
         self.assertEqual(len({r.get_display_name() for r in results}), len(variants))
         for result, variant in zip(results, variants):
+            self.assertEqual(result.get_configuration()["theory"], variant.get("theory", "auto"))
             for key in ("guidance_work", "guidance_transition_order",
                         "guidance_action_requirements", "prefer_axioms"):
                 self.assertEqual(result.get_configuration()[key], variant.get(key, base[key]))
