@@ -690,7 +690,7 @@ impl QuantifierRefinement {
         };
         // Installed history is indexed by the session; only pending keys are local.
         let known = context.pending_instances;
-        let summary = self.select_scheduled(&mut batch, exact, &known, context)?;
+        let summary = self.select_scheduled(&mut batch, exact, known, context)?;
         for candidate in &mut batch.candidates {
             candidate.provenance = candidate
                 .provenance
@@ -862,7 +862,7 @@ impl QuantifierRefinement {
                     &helper,
                     phase,
                     &context.with_allowance(page_allowance),
-                    &known,
+                    known,
                 )?;
             let mut page_allowance = page_allowance;
             page_allowance.binder_page_size -= charged;
@@ -896,7 +896,7 @@ impl QuantifierRefinement {
             batch.search.examined_substitutions += exact_work + directed_examined;
             batch.search.returned_substitutions += directed_returned;
             let selection_start = profiling.as_ref().map(|_| Instant::now());
-            let summary = self.select_scheduled(&mut batch, exact, &known, context)?;
+            let summary = self.select_scheduled(&mut batch, exact, known, context)?;
             if let Some(profiling) = profiling {
                 let mut profiling = profiling.borrow_mut();
                 if let Some(start) = selection_start {

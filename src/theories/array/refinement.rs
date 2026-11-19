@@ -164,7 +164,7 @@ impl ArrayRefinement {
         let mut candidate_batch = array_candidates;
         let summary = candidate_batch.prepare_with_ranker(
             expansion.candidate_scope,
-            &known_instantiations,
+            known_instantiations,
             context.allowance.winners,
             context.ranker,
             |term| smt.eval_to_string(term),

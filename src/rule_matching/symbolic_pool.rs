@@ -237,7 +237,7 @@ impl SymbolicCandidatePool {
         self.pool_cache.active = active;
         batch.prepare_with_ranker(
             scope,
-            &known,
+            known,
             context.allowance.winners,
             context.ranker,
             evaluate,
