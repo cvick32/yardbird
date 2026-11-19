@@ -772,23 +772,30 @@ impl NativeAgent {
                     "expected 1..16 proposals"
                 );
                 let mut ids = HashSet::new();
-                let mut resolved = Vec::new();
-                for item in items {
-                    anyhow::ensure!(
-                        !item.proposal_id.is_empty() && ids.insert(item.proposal_id.clone()),
-                        "proposal IDs must be nonempty and unique within a batch"
-                    );
-                    check_rationale(item.rationale.as_deref(), 1000)?;
-                    // Schemas are immutable for this prepared problem. Resolve exact
-                    // pinned syntax/sorts; never transfer old model values or aliases.
-                    let instance = pin.snapshot.resolve(&item.proposal)?;
-                    resolved.push((item, instance));
-                }
                 if let Some(reason) = &rationale {
                     log::info!("AGENT WHY {}", clean(reason));
                 }
                 let mut feedback = Vec::new();
-                for (item, instance) in resolved {
+                for (index, raw) in items.into_iter().enumerate() {
+                    let id = raw["proposal_id"].as_str().map(str::to_owned);
+                    let resolved = (|| -> anyhow::Result<_> {
+                        let item: wire::Item = serde_json::from_value(raw)?;
+                        anyhow::ensure!(
+                            !item.proposal_id.is_empty() && !ids.contains(&item.proposal_id),
+                            "proposal IDs must be nonempty and unique"
+                        );
+                        check_rationale(item.rationale.as_deref(), 1000)?;
+                        let instance = pin.snapshot.resolve(&item.proposal)?;
+                        ids.insert(item.proposal_id.clone());
+                        Ok((item, instance))
+                    })();
+                    let (item, instance) = match resolved {
+                        Ok(pair) => pair,
+                        Err(error) => {
+                            feedback.push(json!({"index":index,"proposal_id":id,"outcome":"invalid_proposal","error":error.to_string()}));
+                            continue;
+                        }
+                    };
                     let expression = instance.term.to_string();
                     let (mut outcome, accepted) = validate(context, instance);
                     outcome["proposal_id"] = json!(item.proposal_id);

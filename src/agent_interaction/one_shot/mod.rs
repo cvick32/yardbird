@@ -48,6 +48,7 @@ struct Report {
     installed_instances: u64,
     duplicates: usize,
     rejected_batches: usize,
+    rejected_proposals: usize,
     replayed_assertions: u64,
     stop_reason: Option<String>,
     symbolic_refinements: usize,
@@ -142,6 +143,7 @@ fn execute(
             installed_instances: 0,
             duplicates: 0,
             rejected_batches: 0,
+            rejected_proposals: 0,
             replayed_assertions: 0,
             stop_reason: None,
             symbolic_refinements: 0,
@@ -244,9 +246,13 @@ fn execute_inner(
         let mut validated = Vec::new();
         for formula in replay.formulas {
             experiment.remaining()?;
-            validated.push(bundle::validate_replay(&snapshot, &formula)?);
+            validated.push(accepted.prepare(
+                bundle::validate_replay(&snapshot, &formula)?,
+                options.depth,
+                &vocabulary,
+            )?);
         }
-        accepted.extend(validated, options.depth, &vocabulary, experiment)?;
+        accepted.install_prepared(validated, experiment)?;
         experiment.event(json!({"event":"replay_validated","native_progress":replay.native_progress,"count":accepted.unique.len()}))?;
         experiment.timing("validation", start);
         check_batch(&model, &plan, &mut accepted, experiment)?;
@@ -356,36 +362,8 @@ fn execute_inner(
         // Only public tool output is fed back, never provider reasoning blocks.
         previous_attempt = json!({"round":round,"tool_calls":response["output"].as_array()
             .into_iter().flatten().filter(|v| v["type"] == "function_call").cloned().collect::<Vec<_>>()});
-        let validation = (|| -> anyhow::Result<Vec<Term>> {
-            let batch = decode(&response)?;
-            log::info!(
-                "BATCH WHY round={} {}",
-                round,
-                batch
-                    .rationale
-                    .chars()
-                    .map(|c| if c.is_control() { ' ' } else { c })
-                    .collect::<String>()
-            );
-            experiment.report.proposed_instances += batch.instantiations.len();
-            let mut terms = Vec::new();
-            for (index, proposal) in batch.instantiations.iter().enumerate() {
-                experiment.remaining()?;
-                let term = snapshot
-                    .resolve_text(&proposal.schema_id, &proposal.bindings)
-                    .map_err(|error| {
-                        anyhow::anyhow!("proposal {index} ({}): {error:#}", proposal.schema_id)
-                    })?
-                    .term;
-                terms.push(term);
-            }
-            Ok(terms)
-        })()
-        .and_then(|terms| accepted.extend(terms, options.depth, &vocabulary, experiment));
-        experiment.timing("validation", start);
-        let added = match validation {
-            Ok(added) => added,
-            Err(error) if error.is::<Expired>() => return Err(error),
+        let batch = match decode(&response) {
+            Ok(batch) => batch,
             Err(error) => {
                 let message = format!("{error:#}");
                 experiment.report.rejected_batches += 1;
@@ -403,6 +381,35 @@ fn execute_inner(
                 continue;
             }
         };
+        log::info!(
+            "BATCH WHY round={} {}",
+            round,
+            batch.rationale.escape_debug()
+        );
+        experiment.report.proposed_instances += batch.instantiations.len();
+        let mut terms = Vec::new();
+        let mut errors = Vec::new();
+        for (index, raw) in batch.instantiations.into_iter().enumerate() {
+            experiment.remaining()?;
+            let proposal = serde_json::from_value::<bundle::Proposal>(raw)
+                .map_err(anyhow::Error::from)
+                .and_then(|item| snapshot.resolve_text(&item.schema_id, &item.bindings))
+                .and_then(|instance| accepted.prepare(instance.term, options.depth, &vocabulary));
+            match proposal {
+                Ok(term) => terms.push(term),
+                Err(error) => {
+                    let rejection = json!({"index":index,"error":format!("{error:#}")});
+                    experiment.event(
+                        json!({"event":"proposal_rejected","round":round,"rejection":rejection}),
+                    )?;
+                    errors.push(rejection);
+                }
+            }
+        }
+        experiment.report.rejected_proposals += errors.len();
+        previous_attempt["rejections"] = json!(errors);
+        let added = accepted.install_prepared(terms, experiment)?;
+        experiment.timing("validation", start);
         experiment.report.error = None;
         previous_attempt["accepted"] = json!(true);
         previous_attempt["new_instances"] = json!(added);
@@ -430,6 +437,13 @@ fn execute_inner(
             return Ok(());
         }
     }
+}
+
+struct PreparedInstance {
+    depth: u16,
+    key: Term,
+    term: Term,
+    instance: Option<Instance>,
 }
 
 struct AcceptedInstances {
@@ -466,42 +480,54 @@ impl AcceptedInstances {
             .collect()
     }
 
-    /// Validate the whole batch's frame placement before changing the accepted set.
-    fn extend(
-        &mut self,
-        terms: Vec<Term>,
+    fn prepare(
+        &self,
+        term: Term,
         depth_limit: u16,
         vocabulary: &VmtBmcSession,
+    ) -> anyhow::Result<PreparedInstance> {
+        let depth = bundle::last_frame(&term)?;
+        anyhow::ensure!(
+            depth < depth_limit,
+            "instance references an out-of-target frame"
+        );
+        let instance = if self.placement == BatchPlacement::Schema {
+            let instance = vocabulary
+                .make_unquantified_instance(term.clone())
+                .ok_or_else(|| anyhow::anyhow!("could not normalize theory instance"))?;
+            anyhow::ensure!(
+                instance.width() < depth_limit,
+                "schema width exceeds target"
+            );
+            Some(instance)
+        } else {
+            None
+        };
+        let key = crate::instance_installation::assertion_tracker::canonical_instantiation_key(
+            instance.as_ref().map_or(&term, Instance::get_term),
+        );
+        Ok(PreparedInstance {
+            depth,
+            key,
+            term,
+            instance,
+        })
+    }
+
+    fn install_prepared(
+        &mut self,
+        prepared: Vec<PreparedInstance>,
         experiment: &mut Experiment,
     ) -> anyhow::Result<usize> {
-        let mut prepared = Vec::new();
-        for term in terms {
-            experiment.remaining()?;
-            let depth = bundle::last_frame(&term)?;
-            anyhow::ensure!(
-                depth < depth_limit,
-                "instance references an out-of-target frame"
-            );
-            let instance = if self.placement == BatchPlacement::Schema {
-                let instance = vocabulary
-                    .make_unquantified_instance(term.clone())
-                    .ok_or_else(|| anyhow::anyhow!("could not normalize theory instance"))?;
-                anyhow::ensure!(
-                    instance.width() < depth_limit,
-                    "schema width exceeds target"
-                );
-                Some(instance)
-            } else {
-                None
-            };
-            let key = crate::instance_installation::assertion_tracker::canonical_instantiation_key(
-                instance.as_ref().map_or(&term, Instance::get_term),
-            );
-            prepared.push((depth, key, term, instance));
-        }
         let before = self.unique.len();
         let mut added = Vec::new();
-        for (depth, key, term, instance) in prepared {
+        for PreparedInstance {
+            depth,
+            key,
+            term,
+            instance,
+        } in prepared
+        {
             if self.unique.insert(key) {
                 if let Some(instance) = instance {
                     added.push(instance.to_string());

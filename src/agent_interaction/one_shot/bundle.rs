@@ -22,7 +22,7 @@ pub(super) struct Proposal {
 #[serde(deny_unknown_fields)]
 pub(super) struct Batch {
     pub rationale: String,
-    pub instantiations: Vec<Proposal>,
+    pub instantiations: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -55,7 +55,7 @@ pub(super) enum Tool {
     },
     Instantiate {
         epoch: String,
-        items: Vec<Item>,
+        items: Vec<Value>,
         #[serde(default)]
         rationale: Option<String>,
     },

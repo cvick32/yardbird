@@ -42,7 +42,7 @@ enum Tool {
     ExpandAction { r#ref: String, work: usize },
     Search { operations: usize },
     Inspect { r#ref: String },
-    Instantiate { items: Vec<Item> },
+    Instantiate { items: Vec<Value> },
     Advance { solver_timeout_ms: u32 },
     Stop {},
 }
@@ -560,57 +560,12 @@ impl Session {
                     }
                 }
                 Tool::Instantiate { items } => {
-                    if items.is_empty()
-                        || items.len() > 16
-                        || self.queued.len() + self.searched.len() + items.len()
-                            > self.limits.agent_max_pending
-                    {
-                        self.error(
-                            &command,
-                            "limit_exceeded",
-                            "expected 1..16 proposals within the advertised pending limit",
-                        )?;
+                    if items.is_empty() || items.len() > 16 {
+                        self.error(&command, "limit_exceeded", "expected 1..16 proposals")?;
                         continue;
                     }
-                    let mut ids = HashSet::new();
-                    if items.iter().any(|i| {
-                        i.proposal_id.is_empty()
-                            || self.proposal_ids.contains(&i.proposal_id)
-                            || !ids.insert(i.proposal_id.clone())
-                    }) {
-                        self.error(
-                            &command,
-                            "invalid_bindings",
-                            "proposal IDs must be new and unique",
-                        )?;
-                        continue;
-                    }
-                    // Resolve the whole batch before changing any protocol state.
-                    let instances = items
-                        .iter()
-                        .map(|i| snapshot.resolve(&i.proposal))
-                        .collect::<anyhow::Result<Vec<_>>>();
-                    let instances = match instances {
-                        Ok(i) => i,
-                        Err(e) => {
-                            self.error(&command, "invalid_bindings", &e.to_string())?;
-                            continue;
-                        }
-                    };
-                    let roots = instances.iter().map(|i| i.term.clone()).collect::<Vec<_>>();
-                    let added = match self.catalogue.admit(&mut snapshot, &roots, 4096) {
-                        Ok(ids) => ids,
-                        Err(e) => {
-                            self.error(&command, "limit_exceeded", &e.to_string())?;
-                            continue;
-                        }
-                    };
-                    self.admitted.extend(roots);
-                    records.extend(records::catalogue(&snapshot));
-                    let returned = added
-                        .iter()
-                        .map(|id| records[id].clone())
-                        .collect::<Vec<_>>();
+                    let mut rejections = Vec::new();
+                    let mut added = Vec::new();
                     let mut reports = vec![];
                     let mut pending = context.pending.clone();
                     for q in &self.queued {
@@ -621,14 +576,46 @@ impl Session {
                             pending.insert(canonical_instantiation_key(i.get_term()));
                         }
                     }
-                    for (item, instance) in items.into_iter().zip(instances) {
+                    for (index, raw) in items.into_iter().enumerate() {
+                        let id = raw["proposal_id"].as_str().map(str::to_owned);
+                        let resolved = (|| -> anyhow::Result<_> {
+                            let item: Item = serde_json::from_value(raw)?;
+                            anyhow::ensure!(
+                                !item.proposal_id.is_empty()
+                                    && !self.proposal_ids.contains(&item.proposal_id),
+                                "proposal ID must be new and nonempty"
+                            );
+                            let instance = snapshot.resolve(&item.proposal)?;
+                            let ids = self.catalogue.admit(
+                                &mut snapshot,
+                                std::slice::from_ref(&instance.term),
+                                4096,
+                            )?;
+                            Ok((item, instance, ids))
+                        })();
+                        let (item, instance, ids) = match resolved {
+                            Ok(item) => item,
+                            Err(error) => {
+                                rejections.push(json!({"index":index,"proposal_id":id,"error":error.to_string()}));
+                                continue;
+                            }
+                        };
                         self.proposal_ids.insert(item.proposal_id.clone());
+                        added.extend(ids);
+                        self.admitted.push(instance.term.clone());
                         let expression = instance.term.to_string();
                         let ctx = DiscoveryContext {
                             pending: &pending,
                             ..*context
                         };
                         let (feedback, accepted) = validate(&ctx, instance);
+                        if accepted.is_some()
+                            && self.queued.len() + self.searched.len()
+                                >= self.limits.agent_max_pending
+                        {
+                            rejections.push(json!({"index":index,"proposal_id":item.proposal_id,"error":"pending limit reached"}));
+                            continue;
+                        }
                         let id = accepted.as_ref().map(|_| {
                             format!("{}:candidate:{}", self.epoch, self.proposal_ids.len())
                         });
@@ -648,7 +635,9 @@ impl Session {
                         }
                         reports.push(report);
                     }
-                    self.respond(&command,json!({"candidates":reports,"records":returned,"pending_ids":self.pending_ids(),"usage":records::usage(0)}))?;
+                    records.extend(records::catalogue(&snapshot));
+                    let returned: Vec<_> = added.iter().map(|id| &records[id]).collect();
+                    self.respond(&command,json!({"candidates":reports,"rejections":rejections,"records":returned,"pending_ids":self.pending_ids(),"usage":records::usage(0)}))?;
                 }
                 Tool::Advance { solver_timeout_ms } => {
                     if solver_timeout_ms == 0
@@ -778,13 +767,16 @@ mod tests {
         assert!(
             serde_json::from_value::<Tool>(json!({"op":"advance","solver_timeout_ms":100})).is_ok()
         );
+        assert!(serde_json::from_value::<Item>(
+            json!({"proposal_id":"x","proposal":{"axiom_id":"q","bindings":{},"formula":"false"}})
+        )
+        .is_err());
         for value in [
             json!({"op":"advance","solver_timeout_ms":100,"search_ops":1}),
             json!({"op":"resume","solver_timeout_ms":100,"search_ops":0}),
             json!({"op":"advance","solver_timeout_ms":-1}),
             json!({"op":"advance","solver_timeout_ms":true}),
             json!({"op":"snapshot","extra":true}),
-            json!({"op":"instantiate","items":[{"proposal_id":"x","proposal":{"axiom_id":"q","bindings":{},"formula":"false"}}]}),
         ] {
             assert!(
                 serde_json::from_value::<Tool>(value.clone()).is_err(),

@@ -78,7 +78,7 @@ impl LlmClient for DelayedTools {
                 .unwrap();
             return Ok(response(
                 "instantiate",
-                json!({"epoch":self.epoch,"rationale":"Supply the missing final universal fact while native search handles the other conjuncts.","items":[{
+                json!({"epoch":self.epoch,"rationale":"Supply the missing final universal fact while native search handles the other conjuncts.","items":[{"proposal_id":"bad-sibling","proposal":{"axiom_id":"missing","bindings":{}}},{
                 "proposal_id":"late-p31","proposal":{"axiom_id":self.schema,"bindings":{"variable_0":term["id"]}}}]}),
             ));
         }
@@ -466,7 +466,8 @@ fn native_driver_progresses_during_fake_inference_and_installs_late_exact_hint()
     assert_eq!(hint["reply"]["ok"], true, "{hint}");
     let data = &hint["reply"]["result"];
     assert_ne!(data["source_epoch"], data["evaluated_epoch"]);
-    assert_eq!(data["candidates"][0]["outcome"], "violated", "{hint}");
+    assert_eq!(data["candidates"][0]["outcome"], "invalid_proposal");
+    assert_eq!(data["candidates"][1]["outcome"], "violated", "{hint}");
     assert!(events
         .iter()
         .any(|e| e["event"] == "installed" && e["proposal_ids"][0] == "late-p31"));
@@ -581,7 +582,10 @@ fn indexed_retrieval_is_exact_paged_and_tool_arguments_are_strict() {
     );
     assert!(wire::decode(&response("stop", json!({"epoch":"e1"}))).is_err());
     assert!(wire::decode(&response("snapshot", json!({"epoch":"e1","extra":true}))).is_err());
-    assert!(wire::decode(&response("instantiate",json!({"epoch":"e1","items":[{"proposal_id":"p","proposal":{"axiom_id":"q","bindings":{},"formula":"false"}}]}))).is_err());
+    assert!(serde_json::from_value::<wire::Item>(
+        json!({"proposal_id":"p","proposal":{"axiom_id":"q","bindings":{},"formula":"false"}})
+    )
+    .is_err());
 }
 
 #[test]

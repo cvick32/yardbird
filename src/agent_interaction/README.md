@@ -130,7 +130,7 @@ retries include closed/unresolved bounds, accepted formulas, the first remaining
 countermodel and the previous submission. No native search results are supplied.
 Each `submit_instantiations` response contains a public
 rationale and a list of schema IDs with typed, ground SMT-LIB substitutions.
-Yardbird validates the entire batch before installing anything.
+Yardbird checks each proposal and reports rejected entries by index.
 
 By default, each concrete instance becomes a temporal schema through Yardbird's
 normal frame normalization and installation policy. For example, `A@4` and `i@5`
@@ -142,8 +142,7 @@ combinations. Use `--one-shot-placement exact` for the previous exact-frame abla
 The default [prompt](one_shot/prompt.md) is bundled into the binary. Override it without
 rebuilding with `--one-shot-prompt path/to/prompt.md`; the exact text is logged.
 `--one-shot-output-tokens N` changes the default 32,768-token response budget.
-There is no proposal-count cap. Invalid or truncated batches install nothing;
-the next round receives the error and can repair them. Transport/configuration
+There is no proposal-count cap. Valid proposals survive a sibling’s validation error. A malformed or truncated response is rejected as a whole. The next round receives the errors. Transport/configuration
 failures and solver unknown results terminate the run.
 
 ### Results

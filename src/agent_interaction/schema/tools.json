@@ -3796,6 +3796,33 @@
             },
             "usage": {
               "$ref": "#/$defs/usage"
+            },
+            "rejections": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "index": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "proposal_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "error": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "index",
+                  "proposal_id",
+                  "error"
+                ],
+                "additionalProperties": false
+              }
             }
           },
           "required": [

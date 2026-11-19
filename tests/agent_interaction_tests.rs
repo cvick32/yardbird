@@ -60,9 +60,12 @@ fn scripted_pause_instantiate_advance_for_arrays_and_binders() {
             .unwrap();
         let slot = schema["slots"].as_object().unwrap().keys().next().unwrap();
         bad["proposal"]["bindings"][slot] = wrong["id"].clone();
-        assert_eq!(s.invoke("instantiate", json!({"items":[bad]}))["ok"], false);
-        assert_eq!(s.call("snapshot", json!({}))["pending_ids"], json!([]));
-        let accepted = s.invoke("instantiate", json!({"items":[item]}));
+        bad["proposal_id"] = json!("invalid");
+        let accepted = s.invoke("instantiate", json!({"items":[bad, item]}));
+        assert_eq!(
+            accepted["result"]["rejections"][0]["proposal_id"],
+            "invalid"
+        );
         let command = s.last_command.clone();
         assert_eq!(s.send(&command), accepted);
         let mut collision = command;

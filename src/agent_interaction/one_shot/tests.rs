@@ -203,7 +203,7 @@ fn expired_budget_and_oversized_context_make_no_provider_calls() {
 }
 
 #[test]
-fn invalid_late_proposal_rejects_the_entire_batch_before_installation() {
+fn invalid_late_proposal_preserves_the_valid_sibling() {
     let root = tempfile::tempdir().unwrap();
     let options = options(root.path(), &facts(2), 1);
     let report = run_fake(&options, |context| {
@@ -213,13 +213,13 @@ fn invalid_late_proposal_rejects_the_entire_batch_before_installation() {
             .iter()
             .find(|s| s["provenance"]["direction"] == "instance")
             .unwrap();
-        json!({"rationale":"Test atomic validation.","instantiations":[
+        json!({"rationale":"Test individual validation.","instantiations":[
             {"schema_id":schema["id"],"bindings":{"variable_0":"0"}},
             {"schema_id":schema["id"],"bindings":{"variable_0":"true"}}]})
     });
-    assert_eq!(report.status, "error");
-    assert!(report.error.unwrap().contains("wrong sort"));
-    assert_eq!(report.installed_instances, 0);
+    assert_eq!(report.status, "incomplete");
+    assert_eq!(report.rejected_proposals, 1);
+    assert_eq!(report.installed_instances, 1);
     assert!(report.closed_depths.is_empty());
 }
 
@@ -426,21 +426,11 @@ fn invalid_batch_can_be_repaired_without_losing_previous_instances() {
             invalid["bindings"]["b"] = json!("true");
             response(json!([constant_at(context, 1), invalid]))
         }
-        2 => {
-            let feedback = &context["feedback"];
-            assert_eq!(feedback["accepted_instances"].as_array().unwrap().len(), 1);
-            assert_eq!(feedback["closed_depths"], json!([0]));
-            assert_eq!(feedback["previous_attempt"]["accepted"], false);
-            assert!(feedback["previous_attempt"]["validation_error"]
-                .as_str()
-                .unwrap()
-                .contains("wrong sort"));
-            response(json!([constant_at(context, 1)]))
-        }
         _ => panic!("repair should close the target"),
     });
     assert_eq!(report.status, "bounded_complete", "{report:?}");
-    assert_eq!(report.rejected_batches, 1);
+    assert_eq!(report.rejected_proposals, 1);
+    assert_eq!(report.calls, 2);
     assert_eq!(report.installed_instances, 2);
     assert_eq!(report.unique_instances, 2);
     assert!(report.error.is_none());

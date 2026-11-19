@@ -22,8 +22,8 @@ countermodel, and your previous tool submission or validation error. Diagnose
 the missing theory links in that countermodel and submit additional instances.
 Accepted instances persist across rounds; do not repeat them. Closed bounds need
 no further work. Model values are observations, never trusted lemmas or new
-constants you may use in a substitution. A rejected batch installs nothing;
-correct its reported error while retaining the earlier accepted proof facts.
+constants you may use in a substitution. Each proposal is checked independently.
+Correct rejected entries using their reported indices and errors. Valid siblings remain available on later rounds.
 An empty or duplicate batch does not end the run. Continue supplying useful
 instances until the bounds close or the host's time/call budget is exhausted.
 
