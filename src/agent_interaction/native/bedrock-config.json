@@ -1,0 +1,8 @@
+{
+  "llm_provider": "bedrock",
+  "llm_model": "openai.gpt-5.5",
+  "llm_bedrock_region": "us-east-2",
+  "llm_bedrock_base_url": "https://bedrock-mantle.us-east-2.api.aws/openai/v1",
+  "llm_reasoning_effort": "medium",
+  "llm_max_output_tokens": 4096
+}
