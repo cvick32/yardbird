@@ -18,6 +18,11 @@ impl HttpClient {
             timeout: Duration::from_secs(options.llm_timeout_secs),
         }
     }
+
+    pub(crate) fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = self.timeout.min(timeout);
+        self
+    }
 }
 
 impl LlmClient for HttpClient {
