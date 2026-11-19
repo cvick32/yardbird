@@ -15,7 +15,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = ROOT / "benchmark_results" / "main_eval"
 INDEX_PATH = BENCHMARK_ROOT / "runs_index.json"
-DEFAULT_CONFIG = ROOT / "garden" / "benchmark_config.yaml"
+DEFAULT_CONFIG = ROOT / "garden" / "configs" / "benchmark_config.yaml"
 GARDEN_BIN = ROOT / "target" / "release" / "garden"
 PAPER_GRAPHICS_VENV_PY = ROOT / "paper-graphics" / ".venv" / "bin" / "python"
 REPORT_BUILDER = ROOT / "paper-graphics" / "report" / "build_report.py"

@@ -379,7 +379,7 @@ For a more comprehensive evaluation with depth 10 (completes in less than 5 minu
 cargo build -p garden --release
 
 # Run light review configuration (depth 10, 20s timeout per benchmark)
-./target/release/garden --config garden/benchmark_config.yaml --matrix light-review --output light_review_results.json
+./target/release/garden --config garden/configs/benchmark_config.yaml --matrix light-review --output light_review_results.json
 ```
 
 This runs all array benchmarks at depth 10 with both BMC Cost and Z3 array theory strategies, generating a JSON file with detailed results.
@@ -398,7 +398,7 @@ a 10-second timeout per strategy/benchmark pair.
 python3 main_eval.py \
   --env local \
   --benchmark-type external-depth20 \
-  --config garden/external_benchmark_config.yaml \
+  --config garden/configs/external_benchmark_config.yaml \
   --name external-baseline-depth20
 ```
 
@@ -407,7 +407,7 @@ directly and override `--limit`, `--sample-seed`, or `--jobs`:
 
 ```bash
 ./target/release/garden \
-  --config garden/external_benchmark_config.yaml \
+  --config garden/configs/external_benchmark_config.yaml \
   --matrix external-depth20 \
   --limit 20 \
   --sample-seed 20260806 \
@@ -466,7 +466,7 @@ python3 main_eval.py \
 # on separate AWS workers without run-wide synthesis flags.
 python3 main_eval.py \
   --env aws \
-  --config garden/array_aws_config.yaml \
+  --config garden/configs/array_aws_config.yaml \
   --benchmark-type array-best-depth50 \
   --benchmark-type array-best-depth50-aux-interpolant \
   --name array-depth50-aux-comparison
@@ -579,25 +579,25 @@ cargo build --release -p garden
 
 # Run BMC Cost
 ./target/release/garden \
-  --config garden/benchmark_config.yaml \
+  --config garden/configs/benchmark_config.yaml \
   --matrix deep-abstract \
   --output paper_results_abstract.json
 
 # Run AST Size
 ./target/release/garden \
-  --config garden/benchmark_config.yaml \
+  --config garden/configs/benchmark_config.yaml \
   --matrix deep-abstract-ast \
   --output paper_results_ast.json
 
 # Run Z3 Array theory baseline
 ./target/release/garden \
-  --config garden/benchmark_config.yaml \
+  --config garden/configs/benchmark_config.yaml \
   --matrix deep-concrete \
   --output paper_results_z3.json
 
 # Run Z3 MBQI
 ./target/release/garden \
-  --config garden/benchmark_config.yaml \
+  --config garden/configs/benchmark_config.yaml \
   --matrix deep-abstract-with-quantifiers \
   --output paper_results_mbqi.json
 
@@ -615,7 +615,7 @@ ranks a complete source-grounded formula ahead of formulas containing derived
 model representatives. Use `--instantiation-ranker term-cost` for the baseline
 that orders complete formulas only by the active term cost. Garden exposes the
 same `instantiation_rankers` matrix dimension; see
-`deep-abstract-instantiation-rankers` in `garden/benchmark_config.yaml`.
+`deep-abstract-instantiation-rankers` in `garden/configs/benchmark_config.yaml`.
 
 Input quantifiers (including protocol guards and array lambdas) use the same
 egg rule engine, term extractor, whole-instantiation ranker, and decision history
@@ -725,7 +725,7 @@ array axioms to Z3 unchanged so it remains an MBQI comparison point.
 
   - The `garden` tool reproduces the exact parameter configurations from the paper
   - Configuration `deep-abstract` matches paper's main evaluation (depth 50, 120s timeout)
-  - All "deep" configurations in `garden/benchmark_config.yaml` when run with garden will replicate results given in the paper
+  - All "deep" configurations in `garden/configs/benchmark_config.yaml` when run with garden will replicate results given in the paper
 
 - **Comparison with Baselines**:
 

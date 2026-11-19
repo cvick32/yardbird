@@ -69,7 +69,7 @@ def read_user_data(
     unique_name: str,
     s3_bucket: str,
     *,
-    benchmark_config_path: str = "garden/benchmark_config.yaml",
+    benchmark_config_path: str = "garden/configs/benchmark_config.yaml",
     capture_solver_journals: bool = False,
     garden_args: list[str] | None = None,
     api_key_parameters: dict[str, str] | None = None,

@@ -941,7 +941,9 @@ parameter_matrices:
 
     #[test]
     fn array_aws_config_includes_auxiliary_interpolant_run() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("array_aws_config.yaml");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("configs")
+            .join("array_aws_config.yaml");
         let config = BenchmarkConfig::from_file(&path).unwrap();
 
         let runs = config
@@ -969,7 +971,9 @@ parameter_matrices:
 
     #[test]
     fn formula_transformation_matrix_enables_preprocessing() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benchmark_config.yaml");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("configs")
+            .join("benchmark_config.yaml");
         let config = BenchmarkConfig::from_file(&path).unwrap();
         let runs = config
             .generate_benchmark_runs(Some("formula-transformations"))
@@ -981,7 +985,9 @@ parameter_matrices:
 
     #[test]
     fn selected_matrix_uses_the_same_generation_path_as_all_matrices() {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benchmark_config.yaml");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("configs")
+            .join("benchmark_config.yaml");
         let config = BenchmarkConfig::from_file(&path).unwrap();
         let selected = config
             .generate_benchmark_runs(Some("formula-transformations"))
@@ -1004,9 +1010,12 @@ parameter_matrices:
             ("instantiation_comparison.yaml", 50),
             ("instantiation_comparison_smoke.yaml", 4),
         ] {
-            let config =
-                BenchmarkConfig::from_file(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file))
-                    .unwrap();
+            let config = BenchmarkConfig::from_file(
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("configs")
+                    .join(file),
+            )
+            .unwrap();
             let runs = config.generate_benchmark_runs(None).unwrap();
             assert_eq!(runs.len(), 4);
             assert_eq!(config.global.retry_count, 1);
@@ -1036,6 +1045,7 @@ parameter_matrices:
     fn fallback_comparisons_preserve_the_strict_jev_budget() {
         for suffix in ["", "_smoke"] {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("configs")
                 .join(format!("instantiation_comparison_fallback{suffix}.yaml"));
             let config = BenchmarkConfig::from_file(&path).unwrap();
             assert_eq!(config.generate_benchmark_runs(None).unwrap().len(), 5);
@@ -1049,6 +1059,7 @@ parameter_matrices:
                 .remove(0);
             let original = BenchmarkConfig::from_file(
                 &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("configs")
                     .join(format!("instantiation_comparison{suffix}.yaml")),
             )
             .unwrap()

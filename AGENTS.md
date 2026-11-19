@@ -674,7 +674,7 @@ cargo run --release -- -f file.vmt -s abstract -c split-cost -d 15
 cargo run --release -- -f file.vmt --json-output
 
 # Run benchmarks
-cargo run -p garden -- --config garden/config.yaml
+cargo run -p garden -- --config garden/configs/benchmark_config.yaml
 
 # Run tests
 cargo test

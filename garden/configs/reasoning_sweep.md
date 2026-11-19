@@ -80,7 +80,7 @@ Yardbird executable beside itself.
 
 ```sh
 cargo build --release -p yardbird -p garden
-target/release/garden --config garden/reasoning_sweep_smoke.yaml \
+target/release/garden --config garden/configs/reasoning_sweep_smoke.yaml \
   --guided-dry-run --profile --output /tmp/reasoning-sweep-offline.json
 ```
 
@@ -100,14 +100,14 @@ These commands make paid calls. Set `OPENAI_API_KEY` and, when selecting Jev,
 only one arm without requiring a Jev credential:
 
 ```sh
-target/release/garden --config garden/reasoning_sweep_smoke.yaml \
+target/release/garden --config garden/configs/reasoning_sweep_smoke.yaml \
   --matrix astra-low --profile --output /tmp/reasoning-astra-low-pilot.json
 ```
 
 After checking provider support and output truncation, a full single trial is:
 
 ```sh
-target/release/garden --config garden/reasoning_sweep.yaml \
+target/release/garden --config garden/configs/reasoning_sweep.yaml \
   --profile --output /tmp/reasoning-sweep-trial-1.json
 ```
 
@@ -148,7 +148,7 @@ for trial, order in enumerate(orders, 1):
     directory = root / f'trial-{trial}'
     directory.mkdir()
     for matrix in order:
-        subprocess.run(['target/release/garden', '--config', 'garden/reasoning_sweep.yaml',
+        subprocess.run(['target/release/garden', '--config', 'garden/configs/reasoning_sweep.yaml',
                         '--matrix', matrix, '--profile', '--random-seed', str(trial - 1),
                         '--output', str(directory / f'{matrix}.json')], check=True)
 PY
@@ -167,7 +167,7 @@ The existing `main_eval.py` launcher accepts these matrix names via repeated
 
 ```sh
 python3 main_eval.py --env aws --aws-account personal \
-  --config garden/reasoning_sweep.yaml \
+  --config garden/configs/reasoning_sweep.yaml \
   --benchmark-type astra-low --benchmark-type astra-high --benchmark-type astra-max \
   --benchmark-type luna-low --benchmark-type luna-medium --benchmark-type luna-high \
   --benchmark-type jev --benchmark-type yardbird --benchmark-type z3 \
@@ -217,9 +217,9 @@ Z3/Int-indexed/Int-valued array domain as the existing AI proposal interface.
 Run a free smoke comparison, with fresh output names:
 
 ```sh
-target/release/garden --config garden/reasoning_sweep_smoke.yaml \
+target/release/garden --config garden/configs/reasoning_sweep_smoke.yaml \
   --matrix random-1 --random-seed 0 --profile --output /tmp/random-1-seed0.json
-target/release/garden --config garden/reasoning_sweep_smoke.yaml \
+target/release/garden --config garden/configs/reasoning_sweep_smoke.yaml \
   --matrix random-1000 --random-seed 0 --profile --output /tmp/random-1000-seed0.json
 ```
 

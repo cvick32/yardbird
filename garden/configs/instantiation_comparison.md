@@ -48,7 +48,7 @@ Set `JEV_API_KEY` and `OPENAI_API_KEY` in the environment or the ignored root
 
 ```sh
 cargo build --release -p yardbird -p garden
-target/release/garden --config garden/instantiation_comparison_smoke.yaml \
+target/release/garden --config garden/configs/instantiation_comparison_smoke.yaml \
   --output /tmp/instantiation-smoke.json --profile
 paper-graphics/.venv/bin/python paper-graphics/guided_comparison.py \
   /tmp/instantiation-smoke.json --output-dir /tmp/instantiation-smoke-figures
@@ -66,7 +66,7 @@ requests, then stops guided methods with `NoProgress`; figures are marked
 **DRY RUN** and must not be used as model evaluation results.
 
 For the full local evaluation, replace the config with
-`garden/instantiation_comparison.yaml` and choose a fresh output. No full
+`garden/configs/instantiation_comparison.yaml` and choose a fresh output. No full
 evaluation is launched by these setup instructions.
 
 ## Figures while the evaluation runs
@@ -143,7 +143,7 @@ the code commit, so retain resolved response IDs.
 
 ```sh
 python3 main_eval.py --env aws --aws-account personal \
-  --config garden/instantiation_comparison.yaml \
+  --config garden/configs/instantiation_comparison.yaml \
   --benchmark-type jev --benchmark-type openai \
   --benchmark-type yardbird --benchmark-type z3 \
   --openai-api-key-parameter /yardbird/openai-api-key \
@@ -186,7 +186,7 @@ counterexample-validation behavior), not the separate countermodel-guided
 policy or the 16-winner best-abstract baseline.
 
 ```sh
-target/release/garden --config garden/instantiation_comparison_fallback_smoke.yaml \
+target/release/garden --config garden/configs/instantiation_comparison_fallback_smoke.yaml \
   --output /tmp/instantiation-fallback-smoke.json --profile
 paper-graphics/.venv/bin/python paper-graphics/guided_comparison.py \
   /tmp/instantiation-fallback-smoke.json --output-dir /tmp/instantiation-fallback-figures

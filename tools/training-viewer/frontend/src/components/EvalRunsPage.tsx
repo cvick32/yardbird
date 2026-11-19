@@ -11,8 +11,6 @@ import type {
 
 type ActionName = "refresh" | "report" | "launch" | `teardown-${number}`;
 
-const DEFAULT_CONFIG =
-  "/Users/cvick-admin/Documents/research/yardbird/garden/benchmark_config.yaml";
 
 function statusClass(status: EvalStatus) {
   return `status-pill ${status.toLowerCase()}`;
@@ -43,7 +41,7 @@ export default function EvalRunsPage() {
   const [env, setEnv] = useState<EvalEnvironment>("lab");
   const [name, setName] = useState("");
   const [matrices, setMatrices] = useState("quick");
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [config, setConfig] = useState("");
   const [workerTemplate, setWorkerTemplate] = useState("");
   const [workerSshKey, setWorkerSshKey] = useState("");
   const [r2Prefix, setR2Prefix] = useState("main-eval");

@@ -1107,7 +1107,9 @@ mod tests {
     fn random_matrix_seed_override_reaches_subprocess_without_affecting_other_policies() {
         for file in ["reasoning_sweep.yaml", "reasoning_sweep_smoke.yaml"] {
             let config = super::BenchmarkConfig::from_file(
-                &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(file),
+                &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("configs")
+                    .join(file),
             )
             .unwrap();
             let garden = GardenOptions::try_parse_from([
@@ -1315,7 +1317,7 @@ individual_configs:
         let result = GardenOptions::try_parse_from([
             "garden",
             "--config",
-            "garden/array_aws_config.yaml",
+            "garden/configs/array_aws_config.yaml",
             "--synthesis-trigger",
             "non-local",
         ]);

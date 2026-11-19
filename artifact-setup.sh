@@ -83,10 +83,10 @@ if [ ! -f "./target/release/garden" ]; then
 fi
 log_status "INFO" "Garden binary built successfully"
 
-echo "$(cat garden/benchmark_config.yaml)"
+echo "$(cat garden/configs/benchmark_config.yaml)"
 
 log_status "INFO" "Running benchmarks with garden"
-if ! ./target/release/garden --config garden/benchmark_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
+if ! ./target/release/garden --config garden/configs/benchmark_config.yaml --matrix ${matrix_name} --output benchmark_results_${unique_benchmark_name}.json; then
     log_status "ERROR" "Benchmark execution failed"
     exit 1
 fi

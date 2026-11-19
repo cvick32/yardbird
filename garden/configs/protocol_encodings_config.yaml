@@ -4,7 +4,7 @@
 # supplement comparison uses the named policies' fixed 20-winner setting.
 # Keep tracing/profiling and solver-journal capture off for timing comparisons.
 # Launch after this config and the Garden policy wiring are available on main:
-# python3 main_eval.py --env aws --config garden/protocol_encodings_config.yaml \
+# python3 main_eval.py --env aws --config garden/configs/protocol_encodings_config.yaml \
 #   --benchmark-type protocol-bmc-cost-prefer-source-w16 \
 #   --benchmark-type protocol-bmc-prefer-source-w16 \
 #   --benchmark-type protocol-german-fast \

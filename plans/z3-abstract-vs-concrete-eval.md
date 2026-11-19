@@ -305,5 +305,5 @@ improved formula order without increasing the number of formulas emitted.
 [^profiles]: Sum over the 175 abstract `yardbird-profile.json` files' `driver_records[*].timing_secs.strategy_sat` and `solver_checks[*].timing_ns.model_acquisition`; raw-check total cross-checked against `solver_statistics.stats.solver_time` in the raw evaluation.
 [^builder]: Z3 build identity and compiler settings: [`z3-builder-manifest.json`](/Users/cvick-admin/.codex/worktrees/2568/yardbird/benchmark_results/main_eval/full-instrumented-z3/instrumentation/z3-builder-manifest.json).
 [^workbook]: Visually verified nine-page source workbook: [`workbook.pdf`](/Users/cvick-admin/.codex/worktrees/2568/yardbird/benchmark_results/main_eval/full-instrumented-z3/report/workbook.pdf), especially sections 2-4 and the conflict/instantiation/runtime plots.
-[^config]: [`garden/benchmark_config.yaml:22-28`](../garden/benchmark_config.yaml#L22-L28) defines the `light-review` matrix and timeout.
+[^config]: [`garden/configs/benchmark_config.yaml:22-28`](../garden/configs/benchmark_config.yaml#L22-L28) defines the `light-review` matrix and timeout.
 [^report-aggregation]: The report takes independent medians per strategy group in [`paper-graphics/report/instrumentation_data.py:30-48`](../paper-graphics/report/instrumentation_data.py#L30-L48).
