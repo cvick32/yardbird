@@ -1,3 +1,7 @@
+# Keep the first configuration to reach each protocol's deepest completed bound.
+# Source: protocol-encoding-winners-depth20-500s-aws-20261118_225856, 30 protocols.
+# Wins: z3 9, guided1024 3, guided16384 1, always4096 3, predecessor-only4096 7,
+# supplement4096 2, always16384 3, axioms-first 2.
 global:
   examples_dir: examples/distributed_protocols/
   timeout_seconds: 500
@@ -230,6 +234,66 @@ parameter_matrices:
     guidance_work: 4096
     guidance_transition_order: predecessor-first
     guidance_action_requirements: when-unproductive
+  # Z3 arrays with explicit Yardbird input-quantifier instantiation.
+  qts-always16384-native-arrays:
+    theory: quantifiers
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 16384
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: always
+  # Yardbird arrays with native Z3 quantifiers (MBQI and E-matching enabled by default).
+  qts-always16384-native-qi:
+    theory: array
+    depths:
+      - 20
+    solvers:
+      - z3
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+    policy: countermodel-guided
+    guidance_schedule: immediate
+    guidance_work: 16384
+    guidance_transition_order: predecessor-first
+    guidance_action_requirements: always
 individual_configs: []
 output:
   include_metadata: true

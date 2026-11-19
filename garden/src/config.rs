@@ -9,7 +9,7 @@ use yardbird::{
     },
     solver::PropertyCheckMode,
     CostFunction, EGraphBuilderStrategy, InstantiationRankerStrategy, InstantiationStrategyType,
-    SolverBackend, Strategy, YardbirdOptions,
+    SolverBackend, Strategy, TheorySelection, YardbirdOptions,
 };
 
 /// Use CLI value names in Garden files without changing Yardbird's options JSON.
@@ -33,6 +33,27 @@ pub(crate) mod optional_value_enum {
         Option::<String>::deserialize(deserializer)?
             .map(|value| T::from_str(&value, false).map_err(serde::de::Error::custom))
             .transpose()
+    }
+}
+
+/// Garden YAML uses the same ownership names as Yardbird's --theory flag.
+mod theory_name {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use yardbird::TheorySelection;
+
+    pub fn serialize<S: Serializer>(
+        value: &TheorySelection,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(value)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<TheorySelection, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -81,6 +102,8 @@ impl Default for GlobalConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParameterMatrix {
+    #[serde(default, with = "theory_name")]
+    pub theory: TheorySelection,
     #[serde(default)]
     pub no_guided_fallback: bool,
     #[serde(default)]
@@ -181,6 +204,8 @@ fn default_instantiation_strategies() -> Vec<InstantiationStrategyType> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndividualConfig {
+    #[serde(default, with = "theory_name")]
+    pub theory: TheorySelection,
     #[serde(default)]
     pub no_guided_fallback: bool,
     #[serde(default)]
@@ -284,6 +309,7 @@ pub struct BenchmarkConfig {
 
 #[derive(Debug, Clone)]
 pub struct BenchmarkRun {
+    pub theory: TheorySelection,
     pub no_guided_fallback: bool,
     pub decision_model: yardbird::policy::decision_model::DecisionModelOptions,
     pub llm: yardbird::policy::llm::LlmOptions,
@@ -403,6 +429,7 @@ impl BenchmarkConfig {
                 runs.push(BenchmarkRun {
                     name: config.name.clone(),
                     policy: config.policy,
+                    theory: config.theory.clone(),
                     no_guided_fallback: config.no_guided_fallback,
                     decision_model: config.decision_model.clone(),
                     llm: config.llm.clone(),
@@ -447,6 +474,7 @@ impl BenchmarkConfig {
                 // Garden discovers VMT inputs; validate policy compatibility before running them.
                 filename: Some("benchmark.vmt".into()),
                 policy: run.policy,
+                theory: run.theory.clone(),
                 no_guided_fallback: run.no_guided_fallback,
                 prefer_axioms: run.prefer_axioms,
                 guidance_work: run.guidance_work,
@@ -458,7 +486,8 @@ impl BenchmarkConfig {
                 ..YardbirdOptions::default()
             };
             options
-                .validate_guided_fallback()
+                .validate_theory_selection()
+                .and_then(|_| options.validate_guided_fallback())
                 .and_then(|_| options.validate_guarded_read_updates())
                 .and_then(|_| options.validate_countermodel_trace_options())
                 .and_then(|_| options.validate_prefer_axioms_options())
@@ -509,6 +538,7 @@ impl BenchmarkConfig {
                                                     selection,
                                                 ),
                                                 policy: matrix.policy,
+                                                theory: matrix.theory.clone(),
                                                 no_guided_fallback: matrix.no_guided_fallback,
                                                 decision_model: matrix.decision_model.clone(),
                                                 llm: matrix.llm.clone(),

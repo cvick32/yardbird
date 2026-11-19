@@ -165,6 +165,7 @@ struct SuiteMetadata {
 
 #[derive(Debug, Serialize)]
 struct StrategyResult {
+    theory: String,
     api_usage: api_usage::ApiUsage,
     run_name: String,
     no_guided_fallback: bool,
@@ -543,6 +544,7 @@ fn run_single(
             api_usage.dry_run |= is_guided(options.policy)
                 && (options.decision_model.jev_dry_run || options.llm.llm_dry_run);
             Ok(StrategyResult {
+                theory: options.theory.to_string(),
                 api_usage,
                 run_name: String::new(),
                 no_guided_fallback: options.no_guided_fallback,
@@ -881,6 +883,7 @@ fn configured_yardbird_options(
         }
     }
     YardbirdOptions {
+        theory: run.theory.clone(),
         policy: run.policy,
         no_guided_fallback: run.no_guided_fallback,
         decision_model: run.decision_model.clone(),
@@ -1342,7 +1345,7 @@ individual_configs:
                     ""
                 };
                 let fields =
-                    format!("    policy: {policy}\n{schedule_yaml}{guidance_yaml}    prefer_axioms: {prefer}\n");
+                    format!("    theory: array\n    policy: {policy}\n{schedule_yaml}{guidance_yaml}    prefer_axioms: {prefer}\n");
                 let sections = [
                     format!("parameter_matrices:\n  test:\n    depths: [1]\n    strategies: [abstract]\n    cost_functions: [bmc-cost]\n{fields}"),
                     format!("individual_configs:\n  - name: test\n    depth: 1\n    strategy: abstract\n    cost_function: bmc-cost\n{fields}"),
@@ -1369,6 +1372,7 @@ individual_configs:
                     } else {
                         yardbird::policy::NamedPolicy::CountermodelGuided
                     };
+                    assert_eq!(written.theory, "array".parse().unwrap());
                     assert_eq!(written.policy, Some(expected));
                     assert_eq!(written.prefer_axioms, prefer);
                     assert_eq!(written.guidance_work, schedule.map(|_| 256));
