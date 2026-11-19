@@ -89,7 +89,7 @@ impl SnapshotInput {
             quantifiers: context
                 .quantifiers
                 .map(|(p, sources)| (p.rules.clone(), sources.clone())),
-            declarations: context.smt.get_refinement_declarations(),
+            declarations: context.smt.instantiation_declarations(),
             installed: context.smt.get_instantiations(),
             model: if include_model {
                 context.smt.native_model_to_string()?

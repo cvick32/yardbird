@@ -54,6 +54,10 @@ pub trait ProblemContext {
             .map(|v| v.current.clone())
             .collect()
     }
+    /// Ground vocabulary available to an instantiation proposal at this bound.
+    fn instantiation_declarations(&self) -> Vec<smt2parser::concrete::Command> {
+        self.get_refinement_declarations()
+    }
     /// Get only problem-authored subterms, excluding formulas introduced by
     /// refinement. Backends without separate provenance use all subterms.
     fn get_source_subterms(&self) -> Vec<&Term> {

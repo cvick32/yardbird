@@ -1265,6 +1265,12 @@ impl ProblemContext for VmtBmcSession {
             .collect()
     }
 
+    fn instantiation_declarations(&self) -> Vec<Command> {
+        let mut declarations = self.get_refinement_declarations();
+        declarations.extend(self.definition_materializer.declarations());
+        declarations
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
