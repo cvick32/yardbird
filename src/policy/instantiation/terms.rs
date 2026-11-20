@@ -30,6 +30,16 @@ pub(crate) fn parse(text: &str) -> anyhow::Result<Term> {
 }
 
 impl InstantiationSnapshot {
+    pub(super) fn parse_ground_binding(
+        &self,
+        text: &str,
+        work: &mut usize,
+    ) -> anyhow::Result<(Term, String)> {
+        let term = parse(text)?;
+        let sort = check(&term, &self.signatures, &mut BTreeMap::new(), work, 16384)?;
+        Ok((term, TermLanguage::sort_to_name(&sort)))
+    }
+
     pub(super) fn ground_terms(
         &self,
         roots: &[Term],

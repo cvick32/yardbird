@@ -78,8 +78,8 @@ impl LlmClient for DelayedTools {
                 .unwrap();
             return Ok(response(
                 "instantiate",
-                json!({"epoch":self.epoch,"rationale":"Supply the missing final universal fact while native search handles the other conjuncts.","items":[{"proposal_id":"bad-sibling","proposal":{"axiom_id":"missing","bindings":{}}},{
-                "proposal_id":"late-p31","proposal":{"axiom_id":self.schema,"bindings":{"variable_0":term["id"]}}}]}),
+                json!({"epoch":self.epoch,"rationale":"Supply the missing final universal fact while native search handles the other conjuncts.","items":[{"proposal_id":"bad-sibling","proposal":{"axiom_id":self.schema,"bindings":{"variable_0":"(+ true 1)"}}},{
+                "proposal_id":"late-p31","proposal":{"axiom_id":self.schema,"bindings":{"variable_0":term["expression"]}}}]}),
             ));
         }
         Ok(response(
@@ -153,7 +153,7 @@ fn run_fake_options(
         llm_model: Some("fake".into()),
         ..Default::default()
     };
-    let agent = NativeAgent::new(
+    let agent = Agent::new(
         options,
         Some(provider),
         Some(transport),
@@ -219,15 +219,15 @@ fn exact_command_defaults_resolve_embedded_config_and_unique_logs() {
         .unwrap();
     assert_ne!(run.agent.agent_log, other.agent_log);
     let log = run.agent.agent_log.clone().unwrap();
-    let agent = NativeAgent::new(run.agent.clone(), None, None, String::new()).unwrap();
+    let agent = Agent::new(run.agent.clone(), None, None, String::new()).unwrap();
     assert!(log.exists());
-    assert!(NativeAgent::new(run.agent, None, None, String::new()).is_err());
+    assert!(Agent::new(run.agent, None, None, String::new()).is_err());
     drop(agent);
 }
 
 #[test]
 fn stall_timer_survives_same_depth_setup_and_resets_on_depth_change_and_yield() {
-    let mut agent = NativeAgent::new(Default::default(), None, None, String::new()).unwrap();
+    let mut agent = Agent::new(Default::default(), None, None, String::new()).unwrap();
     agent.enter_depth(0);
     assert!(!agent.stall_elapsed());
     agent.depth = Some((0, Instant::now() - Duration::from_secs(6)));
@@ -292,7 +292,7 @@ fn assessment_rejects_invalid_decisions_and_ignores_a_closed_depth() {
         symbolic_feedback: &Value::Null,
         pending: &pending,
     };
-    let mut agent = NativeAgent::new(Default::default(), None, None, String::new()).unwrap();
+    let mut agent = Agent::new(Default::default(), None, None, String::new()).unwrap();
     agent.enter_depth(1);
     let decision = |epoch: &str, next_refinements| wire::Tool::Assess {
         epoch: epoch.into(),
@@ -591,7 +591,7 @@ fn indexed_retrieval_is_exact_paged_and_tool_arguments_are_strict() {
 #[test]
 fn request_preparation_leaves_the_solver_thread_free() {
     let root = tempfile::tempdir().unwrap();
-    let mut agent = NativeAgent::new(
+    let mut agent = Agent::new(
         AgentOptions {
             agent_dry_run: true,
             agent_log: Some(root.path().join("events.jsonl")),

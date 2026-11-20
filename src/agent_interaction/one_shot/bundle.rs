@@ -105,7 +105,12 @@ pub(super) fn validate_replay(
     for schema in &snapshot.schemas {
         let pattern = terms::parse(&schema.formula)?;
         let mut bindings = BTreeMap::new();
-        if matches(&pattern, &term, &schema.slots, &mut bindings) {
+        if crate::policy::instantiation::match_schema_slots(
+            &pattern,
+            &term,
+            &schema.slots,
+            &mut bindings,
+        ) {
             let text = bindings
                 .iter()
                 .map(|(k, v)| (k.clone(), v.to_string()))
@@ -121,63 +126,6 @@ pub(super) fn validate_replay(
         }
     }
     anyhow::bail!("replay formula is not an instance of a trusted schema: {formula}")
-}
-
-fn matches(
-    pattern: &Term,
-    value: &Term,
-    slots: &BTreeMap<String, String>,
-    bindings: &mut BTreeMap<String, Term>,
-) -> bool {
-    if let Term::QualIdentifier(id) = pattern {
-        let name = id.to_string();
-        if slots.contains_key(&name) {
-            return match bindings.get(&name) {
-                Some(previous) => previous == value,
-                None => {
-                    bindings.insert(name, value.clone());
-                    true
-                }
-            };
-        }
-    }
-    match (pattern, value) {
-        (
-            Term::Application {
-                qual_identifier: a,
-                arguments: aa,
-            },
-            Term::Application {
-                qual_identifier: b,
-                arguments: ba,
-            },
-        ) => {
-            if a != b || aa.len() != ba.len() {
-                return false;
-            }
-            let original = bindings.clone();
-            // Consequents bind structural slots before commutative guards.
-            if aa
-                .iter()
-                .zip(ba)
-                .rev()
-                .all(|(a, b)| matches(a, b, slots, bindings))
-            {
-                return true;
-            }
-            *bindings = original.clone();
-            if a.to_string() == "="
-                && aa.len() == 2
-                && matches(&aa[0], &ba[1], slots, bindings)
-                && matches(&aa[1], &ba[0], slots, bindings)
-            {
-                return true;
-            }
-            *bindings = original;
-            false
-        }
-        _ => pattern == value,
-    }
 }
 
 pub(super) fn last_frame(term: &Term) -> anyhow::Result<u16> {

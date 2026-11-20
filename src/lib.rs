@@ -1234,9 +1234,10 @@ mod option_tests {
     }
 
     #[test]
-    fn resolve_preserves_native_agent_settings_from_older_runs() {
+    fn resolve_preserves_agent_settings_from_older_runs() {
         let mut saved = serde_json::to_value(YardbirdOptions::default()).unwrap();
-        saved["agent"] = serde_json::json!({"agent_pause_depth": 3, "agent_log": null});
+        saved["agent"] =
+            serde_json::json!({"agent_stdio": false, "agent_pause_depth": 3, "agent_log": null});
         saved["advisor"] = serde_json::json!({
             "advisor": "bedrock", "advisor_max_calls": 2, "advisor_log": "run.jsonl"
         });
@@ -1253,8 +1254,25 @@ mod option_tests {
             Some(agent_interaction::AgentMode::Bedrock)
         );
         assert_eq!(loaded.agent.agent_max_calls, 2);
-        assert_eq!(loaded.agent.agent_pause_depth, 3);
         assert_eq!(loaded.agent.agent_log, Some("run.jsonl".into()));
+    }
+
+    #[test]
+    fn resolve_rejects_saved_runs_that_requested_stdio_control() {
+        let mut saved = serde_json::to_value(YardbirdOptions::default()).unwrap();
+        saved["agent"]["agent_stdio"] = serde_json::json!(true);
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), saved.to_string()).unwrap();
+        let error = YardbirdOptions {
+            options_json: Some(file.path().into()),
+            ..Default::default()
+        }
+        .resolve()
+        .unwrap_err();
+        assert!(error
+            .root_cause()
+            .to_string()
+            .contains("removed --agent-stdio"));
     }
 
     #[test]

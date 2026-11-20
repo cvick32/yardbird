@@ -12,13 +12,13 @@ pub enum BatchPlacement {
 #[serde(default)]
 pub struct OneShotOptions {
     /// Ask Bedrock for batches, retrying with solver feedback until all bounds close or time expires.
-    #[arg(long, requires = "agent", conflicts_with_all = ["agent_stdio", "replay_instantiations", "export_instantiations"])]
+    #[arg(long, requires = "agent", conflicts_with_all = ["replay_instantiations", "export_instantiations"])]
     pub one_shot: bool,
     /// Validate and replay the exact ground instances recorded by a native run; no LLM.
-    #[arg(long, conflicts_with_all = ["agent", "agent_stdio", "export_instantiations"])]
+    #[arg(long, conflicts_with_all = ["agent", "export_instantiations"])]
     pub replay_instantiations: Option<PathBuf>,
     /// Record the native run's ground instances in a fresh replay artifact.
-    #[arg(long, conflicts_with_all = ["agent", "agent_stdio"])]
+    #[arg(long, conflicts_with = "agent")]
     pub export_instantiations: Option<PathBuf>,
     /// Output-token budget per batch response; there is no proposal-count cap.
     #[arg(long, default_value_t = 32768, requires = "one_shot")]
@@ -72,10 +72,6 @@ impl OneShotOptions {
                 && run.solver == crate::SolverBackend::Z3
                 && matches!(run.strategy, crate::Strategy::Abstract),
             "one-shot/replay/export requires abstract Z3 VMT verification"
-        );
-        anyhow::ensure!(
-            !run.agent.agent_stdio,
-            "one-shot/replay/export cannot use --agent-stdio"
         );
         anyhow::ensure!(
             !self.one_shot

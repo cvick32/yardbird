@@ -31,6 +31,13 @@ pub(crate) struct CatalogueTerm {
     pub term: Term,
 }
 
+#[derive(Clone, Copy)]
+enum BindingSyntax {
+    Catalogue,
+    Smt,
+    CatalogueOrSmt,
+}
+
 /// Owns the full source/model/vocabulary, without provider prompts or choices.
 /// Capture once per model and reuse for every attempt in that episode. Resolution
 /// constructs exact theory instances; validation against the live model is separate.
@@ -52,13 +59,13 @@ pub(crate) struct InstantiationSnapshot {
 /// Owned solver observations. Formatting the catalogue needs no live solver.
 pub(crate) struct SnapshotInput {
     types: Vec<(String, String)>,
-    quantifiers: Option<(
+    pub(crate) quantifiers: Option<(
         Vec<crate::theories::quantifiers::BinderRule>,
         crate::theories::quantifiers::provenance::QuantifierProvenance,
     )>,
     declarations: Vec<Command>,
     roots: Vec<Term>,
-    installed: Vec<Term>,
+    pub(crate) installed: Vec<Term>,
     model: String,
     depth: u16,
     refinement_step: u32,
@@ -257,7 +264,7 @@ impl InstantiationSnapshot {
             "axioms": self.schemas.iter().map(|s| json!({"id":s.id,"name":s.name(),"slots":s.slots,"body":s.formula,"provenance":s.provenance})).collect::<Vec<_>>(),
             "catalogue_scope": "current ground problem/refinement subterms and registered binder seeds, deduplicated syntactically; typed binder guidance includes Boolean terms; legacy array-only producers omit Boolean choices; no model-domain elements or heuristic shortlist",
             "successful_instantiations": {
-                "meaning": "Previously installed instances from guided or ordinary Yardbird refinement. Do not propose these again. These are normalized replay schemas: x+K denotes relative frame offset K, while x@N in the model/catalogue denotes absolute frame N. They are not claims of current-model violations. Choose bindings only from the current catalogue.",
+                "meaning": "Previously installed instances from guided or ordinary Yardbird refinement. Do not propose these again. These are normalized replay schemas: x+K denotes relative frame offset K, while x@N in the model/catalogue denotes absolute frame N. They are not claims of current-model violations.",
                 "instances": self.successful_instantiations,
             },
         });
@@ -295,56 +302,63 @@ impl InstantiationSnapshot {
     /// Resolve catalogue IDs, enforcing exact slots and sorts before grounding.
     /// No provider-supplied formula or model-domain value is accepted here.
     pub fn resolve(&self, proposal: &InstantiationProposal) -> anyhow::Result<SymbolicInstance> {
-        let schema = self.schema(&proposal.axiom_id)?;
-        anyhow::ensure!(
-            proposal.bindings.keys().eq(schema.slots.keys()),
-            "substitution must bind exactly the schema's slots"
-        );
-        let mut bindings = BTreeMap::new();
-        for (slot, sort) in &schema.slots {
-            let id = &proposal.bindings[slot];
-            let term = self
-                .terms
-                .iter()
-                .find(|t| &t.id == id)
-                .ok_or_else(|| anyhow::anyhow!("unknown term {id}"))?;
-            anyhow::ensure!(
-                &term.sort == sort,
-                "wrong sort for {slot}: expected {sort}, got {}",
-                term.sort
-            );
-            bindings.insert(slot.clone(), term.term.clone());
-        }
-        schema.instantiate(&bindings)
+        self.resolve_bindings(
+            &proposal.axiom_id,
+            &proposal.bindings,
+            BindingSyntax::Catalogue,
+        )
     }
 
-    /// Resolve inline SMT terms for an offline batch. Soundness depends on the schema,
-    /// typing and declaration checks, not whether a current countermodel violates it.
+    pub(crate) fn resolve_async(
+        &self,
+        proposal: &InstantiationProposal,
+    ) -> anyhow::Result<SymbolicInstance> {
+        self.resolve_bindings(
+            &proposal.axiom_id,
+            &proposal.bindings,
+            BindingSyntax::CatalogueOrSmt,
+        )
+    }
+
     pub(crate) fn resolve_text(
         &self,
         schema_id: &str,
         text: &BTreeMap<String, String>,
     ) -> anyhow::Result<SymbolicInstance> {
+        self.resolve_bindings(schema_id, text, BindingSyntax::Smt)
+    }
+
+    fn resolve_bindings(
+        &self,
+        schema_id: &str,
+        values: &BTreeMap<String, String>,
+        syntax: BindingSyntax,
+    ) -> anyhow::Result<SymbolicInstance> {
         let schema = self.schema(schema_id)?;
         anyhow::ensure!(
-            text.keys().eq(schema.slots.keys()),
+            values.keys().eq(schema.slots.keys()),
             "substitution must bind exactly the schema's slots"
         );
-        let bindings = text
-            .iter()
-            .map(|(name, text)| Ok((name.clone(), super::terms::parse(text)?)))
-            .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
-        let roots = bindings.values().cloned().collect::<Vec<_>>();
-        let typed = self.ground_terms(&roots, 16384)?;
-        let sorts = typed
-            .iter()
-            .map(|t| (t.expression.as_str(), t.sort.as_str()))
-            .collect::<HashMap<_, _>>();
-        for (name, term) in &bindings {
+        let mut bindings = BTreeMap::new();
+        let mut work = 0;
+        for (slot, expected) in &schema.slots {
+            let value = &values[slot];
+            let entry = match syntax {
+                BindingSyntax::Smt => None,
+                _ => self.terms.iter().find(|t| &t.id == value),
+            };
+            let (term, sort) = match entry {
+                Some(entry) => (entry.term.clone(), entry.sort.clone()),
+                None if matches!(syntax, BindingSyntax::Catalogue) => {
+                    anyhow::bail!("unknown term {value}")
+                }
+                None => self.parse_ground_binding(value, &mut work)?,
+            };
             anyhow::ensure!(
-                sorts.get(term.to_string().as_str()) == Some(&schema.slots[name].as_str()),
-                "wrong sort for {name}"
+                sort == *expected,
+                "wrong sort for {slot}: expected {expected}, got {sort}"
             );
+            bindings.insert(slot.clone(), term);
         }
         schema.instantiate(&bindings)
     }

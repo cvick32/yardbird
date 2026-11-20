@@ -56,3 +56,60 @@ impl InstantiationSchema {
         }
     }
 }
+
+pub(crate) fn match_schema_slots(
+    pattern: &Term,
+    value: &Term,
+    slots: &BTreeMap<String, String>,
+    bindings: &mut BTreeMap<String, Term>,
+) -> bool {
+    if let Term::QualIdentifier(id) = pattern {
+        let name = id.to_string();
+        if slots.contains_key(&name) {
+            return match bindings.get(&name) {
+                Some(previous) => previous == value,
+                None => {
+                    bindings.insert(name, value.clone());
+                    true
+                }
+            };
+        }
+    }
+    match (pattern, value) {
+        (
+            Term::Application {
+                qual_identifier: a,
+                arguments: aa,
+            },
+            Term::Application {
+                qual_identifier: b,
+                arguments: ba,
+            },
+        ) => {
+            if a != b || aa.len() != ba.len() {
+                return false;
+            }
+            let original = bindings.clone();
+            // Consequents bind structural slots before commutative guards.
+            if aa
+                .iter()
+                .zip(ba)
+                .rev()
+                .all(|(a, b)| match_schema_slots(a, b, slots, bindings))
+            {
+                return true;
+            }
+            *bindings = original.clone();
+            if a.to_string() == "="
+                && aa.len() == 2
+                && match_schema_slots(&aa[0], &ba[1], slots, bindings)
+                && match_schema_slots(&aa[1], &ba[0], slots, bindings)
+            {
+                return true;
+            }
+            *bindings = original;
+            false
+        }
+        _ => pattern == value,
+    }
+}

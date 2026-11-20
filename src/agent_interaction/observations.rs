@@ -12,14 +12,12 @@ use serde_json::{json, Value};
 use smt2parser::concrete::Term;
 use std::collections::BTreeMap;
 
-pub(crate) struct Observations {
-    pub records: BTreeMap<String, Value>,
-    pub roots: Vec<String>,
+pub(super) struct Observations {
+    pub(super) records: BTreeMap<String, Value>,
     actions: BTreeMap<String, (String, u16)>,
     cursors: BTreeMap<String, usize>,
     epoch: String,
     index: TransitionIndex,
-    pub work: usize,
 }
 
 fn evaluation(context: &DiscoveryContext<'_>, term: &Term) -> Value {
@@ -101,21 +99,6 @@ impl TraceInput {
 }
 
 impl Observations {
-    pub fn new(
-        index: TransitionIndex,
-        context: &DiscoveryContext<'_>,
-        epoch: &str,
-        catalogue: &mut InstantiationSession,
-        snapshot: &mut InstantiationSnapshot,
-    ) -> anyhow::Result<Self> {
-        Self::from_trace(
-            TraceInput::collect(index, context, 1024),
-            epoch,
-            catalogue,
-            snapshot,
-        )
-    }
-
     pub(super) fn from_trace(
         input: TraceInput,
         epoch: &str,
@@ -129,12 +112,10 @@ impl Observations {
         } = input;
         let mut s = Self {
             records: BTreeMap::new(),
-            roots: vec![],
             actions: BTreeMap::new(),
             cursors: BTreeMap::new(),
             epoch: epoch.into(),
             index,
-            work: 0,
         };
         s.add_trace(&trace, nodes, catalogue, snapshot)?;
         Ok(s)
@@ -162,8 +143,6 @@ impl Observations {
             );
             if let Some(parent) = node.parent {
                 r["links"]["parent"] = json!([format!("{}:trace:{parent}", self.epoch)]);
-            } else {
-                self.roots.push(id.clone());
             }
             if let Some((name, frame, evidence)) = action {
                 let aid = format!("{}:action:{frame}:{name}", self.epoch);
@@ -244,22 +223,6 @@ impl Observations {
         }
         self.records.insert(id.into(),record(id,"action",action.to_string(),Some(frame),json!({"arguments":arguments,"prerequisite_refs":[],"update_refs":updates,"selection_evidence":evidence,"requirements_expanded":false})));
         Ok(())
-    }
-    pub fn expand(
-        &mut self,
-        id: &str,
-        budget: usize,
-        context: &DiscoveryContext<'_>,
-        catalogue: &mut InstantiationSession,
-        snapshot: &mut InstantiationSnapshot,
-    ) -> anyhow::Result<(Vec<Value>, Vec<String>, usize, bool)> {
-        self.expand_with(
-            id,
-            budget,
-            |term| evaluation(context, term),
-            catalogue,
-            snapshot,
-        )
     }
 
     /// Sample only the live terms needed for the requested page, before the worker renders it.
@@ -405,7 +368,6 @@ impl Observations {
             *cursor += 1;
         }
         let cutoff = *cursor < requirements.len();
-        self.work += used;
         self.records.get_mut(id).unwrap()["data"]["requirements_expanded"] = json!(!cutoff);
         records.push(self.records[id].clone());
         Ok((records, refs, used, cutoff))

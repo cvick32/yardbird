@@ -46,9 +46,6 @@ fn main() -> anyhow::Result<()> {
 
     options.agent.validate(&options)?;
     options.one_shot.validate(&options)?;
-    if options.agent.agent_stdio {
-        return yardbird::agent_interaction::run_stdio(&options);
-    }
 
     options.validate_prefer_axioms_options()?;
     options.decision_model.validate(&options)?;
@@ -292,7 +289,7 @@ fn run_vmt_mode(options: &YardbirdOptions) -> anyhow::Result<()> {
                 .as_ref()
                 .map(|_| yardbird::agent_interaction::one_shot::Recorder::default());
             let mut proof_plan = options.build_array_proof_plan();
-            if let Some(agent) = yardbird::agent_interaction::NativeAgent::from_options(options)? {
+            if let Some(agent) = yardbird::agent_interaction::Agent::from_options(options)? {
                 proof_plan.strategy.attach_agent(agent)?;
             }
             let mut driver = Driver::new(

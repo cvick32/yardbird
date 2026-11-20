@@ -747,7 +747,7 @@ impl VmtBmcSession {
         Ok(())
     }
 
-    pub(crate) fn smt2_string_with_property_check(&self) -> String {
+    fn smt2_string_with_property_check(&self) -> String {
         let mut sections = vec![
             unique_command_lines(&self.sorts),
             unique_command_lines(&self.function_definitions),

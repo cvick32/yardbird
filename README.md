@@ -7,9 +7,8 @@ For the experimental joint LLM instantiation policy, see
 context and trusted validation as the JEV policies, with OpenAI and Anthropic
 adapters and an offline dry-run mode.
 
-Yardbird also supports scripted JSONL sessions, asynchronous Bedrock hints
-during native refinement, and agent-proposed batches. See
-[Agent interaction with Yardbird](src/agent_interaction/README.md) for the three modes.
+Yardbird supports asynchronous Bedrock hints during native refinement and
+agent-proposed batches. See [Agent interaction with Yardbird](src/agent_interaction/README.md).
 
 # Running with Debug logs
 

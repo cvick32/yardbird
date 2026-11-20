@@ -170,7 +170,7 @@ where
     prepared_theory: Option<crate::theories::preparation::PreparedTheory>,
     ownership: crate::theories::preparation::Ownership,
     preparation_error: Option<String>,
-    agent: Option<crate::agent_interaction::NativeAgent>,
+    agent: Option<crate::agent_interaction::Agent>,
     capture_instantiation_sources: bool,
 }
 
@@ -436,7 +436,7 @@ impl<F> ProofStrategy<'_, RefinementState> for Abstract<F>
 where
     F: TermCostFactory + 'static,
 {
-    fn attach_agent(&mut self, agent: crate::agent_interaction::NativeAgent) -> anyhow::Result<()> {
+    fn attach_agent(&mut self, agent: crate::agent_interaction::Agent) -> anyhow::Result<()> {
         self.agent = Some(agent);
         Ok(())
     }
@@ -936,7 +936,6 @@ where
                 }
                 OperationKind::PolicyCandidates => {
                     let producer = discovery.as_mut().expect("offered discovery producer");
-                    producer.observe_formulas(self.formula_index.as_ref());
                     let quantifiers = producer
                         .supports_input_binders()
                         .then_some((&self.quantifier.plan, &self.quantifier.provenance));
@@ -1057,29 +1056,7 @@ where
                 });
             }
             if retain {
-                if let Some(limit) = self
-                    .policy
-                    .parts()
-                    .discovery
-                    .as_ref()
-                    .and_then(|d| d.candidate_limit())
-                {
-                    batch
-                        .candidates
-                        .truncate(limit.saturating_sub(state.candidates.len()));
-                }
                 self.absorb_candidates(state, batch);
-            }
-            if let Some(discovery) = self.policy.parts().discovery.as_mut() {
-                discovery.observe_operation(operation.kind, &report, &state.candidates, smt)?;
-                let terms = discovery.take_admitted_terms();
-                if !terms.is_empty() {
-                    for term in terms {
-                        state.egraph.admit_unobserved(smt, &term)?;
-                    }
-                    state.egraph.rebuild();
-                    state.graph_version += 1;
-                }
             }
         })();
         // Trace after selection: diagnostic model evaluation must not influence

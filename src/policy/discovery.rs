@@ -29,25 +29,6 @@ pub(crate) struct DiscoveryUsage {
 }
 
 pub(crate) trait InstanceDiscovery {
-    /// Optional session resource limit; the coordinator owns candidate retention.
-    fn candidate_limit(&self) -> Option<usize> {
-        None
-    }
-    /// Optional interactive observation hooks; they cannot assert theory facts.
-    fn observe_formulas(&mut self, _index: Option<&crate::transition_index::TransitionIndex>) {}
-    fn observe_operation(
-        &mut self,
-        _operation: OperationKind,
-        _report: &WorkReport,
-        _candidates: &[crate::rule_matching::candidate::InstantiationCandidate],
-        _smt: &dyn ProblemContext,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    fn take_admitted_terms(&mut self) -> Vec<Term> {
-        vec![]
-    }
-
     fn supports_input_binders(&self) -> bool {
         false
     }

@@ -2,56 +2,22 @@
 
 | Mode | Who proposes instances | When the solver runs |
 | --- | --- | --- |
-| [Stdio](#scripted-agent-protocol) | A JSONL client using the advertised tools | The solver pauses for commands at eligible SAT boundaries. |
-| [Native agent](#native-agent) | Bedrock supplies hints alongside the selected Yardbird policy | Native refinement continues during inference. |
+| [Asynchronous advice](#asynchronous-advice) | Bedrock supplies hints alongside the selected Yardbird policy | Native refinement continues during inference. |
 | [One-shot batches](#one-shot-instantiation) | Bedrock submits batches of ground substitutions | Yardbird checks each batch and can return feedback for another round. |
 
-## Scripted agent protocol
-
-`--agent-stdio` exposes a JSONL pause/refine/advance interface for scripted
-experiments. It uses a fixed search policy and makes no LLM calls. For advice on
-the normal driver with user-selected policies, use the
-[native agent](#native-agent).
-
-```sh
-./target/release/yardbird -f tests/fixtures/array_dataflow_actions.vmt -d 2 \
-  --agent-stdio --agent-pause-depth 0 --agent-control explicit \
-  --agent-log /tmp/yardbird-session.jsonl
-```
-
-The server emits `ready`, then `paused` at an eligible SAT boundary. stdout is
-JSONL; diagnostics go to stderr. Use a fresh path for `--agent-log`.
-
-| Tool | Effect |
-| --- | --- |
-| `snapshot`, `inspect` | Read the current state or a catalogue record. |
-| `expand_action` | Inspect bounded prerequisites of an encountered action. |
-| `make_term` | Construct a well-typed ground term. |
-| `instantiate` | Validate and queue exact theory instances. |
-| `search` | Discover candidates in assisted mode; does not install or check. |
-| `advance` | Install queued candidates and check; does not discover instances. |
-| `stop` | End the session inconclusively. |
-
-Commands carry `v: 0`, a unique `id`, `op`, and the current `epoch` where required.
-Repeated identical IDs return cached responses; conflicting reuse fails. New
-commands with stale epochs are rejected. The server advertises available tools
-and limits in `ready`; use `--help` for configurable `--agent-*` limits.
-
-[Commands](schema/commands.schema.json), [responses](schema/responses.schema.json),
-[tool schemas](schema/tools.json), and [example transcripts](schema/examples/)
-define the wire format. Runtime validation is implemented in Rust.
-UNSAT closes only the reported bound. Stopping, timeout or exhausted refinement
-does not establish a proof or a real counterexample.
-
-```sh
-cargo test --test agent_interaction_tests
-```
-
-## Native agent
+## Asynchronous advice
 
 The agent supplies instantiation hints while Yardbird keeps running its normal
 search with the selected policy. For LLM batches checked without native search,
-use [one-shot mode](#one-shot-instantiation).
+use [one-shot mode](#one-shot-instantiation). Each async `instantiate` binding
+accepts a pinned term ID or a ground SMT-LIB term over the pinned declarations.
+A proposal can mix both forms.
+
+For a paired async experiment, `--agent-start-model N --agent-stall-secs 0`
+starts advice at the first eligible SAT boundary at or after model N.
+Add `--agent-binder-context` to show source quantifiers, original slot names,
+action names where indexed, ground capture tuples, and bindings recovered from
+installed ordinary and witness instances. Witness entries link to the same source context.
 
 ### Run German
 
@@ -63,7 +29,7 @@ use [one-shot mode](#one-shot-instantiation).
 ```
 
 Uses `BEDROCK_API_KEY` from the environment or `.env` and the bundled
-[Bedrock configuration](native/bedrock-config.json). Calls are paid; there is no default
+[Bedrock configuration](bedrock-config.json). Calls are paid; there is no default
 call or dollar cap. Set `--agent-max-calls N` to limit calls.
 
 By default, advice starts after five seconds at an unresolved depth. Yardbird
@@ -100,8 +66,8 @@ Use the same input, policy, depth and wall budget when comparing runs.
 ### Offline tests
 
 ```sh
-cargo test --lib agent_interaction::native::tests
-cargo test --test native_agent_tests
+cargo test --lib agent_interaction::tests
+cargo test --test agent_interaction_tests
 ```
 
 ## One-shot instantiation

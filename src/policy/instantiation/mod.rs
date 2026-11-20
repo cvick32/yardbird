@@ -15,7 +15,7 @@
 mod schema;
 mod session;
 pub(crate) mod terms;
-pub(crate) use schema::InstantiationSchema;
+pub(crate) use schema::{match_schema_slots, InstantiationSchema};
 mod snapshot;
 #[cfg(test)]
 mod tests;

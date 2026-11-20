@@ -128,7 +128,22 @@ fn typed_catalogue_preserves_bitvector_result_sorts_and_rejects_boolean_indices(
     proposal
         .bindings
         .insert("idx".into(), term("x@0").id.clone());
-    assert!(snapshot.resolve(&proposal).is_ok());
+    let expected = snapshot.resolve(&proposal).unwrap().term;
+    assert_eq!(snapshot.resolve_async(&proposal).unwrap().term, expected);
+    proposal.bindings.insert("idx".into(), "x@0".into());
+    assert_eq!(snapshot.resolve_async(&proposal).unwrap().term, expected);
+    assert!(snapshot.resolve(&proposal).is_err());
+    proposal
+        .bindings
+        .insert("idx".into(), "(bvadd x@0 #x01)".into());
+    assert!(snapshot.resolve_async(&proposal).is_ok());
+    for invalid in ["true", "unknown@0", "(bvadd x@0 #x0001)", "(bvadd"] {
+        proposal.bindings.insert("idx".into(), invalid.into());
+        assert!(
+            snapshot.resolve_async(&proposal).is_err(),
+            "accepted {invalid}"
+        );
+    }
 }
 
 fn proposal(snapshot: &InstantiationSnapshot, rule: &str) -> InstantiationProposal {

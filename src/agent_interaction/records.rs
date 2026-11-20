@@ -2,7 +2,7 @@ use crate::policy::instantiation::InstantiationSnapshot;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-pub(crate) fn catalogue(snapshot: &InstantiationSnapshot) -> BTreeMap<String, Value> {
+pub(super) fn catalogue(snapshot: &InstantiationSnapshot) -> BTreeMap<String, Value> {
     let mut records = BTreeMap::new();
     for term in &snapshot.terms {
         records.insert(term.id.clone(), json!({"id":term.id,"kind":"term","expression":term.expression,"sort":term.sort,"frame":term_frame(&term.term),"links":{},"data":{"origin":{"kind":"catalogue"},"evaluation":{"status":"not_evaluated","value":null}}}));
@@ -61,10 +61,6 @@ pub(crate) fn catalogue(snapshot: &InstantiationSnapshot) -> BTreeMap<String, Va
         records.insert(schema.id.clone(), json!({"id":schema.id,"kind":"schema","expression":schema.formula,"sort":"Bool","frame":null,"links":{},"data":{"slots":schema.slots,"slot_names":names,"direction":schema.provenance["direction"].as_str().unwrap_or("array_axiom"),"source_ref":source,"parent_ref":parent,"witness_dependencies":dependencies}}));
     }
     records
-}
-
-pub(super) fn usage(checks: u64) -> Value {
-    json!({"elapsed_ms":0,"expansion_work":0,"search_operations":0,"solver_checks":checks,"solver_statistics":null})
 }
 
 fn term_frame(term: &smt2parser::concrete::Term) -> Option<u16> {

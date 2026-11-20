@@ -1,0 +1,233 @@
+[
+  {
+    "type": "function",
+    "name": "snapshot",
+    "description": "Refresh the pinned snapshot from the current SAT model.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "epoch"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "inspect",
+    "description": "Read the formula, provenance, and relationships of one active reference. Does not search.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "epoch",
+        "ref"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "expand_action",
+    "description": "Expose enabling conditions of one encountered action under a work budget. Does not discover or queue instances.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "work": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "epoch",
+        "ref",
+        "work"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "make_term",
+    "description": "Type-check and intern one ground SMT-LIB term using declared symbols. Does not assert anything.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "smt2": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "epoch",
+        "smt2"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "instantiate",
+    "description": "Supply complete correlated substitutions for registered schemas. Construct, validate, and queue instances without searching or installing.",
+    "parameters": {
+      "$defs": {
+        "proposal": {
+          "type": "object",
+          "properties": {
+            "axiom_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bindings": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": "Map every slot to a pinned term ID or a well-typed ground SMT-LIB term over pinned declarations. Both forms can be mixed."
+            }
+          },
+          "required": [
+            "axiom_id",
+            "bindings"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "proposal_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "proposal": {
+                "$ref": "#/$defs/proposal"
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "proposal_id",
+              "proposal"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Public proof-step justification, connecting proposal IDs for a chain; not a proof certificate."
+        }
+      },
+      "required": [
+        "epoch",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "strict": false
+  },
+  {
+    "type": "function",
+    "name": "read_context",
+    "description": "Exact retrieval from the pinned snapshot: terms, axioms, records, source, model, or any named snapshot section. Literal query or exact ID, paged; source/model use character offsets. Limits: 50 records or 16000 characters. No hidden truncation.",
+    "strict": false,
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "epoch",
+        "section"
+      ],
+      "properties": {
+        "epoch": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  {
+    "type": "function",
+    "name": "yield",
+    "description": "End this agent episode with a public explanation; Yardbird continues. The stall trigger restarts its delay; adaptive mode reassesses on a subsequent SAT model.",
+    "strict": false,
+    "parameters": {
+      "type": "object",
+      "required": [
+        "epoch",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "epoch": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+]

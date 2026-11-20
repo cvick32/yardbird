@@ -3,7 +3,7 @@ use crate::policy::{instantiation::InstantiationProposal, llm::LlmOptions};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-pub(super) const PROMPT: &str = "You advise a running Yardbird verifier. Ordinary search and solver checks continue while you reason. Use pinned context to identify missing proof relationships and propose complete, typed schema substitutions. Model equalities are observations, never proof facts. Include a concise public rationale explaining the intended proof step or how proposal IDs connect. Each instance is independently revalidated on the live model. Only Yardbird establishes proof progress. Use read_context/inspect for exact records, make_term for declared syntax, expand_action for encountered prerequisites. snapshot explicitly refreshes the pin. yield ends this agent episode, never verification. You cannot schedule search, advance, or stop. Return one tool call at a time. No private reasoning transcript is requested.";
+pub(super) const PROMPT: &str = "You advise a running Yardbird verifier. Ordinary search and solver checks continue while you reason. Use pinned context to identify missing proof relationships and propose complete, typed schema substitutions. Model equalities are observations, never proof facts. Include a concise public rationale explaining the intended proof step or how proposal IDs connect. Each instance is independently revalidated on the live model. Only Yardbird establishes proof progress. Use read_context/inspect for exact records, expand_action for encountered prerequisites. Bind each instantiate slot directly with a ground SMT-LIB term or a pinned term ID. snapshot explicitly refreshes the pin. yield ends this agent episode, never verification. You cannot schedule search, advance, or stop. Return one tool call at a time. No private reasoning transcript is requested.";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -88,36 +88,7 @@ impl Tool {
 }
 
 pub(super) fn tools() -> Value {
-    let raw: Vec<Value> = serde_json::from_str(include_str!("../schema/tools.json")).unwrap();
-    let mut tools = Vec::new();
-    for t in raw {
-        let name = t["name"].as_str().unwrap();
-        if ![
-            "snapshot",
-            "inspect",
-            "make_term",
-            "instantiate",
-            "expand_action",
-        ]
-        .contains(&name)
-        {
-            continue;
-        }
-        let mut parameters = t["input_schema"].clone();
-        parameters.as_object_mut().unwrap().remove("$schema");
-        if name == "instantiate" {
-            parameters["properties"]["rationale"] = json!({"type":"string","minLength":1,"maxLength":2000,"description":"Public proof-step justification, connecting proposal IDs for a chain; not a proof certificate."});
-            parameters["properties"]["items"]["items"]["properties"]["rationale"] =
-                json!({"type":"string","minLength":1,"maxLength":1000});
-        }
-        tools.push(json!({"type":"function","name":name,"description":t["description"],"parameters":parameters,"strict":false}));
-    }
-    tools.push(json!({"type":"function","name":"read_context","description":"Exact retrieval from the pinned snapshot: terms, axioms, records, source, model, or any named snapshot section. Literal query or exact ID, paged; source/model use character offsets. Limits: 50 records or 16000 characters. No hidden truncation.","strict":false,
-        "parameters":{"type":"object","additionalProperties":false,"required":["epoch","section"],"properties":{
-            "epoch":{"type":"string"},"section":{"type":"string"},"ref":{"type":"string"},"query":{"type":"string"},"offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1}}}}));
-    tools.push(json!({"type":"function","name":"yield","description":"End this agent episode with a public explanation; Yardbird continues. The stall trigger restarts its delay; adaptive mode reassesses on a subsequent SAT model.","strict":false,
-        "parameters":{"type":"object","required":["epoch","reason"],"additionalProperties":false,"properties":{"epoch":{"type":"string"},"reason":{"type":"string"}}}}));
-    json!(tools)
+    serde_json::from_str(include_str!("tools.json")).expect("invalid agent tool definitions")
 }
 
 pub(super) fn request(config: &LlmOptions, history: &[Value]) -> Value {
