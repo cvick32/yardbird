@@ -5,7 +5,7 @@ use crate::{
     theories::quantifiers::app,
     transition_index::leaf_symbol,
 };
-use smt2parser::concrete::Term;
+use smt2parser::concrete::{QualIdentifier, Sort, Term};
 use std::collections::{HashSet, VecDeque};
 
 pub(crate) enum ReadOutcome {
@@ -21,7 +21,10 @@ impl ReadOutcome {
 }
 
 pub(crate) fn is_read(term: &Term, types: &[(String, String)]) -> bool {
-    matches!(term, Term::Application { qual_identifier, arguments } if arguments.len() == 2 && types.iter().any(|(i,v)| qual_identifier.get_name() == format!("Read_{i}_{v}")))
+    matches!(term, Term::Application { qual_identifier, arguments } if arguments.len() == 2 && {
+        let name = qual_identifier.get_name();
+        name == "select" || types.iter().any(|(i,v)| name == format!("Read_{i}_{v}"))
+    })
 }
 
 pub(crate) fn read_step(term: &Term, cx: &mut TraceContext<'_>) -> Result<ReadOutcome, TraceError> {
@@ -42,13 +45,26 @@ pub(crate) fn read_step(term: &Term, cx: &mut TraceContext<'_>) -> Result<ReadOu
         arguments: args,
     } = array
     {
-        let (is, vs) = cx
-            .types
-            .iter()
-            .find(|(i, v)| name == format!("Read_{i}_{v}"))
-            .expect("typed read");
+        let native = name == "select";
+        let (store, constant) = if native {
+            let constant = matches!(head, QualIdentifier::Sorted {
+                identifier, sort: Sort::Parameterized { identifier: sort, parameters }
+            } if identifier.to_string() == "const" && sort.to_string() == "Array" && parameters.len() == 2);
+            (head.get_name() == "store", constant)
+        } else {
+            let (is, vs) = cx
+                .types
+                .iter()
+                .find(|(i, v)| name == format!("Read_{i}_{v}"))
+                .expect("registered abstract read");
+            let head = head.get_name();
+            (
+                head == format!("Write_{is}_{vs}"),
+                head == format!("ConstArr_{is}_{vs}"),
+            )
+        };
         let mut conditions = vec![];
-        let choice = if head.get_name() == format!("Write_{is}_{vs}") {
+        let choice = if store {
             if let [base, at, value] = args.as_slice() {
                 let equal = cx.boolean(&app("=", vec![at.clone(), index.clone()]))?;
                 let same = equal.value == "true";
@@ -64,7 +80,7 @@ pub(crate) fn read_step(term: &Term, cx: &mut TraceContext<'_>) -> Result<ReadOu
             } else {
                 None
             }
-        } else if head.get_name() == format!("ConstArr_{is}_{vs}") {
+        } else if constant {
             args.first()
                 .filter(|_| args.len() == 1)
                 .map(|value| (value.clone(), 0))
@@ -72,23 +88,28 @@ pub(crate) fn read_step(term: &Term, cx: &mut TraceContext<'_>) -> Result<ReadOu
             None
         };
         if let Some((replacement, selected)) = choice {
-            let mut instances = vec![];
-            super::obligations::read_alternatives(term, cx.types, &mut instances);
-            let instance = instances
-                .into_iter()
-                .nth(selected)
-                .expect("matching array axiom");
+            // Z3 already enforces native read-over-write and constant reads.
+            // Only an abstract read can expose a missing array axiom.
+            let lemma = (!native).then(|| {
+                let mut instances = vec![];
+                super::obligations::read_alternatives(term, cx.types, &mut instances);
+                let instance = instances
+                    .into_iter()
+                    .nth(selected)
+                    .expect("matching array axiom");
+                TraceLemma {
+                    rule: instance.rule.name().to_owned(),
+                    formula: instance.term.clone(),
+                    model_value: None,
+                    instance: Some(instance),
+                }
+            });
             return Ok(ReadOutcome::step(TraceStep {
                 frontier: None,
                 term: replacement,
                 reason: TraceReason::ArrayAxiom,
                 conditions,
-                lemma: Some(TraceLemma {
-                    instance: Some(instance.clone()),
-                    rule: instance.rule.name().to_owned(),
-                    formula: instance.term,
-                    model_value: None,
-                }),
+                lemma,
             }));
         }
     }

@@ -6,7 +6,7 @@ use std::{fmt, str::FromStr};
 
 use smt2parser::{
     analysis::theories::TheoryFeatures,
-    concrete::{Command, Term},
+    concrete::{Command, Sort, Symbol, Term},
     vmt::VMTModel,
 };
 
@@ -193,6 +193,9 @@ pub(crate) fn prepare_vmt(
                 }
             }
         }
+        if ownership.arrays && !ownership.quantifiers {
+            working = quantifier.prepare_native_qi_property(working, options.profile)?;
+        }
         let mut types = vec![];
         if ownership.arrays && features.lambdas == 0 {
             match smt2parser::vmt::array_term_simplifier::ArrayTermSimplifier::abstract_commands(
@@ -247,7 +250,12 @@ pub(crate) fn prepare_vmt(
     {
         anyhow::bail!("array preprocessing and encoding options require Yardbird-owned arrays");
     }
-    let theory = PreparedTheory::new(&working.as_commands(), &array.array_types, ownership.arrays);
+    let theory = PreparedTheory::new(
+        &working.as_commands(),
+        &array.array_types,
+        ownership.arrays,
+        &quantifier.property_witnesses,
+    );
     Ok(PreparedVmt {
         model: working,
         array,
@@ -299,15 +307,35 @@ fn array_abstraction_issue(features: &TheoryFeatures, commands: &[Command]) -> O
 /// representation that a solver adapter must undo.
 #[derive(Clone)]
 pub(crate) struct PreparedTheory {
+    pub property_witnesses: Vec<(Symbol, Sort)>,
     functions: Vec<FunctionDeclaration>,
     logic: String,
     abstract_arrays: bool,
 }
 
 impl PreparedTheory {
-    fn new(commands: &[Command], array_types: &[(String, String)], abstract_arrays: bool) -> Self {
+    fn new(
+        commands: &[Command],
+        array_types: &[(String, String)],
+        abstract_arrays: bool,
+        witnesses: &[Symbol],
+    ) -> Self {
         let logic = Self::logic_for(commands, abstract_arrays);
         Self {
+            // Use final solver sorts, including array-valued witnesses after abstraction.
+            property_witnesses: commands
+                .iter()
+                .filter_map(|command| match command {
+                    Command::DeclareFun {
+                        symbol,
+                        sort,
+                        parameters,
+                    } if parameters.is_empty() && witnesses.contains(symbol) => {
+                        Some((symbol.clone(), sort.clone()))
+                    }
+                    _ => None,
+                })
+                .collect(),
             functions: crate::theory_support::get_uninterpreted_array_functions(array_types),
             logic,
             abstract_arrays,
@@ -454,6 +482,79 @@ mod tests {
         let (previous, _) = previous.abstract_array_theory();
         let prepared = prepare(source, "auto").unwrap();
         assert_eq!(previous.as_commands(), prepared.model.as_commands());
+    }
+
+    #[test]
+    fn delegated_qi_exposes_only_supported_property_witnesses() {
+        let source = |property| {
+            let input = format!(
+                "(declare-fun a () (Array Int Bool))
+                (define-fun init () Bool (! (forall ((i Int)) (select a i)) :init true))
+                (define-fun trans () Bool (! true :trans true))
+                (define-fun prop () Bool (! {property} :invar-property 0))"
+            );
+            VMTModel::checked_from(
+                CommandStream::new(input.as_bytes(), SyntaxBuilder, None)
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let property = "(or (forall ((i Int)) (select a i))
+                            (forall ((b (Array Int Bool))) (= a b)))";
+        let prepared = prepare(source(property), "array").unwrap();
+        assert!(!prepared.ownership.quantifiers && prepared.quantifier.plan.rules.is_empty());
+        assert!(!prepared
+            .model
+            .get_property_for_yardbird()
+            .to_string()
+            .contains("forall"));
+        assert!(prepared
+            .model
+            .get_initial_condition_for_yardbird()
+            .to_string()
+            .contains("(forall ((i Int))"));
+        let sorts: Vec<_> = prepared
+            .theory
+            .property_witnesses
+            .iter()
+            .map(|(_, sort)| sort.to_string())
+            .collect();
+        assert_eq!(sorts, ["Int", "Array_Int_Bool"]);
+
+        let mixed = prepare(
+            source("(forall ((n Int)) (exists ((r Int)) (forall ((x Int)) (= (+ n r) x))))"),
+            "array",
+        )
+        .unwrap();
+        assert_eq!(mixed.theory.property_witnesses.len(), 1);
+        assert!(mixed.quantifier.plan.rules.is_empty());
+        let term = mixed.model.get_property_for_yardbird();
+        let Term::Exists { vars, term } = term else {
+            panic!("expected native existential")
+        };
+        let r = &vars[0].0;
+        let Term::Forall { vars, term } = *term else {
+            panic!("dependent universal must stay native")
+        };
+        let x = &vars[0].0;
+        assert_eq!(
+            term.to_string(),
+            format!("(= (+ {} {r}) {x})", mixed.theory.property_witnesses[0].0)
+        );
+
+        for property in [
+            "(not (forall ((i Int)) (select a i)))",
+            "(ite (forall ((i Int)) (select a i)) true false)",
+        ] {
+            let prepared = prepare(source(property), "array").unwrap();
+            assert!(prepared.theory.property_witnesses.is_empty(), "{property}");
+            assert!(prepared
+                .model
+                .get_property_for_yardbird()
+                .to_string()
+                .contains("(forall ((i Int))"));
+        }
     }
 
     #[test]

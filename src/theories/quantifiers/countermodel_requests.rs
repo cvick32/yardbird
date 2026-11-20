@@ -25,12 +25,29 @@ pub(super) struct TracedEquationSearch {
 
 impl TracedEquationSearch {
     pub fn new(trace: &CountermodelTrace, plan: &QuantifierPlan, smt: &dyn ProblemContext) -> Self {
-        let frontiers = trace.nodes.iter().filter(|node| {
-            matches!(node.status, TraceStatus::Unsupported { .. } | TraceStatus::Undetermined { .. } | TraceStatus::BudgetExhausted)
-                && matches!(&node.expression, Term::Application { qual_identifier, .. } if qual_identifier.get_name().starts_with("Read_"))
-        }).map(|node| (node.expression.clone(), CountermodelOrigin {
-            model_version: trace.model_version, depth: trace.depth, node: node.id,
-        })).collect::<Vec<_>>();
+        let types = smt.get_array_types();
+        let frontiers = trace
+            .nodes
+            .iter()
+            .filter(|node| {
+                matches!(
+                    node.status,
+                    TraceStatus::Unsupported { .. }
+                        | TraceStatus::Undetermined { .. }
+                        | TraceStatus::BudgetExhausted
+                ) && crate::theories::array::countermodel::is_read(&node.expression, &types)
+            })
+            .map(|node| {
+                (
+                    node.expression.clone(),
+                    CountermodelOrigin {
+                        model_version: trace.model_version,
+                        depth: trace.depth,
+                        node: node.id,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
         let mut sources = if frontiers.is_empty() {
             vec![]
         } else {

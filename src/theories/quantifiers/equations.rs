@@ -428,7 +428,7 @@ impl EquationCursor {
             return Some(alternative);
         }
         // Reads descend into their array only, never into opaque witness indices.
-        let children = if name.starts_with("Read_") {
+        let children = if name == "select" || name.starts_with("Read_") {
             arguments.len().min(1)
         } else if matches!(
             name.as_str(),

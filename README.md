@@ -81,12 +81,22 @@ for the supported cases and known limitations:
 yardbird -f problem.vmt --theory auto
 # Instantiate input quantifiers in Yardbird, preserving native solver arrays
 yardbird -f problem.vmt --theory quantifiers
-# Abstract arrays; leave input quantifiers with the solver
+# Abstract arrays in Yardbird and use solver-native general QI
 yardbird -f problem.vmt --theory array
 # Explicitly request both, or delegate everything
 yardbird -f problem.vmt --theory array,quantifiers
 yardbird -f problem.vmt --theory none
 ```
+
+With Yardbird-owned arrays and solver-native QI, a supported universal VMT
+property exposes a fresh, typed witness for each bound variable. This gives
+array refinement ground indices from the failed property. After let expansion
+and negation-normal form, universal binders can be nested or occur under
+conjunction and disjunction. For a property of the form `∀n,p. ∃r. P(n,p,r)`,
+Yardbird names `n` and `p` and leaves the request quantifier with the solver.
+Extraction stops at an existential or an operator with unknown argument polarity.
+Binders inside that subformula retain their dependencies.
+Initialization and transition quantifiers also stay with the solver.
 
 Automatic selection delegates unsupported abstractions with a warning. Explicit
 requests fail when the requested abstraction is unsupported. The startup log

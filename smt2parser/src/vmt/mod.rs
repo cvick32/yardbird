@@ -7,7 +7,7 @@ use axiom::Axiom;
 use bmc::BMCBuilder;
 use definition_graph::{DefinitionFrameInfo, DefinitionGraph, MetadataAliasExpander};
 use definition_materializer::DefinitionMaterializer;
-use herbrandization::herbrandize_pure_universal_property;
+pub use herbrandization::PropertyWitnessScope;
 use itertools::Itertools;
 use log::{debug, info};
 use smt::SMTProblem;
@@ -386,7 +386,15 @@ impl VMTModel {
     }
 
     /// As above, retaining each replaced bound variable and its witness constant.
-    pub fn herbrandize_universal_property_with_bindings(mut self) -> (Self, Vec<(Symbol, Symbol)>) {
+    pub fn herbrandize_universal_property_with_bindings(self) -> (Self, Vec<(Symbol, Symbol)>) {
+        self.herbrandize_property_with_scope(PropertyWitnessScope::PureUniversal)
+    }
+
+    /// Expose the eligible universal variables and keep their source-to-witness map.
+    pub fn herbrandize_property_with_scope(
+        mut self,
+        scope: PropertyWitnessScope,
+    ) -> (Self, Vec<(Symbol, Symbol)>) {
         let Term::Attributes {
             term,
             attributes: property_attributes,
@@ -404,7 +412,8 @@ impl VMTModel {
                 }
                 _ => None,
             });
-        let Some(result) = herbrandize_pure_universal_property(*term, reserved_names) else {
+        let Some(result) = herbrandization::herbrandize_property(*term, reserved_names, scope)
+        else {
             return (self, vec![]);
         };
         let witness_count = result.declarations.len();

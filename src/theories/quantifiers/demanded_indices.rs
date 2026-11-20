@@ -21,7 +21,8 @@ impl DemandedIndices {
                 arguments,
             } = &node.expression
             {
-                if qual_identifier.get_name().starts_with("Read_") && arguments.len() == 2 {
+                let head = qual_identifier.get_name();
+                if (head == "select" || head.starts_with("Read_")) && arguments.len() == 2 {
                     let index = &arguments[1];
                     if seen.insert(index.clone()) {
                         if let Ok(sort) = super::term_sort(index, &plan.signatures, &HashMap::new())

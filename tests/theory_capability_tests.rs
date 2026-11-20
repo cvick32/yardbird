@@ -81,6 +81,64 @@ fn bitvector_arrays_and_quantifiers_agree_across_ownership_choices() {
 }
 
 #[test]
+fn german_array_qi_installs_constant_reads_at_both_property_clients() {
+    let output = Command::new(env!("CARGO_BIN_EXE_yardbird"))
+        .args([
+            "-f",
+            "examples/distributed_protocols/german/german.encoding.vmt",
+            "--theory",
+            "array",
+            "--policy",
+            "countermodel-guided",
+            "--guidance-work",
+            "16384",
+            "--guidance-action-requirements",
+            "always",
+            "-d",
+            "1",
+            "--wall-timeout-secs",
+            "10",
+            "--track-instantiations",
+            "--json-output",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["run_progress"]["termination_reason"], "depth_limit");
+    let installed = result["indexed_instantiations"].as_array().unwrap();
+    for witness in ["yardbird_herbrand_0@0", "yardbird_herbrand_1@0"] {
+        let read = format!("(= (Read_client_Bool (ConstArr_client_Bool false) {witness}) false)");
+        assert!(
+            installed.iter().any(|instance| instance["term"] == read),
+            "{read}"
+        );
+    }
+}
+
+#[test]
+fn outer_witnesses_preserve_the_dependent_existential_at_each_bound() {
+    // The response address must match each individual input address. A ground
+    // read at that input also distinguishes the safe and unsafe transitions.
+    let fixture = example("bitvector_array_counterexample");
+    let exists = "(exists ((j (_ BitVec 8))) (= i j))";
+    for (body, unsafe_at_one) in [
+        (exists.to_owned(), false),
+        (format!("(and (= (select a i) #x0000) {exists})"), true),
+    ] {
+        let property = format!("(forall ((i (_ BitVec 8))) {body})");
+        let source = fixture.replace("(= (select a #x00) #x0000)", &property);
+        for owner in ["none", "array"] {
+            assert_result(&source, owner, unsafe_at_one);
+        }
+    }
+}
+
+#[test]
 fn mixed_integer_bitvector_arrays_preserve_their_sorts() {
     for theory in OWNERS {
         assert_result(&example("mixed_integer_bitvector_array"), theory, false);

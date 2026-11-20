@@ -229,6 +229,26 @@ pub(crate) fn scope_model(
     model: VMTModel,
     enabled: bool,
 ) -> anyhow::Result<(VMTModel, QuantifierProvenance)> {
+    scope_model_where(model, enabled, |_| true)
+}
+
+/// Native QI retains its source binders and patterns outside the property.
+pub(super) fn scope_property(
+    model: VMTModel,
+    enabled: bool,
+) -> anyhow::Result<(VMTModel, QuantifierProvenance)> {
+    scope_model_where(model, enabled, |command| {
+        matches!(command,
+        Command::DefineFun { term: Term::Attributes { attributes, .. }, .. }
+            if attributes.iter().any(|(key, _)| key.0 == "invar-property"))
+    })
+}
+
+fn scope_model_where(
+    model: VMTModel,
+    enabled: bool,
+    selected: impl Fn(&Command) -> bool,
+) -> anyhow::Result<(VMTModel, QuantifierProvenance)> {
     let commands = model.as_commands();
     let reserved = commands
         .iter()
@@ -251,6 +271,9 @@ pub(crate) fn scope_model(
         .into_iter()
         .enumerate()
         .map(|(index, command)| {
+            if !selected(&command) {
+                return command;
+            }
             scoper.command_index = index;
             match command {
                 Command::DefineFun { sig, term } => {

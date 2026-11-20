@@ -260,6 +260,48 @@ fn direct_store_hit_and_constant_array_expose_sound_blocking_lemmas() {
     }
 }
 
+#[test]
+fn native_store_and_constant_reads_follow_the_model_without_array_instances() {
+    let base = "((as const (Array Int Int)) 3)";
+    for (index, expected_steps) in [
+        (1, vec!["5".to_owned()]),
+        (2, vec![format!("(select {base} 2)"), "3".to_owned()]),
+    ] {
+        let input = format!(
+            "(define-fun init () Bool (! true :init true))
+             (define-fun trans () Bool (! true :trans true))
+             (define-fun prop () Bool
+               (! (= (select (store {base} 1 5) {index}) 0) :invar-property 0))"
+        );
+        let transitions = TransitionIndex::from_model(&model(&input), &HashSet::new());
+        let trace = trace_violation(&transitions, &[], 0, 0, 100, |term| {
+            let text = term.to_string();
+            let value = match text.as_str() {
+                "(= 1 1)" => "true",
+                "0" => "0",
+                _ if text.starts_with("(=") => "false",
+                _ if index == 1 => "5",
+                _ => "3",
+            };
+            Ok(value.into())
+        });
+        let steps: Vec<_> = trace
+            .nodes
+            .iter()
+            .filter(|node| matches!(node.reason, TraceReason::ArrayAxiom))
+            .collect();
+        assert_eq!(
+            steps
+                .iter()
+                .map(|s| s.expression.to_string())
+                .collect::<Vec<_>>(),
+            expected_steps
+        );
+        assert_eq!(steps[0].conditions[0].value, (index == 1).to_string());
+        assert!(trace.nodes.iter().all(|n| n.lemma.is_none()));
+    }
+}
+
 fn initial_equality_fixture(initial: &str) -> (TransitionIndex, Vec<(String, String)>) {
     let text = format!(
         "(declare-fun a () (Array Int (Array Int Int)))
@@ -747,7 +789,12 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
         (define-fun trans () Bool (! (= an a) :trans true))
         (define-fun prop () Bool (! (= (select (select a 4) 9) 13) :invar-property 0))
     "#;
-    for (profile, reject) in [(true, false), (false, false), (true, true)] {
+    for (profile, reject, native_arrays) in [
+        (true, false, false),
+        (false, false, false),
+        (true, true, false),
+        (true, false, true),
+    ] {
         let mut options = YardbirdOptions::from_filename("initializer.vmt".into());
         options.profile = profile;
         let mut policy = crate::YardbirdPolicy::<ArrayAstSize>::new(()).with_effort(
@@ -757,6 +804,13 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
             policy = policy.with_instantiation_ranker(Box::new(RejectTracedInstances));
         }
         let strategy = crate::strategies::Abstract::new(3, false, policy, profile);
+        let strategy = if native_arrays {
+            strategy.with_theory_selection(crate::TheorySelection::Explicit(vec![
+                crate::Theory::Quantifiers,
+            ]))
+        } else {
+            strategy
+        };
         let mut driver = crate::Driver::new(
             model(input),
             options.build_instantiation_strategy(),
@@ -780,11 +834,18 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
         let mut selected = 0;
         let mut candidates = 0;
         let mut handed_off = 0;
+        let mut traced_native_read = false;
         for record in &result.profiling.cost_records {
             let Some(trace) = &record.countermodel_trace else {
                 continue;
             };
             assert!(!trace.budget_exhausted);
+            if native_arrays {
+                assert!(trace
+                    .nodes
+                    .iter()
+                    .all(|node| node.status != TraceStatus::ViolatedArrayAxiom));
+            }
             assert!(!trace.nodes.iter().any(|node| matches!(
                 node.status,
                 TraceStatus::EvaluationFailed { .. } | TraceStatus::InconsistentStep
@@ -833,6 +894,13 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
                     );
                     if candidate.selected {
                         selected += 1;
+                        traced_native_read |= node
+                            .lemma
+                            .as_ref()
+                            .unwrap()
+                            .formula
+                            .to_string()
+                            .contains("(select (select a@0 4) 9)");
                         assert!(record.installations.iter().any(|i| i
                             .abstract_instantiation_id
                             .as_deref()
@@ -849,7 +917,11 @@ fn quantified_initializers_are_installed_from_the_read_trace() {
             assert_eq!(selected, 0);
         } else {
             assert!(selected > 0);
-            assert!(handed_off > 0);
+            if native_arrays {
+                assert!(traced_native_read);
+            } else {
+                assert!(handed_off > 0);
+            }
         }
     }
 }

@@ -7,7 +7,7 @@ use crate::rule_matching::candidate_builder::{InstantiationInstrumentation, Inst
 use crate::rule_matching::search_context::SearchContext;
 use log::info;
 use rustc_hash::FxHashMap;
-use smt2parser::vmt::VMTModel;
+use smt2parser::vmt::{PropertyWitnessScope, VMTModel};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
 
 #[derive(Default)]
@@ -69,6 +69,43 @@ impl QuantifierRefinement {
         self.configure(model, profile, false, abstract_arrays)
     }
 
+    pub(crate) fn prepare_native_qi_property(
+        &mut self,
+        model: VMTModel,
+        profile: bool,
+    ) -> anyhow::Result<VMTModel> {
+        if !super::contains_binders(&model.get_property_for_yardbird()) {
+            return Ok(model);
+        }
+        let (scoped, provenance) = super::provenance::scope_property(model.clone(), profile)?;
+        self.provenance = provenance;
+        let prepared =
+            self.expose_property_witnesses(scoped, PropertyWitnessScope::OuterUniversals);
+        if self.property_witnesses.is_empty() {
+            self.provenance = Default::default();
+            return Ok(model);
+        }
+        Ok(prepared)
+    }
+
+    fn expose_property_witnesses(
+        &mut self,
+        model: VMTModel,
+        scope: PropertyWitnessScope,
+    ) -> VMTModel {
+        let (model, bindings) = model.herbrandize_property_with_scope(scope);
+        self.property_witnesses = bindings
+            .iter()
+            .map(|(_, witness)| witness.clone())
+            .collect();
+        self.provenance.record_property_witnesses(&bindings);
+        let herbrand_witnesses = bindings.len();
+        if herbrand_witnesses > 0 {
+            info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
+        }
+        model
+    }
+
     fn configure(
         &mut self,
         model: VMTModel,
@@ -95,16 +132,7 @@ impl QuantifierRefinement {
                     return model;
                 }
             };
-        let (model, bindings) = model.herbrandize_universal_property_with_bindings();
-        self.property_witnesses = bindings
-            .iter()
-            .map(|(_, witness)| witness.clone())
-            .collect();
-        self.provenance.record_property_witnesses(&bindings);
-        let herbrand_witnesses = bindings.len();
-        if herbrand_witnesses > 0 {
-            info!("Herbrandized universal property with {herbrand_witnesses} witness constants");
-        }
+        let model = self.expose_property_witnesses(model, PropertyWitnessScope::PureUniversal);
         let original = model.clone();
         let lowered = if !abstract_arrays {
             super::lowering::lower_model_with_arrays(
