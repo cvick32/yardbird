@@ -17,7 +17,7 @@ global:
 parameter_matrices:
   qts-z3:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -40,7 +40,7 @@ parameter_matrices:
       guard_policy: "true"
   qts-guided1024:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -68,7 +68,7 @@ parameter_matrices:
     guidance_action_requirements: when-unproductive
   qts-guided16384:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -96,7 +96,7 @@ parameter_matrices:
     guidance_action_requirements: when-unproductive
   qts-always4096:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -124,7 +124,7 @@ parameter_matrices:
     guidance_action_requirements: always
   qts-predecessor-only4096:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -152,7 +152,7 @@ parameter_matrices:
     guidance_action_requirements: when-unproductive
   qts-supplement4096:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -180,7 +180,7 @@ parameter_matrices:
     guidance_action_requirements: when-unproductive
   qts-always16384:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -208,7 +208,7 @@ parameter_matrices:
     guidance_action_requirements: always
   qts-axioms-first:
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -238,7 +238,7 @@ parameter_matrices:
   qts-always16384-native-arrays:
     theory: quantifiers
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
@@ -268,7 +268,7 @@ parameter_matrices:
   qts-always16384-native-qi:
     theory: array
     depths:
-      - 20
+      - 30
     solvers:
       - z3
     strategies:
