@@ -300,12 +300,20 @@ def refresh_progress(manifest: dict[str, Any]) -> None:
         manifest["completed_at"] = iso_now()
 
 
-def ensure_garden_binary() -> None:
-    run_command(
-        ["cargo", "build", "--release", "-p", "yardbird", "-p", "garden"],
-        cwd=ROOT,
-        check=True,
-    )
+def ensure_garden_binary(config: Path | None = None, matrices: tuple[str, ...] = ()) -> None:
+    run_command(["cargo", "build", "--release", "-p", "garden"], cwd=ROOT)
+    features: set[str] = set()
+    for matrix in matrices:
+        result = run_command(
+            [str(GARDEN_BIN), "--config", str(config), "--matrix", matrix,
+             "--print-yardbird-features"],
+            cwd=ROOT,
+        )
+        features.update(result.stdout.split())
+    command = ["cargo", "build", "--release", "-p", "yardbird"]
+    if features:
+        command.extend(["--features", ",".join(sorted(features))])
+    run_command(command, cwd=ROOT)
 
 
 def relative_to_root(path: Path) -> str:

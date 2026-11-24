@@ -31,6 +31,10 @@ struct GardenOptions {
     #[arg(short, long)]
     pub matrix: Option<String>,
 
+    /// Print the Cargo features Yardbird needs for the selected runs and exit.
+    #[arg(long)]
+    pub print_yardbird_features: bool,
+
     pub examples: Option<PathBuf>,
 
     #[arg(short, long)]
@@ -543,6 +547,7 @@ fn run_single(
             let mut api_usage = api_usage::summarize(accounting_log);
             api_usage.dry_run |= is_guided(options.policy)
                 && (options.decision_model.jev_dry_run || options.llm.llm_dry_run);
+            let guided = options.policy.filter(|p| p.uses_countermodel_guidance());
             Ok(StrategyResult {
                 theory: options.theory.to_string(),
                 api_usage,
@@ -553,22 +558,15 @@ fn run_single(
                 random: options.random.clone(),
                 policy: options.policy,
                 prefer_axioms: options.prefer_axioms,
-                guidance_work: (options.policy
-                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
-                .then_some(options.guidance_work.unwrap_or(1024)),
-                guidance_transition_order: (options.policy
-                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
-                .then_some(options.guidance_transition_order.unwrap_or(
-                    yardbird::policy::effort::GuidanceTransitionOrder::PredecessorFirst,
-                )),
-                guidance_action_requirements: (options.policy
-                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
-                .then_some(options.guidance_action_requirements.unwrap_or(
-                    yardbird::policy::effort::ActionRequirementGuidance::WhenUnproductive,
-                )),
-                guidance_schedule: (options.policy
-                    == Some(yardbird::policy::NamedPolicy::CountermodelGuided))
-                .then_some(options.guidance_schedule),
+                guidance_work: guided.map(|p| p.guidance_work(&options)),
+                guidance_transition_order: guided.map(|_| {
+                    options.guidance_transition_order.unwrap_or(
+                        yardbird::policy::effort::GuidanceTransitionOrder::PredecessorFirst,
+                    )
+                }),
+                guidance_action_requirements: guided
+                    .map(|p| p.guidance_action_requirements(&options)),
+                guidance_schedule: guided.map(|_| options.guidance_schedule),
                 solver: options.solver,
                 strategy: options.strategy,
                 result,
@@ -611,6 +609,15 @@ fn get_git_commit() -> Option<String> {
 
 fn run_config_based(mut options: GardenOptions, config: BenchmarkConfig) -> anyhow::Result<()> {
     let runs = config.generate_benchmark_runs(options.matrix.as_deref())?;
+    if options.print_yardbird_features {
+        if runs
+            .iter()
+            .any(|run| run.solver == yardbird::SolverBackend::Cvc5)
+        {
+            println!("cvc5-backend");
+        }
+        return Ok(());
+    }
     let training_run_version = effective_training_run_version(&options);
 
     println!("Running {} benchmark configurations", runs.len());
@@ -1332,6 +1339,7 @@ individual_configs:
     fn named_policy_config_reaches_subprocess_options() {
         for (policy, schedule) in [
             ("german-fast", None),
+            ("protocol-best", None),
             ("countermodel-guided", Some("immediate")),
             ("countermodel-guided", Some("supplement")),
         ] {
@@ -1367,11 +1375,9 @@ individual_configs:
                     .unwrap();
                     let written: YardbirdOptions =
                         serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
-                    let expected = if policy == "german-fast" {
-                        yardbird::policy::NamedPolicy::GermanFast
-                    } else {
-                        yardbird::policy::NamedPolicy::CountermodelGuided
-                    };
+                    let expected =
+                        <yardbird::policy::NamedPolicy as clap::ValueEnum>::from_str(policy, false)
+                            .unwrap();
                     assert_eq!(written.theory, "array".parse().unwrap());
                     assert_eq!(written.policy, Some(expected));
                     assert_eq!(written.prefer_axioms, prefer);

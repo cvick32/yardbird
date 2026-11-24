@@ -31,7 +31,7 @@ def launch_local_run(args: Any) -> dict[str, Any]:
     )
     manifest["benchmark_selection"] = args.benchmark_selection
     run_dir = Path(manifest["run_dir"])
-    ensure_garden_binary()
+    ensure_garden_binary(Path(args.config), tuple(args.benchmark_type))
 
     for matrix in args.benchmark_type:
         raw_dir = ensure_dir(run_dir / "raw" / matrix)

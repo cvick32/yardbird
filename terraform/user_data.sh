@@ -23,7 +23,7 @@ log_status "INFO" "Starting Yardbird benchmark setup"
 # Install dependencies
 log_status "INFO" "Installing system dependencies"
 apt-get update
-if ! apt-get install -y git curl cmake build-essential python3 awscli pkg-config libssl-dev libclang-dev software-properties-common openjdk-17-jre-headless; then
+if ! apt-get install -y git curl cmake m4 build-essential python3 python3-pip python3-venv python3-yaml awscli pkg-config libssl-dev libclang-dev software-properties-common openjdk-17-jre-headless; then
     log_status "ERROR" "Failed to install system dependencies"
     exit 1
 fi
@@ -102,8 +102,23 @@ fi
 
 log_status "INFO" "Using Yardbird commit $(git rev-parse HEAD)"
 
-log_status "INFO" "Building yardbird"
-if ! cargo build --release -p yardbird --no-default-features; then
+# Read the checked-out matrix so pinned revisions use their own solver settings.
+yardbird_features=$(python3 - "$benchmark_config_path" ${matrix_name} <<'PYTHON'
+import sys
+import yaml
+
+with open(sys.argv[1]) as config:
+    matrix = yaml.safe_load(config)["parameter_matrices"][sys.argv[2]]
+if "cvc5" in matrix.get("solvers", []):
+    print("cvc5-backend")
+PYTHON
+)
+feature_args=()
+if [ -n "$yardbird_features" ]; then
+    feature_args=(--features "$yardbird_features")
+fi
+log_status "INFO" "Building yardbird with features [$yardbird_features]"
+if ! cargo build --release -p yardbird --no-default-features "${feature_args[@]}"; then
     log_status "ERROR" "Failed to build yardbird binary"
     exit 1
 fi

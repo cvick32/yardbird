@@ -1,0 +1,34 @@
+global:
+  examples_dir: examples/distributed_protocols
+  timeout_seconds: 30
+  retry_count: 1
+  jobs: 1
+  benchmark_limit:
+  sample_seed: 20260923
+  require_array_reads_and_writes: false
+  output_format: json
+  include_patterns: ["**/toy_consensus_epr.encoding.vmt", "**/ticket_lock.encoding.vmt"]
+  exclude_patterns: []
+
+parameter_matrices:
+
+  protocol-cvc5-smoke:
+    depths: [2]
+    solvers: [cvc5]
+    strategies: [abstract]
+    cost_functions: [bmc-cost]
+    egraph_builders: [source-then-full]
+    instantiation_rankers: [prefer-source]
+    candidate_winners_per_group: [16]
+    property_check_modes: [assumptions]
+    instantiation_strategies: [full-unroll]
+    auxiliary_synthesis:
+      trigger: off
+      guard_policy: "true"
+
+individual_configs: []
+
+output:
+  include_metadata: true
+  pretty_json: false
+  timestamp_format: "%Y%m%d_%H%M%S"
