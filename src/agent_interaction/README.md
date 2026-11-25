@@ -13,9 +13,9 @@ use [one-shot mode](#one-shot-instantiation). Each async `instantiate` binding
 accepts a pinned term ID or a ground SMT-LIB term over the pinned declarations.
 A proposal can mix both forms.
 
-For a paired async experiment, `--agent-start-model N --agent-stall-secs 0`
+For a paired async experiment, `--agent-start-model N`
 starts advice at the first eligible SAT boundary at or after model N.
-Add `--agent-binder-context` to show source quantifiers, original slot names,
+Async snapshots include source quantifiers, original slot names,
 action names where indexed, ground capture tuples, and bindings recovered from
 installed ordinary and witness instances. Witness entries link to the same source context.
 
@@ -32,7 +32,7 @@ Uses `BEDROCK_API_KEY` from the environment or `.env` and the bundled
 [Bedrock configuration](bedrock-config.json). Calls are paid; there is no default
 call or dollar cap. Set `--agent-max-calls N` to limit calls.
 
-By default, advice starts after five seconds at an unresolved depth. Yardbird
+By default, advice starts at the first eligible SAT boundary. Yardbird
 checks for requests and replies at SAT boundaries, so long solver/search steps
 can delay dispatch. Native search continues while the model responds. Hints are
 validated against the current state before entering normal selection and
@@ -42,15 +42,14 @@ installation; the agent cannot stop the verifier or declare success.
 
 | Flag | Use |
 | --- | --- |
-| `--agent-stall-secs N` | Change the five-second threshold; 0 starts immediately. |
+| `--agent-stall-secs N` | Wait N seconds at an unresolved depth before requesting advice (default 0). |
 | `--agent-trigger adaptive` | Ask the LLM whether to keep searching or offer hints. These assessments also count as paid calls. |
 | `--agent-timeout-secs N` | Set the timeout for each provider call. |
 | `--agent-config FILE` | Override the bundled provider configuration. |
 | `--agent-log FILE` | Choose a new log file; existing files are never overwritten. |
 | `--agent-dry-run` | Capture the first eligible request without calling Bedrock, then continue native search. |
 
-For an immediate offline capture, combine `--agent-dry-run` with
-`--agent-stall-secs 0`. Use `--help` for other limits.
+For an immediate offline capture, use `--agent-dry-run`. Use `--help` for other limits.
 
 ### Results and comparisons
 

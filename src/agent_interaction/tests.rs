@@ -196,7 +196,7 @@ fn exact_command_defaults_resolve_embedded_config_and_unique_logs() {
         "bedrock",
     ])
     .unwrap();
-    assert_eq!(run.agent.agent_stall_secs, 5);
+    assert_eq!(run.agent.agent_stall_secs, 0);
     assert_eq!(run.agent.agent_max_calls, 0);
     assert_eq!(run.agent.agent_start_depth, 0);
     assert_eq!(run.agent.agent_trigger, AgentTrigger::Stall);
@@ -227,7 +227,11 @@ fn exact_command_defaults_resolve_embedded_config_and_unique_logs() {
 
 #[test]
 fn stall_timer_survives_same_depth_setup_and_resets_on_depth_change_and_yield() {
-    let mut agent = Agent::new(Default::default(), None, None, String::new()).unwrap();
+    let options = AgentOptions {
+        agent_stall_secs: 5,
+        ..Default::default()
+    };
+    let mut agent = Agent::new(options, None, None, String::new()).unwrap();
     agent.enter_depth(0);
     assert!(!agent.stall_elapsed());
     agent.depth = Some((0, Instant::now() - Duration::from_secs(6)));
@@ -242,7 +246,7 @@ fn stall_timer_survives_same_depth_setup_and_resets_on_depth_change_and_yield() 
 }
 
 #[test]
-fn fast_native_completion_never_contacts_provider_with_default_threshold() {
+fn fast_native_completion_never_contacts_provider_with_a_positive_threshold() {
     let root = tempfile::tempdir().unwrap();
     let result = run_fake_options(
         root.path(),
@@ -250,7 +254,10 @@ fn fast_native_completion_never_contacts_provider_with_default_threshold() {
         8,
         0,
         Arc::new(AtomicUsize::new(0)),
-        AgentOptions::default(),
+        AgentOptions {
+            agent_stall_secs: 5,
+            ..Default::default()
+        },
     );
     assert_eq!(
         result.run_progress.unwrap().deepest_completed_depth,

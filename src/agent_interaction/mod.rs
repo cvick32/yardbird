@@ -62,7 +62,7 @@ impl Pinned {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("unknown context section {section}"))
     }
-    fn view(&self, binders: Option<binders::BinderContext>) -> Value {
+    fn view(&self, binders: binders::BinderContext) -> Value {
         let mut state = self.snapshot.state();
         let directory: Vec<_> = state
             .as_object()
@@ -81,10 +81,7 @@ impl Pinned {
             .iter()
             .map(|s| json!({"id":s.id,"name":s.name(),"slots":s.slots}))
             .collect::<Vec<_>>());
-        if let Some(binders) = binders {
-            binders.annotate(&self.snapshot, &mut state["axioms"]);
-            state["binder_context_format"] = json!("capture_slot_names and variable_slot_names follow numeric slot order. Each ground_capture_tuples row gives the capture arguments of one observed helper application in SMT-LIB. Each installed_relative_tuples row gives the captures followed by the bound variables of an already installed ordinary instance, in relative frames (+K); null means the formula omits the variable. installed_witness_relative_tuples gives the same columns for installed witness instances, including the constructed witness terms. A witness entry shares its instance entry's source context and accepts only its listed slots.");
-        }
+        binders.annotate(&self.snapshot, &mut state);
         let records: Vec<_> = self
             .records
             .values()
@@ -103,7 +100,7 @@ struct Episode {
 }
 
 struct Capture {
-    binder_actions: Option<binders::BinderActions>,
+    binder_actions: binders::BinderActions,
     input: SnapshotInput,
     trace: Option<TraceInput>,
     source: Arc<str>,
@@ -114,10 +111,7 @@ struct Capture {
 impl Capture {
     fn render(self, episode: &mut Episode, log: &EventLog) -> anyhow::Result<Value> {
         let epoch = format!("e{}", self.model);
-        let binders = self
-            .binder_actions
-            .map(|actions| binders::BinderContext::new(&self.input, actions))
-            .transpose()?;
+        let binders = binders::BinderContext::new(&self.input, self.binder_actions)?;
         let mut snapshot = episode
             .catalogue
             .restore_terms(InstantiationSnapshot::from_input(self.input, &self.source)?)?;
@@ -361,10 +355,7 @@ impl Agent {
             .map(|index| {
                 TraceInput::collect(index.clone(), context, self.options.agent_trace_work)
             });
-        let binder_actions = self
-            .options
-            .agent_binder_context
-            .then(|| binders::action_names(index));
+        let binder_actions = binders::action_names(index);
         let elapsed = start.elapsed().as_secs_f64();
         self.last_capture = Some(Instant::now());
         self.snapshots += 1;

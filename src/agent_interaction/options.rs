@@ -79,7 +79,7 @@ pub struct AgentOptions {
     #[arg(long, value_enum, default_value = "stall", requires = "agent")]
     pub agent_trigger: AgentTrigger,
     /// Unresolved-depth seconds before advice; resets after yield. Ignored in adaptive mode.
-    #[arg(long, default_value_t = 5, requires = "agent")]
+    #[arg(long, default_value_t = AgentOptions::default().agent_stall_secs, requires = "agent")]
     pub agent_stall_secs: u64,
     /// Minimum milliseconds between new snapshot episodes.
     #[arg(long, default_value_t = 1000, requires = "agent")]
@@ -96,9 +96,6 @@ pub struct AgentOptions {
     /// Read-only trace work when capturing an agent snapshot; 0 disables tracing.
     #[arg(long, default_value_t = 128, requires = "agent")]
     pub agent_trace_work: usize,
-    /// Include quantifier sources, capture tuples, and installed bindings in async advice.
-    #[arg(long, requires = "agent")]
-    pub agent_binder_context: bool,
     /// Capture/log requests without any provider calls.
     #[arg(long, requires = "agent")]
     pub agent_dry_run: bool,
@@ -115,13 +112,12 @@ impl Default for AgentOptions {
             agent_start_depth: 0,
             agent_start_model: 0,
             agent_trigger: AgentTrigger::Stall,
-            agent_stall_secs: 5,
+            agent_stall_secs: 0,
             agent_interval_ms: 1000,
             agent_max_calls: 0,
             agent_max_request_bytes: 2097152,
             agent_timeout_secs: 120,
             agent_trace_work: 128,
-            agent_binder_context: false,
             agent_dry_run: false,
             agent_log: None,
         }

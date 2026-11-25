@@ -1,4 +1,4 @@
-//! Source and substitution evidence for the async binder-context experiment.
+//! Source and substitution evidence for quantified schemas in async agent snapshots.
 use super::{InstantiationSnapshot, SnapshotInput, TransitionIndex};
 use crate::{
     policy::instantiation::match_schema_slots,
@@ -123,7 +123,11 @@ impl BinderContext {
         Ok(Self(binders))
     }
 
-    pub(super) fn annotate(mut self, snapshot: &InstantiationSnapshot, axioms: &mut Value) {
+    pub(super) fn annotate(mut self, snapshot: &InstantiationSnapshot, state: &mut Value) {
+        if self.0.is_empty() {
+            return;
+        }
+        state["binder_context_format"] = json!("capture_slot_names and variable_slot_names follow numeric slot order. Each ground_capture_tuples row gives the capture arguments of one observed helper application in SMT-LIB. Each installed_relative_tuples row gives the captures followed by the bound variables of an already installed ordinary instance, in relative frames (+K); null means the formula omits the variable. installed_witness_relative_tuples gives the same columns for installed witness instances, including the constructed witness terms. A witness entry shares its instance entry's source context and accepts only its listed slots.");
         for t in &snapshot.terms {
             if let Term::Application {
                 qual_identifier,
@@ -139,7 +143,7 @@ impl BinderContext {
                 }
             }
         }
-        for (entry, schema) in axioms
+        for (entry, schema) in state["axioms"]
             .as_array_mut()
             .unwrap()
             .iter_mut()

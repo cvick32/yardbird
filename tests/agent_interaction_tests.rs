@@ -189,7 +189,6 @@ fn binder_context_keeps_source_names_and_correlated_terms_on_the_wire() {
             "5",
             "--agent-stall-secs",
             "0",
-            "--agent-binder-context",
             "--agent-dry-run",
             "--agent-log",
         ])
