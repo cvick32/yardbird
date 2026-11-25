@@ -169,6 +169,8 @@ struct SuiteMetadata {
 
 #[derive(Debug, Serialize)]
 struct StrategyResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options_json: Option<serde_json::Value>,
     theory: String,
     api_usage: api_usage::ApiUsage,
     run_name: String,
@@ -291,6 +293,8 @@ fn parse_yardbird_output(success: bool, stdout: &str, stderr: &str) -> Benchmark
 
 #[derive(Debug, Serialize)]
 struct SubprocessOutcome {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options_json: Option<serde_json::Value>,
     result: BenchmarkResult,
     #[serde(skip_serializing_if = "Option::is_none")]
     run_progress: Option<yardbird::RunProgress>,
@@ -306,6 +310,7 @@ impl From<BenchmarkResult> for SubprocessOutcome {
             _ => None,
         };
         Self {
+            options_json: None,
             result,
             run_progress,
         }
@@ -344,15 +349,17 @@ fn write_options_json(
     options: &YardbirdOptions,
     progress_path: &Path,
     directory: &Path,
-) -> std::io::Result<PathBuf> {
+) -> std::io::Result<(PathBuf, serde_json::Value)> {
     let mut options = options.clone();
     options.progress_file = Some(progress_path.to_path_buf());
     let path = directory.join("options.json");
-    fs::write(
-        &path,
-        serde_json::to_vec(&options).expect("YardbirdOptions always serializes"),
-    )?;
-    Ok(path)
+    let mut payload = serde_json::to_value(&options)?;
+    fs::write(&path, serde_json::to_vec(&payload)?)?;
+    // Benchmark results may be shared. Only the private launch file needs the database URL.
+    if options.database_url.is_some() {
+        payload["database_url"] = serde_json::Value::String("[redacted]".into());
+    }
+    Ok((path, payload))
 }
 
 fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> SubprocessOutcome {
@@ -380,15 +387,18 @@ fn run_yardbird_subprocess(options: &YardbirdOptions, timeout: Duration) -> Subp
         }
     };
     let progress_path = directory.path().join("progress.json");
-    let options_path = match write_options_json(options, &progress_path, directory.path()) {
-        Ok(path) => path,
-        Err(error) => {
-            return BenchmarkResult::Error(format!("Cannot write options JSON: {error}")).into()
-        }
-    };
+    let (options_path, options_json) =
+        match write_options_json(options, &progress_path, directory.path()) {
+            Ok(path) => path,
+            Err(error) => {
+                return BenchmarkResult::Error(format!("Cannot write options JSON: {error}")).into()
+            }
+        };
     let mut command = Command::new(&yardbird_bin);
     command.arg("--options-json").arg(&options_path);
-    run_command_with_timeout(&mut command, timeout, Some(&progress_path))
+    let mut outcome = run_command_with_timeout(&mut command, timeout, Some(&progress_path));
+    outcome.options_json = Some(options_json);
+    outcome
 }
 
 fn run_command_with_timeout(
@@ -447,6 +457,7 @@ fn run_command_with_timeout(
                             progress
                         });
                     return SubprocessOutcome {
+                        options_json: None,
                         result: BenchmarkResult::Timeout(timeout.as_millis()),
                         run_progress,
                     };
@@ -466,10 +477,12 @@ fn run_single(
     retry: usize,
     timeout: u64,
 ) -> anyhow::Result<StrategyResult> {
+    let guidance = options.resolve_guidance()?;
     options.validate_ranker_options()?;
     options.validate_guarded_read_updates()?;
     let auxiliary_synthesis = options.build_aux_synthesis_config();
 
+    let mut options_json = None;
     let mut status_code = None;
     let mut run_time = Duration::default();
     let mut run_progress = None;
@@ -493,6 +506,7 @@ fn run_single(
 
         // Run yardbird in subprocess with timeout
         let outcome = run_yardbird_subprocess(&options, Duration::from_secs(timeout));
+        options_json = outcome.options_json;
         run_progress = outcome.run_progress;
         status_code = Some(outcome.result);
 
@@ -547,8 +561,8 @@ fn run_single(
             let mut api_usage = api_usage::summarize(accounting_log);
             api_usage.dry_run |= is_guided(options.policy)
                 && (options.decision_model.jev_dry_run || options.llm.llm_dry_run);
-            let guided = options.policy.filter(|p| p.uses_countermodel_guidance());
             Ok(StrategyResult {
+                options_json,
                 theory: options.theory.to_string(),
                 api_usage,
                 run_name: String::new(),
@@ -558,15 +572,10 @@ fn run_single(
                 random: options.random.clone(),
                 policy: options.policy,
                 prefer_axioms: options.prefer_axioms,
-                guidance_work: guided.map(|p| p.guidance_work(&options)),
-                guidance_transition_order: guided.map(|_| {
-                    options.guidance_transition_order.unwrap_or(
-                        yardbird::policy::effort::GuidanceTransitionOrder::PredecessorFirst,
-                    )
-                }),
-                guidance_action_requirements: guided
-                    .map(|p| p.guidance_action_requirements(&options)),
-                guidance_schedule: guided.map(|_| options.guidance_schedule),
+                guidance_work: guidance.map(|g| g.work),
+                guidance_transition_order: guidance.map(|g| g.transition_order),
+                guidance_action_requirements: guidance.map(|g| g.action_requirements),
+                guidance_schedule: guidance.map(|g| g.schedule),
                 solver: options.solver,
                 strategy: options.strategy,
                 result,
@@ -897,7 +906,7 @@ fn configured_yardbird_options(
         llm: run.llm.clone(),
         random,
         prefer_axioms: run.prefer_axioms,
-        guidance_schedule: run.guidance_schedule.unwrap_or_default(),
+        guidance_schedule: run.guidance_schedule,
         guidance_work: run.guidance_work,
         guidance_transition_order: run.guidance_transition_order,
         guidance_action_requirements: run.guidance_action_requirements,
@@ -1144,7 +1153,7 @@ mod tests {
                 let options =
                     super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
                 let directory = tempfile::tempdir().unwrap();
-                let path = write_options_json(
+                let (path, _) = write_options_json(
                     &options,
                     &directory.path().join("progress.json"),
                     directory.path(),
@@ -1339,7 +1348,7 @@ individual_configs:
     fn named_policy_config_reaches_subprocess_options() {
         for (policy, schedule) in [
             ("german-fast", None),
-            ("protocol-best", None),
+            ("countermodel-guided", None),
             ("countermodel-guided", Some("immediate")),
             ("countermodel-guided", Some("supplement")),
         ] {
@@ -1367,7 +1376,7 @@ individual_configs:
                     let options =
                         super::configured_yardbird_options("input.vmt", &run, &garden, &None, None);
                     let directory = tempfile::tempdir().unwrap();
-                    let path = write_options_json(
+                    let (path, _) = write_options_json(
                         &options,
                         &directory.path().join("progress.json"),
                         directory.path(),
@@ -1395,11 +1404,7 @@ individual_configs:
                     );
                     assert_eq!(
                         written.guidance_schedule,
-                        if schedule == Some("supplement") {
-                            yardbird::policy::effort::GuidanceSchedule::Supplement
-                        } else {
-                            yardbird::policy::effort::GuidanceSchedule::Immediate
-                        }
+                        schedule.map(|value| <yardbird::policy::effort::GuidanceSchedule as clap::ValueEnum>::from_str(value, false).unwrap())
                     );
                 }
             }
@@ -1423,7 +1428,7 @@ individual_configs:
             let options =
                 super::configured_yardbird_options("input.vmt", run, &garden, &None, None);
             let directory = tempfile::tempdir().unwrap();
-            let path = write_options_json(
+            let (path, _) = write_options_json(
                 &options,
                 &directory.path().join("progress.json"),
                 directory.path(),
@@ -1471,11 +1476,12 @@ individual_configs:
         // A named policy isn't special-cased here (unlike CLI flags, JSON
         // never goes through `--policy`'s `conflicts_with_all`).
         options.policy = Some(yardbird::policy::NamedPolicy::CountermodelGuided);
-        options.guidance_schedule = yardbird::policy::effort::GuidanceSchedule::Supplement;
+        options.guidance_schedule = Some(yardbird::policy::effort::GuidanceSchedule::Supplement);
 
         let directory = tempfile::tempdir().unwrap();
         let progress_path = directory.path().join("progress.json");
-        let options_path = write_options_json(&options, &progress_path, directory.path()).unwrap();
+        let (options_path, _) =
+            write_options_json(&options, &progress_path, directory.path()).unwrap();
         let written: YardbirdOptions =
             serde_json::from_str(&fs::read_to_string(&options_path).unwrap()).unwrap();
 
@@ -1500,7 +1506,7 @@ individual_configs:
         );
         assert_eq!(
             written.guidance_schedule,
-            yardbird::policy::effort::GuidanceSchedule::Supplement
+            Some(yardbird::policy::effort::GuidanceSchedule::Supplement)
         );
     }
 

@@ -116,7 +116,7 @@ pub struct ParameterMatrix {
     /// Named policy; its fixed choices take precedence over individual settings.
     #[serde(default, with = "optional_value_enum")]
     pub policy: Option<NamedPolicy>,
-    /// For countermodel-guided and protocol-best; omitted means immediate.
+    /// Only valid for countermodel-guided; omitted means immediate.
     #[serde(default, with = "optional_value_enum")]
     pub guidance_schedule: Option<GuidanceSchedule>,
     #[serde(default)]
@@ -218,7 +218,7 @@ pub struct IndividualConfig {
     /// Named policy; its fixed choices take precedence over individual settings.
     #[serde(default, with = "optional_value_enum")]
     pub policy: Option<NamedPolicy>,
-    /// For countermodel-guided and protocol-best; omitted means immediate.
+    /// Only valid for countermodel-guided; omitted means immediate.
     #[serde(default, with = "optional_value_enum")]
     pub guidance_schedule: Option<GuidanceSchedule>,
     #[serde(default)]
@@ -465,11 +465,6 @@ impl BenchmarkConfig {
 
         runs.sort_by(|a, b| a.name.cmp(&b.name));
         for run in &runs {
-            anyhow::ensure!(
-                run.guidance_schedule.is_none() || run.policy.is_some_and(NamedPolicy::uses_countermodel_guidance),
-                "Invalid benchmark configuration {}: guidance_schedule requires policy: countermodel-guided or protocol-best",
-                run.name,
-            );
             let options = YardbirdOptions {
                 // Garden discovers VMT inputs; validate policy compatibility before running them.
                 filename: Some("benchmark.vmt".into()),
@@ -477,6 +472,7 @@ impl BenchmarkConfig {
                 theory: run.theory.clone(),
                 no_guided_fallback: run.no_guided_fallback,
                 prefer_axioms: run.prefer_axioms,
+                guidance_schedule: run.guidance_schedule,
                 guidance_work: run.guidance_work,
                 guidance_transition_order: run.guidance_transition_order,
                 guidance_action_requirements: run.guidance_action_requirements,

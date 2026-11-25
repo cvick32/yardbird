@@ -242,8 +242,9 @@ pub struct YardbirdOptions {
     /// Return after guided candidates, or supplement them with bounded
     /// dependency search. Only meaningful with `--policy countermodel-guided`;
     /// see `NamedPolicy::build_plan`.
-    #[arg(long, value_enum, default_value_t = policy::effort::GuidanceSchedule::Immediate, requires = "policy")]
-    pub guidance_schedule: policy::effort::GuidanceSchedule,
+    #[arg(long, value_enum, requires = "policy")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guidance_schedule: Option<policy::effort::GuidanceSchedule>,
 
     /// Work per guided refinement trace (default: 1024). Requires
     /// --policy countermodel-guided; independent of diagnostic tracing.
@@ -395,7 +396,7 @@ impl Default for YardbirdOptions {
             verbose: false,
             profile: false,
             countermodel_trace_work: 0,
-            guidance_schedule: policy::effort::GuidanceSchedule::Immediate,
+            guidance_schedule: None,
             guidance_work: None,
             guided_exact_grounding: false,
             guided_read_frontiers: false,
@@ -543,7 +544,14 @@ impl YardbirdOptions {
         let parse = || -> anyhow::Result<Self> {
             let mut options: serde_json::Value = serde_json::from_str(&json)?;
             agent_interaction::migrate_saved_options(&mut options)?;
-            Ok(serde_json::from_value(options)?)
+            let mut run: Self = serde_json::from_value(options)?;
+            // Older options files always wrote Immediate, even for unguided runs.
+            if run.policy != Some(policy::NamedPolicy::CountermodelGuided)
+                && run.guidance_schedule == Some(policy::effort::GuidanceSchedule::Immediate)
+            {
+                run.guidance_schedule = None;
+            }
+            Ok(run)
         };
         parse().with_context(|| format!("parsing --options-json {}", path.display()))
     }
@@ -614,9 +622,9 @@ impl YardbirdOptions {
 
     /// Reject unsupported counter-model tracing modes instead of silently ignoring the option.
     pub fn validate_countermodel_trace_options(&self) -> anyhow::Result<()> {
+        let guided = self.resolve_guidance()?.is_some();
         anyhow::ensure!(
-            !self.split_property_checks
-                || matches!(self.policy, Some(policy::NamedPolicy::CountermodelGuided)),
+            !self.split_property_checks || guided,
             "--split-property-checks requires --policy countermodel-guided"
         );
         anyhow::ensure!(
@@ -624,35 +632,18 @@ impl YardbirdOptions {
             "--proved-property-instance-limit requires --reuse-proved-properties"
         );
         anyhow::ensure!(
-            !self.guided_read_support
-                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            !self.guided_read_support || guided,
             "--guided-read-support requires --policy countermodel-guided"
         );
         anyhow::ensure!(
-            !self.guided_read_frontiers
-                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            !self.guided_read_frontiers || guided,
             "--guided-read-frontiers requires --policy countermodel-guided"
         );
         anyhow::ensure!(
-            !self.guided_exact_grounding
-                || self.policy == Some(policy::NamedPolicy::CountermodelGuided),
+            !self.guided_exact_grounding || guided,
             "--guided-exact-grounding requires --policy countermodel-guided"
         );
-        if self.guidance_transition_order.is_some() || self.guidance_action_requirements.is_some() {
-            anyhow::ensure!(
-                self.policy == Some(policy::NamedPolicy::CountermodelGuided),
-                "guidance transition order and action requirements require --policy countermodel-guided"
-            );
-        }
-        if let Some(work) = self.guidance_work {
-            anyhow::ensure!(
-                self.policy == Some(policy::NamedPolicy::CountermodelGuided) && work > 0,
-                "--guidance-work requires --policy countermodel-guided and a positive work limit"
-            );
-        }
-        if self.countermodel_trace_work > 0
-            || self.policy == Some(policy::NamedPolicy::CountermodelGuided)
-        {
+        if self.countermodel_trace_work > 0 || guided {
             anyhow::ensure!(
                 matches!(self.strategy, Strategy::Abstract) || self.policy.is_some(),
                 "counter-model tracing currently requires the abstract strategy"
@@ -1234,6 +1225,21 @@ mod option_tests {
     }
 
     #[test]
+    fn old_unguided_options_can_replay_the_former_schedule_default() {
+        let mut saved = serde_json::to_value(YardbirdOptions::default()).unwrap();
+        saved["guidance_schedule"] = serde_json::json!("Immediate");
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), saved.to_string()).unwrap();
+        let loaded = YardbirdOptions {
+            options_json: Some(file.path().into()),
+            ..Default::default()
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(loaded.resolve_guidance().unwrap(), None);
+    }
+
+    #[test]
     fn resolve_preserves_agent_settings_from_older_runs() {
         let mut saved = serde_json::to_value(YardbirdOptions::default()).unwrap();
         saved["agent"] =
@@ -1306,7 +1312,7 @@ mod option_tests {
         .unwrap();
         assert_eq!(
             options.guidance_schedule,
-            policy::effort::GuidanceSchedule::Supplement
+            Some(policy::effort::GuidanceSchedule::Supplement)
         );
     }
 

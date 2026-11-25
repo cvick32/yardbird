@@ -51,6 +51,51 @@ pub enum NamedPolicy {
     RandomInstantiation,
 }
 
+/// Effective settings for countermodel-guided search, after applying run overrides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResolvedGuidance {
+    pub schedule: effort::GuidanceSchedule,
+    pub work: usize,
+    pub transition_order: effort::GuidanceTransitionOrder,
+    pub action_requirements: effort::ActionRequirementGuidance,
+}
+
+impl ResolvedGuidance {
+    fn countermodel_guided(run: &crate::YardbirdOptions) -> Self {
+        Self {
+            schedule: run.guidance_schedule.unwrap_or_default(),
+            work: run.guidance_work.unwrap_or(1024),
+            transition_order: run
+                .guidance_transition_order
+                .unwrap_or(effort::GuidanceTransitionOrder::PredecessorFirst),
+            action_requirements: run
+                .guidance_action_requirements
+                .unwrap_or(effort::ActionRequirementGuidance::WhenUnproductive),
+        }
+    }
+}
+
+impl crate::YardbirdOptions {
+    pub fn resolve_guidance(&self) -> anyhow::Result<Option<ResolvedGuidance>> {
+        if self.policy == Some(NamedPolicy::CountermodelGuided) {
+            let guidance = ResolvedGuidance::countermodel_guided(self);
+            anyhow::ensure!(
+                guidance.work > 0,
+                "--guidance-work requires a positive work limit"
+            );
+            return Ok(Some(guidance));
+        }
+        anyhow::ensure!(
+            self.guidance_schedule.is_none()
+                && self.guidance_work.is_none()
+                && self.guidance_transition_order.is_none()
+                && self.guidance_action_requirements.is_none(),
+            "guidance overrides require --policy countermodel-guided"
+        );
+        Ok(None)
+    }
+}
+
 impl NamedPolicy {
     pub fn uses_llm(self) -> bool {
         matches!(self, Self::Llm | Self::SymbolicLlm)
@@ -103,7 +148,8 @@ fn run_german_fast(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
 }
 
 fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPlan {
-    let followup = (run.guidance_schedule == effort::GuidanceSchedule::Supplement).then_some(
+    let guidance = ResolvedGuidance::countermodel_guided(run);
+    let followup = (guidance.schedule == effort::GuidanceSchedule::Supplement).then_some(
         effort::WorkAllowance {
             winners: 20,
             dependency_work: 128,
@@ -117,14 +163,10 @@ fn run_countermodel_guided(run: &crate::YardbirdOptions) -> crate::ArrayProofPla
     let ordinary = DefaultEffort::default()
         .with_prefer_axioms(run.prefer_axioms)
         .with_countermodel_refinement(true)
-        .with_guidance_work(run.guidance_work.unwrap_or(1024))
+        .with_guidance_work(guidance.work)
         .with_allowance(effort::WorkAllowance {
-            guidance_action_requirements: run
-                .guidance_action_requirements
-                .unwrap_or(effort::ActionRequirementGuidance::WhenUnproductive),
-            guidance_transition_order: run
-                .guidance_transition_order
-                .unwrap_or(effort::GuidanceTransitionOrder::PredecessorFirst),
+            guidance_action_requirements: guidance.action_requirements,
+            guidance_transition_order: guidance.transition_order,
             ..Default::default()
         })
         .with_guidance_followup(followup)
@@ -296,7 +338,7 @@ mod tests {
             let mut run = crate::YardbirdOptions::from_filename("guided.vmt".into());
             run.depth = 1;
             run.profile = true;
-            run.guidance_schedule = schedule;
+            run.guidance_schedule = Some(schedule);
             run.guidance_work = (schedule == effort::GuidanceSchedule::Supplement).then_some(4096);
             if schedule == effort::GuidanceSchedule::Supplement {
                 run.guidance_transition_order = Some(effort::GuidanceTransitionOrder::CurrentFirst);
