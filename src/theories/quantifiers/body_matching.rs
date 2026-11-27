@@ -644,11 +644,11 @@ mod tests {
                 "(=> (support chosen current) (some current))"
             );
             let oracle = z3::Solver::new();
-            oracle.from_string(format!("(declare-fun edge (Int Int) Bool) (declare-fun holds (Int Int Int) Bool)
+            oracle.load_smtlib2(format!("(declare-fun edge (Int Int) Bool) (declare-fun holds (Int Int Int) Bool)
                 (declare-const chosen Int) (declare-const current Int)
                 (define-fun support ((c Int) (a Int)) Bool (forall ((n Int)) (=> (edge n c) (holds a n c))))
                 (define-fun some ((a Int)) Bool (exists ((q Int)) (support q a)))
-                (assert (not {}))", instance.term));
+                (assert (not {}))", instance.term)).unwrap();
             assert_eq!(oracle.check(), z3::SatResult::Unsat);
         }
         let mut agenda = BodyAgenda::default();

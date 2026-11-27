@@ -459,7 +459,9 @@ mod tests {
             .join("\n");
         for seed in seeds {
             let solver = z3::Solver::new();
-            solver.from_string(format!("{declarations}\n(assert (not {}))", seed.term));
+            solver
+                .load_smtlib2(format!("{declarations}\n(assert (not {}))", seed.term))
+                .unwrap();
             assert_eq!(
                 solver.check(),
                 z3::SatResult::Unsat,

@@ -253,9 +253,11 @@ fn direct_store_hit_and_constant_array_expose_sound_blocking_lemmas() {
             .replace("Write_Int_Int", "store")
             .replace("ConstArr_Int_Int", "(as const (Array Int Int))");
         let solver = z3::Solver::new();
-        solver.from_string(format!(
-            "(declare-const a@0 (Array Int Int)) (assert (not {formula}))"
-        ));
+        solver
+            .load_smtlib2(format!(
+                "(declare-const a@0 (Array Int Int)) (assert (not {formula}))"
+            ))
+            .unwrap();
         assert_eq!(solver.check(), z3::SatResult::Unsat);
     }
 }
@@ -2206,9 +2208,10 @@ fn prerequisite_fixtures_have_equivalent_observable_transitions() {
         let solver = z3::Solver::new();
         let mut params = z3::Params::new();
         params.set_u32("timeout", 5000);
-        solver.set_params(&params);
-        solver.from_string(format!(
-            r#"
+        solver.set_params(&params).unwrap();
+        solver
+            .load_smtlib2(format!(
+                r#"
           (declare-const enabled (Array Int Bool))
           (declare-const enabled_next (Array Int Bool))
           (declare-const data (Array Int Int))
@@ -2219,8 +2222,9 @@ fn prerequisite_fixtures_have_equivalent_observable_transitions() {
           (assert (= write {write})) (assert (= idle {idle}))
           (assert (xor {} {expected}))
         "#,
-            explicit.get_trans_condition_for_yardbird()
-        ));
+                explicit.get_trans_condition_for_yardbird()
+            ))
+            .unwrap();
         assert_eq!(solver.check(), z3::SatResult::Unsat);
     }
 }

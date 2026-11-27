@@ -633,11 +633,11 @@ mod tests {
         // An independent quantified oracle checks the actual emitted lemmas,
         // including their helper guards, without assuming the root is true.
         let solver = z3::Solver::new();
-        solver.from_string(format!("(declare-fun at (Int Int Int) Bool) (declare-fun p (Int Int) Bool)
+        solver.load_smtlib2(format!("(declare-fun at (Int Int Int) Bool) (declare-fun p (Int Int) Bool)
             (define-fun inner ((a Int) (b Int) (i Int)) Bool (forall ((y Int)) (= (at b i y) (or (at a i y) (p i y)))))
             (define-fun outer ((a Int) (b Int)) Bool (forall ((x Int)) (inner a b x)))
             (declare-const old@0 Int) (declare-const new@1 Int)
-            (assert (not (and {} {})))", instances[0].term, instances[1].term));
+            (assert (not (and {} {})))", instances[0].term, instances[1].term)).unwrap();
         assert_eq!(solver.check(), z3::SatResult::Unsat);
         for term in [
             "(at new@2 4 9)",

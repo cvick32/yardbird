@@ -276,7 +276,7 @@ mod tests {
                     .replace(&format!("Read_{is}_{vs}"), "select")
                     .replace(&format!("Write_{is}_{vs}"), "store");
                 let solver = z3::Solver::new();
-                solver.from_string(format!("(declare-const a (Array {is} {vs})) (declare-const i {is}) (declare-const j {is}) (declare-const v {vs}) (declare-const w {vs}) (assert (not {formula}))"));
+                solver.load_smtlib2(format!("(declare-const a (Array {is} {vs})) (declare-const i {is}) (declare-const j {is}) (declare-const v {vs}) (declare-const w {vs}) (assert (not {formula}))")).unwrap();
                 assert_eq!(solver.check(), z3::SatResult::Unsat, "{formula}");
             }
             assert_eq!((count, complete), (4, 2));

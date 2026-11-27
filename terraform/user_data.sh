@@ -28,10 +28,10 @@ if ! apt-get install -y git curl cmake m4 build-essential python3 python3-pip py
     exit 1
 fi
 
-# Z3 4.16 uses the C++20 <format> header, which is unavailable in the GCC 11
+# Z3 5.4.1 uses the C++20 <format> header, which is unavailable in the GCC 11
 # toolchain shipped by Ubuntu 22.04. Install GCC 13 before compiling the
 # vendored Z3 source selected in Cargo.toml.
-log_status "INFO" "Installing GCC 13 for Z3 4.16"
+log_status "INFO" "Installing GCC 13 for Z3 5.4.1"
 if ! add-apt-repository -y ppa:ubuntu-toolchain-r/test || \
    ! apt-get update || \
    ! apt-get install -y gcc-13 g++-13; then
@@ -51,6 +51,10 @@ chown -R ubuntu:ubuntu /home/ubuntu
 # Install Rust as ubuntu user
 sudo -u ubuntu bash << 'EOF'
 set -e
+
+# Ubuntu 22.04's system CMake predates Z3's minimum of 3.26.
+python3 -m pip install --user 'cmake==3.31.6'
+export PATH="$HOME/.local/bin:$PATH"
 
 # Force z3-sys/CMake to use a compiler with C++20 <format> support.
 export CC=gcc-13

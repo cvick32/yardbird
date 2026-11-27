@@ -40,11 +40,9 @@ impl ModelExt for z3::Model {
                     let value = entry.get_value().to_string();
                     b.push_str(&format!("{function_call} -> {value}\n"));
                 }
-                b.push_str(&format!(
-                    "{} else -> {}\n",
-                    func_decl.name(),
-                    interpretation.get_else()
-                ))
+                if let Some(default) = interpretation.get_else() {
+                    b.push_str(&format!("{} else -> {default}\n", func_decl.name()));
+                }
             }
         }
         // let model_string = format!("{model}");

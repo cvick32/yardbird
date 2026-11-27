@@ -49,8 +49,8 @@ clap = { version = "4.5.20" }
 serde = "1.0.215"
 serde_json = "1.0.133"
 smt2parser = { path = "./smt2parser", version = "0.6.1" }
-cvc5 = { version = "0.4", features = ["static"] }
-z3 = { version = "0.20.0", features = ["z3_4_16", "vendored"] }
+cvc5 = { version = "0.6.1", features = ["static"] }
+z3 = { version = "0.25", features = ["vendored"] }
 
 [dev-dependencies]
 insta = "1.41.1"
@@ -70,3 +70,6 @@ inherits = "release"
 lto = "off"
 codegen-units = 16
 incremental = true
+# The published bindings still build native cvc5 1.4.0 in static mode.
+[patch.crates-io]
+cvc5-sys = { path = "vendor/cvc5-sys" }

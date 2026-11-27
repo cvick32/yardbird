@@ -929,11 +929,13 @@ mod tests {
             assert!(!updates.is_empty());
             for update in updates {
                 let solver = z3::Solver::new();
-                solver.from_string(format!(
-                    "{declarations} (assert {}) (assert (not {}))",
-                    concrete(transition.to_string()),
-                    concrete(update.to_string())
-                ));
+                solver
+                    .load_smtlib2(format!(
+                        "{declarations} (assert {}) (assert (not {}))",
+                        concrete(transition.to_string()),
+                        concrete(update.to_string())
+                    ))
+                    .unwrap();
                 assert_eq!(
                     solver.check(),
                     z3::SatResult::Unsat,
@@ -954,20 +956,24 @@ mod tests {
             (declare-const active Bool) (declare-const i Int) (declare-const j Int)";
         for update in guarded_read_updates(&transition, &property, &HashMap::new()) {
             let solver = z3::Solver::new();
-            solver.from_string(format!(
-                "{declarations} (assert {}) (assert (not {}))",
-                transition.to_string().replace("Write_Int_Bool", "store"),
-                update.to_string().replace("Read_Int_Bool", "select")
-            ));
+            solver
+                .load_smtlib2(format!(
+                    "{declarations} (assert {}) (assert (not {}))",
+                    transition.to_string().replace("Write_Int_Bool", "store"),
+                    update.to_string().replace("Read_Int_Bool", "select")
+                ))
+                .unwrap();
             assert_eq!(solver.check(), z3::SatResult::Unsat);
         }
         // An inactive write must not constrain the next array at all.
         let solver = z3::Solver::new();
-        solver.from_string(format!(
-            "{declarations} (assert (not active))
+        solver
+            .load_smtlib2(format!(
+                "{declarations} (assert (not active))
             (assert {}) (assert (not (select a_next i)))",
-            transition.to_string().replace("Write_Int_Bool", "store")
-        ));
+                transition.to_string().replace("Write_Int_Bool", "store")
+            ))
+            .unwrap();
         assert_eq!(solver.check(), z3::SatResult::Sat);
     }
 }

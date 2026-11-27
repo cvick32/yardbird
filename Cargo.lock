@@ -456,18 +456,16 @@ dependencies = [
 
 [[package]]
 name = "cvc5"
-version = "0.4.1"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f22c3a938d869888a5c8dddfe0a3a0fd363bd52856a3f247188406aafbece18a"
+checksum = "f8e648879be7ca252763a818c3e3027454c9fa39a28f2b4540e9276b959226de"
 dependencies = [
  "cvc5-sys",
 ]
 
 [[package]]
 name = "cvc5-sys"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50657ca9a4b442cee3d233eb9b7df6cb60eb7d5a9145eb4d98a9ffd7e55995bd"
+version = "0.6.1"
 dependencies = [
  "bindgen",
  "cc",
@@ -3555,9 +3553,9 @@ dependencies = [
 
 [[package]]
 name = "z3"
-version = "0.20.2"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80c4de445f5c9e3013703a6b8a40c80b4a64c925f0a19e7d0a23a7a9b70e854d"
+checksum = "d47e45b1aab2843f823b1a89af6a30d0d0e94f17e10da6cd18bda4f5ba2c0e91"
 dependencies = [
  "log",
  "z3-sys",
@@ -3565,18 +3563,18 @@ dependencies = [
 
 [[package]]
 name = "z3-src"
-version = "416.0.2"
+version = "504.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2af0c6527de39877cf55cb87f233016573eeeb7cf77afdc1469e4b32faef832"
+checksum = "fac5ca92a7c69b2aa3359eff9745299b6c53921abe376c5d2a92353c771d5dde"
 dependencies = [
  "cmake",
 ]
 
 [[package]]
 name = "z3-sys"
-version = "0.11.0"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c18b0a91a13522d21b3414847667de2b2056a721a3edcb5b6ee6858352d58db4"
+checksum = "3c38c58e9de00b081506ec9266daccca60bfb315d0fdd8d709317cc1b835d81c"
 dependencies = [
  "pkg-config",
  "z3-src",

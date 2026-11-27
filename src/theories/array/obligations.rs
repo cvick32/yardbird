@@ -279,7 +279,7 @@ mod tests {
                     .replace("Write_Int_Int", "store")
                     .replace("ConstArr_Int_Int", "(as const (Array Int Int))");
                 let solver = z3::Solver::new();
-                solver.from_string(format!("(declare-const a (Array Int Int)) (declare-const i Int) (declare-const j Int) (declare-const v Int) (assert (not {formula}))"));
+                solver.load_smtlib2(format!("(declare-const a (Array Int Int)) (declare-const i Int) (declare-const j Int) (declare-const v Int) (assert (not {formula}))")).unwrap();
                 assert_eq!(solver.check(), z3::SatResult::Unsat, "{formula}");
             }
         }

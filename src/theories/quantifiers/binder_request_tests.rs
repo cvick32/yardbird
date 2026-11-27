@@ -349,7 +349,7 @@ fn real_paxos_witness_chain_is_grounded_without_matching_and_closes_agreement_br
     ));
     for prefix in 0..=3 {
         let solver = z3::Solver::new();
-        solver.from_string(query.as_str());
+        solver.load_smtlib2(query.as_str()).unwrap();
         assert_eq!(
             solver.get_assertions().len(),
             3 + prefix,

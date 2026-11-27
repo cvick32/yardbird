@@ -116,12 +116,14 @@ mod tests {
         for (_, term) in instances {
             let formula = term.to_string().replace("Read_Int_Int", "select");
             let solver = z3::Solver::new();
-            solver.from_string(format!(
-                "(declare-const a@2 (Array Int Int))
+            solver
+                .load_smtlib2(format!(
+                    "(declare-const a@2 (Array Int Int))
                 (declare-const b@2 (Array Int Int)) (declare-const i@4 Int)
                 (assert (forall ((i Int)) (= (select a@2 i) (select b@2 i))))
                 (assert (not {formula}))"
-            ));
+                ))
+                .unwrap();
             assert_eq!(solver.check(), z3::SatResult::Unsat);
         }
     }

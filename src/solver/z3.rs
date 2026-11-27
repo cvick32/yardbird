@@ -34,7 +34,7 @@ impl Z3SolverBackend {
         let solver = z3::Solver::new_for_logic(logic).ok_or_else(|| {
             anyhow::anyhow!("Z3 does not support the requested SMT logic {logic}")
         })?;
-        configure_z3_solver(&solver);
+        configure_z3_solver(&solver)?;
         Ok(Self {
             z3_var_context: Z3VarContext::new(),
             solver,
@@ -46,7 +46,7 @@ impl Z3SolverBackend {
     }
 }
 
-fn configure_z3_solver(solver: &z3::Solver) {
+fn configure_z3_solver(solver: &z3::Solver) -> anyhow::Result<()> {
     // Yardbird's abstraction is model-driven, so pin the solver seed to keep
     // counterexample models reproducible across runs.
     z3::set_global_param("smt.random_seed", "0");
@@ -54,7 +54,8 @@ fn configure_z3_solver(solver: &z3::Solver) {
 
     let mut params = z3::Params::new();
     params.set_u32("random_seed", 0);
-    solver.set_params(&params);
+    solver.set_params(&params)?;
+    Ok(())
 }
 
 fn join_from_z3_statistics(stats: &mut SolverStatistics, z3_stats: z3::Statistics) {
@@ -71,7 +72,7 @@ impl YardbirdSolver for Z3SolverBackend {
     fn set_timeout_millis(&mut self, timeout: u32) -> anyhow::Result<()> {
         let mut params = z3::Params::new();
         params.set_u32("timeout", timeout);
-        self.solver.set_params(&params);
+        self.solver.set_params(&params)?;
         Ok(())
     }
 
@@ -148,7 +149,9 @@ impl YardbirdSolver for Z3SolverBackend {
     }
 
     fn pop(&mut self, levels: u32) {
-        self.solver.pop(levels);
+        self.solver
+            .pop(levels)
+            .expect("unbalanced Z3 solver scopes");
     }
 
     fn check_sat(&mut self) -> SolverCheckResult {
