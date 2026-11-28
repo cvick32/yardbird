@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, HashMap},
     time::Duration,
 };
@@ -17,31 +18,32 @@ use crate::{
 };
 
 pub struct Cvc5SolverBackend {
-    tm: &'static TermManager,
-    solver: Solver<'static>,
-    sorts: HashMap<String, Sort<'static>>,
-    terms: HashMap<String, Term<'static>>,
-    tracked_labels: Vec<(String, Term<'static>)>,
+    tm: RefCell<TermManager>,
+    solver: Solver,
+    sorts: HashMap<String, Sort>,
+    terms: HashMap<String, Term>,
+    tracked_labels: Vec<(String, Term)>,
     model_value_cache: HashMap<SmtTerm, String>,
     unsat_core_cache: Vec<String>,
     solver_statistics: SolverStatistics,
     last_result: Option<SolverCheckResult>,
+    reason_unknown: Option<String>,
     model_captured: bool,
 }
 
 impl Cvc5SolverBackend {
-    pub(crate) fn new(logic: &str) -> Self {
-        let tm: &'static TermManager = Box::leak(Box::new(TermManager::new()));
-        let mut solver = Solver::new(tm);
-        solver.set_option("produce-models", "true");
-        solver.set_option("produce-unsat-cores", "true");
-        solver.set_option("produce-unsat-assumptions", "true");
-        solver.set_option("incremental", "true");
-        solver.set_option("arrays-exp", "true");
-        solver.set_logic(logic);
+    pub(crate) fn new(logic: &str) -> anyhow::Result<Self> {
+        let tm = TermManager::new();
+        let mut solver = Solver::new(&tm);
+        solver.set_option("produce-models", "true")?;
+        solver.set_option("produce-unsat-cores", "true")?;
+        solver.set_option("produce-unsat-assumptions", "true")?;
+        solver.set_option("incremental", "true")?;
+        solver.set_option("arrays-exp", "true")?;
+        solver.set_logic(logic)?;
 
-        Self {
-            tm,
+        Ok(Self {
+            tm: RefCell::new(tm),
             solver,
             sorts: HashMap::new(),
             terms: HashMap::new(),
@@ -50,11 +52,12 @@ impl Cvc5SolverBackend {
             unsat_core_cache: vec![],
             solver_statistics: SolverStatistics::new(),
             last_result: None,
+            reason_unknown: None,
             model_captured: false,
-        }
+        })
     }
 
-    fn convert_sort(&mut self, sort: &SmtSort) -> anyhow::Result<Sort<'static>> {
+    fn convert_sort(&mut self, sort: &SmtSort) -> anyhow::Result<Sort> {
         match sort {
             SmtSort::Simple { identifier } => self.convert_simple_sort(identifier),
             SmtSort::Parameterized {
@@ -63,7 +66,10 @@ impl Cvc5SolverBackend {
             } if identifier_name(identifier) == "Array" && parameters.len() == 2 => {
                 let index_sort = self.convert_sort(&parameters[0])?;
                 let element_sort = self.convert_sort(&parameters[1])?;
-                Ok(self.tm.mk_array_sort(index_sort, element_sort))
+                Ok(self
+                    .tm
+                    .borrow_mut()
+                    .mk_array_sort(index_sort, element_sort)?)
             }
             SmtSort::Parameterized {
                 identifier,
@@ -78,7 +84,7 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_sort_ref(&self, sort: &SmtSort) -> anyhow::Result<Sort<'static>> {
+    fn convert_sort_ref(&self, sort: &SmtSort) -> anyhow::Result<Sort> {
         match sort {
             SmtSort::Simple { identifier } => self.convert_simple_sort_ref(identifier),
             SmtSort::Parameterized {
@@ -87,7 +93,10 @@ impl Cvc5SolverBackend {
             } if identifier_name(identifier) == "Array" && parameters.len() == 2 => {
                 let index_sort = self.convert_sort_ref(&parameters[0])?;
                 let element_sort = self.convert_sort_ref(&parameters[1])?;
-                Ok(self.tm.mk_array_sort(index_sort, element_sort))
+                Ok(self
+                    .tm
+                    .borrow_mut()
+                    .mk_array_sort(index_sort, element_sort)?)
             }
             SmtSort::Parameterized {
                 identifier,
@@ -102,11 +111,11 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_simple_sort(&mut self, identifier: &Identifier) -> anyhow::Result<Sort<'static>> {
+    fn convert_simple_sort(&mut self, identifier: &Identifier) -> anyhow::Result<Sort> {
         match identifier {
             Identifier::Simple { symbol } => match symbol.0.as_str() {
-                "Bool" => Ok(self.tm.boolean_sort()),
-                "Int" => Ok(self.tm.integer_sort()),
+                "Bool" => Ok(self.tm.borrow_mut().boolean_sort()),
+                "Int" => Ok(self.tm.borrow_mut().integer_sort()),
                 name => {
                     if let Some(sort) = self.sorts.get(name) {
                         Ok(sort.clone())
@@ -119,7 +128,7 @@ impl Cvc5SolverBackend {
             },
             Identifier::Indexed { symbol, indices } if symbol.0 == "BitVec" => {
                 let width = single_numeral_index("BitVec sort", indices)?;
-                Ok(self.tm.mk_bv_sort(width))
+                Ok(self.tm.borrow_mut().mk_bv_sort(width)?)
             }
             Identifier::Indexed { symbol, .. } => {
                 anyhow::bail!("unsupported CVC5 indexed sort: {}", symbol.0)
@@ -127,20 +136,20 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_simple_sort_ref(&self, identifier: &Identifier) -> anyhow::Result<Sort<'static>> {
+    fn convert_simple_sort_ref(&self, identifier: &Identifier) -> anyhow::Result<Sort> {
         match identifier {
             Identifier::Simple { symbol } => match symbol.0.as_str() {
-                "Bool" => Ok(self.tm.boolean_sort()),
-                "Int" => Ok(self.tm.integer_sort()),
+                "Bool" => Ok(self.tm.borrow_mut().boolean_sort()),
+                "Int" => Ok(self.tm.borrow_mut().integer_sort()),
                 name => Ok(self
                     .sorts
                     .get(name)
                     .cloned()
-                    .unwrap_or_else(|| self.tm.mk_uninterpreted_sort(name))),
+                    .unwrap_or_else(|| self.tm.borrow_mut().mk_uninterpreted_sort(name))),
             },
             Identifier::Indexed { symbol, indices } if symbol.0 == "BitVec" => {
                 let width = single_numeral_index("BitVec sort", indices)?;
-                Ok(self.tm.mk_bv_sort(width))
+                Ok(self.tm.borrow_mut().mk_bv_sort(width)?)
             }
             Identifier::Indexed { symbol, .. } => {
                 anyhow::bail!("unsupported CVC5 indexed sort: {}", symbol.0)
@@ -148,7 +157,7 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_term(&self, term: &SmtTerm) -> anyhow::Result<Term<'static>> {
+    fn convert_term(&self, term: &SmtTerm) -> anyhow::Result<Term> {
         match term {
             SmtTerm::Constant(constant) => self.convert_constant(constant),
             SmtTerm::QualIdentifier(qual_identifier) => {
@@ -171,9 +180,10 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_assertion_term(&mut self, term: &SmtTerm) -> anyhow::Result<Term<'static>> {
+    fn convert_assertion_term(&mut self, term: &SmtTerm) -> anyhow::Result<Term> {
         match term {
-            SmtTerm::Forall { vars, term } => self.convert_forall(vars, term),
+            SmtTerm::Forall { vars, term } => self.convert_quantifier(Kind::Forall, vars, term),
+            SmtTerm::Exists { vars, term } => self.convert_quantifier(Kind::Exists, vars, term),
             SmtTerm::Constant(constant) => self.convert_constant(constant),
             SmtTerm::QualIdentifier(qual_identifier) => {
                 self.convert_qual_identifier(qual_identifier)
@@ -190,7 +200,6 @@ impl Cvc5SolverBackend {
             }
             SmtTerm::Let { .. }
             | SmtTerm::Lambda { .. }
-            | SmtTerm::Exists { .. }
             | SmtTerm::Match { .. }
             | SmtTerm::Attributes { .. } => {
                 anyhow::bail!("unsupported CVC5 assertion term: {term}")
@@ -198,20 +207,22 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_forall(
+    fn convert_quantifier(
         &mut self,
+        kind: Kind,
         vars: &[(Symbol, SmtSort)],
         term: &SmtTerm,
-    ) -> anyhow::Result<Term<'static>> {
+    ) -> anyhow::Result<Term> {
         let mut bound_vars = Vec::with_capacity(vars.len());
         let mut shadowed_terms = Vec::with_capacity(vars.len());
 
         for (symbol, sort) in vars {
             let sort = self.convert_sort(sort)?;
-            let var = self.tm.mk_var(sort, &symbol.0);
+            bound_vars.push(self.tm.borrow_mut().mk_var(sort, &symbol.0)?);
+        }
+        for ((symbol, _), var) in vars.iter().zip(&bound_vars) {
             let previous = self.terms.insert(symbol.0.clone(), var.clone());
             shadowed_terms.push((symbol.0.clone(), previous));
-            bound_vars.push(var);
         }
 
         let body_result = self.convert_assertion_term(term);
@@ -225,21 +236,32 @@ impl Cvc5SolverBackend {
         }
 
         let body = body_result?;
-        let variable_list = self.tm.mk_term(Kind::VariableList, &bound_vars);
-        Ok(self.tm.mk_term(Kind::Forall, &[variable_list, body]))
+        let variable_list = self
+            .tm
+            .borrow_mut()
+            .mk_term(Kind::VariableList, &bound_vars)?;
+        Ok(self.tm.borrow_mut().mk_term(kind, &[variable_list, body])?)
     }
 
-    fn convert_constant(&self, constant: &Constant) -> anyhow::Result<Term<'static>> {
+    fn convert_constant(&self, constant: &Constant) -> anyhow::Result<Term> {
         match constant {
-            Constant::Numeral(value) => Ok(self.tm.mk_integer_from_str(&value.to_string())),
-            Constant::Decimal(value) => Ok(self.tm.mk_real_from_str(&value.to_string())),
+            Constant::Numeral(value) => Ok(self
+                .tm
+                .borrow_mut()
+                .mk_integer_from_str(&value.to_string())?),
+            Constant::Decimal(value) => {
+                Ok(self.tm.borrow_mut().mk_real_from_str(&value.to_string())?)
+            }
             Constant::Hexadecimal(hex_bytes) => {
                 let bit_width = (hex_bytes.len() * 4) as u32;
                 let hex_value = hex_bytes
                     .iter()
                     .map(|digit| format!("{digit:x}"))
                     .collect::<String>();
-                Ok(self.tm.mk_bv_from_str(bit_width, &hex_value, 16))
+                Ok(self
+                    .tm
+                    .borrow_mut()
+                    .mk_bv_from_str(bit_width, &hex_value, 16)?)
             }
             Constant::Binary(_) => {
                 anyhow::bail!("CVC5 binary constants are not part of the current Z3 parity set")
@@ -248,10 +270,7 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_qual_identifier(
-        &self,
-        qual_identifier: &QualIdentifier,
-    ) -> anyhow::Result<Term<'static>> {
+    fn convert_qual_identifier(&self, qual_identifier: &QualIdentifier) -> anyhow::Result<Term> {
         match qual_identifier {
             QualIdentifier::Simple {
                 identifier: Identifier::Indexed { symbol, indices },
@@ -259,8 +278,8 @@ impl Cvc5SolverBackend {
             _ => {
                 let name = qual_identifier.get_name();
                 match name.as_str() {
-                    "true" => Ok(self.tm.mk_true()),
-                    "false" => Ok(self.tm.mk_false()),
+                    "true" => Ok(self.tm.borrow_mut().mk_true()),
+                    "false" => Ok(self.tm.borrow_mut().mk_false()),
                     _ => self
                         .terms
                         .get(&name)
@@ -275,7 +294,7 @@ impl Cvc5SolverBackend {
         &self,
         qual_identifier: &QualIdentifier,
         arguments: &[SmtTerm],
-    ) -> anyhow::Result<Term<'static>> {
+    ) -> anyhow::Result<Term> {
         let args = arguments
             .iter()
             .map(|term| self.convert_term(term))
@@ -287,8 +306,8 @@ impl Cvc5SolverBackend {
     fn make_application(
         &self,
         qual_identifier: &QualIdentifier,
-        args: Vec<Term<'static>>,
-    ) -> anyhow::Result<Term<'static>> {
+        args: Vec<Term>,
+    ) -> anyhow::Result<Term> {
         if let Some((symbol, indices)) = indexed_identifier_parts(qual_identifier) {
             if symbol.starts_with("bv") {
                 return self.convert_indexed_bv_literal(symbol, indices);
@@ -302,42 +321,43 @@ impl Cvc5SolverBackend {
             return self.make_const_array(qual_identifier, args);
         }
 
+        let apply = |kind| Ok(self.tm.borrow_mut().mk_term(kind, &args)?);
         match name.as_str() {
-            "=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Equal, &args)),
-            "and" if args.is_empty() => Ok(self.tm.mk_true()),
+            "=" if args.len() == 2 => apply(Kind::Equal),
+            "and" if args.is_empty() => Ok(self.tm.borrow_mut().mk_true()),
             "and" if args.len() == 1 => Ok(args[0].clone()),
-            "and" => Ok(self.tm.mk_term(Kind::And, &args)),
-            "or" if args.is_empty() => Ok(self.tm.mk_false()),
+            "and" => apply(Kind::And),
+            "or" if args.is_empty() => Ok(self.tm.borrow_mut().mk_false()),
             "or" if args.len() == 1 => Ok(args[0].clone()),
-            "or" => Ok(self.tm.mk_term(Kind::Or, &args)),
-            "not" if args.len() == 1 => Ok(self.tm.mk_term(Kind::Not, &args)),
-            "=>" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Implies, &args)),
-            "ite" if args.len() == 3 => Ok(self.tm.mk_term(Kind::Ite, &args)),
-            "+" => Ok(self.tm.mk_term(Kind::Add, &args)),
-            "-" if args.len() == 1 => Ok(self.tm.mk_term(Kind::Neg, &args)),
-            "-" => Ok(self.tm.mk_term(Kind::Sub, &args)),
-            "*" => Ok(self.tm.mk_term(Kind::Mult, &args)),
-            "/" if args.len() == 2 => Ok(self.tm.mk_term(Kind::IntsDivision, &args)),
-            "mod" if args.len() == 2 => Ok(self.tm.mk_term(Kind::IntsModulus, &args)),
-            ">" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Gt, &args)),
-            ">=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Geq, &args)),
-            "<" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Lt, &args)),
-            "<=" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Leq, &args)),
-            "select" if args.len() == 2 => Ok(self.tm.mk_term(Kind::Select, &args)),
-            "store" if args.len() == 3 => Ok(self.tm.mk_term(Kind::Store, &args)),
-            "concat" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorConcat, &args)),
-            "bvule" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUle, &args)),
-            "bvult" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUlt, &args)),
-            "bvuge" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUge, &args)),
-            "bvugt" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUgt, &args)),
-            "bvsle" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSle, &args)),
-            "bvslt" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSlt, &args)),
-            "bvsge" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSge, &args)),
-            "bvsgt" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSgt, &args)),
+            "or" => apply(Kind::Or),
+            "not" if args.len() == 1 => apply(Kind::Not),
+            "=>" if args.len() == 2 => apply(Kind::Implies),
+            "ite" if args.len() == 3 => apply(Kind::Ite),
+            "+" => apply(Kind::Add),
+            "-" if args.len() == 1 => apply(Kind::Neg),
+            "-" => apply(Kind::Sub),
+            "*" => apply(Kind::Mult),
+            "/" if args.len() == 2 => apply(Kind::IntsDivision),
+            "mod" if args.len() == 2 => apply(Kind::IntsModulus),
+            ">" if args.len() == 2 => apply(Kind::Gt),
+            ">=" if args.len() == 2 => apply(Kind::Geq),
+            "<" if args.len() == 2 => apply(Kind::Lt),
+            "<=" if args.len() == 2 => apply(Kind::Leq),
+            "select" if args.len() == 2 => apply(Kind::Select),
+            "store" if args.len() == 3 => apply(Kind::Store),
+            "concat" if args.len() == 2 => apply(Kind::BitvectorConcat),
+            "bvule" if args.len() == 2 => apply(Kind::BitvectorUle),
+            "bvult" if args.len() == 2 => apply(Kind::BitvectorUlt),
+            "bvuge" if args.len() == 2 => apply(Kind::BitvectorUge),
+            "bvugt" if args.len() == 2 => apply(Kind::BitvectorUgt),
+            "bvsle" if args.len() == 2 => apply(Kind::BitvectorSle),
+            "bvslt" if args.len() == 2 => apply(Kind::BitvectorSlt),
+            "bvsge" if args.len() == 2 => apply(Kind::BitvectorSge),
+            "bvsgt" if args.len() == 2 => apply(Kind::BitvectorSgt),
             "bvadd" if args.len() >= 2 => {
                 self.make_left_associative_bv_term(Kind::BitvectorAdd, args)
             }
-            "bvsub" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSub, &args)),
+            "bvsub" if args.len() == 2 => apply(Kind::BitvectorSub),
             "bvmul" if args.len() >= 2 => {
                 self.make_left_associative_bv_term(Kind::BitvectorMult, args)
             }
@@ -350,22 +370,22 @@ impl Cvc5SolverBackend {
             "bvxor" if args.len() >= 2 => {
                 self.make_left_associative_bv_term(Kind::BitvectorXor, args)
             }
-            "bvnot" if args.len() == 1 => Ok(self.tm.mk_term(Kind::BitvectorNot, &args)),
-            "bvneg" if args.len() == 1 => Ok(self.tm.mk_term(Kind::BitvectorNeg, &args)),
-            "bvlshr" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorLshr, &args)),
-            "bvashr" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorAshr, &args)),
-            "bvshl" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorShl, &args)),
-            "bvudiv" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUdiv, &args)),
-            "bvurem" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorUrem, &args)),
-            "bvsdiv" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSdiv, &args)),
-            "bvsrem" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSrem, &args)),
-            "bvsmod" if args.len() == 2 => Ok(self.tm.mk_term(Kind::BitvectorSmod, &args)),
+            "bvnot" if args.len() == 1 => apply(Kind::BitvectorNot),
+            "bvneg" if args.len() == 1 => apply(Kind::BitvectorNeg),
+            "bvlshr" if args.len() == 2 => apply(Kind::BitvectorLshr),
+            "bvashr" if args.len() == 2 => apply(Kind::BitvectorAshr),
+            "bvshl" if args.len() == 2 => apply(Kind::BitvectorShl),
+            "bvudiv" if args.len() == 2 => apply(Kind::BitvectorUdiv),
+            "bvurem" if args.len() == 2 => apply(Kind::BitvectorUrem),
+            "bvsdiv" if args.len() == 2 => apply(Kind::BitvectorSdiv),
+            "bvsrem" if args.len() == 2 => apply(Kind::BitvectorSrem),
+            "bvsmod" if args.len() == 2 => apply(Kind::BitvectorSmod),
             _ => {
                 if let Some(function) = self.terms.get(&name) {
                     let children = std::iter::once(function.clone())
                         .chain(args)
                         .collect::<Vec<_>>();
-                    Ok(self.tm.mk_term(Kind::ApplyUf, &children))
+                    Ok(self.tm.borrow_mut().mk_term(Kind::ApplyUf, &children)?)
                 } else {
                     anyhow::bail!("unsupported CVC5 application: {name}")
                 }
@@ -376,8 +396,8 @@ impl Cvc5SolverBackend {
     fn make_const_array(
         &self,
         qual_identifier: &QualIdentifier,
-        args: Vec<Term<'static>>,
-    ) -> anyhow::Result<Term<'static>> {
+        args: Vec<Term>,
+    ) -> anyhow::Result<Term> {
         if args.len() != 1 {
             anyhow::bail!("CVC5 const array expects one value argument");
         }
@@ -387,21 +407,20 @@ impl Cvc5SolverBackend {
         };
 
         let array_sort = self.convert_sort_ref(sort)?;
-        Ok(self.tm.mk_const_array(array_sort, args[0].clone()))
+        Ok(self
+            .tm
+            .borrow_mut()
+            .mk_const_array(array_sort, args[0].clone())?)
     }
 
-    fn make_left_associative_bv_term(
-        &self,
-        kind: Kind,
-        args: Vec<Term<'static>>,
-    ) -> anyhow::Result<Term<'static>> {
+    fn make_left_associative_bv_term(&self, kind: Kind, args: Vec<Term>) -> anyhow::Result<Term> {
         let mut terms = args.into_iter();
         let Some(mut result) = terms.next() else {
             anyhow::bail!("bitvector operation requires at least one argument");
         };
 
         for term in terms {
-            result = self.tm.mk_term(kind, &[result, term]);
+            result = self.tm.borrow_mut().mk_term(kind, &[result, term])?;
         }
 
         Ok(result)
@@ -411,24 +430,33 @@ impl Cvc5SolverBackend {
         &self,
         function_name: &str,
         indices: &[Index],
-        args: Vec<Term<'static>>,
-    ) -> anyhow::Result<Term<'static>> {
+        args: Vec<Term>,
+    ) -> anyhow::Result<Term> {
         match function_name {
             "extract" if args.len() == 1 && indices.len() == 2 => {
                 let high = numeral_index("extract high", &indices[0])?;
                 let low = numeral_index("extract low", &indices[1])?;
-                let op = self.tm.mk_op(Kind::BitvectorExtract, &[high, low]);
-                Ok(self.tm.mk_term_from_op(op, &args))
+                let op = self
+                    .tm
+                    .borrow_mut()
+                    .mk_op(Kind::BitvectorExtract, &[high, low])?;
+                Ok(self.tm.borrow_mut().mk_term_from_op(op, &args)?)
             }
             "zero_extend" if args.len() == 1 && indices.len() == 1 => {
                 let extension = numeral_index("zero_extend", &indices[0])?;
-                let op = self.tm.mk_op(Kind::BitvectorZeroExtend, &[extension]);
-                Ok(self.tm.mk_term_from_op(op, &args))
+                let op = self
+                    .tm
+                    .borrow_mut()
+                    .mk_op(Kind::BitvectorZeroExtend, &[extension])?;
+                Ok(self.tm.borrow_mut().mk_term_from_op(op, &args)?)
             }
             "sign_extend" if args.len() == 1 && indices.len() == 1 => {
                 let extension = numeral_index("sign_extend", &indices[0])?;
-                let op = self.tm.mk_op(Kind::BitvectorSignExtend, &[extension]);
-                Ok(self.tm.mk_term_from_op(op, &args))
+                let op = self
+                    .tm
+                    .borrow_mut()
+                    .mk_op(Kind::BitvectorSignExtend, &[extension])?;
+                Ok(self.tm.borrow_mut().mk_term_from_op(op, &args)?)
             }
             _ => anyhow::bail!(
                 "unsupported CVC5 indexed application: (_ {function_name} {}) with {} argument(s)",
@@ -442,21 +470,40 @@ impl Cvc5SolverBackend {
         }
     }
 
-    fn convert_indexed_bv_literal(
-        &self,
-        symbol: &str,
-        indices: &[Index],
-    ) -> anyhow::Result<Term<'static>> {
+    fn convert_indexed_bv_literal(&self, symbol: &str, indices: &[Index]) -> anyhow::Result<Term> {
         let value = symbol
             .strip_prefix("bv")
             .ok_or_else(|| anyhow::anyhow!("bitvector literal must start with bv: {symbol}"))?;
         let width = single_numeral_index("bitvector literal", indices)?;
-        Ok(self.tm.mk_bv_from_str(width, value, 10))
+        Ok(self.tm.borrow_mut().mk_bv_from_str(width, value, 10)?)
     }
 
-    fn current_unsat_core_labels(&self) -> Vec<String> {
-        self.solver
-            .get_unsat_assumptions()
+    fn record_check_result(
+        &mut self,
+        result: Result<cvc5::SmtResult, cvc5::Error>,
+    ) -> SolverCheckResult {
+        self.reason_unknown = match &result {
+            Ok(r) if r.is_unknown() => Some(format!("{:?}", r.unknown_explanation())),
+            Err(error) => Some(error.to_string()),
+            _ => None,
+        };
+        let check_result = result
+            .as_ref()
+            .map(SolverCheckResult::from_cvc5)
+            .unwrap_or(SolverCheckResult::Unknown);
+        self.unsat_core_cache.clear();
+        self.last_result = Some(check_result);
+        self.model_captured = false;
+        if check_result != SolverCheckResult::Sat {
+            self.model_value_cache.clear();
+        }
+        check_result
+    }
+
+    fn current_unsat_core_labels(&self) -> anyhow::Result<Vec<String>> {
+        Ok(self
+            .solver
+            .get_unsat_assumptions()?
             .iter()
             .map(|assumption| {
                 self.tracked_labels
@@ -465,34 +512,38 @@ impl Cvc5SolverBackend {
                     .map(|(label, _)| label.clone())
                     .unwrap_or_else(|| assumption.to_string())
             })
-            .collect()
+            .collect())
     }
 }
 
-fn join_from_cvc5_statistics(stats: &mut SolverStatistics, cvc5_stats: cvc5::Statistics) {
+fn join_from_cvc5_statistics(
+    stats: &mut SolverStatistics,
+    mut cvc5_stats: cvc5::Statistics,
+) -> anyhow::Result<()> {
     cvc5_stats.iter_init(true, false);
-    while cvc5_stats.iter_has_next() {
-        let (name, stat) = cvc5_stats.iter_next();
+    while cvc5_stats.iter_has_next()? {
+        let (name, stat) = cvc5_stats.iter_next()?;
         if stat.is_histogram() {
-            let histogram = stat.get_histogram();
+            let histogram = stat.get_histogram()?;
             let total = histogram.iter().map(|(_, value)| *value).sum::<u64>();
             stats.insert(name.clone(), StatisticsValue::UInt(total));
             for (bucket, value) in histogram {
                 stats.insert(format!("{name}::{bucket}"), StatisticsValue::UInt(value));
             }
         } else if stat.is_int() {
-            let value = stat.get_int();
+            let value = stat.get_int()?;
             if let Ok(value) = u64::try_from(value) {
                 stats.insert(name, StatisticsValue::UInt(value));
             } else {
                 stats.insert(name, StatisticsValue::Double(value as f64));
             }
         } else if stat.is_double() {
-            stats.insert(name, StatisticsValue::Double(stat.get_double()));
+            stats.insert(name, StatisticsValue::Double(stat.get_double()?));
         }
     }
 
     alias_cvc5_statistics(stats);
+    Ok(())
 }
 
 fn alias_cvc5_statistics(stats: &mut SolverStatistics) {
@@ -601,7 +652,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
             }
             Command::DeclareConst { symbol, sort } => {
                 let cvc5_sort = self.convert_sort(sort)?;
-                let term = self.solver.declare_fun(&symbol.0, &[], cvc5_sort);
+                let term = self.solver.declare_fun(&symbol.0, &[], cvc5_sort)?;
                 self.terms.insert(symbol.0.clone(), term);
                 Ok(())
             }
@@ -615,7 +666,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
                     .map(|sort| self.convert_sort(sort))
                     .collect::<anyhow::Result<Vec<_>>>()?;
                 let codomain = self.convert_sort(sort)?;
-                let term = self.solver.declare_fun(&symbol.0, &domain, codomain);
+                let term = self.solver.declare_fun(&symbol.0, &domain, codomain)?;
                 self.terms.insert(symbol.0.clone(), term);
                 Ok(())
             }
@@ -626,12 +677,12 @@ impl YardbirdSolver for Cvc5SolverBackend {
             }
             Command::SetOption { keyword, value } => {
                 if let Some(value) = attribute_value_to_option_string(value) {
-                    self.solver.set_option(&keyword.0, &value);
+                    self.solver.set_option(&keyword.0, &value)?;
                 }
                 Ok(())
             }
             Command::SetLogic { symbol } => {
-                self.solver.set_logic(&symbol.0);
+                self.solver.set_logic(&symbol.0)?;
                 Ok(())
             }
             Command::DefineFun { sig, .. } => {
@@ -646,21 +697,21 @@ impl YardbirdSolver for Cvc5SolverBackend {
 
     fn create_variable(&mut self, symbol: &Symbol, sort: &SmtSort) -> anyhow::Result<()> {
         let cvc5_sort = self.convert_sort(sort)?;
-        let term = self.tm.mk_var(cvc5_sort, &symbol.0);
+        let term = self.tm.borrow_mut().mk_var(cvc5_sort, &symbol.0)?;
         self.terms.insert(symbol.0.clone(), term);
         Ok(())
     }
 
     fn assert_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
         let cvc5_term = self.convert_assertion_term(term)?;
-        self.solver.assert_formula(cvc5_term);
+        self.solver.assert_formula(cvc5_term)?;
         Ok(())
     }
 
     fn assert_not_term(&mut self, term: &SmtTerm) -> anyhow::Result<()> {
         let cvc5_term = self.convert_assertion_term(term)?;
-        let not_term = self.tm.mk_term(Kind::Not, &[cvc5_term]);
-        self.solver.assert_formula(not_term);
+        let not_term = self.tm.borrow_mut().mk_term(Kind::Not, &[cvc5_term])?;
+        self.solver.assert_formula(not_term)?;
         Ok(())
     }
 
@@ -673,30 +724,32 @@ impl YardbirdSolver for Cvc5SolverBackend {
                     .iter()
                     .map(|term| self.convert_assertion_term(term))
                     .collect::<anyhow::Result<Vec<_>>>()?;
-                let conjunction = self.tm.mk_term(Kind::And, &children);
-                self.solver.assert_formula(conjunction);
+                let conjunction = self.tm.borrow_mut().mk_term(Kind::And, &children)?;
+                self.solver.assert_formula(conjunction)?;
                 Ok(())
             }
         }
     }
 
     fn assert_tracked_term(&mut self, term: &SmtTerm, label: &str) -> anyhow::Result<()> {
-        let label_term = self.tm.mk_const(self.tm.boolean_sort(), label);
+        let boolean_sort = self.tm.borrow_mut().boolean_sort();
+        let label_term = self.tm.borrow_mut().mk_const(boolean_sort, label)?;
         let cvc5_term = self.convert_assertion_term(term)?;
         let implication = self
             .tm
-            .mk_term(Kind::Implies, &[label_term.clone(), cvc5_term]);
-        self.solver.assert_formula(implication);
+            .borrow_mut()
+            .mk_term(Kind::Implies, &[label_term.clone(), cvc5_term])?;
+        self.solver.assert_formula(implication)?;
         self.tracked_labels.push((label.to_string(), label_term));
         Ok(())
     }
 
     fn push(&mut self) {
-        self.solver.push(1);
+        self.solver.push(1).expect("push cvc5 scope");
     }
 
     fn pop(&mut self, levels: u32) {
-        self.solver.pop(levels);
+        self.solver.pop(levels).expect("pop cvc5 scopes");
     }
 
     fn check_sat(&mut self) -> SolverCheckResult {
@@ -710,14 +763,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
         } else {
             self.solver.check_sat_assuming(&assumptions)
         };
-        let check_result = SolverCheckResult::from_cvc5(&result);
-        self.unsat_core_cache.clear();
-        self.last_result = Some(check_result);
-        self.model_captured = false;
-        if check_result != SolverCheckResult::Sat {
-            self.model_value_cache.clear();
-        }
-        check_result
+        self.record_check_result(result)
     }
 
     fn check_sat_assuming(&mut self, assumptions: &[SmtTerm]) -> SolverCheckResult {
@@ -731,14 +777,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
                 .expect("CVC5 check assumption must be boolean")
         }));
         let result = self.solver.check_sat_assuming(&cvc5_assumptions);
-        let check_result = SolverCheckResult::from_cvc5(&result);
-        self.unsat_core_cache.clear();
-        self.last_result = Some(check_result);
-        self.model_captured = false;
-        if check_result != SolverCheckResult::Sat {
-            self.model_value_cache.clear();
-        }
-        check_result
+        self.record_check_result(result)
     }
 
     fn capture_model(&mut self, terms: &[SmtTerm]) -> anyhow::Result<()> {
@@ -754,7 +793,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
                 let cvc5_term = self.convert_term(term)?;
                 Ok((
                     term.clone(),
-                    normalize_model_value(self.solver.get_value(cvc5_term).to_string()),
+                    normalize_model_value(self.solver.get_value(cvc5_term)?.to_string()),
                 ))
             })
             .collect::<anyhow::Result<HashMap<_, _>>>()?;
@@ -767,7 +806,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
         self.unsat_core_cache = if self.last_result == Some(SolverCheckResult::Unsat)
             && !self.tracked_labels.is_empty()
         {
-            self.current_unsat_core_labels()
+            self.current_unsat_core_labels()?
         } else {
             vec![]
         };
@@ -775,7 +814,8 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn record_statistics(&mut self, solver_elapsed: Duration) {
-        join_from_cvc5_statistics(&mut self.solver_statistics, self.solver.get_statistics());
+        join_from_cvc5_statistics(&mut self.solver_statistics, self.solver.get_statistics())
+            .expect("read cvc5 statistics");
         self.solver_statistics
             .add_time("solver_time", solver_elapsed.as_secs_f64());
     }
@@ -793,7 +833,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
         }
         let cvc5_term = self.convert_term(term)?;
         Ok(normalize_model_value(
-            self.solver.get_value(cvc5_term).to_string(),
+            self.solver.get_value(cvc5_term)?.to_string(),
         ))
     }
 
@@ -823,7 +863,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
     }
 
     fn get_reason_unknown(&self) -> Option<String> {
-        None
+        self.reason_unknown.clone()
     }
 
     fn get_unsat_core(&self) -> anyhow::Result<Vec<String>> {
@@ -839,7 +879,7 @@ impl YardbirdSolver for Cvc5SolverBackend {
 }
 
 impl SolverCheckResult {
-    fn from_cvc5(result: &cvc5::Result<'_>) -> Self {
+    fn from_cvc5(result: &cvc5::SmtResult) -> Self {
         if result.is_sat() {
             SolverCheckResult::Sat
         } else if result.is_unsat() {
@@ -1071,7 +1111,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_simple_lia_sat() {
-        let mut solver = Cvc5SolverBackend::new("QF_LIA");
+        let mut solver = Cvc5SolverBackend::new("QF_LIA").unwrap();
         solver
             .accept_command(&Command::DeclareConst {
                 symbol: Symbol("x".to_string()),
@@ -1093,7 +1133,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_simple_lia_unsat() {
-        let mut solver = Cvc5SolverBackend::new("QF_LIA");
+        let mut solver = Cvc5SolverBackend::new("QF_LIA").unwrap();
         solver
             .accept_command(&Command::DeclareConst {
                 symbol: Symbol("x".to_string()),
@@ -1117,7 +1157,7 @@ mod tests {
 
     #[test]
     fn cvc5_records_native_sat_statistics() {
-        let mut solver = Cvc5SolverBackend::new("QF_UF");
+        let mut solver = Cvc5SolverBackend::new("QF_UF").unwrap();
         for name in [
             "p11", "p12", "p13", "p21", "p22", "p23", "p31", "p32", "p33", "p41", "p42", "p43",
         ] {
@@ -1164,7 +1204,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_native_array_select_store() {
-        let mut solver = Cvc5SolverBackend::new("ALL");
+        let mut solver = Cvc5SolverBackend::new("ALL").unwrap();
         for (name, sort) in [
             ("arr", array_sort(int_sort(), int_sort())),
             ("idx", int_sort()),
@@ -1188,7 +1228,7 @@ mod tests {
 
     #[test]
     fn cvc5_records_array_axiom_statistics() {
-        let mut solver = Cvc5SolverBackend::new("QF_AUFLIA");
+        let mut solver = Cvc5SolverBackend::new("QF_AUFLIA").unwrap();
         for (name, sort) in [
             ("arr", array_sort(int_sort(), int_sort())),
             ("i", int_sort()),
@@ -1227,7 +1267,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_array_bitvector_select_store() {
-        let mut solver = Cvc5SolverBackend::new("ALL");
+        let mut solver = Cvc5SolverBackend::new("ALL").unwrap();
         for (name, sort) in [
             ("arr", array_sort(bitvec_sort(5), bitvec_sort(32))),
             ("idx", bitvec_sort(5)),
@@ -1251,7 +1291,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_bitvector_literals_and_indexed_ops() {
-        let mut solver = Cvc5SolverBackend::new("ALL");
+        let mut solver = Cvc5SolverBackend::new("ALL").unwrap();
         for term in [
             "(= ((_ extract 3 0) #x2a) (_ bv10 4))",
             "(= ((_ zero_extend 4) (_ bv15 4)) (_ bv15 8))",
@@ -1269,7 +1309,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_constant_array() {
-        let mut solver = Cvc5SolverBackend::new("ALL");
+        let mut solver = Cvc5SolverBackend::new("ALL").unwrap();
         solver
             .assert_term(&parsed_term(
                 "(not (= (select ((as const (Array Int Int)) 7) 0) 7))",
@@ -1280,7 +1320,7 @@ mod tests {
 
     #[test]
     fn cvc5_solves_forall_assertion() {
-        let mut solver = Cvc5SolverBackend::new("ALL");
+        let mut solver = Cvc5SolverBackend::new("ALL").unwrap();
         solver
             .assert_term(&parsed_term("(forall ((x Int)) (= x x))"))
             .unwrap();
@@ -1288,8 +1328,20 @@ mod tests {
     }
 
     #[test]
+    fn cvc5_solves_nested_existential_assertion() {
+        let mut solver = Cvc5SolverBackend::new("ALL").unwrap();
+        solver
+            .assert_term(&parsed_term(
+                "(not (forall ((x Int)) (exists ((y Int)) (= x y))))",
+            ))
+            .unwrap();
+        assert_eq!(solver.check_sat(), SolverCheckResult::Unsat);
+    }
+
+    #[test]
     fn cvc5_recovers_tracked_unsat_core_labels() {
-        let mut solver: Box<dyn YardbirdSolver> = Box::new(Cvc5SolverBackend::new("QF_LIA"));
+        let mut solver: Box<dyn YardbirdSolver> =
+            Box::new(Cvc5SolverBackend::new("QF_LIA").unwrap());
         solver
             .accept_command(&Command::DeclareConst {
                 symbol: Symbol("x".to_string()),
@@ -1322,7 +1374,8 @@ mod tests {
 
     #[test]
     fn cvc5_unsat_core_is_empty_outside_unsat_mode() {
-        let mut solver: Box<dyn YardbirdSolver> = Box::new(Cvc5SolverBackend::new("QF_LIA"));
+        let mut solver: Box<dyn YardbirdSolver> =
+            Box::new(Cvc5SolverBackend::new("QF_LIA").unwrap());
         solver
             .accept_command(&Command::DeclareConst {
                 symbol: Symbol("x".to_string()),
@@ -1343,7 +1396,7 @@ mod tests {
 
     #[test]
     fn cvc5_preserves_model_values_across_pop() {
-        let mut solver = Cvc5SolverBackend::new("QF_LIA");
+        let mut solver = Cvc5SolverBackend::new("QF_LIA").unwrap();
         let x = symbol_term("x");
         solver
             .accept_command(&Command::DeclareConst {

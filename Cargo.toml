@@ -70,6 +70,3 @@ inherits = "release"
 lto = "off"
 codegen-units = 16
 incremental = true
-# The published bindings still build native cvc5 1.4.0 in static mode.
-[patch.crates-io]
-cvc5-sys = { path = "vendor/cvc5-sys" }

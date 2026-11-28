@@ -466,6 +466,8 @@ dependencies = [
 [[package]]
 name = "cvc5-sys"
 version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70e364f844a43ecc209f5ae0866ee5c0c335319900fc7c441adb178b0ce867bc"
 dependencies = [
  "bindgen",
  "cc",

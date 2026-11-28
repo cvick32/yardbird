@@ -26,7 +26,7 @@ pub fn new_solver_backend(
     let solver: Box<dyn YardbirdSolver> = match backend {
         SolverBackend::Z3 => Box::new(Z3SolverBackend::new(logic)?),
         #[cfg(feature = "cvc5-backend")]
-        SolverBackend::Cvc5 => Box::new(Cvc5SolverBackend::new(logic)),
+        SolverBackend::Cvc5 => Box::new(Cvc5SolverBackend::new(logic)?),
         #[cfg(not(feature = "cvc5-backend"))]
         SolverBackend::Cvc5 => {
             anyhow::bail!("yardbird was built without the cvc5-backend Cargo feature")

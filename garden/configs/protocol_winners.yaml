@@ -294,6 +294,53 @@ parameter_matrices:
     guidance_work: 16384
     guidance_transition_order: predecessor-first
     guidance_action_requirements: always
+  qts-cvc5-concrete:
+    depths:
+      - 30
+    solvers:
+      - cvc5
+    strategies:
+      - concrete
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 1
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
+  # Countermodel guidance requires Z3. Use the same base selection settings on cvc5.
+  qts-cvc5-german-fast:
+    depths:
+      - 30
+    solvers:
+      - cvc5
+    strategies:
+      - abstract
+    cost_functions:
+      - bmc-cost
+    egraph_builders:
+      - source-then-full
+    instantiation_rankers:
+      - prefer-source
+    candidate_winners_per_group:
+      - 20
+    property_check_modes:
+      - assumptions
+    instantiation_strategies:
+      - full-unroll
+    prefer_axioms: false
+    auxiliary_synthesis:
+      trigger: "off"
+      guard_policy: "true"
 individual_configs: []
 output:
   include_metadata: true
